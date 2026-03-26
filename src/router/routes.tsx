@@ -8,7 +8,7 @@ import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { Projects } from '@/pages/Projects'
 import { General } from '@/pages/workspace/General'
 import { Billing } from '@/pages/workspace/Billing'
-import { AI } from '@/pages/workspace/AI'
+import AI from "@/pages/workspace/AI"
 import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
 import { Sync } from '@/pages/workspace/Sync'
@@ -48,10 +48,10 @@ const LegacyProjectRedirectPage = lazy(() =>
   }))
 )
 const NewProject = lazy(() =>
-  import('@/pages/NewProject').then((module) => ({ default: module.NewProject }))
+  import('@/pages/NewProject').then((module) => ({ default: module.default }))
 )
 const ProjectBuild = lazy(() =>
-  import('@/pages/ProjectBuild').then((module) => ({ default: module.ProjectBuild }))
+  import('@/pages/ProjectBuild').then((module) => ({ default: module.default }))
 )
 const ProjectPagesPage = lazy(() =>
   import('@/features/projects/pages/ProjectPagesPage').then((module) => ({

@@ -1,0 +1,198 @@
+
+=== SimDeviceIO ===
+@property device
+@property errorQueue
+@property errorHandler
+@property deviceUDID
+@property deviceName
+@property deviceRuntime
+@property deviceType
+@property deviceDataURL
+@property deviceLogURL
+@property ioPorts
+@property hash
+@property superclass
+@property description
+@property debugDescription
+- [initWithDevice:errorQueue:errorHandler:]
+- [ioPorts]
+- [ioPortForUUID:]
+- [deviceUDID]
+- [registerPort:service:error:]
+- [unregisterService:error:]
+- [postDarwinNotification:error:]
+- [getDarwinNotificationState:name:error:]
+- [setDarwinNotificationState:name:error:]
+- [postHostNotification:portUUID:portClass:info:error:]
+- [supportsFeature:]
+- [deviceName]
+- [deviceRuntime]
+- [deviceType]
+- [deviceDataURL]
+- [deviceLogURL]
+- [isOSFeatureEnabled:domain:]
+- [connectIOPort:completionQueue:completionHandler:]
+- [disconnectIOPort:completionQueue:completionHandler:]
+- [device]
+- [setDevice:]
+- [errorQueue]
+- [setErrorQueue:]
+- [errorHandler]
+- [setErrorHandler:]
+- [.cxx_destruct]
+
+=== SimDeviceIOClient ===
+@property deviceIOPorts
+@property executionQueue
+@property bootGeneration
+@property ioPorts
+@property hash
+@property superclass
+@property description
+@property debugDescription
+- [initWithDevice:errorQueue:errorHandler:]
+- [ioPorts]
+- [updateIOPorts]
+- [_handleXPCNotification:]
+- [bootGeneration]
+- [setBootGeneration:]
+- [deviceIOPorts]
+- [setDeviceIOPorts:]
+- [executionQueue]
+- [setExecutionQueue:]
+- [.cxx_destruct]
+
+=== SimDisplay ===
+Class not found
+
+=== SimDeviceFramebufferService ===
+Class not found
+
+=== _TtC12SimulatorKit14SimDisplayView ===
+@property intrinsicContentSize
+@property device
+@property renderableView
+@property opaque
+@property frame
+- [simDisplayRenderableViewFirstFrame:]
+- [simDisplayRenderableWithView:framebufferSizeChanged:]
+- [intrinsicContentSize]
+- [resetCursorRects]
+- [device]
+- [setDevice:]
+- [renderableView]
+- [setRenderableView:]
+- [initWithFrame:]
+- [initWithCoder:]
+- [isOpaque]
+- [viewDidChangeBackingProperties]
+- [makeBackingLayer]
+- [viewWillDraw]
+- [frame]
+- [setFrame:]
+- [updateConstraints]
+- [mouseEntered:]
+- [mouseExited:]
+- [keyDown:]
+- [keyUp:]
+- [.cxx_destruct]
+
+=== _TtC12SimulatorKit15SimDeviceScreen ===
+@property isDefault
+@property isCarPlay
+@property screenID
+@property description
+@property debugDescription
+- [isDefault]
+- [isCarPlay]
+- [screenID]
+- [initWithDevice:screenID:]
+- [dealloc]
+- [isEqual:]
+- [description]
+- [debugDescription]
+- [init]
+- [.cxx_destruct]
+
+=== _TtC12SimulatorKit24SimDeviceLegacyHIDClient ===
+- [initWithDevice:error:]
+- [initWithDevice:sessionResetQueue:error:sessionResetHandler:]
+- [dealloc]
+- [resetHIDSession]
+- [sendWithMessage:freeWhenDone:completionQueue:completion:]
+- [init]
+- [.cxx_destruct]
+
+=== _TtC12SimulatorKit24SimDisplayRenderableView ===
+@property wantsUpdateLayer
+@property mouseDownCanMoveWindow
+@property nextValidKeyView
+- [initWithFrame:]
+- [awakeFromNib]
+- [initWithCoder:]
+- [layout]
+- [wantsUpdateLayer]
+- [mouseDownCanMoveWindow]
+- [nextValidKeyView]
+- [setBoundsSize:]
+- [setFrameSize:]
+- [convertToDeviceFromScreenPoint:]
+- [convertToDeviceFromScreenRect:]
+- [convertToDeviceFromWindowPoint:]
+- [convertToDeviceFromWindowRect:]
+- [convertToDeviceFromSelfPoint:]
+- [convertToDeviceFromSelfRect:]
+- [convertToDeviceFromUnitPoint:]
+- [convertToScreenFromDeviceRect:]
+- [convertToWindowFromDeviceRect:]
+- [convertToSelfFromDeviceRect:]
+- [isAccessibilityEnabled]
+- [isAccessibilityElement]
+- [accessibilityRole]
+- [accessibilitySubrole]
+- [accessibilityHitTest:]
+- [accessibilityChildren]
+- [accessibilityParameterizedAttributeNames]
+- [accessibilityAttributeValue:forParameter:]
+- [.cxx_destruct]
+
+=== SimulatorKit.SimDeviceLegacyHIDClient ===
+- [initWithDevice:error:]
+- [initWithDevice:sessionResetQueue:error:sessionResetHandler:]
+- [dealloc]
+- [resetHIDSession]
+- [sendWithMessage:freeWhenDone:completionQueue:completion:]
+- [init]
+- [.cxx_destruct]
+
+=== SimulatorKit.SimDisplayView ===
+@property intrinsicContentSize
+@property device
+@property renderableView
+@property opaque
+@property frame
+- [simDisplayRenderableViewFirstFrame:]
+- [simDisplayRenderableWithView:framebufferSizeChanged:]
+- [intrinsicContentSize]
+- [resetCursorRects]
+- [device]
+- [setDevice:]
+- [renderableView]
+- [setRenderableView:]
+- [initWithFrame:]
+- [initWithCoder:]
+- [isOpaque]
+- [viewDidChangeBackingProperties]
+- [makeBackingLayer]
+- [viewWillDraw]
+- [frame]
+- [setFrame:]
+- [updateConstraints]
+- [mouseEntered:]
+- [mouseExited:]
+- [keyDown:]
+- [keyUp:]
+- [.cxx_destruct]
+
+=== CoreSimulator.SimDeviceIO ===
+Class not found

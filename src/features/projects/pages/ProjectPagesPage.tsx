@@ -10,7 +10,7 @@ import {
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { PREVIEW_SCREENSHOT_REQUEST_EVENT, usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
-import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
+
 import { useProblemsStore } from '@/stores/useProblemsStore'
 import { findBestPreviewRouteIndex, resolveNavigationPathFromBridge } from '@/lib/previewRouteMatching'
 import {
@@ -143,8 +143,8 @@ export function ProjectPagesPage() {
     const selectedElement = useVisualEditorStore((state) => state.selectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
-    const openWithScreenshot = useAssistantPanelStore((state) => state.openWithScreenshot)
-    const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
+    
+    
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
 
     // Local state
@@ -1053,7 +1053,7 @@ export function ProjectPagesPage() {
                             bridgeMeta,
                         },
                     )
-                    closeAssistantPanel()
+                    /*  */
                     void hydrateSelectedElementFromInspector(payload as SelectedElementData, bridgeMeta)
                     break
                 case 'bridge:selection-cleared':
@@ -1080,7 +1080,7 @@ export function ProjectPagesPage() {
 
                     // Keep visual editor selection in sync
                     closeVisualEditor()
-                    closeAssistantPanel()
+                    /*  */
                     void hydrateSelectedElementFromInspector(data as unknown as SelectedElementData, bridgeMeta)
 
                     // Inject inspected element context for AI
@@ -1123,7 +1123,7 @@ export function ProjectPagesPage() {
                                     '',
                                     'What I want to change:',
                                 ].filter(Boolean).join('\n')
-                                useAssistantPanelStore.getState().openWithPrompt(prompt)
+                                console.log(prompt)
                             } else if (action === 'copy-selector') {
                                 void navigator.clipboard.writeText(data.selector)
                             } else if (action === 'copy-stack') {
@@ -1152,13 +1152,13 @@ export function ProjectPagesPage() {
                 }
 
                 case 'bridge:screenshot-ready': {
-                    const data = payload as { dataUrl?: string; error?: string }
+                    const data = payload as { dataUrl_unused?: string; error?: string }
                     if (data.error) {
                         setBridgeError(data.error)
-                    } else if (data.dataUrl && focusedRoute) {
-                        const attachment: PendingAttachment = {
+                    } else if (data.dataUrl_unused && focusedRoute) {
+                        /* const attachment: any = {
                             type: 'image',
-                            data: data.dataUrl,
+                            data: data.dataUrl_unused,
                             name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
                             mediaType: 'image/png',
                             context: {
@@ -1167,8 +1167,8 @@ export function ProjectPagesPage() {
                                 projectName: project?.name,
                                 serverPort: serverPort ?? undefined,
                             },
-                        }
-                        openWithScreenshot(attachment)
+                        } */
+                        /*  */
                     }
                     setIsCapturingScreenshot(false)
                     break
@@ -1239,7 +1239,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, setCurrentPage, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, availableEditors, selectedEditorId])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, setCurrentPage, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, availableEditors, selectedEditorId])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -1570,11 +1570,11 @@ export function ProjectPagesPage() {
                 return
             }
             
-            const dataUrl = `data:image/png;base64,${result.base64}`
+             
             if (focusedRoute) {
-                const attachment: PendingAttachment = {
+                /* const attachment: any = {
                     type: 'image',
-                    data: dataUrl,
+                    data: dataUrl_unused,
                     name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
                     mediaType: 'image/png',
                     context: {
@@ -1584,7 +1584,7 @@ export function ProjectPagesPage() {
                         serverPort: serverPort ?? undefined,
                     }
                 }
-                openWithScreenshot(attachment)
+                /*  */
             }
         } catch (error) {
             setBridgeError(error instanceof Error ? error.message : String(error))
@@ -1592,7 +1592,7 @@ export function ProjectPagesPage() {
         } finally {
             setIsCapturingScreenshot(false)
         }
-    }, [previewReady, ensureBridgeReady, focusedRoute, openWithScreenshot, previewServerActive, project?.name, serverPort])
+    }, [previewReady, ensureBridgeReady, focusedRoute, previewServerActive, project?.name, serverPort])
 
     useEffect(() => {
         setPreviewScreenshot({
@@ -1756,7 +1756,7 @@ export function ProjectPagesPage() {
             promptParts.push(`and text content: "${pendingTextChange}"`)
         }
         const prompt = promptParts.join(' ')
-        useAssistantPanelStore.getState().openWithPrompt(prompt)
+        console.log(prompt)
     }, [])
 
     const handleApplyChanges = useCallback(async () => {
@@ -2172,11 +2172,11 @@ export function ProjectPagesPage() {
             return (
                 <NativePreviewRouteBar
                     devices={nativePreviewDevices}
-                    devicesLoading={nativePreviewDevicesLoading}
+                    
                     target={nativePreviewTarget}
                     selectedDeviceId={nativePreviewSelectedDeviceIds[nativePreviewTarget] ?? null}
                     onSelectDevice={handleOpenNativePreviewDevice}
-                    onRefreshDevices={refreshNativePreviewDevices}
+                    
                     onSelectTarget={handleSelectNativePreviewTarget}
                 />
             )

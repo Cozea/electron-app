@@ -156,6 +156,14 @@ export default defineConfig({
       include: [
         '@codingame/monaco-vscode-api',
         '@codingame/monaco-vscode-api/extensions',
+        '@codingame/monaco-vscode-api/services',
+        '@codingame/monaco-vscode-api/vscode/vs/base/common/uri',
+        '@codingame/monaco-vscode-api/vscode/vs/base/common/event',
+        '@codingame/monaco-vscode-extensions-service-override',
+        '@codingame/monaco-vscode-files-service-override',
+        '@codingame/monaco-vscode-languages-service-override',
+        '@codingame/monaco-vscode-theme-service-override',
+        '@codingame/monaco-vscode-textmate-service-override',
         'vscode/localExtensionHost',
       ],
       exclude: [

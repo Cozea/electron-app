@@ -1,6 +1,5 @@
+const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-full w-full'}`} />;
 import type { PresenceUser } from "@/hooks/useProjectPresence"
-import { Loader } from "@/components/ai-elements/loader"
-import { Shimmer } from "@/components/ai-elements/shimmer"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Code2, Database, FileCode2, Layers3, Settings, TabletSmartphone } from "lucide-react"
 import { type CSSProperties, useMemo } from "react"
@@ -109,7 +108,7 @@ function renderActivityBubble(user: PresenceUser) {
     <span
       className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm text-secondary-foreground"
     >
-      <Loader size={14} className="shrink-0" />
+      <div className="animate-spin bg-muted rounded-full h-4 w-4 border-t-2 border-foreground" />
     </span>
   )
 }

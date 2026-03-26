@@ -45,7 +45,7 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     settingsPage.surface?.routes[settingsPage.scopeKind] ??
     (workspaceScoped ? WORKSPACE_BILLING_ROUTE : PERSONAL_BILLING_ROUTE)
 
-  const membersQuery = useQuery(
+  const membersQuery = useQuery<any>(
     api.organizations.getMembers,
     convexOrg?._id &&
     convexUserId &&
@@ -85,7 +85,7 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
       canViewWorkspaceMembers,
   })
 
-  const freshSeatManagement = useQuery(
+  const freshSeatManagement = useQuery<any>(
     api.billing.getSeatManagement,
     billingViewerArgs,
   )
@@ -94,8 +94,8 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     freshSeatManagement,
   )
 
-  const freshWalletSummary = useQuery(
-    api.aiWallets.getWalletForViewer,
+  const freshWalletSummary = useQuery<any>(
+    undefined,
     billingViewerArgs,
   )
   const walletSummary = useCachedQuery(
@@ -103,8 +103,8 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     freshWalletSummary,
   )
 
-  const freshSeatWallets = useQuery(
-    api.aiWallets.getSeatWalletsForViewer,
+  const freshSeatWallets = useQuery<any>(
+    undefined,
     workspaceScoped ? billingViewerArgs : 'skip',
   )
   const seatWallets = useCachedQuery(

@@ -3,7 +3,7 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { cancelToolRuns, disposeToolRuntime, runTool } from './tools'
+
 import { autoUpdater } from 'electron-updater'
 import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
@@ -17,8 +17,7 @@ import { ProjectSourceControlService } from './services/ProjectSourceControlServ
 import { DatabaseService } from './services/DatabaseService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
-import { ProviderAuthService } from './services/ProviderAuthService'
-import { LocalAiRuntimeService } from './services/LocalAiRuntimeService'
+import { RadonHostService } from './services/RadonHostService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
@@ -991,18 +990,16 @@ function createWindow() {
 // IPC Handlers
 // Register Services
 AuthService.getInstance().registerIpcHandlers()
-ProviderAuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 ProjectSourceControlService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 DependenciesService.getInstance().registerIpcHandlers()
-LocalAiRuntimeService.getInstance().registerIpcHandlers()
 
 registerCoreHandlers(ipcMain, {
-  runTool,
-  cancelToolRuns: async (runId) => cancelToolRuns(runId),
+  
+  
   getUpdateState: () => updateState,
   isAutoUpdateEnabled,
   checkForUpdates,
@@ -1079,8 +1076,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  RadonHostService.getInstance().dispose()
   PreviewSnapshotService.getInstance().dispose()
-  disposeToolRuntime()
+  
   stopUpdateChecks()
 })
 

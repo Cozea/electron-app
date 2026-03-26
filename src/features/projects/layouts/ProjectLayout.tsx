@@ -15,12 +15,9 @@ import {
 } from "@/components/ui/sidebar"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { StatusBar } from "@/components/StatusBar"
-import { ChatPanel } from "@/components/chat/ChatPanel"
-import { AssistantPanel } from "@/components/assistant/AssistantPanel"
-import { ChatHistorySidebar } from "@/components/assistant/ChatHistorySidebar"
+import { AITerminalSidebar } from "@/components/terminal/AITerminalSidebar"
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator"
-import { useChatPanelStore } from "@/stores/useChatPanelStore"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+import { useAITerminalStore } from "@/stores/useAITerminalStore"
 import { usePageContextStore } from "@/stores/usePageContextStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { useAuth } from "@/contexts/AuthContext"
@@ -210,7 +207,6 @@ function SidebarFullscreenSync({ assistantPanelMode }: SidebarFullscreenSyncProp
 export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
-    const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
     const { convexUserId, user, logout } = useAuth()
     const { preferredConvexOrganizationId, workspaceName, scopeKind } = useScopedAppContext()
     const location = useLocation()
@@ -219,8 +215,7 @@ export function ProjectLayout({
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
     const initialSyncMode = locationState?.syncMode ?? null
 
-    const chatPanelMode = useChatPanelStore((state) => state.mode)
-    const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
+    const assistantPanelMode = useAITerminalStore((state) => state.mode)
 
     // Get project data (with caching)
     const freshProjectById = useQuery(
@@ -802,7 +797,7 @@ export function ProjectLayout({
         Boolean(headerSlot) ||
         Boolean(breadcrumbAddon) ||
         Boolean(presenceHeaderAddon)
-    const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
+    const isAnyPanelFullscreen = assistantPanelMode === 'fullscreen'
     const showAssistantHistorySidebar = assistantPanelMode === 'fullscreen'
     const workspaceIcon = scopeKind === 'personal' ? UserRound : Building2
     const statusBar = (
@@ -856,7 +851,7 @@ export function ProjectLayout({
                             } as React.CSSProperties}
                             className="relative hidden h-full shrink-0 overflow-hidden md:flex"
                         >
-                            <ChatHistorySidebar projectId={project?._id ?? null} />
+
                             <div
                                 onMouseDown={handleAssistantHistoryResizeStart}
                                 className={cn(
@@ -916,13 +911,9 @@ export function ProjectLayout({
                             >
                                 {children || <Outlet />}
                             </div>
-                            <ChatPanel />
-                            <AssistantPanel
+                            <AITerminalSidebar
                                 className="[--assistant-surface:var(--content-surface)]"
                                 projectPath={effectiveLocalPath ?? undefined}
-                                projectId={project?._id ?? null}
-                                projectName={project?.name}
-                                projectSlug={projectSlug}
                             />
                         </div>
                     </SidebarInset>

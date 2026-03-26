@@ -1,7 +1,10 @@
-import { spawn, type ChildProcessWithoutNullStreams, execFile } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import * as pty from 'node-pty'
+import { systemPreferences } from 'electron'
 
 import type {
   NativePreviewBuildMode,
@@ -32,7 +35,7 @@ import type {
 } from '../../shared/electronApiTypes'
 import { resolveRadonSimulatorBinaryPath } from '../lib/radonPaths'
 import { AndroidDeviceManager, IOSDeviceManager } from './radon/deviceManagers'
-import { getManagedIosDeviceSetPath } from './radon/iosDeviceSet'
+import { getManagedIosDeviceSetPath, getManagedAndroidDeviceSetPath } from './radon/devicePaths'
 import {
   DEFAULT_RADON_FEATURES,
   isRadonFeatureAvailable,
@@ -70,14 +73,13 @@ interface PendingMediaRequest {
 }
 
 interface SessionController {
-  process: ChildProcessWithoutNullStreams
+  process: pty.IPty
   deviceType: SessionProcessDeviceType
   rotation: RadonRotation
   stopRequested: boolean
   started: boolean
   pending: Map<string, PendingMediaRequest>
   stdoutBuffer: string
-  stderrBuffer: string
   startupResolve?: () => void
   startupReject?: (error: Error) => void
   startupTimer?: NodeJS.Timeout
@@ -323,6 +325,39 @@ export class RadonHostService {
     }
   }
 
+  public dispose(): void {
+    console.log('[RadonHostService] Disposing active sessions before quit...')
+    for (const [sessionId, controller] of this.sessionControllers.entries()) {
+      controller.stopRequested = true
+      if (controller.startupTimer) clearTimeout(controller.startupTimer)
+      
+      const processToKill = controller.process
+      try {
+        processToKill.write('\x04') // Send EOF (Ctrl+D) to gracefully close stdin
+      } catch {
+        // ignore write errors during shutdown
+      }
+      processToKill.kill('SIGTERM')
+      
+      // Since app is quitting, give it 1 second then forcefully kill
+      setTimeout(() => {
+        try {
+          console.log(`[RadonHostService] Force killing simulator server for session ${sessionId}`)
+          processToKill.kill('SIGKILL')
+        } catch {
+          // already dead
+        }
+      }, 1000)
+    }
+    
+    for (const bridge of this.runtimeBridges.values()) {
+      bridge.dispose()
+    }
+    
+    this.sessionControllers.clear()
+    this.runtimeBridges.clear()
+  }
+
   listSessions(): NativePreviewListSessionsResult {
     return {
       success: true,
@@ -463,8 +498,31 @@ export class RadonHostService {
     const controller = this.sessionControllers.get(options.sessionId)
     if (controller) {
       controller.stopRequested = true
-      controller.startupTimer && clearTimeout(controller.startupTimer)
-      controller.process.kill('SIGTERM')
+      if (controller.startupTimer) clearTimeout(controller.startupTimer)
+      
+      const processToKill = controller.process
+      
+      try {
+        processToKill.write('\x04') // Send EOF (Ctrl+D) to gracefuly close stdin
+      } catch {
+        // Ignore write errors during shutdown
+      }
+      
+      try {
+        processToKill.kill('SIGTERM')
+      } catch {
+        // ignore
+      }
+      
+      setTimeout(() => {
+        try {
+          console.log(`[RadonHostService] Force killing simulator server for session ${options.sessionId}`)
+          processToKill.kill('SIGKILL')
+        } catch {
+          // ignore
+        }
+      }, 3000)
+
       this.sessionControllers.delete(options.sessionId)
     }
 
@@ -1313,32 +1371,55 @@ export class RadonHostService {
   }
 
   private async launchSessionProcess(session: RadonSessionRecord, token: string): Promise<SessionController> {
+    if (process.platform === 'darwin') {
+      const screenStatus = systemPreferences.getMediaAccessStatus('screen')
+      if (screenStatus !== 'granted') {
+        const errorMsg = `macOS Screen Recording permission is missing (status: ${screenStatus}). Please grant access to your Terminal/IDE in System Settings -> Privacy & Security -> Screen & System Audio Recording, then restart the app.`
+        throw new Error(errorMsg)
+      }
+    }
+
     const binary = resolveRadonSimulatorBinaryPath()
     const targetDeviceId = session.deviceType === 'ios'
       ? session.device?.id || session.deviceId || ''
       : session.device?.runtimeId || session.device?.id || session.deviceId || ''
     const args = [session.deviceType, '--id', targetDeviceId]
+    // (Need to keep the import for signature compatibility even if we don't use it directly)
+    if (getManagedAndroidDeviceSetPath()) {
+      // noop
+    }
+    
     if (session.deviceType === 'ios') {
-      args.push('--device-set', getManagedIosDeviceSetPath())
+      const deviceSet = getManagedIosDeviceSetPath()
+      if (deviceSet) {
+        args.push('--device-set', deviceSet)
+      }
     }
     if (token) {
       args.push('-t', token)
+      fs.appendFileSync('logs.txt', `[simulator-server] Checking token validity...\n`)
+      const tokenState = await this.verifyLicenseToken(token)
+      fs.appendFileSync('logs.txt', `[simulator-server] Token State: ${JSON.stringify(tokenState)}\n`)
+    } else {
+      fs.appendFileSync('logs.txt', `[simulator-server] WARNING: No token was passed to launchSessionProcess!\n`)
     }
 
-    const process = spawn(binary, args, {
+    const simulatorProcess = pty.spawn(binary, args, {
       cwd: path.dirname(binary),
-      stdio: ['pipe', 'pipe', 'pipe'],
+      env: process.env as Record<string, string>,
+      cols: 80,
+      rows: 30,
+      name: 'xterm-color',
     })
 
     const controller: SessionController = {
-      process,
+      process: simulatorProcess,
       deviceType: session.deviceType,
       rotation: session.rotation ?? 'Portrait',
       stopRequested: false,
       started: false,
       pending: new Map(),
       stdoutBuffer: '',
-      stderrBuffer: '',
     }
 
     this.sessionControllers.set(session.id, controller)
@@ -1358,7 +1439,18 @@ export class RadonHostService {
     } catch (error) {
       this.sessionControllers.delete(session.id)
       controller.stopRequested = true
-      process.kill('SIGTERM')
+      try {
+        simulatorProcess.kill('SIGTERM')
+      } catch {
+        // ignore
+      }
+      setTimeout(() => {
+        try {
+          simulatorProcess.kill('SIGKILL')
+        } catch {
+          // ignore
+        }
+      }, 2000)
       throw error
     } finally {
       if (controller.startupTimer) {
@@ -1370,26 +1462,18 @@ export class RadonHostService {
   }
 
   private attachProcessListeners(session: RadonSessionRecord, controller: SessionController): void {
-    controller.process.stdout.on('data', (chunk: Buffer) => {
-      controller.stdoutBuffer += chunk.toString('utf8')
+    controller.process.onData((data: string) => {
+      // Strip ANSI color codes since the pseudo-terminal outputs them
+      // eslint-disable-next-line no-control-regex
+      const cleanData = data.replace(/\x1b\[[0-9;]*m/g, '')
+      controller.stdoutBuffer += cleanData
       controller.stdoutBuffer = this.flushBuffer(session.id, controller.stdoutBuffer, false)
     })
 
-    controller.process.stderr.on('data', (chunk: Buffer) => {
-      controller.stderrBuffer += chunk.toString('utf8')
-      controller.stderrBuffer = this.flushBuffer(session.id, controller.stderrBuffer, true)
-    })
+    // Pseudo-terminals combine stderr and stdout into onData, so we don't have onStderr.
 
-    controller.process.on('error', (error) => {
-      controller.startupReject?.(error)
-      this.updateSession(session.id, {
-        state: 'error',
-        error: error.message,
-        lastError: this.classifyRuntimeError(error.message),
-      })
-    })
-
-    controller.process.on('exit', (code, signal) => {
+    controller.process.onExit(async ({ exitCode: code, signal }) => {
+      fs.appendFileSync('logs.txt', `[simulator-server] EXIT: Process exited with code ${code} and signal ${signal}. Stop requested: ${controller.stopRequested}\n`)
       this.cancelPendingInspectRequestsForSession(session.id, 'Inspect request cancelled because the native preview session exited.')
       if (controller.stopRequested) {
         this.updateSession(session.id, {
@@ -1399,15 +1483,28 @@ export class RadonHostService {
         return
       }
 
-      const message = code === 77
+      let errorCode: RadonCommandError['code'] = 'unknown'
+      let message = code === 77
         ? 'No sufficient license was provided in time to prevent preview shutdown.'
         : `Preview stream closed unexpectedly${code !== null ? ` (code ${code})` : signal ? ` (${signal})` : ''}.`
+
+      // Check if token expired causing the exit
+      if (this.cachedToken) {
+        const tokenState = await this.verifyLicenseToken(this.cachedToken)
+        if (tokenState.status === 'expired') {
+          this.cachedLicenseState = tokenState
+          this.emitLicenseChanged()
+          message = 'Session expired. Please upgrade or renew your Radon token.'
+          errorCode = 'no_license'
+        }
+      }
+
       controller.startupReject?.(new Error(message))
       this.updateSession(session.id, {
         state: 'error',
         error: message,
         message,
-        lastError: this.classifyRuntimeError(message),
+        lastError: this.createCommandError(errorCode, message),
       })
       this.sessionControllers.delete(session.id)
     })
@@ -1431,6 +1528,8 @@ export class RadonHostService {
     const session = this.sessions.get(sessionId)
     const controller = this.sessionControllers.get(sessionId)
     if (!session || !controller) return
+
+    fs.appendFileSync('logs.txt', `[simulator-server] ${stderr ? 'STDERR' : 'STDOUT'}: ${line}\n`);
 
     this.emitLog({
       sessionId,
@@ -1567,11 +1666,11 @@ export class RadonHostService {
   }
 
   private writeCommand(controller: SessionController, command: string): void {
-    if (!controller.process.stdin.writable || controller.process.stdin.destroyed) {
+    try {
+      controller.process.write(command)
+    } catch {
       throw new Error('Simulator server process is not available.')
     }
-
-    controller.process.stdin.write(command)
   }
 
   private readRatio(value: unknown): number {
@@ -1585,8 +1684,9 @@ export class RadonHostService {
   private async verifyLicenseToken(token: string): Promise<RadonLicenseState> {
     try {
       const binary = resolveRadonSimulatorBinaryPath()
+      // Filter out stderr logs so we only match the actual token string!
       const { stdout } = await execFileAsync(binary, ['verify_token', token])
-      const normalized = stdout.trim()
+      const normalized = stdout.split('\n').filter(line => line && !line.startsWith('[')).join('\n').trim()
       const tokenMetadata = resolveRadonFeatures(token)
 
       if (normalized.startsWith('token_valid')) {

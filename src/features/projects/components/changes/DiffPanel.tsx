@@ -1,10 +1,11 @@
+const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-4 w-full'}`} />;
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Shimmer } from '@/components/ai-elements/shimmer'
+
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
 import { X, Bold, Italic, Underline, Link2, Smile, Minus, Plus, Asterisk } from 'lucide-react'

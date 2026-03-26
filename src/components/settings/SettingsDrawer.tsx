@@ -12,10 +12,10 @@ import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
 import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Billing } from '@/pages/workspace/Billing'
-import { AI } from '@/pages/workspace/AI'
+import AI from "@/pages/workspace/AI"
 import { useAuth } from '@/contexts/AuthContext'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
-import { prewarmAiSettingsData } from '@/hooks/useScopedAiData'
+
 import { prewarmCloudStorageData } from '@/hooks/useScopedCloudStorageData'
 import {
   canAccessWorkspaceSurface,
@@ -38,7 +38,7 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
   }
 
   if (section === 'ai') {
-    return <AI surface="drawer" route={route} />
+    return <AI />
   }
 
   if (section === 'modelSelection') {
@@ -124,7 +124,7 @@ export function SettingsDrawer() {
         return async () => {
           await Promise.all([
             surface.preload?.(),
-            prewarmAiSettingsData({
+            Promise.resolve({
               organizationId: convexOrganizationId ?? null,
               userId: convexUserId ?? null,
               range: '30d',

@@ -5,10 +5,6 @@ import type {
   ElectronAPI,
   ElectronWindowContext,
   OrganizationMembership,
-  ProviderCloudCredentials,
-  ProviderAuthMethod,
-  ProviderAuthProvider,
-  ProviderAuthStatusChangedEvent,
   RuntimeKind,
   Session,
   SyncOp,
@@ -50,32 +46,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       // Return cleanup function
       return () => ipcRenderer.removeListener('auth:error', handler)
     },
-  },
-  providerAuth: {
-    listProviders: () => ipcRenderer.invoke('providerAuth:listProviders'),
-    getStatus: (provider?: ProviderAuthProvider) =>
-      ipcRenderer.invoke('providerAuth:getStatus', provider),
-    connect: (options: {
-      provider: ProviderAuthProvider
-      method?: ProviderAuthMethod
-      authorizationCode?: string
-      credentialPath?: string
-      apiKey?: string
-      cloudCredentials?: ProviderCloudCredentials
-    }) => ipcRenderer.invoke('providerAuth:connect', options),
-    disconnect: (provider: ProviderAuthProvider) =>
-      ipcRenderer.invoke('providerAuth:disconnect', provider),
-    onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        event: ProviderAuthStatusChangedEvent
-      ) => callback(event)
-      ipcRenderer.on('providerAuth:statusChanged', handler)
-      return () => ipcRenderer.removeListener('providerAuth:statusChanged', handler)
-    },
-  },
-  localAiRuntime: {
-    getStatus: () => ipcRenderer.invoke('localAiRuntime:getStatus'),
   },
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
@@ -813,6 +783,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('contextMenu:showFileTreeMenu', options),
     showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) =>
       ipcRenderer.invoke('contextMenu:showVisualEditorMenu', options),
+    showNativePreviewMenu: (options: {
+      x: number
+      y: number
+      iosDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
+      androidDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
+    }) => ipcRenderer.invoke('contextMenu:showNativePreviewMenu', options),
     showNative: (options: {
       x: number
       y: number

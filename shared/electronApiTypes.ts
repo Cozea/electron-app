@@ -438,6 +438,9 @@ export type RadonDeviceCommand =
   | 'touch_down'
   | 'touch_move'
   | 'touch_up'
+  | 'wheel'
+  | 'sendKeys'
+  | 'setClipboard'
   | 'home'
   | 'app_switch'
   | 'volume_up'
@@ -1923,6 +1926,12 @@ export interface ElectronAPI {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) => Promise<{ action: string | null }>
     showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) => Promise<{ action: string | null }>
+    showNativePreviewMenu: (options: {
+      x: number
+      y: number
+      iosDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
+      androidDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
+    }) => Promise<{ action: 'select-device'; deviceId: string; platform: 'ios' | 'android' } | { action: 'select-target'; target: 'ios' | 'android' } | null>
     showNative: (options: {
       x: number
       y: number

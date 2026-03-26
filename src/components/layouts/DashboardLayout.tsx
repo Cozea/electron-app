@@ -17,7 +17,7 @@ import {
 } from "@/lib/settings/settingsRegistry"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { Building2, Layers3, UserRound } from "lucide-react"
 
@@ -73,7 +73,7 @@ interface DashboardLayoutContentProps {
 }
 
 function SidebarFullscreenSync() {
-  const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
+  const assistantPanelMode = useAITerminalStore((state) => state.mode)
   const sidebar = useOptionalSidebar()
 
   useEffect(() => {
@@ -117,7 +117,7 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
+  const closeAssistantPanel = useAITerminalStore((state) => state.closePanel)
   const windowChrome = useWindowChrome()
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"

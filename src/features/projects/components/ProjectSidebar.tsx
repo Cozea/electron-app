@@ -262,7 +262,7 @@ export function ProjectSidebar({
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    className="h-full w-56 shrink-0 z-20 sidebar-glass"
+                    className="h-full w-56 shrink-0 z-20 bg-content-surface"
                     {...props}
                 >
                     <div className="h-10 shrink-0" aria-hidden="true" />
@@ -322,7 +322,7 @@ export function ProjectSidebar({
                                                                 setActiveTab(item.title)
                                                             }}
                                                         >
-                                                            <item.icon className="opacity-60" />
+                                                            <item.icon className="transition-opacity group-data-[active=true]:opacity-100 opacity-70" />
                                                             <span>{item.title}</span>
                                                             {item.title === 'Tasks' ? (
                                                                 <ChevronDown className={cn('ml-auto h-3.5 w-3.5 transition-transform', tasksExpanded ? 'rotate-0' : '-rotate-90')} />

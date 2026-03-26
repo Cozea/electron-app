@@ -8,7 +8,7 @@ import "@xterm/xterm/css/xterm.css"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+
 import {
     buildAnsiPalette,
     compositeColorToHex,
@@ -57,7 +57,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
     const [selectedText, setSelectedText] = useState("")
     const outputChunks = useTerminalStore((state) => state.outputBuffers[terminalId] ?? [])
     const { updateTerminalStatus, setTerminalHasOutput, appendTerminalOutput } = useTerminalActions()
-    const openWithPrompt = useAssistantPanelStore((state) => state.openWithPrompt)
+    
 
     const getTrimmedSelection = useCallback(() => {
         const term = xtermRef.current
@@ -82,21 +82,21 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
         })
 
         if (result.action === 'askAI') {
-            openWithPrompt(`Help me understand this terminal output:\n\n\`\`\`\n${trimmedSelection}\n\`\`\``)
+            console.log("prompt ignored")
         } else if (result.action === 'explainError') {
-            openWithPrompt(`Explain this error and suggest how to fix it:\n\n\`\`\`\n${trimmedSelection}\n\`\`\``)
+            console.log("prompt ignored")
         }
         // Other actions (copy, search) are handled in main process
-    }, [getTrimmedSelection, openWithPrompt])
+    }, [getTrimmedSelection, console.log])
 
     const handleAskAIFromSelection = useCallback(() => {
         const trimmedSelection = getTrimmedSelection() || selectedText.trim()
         if (!trimmedSelection) return
 
-        openWithPrompt(`Help me understand this terminal output:\n\n\`\`\`\n${trimmedSelection}\n\`\`\``)
+        console.log("prompt ignored")
         xtermRef.current?.clearSelection()
         setSelectedText("")
-    }, [getTrimmedSelection, openWithPrompt, selectedText])
+    }, [getTrimmedSelection, console.log, selectedText])
 
     // Initialize xterm and connect to IPC
     useEffect(() => {

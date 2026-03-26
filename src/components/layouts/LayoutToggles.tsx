@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useOptionalSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
-import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
+import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { cn } from '@/lib/utils'
 import { useLocation } from 'react-router-dom'
 import type { SVGProps } from 'react'
@@ -51,8 +51,15 @@ export function LayoutToggles() {
     const toggleTerminal = useTerminalStore((state) => state.actions.togglePanel)
     const isTerminalOpen = useTerminalStore((state) => state.isPanelOpen)
     const hasTerminalSessions = useTerminalStore((state) => Object.keys(state.terminals).length > 0)
-    const toggleAssistant = useAssistantPanelStore((state) => state.togglePanel)
-    const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== 'closed')
+    const toggleAssistant = () => {
+        const store = useAITerminalStore.getState()
+        if (store.mode === 'closed') {
+            store.openPanel()
+        } else {
+            store.closePanel()
+        }
+    }
+    const isAssistantOpen = useAITerminalStore((state) => state.mode !== 'closed')
 
     const location = useLocation()
     const routeProject = parseProjectRoute(location.pathname)

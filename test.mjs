@@ -1,17 +1,11 @@
-import { ConvexHttpClient } from "convex/browser";
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
-
-const client = new ConvexHttpClient(process.env.CONVEX_URL || "https://knowing-finch-546.convex.cloud");
-
-async function run() {
-  try {
-    // We just need any valid project and user ID. We can try to list projects if we can.
-    // Or we can just call it with invalid IDs to see if it throws a schema error before executing.
-    const result = await client.query("debug:ping");
-    console.log("PING RESULT:", result);
-  } catch (e) {
-    console.error("ERROR:", e.message);
-  }
-}
-run();
+import { spawn } from 'node:child_process';
+const child = spawn('resources/radon/dist/simulator-server-macos', ['ios', '--id', '571DBC5E-01D2-4C67-939C-C620DAC7D085'], {
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+child.stdout.on('data', d => process.stdout.write('OUT: ' + d));
+child.stderr.on('data', d => process.stderr.write('ERR: ' + d));
+child.on('exit', code => console.log('Exited with code', code));
+setTimeout(() => {
+  console.log('Timeout, killing');
+  child.kill();
+}, 10000);

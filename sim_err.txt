@@ -1,0 +1,7 @@
+2026-03-25 22:54:43.291 simulator-server-macos[61301:4864293] JPEG encoder initialized
+2026-03-25 22:54:43.291 simulator-server-macos[61301:4864293] H264 encoder initialized
+2026-03-25 22:54:45.324 simulator-server-macos[61301:4864278] Setting simulator keyboard language: en
+[2026-03-25T14:54:45Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:62713/stream.mjpeg
+[2026-03-25T14:54:45Z INFO  simulator_server] Stdin closed, exiting the application
+[2026-03-25T14:54:45Z INFO  simulator_server::media_handler] Media command sender has been dropped, stopping media handler
+[2026-03-25T14:54:45Z INFO  simulator_server] Stopping mjpeg server.

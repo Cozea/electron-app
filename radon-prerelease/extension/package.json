@@ -1,0 +1,1413 @@
+{
+  "name": "react-native-ide",
+  "displayName": "Radon IDE",
+  "description": "Extension turning VSCode into a full-featured IDE for React Native and Expo",
+  "publisher": "swmansion",
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "keywords": [
+    "react-native",
+    "expo"
+  ],
+  "icon": "assets/logo.png",
+  "pricing": "Trial",
+  "activationEvents": [
+    "workspaceContains:**/node_modules/react-native",
+    "workspaceContains:**/app.json",
+    "workspaceContains:**/metro.config.js",
+    "workspaceContains:**/metro.config.ts",
+    "workspaceContains:**/app.config.js",
+    "workspaceContains:**/app.config.ts",
+    "onWebviewPanel:RadonIDETabPanel"
+  ],
+  "version": "1.16.20260304",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "homepage": "https://ide.swmansion.com",
+  "license": "https://ide.swmansion.com/legal",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/software-mansion/radon-ide"
+  },
+  "main": "./dist/extension.js",
+  "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "when": "!RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "id": "RadonAIMCPProvider",
+        "label": "MCP server integrating with Radon IDE"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "Get library description",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "get_library_description",
+        "name": "get_library_description",
+        "modelDescription": "Returns a detailed description of a library and its use-cases",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "library_npm_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "library_npm_name"
+          ]
+        },
+        "tags": [
+          "react-native",
+          "query",
+          "description"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "Query documentation",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "query_documentation",
+        "name": "query_documentation",
+        "modelDescription": "Returns documentation snippets relevant to the provided query",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ]
+        },
+        "tags": [
+          "react-native",
+          "query"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "Reload application",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "reload_application",
+        "name": "reload_application",
+        "modelDescription": "Triggers a reload of the app running in the development emulator. Use this tool whenever you are debugging the state and want to reset it, or when the app crashes or breaks due to an interaction.\nThere are 3 ways you can reload the app:\n- `reloadJs`: Causes the JS bundle to be reloaded, it does not trigger any rebuild or restart of the native part of the app. Use this to restart the JS state of the app.\n- `restartProcess`: Restarts the native part of the app. Use this method for resetting state of bugged **NATIVE** libraries or components.\n- `rebuild`: Rebuilds both the js and the native parts of the app. Use it whenever changes are made to the native part, as such changes require a full rebuild.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "reloadMethod": {
+              "type": "string",
+              "description": "Method for performing the reload. There are 3 valid options: \"reloadJs\" | \"rebuild\" | \"restartProcess\"\n- `reloadJs`: Causes the JS bundle to be reloaded, it does not trigger any rebuild or restart of the native part of the app. Use this to restart the JS state of the app.\n- `restartProcess`: Restarts the native part of the app. Use this method for resetting state of bugged **NATIVE** libraries or components.\n- `rebuild`: Rebuilds both the js and the native parts of the app. Use it whenever changes are made to the native part, as such changes require a full rebuild."
+            }
+          },
+          "required": [
+            "reloadMethod"
+          ]
+        },
+        "tags": [
+          "react-native",
+          "debug"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "View component tree",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "view_component_tree",
+        "name": "view_component_tree",
+        "modelDescription": "Displays the component tree (view hierarchy) of the running app.\nThis tool only displays mounted components, so some parts of the project might not be visible.\nUse this tool when a general overview of the UI is required, such as when resolving layout issues, looking for location of context providers, or looking for relation between the project file structure and project component structure",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "react-native",
+          "debug"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "View application logs",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "view_application_logs",
+        "name": "view_application_logs",
+        "modelDescription": "Returns all the build, bundling and runtime logs. Use this function whenever the user has any issue with the app, if it's builds are failing, or when there are errors in the console. These logs are always a useful debugging aid.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "react-native",
+          "debug"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "View network logs",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "view_network_logs",
+        "name": "view_network_logs",
+        "modelDescription": "View the contents of the network inspector. Returns a list of all network requests made by the app, including method, URL, status, duration, and size. Use this tool to debug networking issues, inspect API calls, or verify that the app is communicating correctly with backend services.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pageIndex": {
+              "type": "string",
+              "description": "Either index of a specific page (0-based), or \"latest\", for the latest page. Use \"latest\" whenever unsure, use page index (0-based) when searching for a specific network request."
+            }
+          },
+          "required": [
+            "pageIndex"
+          ]
+        },
+        "tags": [
+          "react-native",
+          "debug"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "View details of a network request",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "view_network_request_details",
+        "name": "view_network_request_details",
+        "modelDescription": "Get all details of a specific network request. Returns headers, body, and other metadata for a given request. Use this tool after view_network_logs to inspect a specific request in detail.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId"
+          ]
+        },
+        "tags": [
+          "react-native",
+          "debug"
+        ]
+      },
+      {
+        "when": "RNIDE.useStaticToolRegistering && RNIDE.AIEnabled",
+        "displayName": "View screenshot",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "view_screenshot",
+        "name": "view_screenshot",
+        "modelDescription": "Displays a screenshot of the app development viewport. Use this function whenever it is necessary to inspect what the user sees on their mobile device.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "react-native",
+          "debug"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "RNIDE.openDevMenu",
+        "title": "Open Dev Menu",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.closePanel",
+        "title": "Shutdown Radon IDE",
+        "category": "Radon IDE",
+        "icon": "$(radon-off)",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.openPanel",
+        "title": "Open IDE Panel",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && !RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.showPanel",
+        "title": "Show IDE Panel",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.diagnose",
+        "title": "Diagnostics",
+        "category": "Radon IDE",
+        "enablement": "!RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.performBiometricAuthorization",
+        "title": "Perform Biometric Authorization ",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.performFailedBiometricAuthorization",
+        "title": "Perform Failed Biometric Authorization",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.deviceHomeButtonPress",
+        "title": "Trigger home button press on the current device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.deviceAppSwitchButtonPress",
+        "title": "Open app switcher on the current device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.deviceVolumeIncrease",
+        "title": "Increase volume on the current device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.deviceVolumeDecrease",
+        "title": "Decrease volume on the current device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.deviceActionButtonPress",
+        "title": "Press action button on the current device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive"
+      },
+      {
+        "command": "RNIDE.captureReplay",
+        "title": "Capture Replay",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.toggleRecording",
+        "title": "Toggle Recording",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.captureScreenshot",
+        "title": "Capture Screenshot",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.nextRunningDevice",
+        "title": "Switch to next running device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.previousRunningDevice",
+        "title": "Switch to previous running device",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.rotateDeviceClockwise",
+        "title": "Rotate device clockwise",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.rotateDeviceAnticlockwise",
+        "title": "Rotate device anticlockwise",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.toggleDeviceAppearance",
+        "title": "Toggle device appearance (light/dark mode)",
+        "category": "Radon IDE",
+        "enablement": "RNIDE.extensionIsActive && RNIDE.panelIsOpen"
+      },
+      {
+        "command": "RNIDE.removeLicense",
+        "title": "Remove license",
+        "category": "Radon IDE"
+      },
+      {
+        "enablement": "!RNIDE.MCPToolTestsRunning && RNIDE.isDevMode",
+        "command": "RNIDE.testChatToolUsage",
+        "title": "Test AI tool usage",
+        "category": "Radon IDE"
+      },
+      {
+        "enablement": "RNIDE.MCPToolTestsRunning && RNIDE.isDevMode",
+        "command": "RNIDE.terminateChatToolTest",
+        "title": "Terminate MCP tool tests",
+        "category": "Radon IDE"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "RNIDE.openDevMenu",
+        "key": "ctrl+alt+z",
+        "mac": "ctrl+cmd+z"
+      },
+      {
+        "command": "RNIDE.closeWithConfirmation",
+        "key": "ctrl+w",
+        "mac": "cmd+w",
+        "when": "RNIDE.isTabPanelFocused"
+      },
+      {
+        "command": "RNIDE.performBiometricAuthorization",
+        "key": "ctrl+shift+M",
+        "mac": "cmd+shift+M"
+      },
+      {
+        "command": "RNIDE.performFailedBiometricAuthorization",
+        "key": "ctrl+alt+shift+M",
+        "mac": "cmd+alt+shift+M"
+      },
+      {
+        "command": "RNIDE.deviceHomeButtonPress",
+        "key": "ctrl+shift+H",
+        "mac": "cmd+shift+H"
+      },
+      {
+        "command": "RNIDE.captureReplay",
+        "key": "ctrl+shift+R",
+        "mac": "cmd+shift+R"
+      },
+      {
+        "command": "RNIDE.toggleRecording",
+        "key": "ctrl+shift+E",
+        "mac": "cmd+shift+E"
+      },
+      {
+        "command": "RNIDE.captureScreenshot",
+        "key": "ctrl+shift+A",
+        "mac": "cmd+shift+A"
+      },
+      {
+        "command": "RNIDE.nextRunningDevice",
+        "key": "ctrl+shift+0",
+        "mac": "cmd+shift+0"
+      },
+      {
+        "command": "RNIDE.previousRunningDevice",
+        "key": "ctrl+shift+9",
+        "mac": "cmd+shift+9"
+      },
+      {
+        "command": "RNIDE.rotateDeviceClockwise",
+        "key": "ctrl+alt+0",
+        "mac": "ctrl+alt+0"
+      },
+      {
+        "command": "RNIDE.rotateDeviceAnticlockwise",
+        "key": "ctrl+alt+9",
+        "mac": "ctrl+alt+9"
+      },
+      {
+        "command": "RNIDE.toggleDeviceAppearance"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "General",
+        "properties": {
+          "RadonIDE.general.inspectorExcludePattern": {
+            "type": "string",
+            "scope": "window",
+            "default": null,
+            "description": "Files matching this pattern fill be excluded for the inspector jump to file functionality. This can be used if your codebase has some design system primitives that are used everywhere in your codebase and that you don't want to always get opened when using inspect functionality."
+          },
+          "RadonIDE.general.defaultMultimediaSavingLocation": {
+            "type": "string",
+            "scope": "window",
+            "default": null,
+            "description": "Controls the default saving location for multimedia files."
+          },
+          "RadonIDE.general.enableExperimentalElementInspector": {
+            "type": "boolean",
+            "scope": "window",
+            "default": false,
+            "description": "Enables experimental support for element inspector in non-Edge-to-Edge applications, which may cause visual issues."
+          }
+        }
+      },
+      {
+        "title": "User Interface",
+        "properties": {
+          "RadonIDE.userInterface.panelLocation": {
+            "type": "string",
+            "scope": "window",
+            "default": "tab",
+            "enum": [
+              "tab",
+              "side-panel"
+            ],
+            "description": "Controls the location of the Radon IDE panel. When side-panel is selected, you can use right-click menu on the panel to move it to the secondary side panel if you wish."
+          },
+          "RadonIDE.userInterface.themeType": {
+            "type": "string",
+            "scope": "window",
+            "default": "vscode",
+            "deprecationMessage": "This setting is deprecated and Radon IDE panel will always use the vscode theme.",
+            "enum": [
+              "vscode",
+              "built-in"
+            ],
+            "description": "Controls the theme of the IDE panel. If you encounter any issues, please report them. And set this to 'built-in' to use the built-in theme."
+          },
+          "RadonIDE.userInterface.showDeviceFrame": {
+            "type": "boolean",
+            "scope": "window",
+            "default": true,
+            "description": "Shows device frame in the IDE panel."
+          }
+        }
+      },
+      {
+        "title": "Device Control",
+        "properties": {
+          "RadonIDE.deviceControl.startDeviceOnLaunch": {
+            "type": "boolean",
+            "scope": "window",
+            "default": true,
+            "description": "Automatically starts the last used device when opening the IDE Panel."
+          },
+          "RadonIDE.deviceControl.stopPreviousDevices": {
+            "type": "string",
+            "scope": "window",
+            "default": false,
+            "description": "When set, switching between devices will shut down the previous device instead of leaving it running in the background."
+          }
+        }
+      },
+      {
+        "title": "Device Settings",
+        "properties": {
+          "RadonIDE.deviceSettings.appearance": {
+            "type": "string",
+            "scope": "window",
+            "enum": [
+              "light",
+              "dark"
+            ],
+            "default": "light",
+            "description": "Controls the appearance on the simulated device."
+          },
+          "RadonIDE.deviceSettings.contentSize": {
+            "type": "string",
+            "scope": "window",
+            "enum": [
+              "xsmall",
+              "small",
+              "normal",
+              "large",
+              "xlarge",
+              "xxlarge",
+              "xxxlarge"
+            ],
+            "default": "normal",
+            "description": "Controls the content size on the simulated device."
+          },
+          "RadonIDE.deviceSettings.deviceRotation": {
+            "type": "string",
+            "scope": "window",
+            "default": "Portrait",
+            "enum": [
+              "Portrait",
+              "LandscapeLeft",
+              "LandscapeRight",
+              "PortraitUpsideDown"
+            ],
+            "description": "Controls the default device rotation for simulators and emulators when they are created or launched."
+          },
+          "RadonIDE.deviceSettings.location": {
+            "type": "object",
+            "scope": "window",
+            "properties": {
+              "latitude": "number",
+              "longitude": "number",
+              "isDisabled": "boolean"
+            },
+            "default": {
+              "latitude": 50.048653,
+              "longitude": 19.965474,
+              "isDisabled": false
+            },
+            "description": "Controls the emulators/simulator location."
+          },
+          "RadonIDE.deviceSettings.hasEnrolledBiometrics": {
+            "type": "boolean",
+            "scope": "window",
+            "default": false,
+            "description": "Controls whether the device has enrolled biometrics. Note: this setting affects only iOS simulators."
+          },
+          "RadonIDE.deviceSettings.locale": {
+            "type": "string",
+            "scope": "window",
+            "default": "en_US",
+            "description": "Controls the localization of the simulated device."
+          },
+          "RadonIDE.deviceSettings.replaysEnabled": {
+            "type": "boolean",
+            "scope": "window",
+            "default": false,
+            "description": "Controls whether the device has replay functionality enabled."
+          },
+          "RadonIDE.deviceSettings.showTouches": {
+            "type": "boolean",
+            "scope": "window",
+            "default": false,
+            "description": "Controls whether the device shows touch interactions."
+          },
+          "RadonIDE.deviceSettings.camera": {
+            "type": "object",
+            "scope": "window",
+            "properties": {
+              "back": {
+                "type": "string",
+                "enum": [
+                  "emulated",
+                  "none",
+                  "virtualscene",
+                  "webcam0"
+                ]
+              },
+              "front": {
+                "type": "string",
+                "enum": [
+                  "emulated",
+                  "none",
+                  "webcam0"
+                ]
+              }
+            },
+            "default": {
+              "back": "emulated",
+              "front": "none"
+            },
+            "description": "Controls the camera settings for the device. Note: this setting affects only Android emulators."
+          }
+        }
+      },
+      {
+        "title": "Radon AI",
+        "properties": {
+          "RadonIDE.radonAI.enabledBoolean": {
+            "type": "boolean",
+            "default": true,
+            "scope": "window",
+            "description": "Enables the Radon AI functionality in the extension."
+          }
+        }
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "RadonIDE",
+          "title": "Radon IDE",
+          "icon": "assets/logo.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "RadonIDEToolExpoDevPluginMMKV",
+          "title": "MMKV",
+          "icon": "assets/mmkv.svg"
+        },
+        {
+          "id": "RadonIDEToolApolloClient",
+          "title": "Apollo Client",
+          "icon": "assets/apollo.svg"
+        },
+        {
+          "id": "RadonIDEToolReduxDevTools",
+          "title": "Redux",
+          "icon": "assets/redux.svg"
+        },
+        {
+          "id": "RadonIDEToolReactQueryDevTools",
+          "title": "React Query",
+          "icon": "assets/react-query.svg"
+        },
+        {
+          "id": "RadonIDEToolNetwork",
+          "title": "Network",
+          "icon": "assets/network.svg"
+        }
+      ]
+    },
+    "views": {
+      "RadonIDE": [
+        {
+          "type": "webview",
+          "id": "RadonIDE.view",
+          "name": "Radon IDE",
+          "when": "RNIDE.extensionIsActive && config.RadonIDE.userInterface.panelLocation != 'tab' && !RNIDE.sidePanelIsClosed"
+        }
+      ],
+      "RadonIDEToolExpoDevPluginMMKV": [
+        {
+          "type": "webview",
+          "id": "RNIDE.Tool.ExpoDevPlugin.MMKV.view",
+          "name": "",
+          "when": "RNIDE.Tool.ExpoDevPlugin.MMKV.available && RNIDE.panelIsOpen"
+        }
+      ],
+      "RadonIDEToolApolloClient": [
+        {
+          "type": "webview",
+          "id": "RNIDE.Tool.ApolloClient.view",
+          "name": "Radon Apollo Client DevTools",
+          "when": "RNIDE.Tool.ApolloClient.available && RNIDE.panelIsOpen"
+        }
+      ],
+      "RadonIDEToolNetwork": [
+        {
+          "type": "webview",
+          "id": "RNIDE.Tool.Network.view",
+          "name": "Radon Network Inspector",
+          "when": "RNIDE.Tool.Network.available && RNIDE.panelIsOpen"
+        }
+      ],
+      "RadonIDEToolReduxDevTools": [
+        {
+          "type": "webview",
+          "id": "RNIDE.Tool.ReduxDevTools.view",
+          "name": "Radon Redux DevTools",
+          "when": "RNIDE.Tool.ReduxDevTools.available && RNIDE.panelIsOpen"
+        }
+      ],
+      "RadonIDEToolReactQueryDevTools": [
+        {
+          "type": "webview",
+          "id": "RNIDE.Tool.ReactQueryDevTools.view",
+          "name": "Radon React Query DevTools",
+          "when": "RNIDE.Tool.ReactQueryDevTools.available && RNIDE.panelIsOpen"
+        }
+      ]
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "RNIDE.openPanel",
+          "group": "navigation",
+          "when": "RNIDE.extensionIsActive && !RNIDE.panelIsOpen && !RNIDE.showsStatusBarItem"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "RNIDE.closePanel",
+          "group": "navigation",
+          "when": "RNIDE.extensionIsActive && RNIDE.panelIsOpen && view == RadonIDE.view"
+        }
+      ]
+    },
+    "breakpoints": [
+      {
+        "language": "typescript"
+      },
+      {
+        "language": "javascript"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "com.swmansion.react-native-debugger",
+        "label": "Radon IDE internal debugger for React Native projects",
+        "hiddenWhen": "true",
+        "languages": [
+          "javascript",
+          "typescript"
+        ]
+      },
+      {
+        "type": "com.swmansion.js-debugger",
+        "label": "Radon IDE internal JavaScript debugger",
+        "hiddenWhen": "true",
+        "languages": [
+          "javascript",
+          "typescript"
+        ]
+      },
+      {
+        "type": "com.swmansion.proxy-debugger",
+        "label": "Radon IDE internal debugger for React Native",
+        "hiddenWhen": "true",
+        "languages": [
+          "javascript",
+          "typescript"
+        ]
+      },
+      {
+        "type": "radon-pwa-node",
+        "label": "Radon IDE internal debugger for React Native",
+        "hiddenWhen": "true",
+        "languages": [
+          "javascript",
+          "typescript"
+        ]
+      },
+      {
+        "type": "radon-ide",
+        "label": "Radon IDE",
+        "languages": [
+          "javascript",
+          "typescript",
+          "javascriptreact",
+          "typescriptreact"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "properties": {
+              "appRoot": {
+                "type": "string",
+                "description": "Location of the React Native application root folder relative to the workspace. This should be used for monorepo setups to override the automatically detected application root."
+              },
+              "isExpo": {
+                "type": "boolean",
+                "description": "When set, it overrides the automatic detection of Expo projects and forces or disallows the use of Expo CLI."
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables to be passed to all build/run commands that the IDE is launching."
+              },
+              "metroConfigPath": {
+                "type": "string",
+                "description": "Location of Metro config relative to the workspace. This is used for customizing metro configuration for e.g. development."
+              },
+              "expoStartArgs": {
+                "type": "array",
+                "description": "Extra arguments to pass to Expo start command."
+              },
+              "customBuild": {
+                "type": "object",
+                "description": "Configuration for using custom scripts for building and fingerprinting the app.",
+                "properties": {
+                  "ios": {
+                    "type": "object",
+                    "description": "Configuration for iOS.",
+                    "properties": {
+                      "buildCommand": {
+                        "type": "string",
+                        "description": "Script used to build the app. It should build the app in debug mode and print path to the built app as a last line of its standard output."
+                      },
+                      "fingerprintCommand": {
+                        "type": "string",
+                        "description": "Script used to fingerprint the app. It should print workspace hash as a last line of its standard output."
+                      }
+                    }
+                  },
+                  "android": {
+                    "type": "object",
+                    "description": "Configuration for Android.",
+                    "properties": {
+                      "buildCommand": {
+                        "type": "string",
+                        "description": "Script used to build the app. It should build the app in debug mode and print path to the built app as a last line of its standard output."
+                      },
+                      "fingerprintCommand": {
+                        "type": "string",
+                        "description": "Script used to fingerprint the app. It should print workspace hash as a last line of its standard output."
+                      }
+                    }
+                  }
+                }
+              },
+              "eas": {
+                "type": "object",
+                "description": "Configuration for EAS build service",
+                "properties": {
+                  "android": {
+                    "type": "object",
+                    "description": "Configuration for EAS build service for Android",
+                    "properties": {
+                      "profile": {
+                        "type": "string",
+                        "description": "Profile used to build the app in EAS. Built app should be in debug version."
+                      },
+                      "buildUUID": {
+                        "type": "string",
+                        "description": "UUID of the EAS build used in `eas build:view` command. If unspecified, will use a build with matching fingerprint if available."
+                      },
+                      "local": {
+                        "type": "boolean",
+                        "description": "When set, builds the app locally using EAS CLI."
+                      }
+                    },
+                    "required": [
+                      "profile"
+                    ]
+                  },
+                  "ios": {
+                    "type": "object",
+                    "description": "Configuration for EAS build service for iOS",
+                    "properties": {
+                      "profile": {
+                        "type": "string",
+                        "description": "Profile used to build the app in EAS. Built app should be in debug version and have '\"ios.simulator\": true' option set."
+                      },
+                      "buildUUID": {
+                        "type": "string",
+                        "description": "UUID of the EAS build used in `eas build:view` command. If unspecified, will use a build with matching fingerprint if available."
+                      },
+                      "local": {
+                        "type": "boolean",
+                        "description": "When set, builds the app locally using EAS CLI."
+                      }
+                    },
+                    "required": [
+                      "profile"
+                    ]
+                  }
+                }
+              },
+              "ios": {
+                "description": "Provides a way to customize Xcode builds for iOS",
+                "type": "object",
+                "properties": {
+                  "scheme": {
+                    "type": "string",
+                    "description": "Scheme name (from xcode project) the IDE will use for iOS builds, defaults to xcworkspace base file name."
+                  },
+                  "configuration": {
+                    "type": "string",
+                    "description": "Build configuration name (from xcode project) the IDE will use for iOS builds, defaults to \"Debug\"."
+                  },
+                  "launchArguments": {
+                    "type": "array",
+                    "description": "Arguments passed to the app when launching it. Note: this configuration is only applied for applications that are launched using a build and not those opened with expo deep link."
+                  }
+                }
+              },
+              "android": {
+                "description": "Provides a way to customize Gradle builds for Android",
+                "type": "object",
+                "properties": {
+                  "buildType": {
+                    "type": "string",
+                    "description": "Android's build type used when building with Gradle, defaults to \"debug\"."
+                  },
+                  "productFlavor": {
+                    "type": "string",
+                    "description": "Android's build product flavor used when building with Gradle, by default no flavor is used."
+                  }
+                }
+              },
+              "packageManager": {
+                "type": "string",
+                "description": "Package manager used for the project. Available options include: npm, yarn, pnpm, bun."
+              },
+              "preview": {
+                "description": "Customize the behavior of device preview",
+                "type": "object",
+                "properties": {
+                  "waitForAppLaunch": {
+                    "type": "boolean",
+                    "description": "Defaults to `true`, this should only be set to `false` for brownfield setups when React Native components aren't rendered immediately after the app launches."
+                  }
+                }
+              },
+              "usePrebuild": {
+                "type": "boolean",
+                "description": "When set to true, Radon will run Expo Prebuild before building the application. Only applies to applications using Expo CLI."
+              },
+              "useOldDevtools": {
+                "type": "boolean",
+                "description": "Defaults to `false` for React Native versions 0.76 and newer. When set to `true`, falls back to the old devtools implementation that may be necessary on some setups."
+              },
+              "useCustomJSDebugger": {
+                "type": "boolean",
+                "description": "When set to true, Radon will use a custom implementation of the JavaScript debugger. This is an experimental feature, use with caution."
+              },
+              "metroPort": {
+                "type": "number",
+                "description": "Port number that will be used by Metro bundler. If not specified, a free port will be automatically chosen."
+              },
+              "disableNativeBuildStaleChecks": {
+                "type": "boolean",
+                "description": "When set to true, Radon will not run fingerprint checks on reloads and after file changes that would detect whether the native code needs to be rebuilt."
+              },
+              "useNativeNetworkInspector": {
+                "type": "boolean",
+                "description": "When set to true, Radon will use the Native (\"Fusebox\") Network Inspector implementation introduced in 0.83.0. Note that this is only supported on React Native 0.83.0 and newer, and might not intercept network messages on earlier versions."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "radon-ide",
+            "request": "launch",
+            "name": "Radon IDE panel",
+            "env": {},
+            "ios": {
+              "configuration": "Debug"
+            },
+            "android": {
+              "buildType": "debug"
+            }
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Radon IDE: Application configuration",
+            "description": "A new configuration for launching a React Native application in Radon IDE.",
+            "body": {
+              "type": "radon-ide",
+              "request": "launch",
+              "name": "${1:Application name}",
+              "appRoot": "${2:./}",
+              "env": {},
+              "ios": {
+                "configuration": "Debug"
+              },
+              "android": {
+                "buildType": "debug"
+              }
+            }
+          },
+          {
+            "label": "Radon IDE: EAS configuration",
+            "description": "A new configuration for launching a React Native application in Radon IDE. Uses EAS build service.",
+            "body": {
+              "type": "radon-ide",
+              "request": "launch",
+              "name": "${1:Application name}",
+              "appRoot": "${2:./}",
+              "env": {},
+              "eas": {
+                "ios": {
+                  "profile": "${3:development}"
+                },
+                "android": {
+                  "profile": "${3:development}"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "react-native-ide",
+        "label": "Radon IDE",
+        "deprecated": "Use `radon-ide` instead",
+        "languages": [
+          "javascript",
+          "typescript",
+          "javascriptreact",
+          "typescriptreact"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "properties": {
+              "appRoot": {
+                "type": "string",
+                "description": "Location of the React Native application root folder relative to the workspace. This should be used for monorepo setups to override the automatically detected application root."
+              },
+              "isExpo": {
+                "type": "boolean",
+                "description": "When set, it overrides the automatic detection of Expo projects and forces or disallows the use of Expo CLI."
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables to be passed to all build/run commands that the IDE is launching."
+              },
+              "metroConfigPath": {
+                "type": "string",
+                "description": "Location of Metro config relative to the workspace. This is used for customizing metro configuration for e.g. development."
+              },
+              "expoStartArgs": {
+                "type": "array",
+                "description": "Extra arguments to pass to Expo start command."
+              },
+              "customBuild": {
+                "type": "object",
+                "description": "Configuration for using custom scripts for building and fingerprinting the app.",
+                "properties": {
+                  "ios": {
+                    "type": "object",
+                    "description": "Configuration for iOS.",
+                    "properties": {
+                      "buildCommand": {
+                        "type": "string",
+                        "description": "Script used to build the app. It should build the app in debug mode and print path to the built app as a last line of its standard output."
+                      },
+                      "fingerprintCommand": {
+                        "type": "string",
+                        "description": "Script used to fingerprint the app. It should print workspace hash as a last line of its standard output."
+                      }
+                    }
+                  },
+                  "android": {
+                    "type": "object",
+                    "description": "Configuration for Android.",
+                    "properties": {
+                      "buildCommand": {
+                        "type": "string",
+                        "description": "Script used to build the app. It should build the app in debug mode and print path to the built app as a last line of its standard output."
+                      },
+                      "fingerprintCommand": {
+                        "type": "string",
+                        "description": "Script used to fingerprint the app. It should print workspace hash as a last line of its standard output."
+                      }
+                    }
+                  }
+                }
+              },
+              "eas": {
+                "type": "object",
+                "description": "Configuration for EAS build service",
+                "properties": {
+                  "android": {
+                    "type": "object",
+                    "description": "Configuration for EAS build service for Android",
+                    "properties": {
+                      "profile": {
+                        "type": "string",
+                        "description": "Profile used to build the app in EAS. Built app should be in debug version."
+                      },
+                      "buildUUID": {
+                        "type": "string",
+                        "description": "UUID of the EAS build used in `eas build:view` command. If unspecified, will use a build with matching fingerprint if available."
+                      },
+                      "local": {
+                        "type": "boolean",
+                        "description": "When set, builds the app locally using EAS CLI."
+                      }
+                    },
+                    "required": [
+                      "profile"
+                    ]
+                  },
+                  "ios": {
+                    "type": "object",
+                    "description": "Configuration for EAS build service for iOS",
+                    "properties": {
+                      "profile": {
+                        "type": "string",
+                        "description": "Profile used to build the app in EAS. Built app should be in debug version and have '\"ios.simulator\": true' option set."
+                      },
+                      "buildUUID": {
+                        "type": "string",
+                        "description": "UUID of the EAS build used in `eas build:view` command. If unspecified, will use a build with matching fingerprint if available."
+                      },
+                      "local": {
+                        "type": "boolean",
+                        "description": "When set, builds the app locally using EAS CLI."
+                      }
+                    },
+                    "required": [
+                      "profile"
+                    ]
+                  }
+                }
+              },
+              "ios": {
+                "description": "Provides a way to customize Xcode builds for iOS",
+                "type": "object",
+                "properties": {
+                  "scheme": {
+                    "type": "string",
+                    "description": "Scheme name (from xcode project) the IDE will use for iOS builds, defaults to xcworkspace base file name."
+                  },
+                  "configuration": {
+                    "type": "string",
+                    "description": "Build configuration name (from xcode project) the IDE will use for iOS builds, defaults to \"Debug\"."
+                  },
+                  "launchArguments": {
+                    "type": "array",
+                    "description": "Arguments passed to the app when launching it. Note: this configuration is only applied for applications that are launched using a build and not those opened with expo deep link."
+                  }
+                }
+              },
+              "android": {
+                "description": "Provides a way to customize Gradle builds for Android",
+                "type": "object",
+                "properties": {
+                  "buildType": {
+                    "type": "string",
+                    "description": "Android's build type used when building with Gradle, defaults to \"debug\"."
+                  },
+                  "productFlavor": {
+                    "type": "string",
+                    "description": "Android's build product flavor used when building with Gradle, by default no flavor is used."
+                  }
+                }
+              },
+              "packageManager": {
+                "type": "string",
+                "description": "Package manager used for the project. Available options include: npm, yarn, pnpm, bun."
+              },
+              "preview": {
+                "description": "Customize the behavior of device preview",
+                "type": "object",
+                "properties": {
+                  "waitForAppLaunch": {
+                    "type": "boolean",
+                    "description": "Defaults to `true`, this should only be set to `false` for brownfield setups when React Native components aren't rendered immediately after the app launches."
+                  }
+                }
+              },
+              "usePrebuild": {
+                "type": "boolean",
+                "description": "When set to true, Radon will run Expo Prebuild before building the application. Only applies to applications using Expo CLI."
+              },
+              "useOldDevtools": {
+                "type": "boolean",
+                "description": "Defaults to `false` for React Native versions 0.76 and newer. When set to `true`, falls back to the old devtools implementation that may be necessary on some setups."
+              },
+              "useCustomJSDebugger": {
+                "type": "boolean",
+                "description": "When set to true, Radon will use a custom implementation of the JavaScript debugger. This is an experimental feature, use with caution."
+              },
+              "metroPort": {
+                "type": "number",
+                "description": "Port number that will be used by Metro bundler. If not specified, a free port will be automatically chosen."
+              },
+              "disableNativeBuildStaleChecks": {
+                "type": "boolean",
+                "description": "When set to true, Radon will not run fingerprint checks on reloads and after file changes that would detect whether the native code needs to be rebuilt."
+              }
+            }
+          }
+        }
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "radon-ide",
+        "title": "Get Started with Radon IDE",
+        "description": "A full featured IDE for React Native and Expo",
+        "steps": [
+          {
+            "id": "open-rn-expo-project",
+            "title": "Open a React Native or Expo project",
+            "description": "[Open](command:workbench.action.files.openFileFolder) or create a React Native or Expo project new one.\n[Open Project](command:workbench.action.files.openFileFolder)",
+            "media": {
+              "image": "media/radon-bubble.svg",
+              "altText": "Radon IDE logo"
+            }
+          },
+          {
+            "id": "open-radon-ide-panel",
+            "title": "Open Radon IDE Panel",
+            "description": "Use the __Open IDE Panel__ button in the top-right corner or run ``Radon IDE: Open IDE Panel`` command in the [Command Palette](command:workbench.action.showCommands). \n[Open Panel](command:RNIDE.openPanel)",
+            "media": {
+              "markdown": "media/open-ide-panel.md"
+            }
+          },
+          {
+            "id": "create-new-device",
+            "title": "Create new device",
+            "description": "Use __Add iPhone__ or __Add Android__ button in the panel or use __Create new device__ button.",
+            "media": {
+              "markdown": "media/create-new-device.md"
+            }
+          },
+          {
+            "id": "wait-for-project",
+            "title": "Wait for your project to build and run",
+            "description": "Set back and relax as building the project for the first time might take may take a longer while. Encountered an issue with a build? \n[See Troubleshooting](https://ide.swmansion.com/docs/guides/troubleshooting)",
+            "media": {
+              "markdown": "media/wait-for-project-to-build.md"
+            }
+          },
+          {
+            "id": "explore-features",
+            "title": "Explore features",
+            "description": "Explore all the Radon IDE features on your own or see [feature highlight](https://ide.swmansion.com/docs/getting-started/feature-highlight) on our website.\nTake a look at our [Release Notes](https://github.com/software-mansion/radon-ide/releases) to learn about all the newest features and improvements in Radon IDE. \n[Open Feature Highlight](https://ide.swmansion.com/docs/getting-started/feature-highlight)",
+            "media": {
+              "markdown": "media/explore-features.md"
+            }
+          }
+        ]
+      }
+    ],
+    "icons": {
+      "radon-off": {
+        "description": "Shutdown icon",
+        "default": {
+          "fontPath": "assets/font-icons.woff2",
+          "fontCharacter": "\\E001"
+        }
+      }
+    },
+    "customEditors": [
+      {
+        "viewType": "RadonIDE.reactDevtoolsProfiler",
+        "displayName": "React Profiler",
+        "selector": [
+          {
+            "filenamePattern": "*.reactprofile"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:package": "vsce package",
+    "vscode:prepublish": "npm run package",
+    "vscode:publish": "vsce publish",
+    "open-vsx:publish": "ovsx publish",
+    "copy:screen-sharing-agent": "mkdir -p dist/resources/android && cp -r third-party/screen-sharing-agent/* dist/resources/android",
+    "build:apollo-client-devtools-ui": "rm -rf dist/apollo-client && mkdir -p dist/apollo-client && cp src/plugins/chrome-api-stub.webview.js dist/apollo-client && cp -R third-party/apollo-client-devtools/devtools.js third-party/apollo-client-devtools/panel.js third-party/apollo-client-devtools/images dist/apollo-client",
+    "build:react-query-devtools-ui": "rm -rf dist/react-query-devtools && cp -R ../radon-ide-react-query-webui/artifacts dist/react-query-devtools",
+    "build:redux-devtools-ui": "rm -rf dist/redux-devtools && mkdir -p dist/redux-devtools && cp src/plugins/chrome-api-stub.webview.js dist/redux-devtools && cp -R third-party/redux-devtools/devpanel.bundle.css third-party/redux-devtools/devpanel.bundle.js third-party/redux-devtools/img third-party/redux-devtools/roboto-mono-v4-latin-regular-45PG2VAM.woff2 third-party/redux-devtools/roboto-v15-latin-regular-3XGOHEZN.woff2 third-party/redux-devtools/source-code-pro-v6-latin-regular-T5LNFASY.woff2 third-party/redux-devtools/source-sans-pro-v9-latin-600-S3ZWYGUG.woff2 third-party/redux-devtools/source-sans-pro-v9-latin-regular-BEFFICBH.woff2 dist/redux-devtools",
+    "build:third-party": "npm run build:redux-devtools-ui && npm run build:react-query-devtools-ui && npm run build:apollo-client-devtools-ui",
+    "build:webview": "vite build --mode production && cp ./node_modules/@vscode/codicons/dist/codicon.* dist/.",
+    "build:extension-debug": "npm run prepare:fake_editor && npm run fetch:third-party && node ./scripts/buildExtensionCode.mjs debug && npm run build:third-party",
+    "build:extension": "npm run prepare:fake_editor && node ./scripts/buildExtensionCode.mjs production && npm run build:third-party",
+    "build:sim-server-debug": "bash ./scripts/build-sim-server-debug.sh dist && npm run copy:screen-sharing-agent",
+    "build:vscode-js-debug": "cd ../vscode-js-debug && npm i && npm exec tsc && npm run compile && cp dist/src/chromehash_bg.wasm ../vscode-extension/dist/",
+    "build:debug": "npm run build:extension-debug && npm run build:sim-server-debug",
+    "build:dist": "npm run fetch:third-party && npm run fetch:sim-server-assets && npm run copy:screen-sharing-agent && npm run build:extension && npm run build:webview && npm run build:third-party-notice",
+    "build:third-party-notice": "node ./scripts/mergeThirdPartyNotices.mjs ./submodules-NOTICES.json ./dist/simulator-server-NOTICES.json ./dist/webview-NOTICES.json ./dist/extension-NOTICES.json ./ThirdPartyNotices.json",
+    "prepare:fake_editor": "mkdir -p dist && cp react-fake-editor-executable dist/atom",
+    "watch:extension": "vite",
+    "package": "rm -rf dist/* && cp ../vscode-js-debug/dist/src/chromehash_bg.wasm dist/ && npm run build:dist",
+    "lint": "eslint src/**/*.\\{ts,tsx,js,jsx\\} && prettier --check src",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write --list-different src",
+    "build:tests": "tsc --project tsconfig.test.json",
+    "build:icons": "fantasticon -c ./font-icons/fantasticon.config.json",
+    "test": "npm run build:extension && npm run build:webview && npm run build:tests && vscode-test",
+    "preinstall": "mkdir -p dist && bash ./scripts/init-submodules-if-not-present.sh ../vscode-js-debug && npm run build:vscode-js-debug",
+    "fetch:sim-server-assets": "bash ./scripts/download-sim-server-release-assets.sh dist $SIM_SERVER_TAG",
+    "fetch:third-party": "bash ./scripts/init-submodules-if-not-present.sh ../redux-devtools-expo-dev-plugin ../radon-ide-react-query-webui",
+    "postinstall": "patch-package"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.27.2",
+    "@babel/preset-react": "^7.26.3",
+    "@babel/preset-typescript": "^7.27.1",
+    "@eslint/compat": "^1.2.8",
+    "@expo/config-plugins": "^54.0.2",
+    "@expo/env": "^1.0.7",
+    "@expo/fingerprint": "^0.11.11",
+    "@expo/package-manager": "^1.7.2",
+    "@legendapp/state": "^3.0.0-beta.31",
+    "@modelcontextprotocol/sdk": "^1.12.3",
+    "@msgpack/msgpack": "^3.1.1",
+    "@paddle/paddle-js": "^1.4.2",
+    "@radix-ui/react-alert-dialog": "^1.1.7",
+    "@radix-ui/react-context-menu": "^2.2.7",
+    "@radix-ui/react-dialog": "^1.1.7",
+    "@radix-ui/react-dropdown-menu": "^2.1.7",
+    "@radix-ui/react-popover": "^1.1.13",
+    "@radix-ui/react-progress": "^1.1.3",
+    "@radix-ui/react-radio-group": "^1.2.4",
+    "@radix-ui/react-scroll-area": "^1.2.4",
+    "@radix-ui/react-select": "^2.1.7",
+    "@radix-ui/react-slider": "^1.2.4",
+    "@radix-ui/react-switch": "^1.1.4",
+    "@radix-ui/react-tooltip": "^1.2.0",
+    "@radix-ui/react-visually-hidden": "^1.2.3",
+    "@react-native-community/cli-config": "^18.0.0",
+    "@react-native-community/cli-config-apple": "^18.0.0",
+    "@react-native-community/cli-types": "^18.0.0",
+    "@tanstack/react-virtual": "^3.13.12",
+    "@types/d3": "^7.4.3",
+    "@types/express": "^5.0.3",
+    "@types/kill-port": "^2.0.3",
+    "@types/lodash": "^4.17.16",
+    "@types/node": "^22.14.1",
+    "@types/node-fetch": "^2.6.12",
+    "@types/plist": "^3.0.5",
+    "@types/proxyquire": "^1.3.31",
+    "@types/react": "^19.1.2",
+    "@types/react-devtools-inline": "^4.24.8",
+    "@types/semver": "^7.7.0",
+    "@types/sinon": "^17.0.4",
+    "@types/tar": "^6.1.13",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.75.0",
+    "@types/ws": "^8.18.1",
+    "@types/xml2js": "^0.4.14",
+    "@typescript-eslint/eslint-plugin": "^8.30.1",
+    "@typescript-eslint/parser": "^8.30.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "@vscode-elements/react-elements": "^1.15.0",
+    "@vscode/codicons": "^0.0.39",
+    "@vscode/debugadapter": "^1.68.0",
+    "@vscode/debugprotocol": "^1.68.0",
+    "@vscode/extension-telemetry": "github:software-mansion-labs/vscode-extension-telemetry",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.3.2",
+    "babel-loader": "^10.0.0",
+    "classnames": "^2.5.1",
+    "coordinate-parser": "^1.0.7",
+    "d3": "^7.9.0",
+    "esbuild": "^0.25.2",
+    "esbuild-plugin-babel": "^0.2.3",
+    "esbuild-plugin-license": "^1.2.3",
+    "eslint": "^9.24.0",
+    "eslint-import-resolver-typescript": "^4.3.2",
+    "eslint-plugin-import": "^2.31.0",
+    "execa": "^5.1.1",
+    "express": "^5.1.0",
+    "fantasticon": "^3.0.0",
+    "fast-json-stable-stringify": "^2.1.0",
+    "file-loader": "^6.2.0",
+    "globals": "^16.1.0",
+    "jsonc-parser": "^3.3.1",
+    "kill-port": "^2.0.1",
+    "lodash": "^4.17.21",
+    "minimatch": "^10.0.1",
+    "mocha": "^10.2.0",
+    "node-fetch": "^2.6.12",
+    "overlayscrollbars": "^2.12.0",
+    "overlayscrollbars-react": "^0.5.6",
+    "ovsx": "^0.10.2",
+    "patch-package": "^8.0.0",
+    "plist": "^3.1.0",
+    "prettier": "3.5.3",
+    "proxyquire": "^2.1.3",
+    "re-resizable": "^6.11.2",
+    "react": "^19.1.0",
+    "react-devtools-inline": "^6.1.5",
+    "react-dom": "^19.1.0",
+    "react-hook-form": "^7.55.0",
+    "react-is": "^19.1.0",
+    "react-scan": "https://github.com/software-mansion-labs/react-scan/releases/download/0.1.3-radon-2/react-scan-0.1.3-radon-2.tgz",
+    "rollup": "^4.40.0",
+    "rollup-plugin-license": "^3.6.0",
+    "semver": "^7.7.1",
+    "shiki": "^3.13.0",
+    "sinon": "^20.0.0",
+    "source-map": "^0.7.6",
+    "tar": "^7.4.3",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.3",
+    "url-loader": "^4.1.1",
+    "uuid": "^11.1.0",
+    "vite": "^5.0.8",
+    "vscode-cdp-proxy": "^0.2.1",
+    "vscode-js-debug": "file:../vscode-js-debug",
+    "vscode-test": "^1.6.1",
+    "ws": "^8.18.1",
+    "xml2js": "^0.6.2",
+    "zod": "^3.25.32"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.40.0"
+  },
+  "dependencies": {
+    "lucide-react": "^0.563.0"
+  }
+}

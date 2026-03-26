@@ -6,7 +6,9 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { promisify } from 'node:util'
 
 import type { NativePreviewDeviceDescriptor } from '../../../shared/electronApiTypes'
-import { getManagedIosDeviceSetPath } from './iosDeviceSet'
+import { getManagedIosDeviceSetPath, getManagedAndroidDeviceSetPath } from './devicePaths'
+import { createManagedEmulator } from './androidProvisioning'
+import fs from 'node:fs/promises'
 
 const execFileAsync = promisify(execFile)
 const MANAGED_DEVICE_NAME = 'Cozea iPhone'
@@ -127,7 +129,7 @@ async function safeExec(commandPath: string, args: string[]): Promise<string> {
 }
 
 export class IOSDeviceManager {
-  async listDevices(): Promise<NativePreviewDeviceDescriptor[]> {
+  async listDevices(skipCreate = false): Promise<NativePreviewDeviceDescriptor[]> {
     if (process.platform !== 'darwin') {
       return []
     }
@@ -153,6 +155,15 @@ export class IOSDeviceManager {
       }
     }
 
+    if (devices.length === 0 && !skipCreate) {
+      try {
+        const created = await this.ensureDefaultDevice()
+        devices.push(created)
+      } catch {
+        // Ignore creation errors during listing
+      }
+    }
+
     return devices.sort((a, b) => {
       if (a.state === 'booted' && b.state !== 'booted') return -1
       if (b.state === 'booted' && a.state !== 'booted') return 1
@@ -163,7 +174,7 @@ export class IOSDeviceManager {
   }
 
   async ensureDefaultDevice(preferredId?: string): Promise<NativePreviewDeviceDescriptor> {
-    const existingDevices = await this.listDevices()
+    const existingDevices = await this.listDevices(true)
 
     if (preferredId) {
       const preferred = existingDevices.find((device) => device.id === preferredId)
@@ -290,11 +301,12 @@ export class AndroidDeviceManager {
       return []
     }
 
-    const stdout = await safeExec(emulatorPath, ['-list-avds'])
-    return stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
+    try {
+      const { stdout } = await execFileAsync(emulatorPath, ['-list-avds'])
+      return stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    } catch {
+      return []
+    }
   }
 
   private async resolveBootedDevice(serial: string): Promise<BootedAndroidDevice | null> {
@@ -428,7 +440,19 @@ export class AndroidDeviceManager {
       ?? devices.find((device) => device.kind === 'physical')
 
     if (!preferred) {
-      throw new Error('No Android device is available. Install an AVD or connect a physical Android device.')
+      const createdId = await createManagedEmulator('Cozea Emulator')
+      if (createdId) {
+        return {
+          id: createdId,
+          name: 'Cozea Emulator',
+          platform: 'android',
+          kind: 'emulator',
+          state: 'shutdown',
+          runtimeId: createdId,
+          isManaged: true,
+        }
+      }
+      throw new Error('No Android device is available. Install an Android system image.')
     }
 
     return preferred
@@ -452,9 +476,16 @@ export class AndroidDeviceManager {
       emulatorArgs.push('-no-window', '-no-boot-anim')
     }
 
+    const env: Record<string, string | undefined> = { ...process.env }
+    const avdHome = getManagedAndroidDeviceSetPath()
+    if (avdHome) {
+      env.ANDROID_AVD_HOME = avdHome
+    }
+
     const emulatorProcess = spawn(emulatorPath, emulatorArgs, {
       detached: true,
       stdio: 'ignore',
+      env,
     })
     emulatorProcess.unref()
 

@@ -16,6 +16,7 @@ export default defineConfig([
     'build/runtime/packs',
     'convex/_generated',
     'server/dist',
+    'resources/radon/**',
     '**/* 2.ts',
     '**/* 2.tsx',
     '**/* 2.js',

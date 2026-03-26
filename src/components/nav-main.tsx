@@ -92,7 +92,7 @@ export const NavMain = memo(function NavMain({
                 onFocus={() => preloadItem(item)}
                 onPointerDown={() => preloadItem(item)}
               >
-                {item.icon && <item.icon className="opacity-60" />}
+                {item.icon && <item.icon className="transition-opacity group-data-[active=true]:opacity-100 opacity-70" />}
                 <span>{item.title}</span>
                 {item.alpha && (
                   <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">

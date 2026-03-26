@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils"
 import { scheduleTask } from "@/lib/scheduler"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+import { useAITerminalStore } from "@/stores/useAITerminalStore"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
@@ -1576,7 +1576,7 @@ export function UnifiedHeader({
 }: UnifiedHeaderProps) {
   const { personalScoped } = useScopedAppContext()
   const windowChrome = useWindowChrome()
-  const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== "closed")
+  const isAssistantOpen = useAITerminalStore((state) => state.mode !== "closed")
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows && !isAssistantOpen
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
   const shouldApplyLeftWindowControlsInset = leftWindowControlsInset && windowChrome.isMac

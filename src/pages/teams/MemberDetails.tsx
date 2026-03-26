@@ -199,8 +199,8 @@ export function MemberDetails() {
 
     return memberProjects
       .filter(isPresent)
-      .filter((project) => !convexOrg?._id || project.organizationId === convexOrg._id)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .filter((project: any) => !convexOrg?._id || project.organizationId === convexOrg._id)
+      .sort((a: any, b: any) => b.updatedAt - a.updatedAt)
   }, [memberProjects, convexOrg])
 
   const usageSummary = useMemo(() => {
@@ -235,7 +235,7 @@ export function MemberDetails() {
     [contributionData]
   )
   const activeProjectsCount = useMemo(
-    () => scopedProjects.filter((project) => project.status !== 'archived').length,
+    () => scopedProjects.filter((project: any) => project.status !== 'archived').length,
     [scopedProjects]
   )
 
@@ -283,7 +283,7 @@ export function MemberDetails() {
             <Avatar className="h-28 w-28 border-4 border-background shadow-lg">
               <AvatarImage src={member.user?.profileImageUrl || undefined} />
               <AvatarFallback className="text-3xl">
-                {memberName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                {memberName.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2)}
               </AvatarFallback>
             </Avatar>
 
@@ -352,7 +352,7 @@ export function MemberDetails() {
             </div>
             <div className="space-y-3">
               {scopedProjects.length > 0 ? (
-                scopedProjects.slice(0, 5).map((project) => (
+                scopedProjects.slice(0, 5).map((project: any) => (
                   <div key={project._id} className="flex items-center justify-between rounded-xl bg-background/50 px-3 py-2">
                     <div>
                       <p className="font-medium">{project.name}</p>
