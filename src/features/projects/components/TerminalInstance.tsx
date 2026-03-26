@@ -44,6 +44,8 @@ const buildProjectTerminalTheme = (container: HTMLElement) => {
     }
 }
 
+const EMPTY_ARRAY: string[] = []
+
 export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFocus = true }: TerminalInstanceProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const xtermRef = useRef<Terminal | null>(null)
@@ -55,7 +57,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
     const renderedOutputCountRef = useRef(0)
     const [initRetry, setInitRetry] = useState(0)
     const [selectedText, setSelectedText] = useState("")
-    const outputChunks = useTerminalStore((state) => state.outputBuffers[terminalId] ?? [])
+    const outputChunks = useTerminalStore((state) => state.outputBuffers[terminalId] ?? EMPTY_ARRAY)
     const { updateTerminalStatus, setTerminalHasOutput, appendTerminalOutput } = useTerminalActions()
     
 

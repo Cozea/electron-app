@@ -9,6 +9,7 @@ use crate::simulator::IOSurfaceRef;
 // Thread-safe wrapper around AnyObject pointer since it's raw
 struct ThreadSafeScreen(pub *mut AnyObject);
 unsafe impl Send for ThreadSafeScreen {}
+unsafe impl Sync for ThreadSafeScreen {}
 
 pub fn get_device_by_udid(udid: &str) -> Option<*mut AnyObject> {
     unsafe {
@@ -36,7 +37,8 @@ pub fn start_video_capture(device: *mut AnyObject, stream_state: Arc<Mutex<Strea
         let screen: *mut AnyObject = msg_send![device, mainScreen];
         if screen.is_null() { return Err("No mainScreen on device".into()); }
         
-        let safe_screen = ThreadSafeScreen(screen);
+        // Cast to usize so it's Send across the thread boundary
+        let screen_ptr = screen as usize;
         
         // Register callbacks or polling.
         // For MVP, let's just start a tokio interval to poll unmaskedSurface.
@@ -44,7 +46,9 @@ pub fn start_video_capture(device: *mut AnyObject, stream_state: Arc<Mutex<Strea
             let mut interval = tokio::time::interval(std::time::Duration::from_millis(16));
             loop {
                 interval.tick().await;
-                let surface: IOSurfaceRef = msg_send![safe_screen.0, unmaskedSurface];
+                // Re-cast back to the pointer
+                let ptr = screen_ptr as *mut AnyObject;
+                let surface: IOSurfaceRef = msg_send![ptr, unmaskedSurface];
                 if !surface.is_null() {
                     if let Ok(jpeg) = encode_iosurface_to_jpeg(surface) {
                         let state = stream_state.lock().await;
