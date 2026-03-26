@@ -363,6 +363,17 @@ export class TerminalService {
                     }
                 }
 
+                
+                const terminalId = Math.random().toString(36).substring(2, 15)
+                const terminal: Partial<ManagedTerminal> = {
+                    id: terminalId,
+                    projectPath: options.projectPath,
+                    runId: options.runId,
+                    title: '',
+                    startedAt: Date.now(),
+                    output: '',
+                }
+
                 let spawnError: unknown = null
                 let selectedProfile = profile
                 let ptyProcess: pty.NativePty | null = null
@@ -384,14 +395,16 @@ export class TerminalService {
                                 REACT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
                             }),
                         }, (data) => {
-                            terminal.output = appendTerminalOutput(terminal.output, data)
+                            terminal.output = appendTerminalOutput(terminal.output || '', data)
                             if (!event.sender.isDestroyed()) {
                                 event.sender.send('terminal:output', { terminalId, data, runId: terminal.runId })
                             }
                         }, (exitCode) => {
                             terminal.exitCode = exitCode ?? null
                             terminal.endedAt = Date.now()
-                            this.persistTerminalSnapshot(terminal)
+                            if (terminal.ptyProcess) {
+                                this.persistTerminalSnapshot(terminal as ManagedTerminal)
+                            }
                             this.terminals.delete(terminalId)
                             this.removeProjectTerminal(options.projectPath, terminalId)
         
@@ -412,19 +425,12 @@ export class TerminalService {
                         : new Error('Unable to spawn terminal process')
                 }
 
-                const terminalId = Math.random().toString(36).substring(2, 15)
-                const terminal: ManagedTerminal = {
-                    id: terminalId,
-                    projectPath: options.projectPath,
-                    runId: options.runId,
-                    ptyProcess,
-                    profile: selectedProfile,
-                    title: selectedProfile.name,
-                    startedAt: Date.now(),
-                    output: '',
-                }
+                terminal.ptyProcess = ptyProcess
+                terminal.profile = selectedProfile
+                terminal.title = selectedProfile.name
+                
+                this.terminals.set(terminalId, terminal as ManagedTerminal)
 
-                this.terminals.set(terminalId, terminal)
 
                 // Track per project
                 const projectTerms = this.projectTerminals.get(options.projectPath) || []
