@@ -140,11 +140,15 @@ function SettingsDrawerUrlBridge() {
   const syncFromLocation = useEffectEvent(() => {
     const routeFromLocation = getSettingsRouteFromLocation(window.location)
     if (routeFromLocation) {
-      openFromRoute(routeFromLocation)
+      if (!isOpen || route !== routeFromLocation) {
+        openFromRoute(routeFromLocation)
+      }
       return
     }
 
-    close()
+    if (isOpen) {
+      close()
+    }
   })
 
   useEffect(() => {
