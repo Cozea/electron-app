@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import * as pty from 'node-pty'
+import * as pty from '@cozea/pty'
 import * as fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -37,7 +37,7 @@ export interface ManagedTerminal {
     id: string
     projectPath: string
     runId?: string
-    ptyProcess: pty.IPty
+    ptyProcess: pty.NativePty
     profile: TerminalProfile
     title: string
     startedAt: number
@@ -365,15 +365,16 @@ export class TerminalService {
 
                 let spawnError: unknown = null
                 let selectedProfile = profile
-                let ptyProcess: pty.IPty | null = null
+                let ptyProcess: pty.NativePty | null = null
 
                 for (const candidate of profileCandidates) {
                     try {
-                        ptyProcess = pty.spawn(candidate.path, candidate.args || [], {
-                            name: 'xterm-256color',
+                        ptyProcess = pty.spawn({
+                            executable: candidate.path,
+                            args: candidate.args || [],
+                            cwd,
                             cols,
                             rows,
-                            cwd,
                             env: toPtyEnv(runtimeEnv, {
                                 ...(candidate.env ?? {}),
                                 ...(options.env ?? {}),
@@ -382,6 +383,21 @@ export class TerminalService {
                                 RCT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
                                 REACT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
                             }),
+                        }, (data) => {
+                            terminal.output = appendTerminalOutput(terminal.output, data)
+                            if (!event.sender.isDestroyed()) {
+                                event.sender.send('terminal:output', { terminalId, data, runId: terminal.runId })
+                            }
+                        }, (exitCode) => {
+                            terminal.exitCode = exitCode ?? null
+                            terminal.endedAt = Date.now()
+                            this.persistTerminalSnapshot(terminal)
+                            this.terminals.delete(terminalId)
+                            this.removeProjectTerminal(options.projectPath, terminalId)
+        
+                            if (!event.sender.isDestroyed()) {
+                                event.sender.send('terminal:exit', { terminalId, exitCode, runId: terminal.runId })
+                            }
                         })
                         selectedProfile = candidate
                         break
@@ -415,25 +431,6 @@ export class TerminalService {
                 projectTerms.push(terminalId)
                 this.projectTerminals.set(options.projectPath, projectTerms)
 
-                // Setup listeners
-                ptyProcess.onData((data) => {
-                    terminal.output = appendTerminalOutput(terminal.output, data)
-                    if (!event.sender.isDestroyed()) {
-                        event.sender.send('terminal:output', { terminalId, data, runId: terminal.runId })
-                    }
-                })
-
-                ptyProcess.onExit((res) => {
-                    terminal.exitCode = res.exitCode ?? null
-                    terminal.endedAt = Date.now()
-                    this.persistTerminalSnapshot(terminal)
-                    this.terminals.delete(terminalId)
-                    this.removeProjectTerminal(options.projectPath, terminalId)
-
-                    if (!event.sender.isDestroyed()) {
-                        event.sender.send('terminal:exit', { terminalId, exitCode: res.exitCode, runId: terminal.runId })
-                    }
-                })
 
                 return { success: true, terminalId }
             } catch (err) {

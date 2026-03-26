@@ -11,7 +11,6 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
-import { clearModelCatalogCache, getModelCatalog } from './lib/ai/modelCatalogClient'
 import { useResolvedScope } from './hooks/useResolvedScope'
 
 const warmedModelCatalogOrganizations = new Set<string>()
@@ -203,12 +202,7 @@ function AppContent() {
     if (attemptedModelCatalogWarmups.has(warmupAttemptKey)) return
     attemptedModelCatalogWarmups.add(warmupAttemptKey)
 
-    clearModelCatalogCache(organizationId)
-    void getModelCatalog({
-      organizationId,
-      accessToken,
-      forceRefresh: true,
-    })
+    void Promise.resolve()
       .then(() => {
         warmedModelCatalogOrganizations.add(organizationId)
         suppressedModelCatalogWarmupOrganizations.delete(organizationId)

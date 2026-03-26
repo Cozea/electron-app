@@ -14,7 +14,7 @@ import { SourceControl } from '@/pages/workspace/SourceControl'
 import { Sync } from '@/pages/workspace/Sync'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
-import { ModelSelection } from '@/pages/settings/ModelSelection'
+import ModelSelection from "@/pages/settings/ModelSelection"
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
 import {

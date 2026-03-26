@@ -10,7 +10,7 @@ import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
 import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
-import { ModelSelection } from '@/pages/settings/ModelSelection'
+import ModelSelection from "@/pages/settings/ModelSelection"
 import { Billing } from '@/pages/workspace/Billing'
 import AI from "@/pages/workspace/AI"
 import { useAuth } from '@/contexts/AuthContext'
@@ -42,7 +42,7 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
   }
 
   if (section === 'modelSelection') {
-    return <ModelSelection surface="drawer" route={route} />
+    return <ModelSelection />
   }
 
   if (section === 'appearance') {
