@@ -26,6 +26,7 @@ import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
+import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
@@ -1033,6 +1034,10 @@ registerCoreHandlers(ipcMain, {
 registerPreviewHandlers(ipcMain, {
   getMainWindow: () => win,
   getLatestPreviewHeaderDiagnostic,
+})
+
+registerNativePreviewHandlers(ipcMain, {
+  getMainWindow: () => win,
 })
 
 

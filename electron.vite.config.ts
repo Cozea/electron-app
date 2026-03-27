@@ -150,6 +150,8 @@ export default defineConfig({
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@shared': path.resolve(__dirname, './shared'),
+        '@t3tools/contracts': path.resolve(__dirname, './shared/t3-contracts'),
+        '@t3tools/shared': path.resolve(__dirname, './shared/t3-shared'),
       },
     },
     optimizeDeps: {

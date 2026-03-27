@@ -10,7 +10,7 @@ export interface AgentChatMessage {
 
 export interface AgentChatToolCall {
   id: string;
-  messageId: string; // The assistant message this belongs to
+  messageId: string;
   threadId: string;
   toolName: string;
   input: any;
@@ -27,9 +27,4 @@ export interface AgentChatThread {
   title: string;
   createdAt: number;
   updatedAt: number;
-}
-
-export interface AgentChatEvent {
-  type: 'message_added' | 'message_updated' | 'tool_call_started' | 'tool_call_updated' | 'tool_call_finished' | 'text_delta';
-  payload: any;
 }

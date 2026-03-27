@@ -333,6 +333,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
       text: string
     }) => ipcRenderer.invoke('preview:updateSelectionText', options),
   },
+  nativePreview: {
+    startSession: (options: import('../shared/nativePreviewTypes').NativePreviewStartSessionRequest) =>
+      ipcRenderer.invoke('nativePreview:startSession', options),
+    stopSession: (options: import('../shared/nativePreviewTypes').NativePreviewStopSessionRequest) =>
+      ipcRenderer.invoke('nativePreview:stopSession', options),
+    getSessionState: (options: import('../shared/nativePreviewTypes').NativePreviewSessionLocator) =>
+      ipcRenderer.invoke('nativePreview:getSessionState', options),
+    sendTouches: (options: import('../shared/nativePreviewTypes').NativePreviewSendTouchesRequest) =>
+      ipcRenderer.invoke('nativePreview:sendTouches', options),
+    sendWheel: (options: import('../shared/nativePreviewTypes').NativePreviewSendWheelRequest) =>
+      ipcRenderer.invoke('nativePreview:sendWheel', options),
+    sendKey: (options: import('../shared/nativePreviewTypes').NativePreviewSendKeyRequest) =>
+      ipcRenderer.invoke('nativePreview:sendKey', options),
+    sendButton: (options: import('../shared/nativePreviewTypes').NativePreviewSendButtonRequest) =>
+      ipcRenderer.invoke('nativePreview:sendButton', options),
+    rotate: (options: import('../shared/nativePreviewTypes').NativePreviewRotateRequest) =>
+      ipcRenderer.invoke('nativePreview:rotate', options),
+    captureScreenshot: (options: import('../shared/nativePreviewTypes').NativePreviewCaptureScreenshotRequest) =>
+      ipcRenderer.invoke('nativePreview:captureScreenshot', options),
+    copyLastScreenshot: (options: import('../shared/nativePreviewTypes').NativePreviewCaptureScreenshotRequest) =>
+      ipcRenderer.invoke('nativePreview:copyLastScreenshot', options),
+    onStateChanged: (callback: (event: import('../shared/nativePreviewTypes').NativePreviewStateChangedEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: import('../shared/nativePreviewTypes').NativePreviewStateChangedEvent) => {
+        callback(payload)
+      }
+      ipcRenderer.on('nativePreview:stateChanged', handler)
+      return () => ipcRenderer.removeListener('nativePreview:stateChanged', handler)
+    },
+  },
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => ipcRenderer.invoke('project:createFolder', options),
     cloneRepository: (options: {

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { useTerminalActions, useTerminalStore, type TerminalInstance as StoredTerminalInstance } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
-import { MessagesTimeline } from '@/features/projects/components/assistant/chat/MessagesTimeline'
+import { NativeChatView } from '@/features/projects/components/assistant/chat/NativeChatView'
 import type { AgentToolId } from '@shared/electronApiTypes'
 
 interface AITerminalProfile {
@@ -472,7 +472,7 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
                       readOnly={!isInteractiveSession(activeSession.terminal)}
                     />
                   ) : (
-                    <MessagesTimeline threadId={activeSession.terminalId} />
+                    <NativeChatView threadId={activeSession.terminalId} />
                   )}
                   
                   <Button

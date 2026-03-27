@@ -2,6 +2,23 @@ import type {
   OrganizationMembership,
   Session,
 } from './types'
+import type {
+  NativePreviewActionResult,
+  NativePreviewCaptureScreenshotRequest,
+  NativePreviewCaptureScreenshotResult,
+  NativePreviewRotateRequest,
+  NativePreviewSendButtonRequest,
+  NativePreviewSendKeyRequest,
+  NativePreviewSendTouchesRequest,
+  NativePreviewSendWheelRequest,
+  NativePreviewSessionLocator,
+  NativePreviewSessionState,
+  NativePreviewStartSessionRequest,
+  NativePreviewStartSessionResult,
+  NativePreviewStateChangedEvent,
+  NativePreviewStopSessionRequest,
+  NativePreviewStopSessionResult,
+} from './nativePreviewTypes'
 
 export type {
   OrganizationMembership,
@@ -1085,6 +1102,16 @@ export type AuthRefreshResult =
     }
 
 export interface ElectronAPI {
+  agentProvider: {
+    start: (options: any) => Promise<{ ok: boolean; threadId: string }>;
+    stop: (threadId: string) => Promise<{ ok: boolean }>;
+    onEventStream: (callback: (data: any) => void) => () => void;
+  };
+  agentChat: {
+    listThreads: (projectId: string) => Promise<any[]>;
+    getThread: (threadId: string) => Promise<any>;
+    createThread: (data: any) => Promise<any>;
+  };
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
   auth: {
@@ -1328,6 +1355,19 @@ export interface ElectronAPI {
     inspectSelection: (options: PreviewInspectorSelectionInput) => Promise<PreviewInspectorSelectionResult>
     updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
+  }
+  nativePreview: {
+    startSession: (options: NativePreviewStartSessionRequest) => Promise<NativePreviewStartSessionResult>
+    stopSession: (options: NativePreviewStopSessionRequest) => Promise<NativePreviewStopSessionResult>
+    getSessionState: (options: NativePreviewSessionLocator) => Promise<NativePreviewSessionState | null>
+    sendTouches: (options: NativePreviewSendTouchesRequest) => Promise<NativePreviewActionResult>
+    sendWheel: (options: NativePreviewSendWheelRequest) => Promise<NativePreviewActionResult>
+    sendKey: (options: NativePreviewSendKeyRequest) => Promise<NativePreviewActionResult>
+    sendButton: (options: NativePreviewSendButtonRequest) => Promise<NativePreviewActionResult>
+    rotate: (options: NativePreviewRotateRequest) => Promise<NativePreviewActionResult>
+    captureScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewCaptureScreenshotResult>
+    copyLastScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewActionResult>
+    onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
   }
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
