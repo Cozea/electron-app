@@ -4169,10 +4169,309 @@ Recovered native flow:
 
 This path emits `copy_screenshot_error ...` on failure and logs from `src/media_handler.rs`, which matches the higher-level JS observation that clipboard copy is a separate follow-up step after screenshot save.
 
+#### Media-flow consumer mapping is now materially tighter
+
+The native helper now gives a much stronger picture of how simulator frames fan out.
+
+Recovered from the x86_64 helper at the fanout site around `0x100044f...0x10004512a`:
+
+- one branch conditionally calls `0x1003367b0`
+- the same frame is then unconditionally sent to `0x100336400`
+- a third branch can clone the frame with `0x100338c70` and then iterate a sink list through `0x100338e10`
+
+By the already recovered function identities:
+
+- `0x1003367b0` is the native H.264 encoder path
+- `0x100336400` is the native JPEG encoder path
+- `0x100338c70` is the BGRA pixel-buffer clone helper
+
+That gives a much stronger evidence-based mapping:
+
+- live preview:
+  - strongly confirmed as JPEG-backed MJPEG
+  - evidence:
+    - `/stream.mjpeg`
+    - `multipart/x-mixed-replace`
+    - `Content-Type:image/jpeg`
+    - the JPEG encoder sits on the unconditional fanout path
+- screenshot export:
+  - strongly confirmed as using the cloned BGRA image path, not the H.264 decode/encode path
+  - evidence:
+    - `src/media_handler.rs`
+    - direct screenshot export consumers call `0x100338c70`
+    - helper strings expose:
+      - `Screenshot exported to`
+      - `screenshot_ready`
+      - `no image to export`
+- clipboard copy of last screenshot:
+  - strongly confirmed as another cloned-image consumer layered on top of the saved screenshot path
+  - evidence:
+    - `copy_screenshot_error`
+    - pasteboard/`NSImage` path recovered from native code
+- H.264:
+  - strongly confirmed as a real active sink
+  - no longer just "implemented but maybe unused"
+  - but still not fully attributable to one exact high-level feature name
+  - the safest current statement is:
+    - H.264 is an optional downstream media sink
+    - JPEG is the unconditional preview sink
+    - cloned BGRA frames feed at least one additional export/processing path
+  - the mux/export ownership is now much stronger because:
+    - `Video exported to ...` comes from `src/media_handler/muxer.rs`
+    - the helper emits `video_ready ...` from that same muxer/export path
+    - after export, the muxer can hand off to `src/media_handler/muxer/rotator.rs` to apply rotation to the saved video file
+
+Strongest current inference:
+
+- recording/replay export is very likely the feature family behind the optional H.264 sink
+- but the exact callback-to-muxer handoff is still not linearly recovered instruction-by-instruction
+
+This is an important refinement. The helper does not appear to have a single "preview frame pipeline." It has at least:
+
+- an unconditional JPEG/MJPEG preview path
+- an optional H.264 path
+- an additional cloned-image path used by export/processing flows
+
+What still remains unresolved is the exact semantic ownership of that H.264 sink:
+
+- whether it is used only for video export
+- whether it also feeds replay-specific muxing
+- whether additional internal tooling paths consume it
+
+#### H.264 callback-to-sink handoff is now tighter, and the bridge mapping needed one correction
+
+Recovered from the x86_64 helper around `0x100041fd0`, `0x100041900`, `0x100041cf0`, `0x1003362e0`, `0x100336370`, `0x1003367b0`, and `0x100336b40`, plus helper strings:
+
+- the helper leaks the bridge names directly:
+  - `H264EncoderBridge`
+  - `JpegEncoderBridge`
+- the earlier constructor mapping was backwards
+- the corrected mapping is:
+  - `0x1003362e0` -> `JpegEncoderBridge`
+  - `0x100336370` -> `H264EncoderBridge`
+
+The strongest evidence for that correction is the worker setup in `src/media_handler/encoder.rs` around `0x100041fd0`:
+
+- the worker pulls two downstream objects from its state:
+  - `+0x198`
+  - `+0x1a0`
+- it then constructs two bridges:
+  - `0x1003362e0`
+  - `0x100336370`
+- after `0x1003362e0`, it stores a heap cell at bridge offset `+0x20`
+- after `0x100336370`, it stores a heap cell at bridge offset `+0x18`
+
+Those callback-cell offsets line up with the two recovered callback targets:
+
+- `0x100041cf0`
+  - uses `CMBlockBufferGetDataPointer` through `0x100336f40`
+  - updates a latest-image style downstream object around offsets `+0x138 .. +0x158`
+  - that matches the JPEG path, not the H.264 packet path
+- `0x100041900`
+  - logs `Received H264 frame with size ...`
+  - copies encoded bytes into owned storage
+  - packages a `0x38`-byte owned-storage object for the encoded payload
+  - then enqueues that owned payload together with:
+    - two scalar callback parameters that line up with the encode-side width/height context
+    - a trailing one-byte keyframe flag
+  - then dereferences the object stored through bridge offset `+0x18` and enqueues that packet into a queue-backed downstream sink
+
+So the bridge/callback ownership is now much sharper:
+
+- `JpegEncoderBridge`
+  - is the bridge returned by `0x1003362e0`
+  - uses callback target `0x100041cf0`
+  - feeds a latest-image style downstream consumer
+- `H264EncoderBridge`
+  - is the bridge returned by `0x100336370`
+  - uses callback target `0x100041900`
+  - feeds a queue-backed encoded-packet downstream consumer through bridge offset `+0x18`
+
+The H.264 encode path itself is still the same recovered VideoToolbox pipeline:
+
+- `0x1003367b0` is the active per-frame H.264 encode path
+- it lazily creates a `VTCompressionSession` if the encoder object does not already hold one
+- the recovered VideoToolbox setup includes:
+  - codec `avc1`
+  - `RealTime`
+  - `ProfileLevel = H264_Main_AutoLevel`
+  - `AllowFrameReordering = false`
+  - `MaxKeyFrameIntervalDuration`
+  - `ScalingMode = Letterbox`
+- it then submits the frame with `VTCompressionSessionEncodeFrame`
+
+The encode callback at `0x100336b40` is also still solid:
+
+- it checks that the `CMSampleBuffer` is ready
+- it identifies keyframes using `kCMSampleAttachmentKey_NotSync`
+- it obtains the `CMVideoFormatDescription`
+- on keyframes, it fetches SPS/PPS with `CMVideoFormatDescriptionGetH264ParameterSetAtIndex`
+- it then builds an `NSMutableData` payload in **Annex B** form:
+  - SPS/PPS prepended on keyframes
+  - AVCC NAL units converted by reading lengths, byte-swapping them, and prefixing each one with an Annex-B start code
+
+Most importantly, the H.264 callback does **not** write directly to the MJPEG server or to a simple file handle. After building the Annex-B payload, it forwards it into the downstream object hung off `H264EncoderBridge + 0x18`.
+
+That downstream object is now better characterized too:
+
+- `0x100041900` enqueues into a queue structure rooted around:
+  - slots under `+0x80`
+  - queue state at `+0x1c0`
+  - notification/wakeup state at `+0x100 / +0x110`
+- that queue shape matches other media-handler-side packet queues in the helper
+- the recovered media-handler string block at `0x1003a634c` groups:
+  - `Starting media handler`
+  - `Encoder channel closed, stopping media handler`
+  - `Media command sender has been dropped, stopping media handler`
+  - `Failed to send decoded H264 frame - receiver dropped`
+  - `Received JPEG frame`
+  under the `simulator_server::media_handler` namespace
+
+The safest exact statement is therefore:
+
+- the final downstream object attached to `H264EncoderBridge` is not a direct file writer
+- it is not the MJPEG preview sink
+- it is the **producer side of the media handler's encoded-video / encoder-channel ingress**
+- the project-visible outer sender type is now recoverable as Tokio `UnboundedSender` machinery
+- the remaining stripped part is the exact local message specialization carried through that sender
+
+This also helps separate encoded and decoded H.264 responsibilities:
+
+- encoded H.264:
+  - originates at `H264EncoderBridge`
+  - is packetized by `0x100041900`
+  - is handed into the media handler's encoder-side channel
+- decoded H.264:
+  - appears in `src/media_handler/decoder/video_toolbox.rs`
+  - logs `Received decoded H264 frame ...`
+  - uses a different queue shape/consumer path
+  - is the side that later surfaces the `Failed to send decoded H264 frame - receiver dropped` failure
+
+`frame_storage` also remains separate and should not be conflated with the immediate H.264 bridge sink:
+
+- the helper names `simulator_server::media_handler::frame_storage`
+- `src/media_handler/frame_storage.rs` handles frame-file lifecycle, including `.h264`-named material and cleanup paths
+- but the direct instruction-level handoff from the encoded H.264 bridge queue into a specific `frame_storage` object is still not linearly recovered
+
+There is also a smaller callback-style helper on the JPEG side, which still strengthens the broader architecture pattern:
+
+- JPEG and H.264 are both produced by native encoder objects
+- each encoder forwards completed output through a callback/sink boundary
+- the preview/media subsystem is therefore a **fanout into multiple downstream consumers**, not one monolithic "write frame here" routine
+
+#### The concrete outer H.264 sender type is now recoverable: Tokio `UnboundedSender`
+
+Recovered by matching the helper's x86_64 send/drop paths against the exact Tokio `1.43.0` source files whose paths are embedded in the binary:
+
+- `tokio-1.43.0/src/sync/mpsc/unbounded.rs`
+- `tokio-1.43.0/src/sync/mpsc/chan.rs`
+- `tokio-1.43.0/src/sync/mpsc/list.rs`
+- `tokio-1.43.0/src/sync/mpsc/block.rs`
+
+The match is structural, not superficial:
+
+- in the H.264 callback at `0x100041900`, the object loaded from `H264EncoderBridge + 0x18` is dereferenced once and then treated like a channel inner
+- the atomic sequence on `+0x1c0` matches Tokio `UnboundedSender::inc_num_messages()`:
+  - low bit checked for closed state
+  - `usize::MAX ^ 1` overflow guard
+  - `compare_exchange(curr, curr + 2, ...)`
+- the queue push at `+0x80 / +0x88` via `0x1000fb800` matches Tokio `list::Tx<T>::push()` / `find_block()`:
+  - `BLOCK_CAP = 32`
+  - `0x420`-byte queue blocks for the `T = 0x20` specialization in this path
+  - linked-block growth and tail-advance logic match the Tokio source
+- the wakeup path at `+0x100 / +0x110` matches the `AtomicWaker` / `wake_rx()` side of Tokio `chan.rs`
+- the sender-drop path around `0x1000ddaf0` matches Tokio sender semantics:
+  - decrement sender count at `+0x1c8`
+  - close the list when the last sender goes away
+  - wake the receiver
+
+The strongest evidence-backed statement is therefore:
+
+- the boxed object stored through `H264EncoderBridge + 0x18` is using Tokio `UnboundedSender` machinery
+- after inlining/optimization, the helper code operates directly on the inner `tokio::sync::mpsc::chan::Chan<T, tokio::sync::mpsc::unbounded::Semaphore>` allocation
+- the exact surviving project-level source type is best described as `tokio::sync::mpsc::UnboundedSender<T>` with a stripped local `T`
+
+What is still not fully recoverable from the stripped binary is the local message type parameter `T`.
+
+Recovered shape of that `T` specialization from the send path:
+
+- slot size is `0x20`
+- field `+0x0` is a pointer to the owned encoded-payload object
+- fields `+0x8` and `+0x10` are scalar callback parameters used like dimensions in the encode path
+- field `+0x18` is a one-byte keyframe flag
+
+So the exact message name is still stripped, but the outer queue owner is no longer unresolved: it is Tokio unbounded-MPSC sender machinery, not a Radon-specific queue type.
+
+#### Export-video rotation is now much clearer, and it is not the same thing as the pixel-buffer rotator
+
+Recovered from `src/media_handler/muxer.rs` and adjacent `src/media_handler/muxer/rotator.rs` sites:
+
+- after the muxer export path, the helper logs:
+  - `Video exported to ...`
+- it then emits:
+  - `video_ready <id> <url> <fileUrl>`
+- if a non-default rotation is requested, it logs:
+  - `Applying rotation ... to the video file`
+- the following code immediately:
+  - allocates a large heap buffer
+  - seeks to the start of the exported file
+  - enters a `src/media_handler/muxer/rotator.rs` path with:
+    - `Searching for pattern in file, iteration ...`
+
+That is strong evidence that exported-video rotation in this helper is a **file-level postprocess** over the muxed output, not simply a reuse of the in-memory `CVPixelBuffer` rotation primitive.
+
+This is important because there are now two different "rotation" mechanisms in play:
+
+- the shared in-memory pixel-buffer rotator around `0x100338890`
+- the muxer/video-file rotator in `src/media_handler/muxer/rotator.rs`
+
+Those should not be conflated when reimplementing export behavior.
+
+#### Shared rotator utility: direct consumers are now recovered
+
+The earlier "no direct consumer recovered" conclusion was too weak. The global disassembly search had been anchored to the nearby helper at `0x100338890`, but the active callable wrapper is the adjacent function at `0x100338900`.
+
+Recovered from x86_64 helper disassembly:
+
+- `0x100338900` is a direct in-memory `CVPixelBuffer` rotation wrapper
+- it validates the requested rotation
+- allocates a destination pixel buffer
+- maps degree-style rotations to `vImageRotate90_ARGB8888`
+- swaps width/height for quarter turns
+
+Direct call sites into `0x100338900` are now recovered:
+
+- `src/device_controller/android_emulator.rs`
+  - direct call at `0x10002e75a`
+  - path clones a pixel buffer, rotates it for emulator orientation, then enqueues the rotated frame onward
+- `src/media_handler/decoder/video_toolbox.rs`
+  - direct calls at `0x1000415f2` and `0x1000417b8`
+  - this is the decoded-video path
+  - nearby recovered log/error strings include:
+    - `Received decoded H264 frame ...`
+    - `Failed to rotate image: ..., dropping it`
+- `src/media_handler.rs`
+  - direct calls at `0x10010bc32` and `0x10010ce62`
+  - this path sits next to recovered `copy_screenshot_error` logging and pasteboard/`NSImage` clipboard code
+  - the safest statement is that the rotator is directly exercised by a media-handler screenshot/clipboard handling flow in this build
+
+So the exact state is now:
+
+- the shared in-memory rotator is definitely live and directly used
+- it is **not** just a dead helper or purely theoretical primitive
+- the recovered direct consumers are Android-emulator frame handling, decoded-video handling, and a screenshot/clipboard media-handler path
+- what still remains unrecovered is a direct iOS live-preview frame path into this rotator
+
+The muxer evidence still matters too:
+
+- exported video rotation is separately accounted for by the file-level `muxer/rotator.rs` path
+- so the in-memory rotator and the exported-video rotator are two distinct mechanisms and should still not be conflated
+
 Remaining iOS unknowns are now narrower:
 
-- the precise consumer mapping of JPEG output vs H.264 output inside higher-level Radon media handlers
-- whether the shared native rotator is actually exercised on the iOS live-preview path, or only on replay/export/shared media flows
+- the exact high-level feature ownership of the optional H.264 sink inside media/export flows
+- the exact local message specialization carried by the Tokio `UnboundedSender` attached to `H264EncoderBridge`
+- whether there is a direct iOS live-preview frame path into the in-memory pixel-buffer rotator
 - whether `sendPaste:` is intentionally stubbed or conditionally compiled out in this build
 
 ### Android physical-device bootstrap is now clearer: tiny dex wrapper, large native core
@@ -4350,6 +4649,454 @@ This reinforces an earlier pattern:
   - what the backend can do
   - what the shipped panel chooses to surface
 
+### Android physical-device backend: the controller/display stack is now much clearer
+
+The physical-device backend is no longer just "typed messages plus some JNI." The recovered symbol surface now exposes a fairly concrete control stack.
+
+Recovered host-to-agent message constructors and accessors:
+
+- `StartVideoStreamMessage(int display_id, Size max_video_size)`
+- `StopVideoStreamMessage(int display_id)`
+- `StartAudioStreamMessage()`
+- `StopAudioStreamMessage()`
+- `StartClipboardSyncMessage(int max_synced_length, string initial_text)`
+- `StopClipboardSyncMessage()`
+- `SetDeviceOrientationMessage(int orientation)`
+- `SetMaxVideoResolutionMessage(int display_id, Size max_video_size)`
+- `RequestDeviceStateMessage(int state_id)`
+- `DisplayConfigurationRequest(int)`
+- `UiSettingsRequest(int)`
+- `ResetUiSettingsRequest(int)`
+
+Important caution:
+
+- those last single-int request constructors are real and recovered
+- but the exact semantic meaning of the integer is **not** proven from the symbol name alone in every case
+- for example, it may be a target ID, request ID, or another selector field depending on the message family
+- so they should be treated as "single-int request messages" unless a stronger call-site recovery proves more
+
+Recovered controller dispatch methods:
+
+- `Controller::ProcessMessage`
+- `Controller::ProcessMotionEvent`
+- `Controller::ProcessKeyboardEvent`
+- `Controller::ProcessTextInput`
+- `Controller::ProcessSetDeviceOrientation`
+- `Controller::ProcessSetMaxVideoResolution`
+- `Controller::StartVideoStream`
+- `Controller::StopVideoStream`
+- `Controller::StartAudioStream`
+- `Controller::StopAudioStream`
+- `Controller::StartClipboardSync`
+- `Controller::RequestDeviceState`
+- `Controller::SendDisplayConfigurations`
+- `Controller::SendClipboardChangedNotification`
+- `Controller::SendDeviceStateNotification`
+
+Recovered display/video backend pieces:
+
+- `DisplayStreamer::Run`
+- `DisplayStreamer::CreateCodec`
+- `DisplayStreamer::StartCodecUnlocked`
+- `DisplayStreamer::ProcessFramesUntilCodecStopped`
+- `DisplayStreamer::ReduceBitRate`
+- `DisplayStreamer::DisplayRotationWatcher::OnRotationChanged`
+- `DisplayManager::CreateVirtualDisplay`
+- `DisplayManager::RequestDisplayPower`
+- `SurfaceControl::SetDisplaySurface`
+- `SurfaceControl::SetDisplayProjection`
+- `SurfaceControl::SetDisplayLayerStack`
+
+Recovered runtime/log strings sharpen how that stack behaves:
+
+- `Display %d: starting video stream`
+- `Display %d: creating codec`
+- `Display %d: configured %s video size %dx%d bit_rate %d`
+- `Display %d: setting video orientation %d`
+- `Display %d: video frame #%d produced by the encoder`
+- `Display %d: DisplayRotationWatcher::OnRotationChanged: new_rotation=%d old_rotation=%d`
+- `DisplayAddedOrChangedNotification(%d, %dx%d, %d, type=%d)`
+
+That supports a much more precise model:
+
+- the physical-device agent is display-scoped, not just "one device stream"
+- video start/stop is per display and takes an explicit max resolution
+- audio start/stop is a separate control family
+- clipboard sync is a separate control family and includes:
+  - initial text
+  - a host-controlled max synced length
+- device orientation/state are separate message families from display video control
+
+There is also a clearer split between controller and agent responsibilities than before:
+
+- `Controller::*` methods decode and route typed control messages
+- `Agent::*` methods are separately exposed for:
+  - `StartVideoStream(int, Size)`
+  - `StopVideoStream(int)`
+  - `StartAudioStream()`
+  - `StopAudioStream()`
+
+That suggests the controller is not the lowest-level transport owner; it sits above a more direct device/streaming agent layer.
+
+Recovered input/control substrate is also clearer:
+
+- virtual input devices/types exist for:
+  - `VirtualKeyboard`
+  - `VirtualDpad`
+  - `VirtualMouse`
+  - `VirtualTablet`
+  - `VirtualTouchscreen`
+  - `VirtualStylus`
+- motion messages carry:
+  - `display_id`
+  - pointer list
+  - `button_state`
+  - `action_button`
+  - `is_mouse`
+- text input is its own typed message family, not key-event emulation
+- clipboard get/set is native and explicit, not shell-text shuttling
+
+This means a faithful physical-device reimplementation would need, at minimum:
+
+- a base-128-framed typed control protocol
+- per-display video control
+- separate audio and clipboard channels/commands
+- virtual input-device injection semantics
+- device-state notifications and requests
+- UI-settings request/change/response plumbing
+
+Recovered response/notification constructor signatures now make parts of the outbound schema more concrete:
+
+- `ClipboardChangedNotification(string)`
+- `DeviceStateNotification(int)`
+- `DisplayRemovedNotification(int)`
+- `DisplayAddedOrChangedNotification(int, Size, int, int)`
+- `SupportedDeviceStatesNotification(vector<DeviceState>, int)`
+- `UiSettingsResponse(int)`
+- `UiSettingsChangeResponse(int)`
+
+Recovered UI-settings factories also show the request payload families explicitly:
+
+- `createDarkModeChangeRequest(int, bool)`
+- `createFontScaleChangeRequest(int, int)`
+- `createDensityChangeRequest(int, int)`
+- `createTalkbackChangeRequest(int, bool)`
+- `createSelectToSpeakChangeRequest(int, bool)`
+- `createGestureNavigationChangeRequest(int, bool)`
+- `createDebugLayoutChangeRequest(int, bool)`
+- `createAppLocaleChangeRequest(int, string, string)`
+
+That is enough to say the outbound side is not just "notifications exist." It has real typed response payloads for:
+
+- per-display configuration changes
+- device-state changes
+- clipboard changes
+- UI settings state and UI settings mutations
+
+### Android physical-device protocol: numeric `ControlMessage` dispatch is now recovered
+
+Recovered from `ControlMessage::Deserialize(Base128InputStream&)`, `ControlMessage::Deserialize(int, Base128InputStream&)`, and `Controller::ProcessMessage`:
+
+- the protocol first reads a numeric message type with `Base128InputStream::ReadInt32()`
+- dispatch then goes through a jump table on `type - 1`
+- `Controller::ProcessMessage` mirrors the same family split on the controller side
+
+Recovered numeric mapping:
+
+- `1` -> `MotionEventMessage`
+- `2` -> `KeyEventMessage`
+- `3` -> `TextInputMessage`
+- `4` -> `SetDeviceOrientationMessage`
+- `5` -> `SetMaxVideoResolutionMessage`
+- `6` -> `StartVideoStreamMessage`
+- `7` -> `StopVideoStreamMessage`
+- `8` -> `StartAudioStreamMessage`
+- `9` -> `StopAudioStreamMessage`
+- `10` -> `StartClipboardSyncMessage`
+- `11` -> `StopClipboardSyncMessage`
+- `12` -> `RequestDeviceStateMessage`
+- `13` -> `XrRotationMessage`
+- `14` -> `XrTranslationMessage`
+- `15` -> `XrAngularVelocityMessage`
+- `16` -> `XrVelocityMessage`
+- `17` -> `XrRecenterMessage`
+- `18` -> `XrSetPassthroughCoefficientMessage`
+- `19` -> `XrSetEnvironmentMessage`
+- `20` -> `DisplayConfigurationRequest`
+- `21` -> `UiSettingsRequest`
+- `22` -> `UiSettingsChangeRequest`
+- `23` -> `ResetUiSettingsRequest`
+
+This matters because it moves the physical-device protocol from "named classes exist" to "numeric on-wire message families are directly recoverable."
+
+It also gives a stronger controller model:
+
+- controller dispatch is not heuristic or string-based
+- the wire format is a compact numeric protocol over the base-128 framing layer
+- XR, display, clipboard, video, audio, device-state, and UI-settings control families all sit in the same primary control-message enum
+
+### Android physical-device protocol: several inbound payload layouts are now concrete
+
+Recovered from per-message deserializers plus field accessors:
+
+#### `KeyEventMessage`
+
+Observed deserialize order:
+
+- `ReadInt32()` -> action
+- `ReadInt32()` -> keycode
+- `ReadUInt32()` -> meta_state
+
+Accessor offsets confirm:
+
+- `action()` at object offset `0xc`
+- `keycode()` at `0x10`
+- `meta_state()` at `0x14`
+
+#### `SetDeviceOrientationMessage`
+
+Observed deserialize order:
+
+- `ReadInt32()` -> orientation
+
+#### `SetMaxVideoResolutionMessage`
+
+Observed deserialize order:
+
+- `ReadInt32()` -> display_id
+- `ReadInt32()` -> width
+- `ReadInt32()` -> height
+
+Recovered constructor/accessor behavior confirms:
+
+- `display_id()` at object offset `0xc`
+- `max_video_size()` begins at `0x10`
+- width/height are assembled into a `Size`
+
+#### `StartClipboardSyncMessage`
+
+Observed deserialize order:
+
+- `ReadInt32()` -> max_synced_length
+- `ReadBytes()` -> initial/seed text payload
+
+Accessor recovery confirms:
+
+- `max_synced_length()` at `0xc`
+- `text()` begins at `0x10`
+
+#### `RequestDeviceStateMessage`
+
+Observed deserialize behavior:
+
+- the message reads one `ReadInt32()`
+- the recovered code subtracts `1`
+- the adjusted value is then stored in `RequestDeviceStateMessage(int state_id)`
+
+This is an important packet-level detail:
+
+- the encoded on-wire integer is **not** passed through verbatim
+- there is an explicit `-1` transform before the stored `state_id()`
+
+The safest statement is therefore:
+
+- the message family is proven
+- the stored `state_id()` accessor is proven
+- the exact higher-level semantic meaning of the encoded value still should not be over-interpreted beyond "wire value is normalized by subtracting 1"
+
+#### `DisplayConfigurationRequest`, `UiSettingsRequest`, `ResetUiSettingsRequest`
+
+Recovered constructor and handler behavior now resolves the meaning of the single integer for this family.
+
+Observed deserialize behavior for each:
+
+- `ReadInt32()`
+- immediate construction of the corresponding single-int request object
+
+Recovered constructor/handler chain:
+
+- each of these constructors calls `CorrelatedMessage::CorrelatedMessage(int request_id, int type)`
+- `DisplayConfigurationRequest(int)` uses message type `20`
+- `UiSettingsRequest(int)` uses message type `21`
+- `ResetUiSettingsRequest(int)` uses message type `23`
+- the controller-side response paths call `CorrelatedMessage::request_id()` and feed that same integer into:
+  - `DisplayConfigurationResponse(request_id, ...)`
+  - `UiSettingsResponse(request_id)`
+
+These are therefore no longer semantically ambiguous:
+
+- the single integer in these request messages is the correlation/request ID
+- it is used to match request/response pairs, not a hidden display selector or command subtype
+
+#### `UiSettingsChangeRequest`
+
+Recovered on-wire layout:
+
+- first `ReadInt32()` -> leading integer parameter
+- second `ReadInt32()` -> change selector
+- then a selector-specific payload
+
+Recovered selector mapping:
+
+- `0` -> dark mode, then `ReadBool()`
+- `1` -> font scale, then `ReadInt32()`
+- `2` -> density, then `ReadInt32()`
+- `3` -> talkback, then `ReadBool()`
+- `4` -> select-to-speak, then `ReadBool()`
+- `5` -> gesture navigation, then `ReadBool()`
+- `6` -> debug layout, then `ReadBool()`
+- `7` -> app locale, then `ReadBytes()`, `ReadBytes()`
+
+Recovered factory calls line up with that mapping:
+
+- `createDarkModeChangeRequest(int, bool)`
+- `createFontScaleChangeRequest(int, int)`
+- `createDensityChangeRequest(int, int)`
+- `createTalkbackChangeRequest(int, bool)`
+- `createSelectToSpeakChangeRequest(int, bool)`
+- `createGestureNavigationChangeRequest(int, bool)`
+- `createDebugLayoutChangeRequest(int, bool)`
+- `createAppLocaleChangeRequest(int, string, string)`
+
+Important caution:
+
+- the first integer is definitely real and on-wire
+- recovered construction now shows it is also the correlation/request ID:
+  - `UiSettingsChangeRequest::UiSettingsChangeRequest(int, UiCommand)` calls `CorrelatedMessage::CorrelatedMessage(int request_id, int type)` with type `22`
+- the second integer is the real change selector
+- so the remaining semantic work is in selector payload values, not in the leading integer
+
+#### `MotionEventMessage`
+
+Recovered deserialize layout:
+
+- `ReadUInt32()` -> pointer count
+- per pointer:
+  - `ReadInt32()`
+  - `ReadInt32()`
+  - `ReadInt32()`
+  - `ReadUInt32()` -> nested value count
+  - repeated nested values:
+    - `ReadInt32()`
+    - `ReadFloat()`
+- trailing scalar fields:
+  - `ReadInt32()` -> action
+  - `ReadInt32()` -> button_state
+  - `ReadInt32()` -> action_button
+  - `ReadInt32()` -> display_id
+  - `ReadBool()` -> is_mouse
+
+Accessor offsets confirm those trailing scalar identities:
+
+- `action()` at `0x28`
+- `button_state()` at `0x2c`
+- `action_button()` at `0x30`
+- `display_id()` at `0x34`
+- `is_mouse()` at `0x38`
+
+This means the protocol shape for motion events is no longer fuzzy:
+
+- it has an explicit pointer array
+- each pointer has a nested typed/value sub-array
+- then the event carries action/button/display/mouse metadata
+
+Recovered handler behavior from `Controller::ProcessMotionEvent(...)` makes the pointer layout much sharper:
+
+- per-pointer field at offset `0x8` is the `pointer_id`
+  - recovered by the call into `PointerHelper::SetPointerId(...)`
+- per-pointer fields at offsets `0x0` and `0x4` are raw x/y-style coordinates
+  - they are transformed before being passed to `PointerHelper::SetPointerCoords(...)`
+- the repeated nested `(int, float)` items are explicit axis/value pairs
+  - recovered by iteration that feeds them to `PointerHelper::SetAxisValue(axis_id, axis_value)`
+- tool type is not stored separately per pointer in this path
+  - the handler derives the message-wide tool type from `is_mouse`
+  - recovered mapping:
+    - `is_mouse = false` -> touch-style tool type
+    - `is_mouse = true` -> mouse-style tool type
+- pressure is synthesized in the handler based on action path
+  - it is not directly read from a dedicated per-pointer scalar field in the recovered struct layout
+
+So the safest current concrete layout is:
+
+- per pointer:
+  - first int: raw x coordinate
+  - second int: raw y coordinate
+  - third int: pointer ID
+  - nested repeated entries: `(axis_id, axis_value)` pairs for pointer coords
+- trailing message scalars:
+  - action
+  - button_state
+  - action_button
+  - display_id
+  - is_mouse
+
+### Replay / recording / export edge cases from extension/helper correlation
+
+The JS/native correlation now exposes several small but important behavior details that matter for parity.
+
+Observed from the extension bundle:
+
+- recording starts with:
+  - `video recording start -b 2000`
+- replay capture starts with:
+  - `video replay start -m -b 50`
+- screenshot capture starts with:
+  - `screenshot screenshot -r <rotation>`
+- screenshot clipboard follow-up uses:
+  - `copy_screenshot -r <rotation>`
+
+Observed stop/save ordering:
+
+- recording stop is not just `stop`
+- `captureAndStopRecording(rotation)` first issues the save/export request:
+  - `video recording save -r <rotation>`
+- it then sends:
+  - `video recording stop`
+
+This means the extension expects the helper to treat save/export as a distinct asynchronous operation, not as an implicit side effect of stop.
+
+Replay has a particularly non-obvious dual behavior:
+
+- `captureReplay(rotation)` sends:
+  - `video replay save -r <rotation> -d 5 -d 10 -d 30`
+- the helper emits `video_ready replay ...` / `video_error replay ...`
+- the preview layer remaps those to:
+  - `replay_ready`
+  - `replay_error`
+- `saveMultimediaWithID(...)` ignores replay-ready events whose parsed duration is not `"full"`
+- `ScreenCapture.updateReplayState(...)` separately collects the short replay artifacts in state
+- those replay artifacts are:
+  - deduplicated by duration
+  - sorted so timed clips come first and `"full"` comes last
+
+So one replay capture request actually has two consumers:
+
+- the promise-returning capture path, which waits for the `"full"` replay artifact
+- the stateful replay gallery path, which keeps the timed clips like `5s`, `10s`, and `30s`
+
+Helper/runtime edge cases now directly evidenced by strings and code:
+
+- video export can fail with:
+  - `video_error ... no frames to export`
+- screenshot export can fail with:
+  - `screenshot_error ... no image to export`
+- clipboard copy can fail with:
+  - `copy_screenshot_error ...`
+  - `clipboard_error no image to export`
+- decoded-H.264 downstream processing can fail with:
+  - `Failed to send decoded H264 frame - receiver dropped`
+
+There is also an asymmetry worth preserving:
+
+- the extension parses structured stdout events for:
+  - `video_ready`
+  - `video_error`
+  - `screenshot_ready`
+  - `screenshot_error`
+- the extension does **not** appear to parse a dedicated success/failure event family for `copy_screenshot`
+
+So `copy_screenshot` behaves more like a side-effect command with best-effort logging than a first-class promise-backed export job.
+
 ### Public docs do still reveal one important preview API boundary
 
 Although the public repo is not the shipped extension source, the docs do confirm one public-facing preview contract:
@@ -4383,6 +5130,19 @@ At this point:
 - on the Android emulator path, `wheel` is live-confirmed as repeated `sendMouse` gesture synthesis rather than `injectWheel`, while `rotate` is helper-side license gated in the observed plan before any emulator RPC is made
 - on the tested non-resizable AVD, the underlying emulator landscape mechanism is now directly observed as `setPhysicalModel(ROTATION)` on the z-axis, with `+90 -> LANDSCAPE` and `-90 -> REVERSE_LANDSCAPE`
 - the Android physical-device path is a much heavier agent architecture, with a custom base-128-framed protocol and an on-device runtime that is overwhelmingly native
+- media consumption is now more precise:
+  - JPEG is on the unconditional live-preview path
+  - screenshot/clipboard flows use cloned BGRA image buffers
+  - H.264 is a real optional downstream sink
+  - the bridge boundary is now corrected as:
+    - `JpegEncoderBridge` from `0x1003362e0`
+    - `H264EncoderBridge` from `0x100336370`
+  - the immediate downstream owner of encoded H.264 is the media handler's encoder-channel ingress, not the MJPEG path
+  - the outer sender type on that ingress is now recoverable as Tokio `UnboundedSender` machinery
+  - the remaining unresolved part is the exact local message specialization and the final feature-level consumers beyond that ingress boundary
+- `frame_storage` is now clearly a separate named subsystem and should not be conflated with the immediate encoded-H.264 bridge sink
+- the shared native rotator is fully decoded as a reusable primitive, and direct consumers are now recovered in Android-emulator frame handling, decoded-video handling, and a media-handler screenshot/clipboard path
+- the Android physical-device agent is now clearly a per-display controller with separate video, audio, clipboard, device-state, and UI-settings control families rather than a single monolithic "streaming socket"
 - the macOS simulator helper is likely one of the most proprietary / least immediately readable pieces
 - the Android streaming layer appears to reuse upstream screen-sharing infrastructure
 - the locally available public `radon-ide` repository is docs/issues only, not the extension implementation source for this shipped build

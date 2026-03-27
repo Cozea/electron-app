@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { useTerminalActions, useTerminalStore, type TerminalInstance as StoredTerminalInstance } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
+import { MessagesTimeline } from '@/features/projects/components/assistant/chat/MessagesTimeline'
 import type { AgentToolId } from '@shared/electronApiTypes'
 
 interface AITerminalProfile {
@@ -13,6 +14,7 @@ interface AITerminalProfile {
   name: string
   icon: React.ElementType
   color: string
+  supportedModes: ('cli' | 'gui')[]
 }
 
 interface AITerminalSidebarProps {
@@ -21,12 +23,12 @@ interface AITerminalSidebarProps {
 }
 
 const AI_TERMINAL_PROFILES: AITerminalProfile[] = [
-  { id: 'claude', name: 'Claude Code', icon: SiAnthropic, color: 'text-[#d97757]' },
-  { id: 'gemini', name: 'Gemini CLI', icon: SiGooglegemini, color: 'text-[#8E75B2]' },
-  { id: 'copilot', name: 'Copilot', icon: SiGithubcopilot, color: 'text-[#8A2BE2]' },
-  { id: 'codex', name: 'Codex', icon: SiOpenai, color: 'text-[#10a37f]' },
-  { id: 'kilo', name: 'Kilo Code', icon: Bot, color: 'text-primary' },
-  { id: 'shell', name: 'Shell', icon: Terminal, color: 'text-muted-foreground' },
+  { id: 'claude', name: 'Claude Code', icon: SiAnthropic, color: 'text-[#d97757]', supportedModes: ['cli', 'gui'] },
+  { id: 'gemini', name: 'Gemini CLI', icon: SiGooglegemini, color: 'text-[#8E75B2]', supportedModes: ['cli'] },
+  { id: 'copilot', name: 'Copilot', icon: SiGithubcopilot, color: 'text-[#8A2BE2]', supportedModes: ['cli'] },
+  { id: 'codex', name: 'Codex', icon: SiOpenai, color: 'text-[#10a37f]', supportedModes: ['cli'] },
+  { id: 'kilo', name: 'Kilo Code', icon: Bot, color: 'text-primary', supportedModes: ['cli'] },
+  { id: 'shell', name: 'Shell', icon: Terminal, color: 'text-muted-foreground', supportedModes: ['cli'] },
 ]
 
 
@@ -83,6 +85,7 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
   const dragStartWidth = useRef(0)
 
   const [isCreatingNew, setIsCreatingNew] = useState(false)
+  const [viewMode, setViewMode] = useState<'cli'|'gui'>('gui')
   const [isInstallingAgent, setIsInstallingAgent] = useState(false)
   const [installCommand, setInstallCommand] = useState('')
 
@@ -423,29 +426,68 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
             </div>
           ) : null}
 
-          {(!isCreatingNew && activeSession) ? (
-            <div className="relative min-h-0 flex-1 overflow-hidden">
-              {!isInteractiveSession(activeSession.terminal) ? (
-                <div className="absolute inset-x-0 top-0 z-10 border-b border-border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground backdrop-blur">
-                  This agent session has exited. You can inspect the output or close the session.
+          {(!isCreatingNew && activeSession) ? (() => {
+            const activeProfile = AI_TERMINAL_PROFILES.find(p => p.id === activeSession.profileId)
+            const supportsGui = activeProfile?.supportedModes?.includes('gui')
+            
+            return (
+              <div className="relative min-h-0 flex-1 flex flex-col overflow-hidden">
+                {supportsGui && (
+                  <div className="flex shrink-0 items-center justify-center p-1.5 border-b border-border/50 bg-muted/20">
+                    <div className="flex items-center rounded-md border border-border bg-background p-0.5 shadow-sm">
+                      <button
+                        onClick={() => setViewMode('gui')}
+                        className={cn(
+                          "px-3 py-1 text-[10px] font-medium rounded-sm transition-all",
+                          viewMode === 'gui' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        GUI
+                      </button>
+                      <button
+                        onClick={() => setViewMode('cli')}
+                        className={cn(
+                          "px-3 py-1 text-[10px] font-medium rounded-sm transition-all",
+                          viewMode === 'cli' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        CLI
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="relative flex-1 min-h-0">
+                  {!isInteractiveSession(activeSession.terminal) ? (
+                    <div className="absolute inset-x-0 top-0 z-10 border-b border-border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground backdrop-blur">
+                      This agent session has exited. You can inspect the output or close the session.
+                    </div>
+                  ) : null}
+                  
+                  {(!supportsGui || viewMode === 'cli') ? (
+                    <TerminalInstance
+                      terminalId={activeSession.terminalId}
+                      className="absolute inset-0 h-full w-full"
+                      shouldAutoFocus={isInteractiveSession(activeSession.terminal)}
+                      readOnly={!isInteractiveSession(activeSession.terminal)}
+                    />
+                  ) : (
+                    <MessagesTimeline threadId={activeSession.terminalId} />
+                  )}
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-2 z-20 h-6 bg-background/60 px-2 text-[10px] hover:bg-background shadow-sm"
+                    onClick={() => void closeSession(activeSession.terminalId)}
+                  >
+                    Close Session
+                  </Button>
                 </div>
-              ) : null}
-              <TerminalInstance
-                terminalId={activeSession.terminalId}
-                className="absolute inset-0 h-full w-full"
-                shouldAutoFocus={isInteractiveSession(activeSession.terminal)}
-                readOnly={!isInteractiveSession(activeSession.terminal)}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-2 top-2 z-20 h-6 bg-background/60 px-2 text-[10px] hover:bg-background"
-                onClick={() => void closeSession(activeSession.terminalId)}
-              >
-                Close Session
-              </Button>
-            </div>
-          ) : (
+              </div>
+            )
+          })()
+           : (
             <div className="flex flex-1 flex-col items-center justify-center p-4">
               {isInstallingAgent ? (
                 <div className="w-full max-w-sm space-y-6">

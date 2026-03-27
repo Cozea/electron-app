@@ -1,5 +1,7 @@
 import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
+import { agentProviderService } from './services/AgentProviderService'
+import { agentChatService } from './services/AgentChatService'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
