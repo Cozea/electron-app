@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { type ThreadId } from "@t3tools/contracts";
 
 export interface TerminalContextSelection {

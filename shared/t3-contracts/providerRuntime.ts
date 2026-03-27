@@ -20,14 +20,14 @@ import { ProviderKind } from "./orchestration";
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
 
-const RuntimeEventRawSource = Schema.Literal([
+const RuntimeEventRawSource = Schema.Literal(
   "codex.app-server.notification",
   "codex.app-server.request",
   "codex.eventmsg",
   "claude.sdk.message",
   "claude.sdk.permission",
   "codex.sdk.thread-event",
-]);
+);
 export type RuntimeEventRawSource = typeof RuntimeEventRawSource.Type;
 
 export const RuntimeEventRaw = Schema.Struct({
@@ -48,36 +48,36 @@ const ProviderRefs = Schema.Struct({
 });
 export type ProviderRefs = typeof ProviderRefs.Type;
 
-const RuntimeSessionState = Schema.Literal([
+const RuntimeSessionState = Schema.Literal(
   "starting",
   "ready",
   "running",
   "waiting",
   "stopped",
   "error",
-]);
+);
 export type RuntimeSessionState = typeof RuntimeSessionState.Type;
 
-const RuntimeThreadState = Schema.Literal([
+const RuntimeThreadState = Schema.Literal(
   "active",
   "idle",
   "archived",
   "closed",
   "compacted",
   "error",
-]);
+);
 export type RuntimeThreadState = typeof RuntimeThreadState.Type;
 
-const RuntimeTurnState = Schema.Literal(["completed", "failed", "interrupted", "cancelled"]);
+const RuntimeTurnState = Schema.Literal("completed", "failed", "interrupted", "cancelled");
 export type RuntimeTurnState = typeof RuntimeTurnState.Type;
 
-const RuntimePlanStepStatus = Schema.Literal(["pending", "inProgress", "completed"]);
+const RuntimePlanStepStatus = Schema.Literal("pending", "inProgress", "completed");
 export type RuntimePlanStepStatus = typeof RuntimePlanStepStatus.Type;
 
-const RuntimeItemStatus = Schema.Literal(["inProgress", "completed", "failed", "declined"]);
+const RuntimeItemStatus = Schema.Literal("inProgress", "completed", "failed", "declined");
 export type RuntimeItemStatus = typeof RuntimeItemStatus.Type;
 
-const RuntimeContentStreamKind = Schema.Literal([
+const RuntimeContentStreamKind = Schema.Literal(
   "assistant_text",
   "reasoning_text",
   "reasoning_summary_text",
@@ -85,19 +85,19 @@ const RuntimeContentStreamKind = Schema.Literal([
   "command_output",
   "file_change_output",
   "unknown",
-]);
+);
 export type RuntimeContentStreamKind = typeof RuntimeContentStreamKind.Type;
 
-const RuntimeSessionExitKind = Schema.Literal(["graceful", "error"]);
+const RuntimeSessionExitKind = Schema.Literal("graceful", "error");
 export type RuntimeSessionExitKind = typeof RuntimeSessionExitKind.Type;
 
-const RuntimeErrorClass = Schema.Literal([
+const RuntimeErrorClass = Schema.Literal(
   "provider_error",
   "transport_error",
   "permission_error",
   "validation_error",
   "unknown",
-]);
+);
 export type RuntimeErrorClass = typeof RuntimeErrorClass.Type;
 
 export const TOOL_LIFECYCLE_ITEM_TYPES = [
@@ -117,7 +117,7 @@ export function isToolLifecycleItemType(value: string): value is ToolLifecycleIt
   return TOOL_LIFECYCLE_ITEM_TYPES.includes(value as ToolLifecycleItemType);
 }
 
-export const CanonicalItemType = Schema.Literal([
+export const CanonicalItemType = Schema.Literal(
   "user_message",
   "assistant_message",
   "reasoning",
@@ -128,10 +128,10 @@ export const CanonicalItemType = Schema.Literal([
   "context_compaction",
   "error",
   "unknown",
-]);
+);
 export type CanonicalItemType = typeof CanonicalItemType.Type;
 
-export const CanonicalRequestType = Schema.Literal([
+export const CanonicalRequestType = Schema.Literal(
   "command_execution_approval",
   "file_read_approval",
   "file_change_approval",
@@ -141,10 +141,10 @@ export const CanonicalRequestType = Schema.Literal([
   "dynamic_tool_call",
   "auth_tokens_refresh",
   "unknown",
-]);
+);
 export type CanonicalRequestType = typeof CanonicalRequestType.Type;
 
-const ProviderRuntimeEventType = Schema.Literal([
+const ProviderRuntimeEventType = Schema.Literal(
   "session.started",
   "session.configured",
   "session.state.changed",
@@ -192,7 +192,7 @@ const ProviderRuntimeEventType = Schema.Literal([
   "files.persisted",
   "runtime.warning",
   "runtime.error",
-]);
+);
 export type ProviderRuntimeEventType = typeof ProviderRuntimeEventType.Type;
 
 const SessionStartedType = Schema.Literal("session.started");
@@ -471,7 +471,7 @@ export type TaskProgressPayload = typeof TaskProgressPayload.Type;
 
 const TaskCompletedPayload = Schema.Struct({
   taskId: RuntimeTaskId,
-  status: Schema.Literal(["completed", "failed", "stopped"]),
+  status: Schema.Literal("completed", "failed", "stopped"),
   summary: Schema.optional(TrimmedNonEmptyStringSchema),
   usage: Schema.optional(Schema.Unknown),
 });
@@ -494,7 +494,7 @@ export type HookProgressPayload = typeof HookProgressPayload.Type;
 
 const HookCompletedPayload = Schema.Struct({
   hookId: TrimmedNonEmptyStringSchema,
-  outcome: Schema.Literal(["success", "error", "cancelled"]),
+  outcome: Schema.Literal("success", "error", "cancelled"),
   output: Schema.optional(Schema.String),
   stdout: Schema.optional(Schema.String),
   stderr: Schema.optional(Schema.String),
@@ -943,7 +943,7 @@ const ProviderRuntimeErrorEvent = Schema.Struct({
 });
 export type ProviderRuntimeErrorEvent = typeof ProviderRuntimeErrorEvent.Type;
 
-export const ProviderRuntimeEventV2 = Schema.Union([
+export const ProviderRuntimeEventV2 = Schema.Union(
   ProviderRuntimeSessionStartedEvent,
   ProviderRuntimeSessionConfiguredEvent,
   ProviderRuntimeSessionStateChangedEvent,
@@ -991,7 +991,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeFilesPersistedEvent,
   ProviderRuntimeWarningEvent,
   ProviderRuntimeErrorEvent,
-]);
+);
 export type ProviderRuntimeEventV2 = typeof ProviderRuntimeEventV2.Type;
 
 export const ProviderRuntimeEvent = ProviderRuntimeEventV2;
@@ -1012,7 +1012,7 @@ const ProviderRuntimeApprovalResolvedEvent = ProviderRuntimeRequestResolvedEvent
 export type ProviderRuntimeApprovalResolvedEvent = ProviderRuntimeRequestResolvedEvent;
 
 // Legacy helper aliases retained for adapters/tests.
-const ProviderRuntimeToolKind = Schema.Literal(["command", "file-read", "file-change", "other"]);
+const ProviderRuntimeToolKind = Schema.Literal("command", "file-read", "file-change", "other");
 export type ProviderRuntimeToolKind = typeof ProviderRuntimeToolKind.Type;
 
 export const ProviderRuntimeTurnStatus = RuntimeTurnState;

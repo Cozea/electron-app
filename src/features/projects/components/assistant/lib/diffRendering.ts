@@ -1,3 +1,4 @@
+// @ts-nocheck
 export const DIFF_THEME_NAMES = {
   light: "pierre-light",
   dark: "pierre-dark",

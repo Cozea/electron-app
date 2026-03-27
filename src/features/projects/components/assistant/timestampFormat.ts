@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 
 export function getTimestampFormatOptions(

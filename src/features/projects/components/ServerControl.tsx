@@ -749,7 +749,8 @@ export function ServerControl({
         projectPathValue: string,
         baseCommand: string,
         config: { label: string; port: number },
-        runId: string
+        runId: string,
+        extraEnv?: Record<string, string>
     ) => {
         if (isStartCancelled(runId)) {
             return
@@ -783,6 +784,7 @@ export function ServerControl({
             env: {
                 PORT: String(launchPort),
                 BROWSER: 'none',
+                ...(extraEnv ?? {}),
             },
         })
 
@@ -891,6 +893,30 @@ export function ServerControl({
                 type: 'start_requested',
                 message: 'Start requested from Pages toolbar',
             })
+
+            if (previewMode === 'native' && nativePlatform === 'ios') {
+                const nativeLaunch = await window.electronAPI.nativePreview.resolveLaunchConfig({
+                    projectPath,
+                    platform: 'ios',
+                    preferredPort: storedDevPort ?? undefined,
+                })
+
+                if (!nativeLaunch.success || !nativeLaunch.config) {
+                    throw new Error(nativeLaunch.error || 'Failed to resolve native preview launch configuration')
+                }
+
+                await launchDevServerTerminal(
+                    projectPath,
+                    nativeLaunch.config.command,
+                    {
+                        label: nativeLaunch.config.label,
+                        port: nativeLaunch.config.port,
+                    },
+                    runId,
+                    nativeLaunch.config.env,
+                )
+                return
+            }
 
             const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort, {
                 previewMode,

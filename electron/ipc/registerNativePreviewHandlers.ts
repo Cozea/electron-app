@@ -4,6 +4,8 @@ import type {
   NativePreviewActionResult,
   NativePreviewCaptureScreenshotRequest,
   NativePreviewCaptureScreenshotResult,
+  NativePreviewResolveLaunchConfigRequest,
+  NativePreviewResolveLaunchConfigResult,
   NativePreviewRotateRequest,
   NativePreviewSendButtonRequest,
   NativePreviewSendKeyRequest,
@@ -15,19 +17,11 @@ import type {
   NativePreviewStopSessionRequest,
   NativePreviewStopSessionResult,
 } from '../../shared/nativePreviewTypes'
+import { NativePreviewLaunchConfigService } from '../services/nativePreview/NativePreviewLaunchConfigService'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
 
 interface RegisterNativePreviewHandlersDeps {
   getMainWindow: () => BrowserWindow | null
-}
-
-const NOT_IMPLEMENTED_MESSAGE = 'Native iOS preview actions are not implemented yet.'
-
-function buildNotImplementedResult(error = NOT_IMPLEMENTED_MESSAGE): NativePreviewActionResult {
-  return {
-    success: false,
-    error,
-  }
 }
 
 export function registerNativePreviewHandlers(
@@ -35,10 +29,21 @@ export function registerNativePreviewHandlers(
   deps: RegisterNativePreviewHandlersDeps
 ): void {
   const manager = NativePreviewManager.getInstance()
+  const launchConfigService = NativePreviewLaunchConfigService.getInstance()
 
   manager.subscribe((event) => {
     deps.getMainWindow()?.webContents.send('nativePreview:stateChanged', event)
   })
+
+  ipcMain.handle(
+    'nativePreview:resolveLaunchConfig',
+    async (
+      _event,
+      request: NativePreviewResolveLaunchConfigRequest
+    ): Promise<NativePreviewResolveLaunchConfigResult> => {
+      return launchConfigService.resolveLaunchConfig(request)
+    }
+  )
 
   ipcMain.handle(
     'nativePreview:startSession',
@@ -69,36 +74,36 @@ export function registerNativePreviewHandlers(
 
   ipcMain.handle(
     'nativePreview:sendTouches',
-    async (_event, _request: NativePreviewSendTouchesRequest): Promise<NativePreviewActionResult> => {
-      return buildNotImplementedResult()
+    async (_event, request: NativePreviewSendTouchesRequest): Promise<NativePreviewActionResult> => {
+      return manager.sendTouches(request)
     }
   )
 
   ipcMain.handle(
     'nativePreview:sendWheel',
-    async (_event, _request: NativePreviewSendWheelRequest): Promise<NativePreviewActionResult> => {
-      return buildNotImplementedResult()
+    async (_event, request: NativePreviewSendWheelRequest): Promise<NativePreviewActionResult> => {
+      return manager.sendWheel(request)
     }
   )
 
   ipcMain.handle(
     'nativePreview:sendKey',
-    async (_event, _request: NativePreviewSendKeyRequest): Promise<NativePreviewActionResult> => {
-      return buildNotImplementedResult()
+    async (_event, request: NativePreviewSendKeyRequest): Promise<NativePreviewActionResult> => {
+      return manager.sendKey(request)
     }
   )
 
   ipcMain.handle(
     'nativePreview:sendButton',
-    async (_event, _request: NativePreviewSendButtonRequest): Promise<NativePreviewActionResult> => {
-      return buildNotImplementedResult()
+    async (_event, request: NativePreviewSendButtonRequest): Promise<NativePreviewActionResult> => {
+      return manager.sendButton(request)
     }
   )
 
   ipcMain.handle(
     'nativePreview:rotate',
-    async (_event, _request: NativePreviewRotateRequest): Promise<NativePreviewActionResult> => {
-      return buildNotImplementedResult()
+    async (_event, request: NativePreviewRotateRequest): Promise<NativePreviewActionResult> => {
+      return manager.rotate(request)
     }
   )
 
@@ -106,9 +111,9 @@ export function registerNativePreviewHandlers(
     'nativePreview:captureScreenshot',
     async (
       _event,
-      _request: NativePreviewCaptureScreenshotRequest
+      request: NativePreviewCaptureScreenshotRequest
     ): Promise<NativePreviewCaptureScreenshotResult> => {
-      return buildNotImplementedResult()
+      return manager.captureScreenshot(request)
     }
   )
 
@@ -116,9 +121,9 @@ export function registerNativePreviewHandlers(
     'nativePreview:copyLastScreenshot',
     async (
       _event,
-      _request: NativePreviewCaptureScreenshotRequest
+      request: NativePreviewCaptureScreenshotRequest
     ): Promise<NativePreviewActionResult> => {
-      return buildNotImplementedResult()
+      return manager.copyLastScreenshot(request)
     }
   )
 }

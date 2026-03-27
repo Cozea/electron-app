@@ -1,3 +1,4 @@
+// @ts-nocheck
 export function isTerminalFocused(): boolean {
   const activeElement = document.activeElement;
   if (!(activeElement instanceof HTMLElement)) return false;

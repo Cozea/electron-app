@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { useTerminalActions, useTerminalStore, type TerminalInstance as StoredTerminalInstance } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
-import { NativeChatView } from '@/features/projects/components/assistant/chat/NativeChatView'
+import ChatView from '@/features/projects/components/assistant/chat/ChatView'
 import type { AgentToolId } from '@shared/electronApiTypes'
 
 interface AITerminalProfile {
@@ -178,45 +178,59 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
     setLaunchError(null)
 
     try {
-      const prepared = await window.electronAPI.agentTools.prepare({ toolId: profile.id })
-      if (!prepared.success || !prepared.available) {
-        throw new Error(prepared.error || 'Failed to prepare agent CLI')
+      let terminalId = '';
+      let launchCommand = '';
+      const createdAt = Date.now();
+
+      if (viewMode === 'gui' && profile.supportedModes.includes('gui')) {
+        terminalId = crypto.randomUUID();
+        launchCommand = 'SDK Thread';
+      } else {
+        const prepared = await window.electronAPI.agentTools.prepare({ toolId: profile.id })
+        if (!prepared.success || !prepared.available) {
+          throw new Error(prepared.error || 'Failed to prepare agent CLI')
+        }
+        launchCommand = prepared.launchCommand ?? ''
+        const result = await window.electronAPI.terminal.create({
+          projectPath,
+          cwd: projectPath,
+          cols: 80,
+          rows: 24,
+        })
+        if (!result.success || !result.terminalId) {
+          throw new Error(result.error || 'Failed to create terminal')
+        }
+        terminalId = result.terminalId;
+        const info = await window.electronAPI.terminal.getInfo({ terminalId })
+
+        registerTerminal({
+          id: terminalId,
+          profileId: info?.profileId ?? 'default',
+          profileName: info?.profileName ?? 'Shell',
+          title: profile.name,
+          label: profile.name,
+          kind: 'agent',
+          surface: 'assistant',
+          agentProfileId: profile.id,
+          agentProfileName: profile.name,
+          nameSource: 'manual',
+          command: launchCommand,
+          projectPath,
+          status: 'starting',
+          hasOutput: false,
+          lastHeartbeatAt: createdAt,
+        })
+
+        if (launchCommand) {
+          const accepted = await window.electronAPI.terminal.input({
+            terminalId,
+            data: `${launchCommand}\r`,
+          })
+          if (!accepted) {
+            throw new Error('Failed to launch agent session')
+          }
+        }
       }
-
-      const launchCommand = prepared.launchCommand ?? ''
-
-      const result = await window.electronAPI.terminal.create({
-        projectPath,
-        cwd: projectPath,
-        cols: 80,
-        rows: 24,
-      })
-
-      if (!result.success || !result.terminalId) {
-        throw new Error(result.error || 'Failed to create terminal')
-      }
-
-      const terminalId = result.terminalId
-      const info = await window.electronAPI.terminal.getInfo({ terminalId })
-      const createdAt = Date.now()
-
-      registerTerminal({
-        id: terminalId,
-        profileId: info?.profileId ?? 'default',
-        profileName: info?.profileName ?? 'Shell',
-        title: profile.name,
-        label: profile.name,
-        kind: 'agent',
-        surface: 'assistant',
-        agentProfileId: profile.id,
-        agentProfileName: profile.name,
-        nameSource: 'manual',
-        command: launchCommand,
-        projectPath,
-        status: 'starting',
-        hasOutput: false,
-        lastHeartbeatAt: createdAt,
-      })
 
       upsertSession(projectPath, {
         terminalId,
@@ -229,22 +243,12 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
       setActiveSession(projectPath, terminalId)
       setIsCreatingNew(false)
 
-      if (launchCommand) {
-        const accepted = await window.electronAPI.terminal.input({
-          terminalId,
-          data: `${launchCommand}\r`,
-        })
-        if (!accepted) {
-          throw new Error('Failed to launch agent session')
-        }
-      }
     } catch (error) {
       setLaunchError(error instanceof Error ? error.message : 'Failed to launch terminal')
     } finally {
       setLaunchingId(null)
     }
-  }, [projectPath, registerTerminal, setActiveSession, upsertSession])
-
+  }, [projectPath, viewMode, registerTerminal, upsertSession, setActiveSession])
   useEffect(() => {
     if (!projectPath) return
 
@@ -472,7 +476,7 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
                       readOnly={!isInteractiveSession(activeSession.terminal)}
                     />
                   ) : (
-                    <NativeChatView threadId={activeSession.terminalId} />
+                    <ChatView threadId={activeSession.terminalId} />
                   )}
                   
                   <Button

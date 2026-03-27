@@ -29,10 +29,10 @@ export const SCRIPT_RUN_COMMAND_PATTERN = Schema.TemplateLiteral([
   Schema.Literal(".run"),
 ]);
 
-export const KeybindingCommand = Schema.Union([
+export const KeybindingCommand = Schema.Union(
   Schema.Literal(...STATIC_KEYBINDING_COMMANDS),
   SCRIPT_RUN_COMMAND_PATTERN,
-]);
+);
 export type KeybindingCommand = typeof KeybindingCommand.Type;
 
 const KeybindingValue = TrimmedString.check(
@@ -51,7 +51,7 @@ export const KeybindingRule = Schema.Struct({
 });
 export type KeybindingRule = typeof KeybindingRule.Type;
 
-export const KeybindingsConfig = Schema.Array(KeybindingRule).check(
+export const KeybindingsConfig = Schema.decodeUnknownSync(Schema.Array(KeybindingRule))(
   Schema.maxLength(MAX_KEYBINDINGS_COUNT),
 );
 export type KeybindingsConfig = typeof KeybindingsConfig.Type;
@@ -66,7 +66,7 @@ export const KeybindingShortcut = Schema.Struct({
 });
 export type KeybindingShortcut = typeof KeybindingShortcut.Type;
 
-export const KeybindingWhenNode: Schema.Schema<KeybindingWhenNode> = Schema.Union([
+export const KeybindingWhenNode: Schema.Schema<KeybindingWhenNode> = Schema.Union(
   Schema.Struct({
     type: Schema.Literal("identifier"),
     name: Schema.NonEmptyString,
@@ -85,7 +85,7 @@ export const KeybindingWhenNode: Schema.Schema<KeybindingWhenNode> = Schema.Unio
     left: Schema.suspend((): Schema.Schema<KeybindingWhenNode> => KeybindingWhenNode),
     right: Schema.suspend((): Schema.Schema<KeybindingWhenNode> => KeybindingWhenNode),
   }),
-]);
+);
 export type KeybindingWhenNode =
   | { type: "identifier"; name: string }
   | { type: "not"; node: KeybindingWhenNode }
@@ -99,7 +99,7 @@ export const ResolvedKeybindingRule = Schema.Struct({
 }).annotate({ parseOptions: { onExcessProperty: "ignore" } });
 export type ResolvedKeybindingRule = typeof ResolvedKeybindingRule.Type;
 
-export const ResolvedKeybindingsConfig = Schema.Array(ResolvedKeybindingRule).check(
+export const ResolvedKeybindingsConfig = Schema.decodeUnknownSync(Schema.Array(ResolvedKeybindingRule))(
   Schema.maxLength(MAX_KEYBINDINGS_COUNT),
 );
 export type ResolvedKeybindingsConfig = typeof ResolvedKeybindingsConfig.Type;

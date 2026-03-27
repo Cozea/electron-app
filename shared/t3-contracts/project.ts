@@ -13,7 +13,7 @@ export const ProjectSearchEntriesInput = Schema.Struct({
 });
 export type ProjectSearchEntriesInput = typeof ProjectSearchEntriesInput.Type;
 
-const ProjectEntryKind = Schema.Literal(["file", "directory"]);
+const ProjectEntryKind = Schema.Literal("file", "directory");
 
 export const ProjectEntry = Schema.Struct({
   path: TrimmedNonEmptyString,

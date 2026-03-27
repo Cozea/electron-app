@@ -334,6 +334,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('preview:updateSelectionText', options),
   },
   nativePreview: {
+    resolveLaunchConfig: (options: import('../shared/nativePreviewTypes').NativePreviewResolveLaunchConfigRequest) =>
+      ipcRenderer.invoke('nativePreview:resolveLaunchConfig', options),
     startSession: (options: import('../shared/nativePreviewTypes').NativePreviewStartSessionRequest) =>
       ipcRenderer.invoke('nativePreview:startSession', options),
     stopSession: (options: import('../shared/nativePreviewTypes').NativePreviewStopSessionRequest) =>

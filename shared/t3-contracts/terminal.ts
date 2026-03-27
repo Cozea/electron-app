@@ -77,7 +77,7 @@ export const TerminalCloseInput = Schema.Struct({
 });
 export type TerminalCloseInput = Schema.Codec.Encoded<typeof TerminalCloseInput>;
 
-export const TerminalSessionStatus = Schema.Literal(["starting", "running", "exited", "error"]);
+export const TerminalSessionStatus = Schema.Literal("starting", "running", "exited", "error");
 export type TerminalSessionStatus = typeof TerminalSessionStatus.Type;
 
 export const TerminalSessionSnapshot = Schema.Struct({
@@ -141,7 +141,7 @@ const TerminalActivityEvent = Schema.Struct({
   hasRunningSubprocess: Schema.Boolean,
 });
 
-export const TerminalEvent = Schema.Union([
+export const TerminalEvent = Schema.Union(
   TerminalStartedEvent,
   TerminalOutputEvent,
   TerminalExitedEvent,
@@ -149,5 +149,5 @@ export const TerminalEvent = Schema.Union([
   TerminalClearedEvent,
   TerminalRestartedEvent,
   TerminalActivityEvent,
-]);
+);
 export type TerminalEvent = typeof TerminalEvent.Type;

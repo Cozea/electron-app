@@ -12,15 +12,15 @@ import { ModelSelection } from "./orchestration";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
-export const TimestampFormat = Schema.Literal(["locale", "12-hour", "24-hour"]);
+export const TimestampFormat = Schema.Literal("locale", "12-hour", "24-hour");
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 
-export const SidebarProjectSortOrder = Schema.Literal(["updated_at", "created_at", "manual"]);
+export const SidebarProjectSortOrder = Schema.Literal("updated_at", "created_at", "manual");
 export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "updated_at";
 
-export const SidebarThreadSortOrder = Schema.Literal(["updated_at", "created_at"]);
+export const SidebarThreadSortOrder = Schema.Literal("updated_at", "created_at");
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 
@@ -41,7 +41,7 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientS
 
 // ── Server Settings (server-authoritative) ────────────────────
 
-export const ThreadEnvMode = Schema.Literal(["local", "worktree"]);
+export const ThreadEnvMode = Schema.Literal("local", "worktree");
 export type ThreadEnvMode = typeof ThreadEnvMode.Type;
 
 const makeBinaryPathSetting = (fallback: string) =>
@@ -114,7 +114,7 @@ const ClaudeModelOptionsPatch = Schema.Struct({
   fastMode: Schema.optional(ClaudeModelOptions.fields.fastMode),
 });
 
-const ModelSelectionPatch = Schema.Union([
+const ModelSelectionPatch = Schema.Union(
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("codex")),
     model: Schema.optional(TrimmedNonEmptyString),
@@ -125,7 +125,7 @@ const ModelSelectionPatch = Schema.Union([
     model: Schema.optional(TrimmedNonEmptyString),
     options: Schema.optional(ClaudeModelOptionsPatch),
   }),
-]);
+);
 
 const CodexSettingsPatch = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),

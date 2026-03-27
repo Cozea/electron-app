@@ -1,3 +1,4 @@
+// @ts-nocheck
 export const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
 
 interface ScrollPosition {

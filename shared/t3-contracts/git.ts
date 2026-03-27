@@ -7,11 +7,11 @@ const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 
 // Domain Types
 
-export const GitStackedAction = Schema.Literal(["commit", "commit_push", "commit_push_pr"]);
+export const GitStackedAction = Schema.Literal("commit", "commit_push", "commit_push_pr");
 export type GitStackedAction = typeof GitStackedAction.Type;
-export const GitActionProgressPhase = Schema.Literal(["branch", "commit", "push", "pr"]);
+export const GitActionProgressPhase = Schema.Literal("branch", "commit", "push", "pr");
 export type GitActionProgressPhase = typeof GitActionProgressPhase.Type;
-export const GitActionProgressKind = Schema.Literal([
+export const GitActionProgressKind = Schema.Literal(
   "action_started",
   "phase_started",
   "hook_started",
@@ -19,22 +19,22 @@ export const GitActionProgressKind = Schema.Literal([
   "hook_finished",
   "action_finished",
   "action_failed",
-]);
+);
 export type GitActionProgressKind = typeof GitActionProgressKind.Type;
-export const GitActionProgressStream = Schema.Literal(["stdout", "stderr"]);
+export const GitActionProgressStream = Schema.Literal("stdout", "stderr");
 export type GitActionProgressStream = typeof GitActionProgressStream.Type;
-const GitCommitStepStatus = Schema.Literal(["created", "skipped_no_changes"]);
-const GitPushStepStatus = Schema.Literal([
+const GitCommitStepStatus = Schema.Literal("created", "skipped_no_changes");
+const GitPushStepStatus = Schema.Literal(
   "pushed",
   "skipped_not_requested",
   "skipped_up_to_date",
-]);
-const GitBranchStepStatus = Schema.Literal(["created", "skipped_not_requested"]);
-const GitPrStepStatus = Schema.Literal(["created", "opened_existing", "skipped_not_requested"]);
-const GitStatusPrState = Schema.Literal(["open", "closed", "merged"]);
+);
+const GitBranchStepStatus = Schema.Literal("created", "skipped_not_requested");
+const GitPrStepStatus = Schema.Literal("created", "opened_existing", "skipped_not_requested");
+const GitStatusPrState = Schema.Literal("open", "closed", "merged");
 const GitPullRequestReference = TrimmedNonEmptyStringSchema;
-const GitPullRequestState = Schema.Literal(["open", "closed", "merged"]);
-const GitPreparePullRequestThreadMode = Schema.Literal(["local", "worktree"]);
+const GitPullRequestState = Schema.Literal("open", "closed", "merged");
+const GitPreparePullRequestThreadMode = Schema.Literal("local", "worktree");
 
 export const GitBranch = Schema.Struct({
   name: TrimmedNonEmptyStringSchema,
@@ -219,7 +219,7 @@ export const GitRunStackedActionResult = Schema.Struct({
 export type GitRunStackedActionResult = typeof GitRunStackedActionResult.Type;
 
 export const GitPullResult = Schema.Struct({
-  status: Schema.Literal(["pulled", "skipped_up_to_date"]),
+  status: Schema.Literal("pulled", "skipped_up_to_date"),
   branch: TrimmedNonEmptyStringSchema,
   upstreamBranch: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
 });
@@ -273,7 +273,7 @@ const GitActionFailedEvent = Schema.Struct({
   message: TrimmedNonEmptyStringSchema,
 });
 
-export const GitActionProgressEvent = Schema.Union([
+export const GitActionProgressEvent = Schema.Union(
   GitActionStartedEvent,
   GitActionPhaseStartedEvent,
   GitActionHookStartedEvent,
@@ -281,5 +281,5 @@ export const GitActionProgressEvent = Schema.Union([
   GitActionHookFinishedEvent,
   GitActionFinishedEvent,
   GitActionFailedEvent,
-]);
+);
 export type GitActionProgressEvent = typeof GitActionProgressEvent.Type;

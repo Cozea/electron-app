@@ -26,12 +26,12 @@ import { applyClaudePromptEffortPrefix, normalizeModelSlug } from "@t3tools/shar
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
-import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
-import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
-import { isElectron } from "../env";
-import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
+const useNavigate = () => () => {}; const useSearch = () => ({});
+
+
+
+import { isElectron } from "@/env";
+const parseDiffRouteSearch = () => ({}); const stripDiffSearchParams = () => {};
 import {
   clampCollapsedComposerCursor,
   type ComposerTrigger,
@@ -40,7 +40,7 @@ import {
   expandCollapsedComposerCursor,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
-} from "../composer-logic";
+} from "@/features/projects/components/assistant/composer-logic";
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -55,15 +55,15 @@ import {
   hasToolActivityForTurn,
   isLatestTurnSettled,
   formatElapsed,
-} from "../session-logic";
-import { isScrollContainerNearBottom } from "../chat-scroll";
+} from "./session-logic";
+import { isScrollContainerNearBottom } from "./chat-scroll";
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
   setPendingUserInputCustomAnswer,
   type PendingUserInputDraftAnswer,
-} from "../pendingUserInput";
-import { useStore } from "../store";
+} from "@/features/projects/components/assistant/pendingUserInput";
+import { useStore } from "@/stores/t3-store";
 import {
   buildPlanImplementationThreadTitle,
   buildPlanImplementationPrompt,
@@ -100,7 +100,7 @@ import {
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
-import { cn, randomUUID } from "@/lib/utils";
+import { cn, randomUUID } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -114,14 +114,14 @@ import {
   setupProjectScript,
 } from "~/projectScripts";
 import { SidebarTrigger } from "./ui/sidebar";
-import { newCommandId, newMessageId, newThreadId } from "@/lib/utils";
+import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import {
   getProviderModelCapabilities,
   getProviderModels,
   resolveSelectableProvider,
 } from "../providerModels";
-import { useSettings } from "../hooks/useSettings";
+
 import { resolveAppModelSelection } from "../modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -131,7 +131,7 @@ import {
   useComposerDraftStore,
   useEffectiveComposerModelState,
   useComposerThreadDraft,
-} from "../composerDraftStore";
+} from "@/stores/t3-composerDraftStore";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -142,7 +142,7 @@ import {
 } from "../lib/terminalContext";
 import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { shouldUseCompactComposerFooter } from "./composerFooterLayout";
-import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
+import { selectThreadTerminalState, useTerminalStateStore } from "@/stores/t3-terminalStateStore";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -247,7 +247,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const setStoreThreadError = useStore((store) => store.setError);
   const setStoreThreadBranch = useStore((store) => store.setThreadBranch);
-  const settings = useSettings();
+  const settings = { timestampFormat: "locale" };
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
   );

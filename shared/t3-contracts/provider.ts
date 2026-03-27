@@ -25,13 +25,13 @@ import {
   RuntimeMode,
 } from "./orchestration";
 
-const ProviderSessionStatus = Schema.Literal([
+const ProviderSessionStatus = Schema.Literal(
   "connecting",
   "ready",
   "running",
   "error",
   "closed",
-]);
+);
 
 export const ProviderSession = Schema.Struct({
   provider: ProviderKind,
@@ -105,7 +105,7 @@ export const ProviderRespondToUserInputInput = Schema.Struct({
 });
 export type ProviderRespondToUserInputInput = typeof ProviderRespondToUserInputInput.Type;
 
-const ProviderEventKind = Schema.Literal(["session", "notification", "request", "error"]);
+const ProviderEventKind = Schema.Literal("session", "notification", "request", "error");
 
 export const ProviderEvent = Schema.Struct({
   id: EventId,

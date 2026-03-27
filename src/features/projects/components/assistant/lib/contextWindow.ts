@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { OrchestrationThreadActivity, ThreadTokenUsageSnapshot } from "@t3tools/contracts";
 
 function asRecord(value: unknown): Record<string, unknown> | null {

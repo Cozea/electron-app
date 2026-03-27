@@ -106,7 +106,7 @@ const tagRequestBody = <const Tag extends string, const Fields extends Schema.St
     { unsafePreserveChecks: true },
   );
 
-const WebSocketRequestBody = Schema.Union([
+const WebSocketRequestBody = Schema.Union(
   // Orchestration methods
   tagRequestBody(
     ORCHESTRATION_WS_METHODS.dispatchCommand,
@@ -151,7 +151,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
   tagRequestBody(WS_METHODS.serverGetSettings, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverUpdateSettings, Schema.Struct({ patch: ServerSettingsPatch })),
-]);
+);
 
 export const WebSocketRequest = Schema.Struct({
   id: TrimmedNonEmptyString,
@@ -223,24 +223,24 @@ export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   OrchestrationEvent,
 );
 
-export const WsPushChannelSchema = Schema.Literal([
+export const WsPushChannelSchema = Schema.Literal(
   WS_CHANNELS.gitActionProgress,
   WS_CHANNELS.serverWelcome,
   WS_CHANNELS.serverConfigUpdated,
   WS_CHANNELS.serverProvidersUpdated,
   WS_CHANNELS.terminalEvent,
   ORCHESTRATION_WS_CHANNELS.domainEvent,
-]);
+);
 export type WsPushChannelSchema = typeof WsPushChannelSchema.Type;
 
-export const WsPush = Schema.Union([
+export const WsPush = Schema.Union(
   WsPushServerWelcome,
   WsPushServerConfigUpdated,
   WsPushServerProvidersUpdated,
   WsPushGitActionProgress,
   WsPushTerminalEvent,
   WsPushOrchestrationDomainEvent,
-]);
+);
 export type WsPush = typeof WsPush.Type;
 
 export type WsPushMessage<C extends WsPushChannel> = Extract<WsPush, { channel: C }>;
@@ -255,5 +255,5 @@ export type WsPushEnvelopeBase = typeof WsPushEnvelopeBase.Type;
 
 // ── Union of all server → client messages ─────────────────────────────
 
-export const WsResponse = Schema.Union([WebSocketResponse, WsPush]);
+export const WsResponse = Schema.Union(WebSocketResponse, WsPush);
 export type WsResponse = typeof WsResponse.Type;

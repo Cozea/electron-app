@@ -1,5 +1,7 @@
 export type NativePreviewPlatform = 'ios'
 
+export type NativePreviewLaunchKind = 'expo' | 'react-native'
+
 export type NativePreviewRotation =
   | 'Portrait'
   | 'LandscapeLeft'
@@ -90,6 +92,29 @@ export interface NativePreviewStopSessionResult extends NativePreviewActionResul
 
 export interface NativePreviewCaptureScreenshotResult extends NativePreviewActionResult {
   filePath?: string
+}
+
+export interface NativePreviewResolveLaunchConfigRequest {
+  projectPath: string
+  platform: NativePreviewPlatform
+  preferredPort?: number | null
+  resetCache?: boolean
+}
+
+export interface NativePreviewLaunchConfig {
+  projectPath: string
+  platform: NativePreviewPlatform
+  kind: NativePreviewLaunchKind
+  port: number
+  label: string
+  command: string
+  env: Record<string, string>
+  runtimeDir: string
+  customMetroConfigPath: string | null
+}
+
+export interface NativePreviewResolveLaunchConfigResult extends NativePreviewActionResult {
+  config?: NativePreviewLaunchConfig
 }
 
 export function buildNativePreviewSessionKey(locator: NativePreviewSessionLocator): string {

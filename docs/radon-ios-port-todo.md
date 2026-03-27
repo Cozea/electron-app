@@ -14,26 +14,32 @@ This is the execution checklist for the iOS-first native preview port.
 
 ## Phase 2: RN runtime port
 
-- [ ] Create `native-preview-runtime/`
-- [ ] Port `runtime.js`
-- [ ] Port `react_devtools_agent.js`
-- [ ] Port `inspector_bridge.js`
-- [ ] Port `preview.js`
-- [ ] Port minimal `wrapper.js`
-- [ ] Port minimal `dimensions_observer.js`
-- [ ] Port minimal `orientation/`
+- [x] Create `native-preview-runtime/`
+- [x] Port `runtime.js`
+- [x] Port `react_devtools_agent.js`
+- [x] Port `inspector_bridge.js`
+- [x] Port `preview.js`
+- [x] Port minimal `wrapper.js`
+- [x] Port minimal `dimensions_observer.js`
+- [x] Port minimal `orientation/`
+- [x] Port minimal `inspector_availability.js`
+- [x] Port `rn-internals` version router and initial RN version files
+- [x] Replace temporary no-op tool-plugin fallbacks for `network` and `render_outlines`
+- [x] Copy `expo/` and `expo_router/` runtime modules needed by the original transformer
 
 ## Phase 3: Metro / Babel integration
 
-- [ ] Port minimal `metro_helpers.js`
-- [ ] Port minimal `babel_transformer.js`
-- [ ] Add Electron-side launch path for RN / Expo native mode
+- [x] Port minimal `metro_helpers.js`
+- [x] Port minimal `babel_transformer.js`
+- [x] Port `metro_config.js` and `metro_reporter.js`
+- [x] Add Electron-side launch path for RN / Expo native mode
 - [ ] Prove runtime injection in a sample RN app
 
 ## Phase 4: iOS helper MVP
 
-- [ ] Create `native/ios-preview-helper/`
-- [ ] Implement helper stdin/stdout protocol
+- [x] Create `native/ios-preview-helper/`
+- [x] Implement helper stdin/stdout protocol
+- [x] Wire `NativePreviewManager` to spawn the helper and relay protocol commands
 - [ ] Implement simulator attach by UDID
 - [ ] Implement frame callback registration
 - [ ] Implement `IOSurface -> CVPixelBuffer -> JPEG`

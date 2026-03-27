@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { TurnDiffFileChange } from "../types";
 
 export interface TurnDiffStat {

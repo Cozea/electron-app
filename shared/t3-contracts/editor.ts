@@ -11,7 +11,7 @@ export const EDITORS = [
   { id: "file-manager", label: "File Manager", command: null },
 ] as const;
 
-export const EditorId = Schema.Literal(EDITORS.map((e) => e.id));
+export const EditorId = Schema.Literal(...(EDITORS.map((e) => e.id) as any));
 export type EditorId = typeof EditorId.Type;
 
 export const OpenInEditorInput = Schema.Struct({

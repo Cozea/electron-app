@@ -19,22 +19,22 @@ const KeybindingsInvalidEntryIssue = Schema.Struct({
   index: Schema.Number,
 });
 
-export const ServerConfigIssue = Schema.Union([
+export const ServerConfigIssue = Schema.Union(
   KeybindingsMalformedConfigIssue,
   KeybindingsInvalidEntryIssue,
-]);
+);
 export type ServerConfigIssue = typeof ServerConfigIssue.Type;
 
 const ServerConfigIssues = Schema.Array(ServerConfigIssue);
 
-export const ServerProviderState = Schema.Literal(["ready", "warning", "error", "disabled"]);
+export const ServerProviderState = Schema.Literal("ready", "warning", "error", "disabled");
 export type ServerProviderState = typeof ServerProviderState.Type;
 
-export const ServerProviderAuthStatus = Schema.Literal([
+export const ServerProviderAuthStatus = Schema.Literal(
   "authenticated",
   "unauthenticated",
   "unknown",
-]);
+);
 export type ServerProviderAuthStatus = typeof ServerProviderAuthStatus.Type;
 
 export const ServerProviderModel = Schema.Struct({

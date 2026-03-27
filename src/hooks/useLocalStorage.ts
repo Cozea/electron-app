@@ -20,18 +20,18 @@ const isomorphicLocalStorage: Storage =
         };
       })();
 
-const decode = <T, E>(schema: Schema.Codec<T, E>, value: string) =>
-  Schema.decodeSync(Schema.fromJsonString(schema))(value);
+const decode = <T>(schema: Schema.Schema<T, any, never>, value: string) =>
+  Schema.decodeUnknownSync(Schema.parseJson(schema))(value);
 
-const encode = <T, E>(schema: Schema.Codec<T, E>, value: T) =>
-  Schema.encodeSync(Schema.fromJsonString(schema))(value);
+const encode = <T>(schema: Schema.Schema<T, any, never>, value: T) =>
+  Schema.encodeSync(Schema.parseJson(schema))(value);
 
-export const getLocalStorageItem = <T, E>(key: string, schema: Schema.Codec<T, E>): T | null => {
+export const getLocalStorageItem = <T>(key: string, schema: Schema.Schema<T, any, never>): T | null => {
   const item = isomorphicLocalStorage.getItem(key);
   return item ? decode(schema, item) : null;
 };
 
-export const setLocalStorageItem = <T, E>(key: string, value: T, schema: Schema.Codec<T, E>) => {
+export const setLocalStorageItem = <T>(key: string, value: T, schema: Schema.Schema<T, any, never>) => {
   const valueToSet = encode(schema, value);
   isomorphicLocalStorage.setItem(key, valueToSet);
 };
@@ -55,10 +55,10 @@ function dispatchLocalStorageChange(key: string) {
   );
 }
 
-export function useLocalStorage<T, E>(
+export function useLocalStorage<T>(
   key: string,
   initialValue: T,
-  schema: Schema.Codec<T, E>,
+  schema: Schema.Schema<T, any, never>,
 ): [T, (value: T | ((val: T) => T)) => void] {
   // Get the initial value from localStorage or use the provided initialValue
   const [storedValue, setStoredValue] = useState<T>(() => {
