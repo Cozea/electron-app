@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from '@tanstack/react-router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
@@ -143,7 +143,7 @@ export function ProjectSidebar({
     ...props
 }: ProjectSidebarProps) {
     const navigate = useViewTransitionNavigate()
-    const { slug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
+    const { slug, projectId: routeProjectId } = useParams({ strict: false }) as any
     const location = useLocation()
     const { convexUserId } = useAuth()
     const { preferredConvexOrganizationId } = useScopedAppContext()

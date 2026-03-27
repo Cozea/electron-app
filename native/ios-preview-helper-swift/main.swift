@@ -15,11 +15,25 @@ struct Config {
 
 final class ProtocolIO {
   private let queue = DispatchQueue(label: "cozea.ios-preview-helper.protocol")
+  private let outputFd = FileHandle.standardOutput.fileDescriptor
 
   func emit(_ line: String) {
     queue.sync {
-      FileHandle.standardOutput.write(Data((line + "\n").utf8))
-      fflush(stdout)
+      let data = Data((line + "\n").utf8)
+      data.withUnsafeBytes { bytes in
+        guard var baseAddress = bytes.baseAddress else {
+          return
+        }
+        var remaining = bytes.count
+        while remaining > 0 {
+          let written = Darwin.write(outputFd, baseAddress, remaining)
+          if written <= 0 {
+            break
+          }
+          remaining -= written
+          baseAddress = baseAddress.advanced(by: written)
+        }
+      }
     }
   }
 }
@@ -129,6 +143,8 @@ Content-Type: multipart/x-mixed-replace; boundary=frame\r
 }
 
 final class SimulatorBridge {
+  private static let stateQueueKey = DispatchSpecificKey<Void>()
+
   private let config: Config
   private let io: ProtocolIO
   private let mjpegServer: MjpegServer
@@ -148,40 +164,56 @@ final class SimulatorBridge {
   private var surfacePollTimer: DispatchSourceTimer?
   private let stateQueue = DispatchQueue(label: "cozea.ios-preview-helper.state")
 
+  private struct BootstrapResult {
+    let context: AnyObject
+    let device: AnyObject
+    let descriptor: AnyObject
+    let screen: AnyObject
+    let screenUUID: String
+    let screenID: Int
+  }
+
   init(config: Config, io: ProtocolIO) throws {
     self.config = config
     self.io = io
+    self.stateQueue.setSpecific(key: Self.stateQueueKey, value: ())
+    io.emit("info stage init_start")
     self.mjpegServer = try MjpegServer()
+    io.emit("info stage mjpeg_server_ready")
 
     guard dlopen(simulatorKitPath, RTLD_NOW) != nil else {
       throw HelperError("failed to load SimulatorKit at \(simulatorKitPath)")
     }
+    io.emit("info stage simulatorkit_loaded")
 
-    let context = try SimulatorBridge.makeServiceContext()
-    let deviceSet = try SimulatorBridge.defaultDeviceSet(context: context)
-    let device = try SimulatorBridge.findDevice(deviceSet: deviceSet, udid: config.deviceId)
-    try SimulatorBridge.waitUntilBooted(device: device, deviceId: config.deviceId)
+    let bootstrap = try SimulatorBridge.bootstrap(config: config, io: io)
 
-    let descriptor = try SimulatorBridge.findFramebufferServerDescriptor(device: device)
-    let screen = try SimulatorBridge.enumerateScreen(descriptor: descriptor, targetScreenID: radonTargetScreenID)
-    let screenUUID = try SimulatorBridge.extractUUID(from: screen)
-    let screenID = try SimulatorBridge.readScreenID(from: screen)
-
-    self.context = context
-    self.device = device
-    self.descriptor = descriptor
-    self.screen = screen
-    self.screenUUID = screenUUID
-    self.screenID = screenID
+    self.context = bootstrap.context
+    self.device = bootstrap.device
+    self.descriptor = bootstrap.descriptor
+    self.screen = bootstrap.screen
+    self.screenUUID = bootstrap.screenUUID
+    self.screenID = bootstrap.screenID
 
     io.emit("ready \(sanitize(config.deviceId))")
-    io.emit("info stream_url \(sanitize(mjpegServer.url.absoluteString))")
+    io.emit("info stage post_ready_start")
+    let streamURL = mjpegServer.url.absoluteString
+    io.emit("info stage stream_url_value_ready")
+    io.emit("info stream_url \(sanitize(streamURL))")
     io.emit("info selected_screen_id \(screenID)")
+    io.emit("info stage emit_display_metadata_start")
     emitDisplayMetadata()
+    io.emit("info stage emit_display_metadata_done")
 
+    io.emit("info stage register_surface_callbacks_start")
     registerSurfaceCallbacks()
+    io.emit("info stage register_surface_callbacks_done")
+    io.emit("info stage register_display_callbacks_start")
     registerDisplayCallbacks()
+    io.emit("info stage register_display_callbacks_done")
+    io.emit("info stage start_surface_polling_start")
     startSurfacePolling()
+    io.emit("info stage start_surface_polling_done")
   }
 
   func streamURL() -> String {
@@ -208,6 +240,15 @@ final class SimulatorBridge {
 
   func respondNotImplemented(_ line: String) {
     io.emit("error runtime not_implemented:\(sanitize(line))")
+  }
+
+  func rotate(rotation: String) {
+    do {
+      let direction = try Self.purpleRotationDirection(for: rotation)
+      try sendPurpleRotate(direction: direction)
+    } catch {
+      io.emit("error runtime \(sanitize(String(describing: error)))")
+    }
   }
 
   private func registerSurfaceCallbacks() {
@@ -327,18 +368,26 @@ final class SimulatorBridge {
 
   private func emitDisplayMetadata() {
     emitInfoOnce("screen_id_\(screenID)")
-    if let displaySize = screen.perform(NSSelectorFromString("displaySize"))?.takeUnretainedValue() {
-      emitInfoOnce("display_size_\(sanitize(String(describing: displaySize)))")
-    }
   }
 
   private func emitInfoOnce(_ key: String) {
-    stateQueue.sync {
+    syncOnStateQueue {
       guard !informationalEvents.contains(key) else {
         return
       }
       informationalEvents.insert(key)
       io.emit("info \(sanitize(key))")
+    }
+  }
+
+  private func syncOnStateQueue(_ block: () -> Void) {
+    if DispatchQueue.getSpecific(key: Self.stateQueueKey) != nil {
+      block()
+      return
+    }
+
+    stateQueue.sync {
+      block()
     }
   }
 
@@ -394,16 +443,97 @@ final class SimulatorBridge {
     return data as Data
   }
 
+  private func sendPurpleRotate(direction: Int32) throws {
+    var message = [UInt8](repeating: 0, count: 0x58)
+
+    try writeUInt32(0x20032, at: 0x18, into: &message)
+    try writeUInt32(0x4, at: 0x48, into: &message)
+    try writeUInt32(UInt32(bitPattern: direction), at: 0x4c, into: &message)
+
+    let selector = NSSelectorFromString("lookup:error:")
+    typealias LookupFn = @convention(c) (AnyObject, Selector, NSString, UnsafeMutablePointer<AnyObject?>?) -> mach_port_name_t
+    var lookupError: AnyObject?
+    let lookup = unsafeBitCast(device.method(for: selector), to: LookupFn.self)
+    let remotePort = lookup(device, selector, "PurpleWorkspacePort" as NSString, &lookupError)
+    if let lookupError {
+      throw HelperError("purple_lookup_failed:\(sanitize(String(describing: lookupError)))")
+    }
+
+    try writeUInt32(0x13, at: 0x0, into: &message)
+    try writeUInt32(0x6c, at: 0x4, into: &message)
+    try writeUInt32(remotePort, at: 0x8, into: &message)
+    try writeUInt32(0, at: 0xc, into: &message)
+    try writeUInt32(0, at: 0x10, into: &message)
+    try writeUInt32(0x7b, at: 0x14, into: &message)
+
+    let result: kern_return_t = message.withUnsafeMutableBytes { buffer in
+      guard let header = buffer.baseAddress?.assumingMemoryBound(to: mach_msg_header_t.self) else {
+        return KERN_INVALID_ARGUMENT
+      }
+      return mach_msg_send(header)
+    }
+
+    guard result == KERN_SUCCESS else {
+      throw HelperError("purple_rotate_send_failed:\(result)")
+    }
+  }
+
+  private static func purpleRotationDirection(for rotation: String) throws -> Int32 {
+    switch rotation {
+    case "Portrait":
+      return 1
+    case "PortraitUpsideDown":
+      return 2
+    case "LandscapeLeft":
+      return 3
+    case "LandscapeRight":
+      return 4
+    default:
+      throw HelperError("unsupported_rotation:\(rotation)")
+    }
+  }
+
+  private func writeUInt32(_ value: UInt32, at offset: Int, into bytes: inout [UInt8]) throws {
+    let end = offset + MemoryLayout<UInt32>.size
+    guard offset >= 0, end <= bytes.count else {
+      throw HelperError("out_of_bounds_write:\(offset)")
+    }
+    withUnsafeBytes(of: value) { rawBytes in
+      for (index, byte) in rawBytes.enumerated() {
+        bytes[offset + index] = byte
+      }
+    }
+  }
+
   private static func makeServiceContext() throws -> AnyObject {
     guard let cls = NSClassFromString("SimServiceContext") as? NSObject.Type else {
       throw HelperError("missing_SimServiceContext")
     }
+
+    let developerDir = "/Applications/Xcode.app/Contents/Developer" as NSString
+    let sharedSelector = NSSelectorFromString("sharedServiceContextForDeveloperDir:error:")
+    if cls.responds(to: sharedSelector) {
+      typealias SharedFn = @convention(c) (AnyClass, Selector, NSString, UnsafeMutablePointer<AnyObject?>?) -> Unmanaged<AnyObject>?
+      var sharedError: AnyObject?
+      let sharedFn = unsafeBitCast(cls.method(for: sharedSelector), to: SharedFn.self)
+      if let context = sharedFn(cls, sharedSelector, developerDir, &sharedError)?.takeRetainedValue() {
+        return context
+      }
+      if let sharedError {
+        throw HelperError("failed_to_load_shared_sim_service_context:\(sanitize(String(describing: sharedError)))")
+      }
+      throw HelperError("failed_to_load_shared_sim_service_context")
+    }
+
     let raw = cls.perform(NSSelectorFromString("alloc"))!.takeUnretainedValue()
     let initSelector = NSSelectorFromString("initWithDeveloperDir:connectionType:error:")
     typealias InitFn = @convention(c) (AnyObject, Selector, NSString, Int, UnsafeMutablePointer<AnyObject?>?) -> Unmanaged<AnyObject>?
     var initError: AnyObject?
     let initFn = unsafeBitCast(raw.method(for: initSelector), to: InitFn.self)
-    guard let context = initFn(raw, initSelector, "/Applications/Xcode.app/Contents/Developer" as NSString, 0, &initError)?.takeRetainedValue() else {
+    guard let context = initFn(raw, initSelector, developerDir, 0, &initError)?.takeRetainedValue() else {
+      if let initError {
+        throw HelperError("failed_to_initialize_sim_service_context:\(sanitize(String(describing: initError)))")
+      }
       throw HelperError("failed_to_initialize_sim_service_context")
     }
 
@@ -412,9 +542,70 @@ final class SimulatorBridge {
     var connectError: AnyObject?
     let connectFn = unsafeBitCast(context.method(for: connectSelector), to: ConnectFn.self)
     guard connectFn(context, connectSelector, &connectError) else {
+      if let connectError {
+        throw HelperError("failed_to_connect_sim_service_context:\(sanitize(String(describing: connectError)))")
+      }
       throw HelperError("failed_to_connect_sim_service_context")
     }
     return context
+  }
+
+  private static func bootstrap(config: Config, io: ProtocolIO) throws -> BootstrapResult {
+    let maxAttempts = 3
+    var lastError: Error?
+
+    for attempt in 1...maxAttempts {
+      if attempt > 1 {
+        io.emit("info bootstrap_retry_\(attempt)")
+        Thread.sleep(forTimeInterval: 1.0)
+      }
+
+      do {
+        io.emit("info stage make_service_context_start")
+        let context = try makeServiceContext()
+        io.emit("info stage make_service_context_done")
+        io.emit("info stage default_device_set_start")
+        let deviceSet = try defaultDeviceSet(context: context)
+        io.emit("info stage default_device_set_done")
+        io.emit("info stage find_device_start")
+        let device = try findDevice(deviceSet: deviceSet, udid: config.deviceId)
+        io.emit("info stage find_device_done")
+        io.emit("info stage wait_until_booted_start")
+        let bootedDevice = try waitUntilBooted(
+          deviceSet: deviceSet,
+          initialDevice: device,
+          deviceId: config.deviceId,
+          io: io
+        )
+        io.emit("info stage wait_until_booted_done")
+
+        io.emit("info stage find_framebuffer_descriptor_start")
+        let descriptor = try findFramebufferServerDescriptor(device: bootedDevice)
+        io.emit("info stage find_framebuffer_descriptor_done")
+        io.emit("info stage enumerate_screen_start")
+        let screen = try enumerateScreen(descriptor: descriptor, targetScreenID: radonTargetScreenID)
+        io.emit("info stage enumerate_screen_done")
+        io.emit("info stage extract_screen_uuid_start")
+        let screenUUID = try extractUUID(from: screen)
+        io.emit("info stage extract_screen_uuid_done")
+        io.emit("info stage read_screen_id_start")
+        let screenID = try readScreenID(from: screen)
+        io.emit("info stage read_screen_id_done")
+
+        return BootstrapResult(
+          context: context,
+          device: bootedDevice,
+          descriptor: descriptor,
+          screen: screen,
+          screenUUID: screenUUID,
+          screenID: screenID
+        )
+      } catch {
+        lastError = error
+      }
+    }
+
+    throw lastError ?? HelperError("bootstrap_failed")
   }
 
   private static func defaultDeviceSet(context: AnyObject) throws -> AnyObject {
@@ -429,8 +620,8 @@ final class SimulatorBridge {
   }
 
   private static func findDevice(deviceSet: AnyObject, udid: String) throws -> AnyObject {
-    guard let devices = deviceSet.perform(NSSelectorFromString("devices"))?.takeUnretainedValue() as? NSArray else {
-      throw HelperError("failed_to_read_simulator_devices")
+    guard let devices = deviceSet.perform(NSSelectorFromString("availableDevices"))?.takeUnretainedValue() as? NSArray else {
+      throw HelperError("failed_to_read_available_simulator_devices")
     }
 
     for item in devices {
@@ -446,20 +637,36 @@ final class SimulatorBridge {
     throw HelperError("simulator_not_found:\(udid)")
   }
 
-  private static func waitUntilBooted(device: AnyObject, deviceId: String) throws {
+  private static func waitUntilBooted(deviceSet: AnyObject, initialDevice: AnyObject, deviceId: String, io: ProtocolIO) throws -> AnyObject {
     let stateSelector = NSSelectorFromString("state")
     typealias StateFn = @convention(c) (AnyObject, Selector) -> Int
-    let stateFn = unsafeBitCast(device.method(for: stateSelector), to: StateFn.self)
-
     let deadline = Date().addingTimeInterval(30)
+    var emittedStates = Set<String>()
+    var currentDevice = initialDevice
     while Date() < deadline {
-      if stateFn(device, stateSelector) == 3 {
-        return
+      if let refreshedDevice = try? findDevice(deviceSet: deviceSet, udid: deviceId) {
+        if refreshedDevice !== currentDevice {
+          currentDevice = refreshedDevice
+          io.emit("info boot_device_refreshed")
+        }
       }
 
-      let stateString = device.perform(NSSelectorFromString("stateString"))?.takeUnretainedValue()
-      if String(describing: stateString as Any) == "Booted" {
-        return
+      let stateFn = unsafeBitCast(currentDevice.method(for: stateSelector), to: StateFn.self)
+      let numericState = stateFn(currentDevice, stateSelector)
+      let stateStringValue = currentDevice.perform(NSSelectorFromString("stateString"))?.takeUnretainedValue()
+      let stateString = sanitize(String(describing: stateStringValue as Any))
+      let stateKey = "boot_state_\(numericState)_\(stateString)"
+      if !emittedStates.contains(stateKey) {
+        emittedStates.insert(stateKey)
+        io.emit("info \(stateKey)")
+      }
+
+      if numericState == 3 {
+        return currentDevice
+      }
+
+      if stateString == "Booted" {
+        return currentDevice
       }
       Thread.sleep(forTimeInterval: 0.5)
     }
@@ -527,21 +734,14 @@ final class SimulatorBridge {
   }
 
   private static func readScreenID(from screen: AnyObject) throws -> Int {
-    guard let properties = screen.perform(NSSelectorFromString("screenProperties"))?.takeUnretainedValue() as AnyObject?,
-          let value = properties.perform(NSSelectorFromString("screenID"))?.takeUnretainedValue() else {
+    guard let properties = screen.perform(NSSelectorFromString("screenProperties"))?.takeUnretainedValue() as AnyObject? else {
       throw HelperError("failed_to_read_screen_id")
     }
 
-    if let number = value as? NSNumber {
-      return number.intValue
-    }
-
-    let description = String(describing: value as AnyObject)
-    if let intValue = Int(description) {
-      return intValue
-    }
-
-    throw HelperError("invalid_screen_id:\(description)")
+    let selector = NSSelectorFromString("screenID")
+    typealias ScreenIDFn = @convention(c) (AnyObject, Selector) -> Int32
+    let function = unsafeBitCast(properties.method(for: selector), to: ScreenIDFn.self)
+    return Int(function(properties, selector))
   }
 
   private static func extractUUID(from object: AnyObject) throws -> String {
@@ -652,6 +852,13 @@ do {
           bridge.screenshot(jobId: String(requestId))
         } else {
           io.emit("error protocol missing_screenshot_id")
+        }
+      case "rotate":
+        let rotation = parts.dropFirst().joined(separator: " ")
+        if rotation.isEmpty {
+          io.emit("error protocol missing_rotation")
+        } else {
+          bridge.rotate(rotation: rotation)
         }
       default:
         bridge.respondNotImplemented(trimmed)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { } from '@tanstack/react-router'
+import { useSearchParamsPolyfill } from '@/lib/useSearchParamsPolyfill'
 import { X, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useFileTabsStore, pathsReferToSameFile } from "@/stores/useFileTabsStore"
@@ -18,7 +19,7 @@ const EMPTY_ARRAY: string[] = []
 
 export function EditorTabs() {
     const { project, slugParam, projectIdParam } = useAccessibleProject()
-    const [searchParams, setSearchParams] = useSearchParams()
+    const [searchParams, setSearchParams] = useSearchParamsPolyfill()
     const projectId = project?.slug ?? slugParam ?? projectIdParam ?? ''
 
     const filePath = searchParams.get('path')
@@ -156,17 +157,17 @@ export function EditorTabs() {
 
         if (activeFile) {
             if (!urlPath || !pathsReferToSameFile(activeFile, urlPath)) {
-                const nextParams = new URLSearchParams(searchParams)
+                const nextParams = new URLSearchParams(searchParams?.entries ? searchParams.entries() as any : [])
                 nextParams.set('path', activeFile)
-                setSearchParams(nextParams, { replace: true })
+                setSearchParams(Object.fromEntries(nextParams.entries()) as any)
             }
             return
         }
 
         if (urlPath) {
-            const nextParams = new URLSearchParams(searchParams)
+            const nextParams = new URLSearchParams(searchParams as any)
             nextParams.delete('path')
-            setSearchParams(nextParams, { replace: true })
+            setSearchParams(Object.fromEntries(nextParams.entries()) as any)
         }
     }, [activeFile, filePath, projectId, searchParams, setSearchParams])
 

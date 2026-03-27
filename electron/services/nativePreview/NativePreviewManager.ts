@@ -103,6 +103,41 @@ function canUseSwiftc(): boolean {
   return result.status === 0
 }
 
+function ensureIosSimulatorBooted(deviceId: string): { success: true } | { success: false; error: string } {
+  const openResult = spawnSync(
+    'open',
+    ['-a', 'Simulator', '--args', '-CurrentDeviceUDID', deviceId],
+    {
+      stdio: 'ignore',
+    }
+  )
+  if (openResult.status !== 0) {
+    return {
+      success: false,
+      error: 'Failed to open Simulator.app for native preview.',
+    }
+  }
+
+  const bootResult = spawnSync('xcrun', ['simctl', 'boot', deviceId], {
+    stdio: 'ignore',
+  })
+
+  const bootStatusResult = spawnSync('xcrun', ['simctl', 'bootstatus', deviceId, '-b'], {
+    stdio: 'ignore',
+  })
+  if (bootStatusResult.status !== 0) {
+    return {
+      success: false,
+      error:
+        bootResult.status !== 0
+          ? `Failed to boot iOS simulator ${deviceId}.`
+          : `Timed out waiting for iOS simulator ${deviceId} boot completion.`,
+    }
+  }
+
+  return { success: true }
+}
+
 function ensureSwiftHelperBuilt(): { success: true; executablePath: string } | { success: false; error: string } {
   const helperRoot = resolveSwiftHelperRoot()
   const sourcePath = path.join(helperRoot, 'main.swift')
@@ -116,8 +151,13 @@ function ensureSwiftHelperBuilt(): { success: true; executablePath: string } | {
     }
   }
 
-  if (fs.existsSync(executablePath)) {
-    return { success: true, executablePath }
+  const executableExists = fs.existsSync(executablePath)
+  if (executableExists) {
+    const sourceStat = fs.statSync(sourcePath)
+    const executableStat = fs.statSync(executablePath)
+    if (executableStat.mtimeMs >= sourceStat.mtimeMs) {
+      return { success: true, executablePath }
+    }
   }
 
   fs.mkdirSync(buildDir, { recursive: true })
@@ -445,6 +485,13 @@ export class NativePreviewManager {
     const baseArgs = ['ios', '--udid', request.deviceId]
     if (request.deviceSetPath) {
       baseArgs.push('--device-set-path', request.deviceSetPath)
+    }
+
+    if (process.platform === 'darwin') {
+      const bootResult = ensureIosSimulatorBooted(request.deviceId)
+      if (!bootResult.success) {
+        return bootResult
+      }
     }
 
     if (process.platform === 'darwin') {

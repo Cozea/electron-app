@@ -40,15 +40,19 @@ This is the execution checklist for the iOS-first native preview port.
 - [x] Create `native/ios-preview-helper/`
 - [x] Implement helper stdin/stdout protocol
 - [x] Wire `NativePreviewManager` to spawn the helper and relay protocol commands
-- [ ] Implement simulator attach by UDID
-- [ ] Implement frame callback registration
-- [ ] Implement `IOSurface -> CVPixelBuffer -> JPEG`
-- [ ] Implement MJPEG server
+- [x] Implement simulator attach by UDID
+- [x] Implement frame callback registration
+- [x] Implement `IOSurface -> CVPixelBuffer -> JPEG`
+- [x] Implement MJPEG server
 - [ ] Implement touch injection
 - [ ] Implement key injection
 - [ ] Implement button injection
 - [ ] Implement rotation
-- [ ] Implement screenshot save/copy
+- [x] Implement screenshot save
+- [ ] Implement screenshot copy
+
+Current note:
+- rotation is implemented in the Swift helper on the recovered Purple workspace path, but it stays unchecked until live validation is stable on this host; current blocker is intermittent private `SimDevice` boot-state desync during helper startup
 
 ## Phase 5: Embedded renderer preview
 

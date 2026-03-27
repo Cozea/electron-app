@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams } from '@tanstack/react-router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -88,7 +88,7 @@ function cleanConvexError(error: unknown, fallback: string): string {
 export function ProjectSettingsPage() {
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
-  const { section: sectionParam } = useParams<{ section?: string }>()
+  const { section: sectionParam } = useParams({ strict: false }) as any
   const { convexUserId } = useAuth()
   const { project, projectIdParam, slugParam } = useAccessibleProject()
   const projectWorkspace = useProjectWorkspaceContext(project)

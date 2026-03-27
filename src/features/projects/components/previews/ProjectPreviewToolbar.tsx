@@ -150,7 +150,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   const showEditorPicker = availableEditors.length > 1
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider >
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {serverRunning && useCredentiallessPreview ? (

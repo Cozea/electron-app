@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useState, type MouseEvent } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from '@tanstack/react-router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft } from 'lucide-react'
 import { useConvex, useQuery, useMutation } from 'convex/react'

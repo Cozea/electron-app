@@ -1,6 +1,7 @@
 const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-4 w-full'}`} />;
 import { memo, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { } from '@tanstack/react-router'
+import { useSearchParamsPolyfill } from '@/lib/useSearchParamsPolyfill'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -499,7 +500,7 @@ const ChangeComments = memo(function ChangeComments({
 ChangeComments.displayName = "ChangeComments"
 
 export function ChangesPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParamsPolyfill()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
@@ -775,9 +776,9 @@ export function ChangesPage() {
                         size="sm"
                         className="h-6 px-2 text-[11px]"
                         onClick={() => {
-                          const nextParams = new URLSearchParams(searchParams)
+                          const nextParams = new URLSearchParams(searchParams?.entries ? searchParams.entries() as any : [])
                           nextParams.delete('userId')
-                          setSearchParams(nextParams, { replace: true })
+                          setSearchParams(Object.fromEntries(nextParams.entries()) as any)
                         }}
                       >
                         Clear filter

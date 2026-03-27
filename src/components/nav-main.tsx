@@ -1,5 +1,5 @@
 import { memo, type ComponentType, type MouseEvent as ReactMouseEvent, useCallback, useRef } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation } from '@tanstack/react-router'
 
 import {
   SidebarGroup,

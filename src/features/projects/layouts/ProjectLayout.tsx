@@ -1,7 +1,7 @@
 "use client"
 
 import { type ReactNode, memo, useRef, useState, useCallback, useEffect, useMemo } from "react"
-import { Outlet, useLocation, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useParams } from '@tanstack/react-router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
@@ -212,7 +212,7 @@ export function ProjectLayout({
     const { preferredConvexOrganizationId, workspaceName, scopeKind } = useScopedAppContext()
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
-    const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
+    const { slug: routeSlug, projectId: routeProjectId } = useParams({ strict: false }) as any
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
     const initialSyncMode = locationState?.syncMode ?? null
 

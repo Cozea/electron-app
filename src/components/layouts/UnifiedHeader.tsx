@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Link } from "react-router-dom"
+import { Link } from '@tanstack/react-router'
 import {
   CheckCircle2,
   ChevronDown,

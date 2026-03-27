@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, } from '@tanstack/react-router'
+import { useSearchParamsPolyfill } from '@/lib/useSearchParamsPolyfill'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -101,7 +102,7 @@ function resolvePreviewEmbedModeForRun(
 export function ProjectPagesPage() {
     const { convexUserId } = useAuth()
     const location = useLocation()
-    const [searchParams, setSearchParams] = useSearchParams()
+    const [searchParams, setSearchParams] = useSearchParamsPolyfill()
     const { project } = useAccessibleProject()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
@@ -173,7 +174,7 @@ export function ProjectPagesPage() {
     })
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
-        const focus = searchParams.get('focus')
+        const focus = searchParams.get('focus') as string
         return focus !== null ? parseInt(focus, 10) : null
     })
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
@@ -515,8 +516,8 @@ export function ProjectPagesPage() {
 
     // Handle route/focus query params from external navigation
     useEffect(() => {
-        const routeParam = searchParams.get('route')
-        const focus = searchParams.get('focus')
+        const routeParam = searchParams.get('route') as string
+        const focus = searchParams.get('focus') as string
         if (routes.length > 0 && (routeParam !== null || focus !== null)) {
             let resolvedIndex: number | null = null
 
@@ -541,10 +542,10 @@ export function ProjectPagesPage() {
                 setFocusedPageIndex(resolvedIndex)
             }
 
-            const nextParams = new URLSearchParams(searchParams)
+            const nextParams = new URLSearchParams(searchParams?.entries ? searchParams.entries() as any : [])
             nextParams.delete('route')
             nextParams.delete('focus')
-            setSearchParams(nextParams, { replace: true })
+            setSearchParams(Object.fromEntries(nextParams.entries()) as any)
         }
     }, [searchParams, routes, setSearchParams])
 

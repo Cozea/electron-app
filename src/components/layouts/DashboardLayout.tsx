@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect } from "react"
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,
@@ -151,7 +151,7 @@ function DashboardLayoutContent({
   useEffect(() => {
     if (!isSettingsWindow) return
     if (normalizedPath.startsWith('/settings/')) return
-    navigate(PERSONAL_ACCOUNT_ROUTE, { replace: true })
+    navigate({ to: PERSONAL_ACCOUNT_ROUTE, replace: true })
   }, [isSettingsWindow, navigate, normalizedPath])
 
   if (isSettingsWindow) {

@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useLocation } from "react-router-dom"
+import { useLocation } from '@tanstack/react-router'
 
 import { useAuth } from "@/contexts/AuthContext"
 import { resolveScope, type ResolvedScope } from "@/lib/scope/resolveScope"

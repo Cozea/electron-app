@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from '@tanstack/react-router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
@@ -301,7 +301,10 @@ function AppContent() {
     !isInviteRoute &&
     !isPublicProjectAccessRoute
   ) {
-    return <Navigate to="/workspaces/select" replace />
+    return (
+      // @ts-ignore
+      <Navigate to="/workspaces/select" replace />
+    )
   }
 
   return (

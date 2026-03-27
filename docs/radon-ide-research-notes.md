@@ -4117,6 +4117,24 @@ This is direct evidence that the iOS preview ingest path is:
 
 One practical implication for our Swift helper: if we simply take the first enumerated screen proxy and start polling it, we may miss the actual Radon behavior. The shipped helper keeps an explicit target-screen identity in its capture context and gates callback registration on `screenProperties.screenID` equality.
 
+#### Port-validation findings against the recovered iOS path
+
+The local Swift helper was then brought into alignment with the recovered behavior and exercised against a real booted simulator. The important findings were:
+
+- boot validation had to use primitive `state == 3`, not an Objective-C object read of `stateString`
+- device lookup had to use `availableDevices`, not `devices`
+- on this host, resolving a `SimDevice` once and then waiting was not sufficient; re-resolving the device from `availableDevices` during the boot wait loop was necessary to avoid a stale object that still reported `Shutdown`
+- `screenID` also had to be treated as a primitive integer return, not an Objective-C object payload
+
+Once those alignments were made, the local helper reached:
+
+- `ready <udid>`
+- `stream_ready http://127.0.0.1:<port>/stream.mjpeg`
+
+with a real selected screen ID of `1`.
+
+This is important because it upgrades the iOS path from “architecturally plausible” to “locally reproduced enough to emit a live MJPEG stream through the same private-framework shape.”
+
 ### iOS simulator backend: stricter recovered method contracts
 
 The direct `lldb` disassembly closes several remaining gaps that were previously still phrased as “strong inference”.
@@ -4145,6 +4163,40 @@ Combined with `sendPurpleMessage:` at `0x100335f30`, the recovered behavior is:
 So rotation is now best described as:
 
 - a fixed Purple workspace message template
+
+#### Port alignment: current iOS helper rotate path
+
+The local Swift helper now mirrors the recovered native rotate path directly:
+
+- allocates a `0x58`-byte message buffer
+- writes:
+  - `0x13` at offset `0x0`
+  - `0x6c` at offset `0x4`
+  - looked-up `PurpleWorkspacePort` at offset `0x8`
+  - `0` at offsets `0xc` and `0x10`
+  - `0x7b` at offset `0x14`
+  - `0x20032` at offset `0x18`
+  - `0x4` at offset `0x48`
+  - requested direction at offset `0x4c`
+- sends the full buffer with `mach_msg_send`
+
+Current helper mapping is:
+
+- `Portrait -> 1`
+- `PortraitUpsideDown -> 2`
+- `LandscapeLeft -> 3`
+- `LandscapeRight -> 4`
+
+This mapping is not just guessed from generic iOS enums. It is the current best implementation mapping based on:
+
+- the recovered fixed Purple message path in the shipped helper
+- the extension-side translation table where:
+  - `UIInterfaceOrientationPortrait -> Portrait`
+  - `UIInterfaceOrientationPortraitUpsideDown -> PortraitUpsideDown`
+  - `UIInterfaceOrientationLandscapeLeft -> LandscapeRight`
+  - `UIInterfaceOrientationLandscapeRight -> LandscapeLeft`
+
+The remaining gap is live end-to-end confirmation of the rotation effect on this machine. Repeated rotate probes hit a private-service lifecycle flake where `simctl` still reports the simulator as `Booted`, but the private `SimDevice` resolved through `SimServiceContext` intermittently reverts to `state == 1 / Shutdown` during helper startup. So the rotate implementation is now aligned to the recovered native contract, but runtime validation is still blocked intermittently by simulator-service state inconsistency rather than by the message layout itself.
 - with one variable field: the requested direction value
 
 #### Input builder behavior is now concrete enough to mirror

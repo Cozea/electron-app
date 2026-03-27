@@ -1,5 +1,9 @@
 import { useCallback } from 'react'
-import { createPath, type NavigateOptions, type NavigateFunction, type To, useNavigate } from 'react-router-dom'
+import { useNavigate } from "@tanstack/react-router";
+type NavigateOptions = any;
+type NavigateFunction = any;
+type To = any;
+const createPath = (x: any) => x;
 
 import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'

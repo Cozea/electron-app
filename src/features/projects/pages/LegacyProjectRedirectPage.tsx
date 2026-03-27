@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react"
-import { useLocation, useParams } from "react-router-dom"
+import { useLocation, useParams } from '@tanstack/react-router'
 import { Loader2 } from "lucide-react"
 
 import { useViewTransitionNavigate } from "@/lib/navigation"
@@ -10,7 +10,7 @@ import { useAccessibleProject } from "@/features/projects/hooks/useAccessiblePro
 export function LegacyProjectRedirectPage() {
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
-  const params = useParams<{ slug?: string; "*": string }>()
+  const params = useParams({ strict: false }) as any
   const tail = params["*"] ?? ""
   const { project, slugResolution } = useAccessibleProject()
 

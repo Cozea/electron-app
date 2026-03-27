@@ -12,7 +12,7 @@ For their chat input and code editors, T3Code uses **Lexical** (Facebook's incre
 
 ### 3. Lightning-Fast Rust Tooling (`oxlint` & `oxfmt`)
 Our app currently uses standard ESLint and Prettier, which can get incredibly slow as the monorepo grows. T3Code has entirely migrated to **Oxc** (`oxlint` and `oxfmt`). These are written in Rust and are literally 50x to 100x faster than ESLint/Prettier, providing instant linting feedback on save.
-* **Action:** Rip out our `.eslintrc` and `prettier` configs and swap them for `oxlint`.
+* **Status:** ✅ Migrated successfully. The project now uses `oxlint` and `oxfmt`.
 
 ### 4. Headless Accessibility (`@base-ui/react`)
 T3Code uses the brand new `@base-ui/react` (released by the Material UI team). It provides highly accessible, unstyled primitives (dropdowns, popovers, tooltips) that are much lighter and faster than Radix/shadcn, giving ultimate control over the Tailwind styling without fighting the DOM.
