@@ -6,6 +6,7 @@ import type {
   NativePreviewActionResult,
   NativePreviewCaptureScreenshotRequest,
   NativePreviewCaptureScreenshotResult,
+  NativePreviewListIosSimulatorsResult,
   NativePreviewResolveLaunchConfigRequest,
   NativePreviewResolveLaunchConfigResult,
   NativePreviewRotateRequest,
@@ -1359,6 +1360,7 @@ export interface ElectronAPI {
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
   }
   nativePreview: {
+    listIosSimulators: () => Promise<NativePreviewListIosSimulatorsResult>
     resolveLaunchConfig: (options: NativePreviewResolveLaunchConfigRequest) => Promise<NativePreviewResolveLaunchConfigResult>
     startSession: (options: NativePreviewStartSessionRequest) => Promise<NativePreviewStartSessionResult>
     stopSession: (options: NativePreviewStopSessionRequest) => Promise<NativePreviewStopSessionResult>

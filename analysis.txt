@@ -1,0 +1,24 @@
+I just checked the dependencies and compared our app's `package.json` to T3Code's. 
+
+It turns out **we already have most of their bleeding-edge TanStack libraries installed**, but we aren't using them globally across the rest of our app yet! 
+
+Since the project isn't in production yet, here are the 4 major architectural upgrades they use that we should absolutely migrate the *rest* of our app to:
+
+### 1. **100% Type-Safe Routing (`@tanstack/react-router`)**
+Our main app is currently using the old `react-router-dom`. T3Code uses `@tanstack/react-router` exclusively. It provides fully type-safe, file-based routing. This means you can never accidentally link to a broken URL or pass the wrong search parameters because TypeScript will catch it at compile time. 
+*Action:* We can rip out `react-router-dom` and migrate our `src/router/` to TanStack Router.
+
+### 2. **Rich Text Composers (`lexical` instead of `<textarea>`)**
+For their chat input and code editors, T3Code uses **Lexical** (Facebook's incredibly powerful, extensible text editor framework). Instead of a dumb HTML `<textarea>`, Lexical allows for rich mentions (like typing `@terminal` to link terminal output), inline syntax highlighting, and live token counting as the user types. 
+*Action:* We can replace our basic text inputs with a Lexical-powered composer.
+
+### 3. **Lightning-Fast Rust Tooling (`oxlint` & `oxfmt`)**
+Our app currently uses standard ESLint and Prettier, which can get incredibly slow as the monorepo grows. T3Code has entirely migrated to **Oxc** (`oxlint` and `oxfmt`). These are written in Rust and are literally 50x to 100x faster than ESLint/Prettier. You get instant linting feedback on save.
+*Action:* We can rip out our `.eslintrc` and `prettier` configs and swap them for `oxlint`.
+
+### 4. **Headless Accessibility (`@base-ui/react`)**
+T3Code uses the brand new `@base-ui/react` (released by the Material UI team). It provides highly accessible, unstyled primitives (dropdowns, popovers, tooltips) that are much lighter and faster than Radix/shadcn, giving us ultimate control over the Tailwind styling without fighting the DOM.
+*Action:* We can start swapping our bulky UI components for Base UI primitives.
+
+---
+Would you like me to start executing these upgrades? I highly recommend starting with the **Oxlint/Oxfmt** migration (for instant developer speed) or the **TanStack Router** migration to unify the frontend!

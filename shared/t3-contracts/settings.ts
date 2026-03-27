@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Effect } from "effect";
 import * as Schema from "effect/Schema";
-import * as SchemaTransformation from "effect/SchemaTransformation";
+
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas";
 import {
   ClaudeModelOptions,
@@ -48,10 +48,7 @@ const makeBinaryPathSetting = (fallback: string) =>
   TrimmedString.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transformOrFail({
-        decode: (value) => Effect.succeed(value || fallback),
-        encode: (value) => Effect.succeed(value),
-      }),
+      Schema.transformOrFail({ decode: (value, _opts, _ast) => Effect.succeed(value || fallback), encode: (value, _opts, _ast) => Effect.succeed(value) }),
     ),
     Schema.withDecodingDefault(() => fallback),
   );

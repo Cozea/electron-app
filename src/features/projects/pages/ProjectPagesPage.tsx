@@ -21,6 +21,7 @@ import {
   type SelectedElementData,
 } from '@/utils/previewBridge'
 import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
+import { IosSimulatorViewport } from '@/features/projects/components/previews/IosSimulatorViewport'
 import { ProjectPreviewRouteBar } from '@/features/projects/components/previews/ProjectPreviewRouteBar'
 import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
 import { ServerControl } from '../components/ServerControl'
@@ -42,6 +43,7 @@ import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import type { AvailableExternalBrowser, AvailableExternalBrowserResult, ExternalBrowserId } from '@shared/electronApiTypes'
 import type { AvailableExternalEditor, ExternalEditorId } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useIosNativePreview } from '@/features/projects/hooks/useIosNativePreview'
 import {
   openProjectFileInExternalEditor,
   PREVIEW_EDITOR_PREFERENCE_KEY,
@@ -219,11 +221,31 @@ export function ProjectPagesPage() {
         })
     }, [selectedElementPathKey, selectedElementSelector])
 
+    const storedFrameworkInfo = useMemo<{
+        framework: Framework
+        devCommand?: string
+        devPort?: number
+    } | null>(() => {
+        if (!project?.frameworkInfo) return null
+        return {
+            framework: project.frameworkInfo.framework as Framework,
+            devCommand: project.frameworkInfo.devCommand ?? undefined,
+            devPort: project.frameworkInfo.devPort ?? undefined,
+        }
+    }, [project?.frameworkInfo])
+
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
     const previewRoute = focusedRoute
+    const isIosNativePreview = storedFrameworkInfo?.framework === 'expo' || storedFrameworkInfo?.framework === 'react-native'
     const previewServerActive = serverStatus === 'running' || serverStatus === 'unhealthy'
-    const focusedPreviewUrl = previewRoute && serverPort
+    const nativePreview = useIosNativePreview({
+        enabled: isIosNativePreview,
+        projectPath,
+        serverStatus,
+    })
+    const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
+    const focusedPreviewUrl = !isIosNativePreview && previewRoute && serverPort
         ? `http://localhost:${serverPort}${normalizePreviewPath(previewRoute.path)}`
         : null
     const useCredentiallessPreview = previewEmbedMode === 'credentialless'
@@ -246,14 +268,15 @@ export function ProjectPagesPage() {
     const compatProjectPreviewPath = normalizePreviewPath(previewRoute?.path ?? defaultProjectPreviewPath)
     const projectPreviewCapturePath = useCredentiallessPreview ? compatProjectPreviewPath : defaultProjectPreviewPath
     const projectPreviewCaptureUrl = buildRoutePreviewUrl(projectPreviewCapturePath)
-    const previewReady = bridgeReady && !previewEmbedBlocked
+    const previewReady = !isIosNativePreview && bridgeReady && !previewEmbedBlocked
+    const nativePreviewReady = isIosNativePreview && Boolean(nativeStreamUrl)
     const recentPreviewTimeline = useMemo(() => {
         return previewTimeline
             .filter((event) => event.category === 'preview' && (!activeServerRunId || !event.runId || event.runId === activeServerRunId))
             .slice(-6)
             .reverse()
     }, [activeServerRunId, previewTimeline])
-    const hasPreviewFailure = Boolean(bridgeError || previewReadiness.lastFailureMessage || previewReadiness.lastFailureReason)
+    const hasPreviewFailure = !isIosNativePreview && Boolean(bridgeError || previewReadiness.lastFailureMessage || previewReadiness.lastFailureReason)
     const previewFailurePresentation = useMemo(() => {
         if (!hasPreviewFailure) return null
 
@@ -269,18 +292,34 @@ export function ProjectPagesPage() {
         previewReadiness.lastFailureMessage,
         previewReadiness.lastFailureReason,
     ])
-    const showPreviewFailureOverlay = previewServerActive && (
+    const showPreviewFailureOverlay = !isIosNativePreview && previewServerActive && (
         previewFailurePresentation?.blocked || previewFailurePresentation?.reason === 'network_quality_degraded'
     )
-    const previewLoading = Boolean(previewRoute)
-        && !showPreviewFailureOverlay
-        && (
-            serverStatus === 'starting'
-            || (
-                previewServerActive
-                && Boolean(serverPort)
-                && Boolean(focusedPreviewUrl)
-                && !previewReady
+    const previewLoading = isIosNativePreview
+        ? (
+            Boolean(previewRoute)
+            && (
+                    serverStatus === 'starting'
+                    || nativePreview.simulatorsLoading
+                    || nativePreview.sessionLoading
+                    || (
+                        previewServerActive
+                        && nativePreview.selectedSimulator?.state === 'Booted'
+                        && !nativePreviewReady
+                    )
+                )
+        )
+        : (
+            Boolean(previewRoute)
+            && !showPreviewFailureOverlay
+            && (
+                serverStatus === 'starting'
+                || (
+                    previewServerActive
+                    && Boolean(serverPort)
+                    && Boolean(focusedPreviewUrl)
+                    && !previewReady
+                )
             )
         )
     const isFocusedPreview = Boolean(previewRoute)
@@ -394,20 +433,6 @@ export function ProjectPagesPage() {
         },
         [convexUserId, updatePreviewImage]
     )
-
-    // Extract stored framework info from project
-    const storedFrameworkInfo = useMemo<{
-        framework: Framework
-        devCommand?: string
-        devPort?: number
-    } | null>(() => {
-        if (!project?.frameworkInfo) return null
-        return {
-            framework: project.frameworkInfo.framework as Framework,
-            devCommand: project.frameworkInfo.devCommand ?? undefined,
-            devPort: project.frameworkInfo.devPort ?? undefined,
-        }
-    }, [project?.frameworkInfo])
 
     const {
         routes: scannedRoutes,
@@ -1784,18 +1809,70 @@ export function ProjectPagesPage() {
         })
     }, [addPreviewTimelineEvent, focusedPreviewUrl, previewEmbedMode, setPreviewFailure])
 
+    const externalPreviewUrl = isIosNativePreview ? nativeStreamUrl : focusedPreviewUrl
+
     const openFocusedPreviewExternally = useCallback(() => {
-        if (!focusedPreviewUrl) return
+        if (!externalPreviewUrl) return
         void (async () => {
             const result = await window.electronAPI.shell.openInBrowser({
-                url: focusedPreviewUrl,
+                url: externalPreviewUrl,
                 browserId: selectedBrowserId === 'system' ? defaultBrowserId : selectedBrowserId,
             })
             if (!result.success) {
                 console.error('[PagesPreview] Failed to open preview in browser', result.error)
             }
         })()
-    }, [defaultBrowserId, focusedPreviewUrl, selectedBrowserId])
+    }, [defaultBrowserId, externalPreviewUrl, selectedBrowserId])
+
+    const handleNativeSendTouches = useCallback(async (request: {
+        type: 'start' | 'move' | 'end'
+        touches: Array<{ xRatio: number; yRatio: number }>
+        rotation?: 'Portrait' | 'LandscapeLeft' | 'LandscapeRight' | 'PortraitUpsideDown'
+    }) => {
+        if (!projectPath || !nativePreview.selectedSimulator) {
+            return
+        }
+
+        await window.electronAPI.nativePreview.sendTouches({
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: 'ios',
+            ...request,
+        })
+    }, [nativePreview.selectedSimulator, projectPath])
+
+    const handleNativeSendWheel = useCallback(async (request: {
+        point: { xRatio: number; yRatio: number }
+        deltaX: number
+        deltaY: number
+    }) => {
+        if (!projectPath || !nativePreview.selectedSimulator) {
+            return
+        }
+
+        await window.electronAPI.nativePreview.sendWheel({
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: 'ios',
+            ...request,
+        })
+    }, [nativePreview.selectedSimulator, projectPath])
+
+    const handleNativeSendKey = useCallback(async (request: {
+        direction: 'down' | 'up'
+        keyCode: number
+    }) => {
+        if (!projectPath || !nativePreview.selectedSimulator) {
+            return
+        }
+
+        await window.electronAPI.nativePreview.sendKey({
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: 'ios',
+            ...request,
+        })
+    }, [nativePreview.selectedSimulator, projectPath])
 
     const headerControls = useMemo(() => (
         <ProjectPreviewToolbar
@@ -1812,12 +1889,13 @@ export function ProjectPagesPage() {
             onSelectedEditorChange={setSelectedEditorId}
             onSelectedBrowserChange={setSelectedBrowserId}
             onToggleInspector={toggleInspector}
-            previewEmbedBlocked={previewEmbedBlocked}
+            inspectorSupported={!isIosNativePreview}
+            previewEmbedBlocked={isIosNativePreview ? false : previewEmbedBlocked}
             previewLoading={previewLoading}
-            previewReady={previewReady}
+            previewReady={isIosNativePreview ? nativePreviewReady : previewReady}
             selectedEditorId={selectedEditorId}
             selectedBrowserId={selectedBrowserId}
-            serverRunning={previewServerActive && Boolean(serverPort)}
+            serverRunning={previewServerActive && (isIosNativePreview ? Boolean(nativePreview.selectedSimulator) : Boolean(serverPort))}
             useCredentiallessPreview={useCredentiallessPreview}
         />
     ), [
@@ -1825,6 +1903,9 @@ export function ProjectPagesPage() {
         availableEditors,
         defaultBrowserId,
         inspectorEnabled,
+        isIosNativePreview,
+        nativePreview.selectedSimulator,
+        nativePreviewReady,
         previewEmbedBlocked,
         previewLoading,
         previewReady,
@@ -1847,11 +1928,12 @@ export function ProjectPagesPage() {
                 projectId={project?._id ?? null}
                 storedDevCommand={storedFrameworkInfo?.devCommand}
                 storedDevPort={storedFrameworkInfo?.devPort}
-                previewMode="web"
-                nativePlatform={null}
+                previewMode={isIosNativePreview ? 'native' : 'web'}
+                nativePlatform={isIosNativePreview ? 'ios' : null}
             />
         </div>
     ), [
+        isIosNativePreview,
         project?._id,
         projectPath,
         storedFrameworkInfo?.devCommand,
@@ -1978,28 +2060,50 @@ export function ProjectPagesPage() {
                                 {previewRoute ? (
                                     <div className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
                                         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                                            <FocusedProjectPreview
-                                                credentiallessAttribute={credentiallessAttribute}
-                                                device={device}
-                                                focusedPreviewFrameName={focusedPreviewFrameName}
-                                                focusedPreviewUrl={focusedPreviewUrl}
-                                                iframeRef={iframeRef}
-                                                onIframeError={handleFocusedIframeError}
-                                                onIframeLoad={handleIframeLoad}
-                                                onOpenExternally={openFocusedPreviewExternally}
-                                                onRetryPreview={() => reloadFocusedPreview('manual')}
-                                                previewEmbedBlocked={previewEmbedBlocked}
-                                                previewEmbedMode={previewEmbedMode}
-                                                previewFailureMessage={previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
-                                                previewFailureTitle={previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
-                                                previewLoading={previewLoading}
-                                                previewReloadToken={previewReloadToken}
-                                                recentPreviewTimeline={recentPreviewTimeline}
-                                                route={previewRoute}
-                                                serverRunning={previewServerActive && Boolean(serverPort)}
-                                                showPreviewFailureOverlay={showPreviewFailureOverlay}
-                                                taskOverlay={taskOverlay}
-                                            />
+                                            {isIosNativePreview ? (
+                                                <IosSimulatorViewport
+                                                    device={device}
+                                                    route={previewRoute}
+                                                    serverRunning={previewServerActive}
+                                                    sessionState={nativePreview.sessionState}
+                                                    simulators={nativePreview.iosSimulators}
+                                                    selectedSimulatorId={nativePreview.selectedIosSimulatorId}
+                                                    simulatorsLoading={nativePreview.simulatorsLoading}
+                                                    simulatorsError={nativePreview.simulatorsError}
+                                                    sessionLoading={nativePreview.sessionLoading}
+                                                    sessionError={nativePreview.sessionError}
+                                                    taskOverlay={taskOverlay}
+                                                    onSelectSimulator={nativePreview.setSelectedIosSimulatorId}
+                                                    onRefreshSimulators={nativePreview.refreshSimulators}
+                                                    onOpenExternally={openFocusedPreviewExternally}
+                                                    onSendTouches={handleNativeSendTouches}
+                                                    onSendWheel={handleNativeSendWheel}
+                                                    onSendKey={handleNativeSendKey}
+                                                />
+                                            ) : (
+                                                <FocusedProjectPreview
+                                                    credentiallessAttribute={credentiallessAttribute}
+                                                    device={device}
+                                                    focusedPreviewFrameName={focusedPreviewFrameName}
+                                                    focusedPreviewUrl={focusedPreviewUrl}
+                                                    iframeRef={iframeRef}
+                                                    onIframeError={handleFocusedIframeError}
+                                                    onIframeLoad={handleIframeLoad}
+                                                    onOpenExternally={openFocusedPreviewExternally}
+                                                    onRetryPreview={() => reloadFocusedPreview('manual')}
+                                                    previewEmbedBlocked={previewEmbedBlocked}
+                                                    previewEmbedMode={previewEmbedMode}
+                                                    previewFailureMessage={previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
+                                                    previewFailureTitle={previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
+                                                    previewLoading={previewLoading}
+                                                    previewReloadToken={previewReloadToken}
+                                                    recentPreviewTimeline={recentPreviewTimeline}
+                                                    route={previewRoute}
+                                                    serverRunning={previewServerActive && Boolean(serverPort)}
+                                                    showPreviewFailureOverlay={showPreviewFailureOverlay}
+                                                    taskOverlay={taskOverlay}
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                 ) : null}

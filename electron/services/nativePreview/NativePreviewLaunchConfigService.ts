@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -14,6 +15,15 @@ interface PackageJsonShape {
   version?: string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
+}
+
+interface LaunchEnvOptions {
+  projectPath: string
+  port: number
+  devtoolsPort: number
+  runtimeDir: string
+  customMetroConfigPath: string | null
+  kind: NativePreviewLaunchKind
 }
 
 const require = createRequire(import.meta.url)
@@ -113,6 +123,7 @@ function resolveReactNativeCliPath(projectPath: string): string {
 function buildLaunchEnv(options: {
   projectPath: string
   port: number
+  devtoolsPort: number
   runtimeDir: string
   customMetroConfigPath: string | null
   kind: NativePreviewLaunchKind
@@ -120,6 +131,7 @@ function buildLaunchEnv(options: {
   const env: Record<string, string> = {
     NODE_PATH: path.join(options.projectPath, 'node_modules'),
     RCT_METRO_PORT: String(options.port),
+    RCT_DEVTOOLS_PORT: String(options.devtoolsPort),
     COZEA_NATIVE_PREVIEW_LIB_PATH: options.runtimeDir,
     COZEA_NATIVE_PREVIEW_VERSION: resolvePackageVersion(),
     REACT_EDITOR: resolveEditorProxyPath(),
@@ -182,6 +194,47 @@ function buildLaunchLabel(kind: NativePreviewLaunchKind): string {
   return kind === 'expo' ? 'Expo Native Preview Metro' : 'React Native Preview Metro'
 }
 
+async function allocateTcpPort(preferredPort = 0): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const server = net.createServer()
+
+    const listen = (port: number) => {
+      server.listen({
+        host: '127.0.0.1',
+        port,
+      })
+    }
+
+    server.unref()
+    server.once('error', (error) => {
+      if (preferredPort > 0) {
+        preferredPort = 0
+        listen(0)
+        return
+      }
+      reject(error)
+    })
+    server.once('listening', () => {
+      const address = server.address()
+      const resolvedPort =
+        typeof address === 'object' && address ? address.port : null
+      if (!resolvedPort) {
+        server.close(() => reject(new Error('Failed to resolve an available native preview devtools port.')))
+        return
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve(resolvedPort)
+      })
+    })
+
+    listen(preferredPort)
+  })
+}
+
 export class NativePreviewLaunchConfigService {
   private static instance: NativePreviewLaunchConfigService | null = null
 
@@ -193,9 +246,9 @@ export class NativePreviewLaunchConfigService {
     return NativePreviewLaunchConfigService.instance
   }
 
-  public resolveLaunchConfig(
+  public async resolveLaunchConfig(
     request: NativePreviewResolveLaunchConfigRequest
-  ): NativePreviewResolveLaunchConfigResult {
+  ): Promise<NativePreviewResolveLaunchConfigResult> {
     if (request.platform !== 'ios') {
       return {
         success: false,
@@ -221,10 +274,12 @@ export class NativePreviewLaunchConfigService {
       const port = request.preferredPort && request.preferredPort > 0
         ? request.preferredPort
         : DEFAULT_METRO_PORT
+      const devtoolsPort = await allocateTcpPort()
       const customMetroConfigPath = resolveCustomMetroConfigPath(request.projectPath)
       const env = buildLaunchEnv({
         projectPath: request.projectPath,
         port,
+        devtoolsPort,
         runtimeDir,
         customMetroConfigPath,
         kind,
@@ -242,6 +297,7 @@ export class NativePreviewLaunchConfigService {
         platform: request.platform,
         kind,
         port,
+        devtoolsPort,
         label: buildLaunchLabel(kind),
         command,
         env,

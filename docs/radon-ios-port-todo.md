@@ -52,12 +52,12 @@ This is the execution checklist for the iOS-first native preview port.
 
 ## Phase 5: Embedded renderer preview
 
-- [ ] Create native preview store
-- [ ] Create iOS simulator viewport component
+- [x] Create native preview store
+- [x] Create iOS simulator viewport component
 - [ ] Adapt toolbar shell from current web preview
-- [ ] Render MJPEG stream inside the app
-- [ ] Normalize pointer coordinates
-- [ ] Send input actions through `nativePreview:*`
+- [x] Render MJPEG stream inside the app
+- [x] Normalize pointer coordinates
+- [x] Send input actions through `nativePreview:*`
 
 ## Phase 6: Hardening
 

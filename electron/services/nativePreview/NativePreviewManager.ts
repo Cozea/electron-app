@@ -56,6 +56,8 @@ const COMMAND_TIMEOUT_MS = 5_000
 const STOP_TIMEOUT_MS = 1_500
 const HELPER_EXECUTABLE_NAME =
   process.platform === 'win32' ? 'cozea-ios-preview-helper.exe' : 'cozea-ios-preview-helper'
+const SWIFT_HELPER_EXECUTABLE_NAME =
+  process.platform === 'win32' ? 'cozea-ios-preview-helper-swift.exe' : 'cozea-ios-preview-helper-swift'
 
 function resolveAppRoot(): string {
   if (process.env.APP_ROOT) {
@@ -69,11 +71,17 @@ function resolveHelperRoot(): string {
   return path.join(resolveAppRoot(), 'native', 'ios-preview-helper')
 }
 
+function resolveSwiftHelperRoot(): string {
+  return path.join(resolveAppRoot(), 'native', 'ios-preview-helper-swift')
+}
+
 function resolveHelperExecutableCandidates(): string[] {
   const helperRoot = resolveHelperRoot()
+  const swiftHelperRoot = resolveSwiftHelperRoot()
 
   return [
     process.env.COZEA_IOS_PREVIEW_HELPER_PATH || '',
+    path.join(swiftHelperRoot, '.build', SWIFT_HELPER_EXECUTABLE_NAME),
     path.join(helperRoot, 'target', 'debug', HELPER_EXECUTABLE_NAME),
     path.join(helperRoot, 'target', 'release', HELPER_EXECUTABLE_NAME),
   ].filter(Boolean)
@@ -85,6 +93,48 @@ function canUseCargo(): boolean {
   })
 
   return result.status === 0
+}
+
+function canUseSwiftc(): boolean {
+  const result = spawnSync('xcrun', ['swiftc', '--version'], {
+    stdio: 'ignore',
+  })
+
+  return result.status === 0
+}
+
+function ensureSwiftHelperBuilt(): { success: true; executablePath: string } | { success: false; error: string } {
+  const helperRoot = resolveSwiftHelperRoot()
+  const sourcePath = path.join(helperRoot, 'main.swift')
+  const buildDir = path.join(helperRoot, '.build')
+  const executablePath = path.join(buildDir, SWIFT_HELPER_EXECUTABLE_NAME)
+
+  if (!fs.existsSync(sourcePath)) {
+    return {
+      success: false,
+      error: 'Swift iOS preview helper source is missing.',
+    }
+  }
+
+  if (fs.existsSync(executablePath)) {
+    return { success: true, executablePath }
+  }
+
+  fs.mkdirSync(buildDir, { recursive: true })
+  const result = spawnSync('xcrun', ['swiftc', sourcePath, '-o', executablePath], {
+    cwd: helperRoot,
+    env: process.env,
+    encoding: 'utf8',
+  })
+
+  if (result.status !== 0) {
+    return {
+      success: false,
+      error: normalizeHelperMessage(result.stderr || result.stdout || 'Failed to build Swift iOS preview helper.'),
+    }
+  }
+
+  return { success: true, executablePath }
 }
 
 function encodeTouchPayload(request: NativePreviewSendTouchesRequest): string {
@@ -391,9 +441,24 @@ export class NativePreviewManager {
     request: NativePreviewStartSessionRequest
   ): { success: true; process: ChildProcessWithoutNullStreams } | { success: false; error: string } {
     const helperRoot = resolveHelperRoot()
+    const swiftHelperRoot = resolveSwiftHelperRoot()
     const baseArgs = ['ios', '--udid', request.deviceId]
     if (request.deviceSetPath) {
       baseArgs.push('--device-set-path', request.deviceSetPath)
+    }
+
+    if (process.platform === 'darwin') {
+      const swiftBuild = ensureSwiftHelperBuilt()
+      if (swiftBuild.success) {
+        return {
+          success: true,
+          process: spawn(swiftBuild.executablePath, baseArgs, {
+            cwd: swiftHelperRoot,
+            env: process.env,
+            stdio: 'pipe',
+          }),
+        }
+      }
     }
 
     const executableCandidate = resolveHelperExecutableCandidates().find((candidate) => {
@@ -423,6 +488,25 @@ export class NativePreviewManager {
             stdio: 'pipe',
           }
         ),
+      }
+    }
+
+    if (process.platform === 'darwin' && canUseSwiftc()) {
+      const swiftBuild = ensureSwiftHelperBuilt()
+      if (swiftBuild.success) {
+        return {
+          success: true,
+          process: spawn(swiftBuild.executablePath, baseArgs, {
+            cwd: swiftHelperRoot,
+            env: process.env,
+            stdio: 'pipe',
+          }),
+        }
+      }
+
+      return {
+        success: false,
+        error: swiftBuild.error,
       }
     }
 
@@ -496,7 +580,6 @@ export class NativePreviewManager {
       case 'ready': {
         this.updateState(sessionKey, {
           helperPid: session.process.pid ?? null,
-          status: 'running',
           lastError: null,
         })
         if (session.startup && !session.startup.settled) {
@@ -506,7 +589,9 @@ export class NativePreviewManager {
       }
       case 'stream_ready': {
         this.updateState(sessionKey, {
+          status: 'running',
           streamUrl: rest || null,
+          lastError: null,
         })
         break
       }

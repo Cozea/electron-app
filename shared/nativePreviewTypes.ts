@@ -16,6 +16,15 @@ export type NativePreviewSessionStatus =
   | 'stopped'
   | 'error'
 
+export interface NativePreviewIosSimulatorDevice {
+  udid: string
+  name: string
+  runtimeIdentifier: string
+  state: string
+  isAvailable: boolean
+  lastBootedAt: string | null
+}
+
 export interface NativePreviewSessionLocator {
   projectPath: string
   deviceId: string
@@ -106,6 +115,7 @@ export interface NativePreviewLaunchConfig {
   platform: NativePreviewPlatform
   kind: NativePreviewLaunchKind
   port: number
+  devtoolsPort: number
   label: string
   command: string
   env: Record<string, string>
@@ -115,6 +125,10 @@ export interface NativePreviewLaunchConfig {
 
 export interface NativePreviewResolveLaunchConfigResult extends NativePreviewActionResult {
   config?: NativePreviewLaunchConfig
+}
+
+export interface NativePreviewListIosSimulatorsResult extends NativePreviewActionResult {
+  devices?: NativePreviewIosSimulatorDevice[]
 }
 
 export function buildNativePreviewSessionKey(locator: NativePreviewSessionLocator): string {

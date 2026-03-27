@@ -193,3 +193,55 @@ fn sanitize(value: &str) -> String {
         .trim()
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_args, parse_command, Command};
+
+    #[test]
+    fn parse_args_accepts_udid_and_device_set_path() {
+        let config = parse_args(vec![
+            "ios".to_string(),
+            "--udid".to_string(),
+            "SIM-123".to_string(),
+            "--device-set-path".to_string(),
+            "/tmp/device-set".to_string(),
+        ])
+        .expect("args should parse");
+
+        assert_eq!(config.device_id, "SIM-123");
+        assert_eq!(config.device_set_path.as_deref(), Some("/tmp/device-set"));
+    }
+
+    #[test]
+    fn parse_args_requires_udid() {
+        let error = parse_args(vec!["ios".to_string()]).expect_err("missing udid should fail");
+        assert!(error.contains("missing required --udid"));
+    }
+
+    #[test]
+    fn parse_command_recognizes_runtime_and_protocol_commands() {
+        match parse_command("ping 12") {
+            Command::Ping { request_id } => assert_eq!(request_id, "12"),
+            _ => panic!("expected ping command"),
+        }
+
+        match parse_command("screenshot shot-1 -r Portrait") {
+            Command::Screenshot { job_id } => assert_eq!(job_id, "shot-1"),
+            _ => panic!("expected screenshot command"),
+        }
+
+        match parse_command("rotate LandscapeLeft") {
+            Command::Runtime { line } => assert_eq!(line, "rotate LandscapeLeft"),
+            _ => panic!("expected runtime command"),
+        }
+    }
+
+    #[test]
+    fn parse_command_rejects_unknown_lines() {
+        match parse_command("mystery") {
+            Command::ProtocolError { message } => assert_eq!(message, "unknown_command:mystery"),
+            _ => panic!("expected protocol error"),
+        }
+    }
+}

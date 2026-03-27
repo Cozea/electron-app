@@ -4,6 +4,7 @@ import type {
   NativePreviewActionResult,
   NativePreviewCaptureScreenshotRequest,
   NativePreviewCaptureScreenshotResult,
+  NativePreviewListIosSimulatorsResult,
   NativePreviewResolveLaunchConfigRequest,
   NativePreviewResolveLaunchConfigResult,
   NativePreviewRotateRequest,
@@ -19,6 +20,7 @@ import type {
 } from '../../shared/nativePreviewTypes'
 import { NativePreviewLaunchConfigService } from '../services/nativePreview/NativePreviewLaunchConfigService'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
+import { IosSimulatorDiscoveryService } from '../services/nativePreview/IosSimulatorDiscoveryService'
 
 interface RegisterNativePreviewHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -30,10 +32,18 @@ export function registerNativePreviewHandlers(
 ): void {
   const manager = NativePreviewManager.getInstance()
   const launchConfigService = NativePreviewLaunchConfigService.getInstance()
+  const simulatorDiscoveryService = IosSimulatorDiscoveryService.getInstance()
 
   manager.subscribe((event) => {
     deps.getMainWindow()?.webContents.send('nativePreview:stateChanged', event)
   })
+
+  ipcMain.handle(
+    'nativePreview:listIosSimulators',
+    async (): Promise<NativePreviewListIosSimulatorsResult> => {
+      return simulatorDiscoveryService.listSimulators()
+    }
+  )
 
   ipcMain.handle(
     'nativePreview:resolveLaunchConfig',

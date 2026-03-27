@@ -3926,6 +3926,33 @@ Recovered behavior from the `SimulatorControl` method bodies:
 - reads the current macOS keyboard input source and forwards the language into the simulator via `setKeyboardLanguage:error:`
 - creates a dedicated queue named `com.simulatorServer.dispatchQueue`
 
+Recovered from direct x86_64 disassembly of `0x100335170`, the implementation ordering is now tighter than the earlier selector-level read:
+
+- `[[super init] ...]` must succeed first
+- framework loading is gated through an earlier helper before any simulator work proceeds
+- device set selection is exactly:
+  - explicit path -> `deviceSetWithPath:error:`
+  - otherwise -> `defaultDeviceSetWithError:`
+- device lookup is a real `availableDevices` fast-enumeration loop over candidate `SimDevice` objects
+- the matched `SimDevice` is written directly into ivar slot `+0x8`
+- boot validation is a strict equality check on `state == 3`
+- the cached Indigo builders are written into ivar slots:
+  - `+0x18` -> `IndigoHIDMessageForMouseNSEvent`
+  - `+0x20` -> `IndigoHIDMessageForKeyboardArbitrary`
+  - `+0x28` -> `IndigoHIDMessageForButton`
+- `SimDeviceLegacyClient` is allocated dynamically and written into ivar slot `+0x10`
+- `setUpKeyboard` runs before the dispatch queue is created
+
+So for reimplementation purposes, `initWithUDID:deviceSet:` is a concrete ordered bootstrap:
+
+1. load SimulatorKit path / symbols
+2. resolve device set
+3. match booted device
+4. cache Indigo builders
+5. build `SimDeviceLegacyClient`
+6. run keyboard setup
+7. create dispatch queue
+
 #### `getSimulatorAppSymbol:`
 
 - looks up a bundle by identifier, with surrounding strings strongly indicating `com.apple.SimulatorKit`
@@ -3947,9 +3974,14 @@ This means the helper is not statically linked against the private SimulatorKit/
 - `sendKeyEventWithKeyCode:keyDirection:`
   - uses the cached `IndigoHIDMessageForKeyboardArbitrary` entrypoint
   - maps Radon direction into the simulator’s expected direction code
+    - non-`1` -> `1`
+    - `1` -> `2`
   - forwards the generated message through `sendIndigoMessage:ofSize:`
 - `sendButtonEventWithKeyCode:keyDirection:`
   - uses the cached `IndigoHIDMessageForButton` entrypoint
+  - maps direction the same way as keyboard:
+    - non-`1` -> `1`
+    - `1` -> `2`
   - passes a literal extra argument `0x33` when building the message
   - forwards through `sendIndigoMessage:ofSize:`
 - `sendTouchAt:secondTouchAt:type:`
@@ -3976,6 +4008,15 @@ This means the helper is not statically linked against the private SimulatorKit/
 - `sendPaste:`
   - currently appears to be a stub / no-op in this build based on the recovered method body
 
+Recovered directly from x86_64 disassembly, these methods are now specific enough to treat as implementation guidance rather than just architectural hints:
+
+- `sendKeyEventWithKeyCode:keyDirection:` calls the builder at ivar `+0x20` with `(keyCode, mappedDirection)`
+- `sendButtonEventWithKeyCode:keyDirection:` calls the builder at ivar `+0x28` with `(keyCode, mappedDirection, 0x33)`
+- `sendTouchAt:secondTouchAt:type:` does not pass the raw helper type through. It normalizes it first into the exact direction code set `1/2/6`
+- all three methods call `malloc_size(payload)` before handing the payload to `sendIndigoMessage:ofSize:`
+
+That means the helper is not serializing Indigo messages itself. It relies on Apple/private builders to allocate the payload, then discovers the final byte size from the resulting allocation and forwards it unchanged.
+
 This materially tightens the control model:
 
 - touch, keyboard, and button input use dynamically resolved Indigo HID builders
@@ -3987,7 +4028,7 @@ This materially tightens the control model:
 `registerSimulatorFrameCallback:` is now partly reconstructed from code.
 
 - it calls an internal helper with:
-  - `_simDeviceClient`
+  - `_device`
   - the caller callback block
   - `_dispatchQueue`
   - literal flag `1`
@@ -4031,12 +4072,105 @@ Two of the callback helpers are now understood:
 - one callback path receives an `IOSurface`, then calls `CVPixelBufferCreateWithIOSurface`, then forwards the resulting `CVPixelBuffer` into the stored callback and releases it
 - another callback path updates the tracked surface pointer first, then also calls `CVPixelBufferCreateWithIOSurface` and forwards the `CVPixelBuffer`
 
+Recovered direct-call implication from `0x1003358a0`:
+
+- `registerSimulatorFrameCallback:` itself is only a thin wrapper
+- the actual frame discovery / registration logic lives in a separate native routine identified by symbols as `listAndCaptureScreen`
+- arguments passed from `SimulatorControl` are:
+  - current `SimDevice` (`ivar +0x8`)
+  - hard-coded mode flag `1`
+  - caller-supplied callback block
+  - dispatch queue (`ivar +0x30`)
+
+So the real frame path boundary is:
+
+1. `SimulatorControl.registerSimulatorFrameCallback:`
+2. `listAndCaptureScreen(device, 1, callback, dispatchQueue)`
+3. lower-level SimulatorKit enumeration / callback registration
+
+Recovered from direct `lldb` disassembly of `listAndCaptureScreen` itself:
+
+- it begins from `device.io`
+- iterates `io.ioPorts` with Objective-C fast enumeration
+- rejects ports that do not conform to the expected device-I/O-port protocol
+- calls `descriptor` on each surviving port
+- rejects descriptors that do not conform to the screen-adapter protocol
+- calls `enumerateScreensWithCompletionQueue:completionHandler:` on the surviving descriptor
+- inside the screen enumeration callback:
+  - calls `screenProperties`
+  - then `screenID`
+  - compares that integer against the target screen ID stored in the capture context at offset `+0x30`
+  - only on match does it proceed to register callbacks
+- the actual callback registration helper then:
+  - allocates a fresh UUID via `NSUUID UUID`
+  - builds three blocks
+  - calls `registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:`
+
+This is a stronger recovered contract than the earlier general description. The helper is not subscribing to “whatever screen exists”; it matches a specific numeric `screenID` before registering callbacks.
+
 This is direct evidence that the iOS preview ingest path is:
 
 1. SimulatorKit screen callback
 2. `IOSurface`
 3. `CVPixelBuffer`
 4. Radon-native media pipeline
+
+One practical implication for our Swift helper: if we simply take the first enumerated screen proxy and start polling it, we may miss the actual Radon behavior. The shipped helper keeps an explicit target-screen identity in its capture context and gates callback registration on `screenProperties.screenID` equality.
+
+### iOS simulator backend: stricter recovered method contracts
+
+The direct `lldb` disassembly closes several remaining gaps that were previously still phrased as “strong inference”.
+
+#### `rotateWithDirection:` is a fixed Purple workspace message
+
+Method body at `0x100336010`:
+
+- zeroes a stack buffer of size `0x58`
+- writes `0x20032` at offset `0x18` in the local message struct
+- writes `0x4` at offset `0x48`
+- writes the requested direction integer at offset `0x4c`
+- calls `sendPurpleMessage:` with that buffer
+
+Combined with `sendPurpleMessage:` at `0x100335f30`, the recovered behavior is:
+
+- service lookup is `_device lookup:error:@"PurpleWorkspacePort"`
+- on success it constructs a small Mach message header around the looked-up port
+- recovered message fields include:
+  - message ID `0x13`
+  - size/length field `0x6c`
+  - trailer/aux field `0x7b`
+  - remote port = lookup result
+- then sends with `mach_msg_send`
+
+So rotation is now best described as:
+
+- a fixed Purple workspace message template
+- with one variable field: the requested direction value
+
+#### Input builder behavior is now concrete enough to mirror
+
+Recovered direct method-body behavior:
+
+- keyboard:
+  - builder pointer comes from ivar `+0x20`
+  - direction maps into `1` or `2`
+  - no extra literal tag beyond key code + mapped direction
+- button:
+  - builder pointer comes from ivar `+0x28`
+  - same direction mapping as keyboard
+  - adds literal message-class argument `0x33`
+- touch:
+  - public method first maps helper touch type into simulator direction `1/2/6`
+  - then calls `touchMessageForTouchAt:secondTouchAt:direction:`
+  - that lower helper uses the cached mouse Indigo builder from ivar `+0x18`
+
+In all three cases the generated payload is treated as an opaque Indigo allocation:
+
+1. call builder
+2. if non-null, compute `malloc_size(payload)`
+3. forward bytes + computed size to `sendIndigoMessage:ofSize:`
+
+That means a faithful port does not need to reverse the Indigo payload byte layout if it can call the same private builders. The recovered contract that matters is the builder selection, the argument mapping, and the forwarding path.
 
 #### Native encoder pipeline behind iOS preview/video
 

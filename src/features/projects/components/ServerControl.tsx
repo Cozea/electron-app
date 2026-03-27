@@ -31,6 +31,13 @@ const stripAnsi = (input: string) =>
     input.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
 
 const FILE_LOCATION_PATTERN = /(?:File:\s*)?((?:[A-Za-z]:)?[^:\s]+?\.(?:tsx?|jsx?|vue|svelte|astro|css|scss|less|styl|mdx|json|html|yml|yaml)):(\d+)(?::(\d+))?/i
+const NATIVE_PREVIEW_OUTPUT_LINE_SPLITTER = /\n/
+
+interface NativePreviewMetroEvent {
+    type: 'expo_env_prelude_lines' | 'watch_folders'
+    lineCount?: number
+    watchFolders?: string[]
+}
 
 const normalizeFilePath = (rawPath: string) => {
     const trimmed = rawPath.replace(/^file:\/\//i, '')
@@ -132,6 +139,7 @@ export function ServerControl({
     const pendingReadyProbeKeyRef = useRef<string | null>(null)
     const cancelledStartRunIdsRef = useRef<Set<string>>(new Set())
     const retryStartRef = useRef<(() => Promise<void>) | null>(null)
+    const nativePreviewOutputBufferRef = useRef<string>('')
 
     // Ref for startup watchdog when ready patterns/probes don't confirm in time
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -300,6 +308,101 @@ export function ServerControl({
             details: event.details,
         })
     }, [actions])
+
+    const parseNativePreviewMetroEvent = useCallback((line: string): NativePreviewMetroEvent | null => {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+            return null
+        }
+
+        try {
+            const parsed = JSON.parse(trimmed) as { type?: string; lineCount?: number; watchFolders?: unknown }
+            if (parsed.type === 'COZEA_NATIVE_PREVIEW_expo_env_prelude_lines' && typeof parsed.lineCount === 'number') {
+                return {
+                    type: 'expo_env_prelude_lines',
+                    lineCount: parsed.lineCount,
+                }
+            }
+
+            if (parsed.type === 'COZEA_NATIVE_PREVIEW_watch_folders' && Array.isArray(parsed.watchFolders)) {
+                const watchFolders = parsed.watchFolders.filter((value): value is string => typeof value === 'string')
+                return {
+                    type: 'watch_folders',
+                    watchFolders,
+                }
+            }
+
+            return null
+        } catch {
+            return null
+        }
+    }, [])
+
+    const handleNativePreviewMetroSideband = useCallback((line: string, runId: string | null): boolean => {
+        if (previewMode !== 'native' || nativePlatform !== 'ios') {
+            return false
+        }
+
+        const event = parseNativePreviewMetroEvent(line)
+        if (!event) {
+            return false
+        }
+
+        if (event.type === 'expo_env_prelude_lines') {
+            actions.setServerLifecycle({
+                runId,
+                expoEnvPreludeLineCount: event.lineCount ?? null,
+            })
+            addTimelineEvent({
+                runId,
+                type: 'output',
+                message: 'Native preview Metro reported Expo env prelude line count',
+                details: {
+                    lineCount: event.lineCount ?? null,
+                },
+            })
+            return true
+        }
+
+        actions.setServerLifecycle({
+            runId,
+            watchFolders: event.watchFolders ?? null,
+        })
+        addTimelineEvent({
+            runId,
+            type: 'output',
+            message: 'Native preview Metro reported watch folders',
+            details: {
+                watchFolders: event.watchFolders ?? [],
+            },
+        })
+        return true
+    }, [actions, addTimelineEvent, nativePlatform, parseNativePreviewMetroEvent, previewMode])
+
+    const extractDisplayableServerOutput = useCallback((data: string, runId: string | null): string => {
+        if (previewMode !== 'native' || nativePlatform !== 'ios') {
+            return data
+        }
+
+        const combined = `${nativePreviewOutputBufferRef.current}${data}`
+        const rawLines = combined.split(NATIVE_PREVIEW_OUTPUT_LINE_SPLITTER)
+        const endsWithNewline = combined.endsWith('\n')
+        if (endsWithNewline && rawLines[rawLines.length - 1] === '') {
+            rawLines.pop()
+        }
+        nativePreviewOutputBufferRef.current = endsWithNewline ? '' : (rawLines.pop() ?? '')
+
+        let forwarded = ''
+        for (const rawLine of rawLines) {
+            const normalizedLine = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+            if (handleNativePreviewMetroSideband(normalizedLine, runId)) {
+                continue
+            }
+            forwarded += `${rawLine}\n`
+        }
+
+        return forwarded
+    }, [handleNativePreviewMetroSideband, nativePlatform, previewMode])
 
     const markRunUnhealthy = useCallback((
         reason: string,
@@ -671,19 +774,22 @@ export function ServerControl({
                 }
 
                 const activeRunId = devServerRunIdRef.current
+                const forwardedData = extractDisplayableServerOutput(data, activeRunId)
                 actions.setServerLifecycle({
                     runId: activeRunId,
                     lastOutputAt: Date.now(),
                 })
 
-                // Forward output to store so DevServerPanel can display it
-                actions.addServerOutput(data)
-                reportProblemsFromOutput(data)
-                addTimelineEvent({
-                    runId: activeRunId,
-                    type: 'output',
-                    message: 'Received dev server output',
-                })
+                if (forwardedData.length > 0) {
+                    // Forward output to store so DevServerPanel can display it
+                    actions.addServerOutput(forwardedData)
+                    reportProblemsFromOutput(forwardedData)
+                    addTimelineEvent({
+                        runId: activeRunId,
+                        type: 'output',
+                        message: 'Received dev server output',
+                    })
+                }
             }
         })
 
@@ -742,13 +848,14 @@ export function ServerControl({
             unsubOutput()
             unsubExit()
             clearReadyTimeout()
+            nativePreviewOutputBufferRef.current = ''
         }
-    }, [actions, addTimelineEvent, clearReadyTimeout, maybeRecoverFromFailedStart, reportProblemsFromOutput])
+    }, [actions, addTimelineEvent, clearReadyTimeout, extractDisplayableServerOutput, maybeRecoverFromFailedStart, reportProblemsFromOutput])
 
     const launchDevServerTerminal = useCallback(async (
         projectPathValue: string,
         baseCommand: string,
-        config: { label: string; port: number },
+        config: { label: string; port: number; devtoolsPort?: number | null },
         runId: string,
         extraEnv?: Record<string, string>
     ) => {
@@ -803,6 +910,10 @@ export function ServerControl({
 
         devServerLabelRef.current = config.label
         actions.beginServerRun(runId, command)
+        actions.setServerLifecycle({
+            runId,
+            devtoolsPort: config.devtoolsPort ?? null,
+        })
         actions.setServerStatus('starting')
         actions.setServerPort(launchPort)
         actions.setPreviewReadiness({
@@ -911,6 +1022,7 @@ export function ServerControl({
                     {
                         label: nativeLaunch.config.label,
                         port: nativeLaunch.config.port,
+                        devtoolsPort: nativeLaunch.config.devtoolsPort,
                     },
                     runId,
                     nativeLaunch.config.env,

@@ -34,6 +34,7 @@ interface ProjectPreviewToolbarProps {
   availableEditors: AvailableExternalEditor[]
   defaultBrowserId: ExternalBrowserId
   inspectorEnabled: boolean
+  inspectorSupported?: boolean
   onOpenCode: () => void
   onOpenExternally: () => void
   onSelectedEditorChange: (editorId: ExternalEditorId) => void
@@ -109,6 +110,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   availableEditors,
   defaultBrowserId,
   inspectorEnabled,
+  inspectorSupported = true,
   onOpenCode,
   onOpenExternally,
   onSelectedEditorChange,
@@ -310,7 +312,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
                     variant={inspectorEnabled ? 'secondary' : 'ghost'}
                     size="icon"
                     className="h-7 w-7"
-                    disabled={!previewReady || previewEmbedBlocked}
+                    disabled={!inspectorSupported || !previewReady || previewEmbedBlocked}
                     onClick={onToggleInspector}
                   >
                     <MousePointer2 className={cn('h-3.5 w-3.5', inspectorEnabled ? 'text-foreground' : 'text-muted-foreground')} />
@@ -319,6 +321,8 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
                 <TooltipContent side="bottom">
                   {previewEmbedBlocked
                     ? 'Preview blocked. Open externally.'
+                    : !inspectorSupported
+                      ? 'Inspector is not available for native preview yet'
                     : previewReady
                       ? inspectorEnabled
                         ? 'Disable inspector'

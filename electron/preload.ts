@@ -334,6 +334,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('preview:updateSelectionText', options),
   },
   nativePreview: {
+    listIosSimulators: () => ipcRenderer.invoke('nativePreview:listIosSimulators'),
     resolveLaunchConfig: (options: import('../shared/nativePreviewTypes').NativePreviewResolveLaunchConfigRequest) =>
       ipcRenderer.invoke('nativePreview:resolveLaunchConfig', options),
     startSession: (options: import('../shared/nativePreviewTypes').NativePreviewStartSessionRequest) =>
