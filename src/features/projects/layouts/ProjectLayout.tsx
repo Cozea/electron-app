@@ -16,6 +16,7 @@ import {
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { StatusBar } from "@/components/StatusBar"
 import { AITerminalSidebar } from "@/components/terminal/AITerminalSidebar"
+import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge"
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator"
 import { useAITerminalStore } from "@/stores/useAITerminalStore"
 import { usePageContextStore } from "@/stores/usePageContextStore"
@@ -599,7 +600,8 @@ export function ProjectLayout({
 
             // Clear any stale terminal tabs in renderer state so we don't
             // keep dead terminal IDs after project path changes.
-            useTerminalStore.getState().actions.reset()
+            useTerminalStore.getState().actions.resetProject(projectPath)
+            useAITerminalStore.getState().resetProject(projectPath)
         }
     }, [effectiveLocalPath])
 
@@ -911,6 +913,7 @@ export function ProjectLayout({
                             >
                                 {children || <Outlet />}
                             </div>
+                            <TerminalEventBridge />
                             <AITerminalSidebar
                                 className="[--assistant-surface:var(--content-surface)]"
                                 projectPath={effectiveLocalPath ?? undefined}

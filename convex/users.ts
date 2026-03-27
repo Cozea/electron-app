@@ -246,7 +246,6 @@ export const updatePreferences = mutation({
       defaultModel: v.optional(v.string()),
       emailNotifications: v.optional(v.boolean()),
       pushNotifications: v.optional(v.boolean()),
-      radonToken: v.optional(v.string()),
       sourceControlDefaultProvider: v.optional(
         v.union(v.literal("github"), v.literal("gitlab"), v.null())
       ),
@@ -269,9 +268,6 @@ export const updatePreferences = mutation({
     }
     if (args.preferences.pushNotifications !== undefined) {
       nextPreferences.pushNotifications = args.preferences.pushNotifications
-    }
-    if (args.preferences.radonToken !== undefined) {
-      nextPreferences.radonToken = args.preferences.radonToken
     }
     if (args.preferences.sourceControlDefaultProvider === null) {
       delete nextPreferences.sourceControlDefaultProvider

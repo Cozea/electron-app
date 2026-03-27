@@ -819,6 +819,7 @@ export function ServerControl({
             projectPath: projectPathValue,
             label: config.label,
             kind: 'dev-server',
+            surface: 'panel',
             runId,
             phase: 'starting',
             command,

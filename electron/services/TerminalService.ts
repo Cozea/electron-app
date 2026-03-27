@@ -1,13 +1,10 @@
 import { ipcMain } from 'electron'
 import * as pty from '@cozea/pty'
 import * as fs from 'node:fs'
-import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
-import { resolveRadonLibPath } from '../lib/radonPaths'
-import { RadonHostService } from './RadonHostService'
 
 function shellBasename(shellPath: string): string {
     const name = shellPath.split('/').pop()
@@ -47,6 +44,8 @@ export interface ManagedTerminal {
     cancelled?: boolean
     timedOut?: boolean
     lastInput?: string
+    hasRunningSubprocess?: boolean
+    activityPollTimer?: NodeJS.Timeout
 }
 
 export interface TerminalInfo {
@@ -75,41 +74,7 @@ const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
 const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
 const TERMINAL_HISTORY_MAX_ENTRIES = 500
-const SPAWN_HELPER_EXEC_MODE = 0o755
-
-const spawnHelperFixCache = new Map<string, boolean>()
 const windowsExecutableCache = new Map<string, boolean>()
-
-function getNodePtySpawnHelperCandidates(): string[] {
-    const target = `${process.platform}-${process.arch}`
-    const appRoot = process.env.APP_ROOT || process.cwd()
-    return [
-        path.join(appRoot, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
-        path.join(process.resourcesPath, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
-    ]
-}
-
-function ensureNodePtySpawnHelperExecutable(): void {
-    if (process.platform === 'win32') return
-    const cacheKey = `${process.platform}-${process.arch}`
-    if (spawnHelperFixCache.get(cacheKey)) return
-
-    for (const candidate of getNodePtySpawnHelperCandidates()) {
-        try {
-            if (!fs.existsSync(candidate)) continue
-            const stat = fs.statSync(candidate)
-            const hasExecBit = (stat.mode & 0o111) !== 0
-            if (!hasExecBit) {
-                fs.chmodSync(candidate, SPAWN_HELPER_EXEC_MODE)
-            }
-            spawnHelperFixCache.set(cacheKey, true)
-            return
-        } catch {
-            // Continue trying other candidate paths.
-        }
-    }
-}
 
 function truncateTerminalOutput(output: string): string {
     if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
@@ -352,9 +317,7 @@ export class TerminalService {
                     return { success: false, error: `Terminal working directory does not exist: ${cwd || '(empty)'}` }
                 }
 
-                ensureNodePtySpawnHelperExecutable()
                 const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
-                const runtimeBridgePort = await RadonHostService.getInstance().ensureRuntimeBridge(options.projectPath)
 
                 if (profile.id === 'node') {
                     const ensured = await ensureRuntimeInstalled('node')
@@ -380,38 +343,73 @@ export class TerminalService {
 
                 for (const candidate of profileCandidates) {
                     try {
-                        ptyProcess = pty.spawn({
-                            executable: candidate.path,
-                            args: candidate.args || [],
-                            cwd,
-                            cols,
-                            rows,
-                            env: toPtyEnv(runtimeEnv, {
-                                ...(candidate.env ?? {}),
-                                ...(options.env ?? {}),
-                                COZEA_RADON_LIB_PATH: resolveRadonLibPath().replace(/\\/g, '/'),
-                                RADON_IDE_LIB_PATH: resolveRadonLibPath().replace(/\\/g, '/'),
-                                RCT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
-                                REACT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
-                            }),
-                        }, (data) => {
-                            terminal.output = appendTerminalOutput(terminal.output || '', data)
-                            if (!event.sender.isDestroyed()) {
-                                event.sender.send('terminal:output', { terminalId, data, runId: terminal.runId })
-                            }
-                        }, (exitCode) => {
-                            terminal.exitCode = exitCode ?? null
-                            terminal.endedAt = Date.now()
-                            if (terminal.ptyProcess) {
-                                this.persistTerminalSnapshot(terminal as ManagedTerminal)
-                            }
-                            this.terminals.delete(terminalId)
-                            this.removeProjectTerminal(options.projectPath, terminalId)
-        
-                            if (!event.sender.isDestroyed()) {
-                                event.sender.send('terminal:exit', { terminalId, exitCode, runId: terminal.runId })
-                            }
-                        })
+                        ptyProcess = pty.spawn(
+                            {
+                                executable: candidate.path,
+                                args: candidate.args || [],
+                                cwd,
+                                cols,
+                                rows,
+                                env: toPtyEnv(runtimeEnv, {
+                                    ...(candidate.env ?? {}),
+                                    ...(options.env ?? {}),
+                                }),
+                            },
+                            (data) => {
+                                let cleanData = data
+                                // eslint-disable-next-line no-control-regex
+                                // Strip OSC color/theme overrides
+                                cleanData = cleanData.replace(/\x1b\](10|11|12);(?:\?|rgb:)[^\x07\x1b]*(\x07|\x1b\\)/g, '')
+                                // eslint-disable-next-line no-control-regex
+                                // Strip DSR (Device Status Report) requests
+                                cleanData = cleanData.replace(/\x1b\[6n/g, '')
+                                
+                                terminal.output = appendTerminalOutput(terminal.output || '', cleanData)
+                                if (!event.sender.isDestroyed()) {
+                                    event.sender.send('terminal:output', { terminalId, data: cleanData, runId: terminal.runId })
+                                }
+                            },
+                            (exitCode) => {
+                                terminal.exitCode = exitCode ?? null
+                                terminal.endedAt = Date.now()
+                                if (terminal.ptyProcess) {
+                                    this.persistTerminalSnapshot(terminal as ManagedTerminal)
+                                }
+                                this.terminals.delete(terminalId)
+                                this.removeProjectTerminal(options.projectPath, terminalId)
+                                if (terminal.activityPollTimer) {
+                                    clearInterval(terminal.activityPollTimer)
+                                }
+
+                                if (!event.sender.isDestroyed()) {
+                                    event.sender.send('terminal:exit', { terminalId, exitCode, runId: terminal.runId })
+                        // Start subprocess activity polling
+                        if (ptyProcess) {
+                            terminal.hasRunningSubprocess = false
+                            terminal.activityPollTimer = setInterval(() => {
+                                try {
+                                    const ptyPid = ptyProcess.getPid()
+                                    if (!ptyPid) return
+                                    
+                                    const hasActivity = pty.checkSubprocessActivity(ptyPid)
+                                    if (hasActivity !== terminal.hasRunningSubprocess) {
+                                        terminal.hasRunningSubprocess = hasActivity
+                                        if (!event.sender.isDestroyed()) {
+                                            event.sender.send('terminal:activity', { 
+                                                terminalId, 
+                                                hasRunningSubprocess: hasActivity,
+                                                runId: terminal.runId 
+                                            })
+                                        }
+                                    }
+                                } catch (_e) {
+                                    // Ignore errors during activity check (e.g. process died)
+                                }
+                            }, 1000)
+                        }
+                                }
+                            },
+                        )
                         selectedProfile = candidate
                         break
                     } catch (error) {
@@ -446,7 +444,7 @@ export class TerminalService {
         })
 
         ipcMain.handle('terminal:input', async (_event, options: { terminalId: string; data: string }) => {
-            await this.sendInput(options.terminalId, options.data)
+            return await this.sendInput(options.terminalId, options.data)
         })
 
         ipcMain.handle('terminal:resize', async (_event, options: { terminalId: string; cols: number; rows: number }) => {

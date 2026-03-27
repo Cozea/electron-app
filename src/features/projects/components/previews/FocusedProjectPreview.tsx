@@ -245,7 +245,7 @@ export const FocusedProjectPreview = memo(function FocusedProjectPreview({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div
           ref={viewportRef}
-          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden pt-10"
+          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden"
           onDoubleClick={resetTransform}
         >
           <div

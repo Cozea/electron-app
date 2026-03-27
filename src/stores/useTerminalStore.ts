@@ -2,14 +2,14 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { TerminalProfile } from '@/types/electron'
 
-// Panel height constraints
 const MIN_PANEL_HEIGHT = 150
 const MAX_PANEL_HEIGHT = 600
 const DEFAULT_PANEL_HEIGHT = 250
 const MAX_TERMINAL_OUTPUT_CHUNKS = 4000
 
-export type TerminalKind = 'dev-server' | 'shell' | 'task'
+export type TerminalKind = 'dev-server' | 'shell' | 'task' | 'agent'
 export type TerminalNameSource = 'auto' | 'manual'
+export type TerminalSurface = 'panel' | 'assistant'
 
 export interface TerminalInstance {
   id: string
@@ -22,6 +22,9 @@ export interface TerminalInstance {
   projectPath?: string
   label?: string
   kind?: TerminalKind
+  surface?: TerminalSurface
+  agentProfileId?: string
+  agentProfileName?: string
   port?: number
   command?: string
   nameSource?: TerminalNameSource
@@ -32,63 +35,62 @@ export interface TerminalInstance {
 
 export interface TerminalGroup {
   id: string
-  terminalIds: string[]  // Terminal IDs in this split group
+  terminalIds: string[]
   splitDirection: 'horizontal' | 'vertical' | null
   activeTerminalId: string | null
 }
 
 interface TerminalState {
-  // All terminal instances
   terminals: Record<string, TerminalInstance>
   outputBuffers: Record<string, string[]>
-
-  // Groups (for split view)
   groups: Record<string, TerminalGroup>
-
-  // Active group
   activeGroupId: string | null
-
-  // Panel state
   isMaximized: boolean
   isPanelOpen: boolean
   panelHeight: number
-
-  // Available profiles (loaded from main process)
   profiles: TerminalProfile[]
-
-  // Actions
   actions: {
-    // Terminal management
     addTerminal: (terminal: TerminalInstance, groupId?: string) => string
+    registerTerminal: (terminal: TerminalInstance) => void
     removeTerminal: (terminalId: string) => void
     updateTerminalStatus: (terminalId: string, status: TerminalInstance['status'], exitCode?: number | null) => void
     updateTerminalTitle: (terminalId: string, title: string) => void
     updateTerminalDisplay: (
       terminalId: string,
-      display: Partial<Pick<TerminalInstance, 'title' | 'label' | 'port' | 'nameSource' | 'command' | 'kind' | 'projectPath' | 'runId' | 'phase' | 'lastHeartbeatAt'>>
+      display: Partial<
+        Pick<
+          TerminalInstance,
+          | 'title'
+          | 'label'
+          | 'port'
+          | 'nameSource'
+          | 'command'
+          | 'kind'
+          | 'surface'
+          | 'projectPath'
+          | 'runId'
+          | 'phase'
+          | 'lastHeartbeatAt'
+          | 'agentProfileId'
+          | 'agentProfileName'
+        >
+      >,
     ) => void
     setTerminalHasOutput: (terminalId: string, hasOutput: boolean) => void
     appendTerminalOutput: (terminalId: string, chunk: string) => void
     clearTerminalOutput: (terminalId: string) => void
-
-    // Group management
     createGroup: () => string
     setActiveGroup: (groupId: string) => void
     setActiveTerminal: (terminalId: string) => void
     splitTerminal: (terminalId: string, direction: 'horizontal' | 'vertical') => void
-
-    // Panel state
     setMaximized: (isMaximized: boolean) => void
     toggleMaximized: () => void
     setPanelOpen: (isOpen: boolean) => void
     togglePanel: () => void
     setPanelHeight: (height: number) => void
     resetPanelHeight: () => void
-
-    // Profiles
     setProfiles: (profiles: TerminalProfile[]) => void
-
-    // Reset
+    resetProject: (projectPath: string) => void
     reset: () => void
   }
 }
@@ -104,6 +106,81 @@ const initialState = {
   profiles: [],
 }
 
+export function isAssistantTerminal(terminal?: Pick<TerminalInstance, 'surface'> | null): boolean {
+  return terminal?.surface === 'assistant'
+}
+
+export function isPanelTerminal(terminal?: Pick<TerminalInstance, 'surface'> | null): boolean {
+  return !terminal || terminal.surface !== 'assistant'
+}
+
+export function selectPanelTerminals(state: Pick<TerminalState, 'terminals'>): TerminalInstance[] {
+  return Object.values(state.terminals).filter(isPanelTerminal)
+}
+
+export function selectAssistantTerminalsForProject(projectPath?: string | null) {
+  return (state: Pick<TerminalState, 'terminals'>): TerminalInstance[] =>
+    Object.values(state.terminals).filter(
+      (terminal) =>
+        terminal.surface === 'assistant' &&
+        terminal.kind === 'agent' &&
+        (!projectPath || terminal.projectPath === projectPath),
+    )
+}
+
+export function selectHasPanelTerminals(state: Pick<TerminalState, 'terminals'>): boolean {
+  return Object.values(state.terminals).some(isPanelTerminal)
+}
+
+export function selectPanelTerminalCount(state: Pick<TerminalState, 'terminals'>): number {
+  return selectPanelTerminals(state).length
+}
+
+function normalizeTerminal(terminal: TerminalInstance): TerminalInstance {
+  return {
+    ...terminal,
+    surface: terminal.surface ?? 'panel',
+  }
+}
+
+function removeTerminalFromGroups(
+  groups: Record<string, TerminalGroup>,
+  activeGroupId: string | null,
+  terminalId: string,
+): { groups: Record<string, TerminalGroup>; activeGroupId: string | null } {
+  const nextGroups = { ...groups }
+  let nextActiveGroupId = activeGroupId
+
+  for (const [groupId, group] of Object.entries(nextGroups)) {
+    const index = group.terminalIds.indexOf(terminalId)
+    if (index === -1) continue
+
+    const terminalIds = group.terminalIds.filter((id) => id !== terminalId)
+    if (terminalIds.length === 0) {
+      delete nextGroups[groupId]
+      if (nextActiveGroupId === groupId) {
+        nextActiveGroupId = Object.keys(nextGroups)[0] ?? null
+      }
+      continue
+    }
+
+    nextGroups[groupId] = {
+      ...group,
+      terminalIds,
+      activeTerminalId:
+        group.activeTerminalId === terminalId
+          ? terminalIds[Math.min(index, terminalIds.length - 1)] ?? null
+          : group.activeTerminalId,
+      splitDirection: terminalIds.length === 1 ? null : group.splitDirection,
+    }
+  }
+
+  return {
+    groups: nextGroups,
+    activeGroupId: nextActiveGroupId,
+  }
+}
+
 export const useTerminalStore = create<TerminalState>()(
   persist(
     (set, get) => ({
@@ -112,9 +189,9 @@ export const useTerminalStore = create<TerminalState>()(
       actions: {
         addTerminal: (terminal, groupId) => {
           const state = get()
+          const normalizedTerminal = normalizeTerminal(terminal)
           let targetGroupId = groupId
 
-          // If no group specified, use active group or create a new one
           if (!targetGroupId) {
             if (state.activeGroupId && state.groups[state.activeGroupId]) {
               targetGroupId = state.activeGroupId
@@ -123,33 +200,36 @@ export const useTerminalStore = create<TerminalState>()(
             }
           }
 
-          set((state) => {
-            const existingGroup = state.groups[targetGroupId!]
-            const newGroup: TerminalGroup = existingGroup
+          set((currentState) => {
+            const existingGroup = currentState.groups[targetGroupId!]
+            const groupTerminalIds = existingGroup?.terminalIds ?? []
+            const nextTerminalIds = [...groupTerminalIds.filter((id) => id !== normalizedTerminal.id), normalizedTerminal.id]
+
+            const nextGroup: TerminalGroup = existingGroup
               ? {
                   ...existingGroup,
-                  terminalIds: [...existingGroup.terminalIds, terminal.id],
-                  activeTerminalId: terminal.id,
+                  terminalIds: nextTerminalIds,
+                  activeTerminalId: normalizedTerminal.id,
                 }
               : {
                   id: targetGroupId!,
-                  terminalIds: [terminal.id],
+                  terminalIds: [normalizedTerminal.id],
                   splitDirection: null,
-                  activeTerminalId: terminal.id,
+                  activeTerminalId: normalizedTerminal.id,
                 }
 
             return {
               terminals: {
-                ...state.terminals,
-                [terminal.id]: terminal,
+                ...currentState.terminals,
+                [normalizedTerminal.id]: normalizedTerminal,
               },
               outputBuffers: {
-                ...state.outputBuffers,
-                [terminal.id]: state.outputBuffers[terminal.id] ?? [],
+                ...currentState.outputBuffers,
+                [normalizedTerminal.id]: currentState.outputBuffers[normalizedTerminal.id] ?? [],
               },
               groups: {
-                ...state.groups,
-                [targetGroupId!]: newGroup,
+                ...currentState.groups,
+                [targetGroupId!]: nextGroup,
               },
               activeGroupId: targetGroupId!,
               isPanelOpen: true,
@@ -159,53 +239,38 @@ export const useTerminalStore = create<TerminalState>()(
           return targetGroupId!
         },
 
+        registerTerminal: (terminal) => {
+          const normalizedTerminal = normalizeTerminal(terminal)
+          set((state) => ({
+            terminals: {
+              ...state.terminals,
+              [normalizedTerminal.id]: normalizedTerminal,
+            },
+            outputBuffers: {
+              ...state.outputBuffers,
+              [normalizedTerminal.id]: state.outputBuffers[normalizedTerminal.id] ?? [],
+            },
+          }))
+        },
+
         removeTerminal: (terminalId) => {
           set((state) => {
-            const newTerminals = { ...state.terminals }
-            delete newTerminals[terminalId]
-            const newOutputBuffers = { ...state.outputBuffers }
-            delete newOutputBuffers[terminalId]
+            if (!state.terminals[terminalId]) return state
 
-            const newGroups = { ...state.groups }
-            let newActiveGroupId = state.activeGroupId
+            const terminals = { ...state.terminals }
+            delete terminals[terminalId]
 
-            // Remove terminal from all groups
-            for (const [groupId, group] of Object.entries(newGroups)) {
-              const idx = group.terminalIds.indexOf(terminalId)
-              if (idx !== -1) {
-                const newTerminalIds = group.terminalIds.filter((id) => id !== terminalId)
+            const outputBuffers = { ...state.outputBuffers }
+            delete outputBuffers[terminalId]
 
-                if (newTerminalIds.length === 0) {
-                  // Remove empty group
-                  delete newGroups[groupId]
-                  if (state.activeGroupId === groupId) {
-                    // Set active to first remaining group
-                    const remainingGroups = Object.keys(newGroups)
-                    newActiveGroupId = remainingGroups[0] || null
-                  }
-                } else {
-                  // Update group
-                  newGroups[groupId] = {
-                    ...group,
-                    terminalIds: newTerminalIds,
-                    activeTerminalId:
-                      group.activeTerminalId === terminalId
-                        ? newTerminalIds[Math.min(idx, newTerminalIds.length - 1)]
-                        : group.activeTerminalId,
-                    // Reset split if only one terminal left
-                    splitDirection: newTerminalIds.length === 1 ? null : group.splitDirection,
-                  }
-                }
-              }
-            }
+            const { groups, activeGroupId } = removeTerminalFromGroups(state.groups, state.activeGroupId, terminalId)
 
             return {
-              terminals: newTerminals,
-              outputBuffers: newOutputBuffers,
-              groups: newGroups,
-              activeGroupId: newActiveGroupId,
-              // Close panel if no terminals left
-              isPanelOpen: Object.keys(newTerminals).length > 0 ? state.isPanelOpen : false,
+              terminals,
+              outputBuffers,
+              groups,
+              activeGroupId,
+              isPanelOpen: selectHasPanelTerminals({ terminals }) ? state.isPanelOpen : false,
             }
           })
         },
@@ -275,13 +340,17 @@ export const useTerminalStore = create<TerminalState>()(
 
         appendTerminalOutput: (terminalId, chunk) => {
           if (!chunk) return
+
           set((state) => {
+            if (!state.terminals[terminalId]) return state
+
             const existing = state.outputBuffers[terminalId] ?? []
             const next = [...existing, chunk]
             const trimmed =
               next.length > MAX_TERMINAL_OUTPUT_CHUNKS
                 ? next.slice(next.length - MAX_TERMINAL_OUTPUT_CHUNKS)
                 : next
+
             return {
               outputBuffers: {
                 ...state.outputBuffers,
@@ -323,19 +392,17 @@ export const useTerminalStore = create<TerminalState>()(
 
         setActiveTerminal: (terminalId) => {
           set((state) => {
-            // Find which group contains this terminal
             for (const [groupId, group] of Object.entries(state.groups)) {
-              if (group.terminalIds.includes(terminalId)) {
-                return {
-                  activeGroupId: groupId,
-                  groups: {
-                    ...state.groups,
-                    [groupId]: {
-                      ...group,
-                      activeTerminalId: terminalId,
-                    },
+              if (!group.terminalIds.includes(terminalId)) continue
+              return {
+                activeGroupId: groupId,
+                groups: {
+                  ...state.groups,
+                  [groupId]: {
+                    ...group,
+                    activeTerminalId: terminalId,
                   },
-                }
+                },
               }
             }
             return state
@@ -344,18 +411,16 @@ export const useTerminalStore = create<TerminalState>()(
 
         splitTerminal: (terminalId, direction) => {
           set((state) => {
-            // Find which group contains this terminal
             for (const [groupId, group] of Object.entries(state.groups)) {
-              if (group.terminalIds.includes(terminalId)) {
-                return {
-                  groups: {
-                    ...state.groups,
-                    [groupId]: {
-                      ...group,
-                      splitDirection: direction,
-                    },
+              if (!group.terminalIds.includes(terminalId)) continue
+              return {
+                groups: {
+                  ...state.groups,
+                  [groupId]: {
+                    ...group,
+                    splitDirection: direction,
                   },
-                }
+                },
               }
             }
             return state
@@ -392,6 +457,37 @@ export const useTerminalStore = create<TerminalState>()(
           set({ profiles })
         },
 
+        resetProject: (projectPath) => {
+          set((state) => {
+            const terminalIds = Object.values(state.terminals)
+              .filter((terminal) => terminal.projectPath === projectPath)
+              .map((terminal) => terminal.id)
+
+            if (terminalIds.length === 0) return state
+
+            const terminals = { ...state.terminals }
+            const outputBuffers = { ...state.outputBuffers }
+            let groups = state.groups
+            let activeGroupId = state.activeGroupId
+
+            for (const terminalId of terminalIds) {
+              delete terminals[terminalId]
+              delete outputBuffers[terminalId]
+              const nextGroupState = removeTerminalFromGroups(groups, activeGroupId, terminalId)
+              groups = nextGroupState.groups
+              activeGroupId = nextGroupState.activeGroupId
+            }
+
+            return {
+              terminals,
+              outputBuffers,
+              groups,
+              activeGroupId,
+              isPanelOpen: selectHasPanelTerminals({ terminals }) ? state.isPanelOpen : false,
+            }
+          })
+        },
+
         reset: () => {
           set(initialState)
         },
@@ -400,17 +496,15 @@ export const useTerminalStore = create<TerminalState>()(
     {
       name: 'terminal-store',
       storage: createJSONStorage(() => localStorage),
-      // Only persist panel height and open state
       partialize: (state) => ({
         panelHeight: state.panelHeight,
         isPanelOpen: state.isPanelOpen,
         isMaximized: state.isMaximized,
       }),
-    }
-  )
+    },
+  ),
 )
 
-// Selectors for convenience - use primitive values to avoid infinite loops
 export const useTerminalActions = () => useTerminalStore((state) => state.actions)
 export const useTerminals = () => useTerminalStore((state) => state.terminals)
 export const useTerminalGroups = () => useTerminalStore((state) => state.groups)
@@ -420,7 +514,6 @@ export const useIsPanelOpen = () => useTerminalStore((state) => state.isPanelOpe
 export const useIsMaximized = () => useTerminalStore((state) => state.isMaximized)
 export const usePanelHeight = () => useTerminalStore((state) => state.panelHeight)
 
-// Derived selectors - these need to be used with useShallow or at component level
 export function useActiveGroup(): TerminalGroup | null {
   const activeGroupId = useTerminalStore((state) => state.activeGroupId)
   const groups = useTerminalStore((state) => state.groups)
@@ -435,7 +528,6 @@ export function useActiveTerminal(): TerminalInstance | null {
   return activeGroup?.activeTerminalId ? terminals[activeGroup.activeTerminalId] ?? null : null
 }
 
-// Panel state as individual hooks (avoid object creation)
 export function useTerminalPanelState() {
   const isMaximized = useTerminalStore((state) => state.isMaximized)
   const isPanelOpen = useTerminalStore((state) => state.isPanelOpen)

@@ -53,6 +53,15 @@ impl NativePty {
         let _ = child.kill();
         Ok(())
     }
+
+    #[napi]
+    pub fn get_pid(&self) -> Result<u32> {
+        let child = self.child.lock().map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        match child.process_id() {
+            Some(pid) => Ok(pid),
+            None => Err(napi::Error::from_reason("Process ID not available".to_string()))
+        }
+    }
 }
 
 #[napi(ts_args_type = "options: PtyOptions, onData: (data: string) => void, onExit: (exitCode: number) => void")]
@@ -88,10 +97,10 @@ pub fn spawn(
     let writer = pair.master.take_writer().map_err(|e| napi::Error::from_reason(e.to_string()))?;
     let mut reader = pair.master.try_clone_reader().map_err(|e| napi::Error::from_reason(e.to_string()))?;
 
-    let tsfn_on_data: ThreadsafeFunction<String, ErrorStrategy::CalleeHandled> = on_data
+    let tsfn_on_data: ThreadsafeFunction<String, ErrorStrategy::Fatal> = on_data
         .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
         
-    let tsfn_on_exit: ThreadsafeFunction<i32, ErrorStrategy::CalleeHandled> = on_exit
+    let tsfn_on_exit: ThreadsafeFunction<i32, ErrorStrategy::Fatal> = on_exit
         .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
 
     let child_arc = Arc::new(Mutex::new(child));
@@ -105,7 +114,7 @@ pub fn spawn(
                 Ok(0) => break, // EOF
                 Ok(n) => {
                     let text = String::from_utf8_lossy(&buf[0..n]).into_owned();
-                    tsfn_on_data.call(Ok(text), ThreadsafeFunctionCallMode::Blocking);
+                    tsfn_on_data.call(text, ThreadsafeFunctionCallMode::Blocking);
                 }
                 Err(_) => break, // Disconnected or error
             }
@@ -114,8 +123,8 @@ pub fn spawn(
         // Wait for the child to exit
         if let Ok(mut c) = child_clone.lock() {
             let exit_status = c.wait().unwrap_or_else(|_| portable_pty::ExitStatus::with_exit_code(1));
-            let code = if exit_status.success() { 0 } else { 1 };
-            tsfn_on_exit.call(Ok(code), ThreadsafeFunctionCallMode::Blocking);
+            let code = exit_status.exit_code() as i32;
+            tsfn_on_exit.call(code, ThreadsafeFunctionCallMode::Blocking);
         }
     });
 
@@ -124,4 +133,26 @@ pub fn spawn(
         master: Arc::new(Mutex::new(pair.master)),
         child: child_arc,
     })
+}
+
+use sysinfo::{System, Pid};
+
+#[napi]
+pub fn check_subprocess_activity(pid: u32) -> Result<bool> {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    
+    let target_pid = Pid::from(pid as usize);
+    let mut has_child = false;
+    
+    for (proc_pid, process) in sys.processes() {
+        if let Some(parent_pid) = process.parent() {
+            if parent_pid == target_pid {
+                has_child = true;
+                break;
+            }
+        }
+    }
+    
+    Ok(has_child)
 }

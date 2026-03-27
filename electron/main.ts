@@ -1,4 +1,5 @@
 import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
+import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -17,7 +18,7 @@ import { ProjectSourceControlService } from './services/ProjectSourceControlServ
 import { DatabaseService } from './services/DatabaseService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
-import { RadonHostService } from './services/RadonHostService'
+import { AgentToolService } from './services/AgentToolService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
@@ -25,7 +26,6 @@ import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
-import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
@@ -996,6 +996,7 @@ ProjectSourceControlService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 DependenciesService.getInstance().registerIpcHandlers()
+AgentToolService.getInstance().registerIpcHandlers()
 
 registerCoreHandlers(ipcMain, {
   
@@ -1045,10 +1046,6 @@ registerProjectHandlers(ipcMain, {
 
 registerRuntimeHandlers(ipcMain)
 
-registerNativePreviewHandlers(ipcMain, {
-  getWindows: () => BrowserWindow.getAllWindows(),
-})
-
 registerSyncHandlers(ipcMain)
 
 registerDevServerHandlers(ipcMain, {
@@ -1076,7 +1073,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  RadonHostService.getInstance().dispose()
   PreviewSnapshotService.getInstance().dispose()
   
   stopUpdateChecks()
@@ -1087,6 +1083,11 @@ app.on('activate', () => {
     createWindow()
   }
 })
+
+// Sync macOS PATH/SSH before initializing services
+if (process.platform === 'darwin') {
+  syncShellEnvironment()
+}
 
 app.whenReady().then(() => {
   loadSyncState()

@@ -50,7 +50,9 @@ export function LayoutToggles() {
     const sidebar = useOptionalSidebar()
     const toggleTerminal = useTerminalStore((state) => state.actions.togglePanel)
     const isTerminalOpen = useTerminalStore((state) => state.isPanelOpen)
-    const hasTerminalSessions = useTerminalStore((state) => Object.keys(state.terminals).length > 0)
+    const hasTerminalSessions = useTerminalStore((state) =>
+        Object.values(state.terminals).some((terminal) => terminal.surface !== 'assistant')
+    )
     const toggleAssistant = () => {
         const store = useAITerminalStore.getState()
         if (store.mode === 'closed') {

@@ -192,318 +192,6 @@ export interface ProjectRuntimeProfile {
   }
 }
 
-export interface NativePreviewDeviceDescriptor {
-  id: string
-  name: string
-  platform: 'ios' | 'android'
-  kind: 'simulator' | 'emulator' | 'physical'
-  state: 'booted' | 'shutdown' | 'available' | 'offline'
-  osVersion?: string
-  runtimeId?: string
-  isManaged?: boolean
-}
-
-export interface NativePreviewListDevicesResult {
-  success: boolean
-  devices?: NativePreviewDeviceDescriptor[]
-  error?: string
-}
-
-export interface NativePreviewCaptureSourceDescriptor {
-  id: string
-  name: string
-  displayId: string
-  appIconDataUrl?: string
-  thumbnailDataUrl?: string
-}
-
-export interface NativePreviewListCaptureSourcesResult {
-  success: boolean
-  sources?: NativePreviewCaptureSourceDescriptor[]
-  error?: string
-}
-
-export type NativePreviewPlatform = 'ios' | 'android'
-export type NativePreviewLauncher = 'simulator' | 'web'
-export type NativePreviewBuildMode = 'debug' | 'dev-client'
-export type NativePreviewVerificationStatus = 'idle' | 'running' | 'passed' | 'failed' | 'unavailable'
-export type NativePreviewSessionState =
-  | 'idle'
-  | 'booting_device'
-  | 'starting_metro'
-  | 'building_app'
-  | 'installing_app'
-  | 'launching_app'
-  | 'stream_ready'
-  | 'app_ready'
-  | 'stream_lost'
-  | 'automation_running'
-  | 'stopped'
-  | 'error'
-
-export type RadonEntryMode = 'app' | 'component_preview' | 'storybook'
-export type RadonRotation = 'Portrait' | 'LandscapeLeft' | 'LandscapeRight' | 'PortraitUpsideDown'
-export type RadonFeatureAvailabilityStatus = 'AVAILABLE' | 'PAYWALLED' | 'ADMIN_DISABLED'
-export type RadonFeatureName =
-  | 'AndroidSmartphoneEmulators'
-  | 'AndroidTabletEmulators'
-  | 'AndroidPhysicalDevice'
-  | 'Biometrics'
-  | 'ComponentPreview'
-  | 'DeviceAppearanceSettings'
-  | 'DeviceFontSizeSettings'
-  | 'DeviceLocalizationSettings'
-  | 'DeviceRotation'
-  | 'ElementInspector'
-  | 'ExpoRouterIntegration'
-  | 'IOSSmartphoneSimulators'
-  | 'IOSTabletSimulators'
-  | 'JSProfiler'
-  | 'LocationSimulation'
-  | 'NetworkInspection'
-  | 'MaestroTesting'
-  | 'OpenDeepLink'
-  | 'OutlineRenders'
-  | 'Permissions'
-  | 'ReactProfiler'
-  | 'ReactQueryDevTools'
-  | 'RadonConnect'
-  | 'RadonAI'
-  | 'ReduxDevTools'
-  | 'ScreenRecording'
-  | 'ScreenReplay'
-  | 'Screenshot'
-  | 'SendFile'
-  | 'StorybookIntegration'
-
-export interface RadonCommandError {
-  code:
-    | 'no_license'
-    | 'no_device'
-    | 'runtime_not_injected'
-    | 'app_not_ready'
-    | 'stream_lost'
-    | 'metro_disconnected'
-    | 'feature_unavailable'
-    | 'command_unsupported'
-    | 'unknown'
-  message: string
-  recoverable?: boolean
-}
-
-export interface RadonSessionCapabilities {
-  transport: 'mjpeg' | 'fmp4'
-  touch: boolean
-  rotate: boolean
-  showTouches: boolean
-  screenshot: boolean
-  recording: boolean
-  replay: boolean
-  devMenu: boolean
-  entryModes: RadonEntryMode[]
-  buttons: {
-    home: boolean
-    appSwitch: boolean
-    volumeUp: boolean
-    volumeDown: boolean
-    actionButton: boolean
-  }
-}
-
-export interface NativePreviewSession {
-  id: string
-  projectPath: string
-  platform: NativePreviewPlatform
-  launcher: NativePreviewLauncher
-  buildMode: NativePreviewBuildMode
-  state: NativePreviewSessionState
-  startedAt: number
-  updatedAt: number
-  device?: NativePreviewDeviceDescriptor
-  deviceId?: string
-  message?: string
-  error?: string
-  streamUrl?: string
-  verificationStatus?: NativePreviewVerificationStatus
-  entryMode?: RadonEntryMode
-  capabilities?: RadonSessionCapabilities
-  rotation?: RadonRotation
-  transport?: 'mjpeg' | 'fmp4'
-  appReady?: boolean
-  focused?: boolean
-  lastError?: RadonCommandError
-}
-
-export interface NativePreviewStartSessionInput {
-  projectPath: string
-  platform: NativePreviewPlatform
-  launcher: NativePreviewLauncher
-  buildMode: NativePreviewBuildMode
-  terminalId?: string
-  devServerPort?: number
-  radonToken?: string
-  deviceId?: string
-  entryMode?: RadonEntryMode
-}
-
-export interface NativePreviewStartSessionResult {
-  success: boolean
-  session?: NativePreviewSession
-  error?: string
-}
-
-export interface NativePreviewStopSessionResult {
-  success: boolean
-  error?: string
-}
-
-export interface NativePreviewOpenDeviceResult {
-  success: boolean
-  device?: NativePreviewDeviceDescriptor
-  error?: string
-}
-
-export interface NativePreviewGetSessionStateResult {
-  success: boolean
-  session?: NativePreviewSession
-  error?: string
-}
-
-export interface NativePreviewListSessionsResult {
-  success: boolean
-  sessions?: NativePreviewSession[]
-  error?: string
-}
-
-export interface NativePreviewSendInputResult {
-  success: boolean
-  error?: string
-}
-
-export interface NativePreviewRunAutomationInput {
-  sessionId: string
-  flow?: string
-  flowPath?: string
-  appId?: string
-  selectorId?: string
-}
-
-export interface NativePreviewRunAutomationResult {
-  success: boolean
-  status: NativePreviewVerificationStatus
-  stdout?: string
-  stderr?: string
-  error?: string
-}
-
-export interface NativePreviewCaptureScreenshotResult {
-  success: boolean
-  dataUrl?: string
-  fileUrl?: string
-  error?: string
-}
-
-export interface NativePreviewInputPayload {
-  sessionId: string
-  type: 'tap' | 'down' | 'move' | 'up' | 'key'
-  x?: number
-  y?: number
-  key?: string
-}
-
-export type RadonPlatform = NativePreviewPlatform
-export type RadonDevice = NativePreviewDeviceDescriptor
-export type RadonSession = NativePreviewSession
-
-export type RadonLicenseStatus =
-  | 'missing'
-  | 'valid'
-  | 'expired'
-  | 'fingerprint_mismatch'
-  | 'corrupted'
-  | 'unknown'
-
-export interface RadonLicenseState {
-  status: RadonLicenseStatus
-  tokenPresent: boolean
-  tokenVerified: boolean
-  plan?: string
-  error?: string
-  features?: Partial<Record<RadonFeatureName, RadonFeatureAvailabilityStatus>>
-  missingFeatures?: RadonFeatureName[]
-}
-
-export type RadonDeviceCommand =
-  | 'tap'
-  | 'touch_down'
-  | 'touch_move'
-  | 'touch_up'
-  | 'wheel'
-  | 'sendKeys'
-  | 'setClipboard'
-  | 'home'
-  | 'app_switch'
-  | 'volume_up'
-  | 'volume_down'
-  | 'action_button'
-  | 'rotate_clockwise'
-  | 'rotate_counterclockwise'
-  | 'show_touches'
-  | 'hide_touches'
-  | 'capture_screenshot'
-  | 'start_recording'
-  | 'stop_recording'
-  | 'capture_replay'
-  | 'copy_last_screenshot'
-  | 'open_dev_menu'
-
-export interface RadonDeviceCommandResult {
-  success: boolean
-  error?: string
-  dataUrl?: string
-  fileUrl?: string
-  commandError?: RadonCommandError
-}
-
-export interface RadonToolDescriptor {
-  id: string
-  title: string
-  status: 'available' | 'unavailable' | 'disabled'
-  enabled?: boolean
-}
-
-export interface RadonProjectCapabilities {
-  supportsNativePreview: boolean
-  supportsWebPreview: boolean
-  supportedPlatforms: RadonPlatform[]
-  defaultPlatform: RadonPlatform | null
-  supportedEntryModes: RadonEntryMode[]
-  runtimeInjectionRequired: boolean
-  availableTools: RadonToolDescriptor[]
-}
-
-export interface RadonRuntimeEvent {
-  projectPath?: string
-  sessionId?: string
-  type: string
-  payload?: unknown
-}
-
-export interface RadonToolsUpdatedEvent {
-  projectPath?: string
-  sessionId?: string
-  tools: RadonToolDescriptor[]
-}
-
-export interface RadonLogEvent {
-  timestamp: number
-  source: 'host' | 'license' | 'simulator-server' | 'runtime'
-  level: 'info' | 'warn' | 'error'
-  message: string
-  projectPath?: string
-  sessionId?: string
-}
-
 export interface RuntimeResolveCommandResult {
   success: boolean
   command: string
@@ -1112,10 +800,37 @@ export interface TerminalOutputEvent {
   runId?: string
 }
 
+export interface TerminalActivityEvent {
+  terminalId: string
+  hasRunningSubprocess: boolean
+  runId?: string
+}
+
 export interface TerminalExitEvent {
   terminalId: string
   exitCode: number | null
   runId?: string
+}
+
+export type AgentToolId = 'claude' | 'gemini' | 'kilo' | 'shell' | 'copilot' | 'codex'
+
+export type AgentToolSource = 'builtin' | 'system' | 'managed' | 'missing'
+
+export interface AgentToolStatus {
+  toolId: AgentToolId
+  label: string
+  available: boolean
+  source: AgentToolSource
+  packageName?: string
+  commandPath?: string
+  launchCommand?: string
+  installRoot?: string
+  updatedAt?: number
+  error?: string
+}
+
+export interface AgentToolPrepareResult extends AgentToolStatus {
+  success: boolean
 }
 
 export interface DevServerStartOptions {
@@ -1870,50 +1585,9 @@ export interface ElectronAPI {
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
     onError: (callback: (data: { projectPath: string; error: string }) => void) => () => void
   }
-  radon: {
-    getLicenseState: () => Promise<RadonLicenseState>
-    activateLicense: (options: { licenseKey: string; email: string }) => Promise<{ success: boolean; token?: string; error?: string }>
-    removeLicense: () => Promise<{ success: boolean }>
-    getProjectCapabilities: (options: { projectPath: string }) => Promise<RadonProjectCapabilities>
-    listDevices: (options?: { platform?: RadonPlatform }) => Promise<NativePreviewListDevicesResult>
-    listSessions: () => Promise<NativePreviewListSessionsResult>
-    startSession: (options: NativePreviewStartSessionInput) => Promise<NativePreviewStartSessionResult>
-    stopSession: (options: { sessionId: string }) => Promise<NativePreviewStopSessionResult>
-    focusSession: (options: { sessionId: string }) => Promise<{ success: boolean; error?: string }>
-    sendDeviceCommand: (options: {
-      sessionId: string
-      command: RadonDeviceCommand
-      payload?: Record<string, unknown>
-    }) => Promise<RadonDeviceCommandResult>
-    captureScreenshot: (options: { sessionId: string }) => Promise<NativePreviewCaptureScreenshotResult>
-    openDevice: (options: { platform: RadonPlatform; deviceId?: string }) => Promise<NativePreviewOpenDeviceResult>
-    getAvailableTools: (options: { sessionId: string }) => Promise<{ success: boolean; tools?: RadonToolDescriptor[]; error?: string }>
-    openComponentPreview: (options: { sessionId: string; previewId: string }) => Promise<{ success: boolean; error?: string }>
-    showStorybookStory: (options: { sessionId: string; storyId: string }) => Promise<{ success: boolean; error?: string }>
-    openNavigation: (options: { sessionId: string; route: string }) => Promise<{ success: boolean; error?: string }>
-    requestInspect: (options: { sessionId: string; target?: unknown }) => Promise<{ success: boolean; result?: unknown; error?: string }>
-    onLicenseChanged: (callback: (state: RadonLicenseState) => void) => () => void
-    onSessionUpdated: (callback: (session: RadonSession) => void) => () => void
-    onRuntimeEvent: (callback: (event: RadonRuntimeEvent) => void) => () => void
-    onToolsUpdated: (callback: (event: RadonToolsUpdatedEvent) => void) => () => void
-    onLogEvent: (callback: (event: RadonLogEvent) => void) => () => void
-  }
-  nativePreview: {
-    listDevices: (options?: { platform?: NativePreviewPlatform }) => Promise<NativePreviewListDevicesResult>
-    listSessions: () => Promise<NativePreviewListSessionsResult>
-    startSession: (options: NativePreviewStartSessionInput) => Promise<NativePreviewStartSessionResult>
-    stopSession: (options: { sessionId: string }) => Promise<NativePreviewStopSessionResult>
-    getSessionState: (options: { sessionId: string }) => Promise<NativePreviewGetSessionStateResult>
-    sendInput: (options: NativePreviewInputPayload) => Promise<NativePreviewSendInputResult>
-    captureScreenshot: (options: { sessionId: string }) => Promise<NativePreviewCaptureScreenshotResult>
-    runAutomation: (options: NativePreviewRunAutomationInput) => Promise<NativePreviewRunAutomationResult>
-    openDevice: (options: { platform: NativePreviewPlatform; deviceId?: string }) => Promise<NativePreviewOpenDeviceResult>
-    activateLicense: (options: { licenseKey: string; email: string }) => Promise<{ success: boolean; token?: string; error?: string }>
-    onSessionUpdated: (callback: (session: NativePreviewSession) => void) => () => void
-  }
   terminal: {
     create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
-    input: (options: { terminalId: string; data: string }) => Promise<void>
+    input: (options: { terminalId: string; data: string }) => Promise<boolean>
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
     getProfiles: () => Promise<TerminalProfile[]>
@@ -1921,17 +1595,16 @@ export interface ElectronAPI {
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void
+    onActivity: (callback: (data: TerminalActivityEvent) => void) => () => void
+  }
+  agentTools: {
+    getStatus: (options: { toolId: AgentToolId }) => Promise<AgentToolStatus>
+    prepare: (options: { toolId: AgentToolId }) => Promise<AgentToolPrepareResult>
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) => Promise<{ action: string | null }>
     showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) => Promise<{ action: string | null }>
-    showNativePreviewMenu: (options: {
-      x: number
-      y: number
-      iosDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
-      androidDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
-    }) => Promise<{ action: 'select-device'; deviceId: string; platform: 'ios' | 'android' } | { action: 'select-target'; target: 'ios' | 'android' } | null>
     showNative: (options: {
       x: number
       y: number

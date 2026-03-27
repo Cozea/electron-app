@@ -5,7 +5,6 @@
   "main": "out/main/index.js",
   "scripts": {
     "postinstall": "node -e \"if(process.platform==='darwin'){const fs=require('fs');const path=require('path');for(const a of ['darwin-arm64','darwin-x64']){const p=path.join('node_modules','node-pty','prebuilds',a,'spawn-helper');try{if(fs.existsSync(p))fs.chmodSync(p,0o755)}catch{}}}\"",
-    "build:engine": "cd sim-engine && cargo build --release && cp target/release/simulator-server-macos ../resources/radon/dist/simulator-server-macos",
     "dev": "electron-vite dev",
     "dev:perf:modern": "electron-vite dev",
     "dev:perf:baseline": "VITE_FF_DATA_ROUTER=0 VITE_FF_VIEW_TRANSITIONS=0 VITE_FF_PRIORITIZED_SCHEDULING=0 VITE_FF_REACT_COMPILER=0 VITE_FF_ROLLDOWN_BUILD=0 VITE_FF_JANK_DIAGNOSTICS=0 VITE_FF_CONTENT_VISIBILITY=0 VITE_FF_OFFSCREEN_SCREENSHOT=0 VITE_FF_UTILITY_PROCESS_MANIFEST=0 electron-vite dev",

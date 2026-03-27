@@ -310,7 +310,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NativePty, spawn } = nativeBinding
+const { NativePty, spawn, checkSubprocessActivity } = nativeBinding
 
 module.exports.NativePty = NativePty
 module.exports.spawn = spawn
+module.exports.checkSubprocessActivity = checkSubprocessActivity

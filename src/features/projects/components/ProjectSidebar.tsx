@@ -322,23 +322,23 @@ export function ProjectSidebar({
                                                                 setActiveTab(item.title)
                                                             }}
                                                         >
-                                                            <item.icon className="transition-opacity group-data-[active=true]:opacity-100 opacity-70" />
-                                                            <span>{item.title}</span>
+                                                            <item.icon className="transition-opacity group-data-[active=true]:opacity-100 opacity-70 shrink-0" />
+                                                            <span className="truncate group-data-[collapsible=icon]:hidden">{item.title}</span>
                                                             {item.title === 'Tasks' ? (
-                                                                <ChevronDown className={cn('ml-auto h-3.5 w-3.5 transition-transform', tasksExpanded ? 'rotate-0' : '-rotate-90')} />
+                                                                <ChevronDown className={cn('ml-auto h-3.5 w-3.5 shrink-0 transition-transform group-data-[collapsible=icon]:hidden', tasksExpanded ? 'rotate-0' : '-rotate-90')} />
                                                             ) : null}
                                                             {showUnreadBadge && (
-                                                                <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-primary text-primary-foreground">
+                                                                <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-primary text-primary-foreground group-data-[collapsible=icon]:hidden">
                                                                     {unreadCount > 99 ? '99+' : unreadCount}
                                                                 </Badge>
                                                             )}
                                                             {'alpha' in item && item.alpha && (
-                                                                <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
+                                                                <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal group-data-[collapsible=icon]:hidden">
                                                                     alpha
                                                                 </Badge>
                                                             )}
                                                         {'beta' in item && item.beta && (
-                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
+                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal group-data-[collapsible=icon]:hidden">
                                                                 beta
                                                             </Badge>
                                                         )}

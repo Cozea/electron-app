@@ -1,3 +1,4 @@
+import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, RouterProvider } from 'react-router-dom'
 
@@ -24,13 +25,15 @@ if (platform) {
 applyThemeClass(getStoredThemePreference())
 
 createRoot(document.getElementById('root')!).render(
-  <ConvexProvider>
-    {featureFlags.dataRouter ? (
-      <RouterProvider router={appRouter} />
-    ) : (
-      <BrowserRouter>
-        <LegacyRouterApp />
-      </BrowserRouter>
-    )}
-  </ConvexProvider>,
+  <React.StrictMode>
+    <ConvexProvider>
+      {featureFlags.dataRouter ? (
+        <RouterProvider router={appRouter} />
+      ) : (
+        <BrowserRouter>
+          <LegacyRouterApp />
+        </BrowserRouter>
+      )}
+    </ConvexProvider>
+  </React.StrictMode>,
 )

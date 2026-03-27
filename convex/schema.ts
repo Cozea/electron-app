@@ -20,7 +20,6 @@ export default defineSchema({
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
-        radonToken: v.optional(v.string()),
         sourceControlDefaultProvider: v.optional(
           v.union(v.literal("github"), v.literal("gitlab"))
         ),
@@ -1693,30 +1692,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_time", ["projectId", "timestamp"])
     .index("by_user", ["userId"]),
-
-  // ============================================
-  // AI CONVERSATION HISTORY
-  // ============================================
-
-  // Conversation continuation linkage for Responses-style providers.
-  // Stores provider response linkage state so continuation survives server restarts.
-  aiContinuationState: defineTable({
-    organizationId: v.string(), // WorkOS org id from AI runtime request
-    conversationId: v.string(),
-    provider: v.string(),
-    model: v.string(),
-    previousResponseId: v.string(),
-    updatedAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_org_conversation_provider_model", [
-      "organizationId",
-      "conversationId",
-      "provider",
-      "model",
-    ])
-    .index("by_org_conversation", ["organizationId", "conversationId"])
-    .index("by_expires_at", ["expiresAt"]),
 
   // Conversation compaction checkpoints for auto-context compression.
   aiCompactionState: defineTable({

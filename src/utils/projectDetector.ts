@@ -40,11 +40,8 @@ export interface FrameworkInfo {
 }
 
 export interface ProjectPreviewExperience {
-  mode: 'web' | 'expo-native'
+  mode: 'web'
   supportsWebPreview: boolean
-  supportsNativePreview: boolean
-  nativePreviewProvider: 'radon' | null
-  defaultNativePlatform: 'ios' | 'android' | null
 }
 
 export interface DevServerLaunchContext {
@@ -510,41 +507,19 @@ export async function getFrameworkInfo(
 
 export async function getProjectPreviewExperience(
   projectPath: string,
-  storedFramework?: Framework | null,
-  storedDevCommand?: string | null,
-  storedDevPort?: number | null,
+  _storedFramework?: Framework | null,
+  _storedDevCommand?: string | null,
+  _storedDevPort?: number | null,
 ): Promise<ProjectPreviewExperience> {
-  const [frameworkInfo, pkg] = await Promise.all([
-    getFrameworkInfo(projectPath, storedFramework, storedDevCommand, storedDevPort),
-    readPackageJson(projectPath),
-  ])
+  const pkg = await readPackageJson(projectPath)
 
   const scripts = pkg?.scripts ?? {}
   const deps = { ...pkg?.dependencies, ...pkg?.devDependencies }
-  const hasExpoFramework = frameworkInfo.framework === 'expo'
-  const hasReactNativeFramework = frameworkInfo.framework === 'react-native'
-  const hasMobileScripts = hasScript(scripts, 'ios') || hasScript(scripts, 'android')
   const supportsWebPreview = hasScript(scripts, 'web') || Boolean(deps['react-native-web'])
-  const supportsNativePreview = hasExpoFramework || hasReactNativeFramework || hasMobileScripts
-  const hostPlatform = typeof navigator !== 'undefined'
-    ? ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
-      || navigator.platform
-      || navigator.userAgent)
-    : ''
-  const defaultNativePlatform = /mac/i.test(hostPlatform)
-    ? 'ios'
-    : /win/i.test(hostPlatform)
-      ? 'android'
-      : supportsNativePreview
-        ? (hasScript(scripts, 'ios') ? 'ios' : 'android')
-        : null
 
   return {
-    mode: supportsNativePreview ? 'expo-native' : 'web',
+    mode: 'web',
     supportsWebPreview,
-    supportsNativePreview,
-    nativePreviewProvider: supportsNativePreview ? 'radon' : null,
-    defaultNativePlatform,
   }
 }
 
@@ -612,25 +587,6 @@ export async function getDevServerConfig(
       suggestions,
       requiresUserSelection: false,
     }
-  }
-
-  let overrideCommand = null;
-  const radonLibEnv = navigator.userAgent.toLowerCase().includes('win') ? '%COZEA_RADON_LIB_PATH%' : '$COZEA_RADON_LIB_PATH';
-
-  if (info.framework === 'expo') {
-    overrideCommand = `node "${radonLibEnv}/expo/expo_start.js" --port 8081`;
-  } else if (info.framework === 'react-native') {
-    overrideCommand = `node node_modules/react-native/cli.js start --config "${radonLibEnv}/metro_config.js" --customLogReporterPath "${radonLibEnv}/metro_reporter.js"`;
-  }
-
-  if (overrideCommand) {
-    return {
-      command: overrideCommand,
-      port: storedDevPort ?? 8081,
-      label: info.framework === 'expo' ? 'Expo Dev Server (Radon IDE)' : 'Metro Dev Server (Radon IDE)',
-      suggestions,
-      requiresUserSelection: false,
-    };
   }
 
   const preferredScriptName = resolvePreferredScriptName(scripts, info.framework, context)

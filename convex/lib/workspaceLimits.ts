@@ -213,7 +213,7 @@ export function getPlanStorageLimitGB(plan: string): number {
 export interface StorageBreakdown {
   sourceAndConfig: number // replica bundle + replica LFS (fallback: projectFiles active)
   collaborationData: number // yjsUpdates
-  aiHistory: number // aiConversations message payloads
+  aiHistory: number // DEPRECATED
   buildCache: number // builderRuns metadata/logs
   snapshots: number // yjsDocuments
   gitHistory: number // legacy projectFiles (superseded)

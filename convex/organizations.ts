@@ -1835,39 +1835,17 @@ export const getUsageSummary = query({
     period: v.union(v.literal("daily"), v.literal("monthly")),
   },
   handler: async (ctx, args) => {
-    const now = Date.now()
-    const periodStart =
-      args.period === "daily"
-        ? getUtcDayStartTimestamp(now)
-        : getUtcMonthStartTimestamp(now)
-
-    const aggregate = await ctx.db
-      .query("aiUsageAggregates")
-      .withIndex("by_organization_and_period", (q) =>
-        q
-          .eq("organizationId", args.orgId)
-          .eq("period", args.period)
-          .eq("periodStart", periodStart)
-      )
-      .first()
-
     const org = await ctx.db.get(args.orgId)
     const billingSnapshot = org
       ? await resolveOrganizationBillingSnapshot(ctx, {
           organization: org,
         })
       : null
-    const aggregateWithTrackedUnits = aggregate
-      ? {
-          ...aggregate,
-          totalTrackedUnits: aggregate.totalTrackedUnits,
-        }
-      : null
 
     return {
-      aggregate: aggregateWithTrackedUnits,
+      aggregate: null,
       trackedUsage: {
-        totalTrackedUnits: aggregate?.totalTrackedUnits ?? 0,
+        totalTrackedUnits: 0,
       },
       billingSnapshot,
       subscription: org
@@ -1934,24 +1912,6 @@ export const deleteOrganization = mutation({
       .collect()
     for (const integration of integrations) {
       await ctx.db.delete(integration._id)
-    }
-
-    // 4. Delete all AI usage records
-    const aiUsage = await ctx.db
-      .query("aiUsage")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
-      .collect()
-    for (const usage of aiUsage) {
-      await ctx.db.delete(usage._id)
-    }
-
-    // 5. Delete all AI usage aggregates
-    const aggregates = await ctx.db
-      .query("aiUsageAggregates")
-      .withIndex("by_organization_and_period", (q) => q.eq("organizationId", args.orgId))
-      .collect()
-    for (const aggregate of aggregates) {
-      await ctx.db.delete(aggregate._id)
     }
 
     // 6. Delete all audit logs

@@ -1,8 +1,6 @@
 import execa, { type ExecaChildProcess } from 'execa'
 import getPort from 'get-port'
 import net from 'node:net'
-import { resolveRadonLibPath } from '../lib/radonPaths'
-import { RadonHostService } from './RadonHostService'
 
 export interface DevServerStartOptions {
   projectPath: string
@@ -65,18 +63,11 @@ export class DevServerService {
       // We pass PORT in the environment. Most frameworks (Vite, Next.js, CRA) respect this.
       // If the command itself specifies a port (e.g., `--port 3000`), we might need more complex parsing,
       // but for now, we rely on the PORT env var as the standard fallback.
-      const radonLibPath = resolveRadonLibPath().replace(/\\/g, '/')
-      const runtimeBridgePort = await RadonHostService.getInstance().ensureRuntimeBridge(projectPath)
-      
       const subprocess = execa(command, {
         cwd: projectPath,
         env: {
           ...process.env,
           PORT: actualPort.toString(),
-          COZEA_RADON_LIB_PATH: radonLibPath,
-          RADON_IDE_LIB_PATH: radonLibPath,
-          RCT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
-          REACT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
           // Force some frameworks to not open browser
           BROWSER: 'none',
         },

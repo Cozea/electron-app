@@ -645,111 +645,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('devServer:error', handler)
     },
   },
-  radon: {
-    getLicenseState: () =>
-      ipcRenderer.invoke('radon:getLicenseState'),
-    activateLicense: (options: { licenseKey: string; email: string }) =>
-      ipcRenderer.invoke('radon:activateLicense', options),
-    removeLicense: () =>
-      ipcRenderer.invoke('radon:removeLicense'),
-    getProjectCapabilities: (options: { projectPath: string }) =>
-      ipcRenderer.invoke('radon:getProjectCapabilities', options),
-    listDevices: (options?: { platform?: 'ios' | 'android' }) =>
-      ipcRenderer.invoke('radon:listDevices', options),
-    listSessions: () =>
-      ipcRenderer.invoke('radon:listSessions'),
-    startSession: (options: import('../shared/electronApiTypes').NativePreviewStartSessionInput) =>
-      ipcRenderer.invoke('radon:startSession', options),
-    stopSession: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('radon:stopSession', options),
-    focusSession: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('radon:focusSession', options),
-    sendDeviceCommand: (options: {
-      sessionId: string
-      command: import('../shared/electronApiTypes').RadonDeviceCommand
-      payload?: Record<string, unknown>
-    }) => ipcRenderer.invoke('radon:sendDeviceCommand', options),
-    captureScreenshot: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('radon:captureScreenshot', options),
-    openDevice: (options: { platform: 'ios' | 'android'; deviceId?: string }) =>
-      ipcRenderer.invoke('radon:openDevice', options),
-    getAvailableTools: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('radon:getAvailableTools', options),
-    openComponentPreview: (options: { sessionId: string; previewId: string }) =>
-      ipcRenderer.invoke('radon:openComponentPreview', options),
-    showStorybookStory: (options: { sessionId: string; storyId: string }) =>
-      ipcRenderer.invoke('radon:showStorybookStory', options),
-    openNavigation: (options: { sessionId: string; route: string }) =>
-      ipcRenderer.invoke('radon:openNavigation', options),
-    requestInspect: (options: { sessionId: string; target?: unknown }) =>
-      ipcRenderer.invoke('radon:requestInspect', options),
-    onLicenseChanged: (callback: (state: import('../shared/electronApiTypes').RadonLicenseState) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, state: import('../shared/electronApiTypes').RadonLicenseState) => callback(state)
-      ipcRenderer.on('radon:licenseChanged', handler)
-      return () => ipcRenderer.removeListener('radon:licenseChanged', handler)
-    },
-    onSessionUpdated: (callback: (session: import('../shared/electronApiTypes').RadonSession) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, session: import('../shared/electronApiTypes').RadonSession) => callback(session)
-      ipcRenderer.on('radon:sessionUpdated', handler)
-      return () => ipcRenderer.removeListener('radon:sessionUpdated', handler)
-    },
-    onRuntimeEvent: (callback: (event: import('../shared/electronApiTypes').RadonRuntimeEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, event: import('../shared/electronApiTypes').RadonRuntimeEvent) => callback(event)
-      ipcRenderer.on('radon:runtimeEvent', handler)
-      return () => ipcRenderer.removeListener('radon:runtimeEvent', handler)
-    },
-    onToolsUpdated: (callback: (event: import('../shared/electronApiTypes').RadonToolsUpdatedEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, event: import('../shared/electronApiTypes').RadonToolsUpdatedEvent) => callback(event)
-      ipcRenderer.on('radon:toolsUpdated', handler)
-      return () => ipcRenderer.removeListener('radon:toolsUpdated', handler)
-    },
-    onLogEvent: (callback: (event: import('../shared/electronApiTypes').RadonLogEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, event: import('../shared/electronApiTypes').RadonLogEvent) => callback(event)
-      ipcRenderer.on('radon:logEvent', handler)
-      return () => ipcRenderer.removeListener('radon:logEvent', handler)
-    },
-  },
-  nativePreview: {
-    listDevices: (options?: { platform?: 'ios' | 'android' }) =>
-      ipcRenderer.invoke('nativePreview:listDevices', options),
-    listSessions: () =>
-      ipcRenderer.invoke('nativePreview:listSessions'),
-    startSession: (options: {
-      projectPath: string
-      platform: 'ios' | 'android'
-      launcher: 'simulator' | 'web'
-      buildMode: 'debug' | 'dev-client'
-      terminalId?: string
-      devServerPort?: number
-      radonToken?: string
-    }) =>
-      ipcRenderer.invoke('nativePreview:startSession', options),
-    stopSession: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('nativePreview:stopSession', options),
-    getSessionState: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('nativePreview:getSessionState', options),
-    sendInput: (options: {
-      sessionId: string
-      type: 'tap' | 'down' | 'move' | 'up' | 'key'
-      x?: number
-      y?: number
-      key?: string
-    }) =>
-      ipcRenderer.invoke('nativePreview:sendInput', options),
-    captureScreenshot: (options: { sessionId: string }) =>
-      ipcRenderer.invoke('nativePreview:captureScreenshot', options),
-    runAutomation: (options: { sessionId: string; flow?: string; flowPath?: string }) =>
-      ipcRenderer.invoke('nativePreview:runAutomation', options),
-    openDevice: (options: { platform: 'ios' | 'android'; deviceId?: string }) =>
-      ipcRenderer.invoke('nativePreview:openDevice', options),
-    activateLicense: (options: { licenseKey: string; email: string }) =>
-      ipcRenderer.invoke('nativePreview:activateLicense', options),
-    onSessionUpdated: (callback: (session: import('../shared/electronApiTypes').NativePreviewSession) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, session: import('../shared/electronApiTypes').NativePreviewSession) => callback(session)
-      ipcRenderer.on('nativePreview:sessionUpdated', handler)
-      return () => { ipcRenderer.removeListener('nativePreview:sessionUpdated', handler) }
-    },
-  },
   terminal: {
     create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string; env?: Record<string, string> }) =>
       ipcRenderer.invoke('terminal:create', options),
@@ -775,6 +670,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
     },
+    onActivity: (callback: (data: { terminalId: string; hasRunningSubprocess: boolean; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; hasRunningSubprocess: boolean; runId?: string }) => callback(data)
+      ipcRenderer.on('terminal:activity', handler)
+      return () => ipcRenderer.removeListener('terminal:activity', handler)
+    },
+  },
+  agentTools: {
+    getStatus: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+      ipcRenderer.invoke('agentTools:getStatus', options),
+    prepare: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+      ipcRenderer.invoke('agentTools:prepare', options),
   },
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>
@@ -783,12 +689,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('contextMenu:showFileTreeMenu', options),
     showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) =>
       ipcRenderer.invoke('contextMenu:showVisualEditorMenu', options),
-    showNativePreviewMenu: (options: {
-      x: number
-      y: number
-      iosDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
-      androidDevices: Array<{ id: string; name: string; state: string; isSelected: boolean }>
-    }) => ipcRenderer.invoke('contextMenu:showNativePreviewMenu', options),
     showNative: (options: {
       x: number
       y: number

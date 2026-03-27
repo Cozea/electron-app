@@ -30,7 +30,6 @@ import {
 interface UserPrefs {
   emailNotifications: boolean
   pushNotifications: boolean
-  radonToken: string
 }
 
 interface AccountProps {
@@ -53,7 +52,6 @@ export function Account({ surface = 'page' }: AccountProps) {
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({
     emailNotifications: true,
     pushNotifications: true,
-    radonToken: '',
   })
 
   useEffect(() => {
@@ -62,7 +60,6 @@ export function Account({ surface = 'page' }: AccountProps) {
     setUserPrefs({
       emailNotifications: profile.preferences?.emailNotifications ?? true,
       pushNotifications: profile.preferences?.pushNotifications ?? true,
-      radonToken: profile.preferences?.radonToken ?? '',
     })
   }, [profile])
 
@@ -152,59 +149,6 @@ export function Account({ surface = 'page' }: AccountProps) {
                   <p className="text-sm text-muted-foreground">
                     Active now
                   </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* External Services */}
-        <div>
-          <h3 className="text-base font-medium mb-1 flex items-center gap-2">
-            <Monitor className="h-4 w-4" />
-            Native Preview (Radon IDE)
-          </h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Connect your Radon IDE account to enable unlimited native mobile previews.
-          </p>
-          <div className="space-y-4 mt-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <Label htmlFor="radonToken">Radon IDE License Key</Label>
-                <div className="flex gap-2 mt-2">
-                  <Input
-                    id="radonToken"
-                    type="password"
-                    placeholder="Paste your License Key (e.g. D0A4-...) here"
-                    value={userPrefs.radonToken.startsWith('eyJ') ? '••••••••••••••••••••••••' : userPrefs.radonToken}
-                    onChange={(e) => handlePrefChange('radonToken', e.target.value)}
-                    disabled={isProfileLoading}
-                  />
-                  <Button variant="secondary" onClick={async () => {
-                    const key = userPrefs.radonToken.trim();
-                    if (!key || key.startsWith('eyJ')) return;
-                    if (!user?.email) {
-                      console.error("No email found for activation");
-                      return;
-                    }
-                    const result = await window.electronAPI?.radon.activateLicense({
-                      licenseKey: key,
-                      email: user.email
-                    });
-                    if (result?.success && result.token) {
-                      await handlePrefChange('radonToken', result.token);
-                      alert("Successfully activated and saved JWT token!");
-                    } else {
-                      alert("Failed to activate: " + result?.error);
-                    }
-                  }}>
-                    Activate Key
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    window.electronAPI?.shell?.openExternal('https://ide.swmansion.com/pricing').catch(console.error)
-                  }}>
-                    Get a Key
-                  </Button>
                 </div>
               </div>
             </div>

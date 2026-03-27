@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import {
     useTerminalStore,
     useTerminalActions,
+    selectPanelTerminalCount,
 } from "@/stores/useTerminalStore"
 import {
     useProblemsStore,
@@ -14,9 +15,6 @@ import { TerminalTabBar, type TerminalPanelView } from "./TerminalTabBar"
 import { TerminalInstance } from "./TerminalInstance"
 import { TerminalSplitView } from "./TerminalSplitView"
 import { ProblemsView, type ViewMode } from "./ProblemsView"
-import { NativeRuntimeContent } from "./previews/NativeRuntimeContent"
-import type { ProjectRuntimeStateSnapshot } from "@/stores/useProjectRuntimeStore"
-import type { NativePreviewSession } from "@shared/electronApiTypes"
 
 // Panel height constraints
 const MIN_PANEL_HEIGHT = 150
@@ -26,22 +24,12 @@ interface TerminalPanelProps {
     className?: string
     projectPath: string
     onOpenFile?: (filePath: string, line?: number, column?: number) => void
-    nativeSession?: NativePreviewSession | null
-    nativeRuntimeState?: ProjectRuntimeStateSnapshot | null
-    nativeInspectMode?: boolean
-    onNativeInspectModeChange?: (next: boolean) => void
-    onOpenNativeNavigation?: (route: string) => void
 }
 
 export function TerminalPanel({
     className,
     projectPath,
     onOpenFile,
-    nativeSession,
-    nativeRuntimeState,
-    nativeInspectMode = false,
-    onNativeInspectModeChange,
-    onOpenNativeNavigation,
 }: TerminalPanelProps) {
     // Use individual primitive selectors to avoid infinite loops
     const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
@@ -131,7 +119,7 @@ export function TerminalPanel({
     }, [setPanelHeight])
 
     // Get terminal count for display
-    const terminalCount = Object.keys(terminals).length
+    const terminalCount = useTerminalStore(selectPanelTerminalCount)
 
     // Determine the actual panel height (maximized = full height)
     const actualHeight = isMaximized ? '100%' : `${panelHeight}px`
@@ -144,7 +132,10 @@ export function TerminalPanel({
         }
     }, [markRead, projectPath])
 
-    const terminalInstances = useMemo(() => Object.values(terminals), [terminals])
+    const terminalInstances = useMemo(() =>
+        Object.values(terminals).filter((terminal) => terminal.surface !== 'assistant'),
+        [terminals]
+    )
 
     useEffect(() => {
         const previousStatuses = previousTerminalStatusesRef.current
@@ -208,7 +199,6 @@ export function TerminalPanel({
                 problemCount={unreadErrorCount}
                 projectPath={projectPath}
                 onClose={() => setPanelOpen(false)}
-                hasNativeSession={Boolean(nativeSession)}
                 problemsSearchQuery={problemsSearchQuery}
                 onProblemsSearchChange={setProblemsSearchQuery}
                 problemsViewMode={problemsViewMode}
@@ -284,18 +274,6 @@ export function TerminalPanel({
                         showErrors={showProblemErrors}
                         showWarnings={showProblemWarnings}
                         showInfos={showProblemInfos}
-                    />
-                )}
-
-                {/* Native runtime views */}
-                {nativeSession && nativeRuntimeState && activeView.startsWith('native-') && (
-                    <NativeRuntimeContent
-                        activeTab={activeView}
-                        session={nativeSession}
-                        runtimeState={nativeRuntimeState}
-                        inspectMode={nativeInspectMode}
-                        onInspectModeChange={onNativeInspectModeChange}
-                        onOpenNavigation={onOpenNativeNavigation}
                     />
                 )}
             </div>

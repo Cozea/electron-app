@@ -12,8 +12,10 @@ export interface PtyOptions {
   env?: Record<string, string>
 }
 export declare function spawn(options: PtyOptions, onData: (data: string) => void, onExit: (exitCode: number) => void): NativePty
+export declare function checkSubprocessActivity(pid: number): boolean
 export declare class NativePty {
   write(data: string): void
   resize(cols: number, rows: number): void
   kill(): void
+  getPid(): number
 }
