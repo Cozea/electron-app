@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react"
 import { AlertCircle, Loader2, LogOut, Mail, UserPlus } from "lucide-react"
 import { useMutation, useQuery } from "convex/react"
-import { useParams } from '@tanstack/react-router'
+import { useParams } from '@/lib/router'
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -43,7 +43,7 @@ function isLikelyConvexId(value: string): boolean {
 
 export function ProjectInvitePage() {
   const navigate = useViewTransitionNavigate()
-  const { inviteId: inviteIdParam } = useParams({ strict: false }) as any
+  const { inviteId: inviteIdParam } = useParams()
   const { user, convexUserId, isAuthenticated, isLoading, login, logout } = useAuth()
   const acceptInvite = useMutation(api.projectInvites.acceptInvite)
   const declineInvite = useMutation(api.projectInvites.declineInvite)

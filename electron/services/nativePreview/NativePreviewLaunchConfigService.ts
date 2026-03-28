@@ -10,6 +10,7 @@ import type {
   NativePreviewResolveLaunchConfigRequest,
   NativePreviewResolveLaunchConfigResult,
 } from '../../../shared/nativePreviewTypes'
+import { NativePreviewRuntimeBridgeService } from './NativePreviewRuntimeBridgeService'
 
 interface PackageJsonShape {
   version?: string
@@ -21,6 +22,7 @@ interface LaunchEnvOptions {
   projectPath: string
   port: number
   devtoolsPort: number
+  runtimeBridgePort: number | null
   runtimeDir: string
   customMetroConfigPath: string | null
   kind: NativePreviewLaunchKind
@@ -124,6 +126,7 @@ function buildLaunchEnv(options: {
   projectPath: string
   port: number
   devtoolsPort: number
+  runtimeBridgePort: number | null
   runtimeDir: string
   customMetroConfigPath: string | null
   kind: NativePreviewLaunchKind
@@ -135,6 +138,10 @@ function buildLaunchEnv(options: {
     COZEA_NATIVE_PREVIEW_LIB_PATH: options.runtimeDir,
     COZEA_NATIVE_PREVIEW_VERSION: resolvePackageVersion(),
     REACT_EDITOR: resolveEditorProxyPath(),
+  }
+
+  if (options.runtimeBridgePort !== null) {
+    env.COZEA_NATIVE_PREVIEW_RUNTIME_BRIDGE_PORT = String(options.runtimeBridgePort)
   }
 
   if (options.customMetroConfigPath) {
@@ -275,11 +282,14 @@ export class NativePreviewLaunchConfigService {
         ? request.preferredPort
         : DEFAULT_METRO_PORT
       const devtoolsPort = await allocateTcpPort()
+      const runtimeBridge = await NativePreviewRuntimeBridgeService.getInstance().getBridge(request.projectPath)
+      const runtimeBridgePort = runtimeBridge.port
       const customMetroConfigPath = resolveCustomMetroConfigPath(request.projectPath)
       const env = buildLaunchEnv({
         projectPath: request.projectPath,
         port,
         devtoolsPort,
+        runtimeBridgePort,
         runtimeDir,
         customMetroConfigPath,
         kind,
@@ -298,6 +308,7 @@ export class NativePreviewLaunchConfigService {
         kind,
         port,
         devtoolsPort,
+        runtimeBridgePort,
         label: buildLaunchLabel(kind),
         command,
         env,

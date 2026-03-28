@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
-import { Navigate, Outlet, useLocation } from '@tanstack/react-router'
+import { Navigate, Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'

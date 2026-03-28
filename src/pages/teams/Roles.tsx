@@ -1053,10 +1053,10 @@ export function Roles() {
                               </div>
                               <Select
                                 value={overrideDraft[permission.key]}
-                                onValueChange={(value: PermissionOverrideMode) =>
+                                onValueChange={(value) =>
                                   setOverrideDraft((current) => ({
                                     ...current,
-                                    [permission.key]: value,
+                                    [permission.key]: value as PermissionOverrideMode,
                                   }))
                                 }
                               >

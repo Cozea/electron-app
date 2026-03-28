@@ -17,7 +17,7 @@ import {
   type MouseEvent,
 } from 'react'
 import { Virtuoso } from 'react-virtuoso'
-import { useSearchParamsPolyfill } from '@/lib/useSearchParamsPolyfill'
+import { useSearchParams } from '@/lib/router'
 import { useFileExplorer } from '@/hooks/useFileExplorer'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { buildVisibleTreeRows, type VisibleTreeRow } from '@/lib/fileExplorer/visibleRows'
@@ -63,7 +63,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   ref
 ) {
   const { project, slugParam, projectIdParam } = useAccessibleProject()
-  const [searchParams, setSearchParams] = useSearchParamsPolyfill()
+  const [searchParams, setSearchParams] = useSearchParams()
   const syncContext = useOptionalProjectSyncContext()
   const [lastSelectedItem, setLastSelectedItem] = useState<ExplorerItem | null>(null)
   const [selectedResource, setSelectedResource] = useState<string | null>(null)

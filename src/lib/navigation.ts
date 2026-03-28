@@ -1,9 +1,5 @@
 import { useCallback } from 'react'
-import { useNavigate } from "@tanstack/react-router";
-type NavigateOptions = any;
-type NavigateFunction = any;
-type To = any;
-const createPath = (x: any) => x;
+import { createPath, type NavigateFunction, type NavigateOptions, type To, useNavigate } from '@/lib/router'
 
 import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'
@@ -59,7 +55,7 @@ export function navigateWithTransition(
       navigate(to)
       return
     }
-    navigate(to, options)
+      navigate(to, options)
     return
   }
 

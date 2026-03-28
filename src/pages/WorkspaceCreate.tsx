@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Navigate } from '@tanstack/react-router'
+import { Navigate } from '@/lib/router'
 import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialogStore'
 
 export function WorkspaceCreate() {

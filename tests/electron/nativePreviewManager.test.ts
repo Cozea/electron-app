@@ -166,4 +166,43 @@ describe('NativePreviewManager', () => {
 
     await manager.stopSession(REQUEST)
   })
+
+  it('marks the session app-ready when the runtime bridge emits appReady', async () => {
+    const manager = createManagerWithFakeHelper()
+    let bridgeListener: ((envelope: { event: string; payload?: unknown }) => void) | null = null
+
+    ;(manager as any).getRuntimeBridge = async () => ({
+      onEnvelope(listener: (envelope: { event: string; payload?: unknown }) => void) {
+        bridgeListener = listener
+        return () => {
+          if (bridgeListener === listener) {
+            bridgeListener = null
+          }
+        }
+      },
+    })
+
+    await manager.startSession(REQUEST)
+    await waitForRunning(manager, REQUEST)
+
+    expect(manager.getSessionState(REQUEST)?.appReady).toBe(false)
+    expect(manager.getSessionState(REQUEST)?.appKey).toBeNull()
+
+    bridgeListener?.({
+      event: 'RNIDE_message',
+      payload: {
+        id: 7,
+        type: 'appReady',
+        data: { appKey: 'main' },
+      },
+    })
+
+    await vi.waitFor(() => {
+      const state = manager.getSessionState(REQUEST)
+      expect(state?.appReady).toBe(true)
+      expect(state?.appKey).toBe('main')
+    })
+
+    await manager.stopSession(REQUEST)
+  })
 })

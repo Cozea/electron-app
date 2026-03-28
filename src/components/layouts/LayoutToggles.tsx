@@ -8,7 +8,7 @@ import { useOptionalSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { cn } from '@/lib/utils'
-import { useLocation } from '@tanstack/react-router'
+import { useLocation } from '@/lib/router'
 import type { SVGProps } from 'react'
 import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 

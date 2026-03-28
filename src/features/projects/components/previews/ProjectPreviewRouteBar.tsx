@@ -124,7 +124,7 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
+      <PopoverAnchor>
         <div className={widthClassName}>
           <div className="flex h-7 items-center gap-2 rounded-full border border-border/60 bg-secondary/70 px-3 shadow-none">
             <button
@@ -188,7 +188,7 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
         side="bottom"
         sideOffset={6}
         className="w-[28rem] max-w-[42vw] rounded-2xl border border-border/60 bg-secondary p-1 shadow-xl max-xl:w-[22rem] max-lg:w-[18rem] max-[980px]:hidden"
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        
       >
         <div className="max-h-72 overflow-y-auto">
           {filteredRoutes.length === 0 ? (

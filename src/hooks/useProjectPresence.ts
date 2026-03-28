@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { useLocation } from '@tanstack/react-router'
+import { useLocation } from '@/lib/router'
 import { useCollaborationActivityStore } from "@/stores/useCollaborationActivityStore"
 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000 // 30 seconds

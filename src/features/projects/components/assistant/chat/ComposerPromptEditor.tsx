@@ -63,7 +63,7 @@ import { splitPromptIntoComposerSegments } from "../composer-editor-mentions";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
-} from "~/lib/terminalContext";
+} from "@/stores/terminalContext";
 import { cn } from "@/lib/utils";
 import { basenameOfPath, getVscodeIconUrlForEntry, inferEntryKindFromPath } from "../vscode-icons";
 import {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useParams } from '@tanstack/react-router'
+import { useParams } from '@/lib/router'
 import { formatOrganizationWorkspaceRole } from '@/lib/workspaces/organizationRoles'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedMemberDetailsData } from '@/hooks/useScopedMemberDetailsData'
@@ -179,7 +179,7 @@ function isPresent<T>(value: T | null | undefined): value is T {
 }
 
 export function MemberDetails() {
-  const { memberId } = useParams({ strict: false }) as any
+  const { memberId } = useParams()
   const {
     settingsPage,
     user,

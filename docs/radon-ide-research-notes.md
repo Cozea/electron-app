@@ -4199,6 +4199,79 @@ This mapping is not just guessed from generic iOS enums. It is the current best 
 The remaining gap is live end-to-end confirmation of the rotation effect on this machine. Repeated rotate probes hit a private-service lifecycle flake where `simctl` still reports the simulator as `Booted`, but the private `SimDevice` resolved through `SimServiceContext` intermittently reverts to `state == 1 / Shutdown` during helper startup. So the rotate implementation is now aligned to the recovered native contract, but runtime validation is still blocked intermittently by simulator-service state inconsistency rather than by the message layout itself.
 - with one variable field: the requested direction value
 
+#### `listAndCaptureScreen(...)` callback registration is now stricter
+
+Direct disassembly of `listAndCaptureScreen` and its registration helper tightens the screen-callback contract further:
+
+- the helper first enumerates `device.io -> ioPorts`
+- it filters ports and descriptors by protocol conformance before calling `enumerateScreensWithCompletionQueue:completionHandler:`
+- inside the completion handler it iterates returned screens and compares `screenProperties.screenID` against a stored target screen ID from the capture context
+- for the matching screen only, it calls:
+  - `registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:`
+
+This is materially more specific than the simplified one-callback selector the local Swift helper started with. The shipped helper is not just subscribing to “surface changes” generically; it registers a full callback set on the matching screen, with an explicit callback queue and separate callback slots for frame, surfaces-changed, and properties-changed handling.
+
+Recovered argument flow into the registration helper:
+
+- argument 1: matching screen object
+- argument 2: the numeric `screenID` for that screen
+- argument 3: callback queue from the capture context
+- argument 4: callback object/function from the capture context
+
+The current local port still needs to be brought from the simplified registration shape over to this stricter five-argument registration path if we want full fidelity with the shipped helper.
+
+#### Port-validation: full screen-callback selector is the real breakthrough
+
+After switching the local Swift helper from the simplified one-callback path to:
+
+- `registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:`
+
+the iOS helper began behaving much more like the shipped Radon helper in a long-lived session.
+
+Observed locally after that alignment:
+
+- `ready <udid>`
+- `stream_ready http://127.0.0.1:<port>/stream.mjpeg`
+- first screenshot command received and answered:
+  - `info phase screenshot_command_received_1`
+  - `screenshot_ready 1 <temp-file>`
+
+So the full five-argument screen-callback selector is not a minor detail. It is the difference between a helper that only sometimes reaches a first frame and one that can actually stay alive long enough to serve a real stream and answer screenshot commands in the same session.
+
+#### Current iOS rotate blocker after the callback fix
+
+The next real failure boundary is now narrower:
+
+- startup works
+- stream starts
+- first screenshot succeeds
+- `rotate` still fails on the private Purple path
+
+Current observed rotate failure from the local port:
+
+- cached/private device object drifted out of booted state by the time `lookup:@"PurpleWorkspacePort"` was attempted
+- a refresh attempt against the stored device set still found the simulator in a non-booted state at that moment
+- the helper emitted `error runtime refreshed_device_not_booted`
+
+This means the current iOS blocker is no longer frame capture or screenshot handling. It is now specifically the stability of the private device object used for Purple rotation/control after the session is already otherwise live.
+
+Further local validation tightened that again:
+
+- startup works
+- `stream_ready` works
+- first screenshot works
+- falling back to a cached `PurpleWorkspacePort` avoids the earlier lookup-state failure
+- but `mach_msg_send` then fails with `0x10000003`
+
+That error code is consistent with an invalid Mach destination port. So the current rotate blocker is now best described as:
+
+- a stale/invalid Purple workspace port in the live session, not a missing preview stream, missing screenshot path, or missing callback registration
+
+This is useful because it narrows the next RE target to the control-path lifecycle:
+
+- how the shipped helper keeps `PurpleWorkspacePort` valid across a live simulator session
+- whether it re-resolves the port on demand against a control object that stays valid longer than the plain `SimDevice` object used in the local port
+
 #### Input builder behavior is now concrete enough to mirror
 
 Recovered direct method-body behavior:
@@ -5300,6 +5373,324 @@ The docs also confirm product-level scope:
 - physical devices are outside main panel mode and rely on different flows such as physical-device support / Connect Mode
 
 That does not reveal implementation, but it is useful for parity planning because it identifies the public boundary a reimplementation would need to emulate.
+
+### Latest iOS control-path findings from the live port/debug loop
+
+The current local iOS port now proves a stricter split between preview capture and control:
+
+- preview capture is functioning through the private SimulatorKit path
+  - helper reaches `ready`
+  - helper reaches `stream_ready`
+  - first screenshot export works
+- rotate is still failing on the Purple control side
+
+Recovered / observed alignment changes that matter:
+
+- the class surfaced on this Xcode build is not exposed as `SimDeviceLegacyClient`
+- the live Objective-C runtime exposes:
+  - `SimulatorKit.SimDeviceLegacyHIDClient`
+- that class has instance methods:
+  - `initWithDevice:error:`
+  - `initWithDevice:sessionResetQueue:error:sessionResetHandler:`
+  - `resetHIDSession`
+  - `sendWithMessage:freeWhenDone:completionQueue:completion:`
+
+This means the earlier `SimDeviceLegacyClient` wording in the shipped binary should now be treated as a recovered role/name from stripped code, while the concrete runtime class on this machine is `SimulatorKit.SimDeviceLegacyHIDClient`.
+
+The keyboard-setup side is also narrower than the earlier generic reading suggested:
+
+- the local helper can instantiate `SimulatorKit.SimDeviceLegacyHIDClient`
+- but on this build that object does **not** respond to:
+  - `setHardwareKeyboardEnabled:keyboardType:error:`
+  - `setKeyboardLanguage:error:`
+- so those selector names likely belong to another simulator-side object in the shipped helper path, not to the HID client itself
+
+That ownership question is now resolved on this host:
+
+- after loading `SimulatorKit` and `CoreSimulator` into a live Objective-C runtime, the selectors are found on:
+  - `SimDevice setKeyboardLanguage:error:`
+  - `SimDevice setHardwareKeyboardEnabled:keyboardType:error:`
+
+So the local port was previously calling the right selector names on the wrong object. The correct owner on this machine is `SimDevice`, not the HID client.
+
+Additional live runtime detail from the local port:
+
+- this build of `SimulatorKit.SimDeviceLegacyHIDClient` also exposes:
+  - `initWithDevice:sessionResetQueue:error:sessionResetHandler:`
+- the local helper now uses that richer initializer when present and installs a reset callback
+- in the latest real rotate test, that reset callback did **not** fire before the Purple control failure
+
+So the current issue is not yet explained by an obvious HID-session reset callback on this host.
+
+The shipped Radon helper also validates the host-side control path more directly now:
+
+- on this same machine, the official `simulator-server-macos` reaches:
+  - `Setting simulator keyboard language: en`
+  - `stream_ready http://127.0.0.1:<port>/stream.mjpeg`
+
+That matters because it proves:
+
+- the host/Xcode/runtime combination can support Radon's iOS private control path
+- the keyboard-language step is a real observable part of Radon's live bootstrap here, not just a recovered static detail
+
+The most important new Mach-port finding is now direct and concrete:
+
+- startup Purple lookup succeeds and returns a port with type `65536`
+- on macOS Mach type definitions, `65536` corresponds to:
+  - `MACH_PORT_TYPE_SEND`
+- later, when the cached startup port is inspected again before rotate, it reports type `1048576`
+- `1048576` corresponds to:
+  - `MACH_PORT_TYPE_DEAD_NAME`
+
+So the reused startup `PurpleWorkspacePort` is not just “bad” in a vague sense. It becomes a dead name before rotate is attempted.
+
+Observed live helper trace from the latest manager-driven run:
+
+- `info purple_port_startup_40967_type_65536`
+- `info purple_port_startup_reused_40967_type_1048576`
+- `info purple_port_before_send_40967_type_1048576`
+- `error runtime purple_rotate_send_failed:268435459`
+
+This is a much stronger result than the earlier generic invalid-destination diagnosis:
+
+- the startup lookup really does hand back a valid send right
+- by rotate time, that same name has degraded into a dead name
+- `mach_msg_send` then fails with `0x10000003`
+
+There is a second late-session failure mode too:
+
+- if the helper re-resolves a fresh `SimDevice` from the device set at rotate time, that object can already report:
+  - `state == 1`
+  - `Shutdown`
+- and `lookup:@"PurpleWorkspacePort"` may then return `0`
+
+So the remaining unresolved iOS control problem is now extremely specific:
+
+- capture works
+- initial simulator service access works
+- but the Purple workspace control service is not being kept alive / reacquired the same way the shipped Radon helper does across a live session
+
+### New local-port findings on `setUpKeyboard` timing and safety
+
+Further live testing of the local Swift helper/manager tightened one important boundary:
+
+- the local runtime `setUpKeyboard` command is **not** currently faithful to Radon's behavior once the preview session is already live
+- sending `setUpKeyboard` after `stream_ready` is enough to push the local helper into CoreSimulator `Shutdown` / `Shutting Down` lookup errors
+- this is true both:
+  - immediately after `stream_ready`
+  - and after a delayed wait (`~4s+`) once the preview stream is already established
+
+Observed manager-driven traces:
+
+- immediate/forced runtime setup:
+  - `info keyboard_bootstrap_start`
+  - `info keyboard_language_error_... current state: Shutting Down`
+  - `info keyboard_enable_error_... current state: Shutting Down`
+  - helper then exits with `SIGSEGV`
+- delayed setup after stable streaming:
+  - `info keyboard_bootstrap_start`
+  - `info keyboard_language_error_... current state: Shutdown`
+  - `info keyboard_enable_error_... current state: Shutdown`
+  - helper then exits with `SIGSEGV`
+
+This gives a clearer interpretation of the shipped Radon sequencing:
+
+- the extension really does send an explicit `setUpKeyboard` command later in `ApplicationSession.launch(...)`
+- but that timing is not equivalent to raw `stream_ready`
+- the default launch config path sets:
+  - `preview.waitForAppLaunch ?? true`
+- `ApplicationSession.launch(...)` then waits for:
+  - `device.launchApp(...)`
+  - `session.activate(...)`
+  - `waitForAppReady(...)`
+- `waitForAppReady(...)` resolves only on the inspector-bridge `appReady` event
+- only after that application-session promise resolves does the extension call:
+  - `this.device.setUpKeyboard()`
+- in the local port, we do **not** yet have a faithful equivalent of the editor/app-side "application session fully launched" boundary that Radon waits for before issuing that command
+
+So the current evidence-backed rule is:
+
+- startup keyboard bootstrap inside helper initialization is safe and real
+- runtime `setUpKeyboard` after live preview starts is **not** yet safely reimplemented locally
+- any attempt to use that runtime command as a workaround for the rotate/Purple issue is currently counterproductive
+
+### New extension-side distinction: `setUpKeyboard` is post-`appReady`, but preview rotation is not
+
+Further tracing of the shipped extension tightened an important lifecycle split:
+
+- `DeviceSession.launchApp(...)` calls `ApplicationSession.launch(...)`
+- `ApplicationSession.launch(...)` waits for:
+  - `device.launchApp(...)`
+  - debug/session activation
+  - `waitForAppReady(...)`
+- `waitForAppReady(...)` resolves only on the inspector-bridge `appReady` event
+- only after that promise resolves does `DeviceSession.launchApp(...)` call:
+  - `this.device.setUpKeyboard()`
+  - then `this.stateManager.updateState({ status: "running" })`
+
+So `setUpKeyboard` is definitely a post-`appReady` / post-application-launch operation in the shipped system.
+
+However, preview rotation is **not** gated by that same boundary:
+
+- `DeviceBase.startPreview()` resolves on helper `stream_ready`
+- once `startPreview()` resolves, it immediately runs `applyPreviewSettings()`
+- `applyPreviewSettings()` replays:
+  - replay visibility
+  - touch-pointer visibility
+  - current rotation via `this.sendRotate(this._rotation)`
+- `sendRotate(...)` forwards directly to:
+  - `this.preview?.rotateDevice(rotation)`
+  - which writes the literal helper command:
+    - ``rotate ${rotation}``
+
+This means the shipped Radon model is:
+
+- `setUpKeyboard`: tied to full application-session readiness (`appReady`)
+- preview `rotate`: tied only to preview readiness (`stream_ready`) plus whatever the current stored device rotation is
+
+That rules out one tempting but incorrect interpretation of the local iOS rotate failure:
+
+- the local rotate issue is **not** explained simply by "we tried to rotate before `appReady`"
+- the shipped extension is willing to send rotation commands as soon as preview settings are replayed after `stream_ready`
+- the remaining mismatch is still deeper in the private iOS control/session path, not just in JS-side timing
+
+There is also a local-port architectural gap here:
+
+- the local RN runtime wrapper already emits:
+  - `appReady`
+  - `navigationChanged`
+  - `inspectData`
+  - `fastRefreshStarted`
+  - `fastRefreshComplete`
+  - `devtoolPluginsChanged`
+- but the current Electron/native-preview port does **not** consume those runtime events anywhere yet
+- the current local session state is driven almost entirely by helper process events such as:
+  - `ready`
+  - `stream_ready`
+  - screenshot / video helper events
+
+So even before the unresolved private iOS control mismatch, the local port is still missing one important Radon lifecycle layer:
+
+- a faithful application-session state boundary driven by runtime/inspector-bridge events
+- especially the `appReady` boundary that the shipped extension uses before issuing runtime `setUpKeyboard()`
+
+That does **not** explain the current rotate failure by itself, because shipped preview rotation is not `appReady`-gated. But it does explain why the local port still cannot safely mirror Radon's runtime `setUpKeyboard` sequencing yet.
+
+### New deeper trace: what `appReady` actually drives in the shipped extension
+
+Tracing the shipped extension one layer deeper shows that `appReady` is not just a single launch gate. It fans out into several concrete responsibilities:
+
+#### [Observed] `appReady` as the application-session launch barrier
+
+- `ApplicationSession.launch(...)` creates:
+  - `const appReadyPromise = waitForAppReady(session.inspectorBridge, cancelToken);`
+- `waitForAppReady(...)` is a very small primitive:
+  - it subscribes to `inspectorBridge.onEvent("appReady", resolve)`
+  - then races that against cancellation/bundle-error conditions
+- `DeviceSession.launchApp(...)` only calls:
+  - `this.device.setUpKeyboard()`
+  - `this.stateManager.updateState({ status: "running" })`
+  after that application-session promise resolves
+
+So in shipped Radon:
+
+- `stream_ready` means preview transport is ready
+- `appReady` means the application session is ready enough to finish launch bookkeeping and issue post-launch commands
+
+#### [Observed] `appReady` as state cleanup / session stabilization
+
+Inside `ApplicationSession.registerInspectorBridgeEventListeners(...)`, the shipped extension uses:
+
+- `inspectorBridge.onEvent("appReady", () => { this.stateManager.updateState({ bundleError: null }); })`
+
+So `appReady` also acts as the point where stale bundle-error state is cleared after a successful app load.
+
+#### [Observed] `appReady` as tool/plugin reactivation
+
+Separate shipped subsystems also listen for `appReady`:
+
+- Network inspector:
+  - inspector-bridge variant sends `Network.enable`
+  - debugger/native variant re-enables network tracking through `networkBridge.enableNetworkInspector()`
+- Render Outlines:
+  - re-applies `updateInstrumentationOptions` on `appReady`
+
+This means `appReady` is used as a "runtime is live again, re-arm tool instrumentation" event, not just a passive status message.
+
+#### [Observed] local-port comparison
+
+The local runtime already emits the right RN-side events from `native-preview-runtime/wrapper.js`:
+
+- `appReady`
+- `navigationChanged`
+- `inspectData`
+- `fastRefreshStarted`
+- `fastRefreshComplete`
+- `devtoolPluginsChanged`
+
+But on the current Electron/native-preview side:
+
+- `NativePreviewManager` only consumes helper process stdout/stderr events
+- there is no local equivalent yet of:
+  - `waitForAppReady(...)`
+  - application-session state updates driven by runtime bridge events
+  - tool/plugin reactivation driven by `appReady`
+
+So the missing local lifecycle layer is now concrete:
+
+1. bridge runtime/inspector events out of the RN runtime into Electron
+2. add a local `appReady`-driven application-session boundary
+3. only then re-attempt a faithful runtime `setUpKeyboard` sequence
+
+This still does **not** by itself solve the current iOS rotate failure, because shipped preview rotation is issued from preview readiness rather than `appReady`. But it does establish a separate missing piece in the local port that must be implemented for full lifecycle fidelity.
+
+### New local-port findings on post-rotation crashes
+
+Additional instrumentation also tightened what the local crashes are and are not:
+
+- the earlier unsafe direct `framebufferSurface` / `maskedFramebufferSurface` probes were local bugs and were removed
+- after removing those probes, the helper reaches stable:
+  - `ready`
+  - `stream_ready`
+  - first screenshot capture
+- with the unsafe runtime `setUpKeyboard` workaround removed, the stable remaining rotate failure returns to:
+  - `info purple_lookup_refreshed_device_state_4`
+  - `error runtime purple_lookup_failed:lookup_returned_zero`
+
+So the current best local baseline is now:
+
+- preview: works
+- screenshot: works
+- rotate: still blocked on the unresolved Purple/control-session lifecycle mismatch
+- runtime `setUpKeyboard`: intentionally disabled at the manager level until the control/session ownership is understood more faithfully
+
+### New shipped-helper findings on standalone execution limits
+
+Driving the shipped helper directly without the rest of the extension/application-session context tightened another important boundary:
+
+- on this host, the shipped helper can reach:
+  - `Setting simulator keyboard language: en`
+  - `stream_ready http://127.0.0.1:<port>/stream.mjpeg`
+- but when run standalone it can also exit with `SIGSEGV` shortly after `stream_ready`, before any delayed scripted `rotate` command is sent
+
+So the shipped helper by itself is not a sufficient oracle for late-session control behavior. The stable runtime context clearly includes more than:
+
+- simulator boot
+- helper startup
+- MJPEG stream readiness
+
+The extension-side `ApplicationSession` / inspector-bridge lifecycle is part of the real operating context for at least:
+
+- runtime `setUpKeyboard`
+- late-session control behavior such as rotate
+
+This means the remaining iOS control-path RE must treat the helper and extension/session lifecycle together rather than assuming the helper alone is the full system.
+
+This sharply narrows the next RE target:
+
+1. identify what object in the shipped helper owns the keyboard/setup selectors
+2. determine whether Radon maintains a stronger simulator control/session object than the plain `SimDevice` reference currently used in the local helper
+3. determine why Radon's `PurpleWorkspacePort` path survives long enough for rotate while the local port degrades into `MACH_PORT_TYPE_DEAD_NAME`
 
 ## Current Practical Takeaway
 

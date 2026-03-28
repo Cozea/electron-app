@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { useLocation } from '@tanstack/react-router'
+import { useLocation } from '@/lib/router'
 
 interface CachedRoute {
   path: string

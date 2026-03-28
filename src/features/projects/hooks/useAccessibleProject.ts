@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useParams } from '@tanstack/react-router'
+import { useParams } from '@/lib/router'
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../convex/_generated/api"
@@ -24,7 +24,7 @@ interface SlugResolutionResult {
 }
 
 export function useAccessibleProject() {
-  const { slug, projectId } = useParams({ strict: false }) as any
+  const { slug, projectId } = useParams()
   const { convexUserId } = useAuth()
   const { convexOrg, preferredConvexOrganizationId } = useScopedAppContext()
 

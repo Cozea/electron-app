@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useParams } from '@tanstack/react-router'
+import { useParams } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { AlertCircle } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -13,7 +13,7 @@ import {
 
 export function AcceptInvitation() {
   const navigate = useViewTransitionNavigate()
-  const { token } = useParams({ strict: false }) as any
+  const { token } = useParams()
 
   const shortToken = useMemo(() => {
     if (!token) return null

@@ -3,7 +3,7 @@ import { Tooltip as BaseTooltip } from "@base-ui/react"
 
 import { cn } from "@/lib/utils"
 
-function TooltipProvider({ children }: { children: React.ReactNode }) {
+function TooltipProvider({ children }: { children: React.ReactNode; delayDuration?: number }) {
   return <>{children}</>
 }
 
@@ -11,22 +11,24 @@ function Tooltip({ ...props }: React.ComponentProps<typeof BaseTooltip.Root>) {
   return <BaseTooltip.Root {...props} />
 }
 
-function TooltipTrigger({ asChild, ...props }: React.ComponentProps<typeof BaseTooltip.Trigger> & { asChild?: boolean }) {
-  // Base UI Tooltip.Trigger acts as a wrapper by default and doesn't need asChild in the same way,
-  // but if it expects a render prop for children we can just pass props through.
-  return <BaseTooltip.Trigger {...props} />
+function TooltipTrigger({ asChild, children, ...props }: React.ComponentProps<typeof BaseTooltip.Trigger> & { asChild?: boolean }) {
+  if (asChild) {
+    return <BaseTooltip.Trigger render={children as any} {...props} />
+  }
+  return <BaseTooltip.Trigger {...props}>{children}</BaseTooltip.Trigger>
 }
 
 function TooltipContent({
   className,
   children,
   side,
+  align,
   sideOffset,
   ...props
-}: React.ComponentProps<typeof BaseTooltip.Popup> & { side?: string; sideOffset?: number }) {
+}: React.ComponentProps<typeof BaseTooltip.Popup> & { side?: string; align?: string; sideOffset?: number }) {
   return (
     <BaseTooltip.Portal>
-      <BaseTooltip.Positioner side={side as any} sideOffset={sideOffset}>
+      <BaseTooltip.Positioner side={side as any} align={align as any} sideOffset={sideOffset}>
         <BaseTooltip.Popup
           className={cn(
             "bg-secondary text-secondary-foreground z-50 w-fit rounded-md px-3 py-1.5 text-xs text-balance shadow-lg",

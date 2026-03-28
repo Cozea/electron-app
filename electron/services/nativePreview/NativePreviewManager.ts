@@ -22,6 +22,7 @@ import type {
   NativePreviewStopSessionResult,
 } from '../../../shared/nativePreviewTypes'
 import { buildNativePreviewSessionKey } from '../../../shared/nativePreviewTypes'
+import { NativePreviewRuntimeBridgeService } from './NativePreviewRuntimeBridgeService'
 
 type NativePreviewStateListener = (event: NativePreviewStateChangedEvent) => void
 
@@ -40,6 +41,8 @@ interface ManagedNativePreviewSession {
   state: NativePreviewSessionState
   nextCommandId: number
   pendingCommands: Map<string, PendingCommand>
+  keyboardSetupTimer: NodeJS.Timeout | null
+  runtimeBridgeUnsubscribe: (() => void) | null
   startup:
     | {
         resolve: () => void
@@ -198,6 +201,8 @@ function buildStartingState(request: NativePreviewStartSessionRequest): NativePr
     helperPid: null,
     status: 'starting',
     streamUrl: null,
+    appReady: false,
+    appKey: null,
     rotation: 'Portrait',
     lastError: null,
     updatedAt: Date.now(),
@@ -267,6 +272,8 @@ export class NativePreviewManager {
       state: startingState,
       nextCommandId: 1,
       pendingCommands: new Map(),
+      keyboardSetupTimer: null,
+      runtimeBridgeUnsubscribe: null,
       startup,
       stopping: false,
     }
@@ -275,6 +282,7 @@ export class NativePreviewManager {
     this.sessionStates.set(sessionKey, startingState)
     this.emit({ sessionKey, state: startingState })
     this.attachProcess(sessionKey, session)
+    void this.attachRuntimeBridge(sessionKey, request.projectPath)
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -345,6 +353,14 @@ export class NativePreviewManager {
         clearTimeout(graceTimer)
         if (forceTimer) {
           clearTimeout(forceTimer)
+        }
+        if (session.keyboardSetupTimer) {
+          clearTimeout(session.keyboardSetupTimer)
+          session.keyboardSetupTimer = null
+        }
+        if (session.runtimeBridgeUnsubscribe) {
+          session.runtimeBridgeUnsubscribe()
+          session.runtimeBridgeUnsubscribe = null
         }
         session.process.removeListener('exit', handleExit)
         this.teardownSession(sessionKey)
@@ -627,6 +643,8 @@ export class NativePreviewManager {
       case 'ready': {
         this.updateState(sessionKey, {
           helperPid: session.process.pid ?? null,
+          appReady: false,
+          appKey: null,
           lastError: null,
         })
         if (session.startup && !session.startup.settled) {
@@ -852,6 +870,10 @@ export class NativePreviewManager {
     }
 
     if (session) {
+      if (session.runtimeBridgeUnsubscribe) {
+        session.runtimeBridgeUnsubscribe()
+        session.runtimeBridgeUnsubscribe = null
+      }
       if (session.startup && !session.startup.settled) {
         clearTimeout(session.startup.timeout)
       }
@@ -874,5 +896,69 @@ export class NativePreviewManager {
     for (const listener of this.listeners) {
       listener(event)
     }
+  }
+
+  private async attachRuntimeBridge(sessionKey: string, projectPath: string): Promise<void> {
+    const session = this.sessions.get(sessionKey)
+    if (!session) {
+      return
+    }
+
+    try {
+      const bridge = await this.getRuntimeBridge(projectPath)
+      const unsubscribe = bridge.onEnvelope((envelope) => {
+        this.handleRuntimeEnvelope(sessionKey, envelope)
+      })
+
+      const activeSession = this.sessions.get(sessionKey)
+      if (!activeSession) {
+        unsubscribe()
+        return
+      }
+
+      if (activeSession.runtimeBridgeUnsubscribe) {
+        activeSession.runtimeBridgeUnsubscribe()
+      }
+      activeSession.runtimeBridgeUnsubscribe = unsubscribe
+    } catch {
+      // Keep helper-driven preview working even if the runtime bridge is unavailable.
+    }
+  }
+
+  private async getRuntimeBridge(projectPath: string) {
+    return NativePreviewRuntimeBridgeService.getInstance().getBridge(projectPath)
+  }
+
+  private handleRuntimeEnvelope(
+    sessionKey: string,
+    envelope: { event: string; payload?: unknown }
+  ): void {
+    if (envelope.event !== 'RNIDE_message') {
+      return
+    }
+
+    const payload = envelope.payload as
+      | {
+          type?: string
+          data?: {
+            appKey?: unknown
+          }
+        }
+      | undefined
+
+    if (payload?.type !== 'appReady') {
+      return
+    }
+
+    const currentState = this.sessionStates.get(sessionKey)
+    if (!currentState || currentState.status === 'stopped' || currentState.status === 'error') {
+      return
+    }
+
+    this.updateState(sessionKey, {
+      appReady: true,
+      appKey: typeof payload.data?.appKey === 'string' ? payload.data.appKey : null,
+      lastError: null,
+    })
   }
 }

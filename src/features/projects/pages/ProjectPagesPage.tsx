@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useLocation, } from '@tanstack/react-router'
-import { useSearchParamsPolyfill } from '@/lib/useSearchParamsPolyfill'
+import { useLocation, useSearchParams } from '@/lib/router'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -102,7 +101,7 @@ function resolvePreviewEmbedModeForRun(
 export function ProjectPagesPage() {
     const { convexUserId } = useAuth()
     const location = useLocation()
-    const [searchParams, setSearchParams] = useSearchParamsPolyfill()
+    const [searchParams, setSearchParams] = useSearchParams()
     const { project } = useAccessibleProject()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
@@ -542,7 +541,7 @@ export function ProjectPagesPage() {
                 setFocusedPageIndex(resolvedIndex)
             }
 
-            const nextParams = new URLSearchParams(searchParams?.entries ? searchParams.entries() as any : [])
+            const nextParams = new URLSearchParams(searchParams)
             nextParams.delete('route')
             nextParams.delete('focus')
             setSearchParams(Object.fromEntries(nextParams.entries()) as any)

@@ -77,7 +77,8 @@ function adaptMetroConfig(config) {
     if (module.path === "__prelude__") {
       const preludeCode = module.output[0].data.code;
       if (!preludeCode.includes("__REACT_DEVTOOLS_PORT__")) {
-        module.output[0].data.code = `${preludeCode};var __REACT_DEVTOOLS_PORT__=${process.env.RCT_DEVTOOLS_PORT};`;
+        const runtimeBridgePort = process.env.COZEA_NATIVE_PREVIEW_RUNTIME_BRIDGE_PORT ?? "null";
+        module.output[0].data.code = `${preludeCode};var __REACT_DEVTOOLS_PORT__=${process.env.RCT_DEVTOOLS_PORT};var __COZEA_NATIVE_PREVIEW_RUNTIME_BRIDGE_PORT__=${runtimeBridgePort};`;
       }
     } else if (module.path === "__env__") {
       // this handles @expo/env plugin, which is used to inject environment variables

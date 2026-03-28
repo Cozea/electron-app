@@ -95,9 +95,16 @@ final class MjpegServer {
     try? listener.close()
   }
 
+  var hasConnectedClients: Bool {
+    queue.sync {
+      !clients.isEmpty
+    }
+  }
+
   func broadcast(jpeg data: Data) {
     queue.async {
-      self.clients.removeAll { client in
+      var survivingClients: [FileHandle] = []
+      for client in self.clients {
         let identifier = ObjectIdentifier(client)
         do {
           if !self.headerSent.contains(identifier) {
@@ -119,13 +126,13 @@ Content-Type: multipart/x-mixed-replace; boundary=frame\r
           chunk.append(data)
           chunk.append(Data("\r\n".utf8))
           try client.write(contentsOf: chunk)
-          return false
+          survivingClients.append(client)
         } catch {
           self.headerSent.remove(identifier)
           try? client.close()
-          return true
         }
       }
+      self.clients = survivingClients
     }
   }
 
@@ -144,28 +151,35 @@ Content-Type: multipart/x-mixed-replace; boundary=frame\r
 
 final class SimulatorBridge {
   private static let stateQueueKey = DispatchSpecificKey<Void>()
+  private static let controlQueueKey = DispatchSpecificKey<Void>()
 
   private let config: Config
   private let io: ProtocolIO
   private let mjpegServer: MjpegServer
 
   private let context: AnyObject
+  private let deviceSet: AnyObject
   private let device: AnyObject
   private let descriptor: AnyObject
   private let screen: AnyObject
   private let screenUUID: String
   private let screenID: Int
   private let ciContext = CIContext()
-
+  private let simulatorDispatchQueue = DispatchQueue(label: "com.simulatorServer.dispatchQueue")
+  private let simDeviceClient: AnyObject?
+  private var startupPurpleWorkspacePort: mach_port_name_t?
   private var lastJpegFrame: Data?
   private var streamReadyEmitted = false
   private var unsupportedPayloadTypes = Set<String>()
   private var informationalEvents = Set<String>()
-  private var surfacePollTimer: DispatchSourceTimer?
+  private var frameCallbackCount = 0
+  private var surfacesChangedCallbackCount = 0
+  private var propertiesChangedCallbackCount = 0
   private let stateQueue = DispatchQueue(label: "cozea.ios-preview-helper.state")
 
   private struct BootstrapResult {
     let context: AnyObject
+    let deviceSet: AnyObject
     let device: AnyObject
     let descriptor: AnyObject
     let screen: AnyObject
@@ -177,6 +191,7 @@ final class SimulatorBridge {
     self.config = config
     self.io = io
     self.stateQueue.setSpecific(key: Self.stateQueueKey, value: ())
+    self.simulatorDispatchQueue.setSpecific(key: Self.controlQueueKey, value: ())
     io.emit("info stage init_start")
     self.mjpegServer = try MjpegServer()
     io.emit("info stage mjpeg_server_ready")
@@ -189,31 +204,35 @@ final class SimulatorBridge {
     let bootstrap = try SimulatorBridge.bootstrap(config: config, io: io)
 
     self.context = bootstrap.context
+    self.deviceSet = bootstrap.deviceSet
     self.device = bootstrap.device
     self.descriptor = bootstrap.descriptor
     self.screen = bootstrap.screen
     self.screenUUID = bootstrap.screenUUID
     self.screenID = bootstrap.screenID
-
+    self.simDeviceClient = try? Self.makeLegacyHidClient(
+      device: bootstrap.device,
+      sessionResetQueue: simulatorDispatchQueue,
+      io: io
+    )
+    performKeyboardBootstrap()
+    self.startupPurpleWorkspacePort = try? Self.lookupPurpleWorkspacePort(on: bootstrap.device)
     io.emit("ready \(sanitize(config.deviceId))")
-    io.emit("info stage post_ready_start")
-    let streamURL = mjpegServer.url.absoluteString
-    io.emit("info stage stream_url_value_ready")
-    io.emit("info stream_url \(sanitize(streamURL))")
-    io.emit("info selected_screen_id \(screenID)")
-    io.emit("info stage emit_display_metadata_start")
+    if let startupPurpleWorkspacePort {
+      emitMachPortInfo(startupPurpleWorkspacePort, label: "purple_port_startup")
+    } else {
+      io.emit("info purple_port_startup_unavailable")
+    }
     emitDisplayMetadata()
-    io.emit("info stage emit_display_metadata_done")
-
-    io.emit("info stage register_surface_callbacks_start")
+    io.emit("info phase register_surface_callbacks_start")
     registerSurfaceCallbacks()
-    io.emit("info stage register_surface_callbacks_done")
-    io.emit("info stage register_display_callbacks_start")
+    io.emit("info phase register_surface_callbacks_done")
+    io.emit("info phase register_display_callbacks_start")
     registerDisplayCallbacks()
-    io.emit("info stage register_display_callbacks_done")
-    io.emit("info stage start_surface_polling_start")
+    io.emit("info phase register_display_callbacks_done")
+    io.emit("info phase start_surface_polling_start")
     startSurfacePolling()
-    io.emit("info stage start_surface_polling_done")
+    io.emit("info phase start_surface_polling_done")
   }
 
   func streamURL() -> String {
@@ -221,7 +240,7 @@ final class SimulatorBridge {
   }
 
   func screenshot(jobId: String) {
-    stateQueue.sync {
+    syncOnStateQueue {
       guard let frame = lastJpegFrame else {
         io.emit("error \(sanitize(jobId)) no_frame_available")
         return
@@ -242,39 +261,90 @@ final class SimulatorBridge {
     io.emit("error runtime not_implemented:\(sanitize(line))")
   }
 
+  func setUpKeyboard() {
+    syncOnControlQueue {
+      performKeyboardBootstrap()
+    }
+  }
+
   func rotate(rotation: String) {
-    do {
-      let direction = try Self.purpleRotationDirection(for: rotation)
-      try sendPurpleRotate(direction: direction)
-    } catch {
-      io.emit("error runtime \(sanitize(String(describing: error)))")
+    syncOnControlQueue {
+      do {
+        let direction = try Self.purpleRotationDirection(for: rotation)
+        try sendPurpleRotate(direction: direction)
+      } catch {
+        io.emit("error runtime \(sanitize(String(describing: error)))")
+      }
     }
   }
 
   private func registerSurfaceCallbacks() {
-    let selector = NSSelectorFromString("registerCallbackWithUUID:ioSurfacesChangeCallback:")
-    typealias RegisterFn = @convention(c) (AnyObject, Selector, NSString, @convention(block) (AnyObject?) -> Void) -> Void
-    let register = unsafeBitCast(screen.method(for: selector), to: RegisterFn.self)
+    let fullSelector = NSSelectorFromString(
+      "registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:"
+    )
+    if screen.responds(to: fullSelector) {
+      typealias RegisterScreenCallbacksFn = @convention(c) (
+        AnyObject,
+        Selector,
+        NSUUID,
+        DispatchQueue,
+        @convention(block) (AnyObject?) -> Void,
+        @convention(block) (AnyObject?) -> Void,
+        @convention(block) (AnyObject?) -> Void
+      ) -> Void
 
-    let block: @convention(block) (AnyObject?) -> Void = { [weak self] payload in
-      self?.handleSurfacePayload(payload)
-    }
+      let register = unsafeBitCast(screen.method(for: fullSelector), to: RegisterScreenCallbacksFn.self)
+      let callbackUUID = NSUUID()
+      let frameBlock: @convention(block) (AnyObject?) -> Void = { [weak self] payload in
+        self?.emitFrameCallback(kind: "frame")
+        self?.handleSurfacePayload(payload)
+      }
+      let surfacesChangedBlock: @convention(block) (AnyObject?) -> Void = { [weak self] payload in
+        self?.emitFrameCallback(kind: "surfaces_changed")
+        if let payload {
+          self?.handleSurfacePayload(payload)
+        }
+      }
+      let propertiesChangedBlock: @convention(block) (AnyObject?) -> Void = { [weak self] _ in
+        self?.emitFrameCallback(kind: "properties_changed")
+      }
 
-    register(screen, selector, screenUUID as NSString, block)
-    emitInfoOnce("surface_callback_registered")
-
-    if let surface = screen.perform(NSSelectorFromString("framebufferSurface"))?.takeUnretainedValue() {
-      handleSurfacePayload(surface)
-    } else if let surface = screen.perform(NSSelectorFromString("maskedFramebufferSurface"))?.takeUnretainedValue() {
-      handleSurfacePayload(surface)
+      io.emit("info phase register_surface_full_selector_resolved")
+      io.emit("info phase register_surface_full_call_start")
+      register(
+        screen,
+        fullSelector,
+        callbackUUID,
+        simulatorDispatchQueue,
+        frameBlock,
+        surfacesChangedBlock,
+        propertiesChangedBlock
+      )
+      io.emit("info phase register_surface_full_call_done")
     } else {
-      emitInfoOnce("initial_framebuffer_surface_nil")
+      io.emit("info phase register_surface_selector_start")
+      let selector = NSSelectorFromString("registerCallbackWithUUID:ioSurfacesChangeCallback:")
+      typealias RegisterFn = @convention(c) (AnyObject, Selector, NSString, @convention(block) (AnyObject?) -> Void) -> Void
+      let register = unsafeBitCast(screen.method(for: selector), to: RegisterFn.self)
+      io.emit("info phase register_surface_selector_resolved")
+
+      let block: @convention(block) (AnyObject?) -> Void = { [weak self] payload in
+        self?.handleSurfacePayload(payload)
+      }
+
+      io.emit("info phase register_surface_call_start")
+      register(screen, selector, screenUUID as NSString, block)
+      io.emit("info phase register_surface_call_done")
     }
+
+    emitInfoOnce("surface_callback_registered")
   }
 
   private func registerDisplayCallbacks() {
+    io.emit("info phase register_display_selector_start")
     let selector = NSSelectorFromString("registerCallbackWithUUID:displayPropertiesChanged:")
     guard screen.responds(to: selector) else {
+      io.emit("info phase register_display_selector_missing")
       return
     }
 
@@ -282,33 +352,15 @@ final class SimulatorBridge {
     let register = unsafeBitCast(screen.method(for: selector), to: RegisterFn.self)
     let block: @convention(block) (AnyObject?) -> Void = { [weak self] _ in
       self?.emitInfoOnce("display_properties_changed")
-      self?.captureCurrentSurface()
     }
+    io.emit("info phase register_display_call_start")
     register(screen, selector, "\(screenUUID)-display" as NSString, block)
+    io.emit("info phase register_display_call_done")
     emitInfoOnce("display_callback_registered")
   }
 
   private func startSurfacePolling() {
-    let timer = DispatchSource.makeTimerSource(queue: stateQueue)
-    timer.schedule(deadline: .now(), repeating: .milliseconds(250))
-    timer.setEventHandler { [weak self] in
-      self?.captureCurrentSurface()
-    }
-    timer.resume()
-    surfacePollTimer = timer
-    emitInfoOnce("surface_polling_started")
-  }
-
-  private func captureCurrentSurface() {
-    if let surface = screen.perform(NSSelectorFromString("framebufferSurface"))?.takeUnretainedValue() {
-      handleSurfacePayload(surface)
-      return
-    }
-    if let surface = screen.perform(NSSelectorFromString("maskedFramebufferSurface"))?.takeUnretainedValue() {
-      handleSurfacePayload(surface)
-      return
-    }
-    emitInfoOnce("surface_poll_returned_nil")
+    emitInfoOnce("surface_polling_disabled_pending_safe_probe")
   }
 
   private func handleSurfacePayload(_ payload: AnyObject?) {
@@ -317,9 +369,11 @@ final class SimulatorBridge {
     }
 
     if let data = dataForPayload(payload) {
-      stateQueue.sync {
+      syncOnStateQueue {
         lastJpegFrame = data
-        mjpegServer.broadcast(jpeg: data)
+        if mjpegServer.hasConnectedClients {
+          mjpegServer.broadcast(jpeg: data)
+        }
         if !streamReadyEmitted {
           streamReadyEmitted = true
           io.emit("stream_ready \(sanitize(mjpegServer.url.absoluteString))")
@@ -329,7 +383,7 @@ final class SimulatorBridge {
     }
 
     let typeName = String(describing: type(of: payload))
-    stateQueue.sync {
+    syncOnStateQueue {
       guard !unsupportedPayloadTypes.contains(typeName) else {
         return
       }
@@ -367,7 +421,7 @@ final class SimulatorBridge {
   }
 
   private func emitDisplayMetadata() {
-    emitInfoOnce("screen_id_\(screenID)")
+    io.emit("info screen_id_\(screenID)")
   }
 
   private func emitInfoOnce(_ key: String) {
@@ -380,6 +434,24 @@ final class SimulatorBridge {
     }
   }
 
+  private func emitFrameCallback(kind: String) {
+    syncOnStateQueue {
+      switch kind {
+      case "frame":
+        frameCallbackCount += 1
+        io.emit("info frame_callback_\(frameCallbackCount)")
+      case "surfaces_changed":
+        surfacesChangedCallbackCount += 1
+        io.emit("info surfaces_changed_callback_\(surfacesChangedCallbackCount)")
+      case "properties_changed":
+        propertiesChangedCallbackCount += 1
+        io.emit("info properties_changed_callback_\(propertiesChangedCallbackCount)")
+      default:
+        io.emit("info callback_\(sanitize(kind))")
+      }
+    }
+  }
+
   private func syncOnStateQueue(_ block: () -> Void) {
     if DispatchQueue.getSpecific(key: Self.stateQueueKey) != nil {
       block()
@@ -387,6 +459,17 @@ final class SimulatorBridge {
     }
 
     stateQueue.sync {
+      block()
+    }
+  }
+
+  private func syncOnControlQueue(_ block: () -> Void) {
+    if DispatchQueue.getSpecific(key: Self.controlQueueKey) != nil {
+      block()
+      return
+    }
+
+    simulatorDispatchQueue.sync {
       block()
     }
   }
@@ -412,13 +495,17 @@ final class SimulatorBridge {
   }
 
   private func iosSurface(from payload: AnyObject) -> IOSurfaceRef? {
-    let value = payload
-    let opaque = Unmanaged.passUnretained(value).toOpaque()
-    let candidate = unsafeBitCast(opaque, to: IOSurfaceRef.self)
-    if CFGetTypeID(candidate) == IOSurfaceGetTypeID() {
-      return candidate
+    let typeName = String(cString: object_getClassName(payload))
+    guard typeName.contains("IOSurface") else {
+      return nil
     }
-    return nil
+
+    let opaque = Unmanaged.passUnretained(payload).toOpaque()
+    let candidate = unsafeBitCast(opaque, to: IOSurfaceRef.self)
+    guard CFGetTypeID(candidate) == IOSurfaceGetTypeID() else {
+      return nil
+    }
+    return candidate
   }
 
   private func jpegData(from surface: IOSurfaceRef) -> Data? {
@@ -450,14 +537,8 @@ final class SimulatorBridge {
     try writeUInt32(0x4, at: 0x48, into: &message)
     try writeUInt32(UInt32(bitPattern: direction), at: 0x4c, into: &message)
 
-    let selector = NSSelectorFromString("lookup:error:")
-    typealias LookupFn = @convention(c) (AnyObject, Selector, NSString, UnsafeMutablePointer<AnyObject?>?) -> mach_port_name_t
-    var lookupError: AnyObject?
-    let lookup = unsafeBitCast(device.method(for: selector), to: LookupFn.self)
-    let remotePort = lookup(device, selector, "PurpleWorkspacePort" as NSString, &lookupError)
-    if let lookupError {
-      throw HelperError("purple_lookup_failed:\(sanitize(String(describing: lookupError)))")
-    }
+    let remotePort = try lookupPurpleWorkspacePort()
+    emitMachPortInfo(remotePort, label: "purple_port_before_send")
 
     try writeUInt32(0x13, at: 0x0, into: &message)
     try writeUInt32(0x6c, at: 0x4, into: &message)
@@ -475,6 +556,61 @@ final class SimulatorBridge {
 
     guard result == KERN_SUCCESS else {
       throw HelperError("purple_rotate_send_failed:\(result)")
+    }
+  }
+
+  private func lookupPurpleWorkspacePort() throws -> mach_port_name_t {
+    if let remotePort = try Self.lookupPurpleWorkspacePort(on: device) {
+      emitMachPortInfo(remotePort, label: "purple_port_lookup")
+      return remotePort
+    }
+
+    if let startupPurpleWorkspacePort, isMachPortUsable(startupPurpleWorkspacePort) {
+      emitMachPortInfo(startupPurpleWorkspacePort, label: "purple_port_startup_reused")
+      return startupPurpleWorkspacePort
+    }
+
+    if let refreshedDevice = try findRefreshedDeviceForPurpleLookup(),
+       let remotePort = try Self.lookupPurpleWorkspacePort(on: refreshedDevice) {
+      emitMachPortInfo(remotePort, label: "purple_port_lookup_refreshed")
+      return remotePort
+    }
+
+    throw HelperError("purple_lookup_failed:lookup_returned_zero")
+  }
+
+  private static func lookupPurpleWorkspacePort(on candidateDevice: AnyObject) throws -> mach_port_name_t? {
+    let selector = NSSelectorFromString("lookup:error:")
+    typealias LookupFn = @convention(c) (AnyObject, Selector, NSString, UnsafeMutablePointer<AnyObject?>?) -> mach_port_name_t
+    var lookupError: AnyObject?
+    let lookup = unsafeBitCast(candidateDevice.method(for: selector), to: LookupFn.self)
+    let remotePort = lookup(candidateDevice, selector, "PurpleWorkspacePort" as NSString, &lookupError)
+    if let lookupError {
+      let errorDescription = sanitize(String(describing: lookupError))
+      if errorDescription.contains("current state: Shutdown")
+        || errorDescription.contains("current state: Shutting Down") {
+        return nil
+      }
+      throw HelperError("purple_lookup_failed:\(errorDescription)")
+    }
+    if remotePort == 0 {
+      return nil
+    }
+    return remotePort
+  }
+
+  private func findRefreshedDeviceForPurpleLookup() throws -> AnyObject? {
+    do {
+      let refreshedDevice = try Self.findDevice(deviceSet: deviceSet, udid: config.deviceId)
+      let stateSelector = NSSelectorFromString("state")
+      typealias StateFn = @convention(c) (AnyObject, Selector) -> Int
+      let stateFn = unsafeBitCast(refreshedDevice.method(for: stateSelector), to: StateFn.self)
+      let state = stateFn(refreshedDevice, stateSelector)
+      io.emit("info purple_lookup_refreshed_device_state_\(state)")
+      return refreshedDevice
+    } catch {
+      io.emit("info purple_lookup_refresh_failed_\(sanitize(String(describing: error)))")
+      return nil
     }
   }
 
@@ -503,6 +639,212 @@ final class SimulatorBridge {
         bytes[offset + index] = byte
       }
     }
+  }
+
+  private func emitMachPortInfo(_ port: mach_port_name_t, label: String) {
+    var portType: mach_port_type_t = 0
+    let status = mach_port_type(mach_task_self_, port, &portType)
+    if status == KERN_SUCCESS {
+      io.emit("info \(label)_\(port)_type_\(portType)")
+    } else {
+      io.emit("info \(label)_\(port)_type_error_\(status)")
+    }
+  }
+
+  private func isMachPortUsable(_ port: mach_port_name_t) -> Bool {
+    let machPortTypeSend: mach_port_type_t = 1 << 16
+    var portType: mach_port_type_t = 0
+    let status = mach_port_type(mach_task_self_, port, &portType)
+    guard status == KERN_SUCCESS else {
+      return false
+    }
+    return (portType & machPortTypeSend) != 0
+  }
+
+  private func performKeyboardBootstrap() {
+    io.emit("info keyboard_bootstrap_start")
+    setUpKeyboardOnDeviceIfAvailable()
+
+    guard let simDeviceClient else {
+      io.emit("info keyboard_client_unavailable")
+      return
+    }
+
+    io.emit("info keyboard_client_ready")
+    do {
+      try sendSyntheticWarmupKeyEvents(using: simDeviceClient)
+      io.emit("info keyboard_warmup_sent")
+    } catch {
+      io.emit("info keyboard_warmup_failed_\(sanitize(String(describing: error)))")
+    }
+  }
+
+  private func setUpKeyboardOnDeviceIfAvailable() {
+    let hardwareSelector = NSSelectorFromString("setHardwareKeyboardEnabled:keyboardType:error:")
+    let languageSelector = NSSelectorFromString("setKeyboardLanguage:error:")
+
+    if device.responds(to: languageSelector) {
+      typealias SetKeyboardLanguageFn = @convention(c) (
+        AnyObject,
+        Selector,
+        NSString,
+        UnsafeMutablePointer<AnyObject?>?
+      ) -> Bool
+      let setKeyboardLanguage = unsafeBitCast(device.method(for: languageSelector), to: SetKeyboardLanguageFn.self)
+      var error: AnyObject?
+      let language = (Locale.current.language.languageCode?.identifier ?? "en") as NSString
+      let success = setKeyboardLanguage(device, languageSelector, language, &error)
+      if let error {
+        io.emit("info keyboard_language_error_\(sanitize(String(describing: error)))")
+      } else {
+        io.emit("info keyboard_language_result_\(success ? "true" : "false")_\(sanitize(language as String))")
+      }
+    } else {
+      io.emit("info keyboard_language_selector_missing")
+    }
+
+    if device.responds(to: hardwareSelector) {
+      typealias SetHardwareKeyboardFn = @convention(c) (
+        AnyObject,
+        Selector,
+        Bool,
+        Int,
+        UnsafeMutablePointer<AnyObject?>?
+      ) -> Bool
+      let setHardwareKeyboard = unsafeBitCast(device.method(for: hardwareSelector), to: SetHardwareKeyboardFn.self)
+      var error: AnyObject?
+      let enabled = setHardwareKeyboard(device, hardwareSelector, true, 0, &error)
+      if let error {
+        io.emit("info keyboard_enable_error_\(sanitize(String(describing: error)))")
+      } else {
+        io.emit("info keyboard_enable_result_\(enabled ? "true" : "false")")
+      }
+
+      Thread.sleep(forTimeInterval: 0.05)
+      error = nil
+      let disabled = setHardwareKeyboard(device, hardwareSelector, false, 0, &error)
+      if let error {
+        io.emit("info keyboard_disable_error_\(sanitize(String(describing: error)))")
+      } else {
+        io.emit("info keyboard_disable_result_\(disabled ? "true" : "false")")
+      }
+    } else {
+      io.emit("info keyboard_enable_selector_missing")
+    }
+  }
+
+  private func sendSyntheticWarmupKeyEvents(using client: AnyObject) throws {
+    let handle = dlopen(simulatorKitPath, RTLD_NOW)
+    guard let keyboardBuilder = dlsym(handle, "IndigoHIDMessageForKeyboardArbitrary") else {
+      throw HelperError("missing_IndigoHIDMessageForKeyboardArbitrary")
+    }
+
+    typealias KeyboardBuilderFn = @convention(c) (UInt32, UInt32) -> UnsafeMutableRawPointer?
+    let buildKeyboardMessage = unsafeBitCast(keyboardBuilder, to: KeyboardBuilderFn.self)
+
+    if let down = buildKeyboardMessage(0, 1) {
+      try sendLegacyHidMessage(down, using: client)
+    }
+    if let up = buildKeyboardMessage(0, 2) {
+      try sendLegacyHidMessage(up, using: client)
+    }
+
+    Thread.sleep(forTimeInterval: 0.05)
+  }
+
+  private func sendLegacyHidMessage(_ message: UnsafeMutableRawPointer, using client: AnyObject) throws {
+    let selector = NSSelectorFromString("sendWithMessage:freeWhenDone:completionQueue:completion:")
+    guard client.responds(to: selector) else {
+      throw HelperError("missing_sendWithMessage")
+    }
+
+    typealias SendMessageFn = @convention(c) (
+      AnyObject,
+      Selector,
+      UnsafeMutableRawPointer,
+      Bool,
+      DispatchQueue,
+      AnyObject?
+    ) -> Void
+
+    let sendMessage = unsafeBitCast(client.method(for: selector), to: SendMessageFn.self)
+    sendMessage(
+      client,
+      selector,
+      message,
+      true,
+      simulatorDispatchQueue,
+      nil
+    )
+  }
+
+  private static func makeLegacyHidClient(
+    device: AnyObject,
+    sessionResetQueue: DispatchQueue,
+    io: ProtocolIO
+  ) throws -> AnyObject {
+    guard let cls = NSClassFromString("SimulatorKit.SimDeviceLegacyHIDClient") as? NSObject.Type else {
+      throw HelperError("missing_SimDeviceLegacyHIDClient")
+    }
+
+    guard let alloc = cls.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() else {
+      throw HelperError("failed_to_alloc_legacy_hid_client")
+    }
+
+    let resetSelector = NSSelectorFromString("initWithDevice:sessionResetQueue:error:sessionResetHandler:")
+    if alloc.responds(to: resetSelector) {
+      typealias InitWithResetFn = @convention(c) (
+        AnyObject,
+        Selector,
+        AnyObject,
+        DispatchQueue,
+        UnsafeMutablePointer<AnyObject?>?,
+        @convention(block) () -> Void
+      ) -> Unmanaged<AnyObject>?
+
+      let resetBlock: @convention(block) () -> Void = {
+        io.emit("info hid_client_session_reset")
+      }
+      let initialize = unsafeBitCast(alloc.method(for: resetSelector), to: InitWithResetFn.self)
+      var error: AnyObject?
+      if let client = initialize(
+        alloc,
+        resetSelector,
+        device,
+        sessionResetQueue,
+        &error,
+        resetBlock
+      )?.takeRetainedValue() {
+        io.emit("info hid_client_init_with_reset_queue")
+        return client
+      }
+      if let error {
+        io.emit("info hid_client_init_with_reset_queue_failed_\(sanitize(String(describing: error)))")
+      }
+    }
+
+    let selector = NSSelectorFromString("initWithDevice:error:")
+    guard alloc.responds(to: selector) else {
+      throw HelperError("missing_initWithDevice:error:")
+    }
+
+    typealias InitFn = @convention(c) (
+      AnyObject,
+      Selector,
+      AnyObject,
+      UnsafeMutablePointer<AnyObject?>?
+    ) -> Unmanaged<AnyObject>?
+
+    var error: AnyObject?
+    let initialize = unsafeBitCast(alloc.method(for: selector), to: InitFn.self)
+    guard let client = initialize(alloc, selector, device, &error)?.takeRetainedValue() else {
+      if let error {
+        throw HelperError("legacy_hid_client_init_failed:\(sanitize(String(describing: error)))")
+      }
+      throw HelperError("legacy_hid_client_init_failed")
+    }
+
+    return client
   }
 
   private static func makeServiceContext() throws -> AnyObject {
@@ -594,6 +936,7 @@ final class SimulatorBridge {
 
         return BootstrapResult(
           context: context,
+          deviceSet: deviceSet,
           device: bootedDevice,
           descriptor: descriptor,
           screen: screen,
@@ -806,6 +1149,48 @@ func sanitize(_ value: String) -> String {
   value.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+func handleProtocolLine(_ trimmed: String, io: ProtocolIO, bridge: SimulatorBridge) {
+  let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+  guard let command = parts.first.map(String.init) else {
+    return
+  }
+
+  switch command {
+  case "ping":
+    if let requestId = parts.dropFirst().first {
+      io.emit("ack \(sanitize(String(requestId)))")
+    } else {
+      io.emit("error protocol missing_request_id:ping")
+    }
+  case "shutdown":
+    if let requestId = parts.dropFirst().first {
+      io.emit("ack \(sanitize(String(requestId)))")
+    } else {
+      io.emit("error protocol missing_request_id:shutdown")
+    }
+    io.emit("stopped")
+    exit(0)
+  case "screenshot":
+    if let requestId = parts.dropFirst().first {
+      io.emit("info phase screenshot_command_received_\(sanitize(String(requestId)))")
+      bridge.screenshot(jobId: String(requestId))
+    } else {
+      io.emit("error protocol missing_screenshot_id")
+    }
+  case "setUpKeyboard":
+    bridge.setUpKeyboard()
+  case "rotate":
+    let rotation = parts.dropFirst().joined(separator: " ")
+    if rotation.isEmpty {
+      io.emit("error protocol missing_rotation")
+    } else {
+      bridge.rotate(rotation: rotation)
+    }
+  default:
+    bridge.respondNotImplemented(trimmed)
+  }
+}
+
 do {
   let io = ProtocolIO()
   let config = try parseArgs()
@@ -815,58 +1200,34 @@ do {
     io.emit("info device_set_path \(sanitize(deviceSetPath))")
   }
 
-  let input = FileHandle.standardInput
-  while let line = try input.read(upToCount: 4096), !line.isEmpty {
-    guard let commandLine = String(data: line, encoding: .utf8) else {
-      continue
+  let inputFd = FileHandle.standardInput.fileDescriptor
+  let source = DispatchSource.makeReadSource(fileDescriptor: inputFd, queue: DispatchQueue.global())
+  var bufferedInput = Data()
+  source.setEventHandler {
+    var localBuffer = [UInt8](repeating: 0, count: 4096)
+    let readCount = Darwin.read(inputFd, &localBuffer, localBuffer.count)
+    if readCount <= 0 {
+      io.emit("stopped")
+      exit(0)
     }
 
-    for rawLine in commandLine.split(separator: "\n") {
-      let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    bufferedInput.append(contentsOf: localBuffer.prefix(readCount))
+
+    while let newlineIndex = bufferedInput.firstIndex(of: 0x0a) {
+      let lineData = bufferedInput.prefix(upTo: newlineIndex)
+      bufferedInput.removeSubrange(...newlineIndex)
+      guard let commandLine = String(data: lineData, encoding: .utf8) else {
+        continue
+      }
+      let trimmed = commandLine.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty {
         continue
       }
-
-      let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-      guard let command = parts.first.map(String.init) else {
-        continue
-      }
-
-      switch command {
-      case "ping":
-        if let requestId = parts.dropFirst().first {
-          io.emit("ack \(sanitize(String(requestId)))")
-        } else {
-          io.emit("error protocol missing_request_id:ping")
-        }
-      case "shutdown":
-        if let requestId = parts.dropFirst().first {
-          io.emit("ack \(sanitize(String(requestId)))")
-        } else {
-          io.emit("error protocol missing_request_id:shutdown")
-        }
-        io.emit("stopped")
-        exit(0)
-      case "screenshot":
-        if let requestId = parts.dropFirst().first {
-          bridge.screenshot(jobId: String(requestId))
-        } else {
-          io.emit("error protocol missing_screenshot_id")
-        }
-      case "rotate":
-        let rotation = parts.dropFirst().joined(separator: " ")
-        if rotation.isEmpty {
-          io.emit("error protocol missing_rotation")
-        } else {
-          bridge.rotate(rotation: rotation)
-        }
-      default:
-        bridge.respondNotImplemented(trimmed)
-      }
+      handleProtocolLine(trimmed, io: io, bridge: bridge)
     }
   }
-
-  io.emit("stopped")
+  source.resume()
+  dispatchMain()
 } catch {
   let message = sanitize(String(describing: error))
   FileHandle.standardError.write(Data((message + "\n").utf8))

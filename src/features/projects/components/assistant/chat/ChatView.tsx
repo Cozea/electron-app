@@ -101,7 +101,7 @@ import { newCommandId, newMessageId, newThreadId } from "@/lib/utils";
 import { ensureNativeApi as readNativeApi } from "@/lib/nativeApi";
 const getModelInfo = () => null; const providerAllowsImages = () => false; const providerForModel = () => null; const providerIsConfigured = () => true; const trySwitchModelToSupportsImages = () => null;
 
-import { resolveAppModelSelection } from "../modelSelection";
+import { resolveAppModelSelection } from "@/stores/t3-modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   type ComposerImageAttachment,
@@ -123,10 +123,10 @@ import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { shouldUseCompactComposerFooter } from "../composerFooterLayout";
 import { selectThreadTerminalState, useTerminalStateStore } from "@/stores/t3-terminalStateStore";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
-import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { MessagesTimeline } from "./chat/MessagesTimeline";
-import { ChatHeader } from "./chat/ChatHeader";
-import { ContextWindowMeter } from "./chat/ContextWindowMeter";
+const PullRequestThreadDialog = () => null;
+import { MessagesTimeline } from "./MessagesTimeline";
+import { ChatHeader } from "./ChatHeader";
+const ContextWindowMeter = () => null;
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";

@@ -155,8 +155,13 @@ describe('NativePreviewManager real helper integration', () => {
           `native preview session running; events=${stateEvents.join(' | ')}; helper=${helperLines.join(' | ')}`
         )
 
+        await new Promise((resolve) => setTimeout(resolve, 1_500))
+
         const portraitShot = await manager.captureScreenshot(request)
-        expect(portraitShot.success).toBe(true)
+        expect(
+          portraitShot.success,
+          `${portraitShot.error ?? 'portrait screenshot failed'}; helper=${helperLines.join(' | ')}`
+        ).toBe(true)
         expect(portraitShot.filePath).toBeTruthy()
         expect(fs.existsSync(portraitShot.filePath!)).toBe(true)
 
@@ -171,7 +176,10 @@ describe('NativePreviewManager real helper integration', () => {
         await new Promise((resolve) => setTimeout(resolve, 2_500))
 
         const landscapeShot = await manager.captureScreenshot(request)
-        expect(landscapeShot.success).toBe(true)
+        expect(
+          landscapeShot.success,
+          `${landscapeShot.error ?? 'landscape screenshot failed'}; helper=${helperLines.join(' | ')}`
+        ).toBe(true)
         expect(landscapeShot.filePath).toBeTruthy()
         expect(fs.existsSync(landscapeShot.filePath!)).toBe(true)
 

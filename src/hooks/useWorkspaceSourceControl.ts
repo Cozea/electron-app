@@ -116,7 +116,7 @@ export function useWorkspaceSourceControl(
       setConnectError(null)
 
       const metadata = {
-        ...(options.metadata ?? {}),
+        ...(options.metadata ? options.metadata : {}),
         setupMode: options.setupMode,
         providerHost: options.providerHost,
       }

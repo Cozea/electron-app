@@ -116,6 +116,7 @@ export interface NativePreviewLaunchConfig {
   kind: NativePreviewLaunchKind
   port: number
   devtoolsPort: number
+  runtimeBridgePort: number | null
   label: string
   command: string
   env: Record<string, string>
