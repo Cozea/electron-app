@@ -54,7 +54,6 @@ const ENTERPRISE_SALES_MAILTO = 'mailto:sales@cozea.com?subject=Enterprise%20Pla
 const STARTUP_MIN_SEATS = 2
 const STARTUP_MAX_SEATS = 10
 const SEAT_ASSIGNMENTS_PAGE_SIZE = 5
-const MAX_TRIAL_INCLUDED_PERCENT = 5
 const INACTIVE_PLAN_STATUS_LABEL = 'Inactive'
 const INVOICE_CACHE_MAX_AGE_MS = 15 * 60 * 1000
 
@@ -252,19 +251,6 @@ interface ScheduledCycleChange {
   effectiveAt: number
 }
 
-interface SeatWalletView {
-  userId: Id<'users'>
-  email: string
-  firstName?: string
-  lastName?: string
-  profileImageUrl?: string
-  isBillingOwner: boolean
-  walletId: string | null
-  balanceCents: number
-  heldCents: number
-  availableCents: number
-  updatedAt: number | null
-}
 
 function formatDate(timestamp?: number): string {
   if (!timestamp) return '-'
@@ -279,15 +265,6 @@ function formatBillingCycleLabel(cycle: BillingCycle): string {
   return cycle === 'yearly' ? 'Yearly' : 'Monthly'
 }
 
-function formatCurrencyFromCents(cents: number, currency: string = 'USD'): string {
-  const normalized = Number.isFinite(cents) ? cents : 0
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(normalized / 100)
-}
 
 function formatDisplayCurrencyFromCents(cents: number, currency: string = 'USD'): string {
   const normalized = Number.isFinite(cents) ? cents : 0
@@ -764,9 +741,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     billingRoute,
     members,
     seatManagement,
-    walletSummary,
-    seatWallets,
-  } = useScopedBillingData({ route })
+      } = useScopedBillingData({ route })
 
   const setSeatAssignment = useMutation(api.billing.setSeatAssignment)
 
@@ -779,7 +754,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [isCheckoutPending, setIsCheckoutPending] = useState(false)
   const [isCycleChangePending, setIsCycleChangePending] = useState(false)
   const [isCancelScheduledCycleChangePending, setIsCancelScheduledCycleChangePending] = useState(false)
-  const [isActivatingPaidMax, setIsActivatingPaidMax] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [isSeatQuantityUpdating, setIsSeatQuantityUpdating] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
@@ -1047,14 +1021,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const paidSeatProgress =
     paidSeatTotal > 0 ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100) : 0
 
-  const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
-  const includedUsagePerCycleCents = Math.max(0, walletSummary?.includedCentsPerCycle ?? 0)
-  const activeWalletAvailableCents = Math.max(0, walletSummary?.wallet?.availableCents ?? 0)
-  const includedUsageLeftCents = Math.min(includedUsagePerCycleCents, activeWalletAvailableCents)
-  const includedUsageLeftPercent =
-    includedUsagePerCycleCents > 0
-      ? Math.max(0, Math.min(100, (includedUsageLeftCents / includedUsagePerCycleCents) * 100))
-      : 0
+              
 
   const activeAssignmentsByUserId = useMemo(() => {
     const map = new Set<string>()
@@ -1124,10 +1091,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     entitlement?.status === 'trialing' &&
     entitlement?.trialActive
   )
-  const maxTrialEndsLabel =
-    hasActiveMaxTrial && entitlement?.trialEndsAt
-      ? formatDate(entitlement.trialEndsAt)
-      : null
+      
   const invoiceHistoryDescription = workspaceScoped
     ? 'Review recent Stripe invoices billed to this workspace.'
     : 'Review recent Stripe invoices for your personal plan.'
@@ -1317,39 +1281,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     }
   }, [accessToken, billingOrganizationId, billingRoute])
 
-  const handleActivatePaidMax = useCallback(async () => {
-    if (!billingOrganizationId || !accessToken) return
-
-    setIsActivatingPaidMax(true)
-    try {
-      const response = await fetchWithAbort(
-        `${AUTH_SERVER_URL}/stripe/activate-paid-max`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            organizationId: billingOrganizationId,
-          }),
-        },
-        { timeoutMs: 15000 }
-      )
-
-      if (!response.ok) {
-        const error = (await response.json().catch(() => null)) as { message?: string; error?: string } | null
-        throw new Error(error?.message || error?.error || 'Failed to activate paid Max')
-      }
-
-      alert('Paid Max activated. Your full Max allocation is now available.')
-    } catch (err) {
-      console.error('Activate paid Max error:', err)
-      alert(err instanceof Error ? err.message : 'Failed to activate paid Max')
-    } finally {
-      setIsActivatingPaidMax(false)
-    }
-  }, [accessToken, billingOrganizationId])
+  
 
   const handleUpdateSeatQuantity = useCallback(async () => {
     if (!billingOrganizationId || !accessToken) return
@@ -2342,132 +2274,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           </Card>
         )}
 
-        {seatManagedEntitlement && seatWallets?.canManage && (
-          <Card className="border-none shadow-none bg-transparent">
-            <CardHeader className="pt-0 px-0 pb-4">
-              <CardTitle>Seat Wallet Balances</CardTitle>
-              <CardDescription>
-                Each active seat keeps its own wallet. Wallets reset to the full included amount every billing cycle.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-0">
-              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
-                <Table className="[&_th]:px-4 [&_td]:px-4">
-                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                    <TableRow>
-                      <TableHead className="w-[42%]">Seat User</TableHead>
-                      <TableHead className="w-[18%]">Available</TableHead>
-                      <TableHead className="w-[20%]">Included / Cycle</TableHead>
-                      <TableHead className="w-[20%] text-right">Updated</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                    {seatWallets.wallets.length > 0 ? (
-                      seatWallets.wallets.map((entry: SeatWalletView) => {
-                        const displayName =
-                          entry.firstName
-                            ? `${entry.firstName} ${entry.lastName || ''}`.trim()
-                            : entry.email
+        
 
-                        return (
-                          <TableRow key={String(entry.userId)}>
-                            <TableCell className="overflow-hidden">
-                              <div className="flex min-w-0 items-center gap-3">
-                                <Avatar className="h-8 w-8">
-                                  <AvatarImage src={entry.profileImageUrl || undefined} />
-                                  <AvatarFallback>
-                                    {(displayName || '?').slice(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium">
-                                    {displayName}
-                                    {entry.isBillingOwner ? ' (Owner)' : ''}
-                                  </p>
-                                  <p className="truncate text-xs text-muted-foreground">{entry.email}</p>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <span className="font-medium">
-                                {formatCurrencyFromCents(entry.availableCents, walletCurrency)}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              {formatCurrencyFromCents(seatWallets.includedCentsPerCycle, walletCurrency)}
-                            </TableCell>
-                            <TableCell className="text-right text-sm text-muted-foreground">
-                              {formatDate(entry.updatedAt ?? undefined)}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
-                          No active seat wallets yet.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader className="pt-0 px-0 pb-4">
-            <CardTitle>Included Usage</CardTitle>
-            <CardDescription>
-              Remaining hosted AI usage included with your current billing cycle.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0 px-0">
-            <div className="rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-              <div>
-                <p className="text-sm font-medium">Usage left</p>
-                <p className="text-xs text-muted-foreground">
-                  {hasPastDueEntitlement
-                    ? 'Your latest payment failed, so hosted AI usage is locked until Stripe confirms payment.'
-                    : includedUsagePerCycleCents > 0
-                    ? hasActiveMaxTrial
-                      ? `${Math.round(includedUsageLeftPercent)}% of your trial allocation remains. Trial usage is capped at ${MAX_TRIAL_INCLUDED_PERCENT}% of the full Max allowance.`
-                      : `${Math.round(includedUsageLeftPercent)}% remaining in this billing cycle.`
-                    : 'Your current plan does not include hosted AI usage.'}
-                </p>
-                {hasPastDueEntitlement ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Update your payment method in Manage Billing to continue using Cozea-hosted AI.
-                  </p>
-                ) : null}
-                {hasActiveMaxTrial ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {maxTrialEndsLabel
-                      ? `Your Max trial ends on ${maxTrialEndsLabel}. Activate paid Max now to unlock the remaining 95% immediately.`
-                      : 'Activate paid Max now to unlock the remaining 95% immediately.'}
-                  </p>
-                ) : null}
-              </div>
-              <Progress value={includedUsageLeftPercent} className="mt-3 h-2.5" />
-              {hasActiveMaxTrial ? (
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Button
-                    onClick={() => void handleActivatePaidMax()}
-                    disabled={isActivatingPaidMax || isPlanActionPending || isPortalPending}
-                  >
-                    {isActivatingPaidMax ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Activate Paid Max
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Charges the saved payment method now and switches this trial to normal Max billing.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-
+        
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle className="flex items-center gap-2">

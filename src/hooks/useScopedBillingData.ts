@@ -6,8 +6,6 @@ import { useHydrateWorkspaceMembers } from '@/hooks/useHydrateWorkspaceMembers'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
 import {
   getSeatManagementCacheKey,
-  getSeatWalletsCacheKey,
-  getWalletSummaryCacheKey,
 } from '@/lib/queryCacheKeys'
 import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
 import { useCachedQuery } from '@/stores/useQueryCache'
@@ -94,24 +92,6 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     freshSeatManagement,
   )
 
-  const freshWalletSummary = useQuery<any>(
-    undefined,
-    billingViewerArgs,
-  )
-  const walletSummary = useCachedQuery(
-    getWalletSummaryCacheKey(convexOrg?._id, convexUserId),
-    freshWalletSummary,
-  )
-
-  const freshSeatWallets = useQuery<any>(
-    undefined,
-    workspaceScoped ? billingViewerArgs : 'skip',
-  )
-  const seatWallets = useCachedQuery(
-    getSeatWalletsCacheKey(convexOrg?._id, convexUserId),
-    freshSeatWallets,
-  )
-
   return {
     settingsPage,
     user,
@@ -127,7 +107,5 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     billingRoute,
     members,
     seatManagement,
-    walletSummary,
-    seatWallets,
   }
 }
