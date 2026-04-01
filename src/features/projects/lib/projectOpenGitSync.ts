@@ -29,7 +29,7 @@ export interface ProjectOpenGitProjectLike {
   slug: string
   organizationId: Id<'organizations'>
   createdBy?: Id<'users'> | string | null
-  syncMode?: 'replica' | 'git'
+  syncMode?: 'git'
   localPath?: string | null
   gitRepository?: GitRepositoryMetadataLike | null
   sourceControl?: ProjectGitRuntimeSourceControlLike | null
@@ -73,6 +73,17 @@ async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike,
 
   const settings = await window.electronAPI.settings.get()
   return `${settings.projectsDirectory.replace(/\/+$/, '')}/${project.slug}`
+}
+
+async function rememberProjectOpenPath(projectId: string, localPath: string): Promise<void> {
+  const result = await window.electronAPI.project.rememberLocalPath({
+    projectId,
+    projectPath: localPath,
+  })
+
+  if (!result.success) {
+    console.warn('[GitOpen] Failed to persist local project path:', result.error)
+  }
 }
 
 async function isEffectivelyEmptyLocalWorkspace(projectPath: string): Promise<boolean> {
@@ -393,7 +404,7 @@ export async function prepareGitProjectForOpen({
   } = remoteConfig
   const hasRemote = Boolean(repoUrl || usesExistingRemote)
   const debug = isGitOpenDebugEnabled()
-  let effectiveLocalPath = localPath ?? project.localPath ?? (await resolveTargetProjectPath(project))
+  let effectiveLocalPath = localPath ?? (await resolveTargetProjectPath(project))
   let branch = configuredBranch
   let changed = false
   const startedAt = Date.now()
@@ -420,13 +431,32 @@ export async function prepareGitProjectForOpen({
     })
   }
 
+  const finalizeProjectOpenResult = async (
+    result: PrepareGitProjectForOpenResult
+  ): Promise<PrepareGitProjectForOpenResult> => {
+    await rememberProjectOpenPath(String(project._id), result.localPath)
+
+    if (userId && updateMemberLocalPath) {
+      try {
+        await updateMemberLocalPath({
+          projectId: project._id,
+          userId,
+          localPath: result.localPath,
+        })
+      } catch (error) {
+        console.warn('[GitOpen] Failed to mirror local project path to cloud metadata:', error)
+      }
+    }
+
+    return result
+  }
+
   logGitOpenDebug('prepare:start', {
     projectId: String(project._id),
     projectSlug: project.slug,
     branch: configuredBranch,
     repoUrl,
     providedLocalPath: localPath ?? null,
-    projectLocalPath: project.localPath ?? null,
     effectiveLocalPath,
     provider: provider ?? null,
     hasRemote,
@@ -456,7 +486,7 @@ export async function prepareGitProjectForOpen({
           cancelled: true,
         }
         recordOutcome('cancelled')
-        return result
+        return finalizeProjectOpenResult(result)
       }
 
       onProgress?.('Checking repository access...')
@@ -473,7 +503,7 @@ export async function prepareGitProjectForOpen({
           cancelled: true,
         }
         recordOutcome('cancelled')
-        return result
+        return finalizeProjectOpenResult(result)
       }
     }
 
@@ -530,14 +560,6 @@ export async function prepareGitProjectForOpen({
         throw new Error(localStatus.error || 'Failed to verify local git repository')
       }
 
-      if (userId && updateMemberLocalPath) {
-        await updateMemberLocalPath({
-          projectId: project._id,
-          userId,
-          localPath: effectiveLocalPath,
-        })
-      }
-
       const result: PrepareGitProjectForOpenResult = {
         localPath: effectiveLocalPath,
         skipInitialSyncCheck: true,
@@ -545,7 +567,7 @@ export async function prepareGitProjectForOpen({
         currentBranch: localStatus.currentBranch ?? undefined,
       }
       recordOutcome('opened')
-      return result
+      return finalizeProjectOpenResult(result)
     }
 
     if (resolveProjectGitSyncPolicy(project.sourceControl) === 'manual') {
@@ -558,14 +580,6 @@ export async function prepareGitProjectForOpen({
         throw new Error(localStatus.error || 'Failed to verify local git repository')
       }
 
-      if (userId && updateMemberLocalPath) {
-        await updateMemberLocalPath({
-          projectId: project._id,
-          userId,
-          localPath: effectiveLocalPath,
-        })
-      }
-
       const result: PrepareGitProjectForOpenResult = {
         localPath: effectiveLocalPath,
         skipInitialSyncCheck: true,
@@ -573,7 +587,7 @@ export async function prepareGitProjectForOpen({
         currentBranch: localStatus.currentBranch ?? undefined,
       }
       recordOutcome('opened')
-      return result
+      return finalizeProjectOpenResult(result)
     }
 
     onProgress?.('Fetching latest changes...')
@@ -752,7 +766,7 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
 
   if (
@@ -960,12 +974,12 @@ export async function prepareGitProjectForOpen({
     // We return gracefully here so the AI builder can populate the files first.
     // The final initial commit will be triggered later via syncLocalSnapshotToCloud.
     recordOutcome('opened')
-    return {
+    return finalizeProjectOpenResult({
       localPath: effectiveLocalPath,
       skipInitialSyncCheck: true,
       changed,
       currentBranch: status.currentBranch ?? undefined,
-    }
+    })
   }
 
   if (shouldRestoreWorkspace) {
@@ -1032,7 +1046,7 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
 
   if (status.behind && status.behind > 0) {
@@ -1084,7 +1098,7 @@ export async function prepareGitProjectForOpen({
         recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
           conflictedPathsCount: result.conflictedPaths?.length ?? 0,
         })
-        return result
+        return finalizeProjectOpenResult(result)
       }
       if (!replayResult.success) {
         const replayError =
@@ -1171,7 +1185,7 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
 
   if (status.ahead && status.ahead > 0) {
@@ -1227,16 +1241,8 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
-
-    if (userId && updateMemberLocalPath) {
-      await updateMemberLocalPath({
-        projectId: project._id,
-        userId,
-        localPath: effectiveLocalPath,
-      })
-    }
 
     const result: PrepareGitProjectForOpenResult = {
       localPath: effectiveLocalPath,
@@ -1245,7 +1251,7 @@ export async function prepareGitProjectForOpen({
       currentBranch: finalStatus.currentBranch ?? undefined,
     }
     recordOutcome('opened')
-    return result
+    return finalizeProjectOpenResult(result)
   } catch (error) {
     recordOutcome('failed', {
       errorMessage: error instanceof Error ? error.message : String(error),

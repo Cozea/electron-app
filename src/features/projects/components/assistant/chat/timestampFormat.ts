@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { type TimestampFormat } from "@cozea/assistant-contracts/settings";
 
 export function getTimestampFormatOptions(
   timestampFormat: TimestampFormat,

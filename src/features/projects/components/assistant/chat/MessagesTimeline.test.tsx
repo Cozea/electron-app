@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { MessageId } from "@t3tools/contracts";
+import { MessageId } from "@cozea/assistant-contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 

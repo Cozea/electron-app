@@ -12,7 +12,7 @@ import {
 interface GitSyncMetadataResult {
   projectId: Id<'projects'>
   organizationId: Id<'organizations'>
-  syncMode: 'replica' | 'git'
+  syncMode: 'git'
   gitRepository?: {
     provider?: string
     url?: string

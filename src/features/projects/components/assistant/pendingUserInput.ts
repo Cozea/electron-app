@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { UserInputQuestion } from "@t3tools/contracts";
+import type { UserInputQuestion } from "@cozea/assistant-contracts";
 
 export interface PendingUserInputDraftAnswer {
   selectedOptionLabel?: string;

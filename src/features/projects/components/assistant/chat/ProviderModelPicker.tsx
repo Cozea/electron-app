@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { type ProviderKind, type ServerProvider } from "@t3tools/contracts";
-import { resolveSelectableModel } from "@t3tools/shared/model";
+import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
+import { resolveSelectableModel } from "@cozea/assistant-shared/model";
 import { memo, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { type ProviderPickerKind, PROVIDER_OPTIONS } from "./session-logic";

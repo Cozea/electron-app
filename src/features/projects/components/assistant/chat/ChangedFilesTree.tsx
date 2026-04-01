@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type TurnId } from "@t3tools/contracts";
+import { type TurnId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { type TurnDiffFileChange } from "./types";
 import { buildTurnDiffTree, type TurnDiffTreeNode } from "./turnDiffTree";

@@ -26,7 +26,7 @@ import {
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
-type ProjectSyncMode = "replica" | "git"
+type ProjectSyncMode = "git"
 type GitAccessState = "unknown" | "pending" | "granted" | "missing" | "error"
 
 interface GitRepositoryMetadata {
@@ -2084,7 +2084,7 @@ export const getGitSyncMetadata = query({
     return {
       projectId: project._id,
       organizationId: project.organizationId,
-      syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
+      syncMode: (project.syncMode ?? "git") as ProjectSyncMode,
       gitRepository: project.gitRepository ?? null,
       gitSyncState: project.gitSyncState ?? null,
       sourceControl: project.sourceControl ?? null,
@@ -2097,7 +2097,7 @@ export const updateGitSyncMetadata = mutation({
   args: {
     projectId: v.id("projects"),
     userId: v.id("users"),
-    syncMode: v.optional(v.union(v.literal("replica"), v.literal("git"))),
+    syncMode: v.optional(v.literal("git")),
     gitRepository: v.optional(
       v.object({
         provider: v.string(),
@@ -2174,126 +2174,6 @@ export const updateGitSyncMetadata = mutation({
 
     await ctx.db.patch(args.projectId, updates)
 
-    return await ctx.db.get(args.projectId)
-  },
-})
-
-export const listLegacyReplicaProjectsForServer = query({
-  args: {
-    serverSecret: v.string(),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const limit = Math.max(1, Math.min(args.limit ?? 1000, 5000))
-    const projects = await ctx.db.query("projects").collect()
-
-    return projects
-      .filter((project) => project.status !== "deleted" && (project.syncMode ?? "replica") !== "git")
-      .sort((left, right) => left.updatedAt - right.updatedAt)
-      .slice(0, limit)
-      .map((project) => ({
-        _id: project._id,
-        slug: project.slug,
-        name: project.name,
-        organizationId: project.organizationId,
-        syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
-        gitRepository: project.gitRepository ?? null,
-        gitSyncState: project.gitSyncState ?? null,
-        updatedAt: project.updatedAt,
-      }))
-  },
-})
-
-export const listGitBackedProjectsForServer = query({
-  args: {
-    serverSecret: v.string(),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const limit = Math.max(1, Math.min(args.limit ?? 5000, 5000))
-    const projects = await ctx.db.query("projects").collect()
-
-    return projects
-      .filter((project) => project.status !== "deleted" && (project.syncMode ?? "replica") === "git")
-      .sort((left, right) => left.updatedAt - right.updatedAt)
-      .slice(0, limit)
-      .map((project) => ({
-        _id: project._id,
-        slug: project.slug,
-        name: project.name,
-        organizationId: project.organizationId,
-        syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
-        gitRepository: project.gitRepository ?? null,
-        gitSyncState: project.gitSyncState ?? null,
-        updatedAt: project.updatedAt,
-      }))
-  },
-})
-
-export const setGitSyncMetadataForServer = mutation({
-  args: {
-    projectId: v.id("projects"),
-    syncMode: v.union(v.literal("replica"), v.literal("git")),
-    gitRepository: v.optional(
-      v.object({
-        provider: v.string(),
-        owner: v.string(),
-        name: v.string(),
-        url: v.string(),
-        defaultBranch: v.string(),
-      })
-    ),
-    gitSyncState: v.optional(
-      v.object({
-        accessState: v.union(
-          v.literal("unknown"),
-          v.literal("pending"),
-          v.literal("granted"),
-          v.literal("missing"),
-          v.literal("error")
-        ),
-        lastFetchedCommit: v.optional(v.string()),
-        lastPushedCommit: v.optional(v.string()),
-        lastFetchAt: v.optional(v.number()),
-        lastPushAt: v.optional(v.number()),
-        repoBytes: v.optional(v.number()),
-        lastRepoSizeAt: v.optional(v.number()),
-        errorMessage: v.optional(v.string()),
-        migratedFromReplicaAt: v.optional(v.number()),
-      })
-    ),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const project = await ctx.db.get(args.projectId)
-    if (!project) {
-      throw new Error("Project not found")
-    }
-
-    const updates: Record<string, unknown> = {
-      syncMode: args.syncMode,
-      updatedAt: Date.now(),
-    }
-
-    if (args.gitRepository !== undefined) {
-      updates.gitRepository = args.gitRepository
-    }
-
-    if (args.gitSyncState !== undefined) {
-      const previousState = project.gitSyncState ?? { accessState: "unknown" as GitAccessState }
-      updates.gitSyncState = {
-        ...previousState,
-        ...args.gitSyncState,
-      } satisfies GitSyncStateMetadata
-    }
-
-    await ctx.db.patch(args.projectId, updates)
     return await ctx.db.get(args.projectId)
   },
 })

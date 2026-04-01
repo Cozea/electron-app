@@ -11,7 +11,7 @@ import type {
 } from '@shared/versionControl'
 import { invalidateProviderRepositoryManagementCache } from '@/lib/git/providerRepositoryManagement'
 
-type SourceControlProvider = 'github' | 'gitlab'
+type SourceControlProvider = 'github'
 type SourceControlNamespaceType = 'user' | 'organization' | 'group'
 
 interface WorkspaceSourceControlConnection {
@@ -189,10 +189,7 @@ export function useWorkspaceSourceControl(
       (result) => {
         const nextOrganizationId = organizationIdRef.current
         const nextUserId = convexUserIdRef.current
-        const provider =
-          result.provider === 'github' || result.provider === 'gitlab'
-            ? result.provider
-            : null
+        const provider = result.provider === 'github' ? result.provider : null
 
         if (!nextOrganizationId || !nextUserId || !provider || !result.accessToken) {
           setConnectingProvider(null)

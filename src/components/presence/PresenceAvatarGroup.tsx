@@ -1,7 +1,7 @@
 const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-full w-full'}`} />;
 import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { Code2, Database, FileCode2, Layers3, Settings, TabletSmartphone } from "lucide-react"
+import { Code2, FileCode2, Settings, TabletSmartphone } from "lucide-react"
 import { type CSSProperties, useMemo } from "react"
 import {
   Tooltip,
@@ -52,9 +52,7 @@ function formatTabName(tab?: string): string {
   const names: Record<string, string> = {
     editor: "Editor",
     pages: "Previews",
-    backend: "Backend",
     settings: "Settings",
-    dependencies: "Dependencies",
     deployments: "Deployments",
   }
   return names[tab] || "Project"
@@ -66,12 +64,8 @@ function getTabIcon(tab?: string) {
       return FileCode2
     case "pages":
       return TabletSmartphone
-    case "backend":
-      return Database
     case "settings":
       return Settings
-    case "dependencies":
-      return Layers3
     default:
       return Code2
   }
@@ -158,7 +152,7 @@ export function PresenceAvatarGroup({
                       onUserClick && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-full"
                     )}
                     style={{ zIndex: visibleUsers.length - index }}
-                    title={onUserClick ? "Open this user in Sync Feed" : undefined}
+                    title={onUserClick ? "Open this user in Changes" : undefined}
                   >
                     <Avatar
                       className="h-6 w-6 border-2 border-border/70 bg-background"

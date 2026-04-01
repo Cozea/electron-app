@@ -67,10 +67,9 @@ export function useProjectPresence({
   // Determine active tab from current route
   const getActiveTab = useCallback(() => {
     const path = location.pathname
+    if (path.includes("/workbench")) return "workbench"
     if (path.includes("/pages")) return "pages"
-    if (path.includes("/backend")) return "backend"
     if (path.includes("/settings")) return "settings"
-    if (path.includes("/dependencies")) return "dependencies"
     if (path.includes("/deployments")) return "deployments"
     return "editor"
   }, [location.pathname])

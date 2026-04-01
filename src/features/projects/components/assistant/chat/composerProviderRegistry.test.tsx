@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, it } from "vitest";
-import type { ServerProviderModel } from "@t3tools/contracts";
+import type { ServerProviderModel } from "@cozea/assistant-contracts";
 import { getComposerProviderState } from "./composerProviderRegistry";
 
 const CODEX_MODELS: ReadonlyArray<ServerProviderModel> = [

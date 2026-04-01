@@ -6,7 +6,6 @@ import {
 } from '@/components/ui/tooltip'
 import { useOptionalSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
-import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { cn } from '@/lib/utils'
 import { useLocation } from '@/lib/router'
 import type { SVGProps } from 'react'
@@ -36,16 +35,6 @@ function PanelBottomIcon({ active = false, className, ...props }: PanelIconProps
     )
 }
 
-function PanelRightIcon({ active = false, className, ...props }: PanelIconProps) {
-    return (
-        <svg viewBox="0 0 24 24" className={className} fill="none" {...props}>
-            {active && <rect x="14.5" y="6" width="5.5" height="12" rx="1.2" fill="currentColor" />}
-            <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
-            <line x1="14" y1="6" x2="14" y2="18" stroke="currentColor" strokeWidth="1.8" />
-        </svg>
-    )
-}
-
 export function LayoutToggles() {
     const sidebar = useOptionalSidebar()
     const toggleTerminal = useTerminalStore((state) => state.actions.togglePanel)
@@ -53,15 +42,6 @@ export function LayoutToggles() {
     const hasTerminalSessions = useTerminalStore((state) =>
         Object.values(state.terminals).some((terminal) => terminal.surface !== 'assistant')
     )
-    const toggleAssistant = () => {
-        const store = useAITerminalStore.getState()
-        if (store.mode === 'closed') {
-            store.openPanel()
-        } else {
-            store.closePanel()
-        }
-    }
-    const isAssistantOpen = useAITerminalStore((state) => state.mode !== 'closed')
 
     const location = useLocation()
     const routeProject = parseProjectRoute(location.pathname)
@@ -69,7 +49,6 @@ export function LayoutToggles() {
     const isProjectContext = Boolean(routeProject.projectId || routeProject.slug)
     const isProjectBuildRoute = isProjectContext && normalizedPath.endsWith('/build')
     const canToggleTerminal = !isProjectBuildRoute && (isProjectContext || hasTerminalSessions)
-    const canToggleAssistant = !isProjectBuildRoute && isProjectContext
     const sidebarState = sidebar?.state ?? 'collapsed'
 
     return (
@@ -114,31 +93,6 @@ export function LayoutToggles() {
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
                         {isTerminalOpen ? 'Hide bottom panel' : 'Show bottom panel'}
-                    </TooltipContent>
-                </Tooltip>
-            </div>
-
-            {/* Assistant button: project context only; collapse animates spacing */}
-            <div
-                className={cn(
-                    'overflow-hidden transition-[width,opacity] duration-200 ease-out',
-                    canToggleAssistant ? 'w-7 opacity-100' : 'w-0 min-w-0 opacity-0'
-                )}
-            >
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isAssistantOpen && 'text-foreground')}
-                            onClick={toggleAssistant}
-                            aria-label={isAssistantOpen ? 'Hide AI panel' : 'Show AI panel'}
-                        >
-                            <PanelRightIcon active={isAssistantOpen} className="h-4 w-4" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                        {isAssistantOpen ? 'Hide AI panel' : 'Show AI panel'}
                     </TooltipContent>
                 </Tooltip>
             </div>

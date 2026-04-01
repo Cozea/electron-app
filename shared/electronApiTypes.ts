@@ -120,41 +120,6 @@ export interface BuildContract {
   telemetryHints?: Record<string, unknown>
 }
 
-export type DependencyType =
-  | 'dependency'
-  | 'devDependency'
-  | 'optionalDependency'
-  | 'peerDependency'
-
-export interface DependencyItem {
-  name: string
-  type: DependencyType
-  declared: string
-  installed?: string
-  wanted?: string
-  latest?: string
-  status: 'upToDate' | 'outdated' | 'missing' | 'unknown'
-}
-
-export interface DependencySnapshot {
-  items: DependencyItem[]
-  pm: PackageManager
-  lastCheckedAt: number
-  error?: string
-}
-
-export interface DependencyJobPayload {
-  id: string
-  action: 'install' | 'add' | 'update' | 'remove'
-  packageName: string
-  status: 'running' | 'success' | 'error'
-  startedAt: number
-  finishedAt?: number
-  stdout?: string
-  stderr?: string
-  error?: string
-}
-
 export type RuntimeKind =
   | 'node'
   | 'npm'
@@ -225,42 +190,6 @@ export interface RuntimeResolveCommandResult {
     reason: string
     alternatives: string[]
   }
-  error?: string
-}
-
-export interface DependenciesInspectResult {
-  success: boolean
-  snapshot?: DependencySnapshot
-  error?: string
-}
-
-export interface DependenciesRunResult {
-  success: boolean
-  jobId?: string
-  error?: string
-}
-
-export interface DependenciesRegistrySearchResult {
-  success: boolean
-  results?: {
-    objects: Array<{
-      package: {
-        name: string
-        version: string
-        description?: string
-        links?: Record<string, string>
-      }
-      score?: { final?: number }
-      searchScore?: number
-    }>
-    total?: number
-  }
-  error?: string
-}
-
-export interface DependenciesFetchPackageMetaResult {
-  success: boolean
-  results?: Record<string, { latest?: string; description?: string }>
   error?: string
 }
 
@@ -1025,27 +954,6 @@ export interface LocalAiRuntimeStatus {
   endpoint?: string
 }
 
-export interface DbSupabaseSelectResult {
-  success: boolean
-  rows?: unknown[]
-  error?: string
-}
-
-export interface DbFirestoreDocument {
-  id: string
-  path: string
-  createTime?: string
-  updateTime?: string
-  fields: Record<string, unknown>
-}
-
-export interface DbFirestoreListDocumentsResult {
-  success: boolean
-  documents?: DbFirestoreDocument[]
-  nextPageToken?: string
-  error?: string
-}
-
 export type ElectronWindowContext = 'main' | 'settings'
 
 export type AuthRefreshFailureReason = 'expired' | 'retryable' | 'missing_session'
@@ -1103,6 +1011,15 @@ export type AuthRefreshResult =
       reason: AuthRefreshFailureReason
       statusCode?: number
     }
+
+export interface WorkbenchBrowserViewState {
+  tileId: string
+  url: string
+  title: string
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
 
 export interface ElectronAPI {
   agentProvider: {
@@ -1274,26 +1191,6 @@ export interface ElectronAPI {
     getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
     listTools: () => Promise<IntegrationToolDefinition[]>
   }
-  database: {
-    supabaseSelect: (options: {
-      table: string
-      select?: string
-      limit?: number
-      offset?: number
-      orderBy?: string
-      orderAscending?: boolean
-      credentials?: { url: string; anonKey: string }
-      encryptedCredentials?: string
-      keyId?: string
-    }) => Promise<DbSupabaseSelectResult>
-    firestoreListDocuments: (options: {
-      collection: string
-      pageSize?: number
-      pageToken?: string
-      encryptedCredentials: string
-      keyId: string
-    }) => Promise<DbFirestoreListDocumentsResult>
-  }
   tools: {
     run: (request: {
       name: string
@@ -1349,6 +1246,21 @@ export interface ElectronAPI {
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
+  workbenchBrowser: {
+    ensureTile: (options: { tileId: string; initialUrl?: string }) => Promise<WorkbenchBrowserViewState>
+    destroyTile: (options: { tileId: string }) => Promise<boolean>
+    setBounds: (options: {
+      tileId: string
+      bounds?: { x: number; y: number; width: number; height: number }
+      visible?: boolean
+    }) => Promise<boolean>
+    navigate: (options: { tileId: string; url: string }) => Promise<WorkbenchBrowserViewState | null>
+    getState: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    goBack: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    goForward: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    reload: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
+  }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probePort: (options: { port: number; timeoutMs?: number }) => Promise<PreviewProbePortResult>
@@ -1375,15 +1287,18 @@ export interface ElectronAPI {
     onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
   }
   project: {
-    createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
+    createFolder: (options: { slug: string; initGit?: boolean; projectId?: string }) => Promise<CreateProjectFolderResult>
     cloneRepository: (options: {
       slug: string
       repoUrl: string
       provider: string
       branch?: string
       accessToken?: string
+      projectId?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
+    rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
+    clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
     openFolder: (options: { projectPath: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>
@@ -1664,20 +1579,6 @@ export interface ElectronAPI {
     install: () => Promise<{ success: boolean; error?: string }>
     getState: () => Promise<UpdateState>
     onStatus: (callback: (state: UpdateState) => void) => () => void
-  }
-  dependencies: {
-    inspect: (options: { projectPath: string }) => Promise<DependenciesInspectResult>
-    run: (options: {
-      projectPath: string
-      action: 'install' | 'add' | 'update' | 'remove'
-      packageName?: string
-      version?: string
-      dev?: boolean
-      updateMode?: 'latest' | 'range'
-    }) => Promise<DependenciesRunResult>
-    searchRegistry: (options: { query: string; size?: number }) => Promise<DependenciesRegistrySearchResult>
-    fetchPackageMeta: (options: { names: string[] }) => Promise<DependenciesFetchPackageMetaResult>
-    onJobStatus: (callback: (payload: { projectPath: string; job: DependencyJobPayload }) => void) => () => void
   }
   diagnostics: {
     start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>

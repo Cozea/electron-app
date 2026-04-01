@@ -31,6 +31,7 @@ import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialog
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '@/features/projects/lib/projectCloudAccessPresentation'
+import { primeLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { WorkspaceAvatar } from '@/components/workspaces/WorkspaceAvatar'
 
@@ -47,7 +48,8 @@ interface ProjectNavigationState {
   projectSlug?: string
   projectName?: string
   projectTemplate?: string
-  syncMode?: 'replica' | 'git'
+  localPath?: string | null
+  syncMode?: 'git'
 }
 
 export function ContextSwitcher() {
@@ -208,10 +210,7 @@ export function ContextSwitcher() {
       const gitOpenResult = await prepareGitProjectForOpen({
         convex,
         project,
-        localPath: project.localPath ?? await window.electronAPI.project.getLocalPath({
-          slug: project.slug,
-          projectId: String(project._id),
-        }),
+        localPath: null,
         userId: convexUserId,
         onProgress: (message) => {
           setSyncMessage(message)
@@ -222,12 +221,14 @@ export function ContextSwitcher() {
       if (gitOpenResult.cancelled) {
         if (gitOpenResult.needsConflictResolution) {
           setOpen(false)
+          primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
           navigate(buildProjectPath(String(project._id), 'conflicts'), {
             state: {
               projectSlug: project.slug,
               projectId: String(project._id),
               projectName: project.name ?? undefined,
               projectTemplate: project.template ?? undefined,
+              localPath: gitOpenResult.localPath,
               syncMode: 'git',
             } satisfies ProjectNavigationState,
           })
@@ -240,6 +241,7 @@ export function ContextSwitcher() {
 
       setSyncState('ready')
       setSyncMessage('Opening project...')
+      primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
 
       setTimeout(() => {
         setOpen(false)
@@ -249,6 +251,7 @@ export function ContextSwitcher() {
             projectId: String(project._id),
             projectName: project.name ?? undefined,
             projectTemplate: project.template ?? undefined,
+            localPath: gitOpenResult.localPath,
             syncMode: 'git',
           } satisfies ProjectNavigationState,
         })

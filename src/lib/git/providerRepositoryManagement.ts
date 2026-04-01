@@ -11,7 +11,7 @@ import type {
   RepositoryReadmeSnippetDescriptor,
 } from '@shared/electronApiTypes'
 
-type RepositoryProvider = 'github' | 'gitlab'
+type RepositoryProvider = 'github'
 
 interface ResolvedProviderRepositoryAuth {
   accessToken?: string
@@ -81,7 +81,7 @@ async function resolveProviderRepositoryAuth(args: {
 
   if (!connection) {
     throw new Error(
-      `${args.provider === 'github' ? 'GitHub' : 'GitLab'} source control is not connected for this workspace.`
+      'GitHub source control is not connected for this workspace.'
     )
   }
 
@@ -180,7 +180,7 @@ async function listProviderRepositoriesPage(args: {
     organizationId: args.organizationId,
     userId: args.userId,
     provider: args.provider,
-    purpose: args.provider === 'github' ? 'setup' : 'repository_management',
+    purpose: 'setup',
     bypassCache: args.bypassCache,
   })
 
@@ -327,9 +327,7 @@ export async function createConnectedRepository(args: {
   const auth = await resolveProviderRepositoryAuth({
     ...args,
     purpose:
-      args.provider === 'github' && args.ownerKind === 'user'
-        ? 'setup'
-        : 'repository_management',
+      'setup',
   })
   const repository = await window.electronAPI.sourceControl.createRepository({
     provider: args.provider,
@@ -359,7 +357,7 @@ export async function listConnectedRepositoryBranches(args: {
 }): Promise<RepositoryBranchDescriptor[]> {
   const auth = await resolveProviderRepositoryAuth({
     ...args,
-    purpose: args.provider === 'github' ? 'setup' : 'repository_management',
+    purpose: 'setup',
   })
 
   return window.electronAPI.sourceControl.listBranches({
@@ -385,7 +383,7 @@ export async function listConnectedRepositoryLanguages(args: {
 }): Promise<RepositoryLanguageDescriptor[]> {
   const auth = await resolveProviderRepositoryAuth({
     ...args,
-    purpose: args.provider === 'github' ? 'setup' : 'repository_management',
+    purpose: 'setup',
   })
 
   return window.electronAPI.sourceControl.listRepositoryLanguages({
@@ -411,7 +409,7 @@ export async function getConnectedRepositoryReadmeSnippet(args: {
 }): Promise<RepositoryReadmeSnippetDescriptor> {
   const auth = await resolveProviderRepositoryAuth({
     ...args,
-    purpose: args.provider === 'github' ? 'setup' : 'repository_management',
+    purpose: 'setup',
   })
 
   return window.electronAPI.sourceControl.getRepositoryReadmeSnippet({

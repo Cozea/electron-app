@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Copy,
+  GitCompareArrows,
   Inbox,
   ListTodo,
   Link2,
@@ -28,8 +29,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { scheduleTask } from "@/lib/scheduler"
+import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
-import { useAITerminalStore } from "@/stores/useAITerminalStore"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
@@ -1559,6 +1560,34 @@ function HeaderProjectShareButton({
   )
 }
 
+function HeaderProjectChangesButton({
+  projectId,
+}: {
+  projectId: Id<"projects"> | null
+}) {
+  const navigate = useViewTransitionNavigate()
+
+  if (!projectId) return null
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-full border border-border/60 bg-secondary/70 px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary hover:text-foreground"
+          onClick={() => {
+            navigate(`${buildProjectPath(String(projectId), "workbench")}?openTile=changes`)
+          }}
+        >
+          <GitCompareArrows className="h-3.5 w-3.5" />
+          Changes
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Open changes</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function UnifiedHeader({
   breadcrumbs,
   header,
@@ -1576,8 +1605,7 @@ export function UnifiedHeader({
 }: UnifiedHeaderProps) {
   const { personalScoped } = useScopedAppContext()
   const windowChrome = useWindowChrome()
-  const isAssistantOpen = useAITerminalStore((state) => state.mode !== "closed")
-  const shouldShowWindowsCaptionSpacer = windowChrome.isWindows && !isAssistantOpen
+  const shouldShowWindowsCaptionSpacer = windowChrome.isWindows
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
   const shouldApplyLeftWindowControlsInset = leftWindowControlsInset && windowChrome.isMac
   const headerSurfaceClassName = "border-b border-border/60 bg-background"
@@ -1722,10 +1750,13 @@ export function UnifiedHeader({
   const collaborationControl = personalScoped
     ? projectInviteContext
       ? (
-          <HeaderProjectShareButton
-            projectId={projectInviteContext.projectId}
-            projectName={projectInviteContext.projectName}
-          />
+          <div className="flex items-center gap-2">
+            <HeaderProjectChangesButton projectId={projectInviteContext.projectId} />
+            <HeaderProjectShareButton
+              projectId={projectInviteContext.projectId}
+              projectName={projectInviteContext.projectName}
+            />
+          </div>
         )
       : !hideInbox ? <HeaderInboxButton /> : null
     : null

@@ -30,7 +30,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { IntegrationIcon } from '@/components/integrations/IntegrationIcon'
 import { Lock, Star } from 'lucide-react'
 
-type RepositoryProvider = 'github' | 'gitlab'
+type RepositoryProvider = 'github'
 
 interface RepositoryPageLoadState {
   items: RepositoryDescriptor[]
@@ -43,7 +43,6 @@ interface RepositoryPageLoadState {
 
 interface ConnectedRepositoryPickerProps {
   provider: RepositoryProvider
-  providers?: RepositoryProvider[]
   organizationId?: Id<'organizations'> | null
   integrationConnected: boolean
   selectedRepoUrl?: string
@@ -111,7 +110,6 @@ function formatRepositoryLastCommit(timestamp?: string): string {
 
 export function ConnectedRepositoryPicker({
   provider,
-  providers,
   organizationId,
   integrationConnected,
   selectedRepoUrl,
@@ -141,12 +139,7 @@ export function ConnectedRepositoryPicker({
   const remoteRepositoryNextPageLockRef = useRef(false)
 
   const repositorySearch = repositorySearchValue ?? ''
-  const availableProviders = useMemo(() => {
-    if (providers && providers.length > 0) {
-      return providers
-    }
-    return [provider]
-  }, [provider, providers])
+  const availableProviders = useMemo(() => [provider], [provider])
 
   const remoteRepositories = useMemo(() => {
     const combined = availableProviders.flatMap(
@@ -154,9 +147,6 @@ export function ConnectedRepositoryPicker({
     )
 
     combined.sort((left, right) => {
-      if (left.provider !== right.provider) {
-        return left.provider === 'github' ? -1 : 1
-      }
       return left.fullName.localeCompare(right.fullName)
     })
 
@@ -176,7 +166,7 @@ export function ConnectedRepositoryPicker({
       .map((providerOption) => {
         const message = repositoryPagesByProvider[providerOption]?.error
         if (!message) return null
-        return `${providerOption === 'github' ? 'GitHub' : 'GitLab'}: ${message}`
+        return `GitHub: ${message}`
       })
       .filter((value): value is string => Boolean(value))
 
@@ -370,6 +360,21 @@ export function ConnectedRepositoryPicker({
       return
     }
 
+    if (repository.provider !== 'github') {
+      setBranchOptionsByRepository((current) => ({
+        ...current,
+        [repository.url]: [{
+          name: repository.defaultBranch || 'main',
+          isDefault: true,
+        }],
+      }))
+      setBranchStatusByRepository((current) => ({
+        ...current,
+        [repository.url]: 'fallback',
+      }))
+      return
+    }
+
     if (branchLoadingByRepository[repository.url]) {
       return
     }
@@ -460,8 +465,8 @@ export function ConnectedRepositoryPicker({
 
   if (!integrationConnected) {
     return (
-      <div className="rounded-xl border border-dashed border-border/60 bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
-        Connect {provider === 'github' ? 'GitHub' : 'GitLab'} in Source Control to browse repositories from the app.
+        <div className="rounded-xl border border-dashed border-border/60 bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
+        Connect GitHub in Source Control to browse repositories from the app.
       </div>
     )
   }
@@ -571,11 +576,11 @@ export function ConnectedRepositoryPicker({
                       <TableCell>
                         <div className="flex items-center gap-2.5 text-sm">
                           <IntegrationIcon
-                            provider={repository.provider}
+                            provider="github"
                             size="lg"
                             className="h-5 w-5 text-muted-foreground"
                           />
-                          {repository.provider === 'gitlab' ? 'GitLab' : 'GitHub'}
+                          GitHub
                         </div>
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>

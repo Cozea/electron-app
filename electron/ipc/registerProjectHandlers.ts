@@ -21,6 +21,11 @@ import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
 import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
+import {
+  clearRegisteredProjectPath,
+  readRegisteredProjectPath,
+  rememberProjectPath,
+} from '../projectPathRegistry'
 import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
@@ -235,7 +240,7 @@ export function registerProjectHandlers(
     'project:createFolder',
     async (
       _event,
-      { slug, initGit = true }: { slug: string; initGit?: boolean }
+      { slug, initGit = true, projectId }: { slug: string; initGit?: boolean; projectId?: string }
     ): Promise<CreateProjectFolderResult> => {
       const settings = deps.loadSettings()
       const projectsDir = settings.projectsDirectory
@@ -302,6 +307,10 @@ npm-debug.log*
           }
         }
 
+        if (typeof projectId === 'string' && projectId.trim().length > 0) {
+          rememberProjectPath(projectId, resolvedProjectPath)
+        }
+
         return {
           success: true,
           localPath: resolvedProjectPath,
@@ -327,12 +336,14 @@ npm-debug.log*
         provider,
         branch,
         accessToken,
+        projectId,
       }: {
         slug: string
         repoUrl: string
         provider: string
         branch?: string
         accessToken?: string
+        projectId?: string
       }
     ): Promise<CloneRepositoryResult> => {
       const settings = deps.loadSettings()
@@ -374,6 +385,10 @@ npm-debug.log*
           }
         }
 
+        if (typeof projectId === 'string' && projectId.trim().length > 0) {
+          rememberProjectPath(projectId, resolvedTargetPath)
+        }
+
         return {
           success: true,
           localPath: resolvedTargetPath,
@@ -393,6 +408,12 @@ npm-debug.log*
     async (_event, value: string | { slug: string; projectId?: string }): Promise<string | null> => {
       const { slug, projectId } = normalizeProjectLookup(value)
       const settings = deps.loadSettings()
+      if (projectId) {
+        const registeredPath = readRegisteredProjectPath(projectId)
+        if (registeredPath) {
+          return registeredPath
+        }
+      }
       if (!slug || typeof settings.projectsDirectory !== 'string') {
         console.warn('[ProjectPath] Invalid getLocalPath lookup payload', {
           value,
@@ -403,7 +424,43 @@ npm-debug.log*
         })
         return null
       }
-      return resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
+      const resolvedPath = resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
+      if (resolvedPath && projectId) {
+        rememberProjectPath(projectId, resolvedPath)
+      }
+      return resolvedPath
+    },
+  )
+
+  ipcMain.handle(
+    'project:rememberLocalPath',
+    async (
+      _event,
+      {
+        projectId,
+        projectPath,
+      }: { projectId: string; projectPath: string }
+    ): Promise<{ success: boolean; localPath?: string; error?: string }> => {
+      try {
+        const localPath = rememberProjectPath(projectId, projectPath)
+        return {
+          success: true,
+          localPath,
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to remember project path',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'project:clearLocalPath',
+    async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
+      clearRegisteredProjectPath(projectId)
+      return { success: true }
     },
   )
 

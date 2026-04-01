@@ -255,8 +255,7 @@ function AppContent() {
       void import('./pages/ProjectBuild')
 
       if (shouldWarmProjectEditor) {
-        void import('./features/projects/pages/ProjectPagesPage')
-        void import('./features/projects/pages/ProjectBackendStudioPage')
+        void import('./features/projects/pages/ProjectWorkbenchPage')
         void import('./features/projects/pages/ChangesPage')
       }
     }, 1200)

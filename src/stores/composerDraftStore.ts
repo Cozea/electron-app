@@ -12,11 +12,11 @@ import {
   RuntimeMode,
   type ServerProvider,
   ThreadId,
-} from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
+} from "@cozea/assistant-contracts";
+import { Schema } from "effect";
 import * as Equal from "effect/Equal";
 import { DeepMutable } from "effect/Types";
-import { normalizeModelSlug } from "@t3tools/shared/model";
+import { normalizeModelSlug } from "@cozea/assistant-shared/model";
 import { useMemo } from "react";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { resolveAppModelSelection } from "./modelSelection";
@@ -28,11 +28,14 @@ import {
 } from "./lib/terminalContext";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
+import {
+  createDebouncedStorage,
+  createMemoryStorage,
+} from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
-import { UnifiedSettings } from "@t3tools/contracts/settings";
+import { UnifiedSettings } from "@cozea/assistant-contracts/settings";
 
-export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
+export const COMPOSER_DRAFT_STORAGE_KEY = "cozea:assistant:composer-drafts:v1";
 const COMPOSER_DRAFT_STORAGE_VERSION = 3;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
@@ -43,6 +46,7 @@ const composerDebouncedStorage = createDebouncedStorage(
   typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
   COMPOSER_PERSIST_DEBOUNCE_MS,
 );
+const composerPersistStorage = composerDebouncedStorage;
 
 // Flush pending composer draft writes before page unload to prevent data loss.
 if (typeof window !== "undefined") {
@@ -2135,7 +2139,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
     {
       name: COMPOSER_DRAFT_STORAGE_KEY,
       version: COMPOSER_DRAFT_STORAGE_VERSION,
-      storage: createJSONStorage(() => composerDebouncedStorage),
+      storage: createJSONStorage(() => composerPersistStorage),
       migrate: migratePersistedComposerDraftStoreState,
       partialize: partializeComposerDraftStoreState,
       merge: (persistedState, currentState) => {

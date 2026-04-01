@@ -8,6 +8,8 @@ import { RepositoryProvisioner } from '@/components/git/RepositoryProvisioner'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
+import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
@@ -61,7 +63,7 @@ import {
 import type { ProjectGitRuntimeProjectLike } from '@/lib/git/projectGitRuntime'
 
 type SettingsSectionId = 'general' | 'source-control' | 'danger'
-type VersionControlProviderOption = 'github' | 'gitlab' | 'bitbucket' | 'local'
+type VersionControlProviderOption = 'github' | 'local'
 type GitActionKey = 'status' | 'fetch' | 'pull' | 'commit' | 'push' | 'sync'
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; label: string }> = [
@@ -75,10 +77,14 @@ const VERSION_CONTROL_PROVIDER_OPTIONS: Array<{
   label: string
 }> = [
   { value: 'github', label: 'GitHub' },
-  { value: 'gitlab', label: 'GitLab' },
-  { value: 'bitbucket', label: 'Bitbucket' },
   { value: 'local', label: 'Local only' },
 ]
+
+function normalizeProjectSettingsProviderOption(
+  value: string | null | undefined
+): VersionControlProviderOption {
+  return normalizeVersionControlProvider(value) === 'github' ? 'github' : 'local'
+}
 
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
@@ -91,6 +97,7 @@ export function ProjectSettingsPage() {
   const { section: sectionParam } = useParams()
   const { convexUserId } = useAuth()
   const { project, projectIdParam, slugParam } = useAccessibleProject()
+  const syncContext = useOptionalProjectSyncContext()
   const projectWorkspace = useProjectWorkspaceContext(project)
 
   const currentSection: SettingsSectionId =
@@ -113,12 +120,11 @@ export function ProjectSettingsPage() {
       ? { projectId: project._id, userId: convexUserId }
       : 'skip'
   )
-  const memberLocalPath = useQuery(
-    api.projectMembers.getMemberLocalPath,
-    project?._id && convexUserId
-      ? { projectId: project._id, userId: convexUserId }
-      : 'skip'
-  )
+  const { localPath: resolvedLocalPath } = useLocalProjectPath({
+    projectId: project?._id ? String(project._id) : projectIdParam,
+    projectSlug: project?.slug ?? slugParam,
+  })
+  const memberLocalPath = syncContext?.projectPath ?? resolvedLocalPath
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -141,7 +147,7 @@ export function ProjectSettingsPage() {
     enabled: Boolean(project?.organizationId && convexUserId),
   })
   const repoIntegration =
-    project?.organizationId && (provider === 'github' || provider === 'gitlab')
+    project?.organizationId && provider === 'github'
       ? getConnection(provider)
       : null
   const setupMode = useMemo(
@@ -203,11 +209,9 @@ export function ProjectSettingsPage() {
     if (!project) return
     setName(project.name ?? '')
     setDescription(project.description ?? '')
-    setProvider(
-      normalizeVersionControlProvider(
-        project.sourceControl?.provider ?? project.gitRepository?.provider
-      ) ?? 'local'
-    )
+    setProvider(normalizeProjectSettingsProviderOption(
+      project.sourceControl?.provider ?? project.gitRepository?.provider
+    ))
     setRepoUrl(project.gitRepository?.url ?? project.sourceControl?.repoUrl ?? '')
     setDefaultBranch(
       project.sourceControl?.defaultBranch ??
@@ -241,8 +245,7 @@ export function ProjectSettingsPage() {
   const projectName = project?.name ?? ''
   const projectDescription = project?.description ?? ''
   const projectProvider =
-    normalizeVersionControlProvider(project?.sourceControl?.provider ?? project?.gitRepository?.provider) ??
-    'local'
+    normalizeProjectSettingsProviderOption(project?.sourceControl?.provider ?? project?.gitRepository?.provider)
   const projectRepoUrl = project?.gitRepository?.url ?? project?.sourceControl?.repoUrl ?? ''
   const projectDefaultBranch =
     project?.sourceControl?.defaultBranch ??

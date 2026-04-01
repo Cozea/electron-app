@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type ApprovalRequestId, type ProviderApprovalDecision } from "@t3tools/contracts";
+import { type ApprovalRequestId, type ProviderApprovalDecision } from "@cozea/assistant-contracts";
 import { memo } from "react";
 import { Button } from "../ui/button";
 

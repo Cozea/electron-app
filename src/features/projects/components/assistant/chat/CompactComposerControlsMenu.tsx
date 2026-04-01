@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import { ProviderInteractionMode, RuntimeMode } from "@cozea/assistant-contracts";
 import { memo, type ReactNode } from "react";
 import { EllipsisIcon, ListTodoIcon } from "lucide-react";
 import { Button } from "../ui/button";

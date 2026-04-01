@@ -3,11 +3,10 @@ import type { RepositoryDescriptor } from '@shared/electronApiTypes'
 import { ConnectedRepositoryPicker } from '@/components/git/ConnectedRepositoryPicker'
 import { RepositoryProvisioner } from '@/components/git/RepositoryProvisioner'
 
-type RepositoryProvider = 'github' | 'gitlab'
+type RepositoryProvider = 'github'
 
 interface VersionControlRepositoryManagerProps {
   provider: RepositoryProvider
-  providers?: RepositoryProvider[]
   organizationId?: Id<'organizations'> | null
   integrationConnected: boolean
   setupMode: 'personal' | 'organization'
@@ -45,7 +44,6 @@ export function VersionControlRepositoryManager({
   return (
     <ConnectedRepositoryPicker
       provider={props.provider}
-      providers={props.providers}
       organizationId={props.organizationId}
       integrationConnected={props.integrationConnected}
       selectedRepoUrl={props.selectedRepoUrl}

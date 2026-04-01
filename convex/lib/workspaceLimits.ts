@@ -237,10 +237,9 @@ export interface LegacyFileStorageTotals {
   supersededBytes: number
 }
 
-export interface ReplicaStorageAccountingState {
-  bundleBytes: number
-  hasLfsObjects: boolean
-  usesReplicaAccounting: boolean
+export interface ProjectStorageAccountingState {
+  repoBytes: number
+  usesGitRepoAccounting: boolean
 }
 
 function sizeOfSerialized(value: unknown): number {
@@ -394,28 +393,16 @@ export async function getLegacyFileStorageTotals(
   }
 }
 
-export async function getReplicaStorageAccountingState(
+export async function getProjectStorageAccountingState(
   ctx: StorageCtx,
   projectId: Id<"projects">
-): Promise<ReplicaStorageAccountingState> {
-  const [replica, firstLfsObject] = await Promise.all([
-    ctx.db
-      .query("projectReplicaGit")
-      .withIndex("by_project", (q) => q.eq("projectId", projectId))
-      .first(),
-    ctx.db
-      .query("projectReplicaLfsObjects")
-      .withIndex("by_project", (q) => q.eq("projectId", projectId))
-      .first(),
-  ])
-
-  const bundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
-  const hasLfsObjects = Boolean(firstLfsObject)
+): Promise<ProjectStorageAccountingState> {
+  const project = await ctx.db.get(projectId)
+  const repoBytes = Math.max(0, project?.gitSyncState?.repoBytes ?? 0)
 
   return {
-    bundleBytes,
-    hasLfsObjects,
-    usesReplicaAccounting: bundleBytes > 0 || hasLfsObjects,
+    repoBytes,
+    usesGitRepoAccounting: repoBytes > 0,
   }
 }
 
@@ -580,38 +567,13 @@ export async function estimateProjectStorageBreakdown(
     return breakdown
   }
 
-  if ((project?.syncMode ?? "replica") === "git") {
-    breakdown.sourceAndConfig += Math.max(0, project?.gitSyncState?.repoBytes ?? 0)
+  const storageAccounting = await getProjectStorageAccountingState(ctx, projectId)
+  if (storageAccounting.usesGitRepoAccounting) {
+    breakdown.sourceAndConfig += storageAccounting.repoBytes
   } else {
-    const replica = await ctx.db
-      .query("projectReplicaGit")
-      .withIndex("by_project", (q) => q.eq("projectId", projectId))
-      .first()
-
-    let lfsBytes = 0
-    await forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("projectReplicaLfsObjects")
-          .withIndex("by_project", (q) => q.eq("projectId", projectId))
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ size: number }>>,
-      (entry) => {
-        lfsBytes += Math.max(0, entry.size)
-      }
-    )
-    const replicaBundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
-    const useReplicaAccounting = replicaBundleBytes > 0 || lfsBytes > 0
-
-    if (useReplicaAccounting) {
-      breakdown.sourceAndConfig += replicaBundleBytes + lfsBytes
-    } else {
-      const legacyTotals = await getLegacyFileStorageTotals(ctx, projectId)
-      breakdown.sourceAndConfig += legacyTotals.activeBytes
-      breakdown.gitHistory += legacyTotals.supersededBytes
-    }
+    const legacyTotals = await getLegacyFileStorageTotals(ctx, projectId)
+    breakdown.sourceAndConfig += legacyTotals.activeBytes
+    breakdown.gitHistory += legacyTotals.supersededBytes
   }
 
   const seenAssetStorageIds = new Set<string>()

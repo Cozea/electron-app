@@ -1,6 +1,6 @@
 import type { SourceControlProviderPreference } from '@/lib/sourceControlPreferences'
 
-export type DefaultSourceControlProvider = 'github' | 'gitlab'
+export type DefaultSourceControlProvider = 'github'
 
 interface ConnectionLike {
   authStatus?: string | null
@@ -11,7 +11,6 @@ interface ResolveDefaultSourceControlProviderArgs {
   workspaceDefaultProvider?: string | null
   preferredProviders?: SourceControlProviderPreference[]
   githubConnection?: ConnectionLike | null
-  gitlabConnection?: ConnectionLike | null
 }
 
 export interface ResolvedSourceControlProviderPreference {
@@ -24,7 +23,7 @@ export interface ResolvedSourceControlProviderPreference {
 function normalizeProvider(
   value: string | null | undefined
 ): DefaultSourceControlProvider | null {
-  return value === 'github' || value === 'gitlab' ? value : null
+  return value === 'github' ? value : null
 }
 
 function isUsableConnection(connection: ConnectionLike | null | undefined): boolean {
@@ -38,7 +37,7 @@ function uniqueProviders(
     new Set(
       providers.filter(
         (provider): provider is DefaultSourceControlProvider =>
-          provider === 'github' || provider === 'gitlab'
+          provider === 'github'
       )
     )
   )
@@ -47,9 +46,8 @@ function uniqueProviders(
 export function getSourceControlProviderLabel(
   provider: DefaultSourceControlProvider | null | undefined
 ): string {
-  if (provider === 'gitlab') return 'GitLab'
   if (provider === 'github') return 'GitHub'
-  return 'GitHub or GitLab'
+  return 'GitHub'
 }
 
 export function resolveSourceControlProviderPreference(
@@ -61,7 +59,6 @@ export function resolveSourceControlProviderPreference(
 
   const connectedProviders = uniqueProviders([
     isUsableConnection(args.githubConnection) ? 'github' : null,
-    isUsableConnection(args.gitlabConnection) ? 'gitlab' : null,
   ])
 
   if (explicitProvider) {

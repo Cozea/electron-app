@@ -1,5 +1,17 @@
 # Git-Backed Sync Migration Plan
 
+## Current Status
+
+The active desktop sync path is now Git-backed end to end.
+
+That means:
+
+- Git-backed durability remains the intended model.
+- The live Electron runtime path imports `electron/services/syncJournalStore.ts`.
+- Dead server replica routes are gone.
+- Convex replica modules and replica schema tables are gone.
+- The old renderer local-storage migration shims are gone, so the live runtime is now journal-only and Cozea-key-only.
+
 ## Goal
 
 Replace the custom replica engine with a Git-backed durability model while preserving the current Cozea collaboration UX:
@@ -68,10 +80,7 @@ This plan assumes Cozea owns the repo lifecycle for managed projects and that Gi
 - `electron/ipc/registerSyncHandlers.ts`
 - `shared/electronApiTypes.ts`
 - `electron/preload.ts`
-- `server/src/routes/replicaGit.ts`
-- `convex/projectReplicaGit.ts`
-- `convex/projectReplicaLfs.ts`
-- `convex/schema.ts` replica tables
+- `electron/services/syncJournalStore.ts` migration shims
 
 ### Open / Sync Surfaces
 
@@ -388,12 +397,8 @@ Delete the old sync system after migration completes.
 ### Changes
 
 - Remove:
-  - `server/src/routes/replicaGit.ts`
-  - `convex/projectReplicaGit.ts`
-  - `convex/projectReplicaLfs.ts`
-  - replica cleanup crons
-  - replica schema tables
-  - replica-specific UI logic
+  - `electron/services/syncJournalStore.ts` legacy replica import paths once upgrade coverage is no longer needed
+  - any remaining replica-specific UI copy or docs references
 
 ### Impact
 

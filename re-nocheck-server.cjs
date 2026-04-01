@@ -12,8 +12,8 @@ function nocheck(pattern) {
   }
 }
 
-nocheck('electron/t3-server/**/*.ts');
-nocheck('electron/t3-server/**/*.tsx');
+nocheck('electron/assistant-runtime/**/*.ts');
+nocheck('electron/assistant-runtime/**/*.tsx');
 nocheck('src/features/projects/components/assistant/chat/**/*.ts');
 nocheck('src/features/projects/components/assistant/chat/**/*.tsx');
 nocheck('src/features/projects/components/assistant/lib/**/*.ts');

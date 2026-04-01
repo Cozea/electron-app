@@ -12,8 +12,8 @@ function nocheck(pattern) {
   }
 }
 
-nocheck('shared/t3-contracts/**/*.ts');
-nocheck('shared/t3-shared/**/*.ts');
-nocheck('electron/t3-server/**/*.ts');
+nocheck('shared/assistant-contracts/**/*.ts');
+nocheck('shared/assistant-shared/**/*.ts');
+nocheck('electron/assistant-runtime/**/*.ts');
 nocheck('src/features/projects/components/assistant/**/*.ts');
 nocheck('src/features/projects/components/assistant/**/*.tsx');

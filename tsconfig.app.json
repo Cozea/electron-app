@@ -28,9 +28,9 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
-      "@t3tools/contracts": ["./shared/t3-contracts/index.ts"],
-      "@t3tools/contracts/*": ["./shared/t3-contracts/*"],
-      "@t3tools/shared/*": ["./shared/t3-shared/*"],
+      "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
+      "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
+      "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
       "@/*": ["./src/*"],
       "@shared/*": ["./shared/*"]
     }

@@ -12,7 +12,7 @@ import {
   getSyncJournalStateSnapshot,
   normalizeSyncPath,
   type SyncOpRecord,
-} from '../services/syncReplicaStore'
+} from '../services/syncJournalStore'
 import { GitSyncService } from '../services/gitSyncService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 

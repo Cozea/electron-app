@@ -38,8 +38,6 @@ import type * as projectJoinLinks from "../projectJoinLinks.js";
 import type * as projectMembers from "../projectMembers.js";
 import type * as projectMessages from "../projectMessages.js";
 import type * as projectPresence from "../projectPresence.js";
-import type * as projectReplicaGit from "../projectReplicaGit.js";
-import type * as projectReplicaLfs from "../projectReplicaLfs.js";
 import type * as projectRepoAccess from "../projectRepoAccess.js";
 import type * as projectTasks from "../projectTasks.js";
 import type * as projectTemplates from "../projectTemplates.js";
@@ -87,8 +85,6 @@ declare const fullApi: ApiFromModules<{
   projectMembers: typeof projectMembers;
   projectMessages: typeof projectMessages;
   projectPresence: typeof projectPresence;
-  projectReplicaGit: typeof projectReplicaGit;
-  projectReplicaLfs: typeof projectReplicaLfs;
   projectRepoAccess: typeof projectRepoAccess;
   projectTasks: typeof projectTasks;
   projectTemplates: typeof projectTemplates;

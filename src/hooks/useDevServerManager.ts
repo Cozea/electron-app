@@ -230,7 +230,7 @@ export function useDevServerManager({
       // Get dev server config (command and port)
       const config = await getDevServerConfig(projectPath)
       if (config.requiresUserSelection) {
-        throw new Error('Dev server command selection is required. Open Project Pages and choose a command first.')
+        throw new Error('Dev server command selection is required. Open the Workbench dev-server tile and choose a command first.')
       }
 
       let command = config.command

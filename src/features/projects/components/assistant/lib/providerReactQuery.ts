@@ -3,7 +3,7 @@ import {
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetTurnDiffInput,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@cozea/assistant-contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { Option, Schema } from "effect";
 import { ensureNativeApi } from "@/lib/nativeApi";

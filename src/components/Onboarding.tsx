@@ -19,10 +19,7 @@ export function Onboarding() {
   >(() => readSourceControlProviderPreferences())
 
   const providerOptions = useMemo(
-    () => [
-      { id: 'github' as const, label: 'GitHub' },
-      { id: 'gitlab' as const, label: 'GitLab' },
-    ],
+    () => [{ id: 'github' as const, label: 'GitHub' }],
     []
   )
 
@@ -45,7 +42,7 @@ export function Onboarding() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Welcome to Cozea</h1>
           <p className="text-muted-foreground">
-            Let&apos;s create your first workspace. You can connect GitHub or GitLab here now, or later when you open a project that needs it.
+            Let&apos;s create your first workspace. You can connect GitHub here now, or later when you open a project that needs it.
           </p>
         </div>
 
@@ -55,7 +52,7 @@ export function Onboarding() {
               <div>
                 <p className="text-sm font-medium">Project source control</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Pick the git providers you use for project repositories. This helps Cozea prioritize the right setup later. It only applies to project source control, not agent CLI or MCP integrations.
+                  Pick the GitHub setup you use for project repositories. This helps Cozea prioritize the right setup later. It only applies to project source control, not agent CLI or MCP integrations.
                 </p>
               </div>
               <Badge variant={preferredProviders.length > 0 ? 'secondary' : 'outline'}>

@@ -1,7 +1,5 @@
 import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
-import { agentProviderService } from './services/AgentProviderService'
-import { agentChatService } from './services/AgentChatService'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -17,9 +15,7 @@ import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { ProjectSourceControlService } from './services/ProjectSourceControlService'
-import { DatabaseService } from './services/DatabaseService'
 import { DiagnosticsService } from './services/DiagnosticsService'
-import { DependenciesService } from './services/DependenciesService'
 import { AgentToolService } from './services/AgentToolService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
@@ -32,10 +28,13 @@ import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
-import { loadSyncState } from './services/syncReplicaStore'
+import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { loadSyncState } from './services/syncJournalStore'
+import { startAssistantRuntime } from './assistant-runtime/boot'
 
 import { DevServerService } from './services/DevServerService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
+import { WorkbenchBrowserService } from './services/WorkbenchBrowserService'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
 import { listAvailableEditors, openFileInExternalEditor } from './lib/externalEditor'
 
@@ -64,6 +63,9 @@ const DEFAULT_PROTOCOL = VITE_DEV_SERVER_URL ? 'cozea-dev' : 'cozea'
 const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
 const LEGACY_PROTOCOL = 'cozea'
 const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
+const ASSISTANT_RUNTIME_WS_URL =
+  process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || 'ws://127.0.0.1:3773'
+const ASSISTANT_RUNTIME_WS_URL_ARG = `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
 const DEV_SERVER_ORIGIN = (() => {
   if (!VITE_DEV_SERVER_URL) return null
   try {
@@ -254,6 +256,16 @@ let previewHeaderCompatDisabledLogged = false
 const previewHeaderDiagnostics = new Map<string, PreviewHeaderDiagnostic>()
 const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
 const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
+let assistantRuntimeStarted = false
+
+function ensureAssistantRuntimeStarted(): void {
+  if (assistantRuntimeStarted) {
+    return
+  }
+
+  startAssistantRuntime()
+  assistantRuntimeStarted = true
+}
 
 function prunePreviewHeaderDiagnostics(now = Date.now()): void {
   for (const [url, entry] of previewHeaderDiagnostics.entries()) {
@@ -493,6 +505,9 @@ function installPreviewHeaderCompatibilityPolicy(): void {
 type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
+const workbenchBrowserService = new WorkbenchBrowserService({
+  getMainWindow: () => win,
+})
 
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
@@ -869,7 +884,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !isReleaseBuild,
-      additionalArguments: ['--cozea-window=main'],
+      additionalArguments: ['--cozea-window=main', ASSISTANT_RUNTIME_WS_URL_ARG],
     },
     // Native material effects:
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
@@ -996,9 +1011,7 @@ AuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 ProjectSourceControlService.getInstance().registerIpcHandlers()
-DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
-DependenciesService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
 
 registerCoreHandlers(ipcMain, {
@@ -1055,6 +1068,10 @@ registerRuntimeHandlers(ipcMain)
 
 registerSyncHandlers(ipcMain)
 
+registerWorkbenchBrowserHandlers(ipcMain, {
+  service: workbenchBrowserService,
+})
+
 registerDevServerHandlers(ipcMain, {
   getMainWindow: () => win,
 })
@@ -1064,6 +1081,7 @@ registerContextMenuHandlers(ipcMain, {
 })
 
 app.on('window-all-closed', () => {
+  workbenchBrowserService.dispose()
   win = null
 
   // Kill all DevServer background processes
@@ -1080,6 +1098,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  workbenchBrowserService.dispose()
   PreviewSnapshotService.getInstance().dispose()
   
   stopUpdateChecks()
@@ -1100,6 +1119,7 @@ app.whenReady().then(() => {
   loadSyncState()
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
+  ensureAssistantRuntimeStarted()
   createWindow()
   startUpdateChecks()
 

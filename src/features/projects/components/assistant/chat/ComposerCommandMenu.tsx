@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type ProjectEntry, type ProviderKind } from "@t3tools/contracts";
+import { type ProjectEntry, type ProviderKind } from "@cozea/assistant-contracts";
 import { memo } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { BotIcon } from "lucide-react";

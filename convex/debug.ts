@@ -74,30 +74,6 @@ async function deleteSingleProjectAndRelatedData(
     deletedRows += 1;
   }
 
-  const replica = await ctx.db
-    .query("projectReplicaGit")
-    .withIndex("by_project", (q) => q.eq("projectId", project._id))
-    .first();
-  if (replica) {
-    if (replica.bundleStorageId) {
-      await ctx.storage.delete(replica.bundleStorageId);
-      deletedStorageObjects += 1;
-    }
-    await ctx.db.delete(replica._id);
-    deletedRows += 1;
-  }
-
-  const lfsObjects = await ctx.db
-    .query("projectReplicaLfsObjects")
-    .withIndex("by_project", (q) => q.eq("projectId", project._id))
-    .collect();
-  for (const object of lfsObjects) {
-    await ctx.storage.delete(object.storageId);
-    deletedStorageObjects += 1;
-    await ctx.db.delete(object._id);
-    deletedRows += 1;
-  }
-
   const assets = await ctx.db
     .query("projectAssets")
     .withIndex("by_project", (q) => q.eq("projectId", project._id))
@@ -218,20 +194,6 @@ async function deleteSingleProjectAndRelatedData(
     ctx,
     await ctx.db
       .query("builderRuns")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .collect(),
-  );
-  deletedRows += await deleteRows(
-    ctx,
-    await ctx.db
-      .query("projectReplicaGitSessions")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .collect(),
-  );
-  deletedRows += await deleteRows(
-    ctx,
-    await ctx.db
-      .query("projectReplicaGitLocks")
       .withIndex("by_project", (q) => q.eq("projectId", project._id))
       .collect(),
   );

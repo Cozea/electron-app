@@ -12,6 +12,15 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useResolvedScope } from '@/hooks/useResolvedScope'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { Projects } from '@/pages/Projects'
+import { ProjectLayout } from '@/features/projects/layouts/ProjectLayout'
+import { ProjectJoinPage } from '@/features/projects/pages/ProjectJoinPage'
+import { ProjectInvitePage } from '@/features/projects/pages/ProjectInvitePage'
+import { LegacyProjectRedirectPage } from '@/features/projects/pages/LegacyProjectRedirectPage'
+import { ProjectWorkbenchPage } from '@/features/projects/pages/ProjectWorkbenchPage'
+import { TasksPage } from '@/features/projects/pages/TasksPage'
+import { ProjectSettingsPage } from '@/features/projects/pages/ProjectSettingsPage'
+import { ProjectConflictsPage } from '@/features/projects/pages/ProjectConflictsPage'
+import { ProjectTeamPage } from '@/features/projects/pages/ProjectTeamPage'
 import { General } from '@/pages/workspace/General'
 import { Billing } from '@/pages/workspace/Billing'
 import AI from '@/pages/workspace/AI'
@@ -32,75 +41,11 @@ import type {
   SettingsSurfaceId,
   WorkspaceSurfaceAccessState,
 } from '@/lib/settings/settingsSurfaceTypes'
-
-const ProjectLayout = lazy(() =>
-  import('@/features/projects/layouts/ProjectLayout').then((module) => ({
-    default: module.ProjectLayout,
-  }))
-)
-const ProjectJoinPage = lazy(() =>
-  import('@/features/projects/pages/ProjectJoinPage').then((module) => ({
-    default: module.ProjectJoinPage,
-  }))
-)
-const ProjectInvitePage = lazy(() =>
-  import('@/features/projects/pages/ProjectInvitePage').then((module) => ({
-    default: module.ProjectInvitePage,
-  }))
-)
-const LegacyProjectRedirectPage = lazy(() =>
-  import('@/features/projects/pages/LegacyProjectRedirectPage').then((module) => ({
-    default: module.LegacyProjectRedirectPage,
-  }))
-)
 const NewProject = lazy(() =>
   import('@/pages/NewProject').then((module) => ({ default: module.default }))
 )
 const ProjectBuild = lazy(() =>
   import('@/pages/ProjectBuild').then((module) => ({ default: module.default }))
-)
-const ProjectPagesPage = lazy(() =>
-  import('@/features/projects/pages/ProjectPagesPage').then((module) => ({
-    default: module.ProjectPagesPage,
-  }))
-)
-const ProjectDatabasePage = lazy(() =>
-  import('@/features/projects/pages/ProjectDatabasePage').then((module) => ({
-    default: module.ProjectDatabasePage,
-  }))
-)
-const ProjectDependenciesPage = lazy(() =>
-  import('@/features/projects/pages/ProjectDependenciesPage').then((module) => ({
-    default: module.ProjectDependenciesPage,
-  }))
-)
-const ProjectBackendStudioPage = lazy(() =>
-  import('@/features/projects/pages/ProjectBackendStudioPage').then((module) => ({
-    default: module.ProjectBackendStudioPage,
-  }))
-)
-const ChangesPage = lazy(() =>
-  import('@/features/projects/pages/ChangesPage').then((module) => ({
-    default: module.ChangesPage,
-  }))
-)
-const TasksPage = lazy(() =>
-  import('@/features/projects/pages/TasksPage').then((module) => ({ default: module.TasksPage }))
-)
-const ProjectSettingsPage = lazy(() =>
-  import('@/features/projects/pages/ProjectSettingsPage').then((module) => ({
-    default: module.ProjectSettingsPage,
-  }))
-)
-const ProjectConflictsPage = lazy(() =>
-  import('@/features/projects/pages/ProjectConflictsPage').then((module) => ({
-    default: module.ProjectConflictsPage,
-  }))
-)
-const ProjectTeamPage = lazy(() =>
-  import('@/features/projects/pages/ProjectTeamPage').then((module) => ({
-    default: module.ProjectTeamPage,
-  }))
 )
 const Members = lazy(() =>
   import('@/pages/teams/Members').then((module) => ({ default: module.Members }))
@@ -237,17 +182,29 @@ function WorkspaceScopedSettingRoute({
 
 function ProjectIndexRedirect() {
   const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/pages" params={{ projectId: params.projectId ?? '' }} replace />
+  return <Navigate to="/projects/p/$projectId/workbench" params={{ projectId: params.projectId ?? '' }} replace />
 }
 
 function ProjectFilesRedirect() {
   const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/pages" params={{ projectId: params.projectId ?? '' }} replace />
+  return <Navigate to="/projects/p/$projectId/workbench" params={{ projectId: params.projectId ?? '' }} replace />
 }
 
 function ProjectChangesRedirect() {
   const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/changes" params={{ projectId: params.projectId ?? '' }} replace />
+  return (
+    <Navigate
+      to="/projects/p/$projectId/workbench"
+      params={{ projectId: params.projectId ?? "" }}
+      search={{ openTile: "changes" } as never}
+      replace
+    />
+  )
+}
+
+function ProjectWorkbenchRedirect() {
+  const params = useParams({ strict: false }) as { projectId?: string }
+  return <Navigate to="/projects/p/$projectId/workbench" params={{ projectId: params.projectId ?? '' }} replace />
 }
 
 function ProjectSettingsTeamRedirect() {
@@ -323,31 +280,19 @@ const projectFilesRoute = createRoute({
 const projectPagesRoute = createRoute({
   getParentRoute: () => projectLayoutRoute,
   path: '/pages',
-  component: ProjectPagesPage,
+  component: ProjectWorkbenchRedirect,
 })
 
-const projectDatabaseRoute = createRoute({
+const projectWorkbenchRoute = createRoute({
   getParentRoute: () => projectLayoutRoute,
-  path: '/database',
-  component: ProjectDatabasePage,
-})
-
-const projectDependenciesRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
-  path: '/dependencies',
-  component: ProjectDependenciesPage,
-})
-
-const projectBackendRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
-  path: '/backend',
-  component: ProjectBackendStudioPage,
+  path: '/workbench',
+  component: ProjectWorkbenchPage,
 })
 
 const projectChangesRoute = createRoute({
   getParentRoute: () => projectLayoutRoute,
   path: '/changes',
-  component: ChangesPage,
+  component: ProjectChangesRedirect,
 })
 
 const projectFeedRoute = createRoute({
@@ -626,11 +571,9 @@ export const routeTree = rootRoute.addChildren([
   projectBuildRoute,
   projectLayoutRoute.addChildren([
     projectIndexRoute,
-    projectFilesRoute,
-    projectPagesRoute,
-    projectDatabaseRoute,
-    projectDependenciesRoute,
-    projectBackendRoute,
+  projectFilesRoute,
+  projectWorkbenchRoute,
+  projectPagesRoute,
     projectChangesRoute,
     projectFeedRoute,
     projectMergeQueueRoute,

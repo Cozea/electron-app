@@ -5,23 +5,7 @@ import {
   listConnectedRepositoriesPage,
 } from '../src/lib/git/providerRepositoryManagement'
 
-type RepositoryProvider = 'github' | 'gitlab'
-
-function buildRepository(args: {
-  id: string
-  name: string
-  owner: string
-  provider: RepositoryProvider
-}): {
-  id: string
-  name: string
-  fullName: string
-  ownerLogin: string
-  defaultBranch: string
-  private: boolean
-  url: string
-  provider: RepositoryProvider
-} {
+function buildRepository(args: { id: string; name: string; owner: string }) {
   return {
     id: args.id,
     name: args.name,
@@ -29,8 +13,8 @@ function buildRepository(args: {
     ownerLogin: args.owner,
     defaultBranch: 'main',
     private: true,
-    url: `https://${args.provider}.example.com/${args.owner}/${args.name}`,
-    provider: args.provider,
+    url: `https://github.com/${args.owner}/${args.name}`,
+    provider: 'github' as const,
   }
 }
 
@@ -42,12 +26,10 @@ describe('providerRepositoryManagement', () => {
 
   const convex = {
     query: vi.fn().mockResolvedValue({ providerHost: 'https://github.com' }),
-    action: vi.fn().mockImplementation(async (_ref, args: { provider: RepositoryProvider }) => {
-      return {
-        accessToken: `${args.provider}-token`,
-        providerHost: args.provider === 'gitlab' ? 'https://gitlab.com' : 'https://github.com',
-        authStrategy: args.provider === 'github' ? 'oauth' : undefined,
-      }
+    action: vi.fn().mockResolvedValue({
+      accessToken: 'github-token',
+      providerHost: 'https://github.com',
+      authStrategy: 'oauth',
     }),
   }
 
@@ -68,73 +50,40 @@ describe('providerRepositoryManagement', () => {
     await invalidateProviderRepositoryManagementCache()
   })
 
-  it('combines provider pages without per-owner fan-out and preserves provider order', async () => {
-    sourceControlApi.listRepositoriesPage.mockImplementation(
-      async (args: { provider: RepositoryProvider }) => {
-        if (args.provider === 'github') {
-          return {
-            items: [
-              buildRepository({
-                id: 'gh-1',
-                name: 'alpha',
-                owner: 'me',
-                provider: 'github',
-              }),
-              buildRepository({
-                id: 'gh-2',
-                name: 'beta',
-                owner: 'me',
-                provider: 'github',
-              }),
-            ],
-            hasNextPage: false,
-          }
-        }
-
-        return {
-          items: [
-            buildRepository({
-              id: 'gl-1',
-              name: 'gamma',
-              owner: 'team',
-              provider: 'gitlab',
-            }),
-            buildRepository({
-              id: 'gl-2',
-              name: 'delta',
-              owner: 'team',
-              provider: 'gitlab',
-            }),
-          ],
-          hasNextPage: false,
-        }
-      }
-    )
+  it('loads a single GitHub page without multi-provider fan-out', async () => {
+    sourceControlApi.listRepositoriesPage.mockResolvedValue({
+      items: [
+        buildRepository({ id: 'gh-1', name: 'alpha', owner: 'me' }),
+        buildRepository({ id: 'gh-2', name: 'beta', owner: 'me' }),
+      ],
+      hasNextPage: false,
+    })
 
     const result = await listConnectedRepositoriesPage({
       convex: convex as never,
       organizationId: 'org_1' as never,
       userId: 'user_1' as never,
-      providers: ['github', 'gitlab'],
+      provider: 'github',
       page: 1,
       pageSize: 3,
     })
 
-    expect(result.items.map((item) => item.id)).toEqual(['gh-1', 'gh-2', 'gl-1'])
-    expect(result.hasNextPage).toBe(true)
-    expect(sourceControlApi.listRepositoriesPage).toHaveBeenCalledTimes(2)
+    expect(result.items.map((item) => item.id)).toEqual(['gh-1', 'gh-2'])
+    expect(result.hasNextPage).toBe(false)
+    expect(sourceControlApi.listRepositoriesPage).toHaveBeenCalledTimes(1)
+    expect(sourceControlApi.listRepositoriesPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'github',
+        accessToken: 'github-token',
+        page: 1,
+        pageSize: 3,
+      })
+    )
   })
 
   it('reuses cached provider sessions until invalidated', async () => {
     sourceControlApi.listRepositoriesPage.mockResolvedValue({
-      items: [
-        buildRepository({
-          id: 'gh-1',
-          name: 'alpha',
-          owner: 'me',
-          provider: 'github',
-        }),
-      ],
+      items: [buildRepository({ id: 'gh-1', name: 'alpha', owner: 'me' })],
       hasNextPage: false,
     })
 
@@ -142,7 +91,7 @@ describe('providerRepositoryManagement', () => {
       convex: convex as never,
       organizationId: 'org_1' as never,
       userId: 'user_1' as never,
-      providers: ['github'],
+      provider: 'github',
       page: 1,
       pageSize: 10,
     })
@@ -151,7 +100,7 @@ describe('providerRepositoryManagement', () => {
       convex: convex as never,
       organizationId: 'org_1' as never,
       userId: 'user_1' as never,
-      providers: ['github'],
+      provider: 'github',
       page: 1,
       pageSize: 10,
     })
@@ -164,7 +113,7 @@ describe('providerRepositoryManagement', () => {
       convex: convex as never,
       organizationId: 'org_1' as never,
       userId: 'user_1' as never,
-      providers: ['github'],
+      provider: 'github',
       page: 1,
       pageSize: 10,
     })
@@ -175,39 +124,20 @@ describe('providerRepositoryManagement', () => {
     })
   })
 
-  it('returns partial results when one provider fails', async () => {
-    sourceControlApi.listRepositoriesPage.mockImplementation(
-      async (args: { provider: RepositoryProvider }) => {
-        if (args.provider === 'github') {
-          throw new Error('GitHub install missing')
-        }
-
-        return {
-          items: [
-            buildRepository({
-              id: 'gl-1',
-              name: 'gamma',
-              owner: 'team',
-              provider: 'gitlab',
-            }),
-          ],
-          hasNextPage: false,
-        }
-      }
+  it('surfaces GitHub page failures directly', async () => {
+    sourceControlApi.listRepositoriesPage.mockRejectedValue(
+      new Error('GitHub install missing')
     )
 
-    const result = await listConnectedRepositoriesPage({
-      convex: convex as never,
-      organizationId: 'org_1' as never,
-      userId: 'user_1' as never,
-      providers: ['github', 'gitlab'],
-      page: 1,
-      pageSize: 10,
-    })
-
-    expect(result.items.map((item) => item.id)).toEqual(['gl-1'])
-    expect(result.errorByProvider).toEqual({
-      github: 'GitHub install missing',
-    })
+    await expect(
+      listConnectedRepositoriesPage({
+        convex: convex as never,
+        organizationId: 'org_1' as never,
+        userId: 'user_1' as never,
+        provider: 'github',
+        page: 1,
+        pageSize: 10,
+      })
+    ).rejects.toThrow('GitHub install missing')
   })
 })

@@ -10,7 +10,7 @@ import {
 import { useConvex } from "convex/react"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import type { SyncProgress } from "@/lib/sync/types"
-import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
+import { YjsProjectProvider, normalizeCollabTransport } from "@/contexts/YjsProjectContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
@@ -116,19 +116,19 @@ export function ProjectSyncProvider({
 }: ProjectSyncProviderProps) {
   const convex = useConvex()
   const { accessToken } = useAuth()
-  const [currentLocalPath, setCurrentLocalPath] = useState<string | null>(localPath)
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
-
-  useEffect(() => {
-    setCurrentLocalPath(localPath)
-  }, [localPath])
+  const collabTransport = useMemo(
+    () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
+    []
+  )
 
   useEffect(() => {
     setLastSyncAt(initialLastSyncAt ?? null)
   }, [initialLastSyncAt])
 
-  const canSync = Boolean(currentLocalPath)
+  const canSync = Boolean(localPath)
+  const shouldUseWsCollab = canSync && collabTransport === "ws"
 
   const {
     status: collabSessionStatus,
@@ -137,11 +137,11 @@ export function ProjectSyncProvider({
   } = useCollabSession({
     projectId: String(projectId),
     accessToken,
-    enabled: canSync && Boolean(accessToken),
+    enabled: shouldUseWsCollab && Boolean(accessToken),
   })
 
   const activeCollabSession: CollabSessionDescriptor | null =
-    collabSessionStatus === "ready" && collabSession
+    shouldUseWsCollab && collabSessionStatus === "ready" && collabSession
       ? {
           projectId: String(projectId),
           roomId: collabSession.roomId,
@@ -153,6 +153,10 @@ export function ProjectSyncProvider({
 
   const refreshActiveCollabSession = useMemo(
     () => async (): Promise<CollabSessionDescriptor | null> => {
+      if (!shouldUseWsCollab) {
+        return null
+      }
+
       const nextSession = await refreshCollabSession()
       if (!nextSession?.token || !nextSession?.roomId) {
         return null
@@ -166,17 +170,17 @@ export function ProjectSyncProvider({
         protocolVersion: nextSession.protocolVersion,
       }
     },
-    [projectId, refreshCollabSession]
+    [projectId, refreshCollabSession, shouldUseWsCollab]
   )
 
   const triggerSync = useCallback(async () => {
-    if (!currentLocalPath) {
+    if (!localPath) {
       return
     }
 
     const coordinator = GitDurabilityCoordinator.acquireShared({
       projectId,
-      projectPath: currentLocalPath,
+      projectPath: localPath,
       convex,
       userId,
     })
@@ -217,7 +221,7 @@ export function ProjectSyncProvider({
     } finally {
       coordinator.release()
     }
-  }, [convex, currentLocalPath, onFilesChanged, projectId, userId])
+  }, [convex, localPath, onFilesChanged, projectId, userId])
 
   return (
     <ProjectSyncContext.Provider
@@ -225,7 +229,7 @@ export function ProjectSyncProvider({
         isSynced: canSync,
         cloudSyncBlocked: false,
         lastSyncAt,
-        projectPath: currentLocalPath,
+        projectPath: localPath,
         triggerSync,
         syncProgress: progress,
       }}
@@ -234,7 +238,7 @@ export function ProjectSyncProvider({
         projectId={projectId}
         userId={userId}
         userName={userName}
-        projectPath={currentLocalPath}
+        projectPath={localPath}
         enabled={canSync}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
@@ -244,7 +248,7 @@ export function ProjectSyncProvider({
           <AgentFileSyncBridge
             projectId={projectId}
             userId={userId}
-            projectPath={currentLocalPath}
+            projectPath={localPath}
           >
             {children}
           </AgentFileSyncBridge>

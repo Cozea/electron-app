@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/select'
 import { Loader2, RefreshCw } from 'lucide-react'
 
-type RepositoryProvider = 'github' | 'gitlab'
+type RepositoryProvider = 'github'
 type RepositoryOwnerKind = 'user' | 'organization' | 'group'
 type RepositoryOwnerWithProvider = RepositoryOwnerDescriptor & { provider: RepositoryProvider }
 
@@ -310,7 +310,7 @@ export function RepositoryProvisioner({
   if (!integrationConnected) {
     return (
       <div className="rounded-xl border border-dashed border-border/60 bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
-        Connect {provider === 'github' ? 'GitHub' : 'GitLab'} in Source Control to browse repositories from the app.
+        Connect GitHub in Source Control to browse repositories from the app.
       </div>
     )
   }
@@ -320,7 +320,7 @@ export function RepositoryProvisioner({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">
-            Connected {provider === 'github' ? 'GitHub' : 'GitLab'} repositories
+            Connected GitHub repositories
           </p>
           <p className="text-xs text-muted-foreground">
             Pick an existing remote or create a new one for this project.

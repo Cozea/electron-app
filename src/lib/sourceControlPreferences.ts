@@ -1,4 +1,4 @@
-export type SourceControlProviderPreference = 'github' | 'gitlab'
+export type SourceControlProviderPreference = 'github'
 
 const SOURCE_CONTROL_PROVIDER_PREFERENCES_KEY = 'cozea.sourceControlProviderPreferences'
 
@@ -12,8 +12,7 @@ function normalizePreferences(
   return Array.from(
     new Set(
       value.filter(
-        (entry): entry is SourceControlProviderPreference =>
-          entry === 'github' || entry === 'gitlab'
+        (entry): entry is SourceControlProviderPreference => entry === 'github'
       )
     )
   )

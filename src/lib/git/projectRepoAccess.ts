@@ -163,9 +163,9 @@ export function resolveProjectRepoAccessStatus(args: {
 
 export function resolveProjectIntegrationProvider(
   project: ProjectGitRuntimeProjectLike | null | undefined
-): 'github' | 'gitlab' | undefined {
+): 'github' | undefined {
   const provider =
     normalizeProjectRepoAccessProvider(project?.gitRepository?.provider) ??
     normalizeProjectRepoAccessProvider(project?.sourceControl?.provider)
-  return provider === 'github' || provider === 'gitlab' ? provider : undefined
+  return provider === 'github' ? provider : undefined
 }

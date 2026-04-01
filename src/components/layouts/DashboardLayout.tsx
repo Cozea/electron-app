@@ -4,7 +4,6 @@ import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,
   SidebarProvider,
-  useOptionalSidebar,
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -17,7 +16,6 @@ import {
 } from "@/lib/settings/settingsRegistry"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
-import { useAITerminalStore } from '@/stores/useAITerminalStore'
 import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { Building2, Layers3, UserRound } from "lucide-react"
 
@@ -41,7 +39,6 @@ interface DashboardLayoutProps {
 }
 
 const DEFAULT_BREADCRUMBS = [{ label: "Projects" }];
-const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
 const PERSONAL_ACCOUNT_ROUTE = getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
 const PERSONAL_AI_ROUTE = getSettingsSurfaceRoute('ai', 'personal') ?? '/settings/ai'
 const WORKSPACE_AI_ROUTE = getSettingsSurfaceRoute('ai', 'workspace') ?? '/workspace/ai'
@@ -72,36 +69,6 @@ interface DashboardLayoutContentProps {
   headerAbsolute?: boolean
 }
 
-function SidebarFullscreenSync() {
-  const assistantPanelMode = useAITerminalStore((state) => state.mode)
-  const sidebar = useOptionalSidebar()
-
-  useEffect(() => {
-    if (!sidebar) return
-
-    const { isMobile, open, setOpen, setOpenMobile } = sidebar
-
-    if (assistantPanelMode !== 'fullscreen') return
-
-    if (isMobile) {
-      setOpenMobile(false)
-      return
-    }
-
-    if (!open) return
-
-    const collapseTimer = window.setTimeout(() => {
-      setOpen(false)
-    }, FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS)
-
-    return () => {
-      window.clearTimeout(collapseTimer)
-    }
-  }, [assistantPanelMode, sidebar])
-
-  return null
-}
-
 function DashboardLayoutContent({
   children,
   header,
@@ -117,7 +84,6 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const closeAssistantPanel = useAITerminalStore((state) => state.closePanel)
   const windowChrome = useWindowChrome()
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
@@ -143,11 +109,6 @@ function DashboardLayoutContent({
       ]}
     />
   )
-  useEffect(() => {
-    // Assistant panel is project-scoped and should never be visible in dashboard layout routes.
-    closeAssistantPanel()
-  }, [closeAssistantPanel])
-
   useEffect(() => {
     if (!isSettingsWindow) return
     if (normalizedPath.startsWith('/settings/')) return
@@ -219,7 +180,6 @@ function DashboardLayoutContent({
 
   return (
     <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
-      <SidebarFullscreenSync />
       {/* Main Content with Sidebar */}
       <div className="flex flex-1 overflow-hidden relative">
         <AppSidebar user={user} onLogout={onLogout} />

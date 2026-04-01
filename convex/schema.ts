@@ -16,6 +16,8 @@ export default defineSchema({
     // User preferences
     preferences: v.optional(
       v.object({
+        // Legacy compatibility for existing production docs from older Radon-backed builds.
+        radonToken: v.optional(v.string()),
         theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
@@ -755,10 +757,8 @@ export default defineSchema({
       })
     ),
 
-    // Sync backend selection. Existing projects continue to use replica until migrated.
-    syncMode: v.optional(
-      v.union(v.literal("replica"), v.literal("git"))
-    ),
+    // Git is the only supported durability mode for projects.
+    syncMode: v.optional(v.literal("git")),
 
     // Canonical Git repository metadata for Git-backed sync.
     gitRepository: v.optional(
@@ -1499,71 +1499,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_project_and_status", ["projectId", "status"])
-    .index("by_storage_id", ["storageId"]),
-
-  // Canonical Git replica metadata (secondary sync truth).
-  projectReplicaGit: defineTable({
-    projectId: v.id("projects"),
-    canonicalRef: v.string(),
-    headCommit: v.optional(v.string()),
-    bundleStorageId: v.optional(v.id("_storage")),
-    bundleChecksum: v.optional(v.string()),
-    bundleSizeBytes: v.optional(v.number()),
-    version: v.number(),
-    updatedAt: v.number(),
-    updatedBy: v.id("users"),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Git replica session lifecycle and diagnostics.
-  projectReplicaGitSessions: defineTable({
-    projectId: v.id("projects"),
-    sessionId: v.string(),
-    userId: v.id("users"),
-    deviceId: v.optional(v.string()),
-    baseCommit: v.optional(v.string()),
-    localCommit: v.optional(v.string()),
-    remoteCommit: v.optional(v.string()),
-    resultCommit: v.optional(v.string()),
-    status: v.union(
-      v.literal("planned"),
-      v.literal("applied"),
-      v.literal("conflict"),
-      v.literal("failed"),
-      v.literal("queued")
-    ),
-    diagnostics: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_session", ["projectId", "sessionId"])
-    .index("by_status", ["status"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Optional lock observability for server-side distributed lock operations.
-  projectReplicaGitLocks: defineTable({
-    projectId: v.id("projects"),
-    lockKey: v.string(),
-    owner: v.string(),
-    expiresAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_expires_at", ["expiresAt"]),
-
-  // Binary/LFS-like payload objects for Git replica.
-  projectReplicaLfsObjects: defineTable({
-    projectId: v.id("projects"),
-    oid: v.string(),
-    size: v.number(),
-    storageId: v.id("_storage"),
-    createdAt: v.number(),
-    createdBy: v.id("users"),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_oid", ["projectId", "oid"])
     .index("by_storage_id", ["storageId"]),
 
   // ============================================

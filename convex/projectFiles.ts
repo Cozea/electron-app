@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import {
   applyProjectStorageDeltas,
-  getReplicaStorageAccountingState,
+  getProjectStorageAccountingState,
 } from "./lib/workspaceLimits"
 
 // Generate upload URL for a project file
@@ -46,7 +46,7 @@ export const saveFile = mutation({
 
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
-    const replicaState = await getReplicaStorageAccountingState(ctx, args.projectId)
+    const storageAccounting = await getProjectStorageAccountingState(ctx, args.projectId)
     let sourceAndConfigDelta = 0
     let gitHistoryDelta = 0
 
@@ -62,7 +62,7 @@ export const saveFile = mutation({
     // Mark existing as superseded
     if (existing) {
       await ctx.db.patch(existing._id, { status: "superseded" })
-      if (!replicaState.usesReplicaAccounting) {
+      if (!storageAccounting.usesGitRepoAccounting) {
         sourceAndConfigDelta -= existing.sizeBytes
         gitHistoryDelta += existing.sizeBytes
       }
@@ -84,7 +84,7 @@ export const saveFile = mutation({
       status: "active",
     })
 
-    if (!replicaState.usesReplicaAccounting) {
+    if (!storageAccounting.usesGitRepoAccounting) {
       sourceAndConfigDelta += args.sizeBytes
     }
 
@@ -141,11 +141,11 @@ export const deleteFile = mutation({
     if (!file) throw new Error("File not found")
     const project = await ctx.db.get(file.projectId)
     if (!project) throw new Error("Project not found")
-    const replicaState = await getReplicaStorageAccountingState(ctx, file.projectId)
+    const storageAccounting = await getProjectStorageAccountingState(ctx, file.projectId)
 
     let sourceAndConfigDelta = 0
     let gitHistoryDelta = 0
-    if (!replicaState.usesReplicaAccounting) {
+    if (!storageAccounting.usesGitRepoAccounting) {
       if (file.status === "active") {
         sourceAndConfigDelta -= file.sizeBytes
       } else if (file.status === "superseded") {
@@ -231,7 +231,7 @@ export const saveFiles = mutation({
 
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
-    const replicaState = await getReplicaStorageAccountingState(ctx, args.projectId)
+    const storageAccounting = await getProjectStorageAccountingState(ctx, args.projectId)
     let sourceAndConfigDelta = 0
     let gitHistoryDelta = 0
 
@@ -254,7 +254,7 @@ export const saveFiles = mutation({
       // Mark existing as superseded if hash differs
       if (existing && existing.checksum !== file.checksum) {
         await ctx.db.patch(existing._id, { status: "superseded" })
-        if (!replicaState.usesReplicaAccounting) {
+        if (!storageAccounting.usesGitRepoAccounting) {
           sourceAndConfigDelta -= existing.sizeBytes
           gitHistoryDelta += existing.sizeBytes
         }
@@ -278,7 +278,7 @@ export const saveFiles = mutation({
 
       results.push({ path: file.filePath, fileId })
 
-      if (!replicaState.usesReplicaAccounting) {
+      if (!storageAccounting.usesGitRepoAccounting) {
         sourceAndConfigDelta += file.sizeBytes
       }
     }
@@ -344,7 +344,7 @@ export const markFilesDeleted = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
-    const replicaState = await getReplicaStorageAccountingState(ctx, args.projectId)
+    const storageAccounting = await getProjectStorageAccountingState(ctx, args.projectId)
     let deletedCount = 0
     let sourceAndConfigDelta = 0
     const gitHistoryDelta = 0
@@ -361,7 +361,7 @@ export const markFilesDeleted = mutation({
       if (file) {
         await ctx.db.patch(file._id, { status: "deleted" })
         deletedCount++
-        if (!replicaState.usesReplicaAccounting) {
+        if (!storageAccounting.usesGitRepoAccounting) {
           sourceAndConfigDelta -= file.sizeBytes
         }
       }

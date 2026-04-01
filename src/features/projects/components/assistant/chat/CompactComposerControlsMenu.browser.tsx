@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { DEFAULT_MODEL_BY_PROVIDER, ModelSelection, ThreadId } from "@t3tools/contracts";
+import { DEFAULT_MODEL_BY_PROVIDER, ModelSelection, ThreadId } from "@cozea/assistant-contracts";
 import "../../index.css";
 
 import { page } from "vitest/browser";

@@ -10,7 +10,7 @@ import {
   ProjectId,
   type ServerProvider,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@cozea/assistant-contracts";
 import { page } from "vitest/browser";
 import { useCallback } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +24,7 @@ import {
   useComposerThreadDraft,
   useEffectiveComposerModelState,
 } from "../../composerDraftStore";
-import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_CLIENT_SETTINGS } from "@cozea/assistant-contracts/settings";
 
 // ── Claude TraitsPicker tests ─────────────────────────────────────────
 

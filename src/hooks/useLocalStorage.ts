@@ -1,5 +1,5 @@
 // @ts-nocheck
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import * as Record from "effect/Record";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -40,19 +40,15 @@ export const removeLocalStorageItem = (key: string) => {
   isomorphicLocalStorage.removeItem(key);
 };
 
-const LOCAL_STORAGE_CHANGE_EVENT = "t3code:local_storage_change";
-
+const LOCAL_STORAGE_CHANGE_EVENT = "cozea:local_storage_change";
 interface LocalStorageChangeDetail {
   key: string;
 }
 
 function dispatchLocalStorageChange(key: string) {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent<LocalStorageChangeDetail>(LOCAL_STORAGE_CHANGE_EVENT, {
-      detail: { key },
-    }),
-  );
+  const detail = { key };
+  window.dispatchEvent(new CustomEvent<LocalStorageChangeDetail>(LOCAL_STORAGE_CHANGE_EVENT, { detail }));
 }
 
 export function useLocalStorage<T>(

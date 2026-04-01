@@ -43,7 +43,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
 import { api } from '../../../convex/_generated/api'
 
-type SourceControlProvider = 'github' | 'gitlab'
+type SourceControlProvider = 'github'
 
 interface SourceControlProps {
   surface?: 'page' | 'drawer'
@@ -60,7 +60,6 @@ const PROVIDER_CARDS: Array<{
   host: string
 }> = [
   { provider: 'github', label: 'GitHub', host: 'https://github.com' },
-  { provider: 'gitlab', label: 'GitLab', host: 'https://gitlab.com' },
 ]
 
 function getAuthStatusLabel(status?: string | null): string {
@@ -564,7 +563,6 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
   const setupMode: VersionControlSetupMode = personalScoped ? 'personal' : 'organization'
   const preferredProviders = useMemo(() => readSourceControlProviderPreferences(), [])
   const githubConnection = getConnection('github')
-  const gitlabConnection = getConnection('gitlab')
   const sourceControlPreference = useMemo(
     () =>
       resolveSourceControlProviderPreference({
@@ -572,11 +570,9 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
         workspaceDefaultProvider: organization?.sourceControlSettings?.defaultProvider,
         preferredProviders,
         githubConnection,
-        gitlabConnection,
       }),
     [
       githubConnection,
-      gitlabConnection,
       organization?.sourceControlSettings?.defaultProvider,
       preferredProviders,
       profile?.preferences?.sourceControlDefaultProvider,
@@ -660,9 +656,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
             {preferredProviders.length > 0 ? (
               <p className="text-xs text-muted-foreground">
                 Onboarding preferences:{' '}
-                {preferredProviders
-                  .map((provider) => (provider === 'github' ? 'GitHub' : 'GitLab'))
-                  .join(', ')}
+                {preferredProviders.map(() => 'GitHub').join(', ')}
                 .
               </p>
             ) : null}
@@ -705,9 +699,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
                 <Select
                   value={explicitDefaultProvider ?? 'none'}
                   onValueChange={(value) => {
-                    void handleDefaultProviderChange(
-                      value === 'github' || value === 'gitlab' ? value : null
-                    )
+                    void handleDefaultProviderChange(value === 'github' ? value : null)
                   }}
                   disabled={!canManageSourceControl}
                 >
@@ -720,7 +712,6 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
                   <SelectContent>
                     <SelectItem value="none">Ask when it matters</SelectItem>
                     <SelectItem value="github">GitHub</SelectItem>
-                    <SelectItem value="gitlab">GitLab</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -735,7 +726,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
                   </>
                 ) : sourceControlPreference.shouldAskUser ? (
                   <>
-                    When both GitHub and GitLab are available and no default is set, the planner will ask which provider to use.
+                    When no default is set, the planner will ask before using project source control.
                   </>
                 ) : (
                   <>Set a default here if you want new plans to consistently prefer one provider.</>
@@ -774,7 +765,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
                 setupMode={setupMode}
                 preferred={preferredProviders.includes(providerCard.provider)}
                 canManageSourceControl={canManageSourceControl}
-                connection={providerCard.provider === 'github' ? githubConnection : gitlabConnection}
+                connection={githubConnection}
                 connectingProvider={connectingProvider}
                 clearConnectError={clearConnectError}
                 startOAuth={startOAuth}
@@ -792,13 +783,13 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
               <CardDescription>
                 {workspaceScoped
                   ? 'Organization workspaces keep a shared source-control connection. Cozea checks it when someone opens a project that uses that provider.'
-                  : 'For non-org projects, Cozea uses your own GitHub or GitLab connection when you open a project that needs provider access.'}
+                  : 'For non-org projects, Cozea uses your own GitHub connection when you open a project that needs provider access.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
               <p>
                 {workspaceScoped
-                  ? 'If a project points at GitHub or GitLab and this workspace has not configured that provider yet, opening the project will prompt the user to resolve it or ask an admin.'
+                  ? 'If a project points at GitHub and this workspace has not configured that provider yet, opening the project will prompt the user to resolve it or ask an admin.'
                   : 'Your personal workspace is effectively your collection of non-org projects. Each user keeps their own source-control connection here, even when a project was created by someone else.'}
               </p>
               <p>

@@ -10,10 +10,10 @@ import {
   WS_CHANNELS,
   WS_METHODS,
   type WsWelcomePayload,
-} from "@t3tools/contracts";
+} from "@cozea/assistant-contracts";
 
 import { showContextMenuFallback } from "./contextMenuFallback";
-import { WsTransport } from "@/stores/t3-wsTransport";
+import { WsTransport } from "@/stores/assistant-wsTransport";
 
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();

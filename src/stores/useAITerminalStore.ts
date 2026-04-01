@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
@@ -54,38 +53,35 @@ export const useAITerminalStore = create<AITerminalSidebarState>()(
       resetPanelWidth: () => set({ panelWidth: DEFAULT_PANEL_WIDTH }),
 
       upsertSession: (projectPath, session) => {
-        set((state) => {
-          const currentSessions = state.sessionsByProject[projectPath] ?? []
-          const nextSessions = [session, ...currentSessions.filter((item) => item.terminalId !== session.terminalId)]
-
-          return {
-            sessionsByProject: {
-              ...state.sessionsByProject,
-              [projectPath]: nextSessions,
-            },
-          }
-        })
+        set((state) => ({
+          sessionsByProject: {
+            ...state.sessionsByProject,
+            [projectPath]: [
+              session,
+              ...(state.sessionsByProject[projectPath] ?? []).filter(
+                (item) => item.terminalId !== session.terminalId,
+              ),
+            ],
+          },
+        }))
       },
 
       removeSession: (projectPath, terminalId) => {
-        set((state) => {
-          const currentSessions = state.sessionsByProject[projectPath] ?? []
-          const nextSessions = currentSessions.filter((session) => session.terminalId !== terminalId)
-          const nextActiveId = state.activeSessionIdsByProject[projectPath] === terminalId
-            ? null
-            : state.activeSessionIdsByProject[projectPath] ?? null
-
-          return {
-            sessionsByProject: {
-              ...state.sessionsByProject,
-              [projectPath]: nextSessions,
-            },
-            activeSessionIdsByProject: {
-              ...state.activeSessionIdsByProject,
-              [projectPath]: nextActiveId,
-            },
-          }
-        })
+        set((state) => ({
+          sessionsByProject: {
+            ...state.sessionsByProject,
+            [projectPath]: (state.sessionsByProject[projectPath] ?? []).filter(
+              (session) => session.terminalId !== terminalId,
+            ),
+          },
+          activeSessionIdsByProject: {
+            ...state.activeSessionIdsByProject,
+            [projectPath]:
+              state.activeSessionIdsByProject[projectPath] === terminalId
+                ? null
+                : state.activeSessionIdsByProject[projectPath] ?? null,
+          },
+        }))
       },
 
       setActiveSession: (projectPath, terminalId) => {

@@ -1,12 +1,12 @@
 // @ts-nocheck
-import { type ProviderKind, type ServerProvider } from "@t3tools/contracts";
+import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
 import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { getCustomModelOptionsByProvider } from "../../modelSelection";
-import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_UNIFIED_SETTINGS } from "@cozea/assistant-contracts/settings";
 
 function effort(value: string, isDefault = false) {
   return {

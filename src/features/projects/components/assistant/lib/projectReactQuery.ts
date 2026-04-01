@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { ProjectSearchEntriesResult } from "@t3tools/contracts";
+import type { ProjectSearchEntriesResult } from "@cozea/assistant-contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { ensureNativeApi } from "@/lib/nativeApi";
 

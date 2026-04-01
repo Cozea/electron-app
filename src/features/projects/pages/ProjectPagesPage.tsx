@@ -22,7 +22,6 @@ import {
 } from '@/utils/previewBridge'
 import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
 import { IosSimulatorViewport } from '@/features/projects/components/previews/IosSimulatorViewport'
-import { ProjectPreviewRouteBar } from '@/features/projects/components/previews/ProjectPreviewRouteBar'
 import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
@@ -118,6 +117,7 @@ export function ProjectPagesPage() {
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
     const setPreviewScreenshot = usePageContextStore((state) => state.setPreviewScreenshot)
+    const isVisualEditorOpen = useVisualEditorStore((state) => state.isOpen)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
     const selectedElement = useVisualEditorStore((state) => state.selectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
@@ -176,7 +176,7 @@ export function ProjectPagesPage() {
         const focus = searchParams.get('focus') as string
         return focus !== null ? parseInt(focus, 10) : null
     })
-    const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+    const [device] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
     const selectionHydrationSeqRef = useRef(0)
@@ -567,14 +567,6 @@ export function ProjectPagesPage() {
         setInspectedElement(null)
         closeVisualEditor()
     }, [setSelectedElement, setInspectedElement, closeVisualEditor])
-
-    const handleSelectPreviewRoute = useCallback((routePath: string) => {
-        const normalizedRoute = normalizePreviewPath(routePath)
-        const routeIndex = routes.findIndex((route) => normalizePreviewPath(route.path) === normalizedRoute)
-        if (routeIndex >= 0) {
-            setFocusedPageIndex(routeIndex)
-        }
-    }, [routes])
 
     // Update page context when focused route changes
     useEffect(() => {
@@ -1947,36 +1939,10 @@ export function ProjectPagesPage() {
         </div>
     ), [headerControls, serverControlBreadcrumbAddon])
 
-    const focusedPreviewCenterAddon = useMemo(() => {
-        if (routes.length === 0) return null
-        return (
-            <ProjectPreviewRouteBar
-                currentRoute={previewRoute}
-                currentPath={currentPage?.route ?? previewRoute?.path ?? null}
-                device={device}
-                routes={routes}
-                onCycleDevice={() => {
-                    setDevice((current) => {
-                        if (current === 'desktop') return 'tablet'
-                        if (current === 'tablet') return 'mobile'
-                        return 'desktop'
-                    })
-                }}
-                onSelectRoute={(route) => handleSelectPreviewRoute(route.path)}
-            />
-        )
-    }, [
-        currentPage?.route,
-        device,
-        handleSelectPreviewRoute,
-        previewRoute,
-        routes,
-    ])
-
     useProjectHeader(
         null,
         focusedPreviewBreadcrumbAddon,
-        focusedPreviewCenterAddon,
+        null,
         true
     )
 
@@ -2001,7 +1967,7 @@ export function ProjectPagesPage() {
 
             {/* Main Content + Inspector + Terminal */}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-                {isFocusedPreview && inspectorSide === 'left' && (
+                {isFocusedPreview && isVisualEditorOpen && inspectorSide === 'left' && (
                     <VisualEditorSidebar
                         onPreviewStyle={handlePreviewStyle}
                         onPreviewText={handlePreviewText}
@@ -2121,7 +2087,7 @@ export function ProjectPagesPage() {
                     )}
                 </div>
 
-                {isFocusedPreview && inspectorSide === 'right' && (
+                {isFocusedPreview && isVisualEditorOpen && inspectorSide === 'right' && (
                     <VisualEditorSidebar
                         onPreviewStyle={handlePreviewStyle}
                         onPreviewText={handlePreviewText}

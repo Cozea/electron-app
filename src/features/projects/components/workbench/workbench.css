@@ -1,0 +1,72 @@
+.cozea-workbench-dockview {
+  --dv-border-radius: 0px;
+  --dv-floating-box-shadow: none;
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  --dv-active-sash-transition-duration: 0.08s;
+  --dv-active-sash-transition-delay: 0s;
+  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tab-font-size: 12px;
+  --dv-tab-margin: 0;
+  --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --dv-drag-over-background-color: color-mix(in oklch, var(--primary) 12%, transparent);
+  --dv-drag-over-border-color: color-mix(in oklch, var(--primary) 42%, transparent);
+  --dv-tabs-container-scrollbar-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+  --dv-scrollbar-background-color: transparent;
+}
+
+.cozea-workbench-dockview.dockview-theme-light,
+.cozea-workbench-dockview.dockview-theme-dark {
+  --dv-group-view-background-color: var(--content-surface);
+  --dv-tabs-and-actions-container-background-color: color-mix(in oklch, var(--secondary) 76%, var(--border) 24%);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--content-surface);
+  --dv-activegroup-hiddenpanel-tab-background-color: color-mix(in oklch, var(--secondary) 88%, var(--border) 12%);
+  --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(in oklch, var(--content-surface) 94%, var(--secondary) 6%);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(in oklch, var(--secondary) 92%, var(--border) 8%);
+  --dv-tab-divider-color: color-mix(in oklch, var(--border) 85%, transparent);
+  --dv-separator-border: color-mix(in oklch, var(--foreground) 14%, transparent);
+  --dv-paneview-header-border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.cozea-workbench-dockview.dockview-theme-light {
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
+  --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
+  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 48%, transparent);
+}
+
+.cozea-workbench-dockview.dockview-theme-dark {
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
+  --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
+  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 48%, transparent);
+}
+
+.cozea-workbench-dockview .dv-groupview,
+.cozea-workbench-dockview .dv-groupview-content-container,
+.cozea-workbench-dockview .dv-content-container,
+.cozea-workbench-dockview .dv-watermark-container {
+  background: var(--content-surface);
+}
+
+.cozea-workbench-dockview .dv-groupview {
+  border: 0;
+}
+
+.cozea-workbench-dockview .dv-groupview.dv-active-group {
+  outline: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  outline-offset: -1px;
+}
+
+.cozea-workbench-dockview .dv-tabs-and-actions-container {
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.cozea-workbench-dockview .dv-tab {
+  letter-spacing: 0;
+}
+
+.cozea-workbench-dockview .dv-tab-close {
+  border-radius: 0;
+}
