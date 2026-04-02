@@ -135,7 +135,7 @@ export function WorkbenchBrowserTile({
             }}
             placeholder="Enter a URL or localhost:port"
             className={cn(
-              "h-7 border-0 bg-secondary/80 text-center text-xs shadow-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:bg-secondary",
+              "h-7 border-0 bg-background/50 text-center text-xs shadow-none transition-colors hover:bg-background/80 focus-visible:bg-background focus-visible:ring-1 focus-visible:ring-ring",
               draftUrl.startsWith("https://") ? "pl-9" : "px-3",
             )}
           />
