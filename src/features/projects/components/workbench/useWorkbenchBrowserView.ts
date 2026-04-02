@@ -107,9 +107,15 @@ export function useWorkbenchBrowserView(
 
     const syncBounds = () => {
       const rect = element.getBoundingClientRect()
+      
+      // Use floor/ceil to strictly bound the native view within the fractional DOM element bounds
+      // Add a 1px inset to guarantee we never spill over dockview borders or sashes
       const inset = 1
-      const width = Math.max(0, Math.round(rect.width) - inset * 2)
-      const height = Math.max(0, Math.round(rect.height) - inset * 2)
+      const x = Math.ceil(rect.left) + inset
+      const y = Math.ceil(rect.top) + inset
+      const width = Math.max(0, Math.floor(rect.right) - Math.ceil(rect.left) - inset * 2)
+      const height = Math.max(0, Math.floor(rect.bottom) - Math.ceil(rect.top) - inset * 2)
+
       const stateLoadError = state.loadError
       const nextVisible = visible && Boolean(url) && !stateLoadError && width > 0 && height > 0
       const payload = nextVisible
@@ -117,8 +123,8 @@ export function useWorkbenchBrowserView(
             tileId,
             visible: true,
             bounds: {
-              x: Math.round(rect.x) + inset,
-              y: Math.round(rect.y) + inset,
+              x,
+              y,
               width,
               height,
             },
