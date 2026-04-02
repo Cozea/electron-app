@@ -180,7 +180,7 @@ export function WorkbenchBrowserTile({
           </div>
         ) : null}
         {url && state.loadError ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/92 p-6 text-center">
+          <div className="absolute inset-px z-[100] flex items-center justify-center bg-background p-6 text-center">
             <div className="max-w-md space-y-2">
               <div className="text-sm font-medium text-foreground">
                 This page could not be loaded.
@@ -194,7 +194,7 @@ export function WorkbenchBrowserTile({
             ref={hostRef}
             className={cn(
               "absolute inset-px overflow-hidden bg-background",
-              !boundsReady ? "opacity-70" : "opacity-100",
+              (!boundsReady || state.loadError) ? "opacity-0 pointer-events-none" : "opacity-100",
             )}
           />
         ) : null}

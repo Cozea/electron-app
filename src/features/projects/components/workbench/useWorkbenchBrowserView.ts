@@ -110,7 +110,8 @@ export function useWorkbenchBrowserView(
       const inset = 1
       const width = Math.max(0, Math.round(rect.width) - inset * 2)
       const height = Math.max(0, Math.round(rect.height) - inset * 2)
-      const nextVisible = visible && Boolean(url) && width > 0 && height > 0
+      const stateLoadError = state.loadError
+      const nextVisible = visible && Boolean(url) && !stateLoadError && width > 0 && height > 0
       const payload = nextVisible
         ? {
             tileId,
@@ -167,7 +168,7 @@ export function useWorkbenchBrowserView(
         visible: false,
       })
     }
-  }, [tileId, url, visible])
+  }, [tileId, url, visible, state.loadError])
 
   useEffect(() => {
     return () => {
