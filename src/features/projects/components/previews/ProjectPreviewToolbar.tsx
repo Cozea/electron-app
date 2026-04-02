@@ -272,7 +272,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
                           onValueChange={(value) => onSelectedBrowserChange(value as ExternalBrowserId)}
                         >
                           {visibleBrowsers.map((browser) => {
-                            const BrowserIcon = getBrowserIcon(browser.id)
+                            const BrowserIcon = getExternalBrowserIcon(browser.id)
                             return (
                               <DropdownMenuRadioItem key={browser.id} value={browser.id}>
                                 <BrowserIcon className="mr-2 h-4 w-4 text-muted-foreground" />

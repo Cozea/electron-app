@@ -119,8 +119,8 @@ export function WorkbenchBrowserTile({
         </Button>
       </div>
 
-      <div className="flex flex-1 min-w-0 items-center justify-center">
-        <div className="relative w-full min-w-[240px]">
+      <div className="flex flex-1 min-w-0 items-center justify-center px-1">
+        <div className="relative w-full min-w-[80px] max-w-4xl">
           {draftUrl.startsWith("https://") ? (
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           ) : null}

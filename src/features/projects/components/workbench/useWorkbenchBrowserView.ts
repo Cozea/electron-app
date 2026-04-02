@@ -98,6 +98,11 @@ export function useWorkbenchBrowserView(
     }
   }, [tileId, url])
 
+  const latestStateRef = useRef({ visible, url, loadError: state.loadError })
+  useEffect(() => {
+    latestStateRef.current = { visible, url, loadError: state.loadError }
+  }, [visible, url, state.loadError])
+
   useEffect(() => {
     const element = hostRef.current
     if (!element) return
@@ -116,8 +121,8 @@ export function useWorkbenchBrowserView(
       const width = Math.max(0, Math.floor(rect.right) - Math.ceil(rect.left) - inset * 2)
       const height = Math.max(0, Math.floor(rect.bottom) - Math.ceil(rect.top) - inset * 2)
 
-      const stateLoadError = state.loadError
-      const nextVisible = visible && Boolean(url) && !stateLoadError && width > 0 && height > 0
+      const current = latestStateRef.current
+      const nextVisible = current.visible && Boolean(current.url) && !current.loadError && width > 0 && height > 0
       const payload = nextVisible
         ? {
             tileId,
@@ -174,7 +179,7 @@ export function useWorkbenchBrowserView(
         visible: false,
       })
     }
-  }, [tileId, url, visible, state.loadError])
+  }, [tileId])
 
   useEffect(() => {
     return () => {
