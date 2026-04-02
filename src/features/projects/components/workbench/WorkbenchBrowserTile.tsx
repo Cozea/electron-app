@@ -77,7 +77,7 @@ export function WorkbenchBrowserTile({
 
   const toolbar = (
     <div className="flex min-w-0 w-full items-center gap-2">
-      <div className="flex shrink-0 items-center gap-1 w-[88px]">
+      <div className="flex shrink-0 items-center gap-1 w-[92px]">
         <Button
           type="button"
           variant="ghost"
@@ -142,8 +142,8 @@ export function WorkbenchBrowserTile({
         </div>
       </div>
       
-      {/* Spacer to balance the toolbar width for centering */}
-      <div className="w-[88px] shrink-0" />
+      {/* Spacer balances the right side with the left side to perfectly center the input within the entire tile (accounting for window controls) */}
+      <div className="w-[24px] shrink-0" />
     </div>
   )
 
