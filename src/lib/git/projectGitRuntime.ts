@@ -10,6 +10,7 @@ export type ProjectWorkingCopyMode = 'managed' | 'attached'
 export interface ProjectGitRuntimeSourceControlLike {
   provider?: string
   repoUrl?: string | null
+  activeCollabBranch?: string | null
   defaultBranch?: string | null
   visibility?: string
   mergeStrategy?: string
@@ -47,6 +48,7 @@ export interface ResolvedProjectGitRemoteConfig {
 interface ProjectGitBindingLike {
   provider: string
   repoUrl?: string
+  activeCollabBranch?: string
   defaultBranch: string
   syncPolicy: ProjectGitSyncPolicy
   workingCopyMode: ProjectWorkingCopyMode
@@ -90,6 +92,7 @@ export async function resolveProjectGitRemoteConfig(args: {
     normalizeProvider(args.project.gitRepository?.provider) ??
     normalizeProvider(args.project.sourceControl?.provider)
   let branch =
+    args.project.sourceControl?.activeCollabBranch?.trim() ||
     args.project.sourceControl?.defaultBranch?.trim() ||
     args.project.gitRepository?.defaultBranch?.trim() ||
     'main'
@@ -129,7 +132,10 @@ export async function resolveProjectGitRemoteConfig(args: {
       if (credentialResult?.binding) {
         provider = normalizeProvider(credentialResult.binding.provider) ?? provider
         repoUrl = credentialResult.binding.repoUrl?.trim() || repoUrl
-        branch = credentialResult.binding.defaultBranch?.trim() || branch
+        branch =
+          credentialResult.binding.activeCollabBranch?.trim() ||
+          credentialResult.binding.defaultBranch?.trim() ||
+          branch
         syncPolicy = credentialResult.binding.syncPolicy === 'manual' ? 'manual' : 'auto'
         workingCopyMode =
           credentialResult.binding.workingCopyMode === 'attached'
@@ -200,30 +206,4 @@ export async function resolveProjectGitRemoteConfig(args: {
     repoUrl,
     usesExistingRemote: workingCopyMode === 'attached',
   }
-}
-
-export async function resolveEffectiveProjectGitBranch(args: {
-  projectPath: string
-  fallbackBranch: string
-  usesExistingRemote: boolean
-}): Promise<string> {
-  if (!args.usesExistingRemote) {
-    return args.fallbackBranch
-  }
-
-  try {
-    const status = await window.electronAPI.sync.gitStatus({
-      projectPath: args.projectPath,
-    })
-    if (status.success && status.currentBranch) {
-      return status.currentBranch
-    }
-  } catch (error) {
-    console.warn('[ProjectGitRuntime] Failed to resolve local git branch:', {
-      projectPath: args.projectPath,
-      error,
-    })
-  }
-
-  return args.fallbackBranch
 }

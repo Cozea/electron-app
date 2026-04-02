@@ -7,11 +7,16 @@ import {
 import type { IDockviewPanelProps } from "dockview"
 
 import { WorkbenchBrowserTile } from "@/features/projects/components/workbench/WorkbenchBrowserTile"
+import { WorkbenchAssistantChatTile } from "@/features/projects/components/workbench/WorkbenchAssistantChatTile"
 import { WorkbenchDevServerTile } from "@/features/projects/components/workbench/WorkbenchDevServerTile"
+import { WorkbenchSelectionTile } from "@/features/projects/components/workbench/WorkbenchSelectionTile"
 import { WorkbenchTerminalTile } from "@/features/projects/components/workbench/WorkbenchTerminalTile"
+import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import {
+  type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
+  type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
@@ -25,6 +30,11 @@ interface WorkbenchDockRuntimeValue {
   projectId: string
   projectPath: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
+  onDuplicateAssistantTile: (sourceTileId: string) => void
+  onResolveSelectionTile: (
+    selectionTileId: string,
+    type: "assistantChat" | "browser" | "terminal" | "devServer",
+  ) => void
 }
 
 const WorkbenchDockRuntimeContext = createContext<WorkbenchDockRuntimeValue | null>(null)
@@ -78,7 +88,15 @@ function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   useSyncPanelTitle(props.api, tile?.title)
 
   if (!tile || tile.type !== "browser") {
-    return <MissingTilePlaceholder />
+    return (
+      <WorkbenchTileChrome
+        title="Browser"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
   }
 
   const browserTile = tile as WorkbenchBrowserTileRecord
@@ -88,6 +106,8 @@ function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
       tileId={browserTile.id}
       url={browserTile.url}
       linkedDevServerTileId={browserTile.linkedDevServerTileId}
+      panelApi={props.api}
+      containerApi={props.containerApi}
       onUrlCommitted={(nextUrl) => {
         actions.updateBrowserTile(props.params.projectId, browserTile.id, { url: nextUrl })
       }}
@@ -100,6 +120,28 @@ function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   )
 }
 
+function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+  const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const runtime = useWorkbenchDockRuntime()
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "selection") {
+    return <MissingTilePlaceholder />
+  }
+
+  const selectionTile = tile as WorkbenchSelectionTileRecord
+
+  return (
+    <WorkbenchSelectionTile
+      tile={selectionTile}
+      onChoose={(type) => {
+        runtime.onResolveSelectionTile(selectionTile.id, type)
+      }}
+    />
+  )
+}
+
 function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
@@ -107,10 +149,24 @@ function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   useSyncPanelTitle(props.api, tile?.title)
 
   if (!tile || tile.type !== "terminal") {
-    return <MissingTilePlaceholder />
+    return (
+      <WorkbenchTileChrome
+        title="Terminal"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
   }
 
-  return <WorkbenchTerminalTile projectPath={runtime.projectPath} />
+  return (
+    <WorkbenchTerminalTile
+      projectPath={runtime.projectPath}
+      panelApi={props.api}
+      containerApi={props.containerApi}
+    />
+  )
 }
 
 function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
@@ -121,7 +177,15 @@ function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   useSyncPanelTitle(props.api, tile?.title)
 
   if (!tile || tile.type !== "devServer") {
-    return <MissingTilePlaceholder />
+    return (
+      <WorkbenchTileChrome
+        title="Dev Server"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
   }
 
   const devServerTile = tile as WorkbenchDevServerTileRecord
@@ -130,6 +194,8 @@ function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
     <WorkbenchDevServerTile
       tile={devServerTile}
       projectPath={runtime.projectPath}
+      panelApi={props.api}
+      containerApi={props.containerApi}
       onLinkedBrowserReady={(nextUrl) => {
         if (!devServerTile.linkedBrowserTileId) return
         actions.updateBrowserTile(props.params.projectId, devServerTile.linkedBrowserTileId, {
@@ -137,25 +203,42 @@ function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
           linkedDevServerTileId: devServerTile.id,
         })
       }}
-      onOpenBrowser={(nextUrl) => runtime.onOpenBrowserFromDevServer(devServerTile.id, nextUrl)}
     />
   )
 }
 
 function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const runtime = useWorkbenchDockRuntime()
 
   useSyncPanelTitle(props.api, tile?.title)
 
+  if (!tile || tile.type !== "assistantChat") {
+    return (
+      <WorkbenchTileChrome
+        title="AI Agent"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
   return (
-    <WorkbenchPlaceholder
-      title={tile?.title ?? "AI Chat"}
-      description="This slot is reserved for the future T3-style chat tile that can create and orchestrate workbench panels."
+    <WorkbenchAssistantChatTile
+      projectId={props.params.projectId}
+      projectPath={runtime.projectPath}
+      tile={tile as WorkbenchAssistantChatTileRecord}
+      panelApi={props.api}
+      containerApi={props.containerApi}
+      onDuplicate={runtime.onDuplicateAssistantTile}
     />
   )
 }
 
 export const WORKBENCH_DOCK_COMPONENTS = {
+  selection: SelectionPanel,
   browser: BrowserPanel,
   terminal: TerminalPanel,
   devServer: DevServerPanel,
@@ -166,6 +249,11 @@ export function WorkbenchDockRuntimeProvider(props: {
   projectId: string
   projectPath: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
+  onDuplicateAssistantTile: (sourceTileId: string) => void
+  onResolveSelectionTile: (
+    selectionTileId: string,
+    type: "assistantChat" | "browser" | "terminal" | "devServer",
+  ) => void
   children: ReactNode
 }) {
   return (
@@ -174,6 +262,8 @@ export function WorkbenchDockRuntimeProvider(props: {
         projectId: props.projectId,
         projectPath: props.projectPath,
         onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
+        onDuplicateAssistantTile: props.onDuplicateAssistantTile,
+        onResolveSelectionTile: props.onResolveSelectionTile,
       }}
     >
       {props.children}

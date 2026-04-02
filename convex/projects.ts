@@ -327,6 +327,7 @@ export const create = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
@@ -457,6 +458,16 @@ export const create = mutation({
     const normalizedSourceControl = args.sourceControl
       ? {
           ...args.sourceControl,
+          activeCollabBranch:
+            args.sourceControl.activeCollabBranch?.trim() ||
+            args.sourceControl.defaultBranch?.trim() ||
+            args.repoSource?.branch?.trim() ||
+            "main",
+          defaultBranch:
+            args.sourceControl.defaultBranch?.trim() ||
+            args.sourceControl.activeCollabBranch?.trim() ||
+            args.repoSource?.branch?.trim() ||
+            "main",
           setupMode: args.sourceControl.setupMode ?? defaultSetupMode,
         }
       : undefined
@@ -465,7 +476,10 @@ export const create = mutation({
     const gitRepository = buildGitRepositoryMetadata({
       provider: args.repoSource?.provider ?? normalizedSourceControl?.provider,
       repoUrl: args.repoSource?.repoUrl ?? normalizedSourceControl?.repoUrl,
-      defaultBranch: args.repoSource?.branch ?? normalizedSourceControl?.defaultBranch,
+      defaultBranch:
+        args.repoSource?.branch ??
+        normalizedSourceControl?.defaultBranch ??
+        normalizedSourceControl?.activeCollabBranch,
     })
 
     const syncMode: ProjectSyncMode = "git"
@@ -1351,6 +1365,7 @@ export const update = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
@@ -1450,14 +1465,32 @@ export const update = mutation({
     if (args.buildContract !== undefined) updates.buildContract = args.buildContract
     if (args.stack !== undefined) updates.stack = { ...project.stack, ...args.stack }
     if (args.sourceControl !== undefined) {
-      const nextSourceControl = { ...project.sourceControl, ...args.sourceControl }
+      const nextSourceControl = {
+        ...project.sourceControl,
+        ...args.sourceControl,
+        activeCollabBranch:
+          args.sourceControl.activeCollabBranch ??
+          args.sourceControl.defaultBranch ??
+          project.sourceControl?.activeCollabBranch ??
+          project.sourceControl?.defaultBranch ??
+          project.gitRepository?.defaultBranch ??
+          "main",
+        defaultBranch:
+          args.sourceControl.defaultBranch ??
+          args.sourceControl.activeCollabBranch ??
+          project.sourceControl?.defaultBranch ??
+          project.sourceControl?.activeCollabBranch ??
+          project.gitRepository?.defaultBranch ??
+          "main",
+      }
       const nextGitRepository =
         buildGitRepositoryMetadata({
           provider: nextSourceControl.provider,
           repoUrl: nextSourceControl.repoUrl,
           defaultBranch:
-            nextSourceControl.defaultBranch ??
             project.gitRepository?.defaultBranch ??
+            nextSourceControl.defaultBranch ??
+            nextSourceControl.activeCollabBranch ??
             "main",
         }) ?? undefined
       updates.sourceControl = nextSourceControl

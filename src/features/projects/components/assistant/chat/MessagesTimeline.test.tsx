@@ -88,7 +88,6 @@ describe("MessagesTimeline", () => {
         onImageExpand={() => {}}
         markdownCwd={undefined}
         resolvedTheme="light"
-        timestampFormat="locale"
         workspaceRoot={undefined}
       />,
     );
@@ -133,7 +132,6 @@ describe("MessagesTimeline", () => {
         onImageExpand={() => {}}
         markdownCwd={undefined}
         resolvedTheme="light"
-        timestampFormat="locale"
         workspaceRoot={undefined}
       />,
     );

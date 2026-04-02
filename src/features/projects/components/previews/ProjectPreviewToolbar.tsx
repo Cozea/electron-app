@@ -3,12 +3,9 @@ import {
   AlertTriangle,
   ChevronDown,
   Code2,
-  Globe,
   MousePointer2,
 } from 'lucide-react'
-import { FaBrave, FaChrome, FaEdge, FaFirefoxBrowser, FaSafari } from 'react-icons/fa6'
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm, SiZedindustries } from 'react-icons/si'
-import { TbBrandArc } from 'react-icons/tb'
 import { VscVscode, VscVscodeInsiders } from 'react-icons/vsc'
 import type { IconType } from 'react-icons'
 
@@ -21,6 +18,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  getEffectiveExternalBrowserId,
+  getExternalBrowserIcon,
+  getVisibleExternalBrowsers,
+} from '@/features/projects/lib/externalBrowserPreference'
 import { cn } from '@/lib/utils'
 import type {
   AvailableExternalBrowser,
@@ -47,26 +49,6 @@ interface ProjectPreviewToolbarProps {
   selectedBrowserId: ExternalBrowserId
   serverRunning: boolean
   useCredentiallessPreview: boolean
-}
-
-function getBrowserIcon(browserId: ExternalBrowserId): IconType {
-  switch (browserId) {
-    case 'chrome':
-      return FaChrome
-    case 'arc':
-      return TbBrandArc
-    case 'firefox':
-      return FaFirefoxBrowser
-    case 'edge':
-      return FaEdge
-    case 'brave':
-      return FaBrave
-    case 'safari':
-      return FaSafari
-    case 'system':
-    default:
-      return Globe
-  }
 }
 
 function getEditorIcon(editorId: ExternalEditorId): IconType {
@@ -130,15 +112,14 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
       ?? { id: 'system' as const, name: 'System Default' }
   }, [availableBrowsers, selectedBrowserId])
   const visibleBrowsers = useMemo(() => {
-    if (defaultBrowserId === 'system') return availableBrowsers
-    return availableBrowsers.filter((browser) => browser.id !== 'system')
+    return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
   }, [availableBrowsers, defaultBrowserId])
-  const effectiveBrowserId = selectedBrowserId === 'system' ? defaultBrowserId : selectedBrowser.id
+  const effectiveBrowserId = getEffectiveExternalBrowserId(selectedBrowserId, defaultBrowserId)
   const effectiveSelectedBrowser = useMemo(() => {
     return visibleBrowsers.find((browser) => browser.id === effectiveBrowserId)
       ?? selectedBrowser
   }, [effectiveBrowserId, selectedBrowser, visibleBrowsers])
-  const selectedBrowserIcon = getBrowserIcon(effectiveBrowserId)
+  const selectedBrowserIcon = getExternalBrowserIcon(effectiveBrowserId)
 
   const showBrowserPicker = visibleBrowsers.length > 1
   const selectedEditor = useMemo(() => {

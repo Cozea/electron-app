@@ -16,6 +16,15 @@ import type { MessageBoxOptions } from 'electron'
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
 const DEFAULT_ASSISTANT_WS_URL = 'ws://127.0.0.1:3773'
+const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
+const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
+
+type AssistantRuntimeBridgeStatus = {
+  phase: 'idle' | 'starting' | 'ready' | 'error'
+  wsUrl: string
+  lastError: string | null
+  updatedAt: number
+}
 
 function resolveWindowContext(argv: readonly string[]): ElectronWindowContext {
   const contextArg = argv.find((value) => value.startsWith(WINDOW_CONTEXT_ARG_PREFIX))
@@ -400,6 +409,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:rememberLocalPath', options),
     clearLocalPath: (options: { projectId: string }) =>
       ipcRenderer.invoke('project:clearLocalPath', options),
+    getLaneState: (options: { projectId: string }) =>
+      ipcRenderer.invoke('project:getLaneState', options),
+    ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) =>
+      ipcRenderer.invoke('project:ensureCollabLane', options),
+    upsertLane: (options: {
+      projectId: string
+      branch: string
+      projectPath: string
+      name?: string
+      isCollab?: boolean
+      laneId?: string
+    }) => ipcRenderer.invoke('project:upsertLane', options),
+    setActiveLane: (options: { projectId: string; laneId: string }) =>
+      ipcRenderer.invoke('project:setActiveLane', options),
+    listGitBranches: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('project:listGitBranches', options),
+    checkoutGitBranch: (options: { projectPath: string; branch: string }) =>
+      ipcRenderer.invoke('project:checkoutGitBranch', options),
+    createGitWorktree: (options: {
+      projectPath: string
+      branch: string
+      newBranch?: string
+      path?: string | null
+    }) => ipcRenderer.invoke('project:createGitWorktree', options),
+    mergeLaneIntoCollab: (options: {
+      collabProjectPath: string
+      collabBranch: string
+      sourceBranch: string
+    }) => ipcRenderer.invoke('project:mergeLaneIntoCollab', options),
     openFolder: (options: { projectPath: string }) =>
       ipcRenderer.invoke('project:openFolder', options),
     exists: (options: string | { slug: string; projectId?: string }) =>
@@ -793,6 +831,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 contextBridge.exposeInMainWorld('desktopBridge', {
   getWsUrl: () => assistantWsUrl,
+  getAssistantRuntimeStatus: () =>
+    ipcRenderer.invoke(ASSISTANT_RUNTIME_STATUS_HANDLE) as Promise<AssistantRuntimeBridgeStatus>,
   pickFolder: () => ipcRenderer.invoke('dialog:selectDirectory'),
   confirm: async (message: string) => {
     const result = await ipcRenderer.invoke('dialog:showMessageBox', {
@@ -814,6 +854,12 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   openExternal: async (url: string) => {
     const result = await ipcRenderer.invoke('shell:openExternal', url)
     return Boolean(result?.success)
+  },
+  onAssistantRuntimeStatus: (listener: (status: AssistantRuntimeBridgeStatus) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: AssistantRuntimeBridgeStatus) =>
+      listener(status)
+    ipcRenderer.on(ASSISTANT_RUNTIME_STATUS_CHANNEL, handler)
+    return () => ipcRenderer.removeListener(ASSISTANT_RUNTIME_STATUS_CHANNEL, handler)
   },
   onMenuAction: (_listener: (action: string) => void) => () => undefined,
   getUpdateState: () => ipcRenderer.invoke('updates:getState'),

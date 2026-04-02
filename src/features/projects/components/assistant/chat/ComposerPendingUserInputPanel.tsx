@@ -5,7 +5,7 @@ import { type PendingUserInput } from "./session-logic";
 import {
   derivePendingUserInputProgress,
   type PendingUserInputDraftAnswer,
-} from "../../pendingUserInput";
+} from "../pendingUserInput";
 import { CheckIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 

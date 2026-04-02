@@ -89,6 +89,7 @@ interface ProjectBindingResult {
   syncPolicy: ProjectSyncPolicy
   workingCopyMode: ProjectWorkingCopyMode
   repoUrl?: string
+  activeCollabBranch: string
   defaultBranch: string
   ownerId?: string
   ownerLogin?: string
@@ -130,6 +131,7 @@ interface ResolvedSourceControlScope {
 interface ProjectSourceControlLike {
   provider?: string
   repoUrl?: string | null
+  activeCollabBranch?: string | null
   defaultBranch?: string | null
   visibility?: string
   syncPolicy?: ProjectSyncPolicy
@@ -369,6 +371,7 @@ function summarizeProjectBinding(binding: Doc<"projectRepositoryBindings">) {
     syncPolicy: binding.syncPolicy,
     workingCopyMode: binding.workingCopyMode,
     repoUrl: binding.repoUrl,
+    activeCollabBranch: binding.activeCollabBranch,
     defaultBranch: binding.defaultBranch,
     ownerId: binding.ownerId,
     ownerLogin: binding.ownerLogin,
@@ -943,10 +946,18 @@ export function buildProjectRepositoryBindingRecord(
       : trimToUndefined(
           args.sourceControl?.repoUrl ?? args.gitRepository?.url ?? undefined
         )
+  const activeCollabBranch =
+    trimToUndefined(
+      args.sourceControl?.activeCollabBranch ??
+        args.sourceControl?.defaultBranch ??
+        args.gitRepository?.defaultBranch ??
+        undefined
+    ) || "main"
   const defaultBranch =
     trimToUndefined(
-      args.sourceControl?.defaultBranch ??
-        args.gitRepository?.defaultBranch ??
+      args.gitRepository?.defaultBranch ??
+        args.sourceControl?.defaultBranch ??
+        args.sourceControl?.activeCollabBranch ??
         undefined
     ) || "main"
   const repositoryMetadata = repoUrl ? parseRepositoryOwnerAndName(repoUrl) : {}
@@ -963,6 +974,7 @@ export function buildProjectRepositoryBindingRecord(
     syncPolicy,
     workingCopyMode,
     repoUrl,
+    activeCollabBranch,
     defaultBranch,
     ownerId: trimToUndefined(args.ownerId),
     ownerLogin:
@@ -1449,6 +1461,7 @@ export const upsertProjectBinding = mutation({
       v.literal("local")
     ),
     repoUrl: v.optional(v.string()),
+    activeCollabBranch: v.optional(v.string()),
     defaultBranch: v.optional(v.string()),
     visibility: v.optional(v.string()),
     syncPolicy: v.optional(v.union(v.literal("auto"), v.literal("manual"))),
@@ -1503,7 +1516,20 @@ export const upsertProjectBinding = mutation({
       ...(project.sourceControl ?? {}),
       provider,
       repoUrl: trimToUndefined(args.repoUrl),
-      defaultBranch: trimToUndefined(args.defaultBranch) ?? "main",
+      activeCollabBranch:
+        trimToUndefined(args.activeCollabBranch) ??
+        trimToUndefined(args.defaultBranch) ??
+        trimToUndefined(project.sourceControl?.activeCollabBranch) ??
+        trimToUndefined(project.sourceControl?.defaultBranch) ??
+        project.gitRepository?.defaultBranch ??
+        "main",
+      defaultBranch:
+        trimToUndefined(args.defaultBranch) ??
+        trimToUndefined(args.activeCollabBranch) ??
+        trimToUndefined(project.sourceControl?.defaultBranch) ??
+        trimToUndefined(project.sourceControl?.activeCollabBranch) ??
+        project.gitRepository?.defaultBranch ??
+        "main",
       visibility: trimToUndefined(args.visibility),
       syncPolicy: normalizeProjectSyncPolicy(args.syncPolicy),
       workingCopyMode: normalizeProjectWorkingCopyMode(args.workingCopyMode),
@@ -1543,7 +1569,11 @@ export const upsertProjectBinding = mutation({
               name:
                 parseRepositoryOwnerAndName(sourceControl.repoUrl).repoName ?? "",
               url: normalizeRepositoryUrl(sourceControl.repoUrl),
-              defaultBranch: sourceControl.defaultBranch ?? "main",
+              defaultBranch:
+                project.gitRepository?.defaultBranch ??
+                sourceControl.defaultBranch ??
+                sourceControl.activeCollabBranch ??
+                "main",
             },
       updatedAt: now,
     })

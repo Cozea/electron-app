@@ -140,6 +140,16 @@ export function useDevServerManager({
     if (isStaleRunEvent(runId)) return
     const url = `http://localhost:${port}`
 
+    setState((prev) => ({
+      ...prev,
+      runId,
+      url,
+      port,
+      reachable: false,
+      failureReason: null,
+      error: null,
+    }))
+
     let probeReachable = true
     let failureReason: PreviewFailureReason | null = null
     let failureMessage: string | null = null

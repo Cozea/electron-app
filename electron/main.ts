@@ -4,8 +4,10 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import net from 'node:net'
 
 import { autoUpdater } from 'electron-updater'
+import { Cause, Effect, Exit, Fiber } from 'effect'
 import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
@@ -256,15 +258,247 @@ let previewHeaderCompatDisabledLogged = false
 const previewHeaderDiagnostics = new Map<string, PreviewHeaderDiagnostic>()
 const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
 const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
-let assistantRuntimeStarted = false
+const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
+const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
+const ASSISTANT_RUNTIME_CONNECT_TIMEOUT_MS = 500
+const ASSISTANT_RUNTIME_READY_TIMEOUT_MS = 15_000
+const ASSISTANT_RUNTIME_READY_POLL_MS = 250
+const ASSISTANT_RUNTIME_RECOVERY_POLL_MS = 1_500
+const ASSISTANT_RUNTIME_RESTART_DELAY_MS = 2_000
 
-function ensureAssistantRuntimeStarted(): void {
-  if (assistantRuntimeStarted) {
+type AssistantRuntimePhase = 'idle' | 'starting' | 'ready' | 'error'
+
+interface AssistantRuntimeStatus {
+  phase: AssistantRuntimePhase
+  wsUrl: string
+  lastError: string | null
+  updatedAt: number
+}
+
+const assistantRuntimeSocketTarget = (() => {
+  try {
+    const parsed = new URL(ASSISTANT_RUNTIME_WS_URL)
+    const port = Number.parseInt(parsed.port, 10)
+    return {
+      host: parsed.hostname,
+      port: Number.isFinite(port) ? port : 80,
+    }
+  } catch {
+    return null
+  }
+})()
+
+let assistantRuntimeStatus: AssistantRuntimeStatus = {
+  phase: 'idle',
+  wsUrl: ASSISTANT_RUNTIME_WS_URL,
+  lastError: null,
+  updatedAt: Date.now(),
+}
+let assistantRuntimeFiber: unknown | null = null
+let assistantRuntimeGeneration = 0
+let assistantRuntimeRestartTimer: NodeJS.Timeout | null = null
+let appIsQuitting = false
+let assistantRuntimeBridgeHandlersRegistered = false
+
+function logAssistantBridge(event: string, details?: Record<string, unknown>): void {
+  if (details && Object.keys(details).length > 0) {
+    console.info('[CozeaChatBridge]', event, details)
+    return
+  }
+  console.info('[CozeaChatBridge]', event)
+}
+
+function readAssistantRuntimeStatus(): AssistantRuntimeStatus {
+  return { ...assistantRuntimeStatus }
+}
+
+function broadcastAssistantRuntimeStatus(): void {
+  const payload = readAssistantRuntimeStatus()
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) continue
+    browserWindow.webContents.send(ASSISTANT_RUNTIME_STATUS_CHANNEL, payload)
+  }
+}
+
+function setAssistantRuntimeStatus(
+  patch: Partial<Omit<AssistantRuntimeStatus, 'updatedAt'>>,
+): void {
+  const previousStatus = assistantRuntimeStatus
+  const nextStatus: AssistantRuntimeStatus = {
+    ...assistantRuntimeStatus,
+    ...patch,
+    updatedAt: Date.now(),
+  }
+
+  if (
+    nextStatus.phase === assistantRuntimeStatus.phase &&
+    nextStatus.wsUrl === assistantRuntimeStatus.wsUrl &&
+    nextStatus.lastError === assistantRuntimeStatus.lastError
+  ) {
+    assistantRuntimeStatus = nextStatus
     return
   }
 
-  startAssistantRuntime()
-  assistantRuntimeStarted = true
+  assistantRuntimeStatus = nextStatus
+  logAssistantBridge('runtime-status', {
+    previousPhase: previousStatus.phase,
+    nextPhase: nextStatus.phase,
+    lastError: nextStatus.lastError,
+  })
+  broadcastAssistantRuntimeStatus()
+}
+
+async function probeAssistantRuntimeListener(): Promise<boolean> {
+  if (!assistantRuntimeSocketTarget) {
+    return false
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({
+      host: assistantRuntimeSocketTarget.host,
+      port: assistantRuntimeSocketTarget.port,
+    })
+
+    let settled = false
+
+    const finalize = (value: boolean) => {
+      if (settled) return
+      settled = true
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(value)
+    }
+
+    socket.once('connect', () => finalize(true))
+    socket.once('error', () => finalize(false))
+    socket.setTimeout(ASSISTANT_RUNTIME_CONNECT_TIMEOUT_MS, () => finalize(false))
+  })
+}
+
+function formatAssistantRuntimeExitMessage(exit: unknown): string {
+  if (Exit.isFailure(exit)) {
+    return Cause.pretty(exit.cause).trim()
+  }
+  return 'Local chat runtime stopped.'
+}
+
+async function monitorAssistantRuntimeReadiness(generation: number): Promise<void> {
+  const startedAt = Date.now()
+  let timeoutReported = false
+  logAssistantBridge('runtime-readiness-monitor-started', { generation })
+
+  while (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
+    const isReady = await probeAssistantRuntimeListener()
+    if (isReady) {
+      logAssistantBridge('runtime-ready', {
+        generation,
+        elapsedMs: Date.now() - startedAt,
+      })
+      setAssistantRuntimeStatus({
+        phase: 'ready',
+        lastError: null,
+      })
+      return
+    }
+
+    const elapsedMs = Date.now() - startedAt
+    if (!timeoutReported && elapsedMs >= ASSISTANT_RUNTIME_READY_TIMEOUT_MS) {
+      timeoutReported = true
+      logAssistantBridge('runtime-ready-timeout', {
+        generation,
+        elapsedMs,
+      })
+      setAssistantRuntimeStatus({
+        phase: 'error',
+        lastError: 'Local chat runtime is taking longer than expected to start.',
+      })
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, timeoutReported ? ASSISTANT_RUNTIME_RECOVERY_POLL_MS : ASSISTANT_RUNTIME_READY_POLL_MS)
+    })
+  }
+}
+
+function scheduleAssistantRuntimeRestart(): void {
+  if (appIsQuitting || assistantRuntimeRestartTimer) {
+    logAssistantBridge('runtime-restart-skipped', {
+      appIsQuitting,
+      restartAlreadyScheduled: Boolean(assistantRuntimeRestartTimer),
+    })
+    return
+  }
+
+  logAssistantBridge('runtime-restart-scheduled', {
+    delayMs: ASSISTANT_RUNTIME_RESTART_DELAY_MS,
+  })
+  assistantRuntimeRestartTimer = setTimeout(() => {
+    assistantRuntimeRestartTimer = null
+    logAssistantBridge('runtime-restart-triggered')
+    ensureAssistantRuntimeStarted()
+  }, ASSISTANT_RUNTIME_RESTART_DELAY_MS)
+}
+
+function ensureAssistantRuntimeStarted(): void {
+  if (assistantRuntimeFiber) {
+    logAssistantBridge('runtime-start-reused', {
+      generation: assistantRuntimeGeneration,
+    })
+    return
+  }
+
+  assistantRuntimeGeneration += 1
+  const generation = assistantRuntimeGeneration
+  logAssistantBridge('runtime-starting', {
+    generation,
+    wsUrl: ASSISTANT_RUNTIME_WS_URL,
+  })
+  setAssistantRuntimeStatus({
+    phase: 'starting',
+    lastError: null,
+  })
+  const fiber = startAssistantRuntime()
+  assistantRuntimeFiber = fiber
+  Effect.runFork(
+    Effect.flatMap(Fiber.await(fiber), (exit) =>
+      Effect.sync(() => {
+        logAssistantBridge('runtime-exited', {
+          generation,
+          exitMessage: formatAssistantRuntimeExitMessage(exit),
+        })
+        if (assistantRuntimeFiber === fiber) {
+          assistantRuntimeFiber = null
+        }
+        if (appIsQuitting) {
+          return
+        }
+
+        setAssistantRuntimeStatus({
+          phase: 'error',
+          lastError: formatAssistantRuntimeExitMessage(exit),
+        })
+        scheduleAssistantRuntimeRestart()
+      }),
+    ),
+  )
+  void monitorAssistantRuntimeReadiness(generation)
+}
+
+function registerAssistantRuntimeBridgeHandlers(): void {
+  if (assistantRuntimeBridgeHandlersRegistered) {
+    logAssistantBridge('ipc-bridge-handlers-reused', {
+      statusHandle: ASSISTANT_RUNTIME_STATUS_HANDLE,
+    })
+    return
+  }
+
+  ipcMain.removeHandler(ASSISTANT_RUNTIME_STATUS_HANDLE)
+  logAssistantBridge('ipc-bridge-handlers-registered', {
+    statusChannel: ASSISTANT_RUNTIME_STATUS_CHANNEL,
+    statusHandle: ASSISTANT_RUNTIME_STATUS_HANDLE,
+  })
+  ipcMain.handle(ASSISTANT_RUNTIME_STATUS_HANDLE, () => readAssistantRuntimeStatus())
+  assistantRuntimeBridgeHandlersRegistered = true
 }
 
 function prunePreviewHeaderDiagnostics(now = Date.now()): void {
@@ -1098,6 +1332,8 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  appIsQuitting = true
+  logAssistantBridge('app-before-quit')
   workbenchBrowserService.dispose()
   PreviewSnapshotService.getInstance().dispose()
   
@@ -1114,6 +1350,8 @@ app.on('activate', () => {
 if (process.platform === 'darwin') {
   syncShellEnvironment()
 }
+
+registerAssistantRuntimeBridgeHandlers()
 
 app.whenReady().then(() => {
   loadSyncState()

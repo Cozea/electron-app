@@ -5,7 +5,6 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 import {
-  resolveEffectiveProjectGitBranch,
   resolveProjectGitRemoteConfig,
 } from '@/lib/git/projectGitRuntime'
 
@@ -58,11 +57,7 @@ export async function publishWorkspaceToGitRemote({
     return
   }
 
-  const branch = await resolveEffectiveProjectGitBranch({
-    projectPath,
-    fallbackBranch: remoteConfig.branch,
-    usesExistingRemote: remoteConfig.usesExistingRemote,
-  })
+  const branch = remoteConfig.branch
 
   onProgress?.('Publishing workspace changes...')
   const commitAndPushResult = await window.electronAPI.sync.gitCommitAndPush({

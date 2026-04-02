@@ -6,7 +6,7 @@ import {
   type ServerProvider,
 } from "@cozea/assistant-contracts";
 import { normalizeModelSlug, resolveSelectableModel } from "@cozea/assistant-shared/model";
-import { getComposerProviderState } from "./components/chat/composerProviderRegistry";
+import { getComposerProviderState } from "@/features/projects/components/assistant/chat/composerProviderRegistry";
 import { UnifiedSettings } from "@cozea/assistant-contracts/settings";
 import {
   getDefaultServerModel,

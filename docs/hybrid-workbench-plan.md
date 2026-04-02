@@ -902,3 +902,59 @@ For our own reference:
 - the task manager is not a tile
 - selected task context belongs beside the workbench, not inside the grid
 - changes remains the one review-oriented workbench tile in this slice
+
+### Execution Sweep: Hidden Tile Chrome
+
+Completed:
+
+- collapsed Dockview's native tab/notch strip to zero-height so it no longer acts as the visible tile header
+- added a shared `WorkbenchTileChrome` surface with top-edge reveal behavior, close, and maximize/restore controls
+- moved browser controls into the hover bar, including navigation buttons, URL input, and external-open action
+- moved dev-server controls into the hover bar so logs can occupy the body without a permanent top command row
+- moved terminal panels onto the same shared tile chrome and kept the body free of fixed header scaffolding
+- reserved a thin top trigger strip so the browser tile's native `WebContentsView` cannot swallow the hover target
+
+For our own reference:
+
+- keep Dockview for layout, but not for visible panel chrome
+- tile controls should live in the host-owned hover bar, not in Dockview tabs
+- browser tiles need a small always-present top inset because native views can sit above normal DOM layering
+
+### Execution Sweep: Edge Tile Insertion
+
+Completed:
+
+- removed the header `Add Tile` dropdown so tile creation no longer depends on a detached menu
+- added a real `selection` tile type to the workbench model and made the empty-state/reset workbench default to a single persistent selection tile
+- added `WorkbenchSelectionTile.tsx` as the real tile body for tile picking, with a 2x2 icon-and-label grid and an intentionally empty fourth square
+- replaced the old edge overlay launcher with `WorkbenchEdgeInsertion.tsx` edge sensors that create temporary selection tiles in Dockview itself
+- wired selection-tile resolution so the chosen tile is inserted within the selection tile's slot and the selection tile closes afterwards
+- added automatic retraction for temporary edge-preview selection tiles when no choice is made, while keeping the persistent empty-state selection tile in place when it is the only tile on screen
+- kept the right-edge insertion sensor suppressed while the changes drawer is open so the drawer and insertion affordance do not fight for the same edge
+- gated edge insertion so it only arms after pointer movement through the interior of the workbench canvas, instead of activating when the cursor enters directly from outside onto an edge
+- added a visible edge-confirmation strip with a centered plus icon, so armed edge zones now signal tile insertion before the selection tile appears
+
+For our own reference:
+
+- edge insertion is now the primary tile creation path
+- this pass only covers outer content edges; in-between tile insertion is still the next layer to design
+- the selection tile is now a real panel in the layout, not an overlay helper
+- the reserved fourth cell is intentionally an empty square for the future AI/agent tile
+- the edge strip should stay a full-opacity overlay band, narrower than the edge sensor itself
+
+### Execution Sweep: Tile Insertion Motion
+
+Completed:
+
+- added a workbench insertion animation path around panel creation instead of letting new tiles snap into place
+- applied temporary split-container transitions during `addPanel(...)` so surrounding tiles ease into their new bounds
+- added a short enter animation for newly created tile groups so the inserted tile reveals instead of appearing abruptly
+- updated the enter motion so edge-added tiles slide in from their actual insertion side instead of using a generic reveal
+- kept initial workbench hydration on the non-animated path so only user-driven insertions get motion
+
+For our own reference:
+
+- Dockview does not provide native panel-insertion animation, only tab animation and continuous layout during resizing
+- the right compromise here is to keep Dockview in control of layout while layering motion onto the workbench add-panel path
+- the selection-tile flow and any singleton tile opened later now share the same insertion animation path
+- edge insertions should feel directional, while in-place replacements can stay centered/subtle

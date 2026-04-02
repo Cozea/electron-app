@@ -7,9 +7,10 @@ import { ChevronDownIcon, FolderClosedIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu";
-import { AntigravityIcon, CursorIcon, Icon, VisualStudioCode, Zed } from "../Icons";
+import { AntigravityIcon, CursorIcon, VisualStudioCode, Zed } from "../Icons";
+import type { Icon } from "../Icons";
 import { isMacPlatform, isWindowsPlatform } from "@/lib/utils";
-import { readNativeApi } from "~/nativeApi";
+import { readNativeApi } from "@/lib/nativeApi";
 
 const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
   const baseOptions: ReadonlyArray<{ label: string; Icon: Icon; value: EditorId }> = [

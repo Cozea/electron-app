@@ -1,9 +1,24 @@
 // @ts-nocheck
-import { Effect, Option } from "effect";
-import { makeServerRuntimeProgram } from "./main";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect, Layer, Option } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { NetService } from "@cozea/assistant-shared/Net";
+
+import { CliConfig, makeServerRuntimeProgram, type CliInput } from "./main";
+import { OpenLive } from "./open";
+import { ServerLive } from "./wsServer";
+
+const RuntimeLayer = Layer.empty.pipe(
+  Layer.provideMerge(CliConfig.layer),
+  Layer.provideMerge(ServerLive),
+  Layer.provideMerge(OpenLive),
+  Layer.provideMerge(NetService.layer),
+  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(FetchHttpClient.layer),
+);
 
 export function startAssistantRuntime() {
-  const input = {
+  const input: CliInput = {
     mode: Option.some("desktop"),
     port: Option.none(),
     host: Option.none(),
@@ -16,5 +31,9 @@ export function startAssistantRuntime() {
     logWebSocketEvents: Option.none(),
   };
 
-  Effect.runFork(makeServerRuntimeProgram(input));
+  const program = Effect.scoped(makeServerRuntimeProgram(input)).pipe(
+    Effect.provide(RuntimeLayer),
+  ) as any;
+
+  return Effect.runFork(program);
 }

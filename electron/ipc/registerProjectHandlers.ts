@@ -26,8 +26,19 @@ import {
   readRegisteredProjectPath,
   rememberProjectPath,
 } from '../projectPathRegistry'
+import {
+  ensureProjectCollabLane,
+  readProjectLaneState,
+  setActiveProjectLane,
+  upsertProjectLane,
+} from '../projectLaneRegistry'
 import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
+import {
+  checkoutProjectGitBranch,
+  createProjectGitWorktree,
+  listProjectGitBranches,
+} from '../services/projectGitDesktopService'
 import {
   EXCLUDED_GENERATED_DIRECTORIES,
   shouldExcludeGeneratedDirectory,
@@ -461,6 +472,175 @@ npm-debug.log*
     async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
       clearRegisteredProjectPath(projectId)
       return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    'project:getLaneState',
+    async (_event, { projectId }: { projectId: string }) => {
+      return readProjectLaneState(projectId)
+    },
+  )
+
+  ipcMain.handle(
+    'project:ensureCollabLane',
+    async (
+      _event,
+      {
+        projectId,
+        projectPath,
+        branch,
+      }: { projectId: string; projectPath: string; branch: string }
+    ) => {
+      return ensureProjectCollabLane({ projectId, projectPath, branch })
+    },
+  )
+
+  ipcMain.handle(
+    'project:upsertLane',
+    async (
+      _event,
+      {
+        projectId,
+        branch,
+        projectPath,
+        name,
+        isCollab,
+        laneId,
+      }: {
+        projectId: string
+        branch: string
+        projectPath: string
+        name?: string
+        isCollab?: boolean
+        laneId?: string
+      }
+    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
+      try {
+        const laneState = upsertProjectLane({
+          projectId,
+          branch,
+          projectPath,
+          name,
+          isCollab,
+          laneId,
+        })
+        return { success: true, laneState }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update project lane',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'project:setActiveLane',
+    async (
+      _event,
+      { projectId, laneId }: { projectId: string; laneId: string }
+    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
+      try {
+        const laneState = setActiveProjectLane({ projectId, laneId })
+        return { success: true, laneState }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to activate project lane',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'project:listGitBranches',
+    async (_event, { projectPath }: { projectPath: string }) => {
+      return listProjectGitBranches(projectPath)
+    },
+  )
+
+  ipcMain.handle(
+    'project:checkoutGitBranch',
+    async (_event, { projectPath, branch }: { projectPath: string; branch: string }) => {
+      return checkoutProjectGitBranch({ cwd: projectPath, branch })
+    },
+  )
+
+  ipcMain.handle(
+    'project:createGitWorktree',
+    async (
+      _event,
+      options: { projectPath: string; branch: string; newBranch?: string; path?: string | null }
+    ) => {
+      return createProjectGitWorktree({
+        cwd: options.projectPath,
+        branch: options.branch,
+        newBranch: options.newBranch,
+        path: options.path,
+      })
+    },
+  )
+
+  ipcMain.handle(
+    'project:mergeLaneIntoCollab',
+    async (
+      _event,
+      {
+        collabProjectPath,
+        collabBranch,
+        sourceBranch,
+      }: {
+        collabProjectPath: string
+        collabBranch: string
+        sourceBranch: string
+      }
+    ): Promise<{ success: boolean; error?: string }> => {
+      const resolvedProjectPath = path.resolve(collabProjectPath)
+      const normalizedCollabBranch = collabBranch.trim()
+      const normalizedSourceBranch = sourceBranch.trim()
+
+      if (!normalizedCollabBranch || !normalizedSourceBranch) {
+        return {
+          success: false,
+          error: 'Both collab branch and source branch are required.',
+        }
+      }
+
+      try {
+        const checkoutResult = await runGitCommand(
+          ['checkout', normalizedCollabBranch],
+          resolvedProjectPath,
+        )
+        if (!checkoutResult.success) {
+          return {
+            success: false,
+            error: checkoutResult.error,
+          }
+        }
+
+        if (normalizedSourceBranch === normalizedCollabBranch) {
+          return { success: true }
+        }
+
+        const mergeResult = await runGitCommand(
+          ['merge', '--no-ff', '--no-edit', normalizedSourceBranch],
+          resolvedProjectPath,
+        )
+        if (!mergeResult.success) {
+          return {
+            success: false,
+            error: mergeResult.error,
+          }
+        }
+
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to merge lane into collab',
+        }
+      }
     },
   )
 

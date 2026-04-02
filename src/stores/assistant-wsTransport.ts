@@ -51,6 +51,14 @@ function asError(value: unknown, fallback: string): Error {
   return new Error(fallback);
 }
 
+function logTransport(event: string, details?: Record<string, unknown>) {
+  if (details && Object.keys(details).length > 0) {
+    console.info("[CozeaChatBridge]", event, details);
+    return;
+  }
+  console.info("[CozeaChatBridge]", event);
+}
+
 export class WsTransport {
   private ws: WebSocket | null = null;
   private nextId = 1;
@@ -74,7 +82,12 @@ export class WsTransport {
         : envUrl && envUrl.length > 0
           ? envUrl
           : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${window.location.port}`);
+    logTransport("ws-transport-created", { url: this.url });
     this.connect();
+  }
+
+  getUrl(): string {
+    return this.url;
   }
 
   async request<T = unknown>(
@@ -152,6 +165,7 @@ export class WsTransport {
   }
 
   dispose() {
+    logTransport("ws-transport-disposed", { url: this.url });
     this.disposed = true;
     this.state = "disposed";
     if (this.reconnectTimer !== null) {
@@ -176,12 +190,18 @@ export class WsTransport {
     }
 
     this.state = this.reconnectAttempt > 0 ? "reconnecting" : "connecting";
+    logTransport("ws-connect-attempt", {
+      url: this.url,
+      attempt: this.reconnectAttempt + 1,
+      state: this.state,
+    });
     const ws = new WebSocket(this.url);
 
     ws.addEventListener("open", () => {
       this.ws = ws;
       this.state = "open";
       this.reconnectAttempt = 0;
+      logTransport("ws-open", { url: this.url });
       this.flushQueue();
     });
 
@@ -206,6 +226,7 @@ export class WsTransport {
         return;
       }
       this.state = "closed";
+      logTransport("ws-close", { url: this.url });
       this.scheduleReconnect();
     });
 
@@ -294,6 +315,11 @@ export class WsTransport {
 
   private scheduleReconnect() {
     if (this.disposed || this.reconnectTimer !== null) {
+      logTransport("ws-reconnect-skipped", {
+        url: this.url,
+        disposed: this.disposed,
+        timerAlreadyScheduled: this.reconnectTimer !== null,
+      });
       return;
     }
 
@@ -302,6 +328,11 @@ export class WsTransport {
       RECONNECT_DELAYS_MS[0]!;
 
     this.reconnectAttempt += 1;
+    logTransport("ws-reconnect-scheduled", {
+      url: this.url,
+      delay,
+      nextAttempt: this.reconnectAttempt,
+    });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();

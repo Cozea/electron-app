@@ -134,6 +134,7 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
 function makeHarness(config?: {
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: ClaudeAdapterLiveOptions["nativeEventLogger"];
+  readonly getSessionInfo?: ClaudeAdapterLiveOptions["getSessionInfo"];
   readonly cwd?: string;
   readonly baseDir?: string;
 }) {
@@ -158,6 +159,11 @@ function makeHarness(config?: {
     ...(config?.nativeEventLogPath
       ? {
           nativeEventLogPath: config.nativeEventLogPath,
+        }
+      : {}),
+    ...(config?.getSessionInfo
+      ? {
+          getSessionInfo: config.getSessionInfo,
         }
       : {}),
   };
@@ -2021,6 +2027,99 @@ describe("ClaudeAdapterLive", () => {
           providerThreadId: "sdk-thread-real",
         });
       }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("emits thread metadata updates from Claude session summaries", () => {
+    const getSessionInfoCalls: Array<{
+      readonly sessionId: string;
+      readonly dir: string | undefined;
+    }> = [];
+    const harness = makeHarness({
+      cwd: "/tmp/project-claude-summary",
+      getSessionInfo: async (sessionId, options) => {
+        getSessionInfoCalls.push({
+          sessionId,
+          dir: options?.dir,
+        });
+        return {
+          sessionId,
+          summary: "Claude runtime renamed this thread",
+          customTitle: "Claude runtime renamed this thread",
+          firstPrompt: "hello",
+          gitBranch: "feature/claude-title",
+          cwd: options?.dir,
+          lastModified: 1_717_171_717_000,
+        };
+      },
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+        cwd: "/tmp/project-claude-summary",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "hello",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-summary-1",
+        uuid: "result-session-summary-1",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      assert.deepEqual(
+        runtimeEvents.map((event) => event.type),
+        [
+          "session.started",
+          "session.configured",
+          "session.state.changed",
+          "turn.started",
+          "thread.started",
+          "thread.metadata.updated",
+          "turn.completed",
+        ],
+      );
+
+      const metadataUpdated = runtimeEvents[5];
+      assert.equal(metadataUpdated?.type, "thread.metadata.updated");
+      if (metadataUpdated?.type === "thread.metadata.updated") {
+        assert.equal(metadataUpdated.payload.name, "Claude runtime renamed this thread");
+        assert.deepEqual(metadataUpdated.payload.metadata, {
+          sessionId: "sdk-session-summary-1",
+          lastModified: 1_717_171_717_000,
+          customTitle: "Claude runtime renamed this thread",
+          firstPrompt: "hello",
+          gitBranch: "feature/claude-title",
+          cwd: "/tmp/project-claude-summary",
+        });
+      }
+
+      assert.deepEqual(getSessionInfoCalls, [
+        {
+          sessionId: "sdk-session-summary-1",
+          dir: "/tmp/project-claude-summary",
+        },
+      ]);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

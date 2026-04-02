@@ -741,6 +741,7 @@ export default defineSchema({
       v.object({
         provider: v.optional(v.string()), // github, gitlab, bitbucket, local
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()), // public, private
         mergeStrategy: v.optional(v.string()), // squash, merge, rebase
@@ -1117,6 +1118,7 @@ export default defineSchema({
     syncPolicy: v.union(v.literal("auto"), v.literal("manual")),
     workingCopyMode: v.union(v.literal("managed"), v.literal("attached")),
     repoUrl: v.optional(v.string()),
+    activeCollabBranch: v.string(),
     defaultBranch: v.string(),
     ownerId: v.optional(v.string()),
     ownerLogin: v.optional(v.string()),
@@ -1387,6 +1389,7 @@ export default defineSchema({
               v.object({
                 provider: v.string(),
                 repoUrl: v.optional(v.string()),
+                activeCollabBranch: v.optional(v.string()),
                 defaultBranch: v.optional(v.string()),
                 visibility: v.string(),
                 mergeStrategy: v.string(),

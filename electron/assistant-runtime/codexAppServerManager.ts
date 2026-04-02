@@ -406,8 +406,8 @@ export function normalizeCodexModelSlug(
 export function buildCodexInitializeParams() {
   return {
     clientInfo: {
-      name: "t3code_desktop",
-      title: "T3 Code Desktop",
+      name: "cozea_desktop",
+      title: "Cozea Desktop",
       version: "0.1.0",
     },
     capabilities: {

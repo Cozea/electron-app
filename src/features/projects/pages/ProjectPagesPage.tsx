@@ -53,6 +53,11 @@ import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFa
 import { buildDirectVisualEdit } from '@/features/projects/lib/visualEditorPersistence'
 import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
 import type { Framework } from '@/utils/projectDetector'
+import {
+  PREVIEW_BROWSER_PREFERENCE_KEY,
+  readStoredExternalBrowserPreference,
+  resolvePreferredExternalBrowserId,
+} from '@/features/projects/lib/externalBrowserPreference'
 
 function normalizePreviewPath(path?: string | null): string {
     if (!path) return '/'
@@ -74,8 +79,6 @@ interface VisualSaveFeedback {
 }
 
 const BRIDGE_READY_TIMEOUT_MS = 2500
-const PREVIEW_BROWSER_PREFERENCE_KEY = 'cozea.preview.browser'
-
 function resolvePreviewEmbedModeForRun(
     serverStatus: ServerStatus,
     runId: string | null,
@@ -149,25 +152,7 @@ export function ProjectPagesPage() {
     ])
     const [availableEditors, setAvailableEditors] = useState<AvailableExternalEditor[]>([])
     const [defaultBrowserId, setDefaultBrowserId] = useState<ExternalBrowserId>('system')
-    const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => {
-        try {
-            const stored = window.localStorage.getItem(PREVIEW_BROWSER_PREFERENCE_KEY)
-            switch (stored) {
-                case 'system':
-                case 'safari':
-                case 'chrome':
-                case 'arc':
-                case 'firefox':
-                case 'edge':
-                case 'brave':
-                    return stored
-                default:
-                    return 'system'
-            }
-        } catch {
-            return 'system'
-        }
-    })
+    const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
     const [selectedEditorId, setSelectedEditorId] = useState<ExternalEditorId>(() => {
         return readStoredExternalEditorPreference() ?? 'vscode'
     })
@@ -358,8 +343,9 @@ export function ProjectPagesPage() {
     }, [])
 
     useEffect(() => {
-        if (availableBrowsers.some((browser) => browser.id === selectedBrowserId)) return
-        setSelectedBrowserId('system')
+        const resolvedBrowserId = resolvePreferredExternalBrowserId(availableBrowsers, selectedBrowserId)
+        if (resolvedBrowserId === selectedBrowserId) return
+        setSelectedBrowserId(resolvedBrowserId)
     }, [availableBrowsers, selectedBrowserId])
 
     useEffect(() => {

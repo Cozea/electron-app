@@ -22,6 +22,7 @@ import { summarizeTurnDiffStats } from "./turnDiffTree";
 import ChatMarkdown from "./ChatMarkdown";
 import {
   BotIcon,
+  ChevronsUpDown,
   CheckIcon,
   CircleAlertIcon,
   EyeIcon,
@@ -37,7 +38,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { clamp } from "effect/Number";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
-import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
+import { buildExpandedImagePreview } from "./ExpandedImagePreview";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
@@ -49,8 +51,6 @@ import {
   type ParsedTerminalContextEntry,
 } from "@/stores/terminalContext";
 import { cn } from "@/lib/utils";
-import { type TimestampFormat } from "@cozea/assistant-contracts/settings";
-import { formatTimestamp } from "./timestampFormat";
 import {
   buildInlineTerminalContextText,
   formatInlineTerminalContextLabel,
@@ -80,7 +80,6 @@ interface MessagesTimelineProps {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   markdownCwd: string | undefined;
   resolvedTheme: "light" | "dark";
-  timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
 }
 
@@ -104,7 +103,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onImageExpand,
   markdownCwd,
   resolvedTheme,
-  timestampFormat,
   workspaceRoot,
 }: MessagesTimelineProps) {
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
@@ -362,52 +360,55 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
           return (
             <div className="flex justify-end">
-              <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-                {userImages.length > 0 && (
-                  <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-                    {userImages.map(
-                      (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                        <div
-                          key={image.id}
-                          className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                        >
-                          {image.previewUrl ? (
-                            <button
-                              type="button"
-                              className="h-full w-full cursor-zoom-in"
-                              aria-label={`Preview ${image.name}`}
-                              onClick={() => {
-                                const preview = buildExpandedImagePreview(userImages, image.id);
-                                if (!preview) return;
-                                onImageExpand(preview);
-                              }}
-                            >
-                              <img
-                                src={image.previewUrl}
-                                alt={image.name}
-                                className="h-full max-h-[220px] w-full object-cover"
-                                onLoad={onTimelineImageLoad}
-                                onError={onTimelineImageLoad}
-                              />
-                            </button>
-                          ) : (
-                            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                              {image.name}
-                            </div>
-                          )}
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
-                {(displayedUserMessage.visibleText.trim().length > 0 ||
-                  terminalContexts.length > 0) && (
-                  <UserMessageBody
-                    text={displayedUserMessage.visibleText}
-                    terminalContexts={terminalContexts}
-                  />
-                )}
-                <div className="mt-1.5 flex items-center justify-end gap-2">
+              <div className="group flex max-w-[95%] flex-col items-end gap-1">
+                <div className="relative w-fit rounded-3xl bg-secondary px-3.5 py-2.5">
+                  {userImages.length > 0 && (
+                    <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+                      {userImages.map(
+                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                          <div
+                            key={image.id}
+                            className="overflow-hidden rounded-2xl bg-background/70"
+                          >
+                            {image.previewUrl ? (
+                              <button
+                                type="button"
+                                className="h-full w-full cursor-zoom-in"
+                                aria-label={`Preview ${image.name}`}
+                                onClick={() => {
+                                  const preview = buildExpandedImagePreview(userImages, image.id);
+                                  if (!preview) return;
+                                  onImageExpand(preview);
+                                }}
+                              >
+                                <img
+                                  src={image.previewUrl}
+                                  alt={image.name}
+                                  className="h-full max-h-[220px] w-full object-cover"
+                                  onLoad={onTimelineImageLoad}
+                                  onError={onTimelineImageLoad}
+                                />
+                              </button>
+                            ) : (
+                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                                {image.name}
+                              </div>
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
+                  {(displayedUserMessage.visibleText.trim().length > 0 ||
+                    terminalContexts.length > 0) && (
+                    <UserMessageBody
+                      text={displayedUserMessage.visibleText}
+                      terminalContexts={terminalContexts}
+                    />
+                  )}
+                </div>
+
+                <div className="mt-0.5 flex items-center justify-end gap-2 px-1">
                   <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
                     {displayedUserMessage.copyText && (
                       <MessageCopyButton text={displayedUserMessage.copyText} />
@@ -415,19 +416,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     {canRevertAgentWork && (
                       <Button
                         type="button"
-                        size="xs"
-                        variant="outline"
+                        size="icon-sm"
+                        variant="ghost"
+                        className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
                         disabled={isRevertingCheckpoint || isWorking}
                         onClick={() => onRevertUserMessage(row.message.id)}
                         title="Revert to this message"
+                        aria-label="Revert to this message"
                       >
                         <Undo2Icon className="size-3" />
                       </Button>
                     )}
                   </div>
-                  <p className="text-right text-[10px] text-muted-foreground/30">
-                    {formatTimestamp(row.message.createdAt, timestampFormat)}
-                  </p>
                 </div>
               </div>
             </div>
@@ -465,7 +465,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   const allDirectoriesExpanded =
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
-                    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
+                    <div className="mt-2 rounded-lg bg-secondary p-2.5">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
                         <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
                           <span>Changed files ({changedFileCountLabel})</span>
@@ -482,21 +482,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         <div className="flex items-center gap-1.5">
                           <Button
                             type="button"
-                            size="xs"
-                            variant="outline"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
                             onClick={() => onToggleAllDirectories(turnSummary.turnId)}
+                            title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
+                            aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           >
-                            {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
+                            <ChevronsUpDown className="size-3.5" />
                           </Button>
                           <Button
                             type="button"
-                            size="xs"
-                            variant="outline"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
                             onClick={() =>
                               onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
                             }
+                            title="View diff"
+                            aria-label="View diff"
                           >
-                            View diff
+                            <EyeIcon className="size-3.5" />
                           </Button>
                         </div>
                       </div>
@@ -511,15 +517,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                   );
                 })()}
-                <p className="mt-1.5 text-[10px] text-muted-foreground/30">
-                  {formatMessageMeta(
-                    row.message.createdAt,
-                    row.message.streaming
-                      ? formatElapsed(row.durationStart, nowIso)
-                      : formatElapsed(row.durationStart, row.message.completedAt),
-                    timestampFormat,
-                  )}
-                </p>
               </div>
             </>
           );
@@ -653,15 +650,6 @@ function formatWorkingTimer(startIso: string, endIso: string): string | null {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-function formatMessageMeta(
-  createdAt: string,
-  duration: string | null,
-  timestampFormat: TimestampFormat,
-): string {
-  if (!duration) return formatTimestamp(createdAt, timestampFormat);
-  return `${formatTimestamp(createdAt, timestampFormat)} • ${duration}`;
-}
-
 const UserMessageTerminalContextInlineLabel = memo(
   function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {
     const tooltipText =
@@ -721,7 +709,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground">
+          <div className="wrap-break-word whitespace-pre-wrap text-sm leading-6 text-foreground">
             {inlineNodes}
           </div>
         );
@@ -749,7 +737,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground">
+      <div className="wrap-break-word whitespace-pre-wrap text-sm leading-6 text-foreground">
         {inlineNodes}
       </div>
     );
@@ -760,9 +748,9 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
+    <div className="wrap-break-word whitespace-pre-wrap text-sm leading-6 text-foreground">
       {props.text}
-    </pre>
+    </div>
   );
 });
 

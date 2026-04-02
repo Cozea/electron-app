@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { deriveDisplayedUserMessageState } from "../lib/terminalContext";
-import { buildInlineTerminalContextText } from "./chat/userMessageTerminalContexts";
+import { buildInlineTerminalContextText } from "./userMessageTerminalContexts";
 
 const ASSISTANT_CHARS_PER_LINE_FALLBACK = 72;
 const USER_CHARS_PER_LINE_FALLBACK = 56;

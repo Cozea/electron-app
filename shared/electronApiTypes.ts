@@ -276,6 +276,53 @@ export interface ImportSourcePreflightResult {
   error?: string
 }
 
+export interface ProjectLaneDescriptor {
+  id: string
+  name: string
+  branch: string
+  projectPath: string
+  isCollab: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectLaneState {
+  activeLaneId: string | null
+  collabLaneId: string
+  lanes: ProjectLaneDescriptor[]
+}
+
+export interface ProjectGitBranchDescriptor {
+  name: string
+  isRemote?: boolean
+  remoteName?: string
+  current: boolean
+  isDefault: boolean
+  worktreePath: string | null
+}
+
+export interface ProjectGitBranchListResult {
+  isRepo: boolean
+  hasOriginRemote: boolean
+  branches: ProjectGitBranchDescriptor[]
+  error?: string
+}
+
+export interface ProjectGitCheckoutResult {
+  success: boolean
+  branch?: string
+  error?: string
+}
+
+export interface ProjectGitCreateWorktreeResult {
+  success: boolean
+  worktree?: {
+    path: string
+    branch: string
+  }
+  error?: string
+}
+
 export interface WriteFileResult {
   success: boolean
   fullPath?: string
@@ -1019,19 +1066,10 @@ export interface WorkbenchBrowserViewState {
   isLoading: boolean
   canGoBack: boolean
   canGoForward: boolean
+  loadError?: string | null
 }
 
 export interface ElectronAPI {
-  agentProvider: {
-    start: (options: any) => Promise<{ ok: boolean; threadId: string }>;
-    stop: (threadId: string) => Promise<{ ok: boolean }>;
-    onEventStream: (callback: (data: any) => void) => () => void;
-  };
-  agentChat: {
-    listThreads: (projectId: string) => Promise<any[]>;
-    getThread: (threadId: string) => Promise<any>;
-    createThread: (data: any) => Promise<any>;
-  };
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
   auth: {
@@ -1299,6 +1337,30 @@ export interface ElectronAPI {
     getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
     rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
     clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
+    getLaneState: (options: { projectId: string }) => Promise<ProjectLaneState | null>
+    ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) => Promise<ProjectLaneState>
+    upsertLane: (options: {
+      projectId: string
+      branch: string
+      projectPath: string
+      name?: string
+      isCollab?: boolean
+      laneId?: string
+    }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
+    setActiveLane: (options: { projectId: string; laneId: string }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
+    listGitBranches: (options: { projectPath: string }) => Promise<ProjectGitBranchListResult>
+    checkoutGitBranch: (options: { projectPath: string; branch: string }) => Promise<ProjectGitCheckoutResult>
+    createGitWorktree: (options: {
+      projectPath: string
+      branch: string
+      newBranch?: string
+      path?: string | null
+    }) => Promise<ProjectGitCreateWorktreeResult>
+    mergeLaneIntoCollab: (options: {
+      collabProjectPath: string
+      collabBranch: string
+      sourceBranch: string
+    }) => Promise<{ success: boolean; error?: string }>
     openFolder: (options: { projectPath: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>

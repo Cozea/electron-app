@@ -9,6 +9,7 @@
  */
 import {
   type CanUseTool,
+  getSessionInfo,
   query,
   type Options as ClaudeQueryOptions,
   type PermissionMode,
@@ -162,6 +163,7 @@ interface ClaudeSessionContext {
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
+  lastKnownThreadTitle: string | undefined;
   stopped: boolean;
 }
 
@@ -178,6 +180,7 @@ export interface ClaudeAdapterLiveOptions {
     readonly prompt: AsyncIterable<SDKUserMessage>;
     readonly options: ClaudeQueryOptions;
   }) => ClaudeQueryRuntime;
+  readonly getSessionInfo?: typeof getSessionInfo;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
 }
@@ -929,6 +932,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         readonly prompt: AsyncIterable<SDKUserMessage>;
         readonly options: ClaudeQueryOptions;
       }) => query({ prompt: input.prompt, options: input.options }) as ClaudeQueryRuntime);
+    const readClaudeSessionInfo = options?.getSessionInfo ?? getSessionInfo;
 
     const sessions = new Map<ThreadId, ClaudeSessionContext>();
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
@@ -1257,6 +1261,78 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             },
           });
         }
+      });
+
+    const syncThreadMetadata = (
+      context: ClaudeSessionContext,
+      message: SDKMessage,
+      options?: {
+        readonly force?: boolean;
+      },
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        if (typeof message.session_id !== "string" || message.session_id.length === 0) {
+          return;
+        }
+        if (!options?.force && context.lastKnownThreadTitle !== undefined) {
+          return;
+        }
+
+        const sessionInfo = yield* Effect.tryPromise({
+          try: () =>
+            readClaudeSessionInfo(
+              message.session_id,
+              context.session.cwd ? { dir: context.session.cwd } : undefined,
+            ),
+          catch: () => undefined,
+        });
+
+        const summary = trimOrNull(sessionInfo?.summary);
+        if (!summary || summary === context.lastKnownThreadTitle) {
+          return;
+        }
+
+        context.lastKnownThreadTitle = summary;
+
+        const metadata = {
+          sessionId: sessionInfo?.sessionId ?? message.session_id,
+          ...(typeof sessionInfo?.lastModified === "number"
+            ? { lastModified: sessionInfo.lastModified }
+            : {}),
+          ...(typeof sessionInfo?.fileSize === "number" ? { fileSize: sessionInfo.fileSize } : {}),
+          ...(trimOrNull(sessionInfo?.customTitle)
+            ? { customTitle: trimOrNull(sessionInfo?.customTitle) }
+            : {}),
+          ...(trimOrNull(sessionInfo?.firstPrompt)
+            ? { firstPrompt: trimOrNull(sessionInfo?.firstPrompt) }
+            : {}),
+          ...(trimOrNull(sessionInfo?.gitBranch)
+            ? { gitBranch: trimOrNull(sessionInfo?.gitBranch) }
+            : {}),
+          ...(trimOrNull(sessionInfo?.cwd) ? { cwd: trimOrNull(sessionInfo?.cwd) } : {}),
+        };
+
+        const stamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "thread.metadata.updated",
+          eventId: stamp.eventId,
+          provider: PROVIDER,
+          createdAt: stamp.createdAt,
+          threadId: context.session.threadId,
+          payload: {
+            name: summary,
+            metadata,
+          },
+          providerRefs: {},
+          raw: {
+            source: "claude.sdk.sessionInfo",
+            method: "claude/thread/metadataUpdated",
+            payload: sessionInfo ?? {
+              sessionId: message.session_id,
+              summary,
+            },
+          },
+        });
       });
 
     const emitRuntimeError = (
@@ -2238,6 +2314,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       Effect.gen(function* () {
         yield* logNativeSdkMessage(context, message);
         yield* ensureThreadId(context, message);
+        if (message.type === "result") {
+          yield* syncThreadMetadata(context, message, { force: true });
+        }
 
         switch (message.type) {
           case "stream_event":
@@ -2820,6 +2899,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           lastKnownTokenUsage: undefined,
           lastAssistantUuid: resumeState?.resumeSessionAt,
           lastThreadStartedId: undefined,
+          lastKnownThreadTitle: undefined,
           stopped: false,
         };
         yield* Ref.set(contextRef, context);

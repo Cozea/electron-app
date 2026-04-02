@@ -15,11 +15,35 @@ import {
 import { showContextMenuFallback } from "./contextMenuFallback";
 import { WsTransport } from "@/stores/assistant-wsTransport";
 
-let instance: { api: NativeApi; transport: WsTransport } | null = null;
+type WsNativeApiSingleton = { api: NativeApi; transport: WsTransport; url: string | null };
+
+function readSingleton(): WsNativeApiSingleton | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return (window as Window & { __cozeaWsNativeApiSingleton?: WsNativeApiSingleton | null })
+    .__cozeaWsNativeApiSingleton ?? null;
+}
+
+function writeSingleton(value: WsNativeApiSingleton | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  (window as Window & { __cozeaWsNativeApiSingleton?: WsNativeApiSingleton | null })
+    .__cozeaWsNativeApiSingleton = value;
+}
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
 const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
 const providersUpdatedListeners = new Set<(payload: ServerProviderUpdatedPayload) => void>();
 const gitActionProgressListeners = new Set<(payload: GitActionProgressEvent) => void>();
+
+function logChatBridge(event: string, details?: Record<string, unknown>): void {
+  if (details && Object.keys(details).length > 0) {
+    console.info("[CozeaChatBridge]", event, details);
+    return;
+  }
+  console.info("[CozeaChatBridge]", event);
+}
 
 /**
  * Subscribe to the server welcome message. If a welcome was already received
@@ -29,7 +53,7 @@ const gitActionProgressListeners = new Set<(payload: GitActionProgressEvent) => 
 export function onServerWelcome(listener: (payload: WsWelcomePayload) => void): () => void {
   welcomeListeners.add(listener);
 
-  const latestWelcome = instance?.transport.getLatestPush(WS_CHANNELS.serverWelcome)?.data ?? null;
+  const latestWelcome = readSingleton()?.transport.getLatestPush(WS_CHANNELS.serverWelcome)?.data ?? null;
   if (latestWelcome) {
     try {
       listener(latestWelcome);
@@ -53,7 +77,7 @@ export function onServerConfigUpdated(
   serverConfigUpdatedListeners.add(listener);
 
   const latestConfig =
-    instance?.transport.getLatestPush(WS_CHANNELS.serverConfigUpdated)?.data ?? null;
+    readSingleton()?.transport.getLatestPush(WS_CHANNELS.serverConfigUpdated)?.data ?? null;
   if (latestConfig) {
     try {
       listener(latestConfig);
@@ -73,7 +97,7 @@ export function onServerProvidersUpdated(
   providersUpdatedListeners.add(listener);
 
   const latestProviders =
-    instance?.transport.getLatestPush(WS_CHANNELS.serverProvidersUpdated)?.data ?? null;
+    readSingleton()?.transport.getLatestPush(WS_CHANNELS.serverProvidersUpdated)?.data ?? null;
   if (latestProviders) {
     try {
       listener(latestProviders);
@@ -87,10 +111,21 @@ export function onServerProvidersUpdated(
   };
 }
 
-export function createWsNativeApi(): NativeApi {
-  if (instance) return instance.api;
+export function createWsNativeApi(url?: string): NativeApi {
+  const existing = readSingleton();
+  if (existing) {
+    logChatBridge("renderer-bridge-reused", {
+      requestedUrl: url ?? null,
+      activeUrl: existing.url,
+    });
+    return existing.api;
+  }
 
-  const transport = new WsTransport(`ws://127.0.0.1:3773`);
+  const transport = new WsTransport(url);
+  const resolvedUrl = transport.getUrl();
+  logChatBridge("renderer-bridge-created", {
+    url: resolvedUrl,
+  });
 
   transport.subscribe(WS_CHANNELS.serverWelcome, (message) => {
     const payload = message.data;
@@ -232,6 +267,6 @@ export function createWsNativeApi(): NativeApi {
     },
   };
 
-  instance = { api, transport };
+  writeSingleton({ api, transport, url: resolvedUrl });
   return api;
 }

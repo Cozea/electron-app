@@ -1,5 +1,4 @@
 import execa, { type ExecaChildProcess } from 'execa'
-import getPort from 'get-port'
 import net from 'node:net'
 
 export interface DevServerStartOptions {
@@ -34,7 +33,14 @@ function extractCandidatePorts(output: string): number[] {
 
 export class DevServerService {
   private static instance: DevServerService
-  private processes = new Map<string, { process: ExecaChildProcess; runId: string }>()
+  private processes = new Map<
+    string,
+    {
+      process: ExecaChildProcess
+      runId: string
+      activePort: number | null
+    }
+  >()
 
   public static getInstance(): DevServerService {
     if (!DevServerService.instance) {
@@ -50,13 +56,26 @@ export class DevServerService {
     const { projectPath, command, preferredPort, runId, onOutput, onExit } = options
 
     // 1. Ensure any existing server for this project is stopped
-    await this.stop(projectPath)
+    const stopResult = await this.stop(projectPath)
+    if (!stopResult.success) {
+      return {
+        success: false,
+        runId,
+        error: stopResult.error || 'Failed to stop the previous dev server process.',
+      }
+    }
 
     try {
-      // 2. Guarantee a free port
-      const actualPort = await getPort({ port: preferredPort })
+      // 2. Explicitly scan for a free port starting from the preferred one.
+      const actualPort = await this.findAvailablePort(preferredPort)
       const candidatePorts = new Set<number>([actualPort])
       const startupTimeoutMs = /\binstall\b/i.test(command) ? 120000 : 30000
+      if (actualPort !== preferredPort) {
+        onOutput(
+          `[DevServer] Port ${preferredPort} is already in use. Using ${actualPort} instead.\n`,
+          'stdout',
+        )
+      }
       console.log(`[DevServerService] Starting ${command} in ${projectPath} on port ${actualPort}`)
 
       // 3. Spawn robustly with cross-platform support
@@ -72,10 +91,15 @@ export class DevServerService {
           BROWSER: 'none',
         },
         shell: true, // Needed to resolve `npm`, `yarn`, etc. in PATH
+        detached: process.platform !== 'win32',
         all: true,   // Combine stdout and stderr if needed, though we listen separately
       })
 
-      this.processes.set(projectPath, { process: subprocess, runId })
+      this.processes.set(projectPath, {
+        process: subprocess,
+        runId,
+        activePort: actualPort,
+      })
 
       // 4. Stream logs reliably
       if (subprocess.stdout) {
@@ -125,6 +149,11 @@ export class DevServerService {
         }
       }
 
+      const active = this.processes.get(projectPath)
+      if (active?.runId === runId) {
+        active.activePort = reachablePort
+      }
+
       console.log(`[DevServerService] Ready on port ${reachablePort}`)
       return { success: true, port: reachablePort, runId }
 
@@ -149,16 +178,30 @@ export class DevServerService {
 
     try {
       console.log(`[DevServerService] Stopping server for ${projectPath}`)
-      
-      // execa's cancel/kill handles child process trees nicely
-      entry.process.kill('SIGTERM')
-      
-      // Wait a moment to see if it exits cleanly
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      if (!entry.process.killed) {
+
+      this.terminateProcessTree(entry.process, 'SIGTERM')
+      let exited = await this.waitForProcessExit(entry.process, 1500)
+
+      if (!exited) {
         console.log(`[DevServerService] Force killing server for ${projectPath}`)
-        entry.process.kill('SIGKILL')
+        this.terminateProcessTree(entry.process, 'SIGKILL')
+        exited = await this.waitForProcessExit(entry.process, 1500)
+      }
+
+      if (!exited) {
+        return {
+          success: false,
+          error: 'Dev server process did not exit cleanly.',
+        }
+      }
+
+      if (typeof entry.activePort === 'number') {
+        const released = await this.waitForPortState(entry.activePort, false, 3000)
+        if (!released) {
+          console.warn(
+            `[DevServerService] Port ${entry.activePort} still appears in use after stopping ${projectPath}`,
+          )
+        }
       }
 
       this.processes.delete(projectPath)
@@ -204,6 +247,70 @@ export class DevServerService {
     }
 
     return null
+  }
+
+  private async findAvailablePort(preferredPort: number, maxAttempts = 20): Promise<number> {
+    let candidatePort = preferredPort
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const reachable = await this.checkPort(candidatePort)
+      if (!reachable) {
+        return candidatePort
+      }
+      candidatePort += 1
+    }
+
+    throw new Error(`No available port found starting from ${preferredPort}`)
+  }
+
+  private terminateProcessTree(child: ExecaChildProcess, signal: NodeJS.Signals): void {
+    const childPid = child.pid
+    if (typeof childPid === 'number' && process.platform !== 'win32') {
+      try {
+        process.kill(-childPid, signal)
+        return
+      } catch {
+        // Fall through to direct child kill when the process group is already gone.
+      }
+    }
+
+    try {
+      child.kill(signal)
+    } catch {
+      // Ignore shutdown races.
+    }
+  }
+
+  private async waitForProcessExit(child: ExecaChildProcess, timeoutMs: number): Promise<boolean> {
+    const start = Date.now()
+
+    while (Date.now() - start <= timeoutMs) {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return true
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    return child.exitCode !== null || child.signalCode !== null
+  }
+
+  private async waitForPortState(
+    port: number,
+    shouldBeReachable: boolean,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    const start = Date.now()
+
+    while (Date.now() - start <= timeoutMs) {
+      const reachable = await this.checkPort(port)
+      if (reachable === shouldBeReachable) {
+        return true
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+
+    const reachable = await this.checkPort(port)
+    return reachable === shouldBeReachable
   }
 
   private checkPort(port: number): Promise<boolean> {

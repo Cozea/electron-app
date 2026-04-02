@@ -5,6 +5,7 @@ import { RouterProvider } from "@/lib/router"
 import './lib/immer'
 import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
+import { ToastProvider } from './features/projects/components/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
@@ -27,7 +28,9 @@ applyThemeClass(getStoredThemePreference())
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConvexProvider>
-      <RouterProvider router={appRouter} />
+      <ToastProvider>
+        <RouterProvider router={appRouter} />
+      </ToastProvider>
     </ConvexProvider>
   </React.StrictMode>,
 )

@@ -384,7 +384,7 @@ export function ProjectLayout({
     const handlePresenceUserClick = useCallback(
         (presenceUser: PresenceUser) => {
             if (!projectBasePath) return
-            navigate(`${projectBasePath}/workbench?openTile=changes&userId=${encodeURIComponent(presenceUser.userId)}`)
+            navigate(`${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`)
         },
         [navigate, projectBasePath]
     )

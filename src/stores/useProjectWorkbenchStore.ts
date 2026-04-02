@@ -1,3 +1,8 @@
+import type {
+  ProviderInteractionMode,
+  ProviderKind,
+  RuntimeMode,
+} from "@cozea/assistant-contracts"
 import type { SerializedDockview } from "dockview"
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
@@ -6,9 +11,13 @@ export type WorkbenchTileType =
   | "browser"
   | "terminal"
   | "devServer"
+  | "selection"
   | "tasks"
   | "changes"
   | "assistantChat"
+
+export type WorkbenchSelectionTileMode = "emptyState" | "edgePreview"
+export type WorkbenchSelectionTileEdge = "left" | "right" | "top" | "bottom"
 
 interface WorkbenchBaseTile {
   id: string
@@ -32,6 +41,12 @@ export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   linkedBrowserTileId?: string | null
 }
 
+export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
+  type: "selection"
+  mode: WorkbenchSelectionTileMode
+  edge?: WorkbenchSelectionTileEdge | null
+}
+
 export interface WorkbenchTasksTile extends WorkbenchBaseTile {
   type: "tasks"
 }
@@ -42,12 +57,21 @@ export interface WorkbenchChangesTile extends WorkbenchBaseTile {
 
 export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   type: "assistantChat"
+  assistantProjectId?: string | null
+  threadId?: string | null
+  provider?: ProviderKind
+  model?: string | null
+  runtimeMode?: RuntimeMode
+  interactionMode?: ProviderInteractionMode
+  agentLabel?: string | null
+  laneBinding?: "activeProjectPath" | "threadWorktree"
 }
 
 export type WorkbenchTile =
   | WorkbenchBrowserTile
   | WorkbenchTerminalTile
   | WorkbenchDevServerTile
+  | WorkbenchSelectionTile
   | WorkbenchTasksTile
   | WorkbenchChangesTile
   | WorkbenchAssistantChatTile
@@ -66,6 +90,16 @@ interface CreateTileOptions {
   url?: string
   linkedBrowserTileId?: string | null
   linkedDevServerTileId?: string | null
+  selectionMode?: WorkbenchSelectionTileMode
+  selectionEdge?: WorkbenchSelectionTileEdge | null
+  assistantProjectId?: string | null
+  threadId?: string | null
+  provider?: ProviderKind
+  model?: string | null
+  runtimeMode?: RuntimeMode
+  interactionMode?: ProviderInteractionMode
+  agentLabel?: string | null
+  laneBinding?: "activeProjectPath" | "threadWorktree"
 }
 
 interface ProjectWorkbenchState {
@@ -92,6 +126,24 @@ interface ProjectWorkbenchState {
       tileId: string,
       patch: Partial<Pick<WorkbenchDevServerTile, "title" | "linkedBrowserTileId">>,
     ) => void
+    updateAssistantTile: (
+      projectId: string,
+      tileId: string,
+      patch: Partial<
+        Pick<
+          WorkbenchAssistantChatTile,
+          | "title"
+          | "assistantProjectId"
+          | "threadId"
+          | "provider"
+          | "model"
+          | "runtimeMode"
+          | "interactionMode"
+          | "agentLabel"
+          | "laneBinding"
+        >
+      >,
+    ) => void
     updateTileTitle: (projectId: string, tileId: string, title: string) => void
   }
 }
@@ -100,12 +152,13 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   browser: "Browser",
   terminal: "Terminal",
   devServer: "Dev Server",
+  selection: "Add Tile",
   tasks: "Tasks",
   changes: "Changes",
-  assistantChat: "AI Chat",
+  assistantChat: "AI Agent",
 }
 
-const SINGLETON_TILE_TYPES = new Set<WorkbenchTileType>(["devServer", "assistantChat"])
+const SINGLETON_TILE_TYPES = new Set<WorkbenchTileType>(["devServer"])
 
 function createTileId(type: WorkbenchTileType): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -148,55 +201,67 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         createdAt,
         linkedBrowserTileId: options.linkedBrowserTileId ?? null,
       }
+    case "selection":
+      return {
+        id,
+        type,
+        title,
+        createdAt,
+        mode: options.selectionMode ?? "emptyState",
+        edge: options.selectionEdge ?? null,
+      }
     case "tasks":
     case "changes":
-    case "assistantChat":
       return { id, type, title, createdAt }
+    case "assistantChat":
+      return {
+        id,
+        type,
+        title,
+        createdAt,
+        assistantProjectId: options.assistantProjectId ?? null,
+        threadId: options.threadId ?? null,
+        provider: options.provider,
+        model: options.model ?? null,
+        runtimeMode: options.runtimeMode ?? "full-access",
+        interactionMode: options.interactionMode ?? "default",
+        agentLabel: options.agentLabel ?? null,
+        laneBinding: options.laneBinding ?? "activeProjectPath",
+      }
     default:
       return { id, type, title, createdAt }
   }
 }
 
+function buildAssistantTileTitle(
+  project: WorkbenchProjectState,
+  requestedTitle?: string,
+): string {
+  const normalized = requestedTitle?.trim()
+  if (normalized) {
+    return normalized
+  }
+
+  const assistantCount = project.order.reduce((count, tileId) => {
+    return project.tiles[tileId]?.type === "assistantChat" ? count + 1 : count
+  }, 0)
+
+  return assistantCount <= 0 ? TILE_TITLES.assistantChat : `${TILE_TITLES.assistantChat} ${assistantCount + 1}`
+}
+
 function createDefaultProjectState(projectId: string): WorkbenchProjectState {
-  const createdAt = Date.now()
-  const browserId = createTileId("browser")
-  const terminalId = createTileId("terminal")
-  const devServerId = createTileId("devServer")
-
-  const browserTile: WorkbenchBrowserTile = {
-    id: browserId,
-    type: "browser",
-    title: "Browser",
-    createdAt,
-    url: "",
-    linkedDevServerTileId: devServerId,
-  }
-
-  const terminalTile: WorkbenchTerminalTile = {
-    id: terminalId,
-    type: "terminal",
-    title: "Terminal",
-    createdAt,
-  }
-
-  const devServerTile: WorkbenchDevServerTile = {
-    id: devServerId,
-    type: "devServer",
-    title: "Dev Server",
-    createdAt,
-    linkedBrowserTileId: browserId,
-  }
+  const selectionTile = createTile("selection", {
+    selectionMode: "emptyState",
+  }) as WorkbenchSelectionTile
 
   return {
     projectId,
-    activeTileId: browserId,
+    activeTileId: selectionTile.id,
     layout: null,
     layoutResetKey: nextLayoutResetKey(),
-    order: [browserId, terminalId, devServerId],
+    order: [selectionTile.id],
     tiles: {
-      [browserId]: browserTile,
-      [terminalId]: terminalTile,
-      [devServerId]: devServerTile,
+      [selectionTile.id]: selectionTile,
     },
   }
 }
@@ -204,16 +269,70 @@ function createDefaultProjectState(projectId: string): WorkbenchProjectState {
 function sanitizeProjectState(project: WorkbenchProjectState): WorkbenchProjectState {
   const sanitizedTiles: Record<string, WorkbenchTile> = {}
   let removedObsoleteTile = false
+  let removedSelectionTiles = false
 
   for (const [tileId, tile] of Object.entries(project.tiles ?? {})) {
     if (!tile || tile.type === "tasks" || tile.type === "changes") {
       removedObsoleteTile = true
       continue
     }
+
+    if (tile.type === "assistantChat") {
+      sanitizedTiles[tileId] = {
+        ...tile,
+        assistantProjectId: tile.assistantProjectId ?? null,
+        threadId: tile.threadId ?? null,
+        model: tile.model ?? null,
+        runtimeMode: tile.runtimeMode ?? "full-access",
+        interactionMode: tile.interactionMode ?? "default",
+        agentLabel: tile.agentLabel ?? null,
+        laneBinding: tile.laneBinding ?? "activeProjectPath",
+      }
+      continue
+    }
+
     sanitizedTiles[tileId] = tile
   }
 
-  const sanitizedOrder = (project.order ?? []).filter((tileId) => Boolean(sanitizedTiles[tileId]))
+  let sanitizedOrder = (project.order ?? []).filter((tileId) => Boolean(sanitizedTiles[tileId]))
+
+  const nonSelectionTileIds = sanitizedOrder.filter((tileId) => sanitizedTiles[tileId]?.type !== "selection")
+  const selectionTileIds = sanitizedOrder.filter((tileId) => sanitizedTiles[tileId]?.type === "selection")
+
+  if (nonSelectionTileIds.length > 0 && selectionTileIds.length > 0) {
+    removedSelectionTiles = true
+    for (const tileId of selectionTileIds) {
+      delete sanitizedTiles[tileId]
+    }
+    sanitizedOrder = nonSelectionTileIds
+  } else if (nonSelectionTileIds.length === 0) {
+    const primarySelectionTileId = selectionTileIds[0]
+    if (!primarySelectionTileId) {
+      return createDefaultProjectState(project.projectId)
+    }
+
+    for (const tileId of selectionTileIds.slice(1)) {
+      removedSelectionTiles = true
+      delete sanitizedTiles[tileId]
+    }
+
+    const primaryTile = sanitizedTiles[primarySelectionTileId]
+    if (primaryTile?.type === "selection" && primaryTile.mode !== "emptyState") {
+      sanitizedTiles[primarySelectionTileId] = {
+        ...primaryTile,
+        mode: "emptyState",
+        edge: null,
+      }
+      removedSelectionTiles = true
+    }
+
+    sanitizedOrder = [primarySelectionTileId]
+  }
+
+  if (sanitizedOrder.length === 0) {
+    return createDefaultProjectState(project.projectId)
+  }
+
   const sanitizedActiveTileId =
     project.activeTileId && sanitizedTiles[project.activeTileId]
       ? project.activeTileId
@@ -241,8 +360,13 @@ function sanitizeProjectState(project: WorkbenchProjectState): WorkbenchProjectS
   return {
     projectId: project.projectId,
     activeTileId: sanitizedActiveTileId,
-    layout: removedObsoleteTile ? null : isSerializedDockview(project.layout) ? project.layout : null,
-    layoutResetKey: removedObsoleteTile
+    layout:
+      removedObsoleteTile || removedSelectionTiles
+        ? null
+        : isSerializedDockview(project.layout)
+          ? project.layout
+          : null,
+    layoutResetKey: removedObsoleteTile || removedSelectionTiles
       ? nextLayoutResetKey()
       : typeof project.layoutResetKey === "number"
         ? project.layoutResetKey
@@ -299,10 +423,18 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           }))
         },
         addTile: (projectId, type, options = {}) => {
-          const tile = createTile(type, options)
+          let createdTileId = ""
 
           set((state) => {
             const project = withProject(state, projectId)
+            const tile = createTile(type, {
+              ...options,
+              title:
+                type === "assistantChat"
+                  ? buildAssistantTileTitle(project, options.title)
+                  : options.title,
+            })
+            createdTileId = tile.id
             return {
               projects: {
                 ...state.projects,
@@ -319,7 +451,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             }
           })
 
-          return tile.id
+          return createdTileId
         },
         openSingletonTile: (projectId, type, options = {}) => {
           const project = withProject(get(), projectId)
@@ -336,6 +468,16 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             if (!project || !project.tiles[tileId]) return state
             const { [tileId]: _removed, ...remainingTiles } = project.tiles
             const order = project.order.filter((id) => id !== tileId)
+
+            if (order.length === 0) {
+              return {
+                projects: {
+                  ...state.projects,
+                  [projectId]: createDefaultProjectState(projectId),
+                },
+              }
+            }
+
             const nextActiveTileId =
               project.activeTileId === tileId ? (order[order.length - 1] ?? null) : project.activeTileId
 
@@ -447,6 +589,45 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             }
           })
         },
+        updateAssistantTile: (projectId, tileId, patch) => {
+          set((state) => {
+            const project = state.projects[projectId]
+            const tile = project?.tiles[tileId]
+            if (!project || !tile || tile.type !== "assistantChat") return state
+
+            const nextTile: WorkbenchAssistantChatTile = {
+              ...tile,
+              ...patch,
+            }
+
+            if (
+              nextTile.title === tile.title &&
+              nextTile.assistantProjectId === tile.assistantProjectId &&
+              nextTile.threadId === tile.threadId &&
+              nextTile.provider === tile.provider &&
+              nextTile.model === tile.model &&
+              nextTile.runtimeMode === tile.runtimeMode &&
+              nextTile.interactionMode === tile.interactionMode &&
+              nextTile.agentLabel === tile.agentLabel &&
+              nextTile.laneBinding === tile.laneBinding
+            ) {
+              return state
+            }
+
+            return {
+              projects: {
+                ...state.projects,
+                [projectId]: {
+                  ...project,
+                  tiles: {
+                    ...project.tiles,
+                    [tileId]: nextTile,
+                  },
+                },
+              },
+            }
+          })
+        },
         updateTileTitle: (projectId, tileId, title) => {
           set((state) => {
             const project = state.projects[projectId]
@@ -484,6 +665,8 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
   ),
 )
 
-export function isWorkbenchSingletonTile(type: WorkbenchTileType): boolean {
+export function isWorkbenchSingletonTile(
+  type: WorkbenchTileType,
+): type is Extract<WorkbenchTileType, "devServer" | "assistantChat"> {
   return SINGLETON_TILE_TYPES.has(type)
 }

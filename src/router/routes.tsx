@@ -196,7 +196,7 @@ function ProjectChangesRedirect() {
     <Navigate
       to="/projects/p/$projectId/workbench"
       params={{ projectId: params.projectId ?? "" }}
-      search={{ openTile: "changes" } as never}
+      search={{ changes: "1" } as never}
       replace
     />
   )

@@ -1,5 +1,6 @@
 // @ts-nocheck
-import { DiffsHighlighter, getSharedHighlighter, SupportedLanguages } from "@pierre/diffs";
+import { getSharedHighlighter } from "@pierre/diffs";
+import type { DiffsHighlighter, SupportedLanguages } from "@pierre/diffs";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import React, {
   Children,
@@ -17,11 +18,15 @@ import React, {
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTheme } from "@/contexts/ThemeContext";
+import { resolveAppliedTheme } from "@/lib/theme";
 import { openInPreferredEditor } from "@/stores/editorPreferences";
-import { resolveDiffThemeName, type DiffThemeName } from "@/stores/diffRendering";
-import { fnv1a32 } from "@/stores/diffRendering";
-import { LRUCache } from "@/stores/lruCache";
-import { useTheme } from "@/hooks/useTheme";
+import {
+  resolveDiffThemeName,
+  type DiffThemeName,
+  fnv1a32,
+} from "@/features/projects/components/assistant/lib/diffRendering";
+import { LRUCache } from "@/features/projects/components/assistant/lib/lruCache";
 import { resolveMarkdownFileLinkTarget } from "@/stores/markdown-links";
 import { readNativeApi } from "@/lib/nativeApi";
 
@@ -237,8 +242,8 @@ function SuspenseShikiCodeBlock({
 }
 
 function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
-  const { resolvedTheme } = useTheme();
-  const diffThemeName = resolveDiffThemeName(resolvedTheme);
+  const { theme } = useTheme();
+  const diffThemeName = resolveDiffThemeName(resolveAppliedTheme(theme));
   const markdownComponents = useMemo<Components>(
     () => ({
       a({ node: _node, href, ...props }) {

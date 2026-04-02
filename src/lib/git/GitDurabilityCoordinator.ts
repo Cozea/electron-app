@@ -3,7 +3,6 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 import {
-  resolveEffectiveProjectGitBranch,
   resolveProjectGitRemoteConfig,
   resolveProjectGitSyncPolicy,
   type ProjectGitRuntimeSourceControlLike,
@@ -226,11 +225,7 @@ export class GitDurabilityCoordinator {
       return
     }
 
-    const branch = await resolveEffectiveProjectGitBranch({
-      projectPath: this.projectPath,
-      fallbackBranch: configuredBranch,
-      usesExistingRemote,
-    })
+    const branch = configuredBranch
 
     const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
       projectPath: this.projectPath,

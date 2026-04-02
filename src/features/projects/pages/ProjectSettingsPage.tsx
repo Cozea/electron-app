@@ -13,14 +13,11 @@ import { useOptionalProjectSyncContext } from '@/features/projects/contexts/Proj
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
+import { resolveProjectLaneGitContext } from '@/lib/git/projectLaneContext'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 import {
   resolveProjectRepoAccessStatus,
 } from '@/lib/git/projectRepoAccess'
-import {
-  resolveEffectiveProjectGitBranch,
-  resolveProjectGitRemoteConfig,
-} from '@/lib/git/projectGitRuntime'
 import type { GitSyncStatusResult } from '@shared/electronApiTypes'
 import {
   getDefaultVersionControlSetupMode,
@@ -130,7 +127,7 @@ export function ProjectSettingsPage() {
   const [description, setDescription] = useState('')
   const [provider, setProvider] = useState<VersionControlProviderOption>('local')
   const [repoUrl, setRepoUrl] = useState('')
-  const [defaultBranch, setDefaultBranch] = useState('main')
+  const [activeCollabBranch, setActiveCollabBranch] = useState('main')
   const [syncPolicy, setSyncPolicy] = useState<'auto' | 'manual'>('auto')
   const [commitMessage, setCommitMessage] = useState('manual: sync workspace')
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -155,7 +152,7 @@ export function ProjectSettingsPage() {
     [project?.sourceControl?.setupMode, projectWorkspace.isPersonalWorkspace]
   )
   const normalizedRepoUrl = repoUrl.trim()
-  const normalizedDefaultBranch = defaultBranch.trim() || 'main'
+  const normalizedActiveCollabBranch = activeCollabBranch.trim() || 'main'
   const editableProject = useMemo<ProjectGitRuntimeProjectLike | null>(() => {
     if (!project) return null
 
@@ -167,20 +164,21 @@ export function ProjectSettingsPage() {
           ? {
               provider,
               url: normalizedRepoUrl,
-              defaultBranch: normalizedDefaultBranch,
+              defaultBranch: project?.gitRepository?.defaultBranch ?? normalizedActiveCollabBranch,
             }
           : null,
       sourceControl: {
         ...project.sourceControl,
         provider,
         repoUrl: normalizedRepoUrl || undefined,
-        defaultBranch: normalizedDefaultBranch,
+        activeCollabBranch: normalizedActiveCollabBranch,
+        defaultBranch: normalizedActiveCollabBranch,
         syncPolicy,
         setupMode,
       },
     }
   }, [
-    normalizedDefaultBranch,
+    normalizedActiveCollabBranch,
     normalizedRepoUrl,
     project,
     provider,
@@ -213,8 +211,9 @@ export function ProjectSettingsPage() {
       project.sourceControl?.provider ?? project.gitRepository?.provider
     ))
     setRepoUrl(project.gitRepository?.url ?? project.sourceControl?.repoUrl ?? '')
-    setDefaultBranch(
-      project.sourceControl?.defaultBranch ??
+    setActiveCollabBranch(
+      project.sourceControl?.activeCollabBranch ??
+        project.sourceControl?.defaultBranch ??
         project.gitRepository?.defaultBranch ??
         'main'
     )
@@ -232,6 +231,7 @@ export function ProjectSettingsPage() {
     project?.gitRepository?.provider,
     project?.gitRepository?.url,
     project?.name,
+    project?.sourceControl?.activeCollabBranch,
     project?.sourceControl?.defaultBranch,
     project?.sourceControl?.provider,
     project?.sourceControl?.repoUrl,
@@ -247,7 +247,8 @@ export function ProjectSettingsPage() {
   const projectProvider =
     normalizeProjectSettingsProviderOption(project?.sourceControl?.provider ?? project?.gitRepository?.provider)
   const projectRepoUrl = project?.gitRepository?.url ?? project?.sourceControl?.repoUrl ?? ''
-  const projectDefaultBranch =
+  const projectActiveCollabBranch =
+    project?.sourceControl?.activeCollabBranch ??
     project?.sourceControl?.defaultBranch ??
     project?.gitRepository?.defaultBranch ??
     'main'
@@ -259,7 +260,7 @@ export function ProjectSettingsPage() {
     description !== projectDescription ||
     provider !== projectProvider ||
     normalizedRepoUrl !== projectRepoUrl ||
-    normalizedDefaultBranch !== projectDefaultBranch ||
+    normalizedActiveCollabBranch !== projectActiveCollabBranch ||
     syncPolicy !== projectSyncPolicy
   )
   const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
@@ -309,31 +310,21 @@ export function ProjectSettingsPage() {
       throw new Error('Local project checkout is not available on this device.')
     }
 
-    const remoteConfig = await resolveProjectGitRemoteConfig({
+    const context = await resolveProjectLaneGitContext({
       convex,
       project: editableProject,
+      projectId: String(project._id),
+      projectPath: memberLocalPath,
+      collabBranch: normalizedActiveCollabBranch,
       userId: convexUserId,
     })
-    const branch = await resolveEffectiveProjectGitBranch({
-      projectPath: memberLocalPath,
-      fallbackBranch: normalizedDefaultBranch || remoteConfig.branch,
-      usesExistingRemote: remoteConfig.usesExistingRemote,
-    })
-    const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
-      projectPath: memberLocalPath,
-      branch,
-      repoUrl: remoteConfig.repoUrl,
-    })
-    if (!ensureResult.success) {
-      throw new Error(ensureResult.error || 'Failed to prepare the local git repository')
-    }
 
     return {
-      branch,
-      projectPath: memberLocalPath,
-      remoteConfig,
+      branch: context.collabBranch,
+      projectPath: context.collabLanePath,
+      remoteConfig: context.remoteConfig,
     }
-  }, [convex, convexUserId, editableProject, memberLocalPath, normalizedDefaultBranch, project])
+  }, [convex, convexUserId, editableProject, memberLocalPath, normalizedActiveCollabBranch, project])
 
   const recordSyncState = useCallback(async (
     status: 'syncing' | 'synced' | 'error',
@@ -525,26 +516,37 @@ export function ProjectSettingsPage() {
     setGitError(null)
     setGitNotice(null)
 
-    const coordinator = GitDurabilityCoordinator.acquireShared({
-      projectId: project._id,
-      projectPath: memberLocalPath,
-      convex,
-      userId: convexUserId,
-    })
-
     try {
-      await recordSyncState('syncing')
-      await coordinator.flushNow(true)
-      await finalizeGitAction('Git sync complete.', 'synced')
+      const collabLane = await window.electronAPI.project.ensureCollabLane({
+        projectId: String(project._id),
+        projectPath: memberLocalPath,
+        branch: normalizedActiveCollabBranch,
+      })
+      const resolvedCollabLane =
+        collabLane.lanes.find((lane) => lane.id === collabLane.collabLaneId) ?? null
+      const collabProjectPath = resolvedCollabLane?.projectPath ?? memberLocalPath
+      const coordinator = GitDurabilityCoordinator.acquireShared({
+        projectId: project._id,
+        projectPath: collabProjectPath,
+        convex,
+        userId: convexUserId,
+      })
+
+      try {
+        await recordSyncState('syncing')
+        await coordinator.flushNow(true)
+        await finalizeGitAction('Git sync complete.', 'synced')
+      } finally {
+        coordinator.release()
+      }
     } catch (error) {
       await handleGitActionFailure(
         error instanceof Error ? error.message : 'Failed to complete git sync'
       )
     } finally {
-      coordinator.release()
       setGitActionKey(null)
     }
-  }, [convex, convexUserId, finalizeGitAction, handleGitActionFailure, memberLocalPath, project?._id, recordSyncState])
+  }, [convex, convexUserId, finalizeGitAction, handleGitActionFailure, memberLocalPath, normalizedActiveCollabBranch, project?._id, recordSyncState])
 
   const handleSave = useCallback(async () => {
     if (!project || !convexUserId) return
@@ -568,7 +570,8 @@ export function ProjectSettingsPage() {
         sourceControl: {
           provider,
           repoUrl: normalizedRepoUrl || undefined,
-          defaultBranch: normalizedDefaultBranch,
+          activeCollabBranch: normalizedActiveCollabBranch,
+          defaultBranch: normalizedActiveCollabBranch,
           syncPolicy,
           setupMode,
         },
@@ -583,7 +586,7 @@ export function ProjectSettingsPage() {
     description,
     hasChanges,
     name,
-    normalizedDefaultBranch,
+    normalizedActiveCollabBranch,
     normalizedRepoUrl,
     project,
     provider,
@@ -823,20 +826,34 @@ export function ProjectSettingsPage() {
                       visibility={project.sourceControl?.visibility ?? 'private'}
                       onRepositorySelected={(repository) => {
                         setRepoUrl(repository.url)
-                        setDefaultBranch(repository.defaultBranch || 'main')
+                        setActiveCollabBranch(repository.defaultBranch || 'main')
                       }}
                     />
                   ) : null}
 
                   <div className="space-y-2">
-                    <Label>Default Branch</Label>
+                    <Label>Active Collab Branch</Label>
                     <Input
-                      value={defaultBranch}
+                      value={activeCollabBranch}
                       onChange={(event) => {
-                        setDefaultBranch(event.target.value)
+                        setActiveCollabBranch(event.target.value)
                       }}
                       placeholder="main"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      This is the shared branch the app syncs and collaborates against. Personal local lanes will target their own branches separately.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Repository Default Branch</Label>
+                    <Input
+                      value={project.gitRepository?.defaultBranch ?? 'main'}
+                      disabled
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Provider metadata for the repository itself. It is shown here for reference and no longer drives the app’s active sync target.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -919,7 +936,7 @@ export function ProjectSettingsPage() {
                     {gitStatus ? (
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="secondary" className="rounded-full">
-                          {gitStatus.currentBranch || normalizedDefaultBranch}
+                          {gitStatus.currentBranch || normalizedActiveCollabBranch}
                         </Badge>
                         <Badge variant={gitStatus.clean ? 'outline' : 'secondary'} className="rounded-full">
                           {gitStatus.clean ? 'Clean' : 'Dirty'}

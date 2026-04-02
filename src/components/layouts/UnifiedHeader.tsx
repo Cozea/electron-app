@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Link } from '@/lib/router'
+import { Link, useLocation } from '@/lib/router'
 import {
   CheckCircle2,
   ChevronDown,
@@ -37,6 +37,10 @@ import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { buildProjectJoinUrl } from "@shared/projectShare"
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import {
+  getProjectChangesActivityCacheKey,
+  getProjectChangesSelectedChangeCacheKey,
+} from "@/features/projects/lib/changesQueryCache"
 import { GitDurabilityCoordinator } from "@/lib/git/GitDurabilityCoordinator"
 import type { Id } from "../../../convex/_generated/dataModel"
 import { useConvex, useMutation, useQuery } from "convex/react"
@@ -1566,17 +1570,85 @@ function HeaderProjectChangesButton({
   projectId: Id<"projects"> | null
 }) {
   const navigate = useViewTransitionNavigate()
+  const location = useLocation()
+  const convex = useConvex()
 
   if (!projectId) return null
+
+  const workbenchPath = buildProjectPath(String(projectId), "workbench")
+  const currentParams = new URLSearchParams(location.search)
+  const isOnWorkbench = location.pathname === workbenchPath
+  const isChangesOpen = currentParams.get("changes") === "1" || currentParams.get("openTile") === "changes"
+  const prewarmChanges = useCallback(() => {
+    if (!projectId) return
+
+    const activityCacheKey = getProjectChangesActivityCacheKey(projectId)
+    const queryCache = useQueryCache.getState()
+    if (queryCache.get(activityCacheKey, 30_000) !== undefined) {
+      return
+    }
+
+    void scheduleTask(async () => {
+      try {
+        const activity = await convex.query(api.activity.getRecentActivity, {
+          projectId,
+          limit: 100,
+        })
+
+        if (activity !== undefined) {
+          useQueryCache.getState().set(activityCacheKey, activity)
+        }
+
+        const firstChangeId = activity?.[0]?.id
+        if (!firstChangeId) return
+
+        const selectedChange = await convex.query(api.activity.getChangeWithContent, {
+          changeId: firstChangeId,
+        })
+
+        if (selectedChange !== undefined) {
+          useQueryCache.getState().set(
+            getProjectChangesSelectedChangeCacheKey(firstChangeId),
+            selectedChange,
+          )
+        }
+      } catch {
+        // Ignore prewarm failures and let the drawer queries resolve normally.
+      }
+    }, "background")
+  }, [convex, projectId])
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
+          type="button"
           variant="ghost"
           className="h-7 gap-1.5 rounded-full border border-border/60 bg-secondary/70 px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary hover:text-foreground"
-          onClick={() => {
-            navigate(`${buildProjectPath(String(projectId), "workbench")}?openTile=changes`)
+          onMouseEnter={prewarmChanges}
+          onFocus={prewarmChanges}
+          onPointerDown={prewarmChanges}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+
+            const nextParams = new URLSearchParams(location.search)
+
+            if (isOnWorkbench && isChangesOpen) {
+              nextParams.delete("changes")
+              nextParams.delete("openTile")
+              nextParams.delete("userId")
+            } else {
+              nextParams.set("changes", "1")
+              nextParams.delete("openTile")
+            }
+
+            const nextSearch = nextParams.toString()
+
+            navigate({
+              pathname: workbenchPath,
+              search: nextSearch ? `?${nextSearch}` : "",
+            })
           }}
         >
           <GitCompareArrows className="h-3.5 w-3.5" />

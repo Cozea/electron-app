@@ -39,6 +39,7 @@ export interface ProjectRepositoryBindingSummary {
   syncPolicy: 'auto' | 'manual'
   workingCopyMode: 'managed' | 'attached'
   repoUrl?: string
+  activeCollabBranch: string
   defaultBranch: string
   ownerId?: string
   ownerLogin?: string

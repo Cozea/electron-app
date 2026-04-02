@@ -18,7 +18,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as ServiceMap from "effect/ServiceMap";
 import * as Stream from "effect/Stream";
-import * as Reactivity from "effect/Reactivity";
+import * as Reactivity from "effect/unstable/reactivity/Reactivity";
 import * as Client from "@effect/sql/SqlClient";
 import type { Connection } from "@effect/sql/SqlConnection";
 import { SqlError } from "@effect/sql/SqlError";

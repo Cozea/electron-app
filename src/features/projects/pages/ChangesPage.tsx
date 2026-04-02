@@ -6,6 +6,7 @@ import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
+import { useCachedQuery } from '@/stores/useQueryCache'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,6 +36,10 @@ import { CommentRichText } from '@/components/comments/CommentRichText'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import {
+  getProjectChangesActivityCacheKey,
+  getProjectChangesSelectedChangeCacheKey,
+} from '@/features/projects/lib/changesQueryCache'
 
 interface ActivityFeedItem {
   id: Id<"fileChanges">
@@ -75,6 +80,7 @@ interface ChangeCommentsProps {
   changeId: Id<"fileChanges">
   viewerUserId: Id<"users"> | null
   commentCount: number
+  isEmbedded: boolean
   isSelected: boolean
   expandOnSelect: boolean
   isExpanded: boolean
@@ -186,6 +192,7 @@ const ChangeComments = memo(function ChangeComments({
   changeId,
   viewerUserId,
   commentCount,
+  isEmbedded,
   isSelected,
   expandOnSelect,
   isExpanded,
@@ -458,10 +465,15 @@ const ChangeComments = memo(function ChangeComments({
       <div
         aria-hidden={!isExpanded}
         className={cn(
-          "grid overflow-hidden transition-[grid-template-rows,opacity,transform] duration-300 ease-out",
-          isExpanded
-            ? "grid-rows-[1fr] opacity-100 translate-y-0"
-            : "grid-rows-[0fr] opacity-0 -translate-y-1"
+          "grid overflow-hidden",
+          isEmbedded
+            ? isExpanded
+              ? "grid-rows-[1fr]"
+              : "grid-rows-[0fr]"
+            : isExpanded
+              ? "grid-rows-[1fr] opacity-100 translate-y-0"
+              : "grid-rows-[0fr] opacity-0 -translate-y-1",
+          !isEmbedded && "transition-[grid-template-rows,opacity,transform] duration-300 ease-out",
         )}
       >
         <div className="min-h-0">
@@ -499,6 +511,7 @@ ChangeComments.displayName = "ChangeComments"
 interface ActivityFeedRowProps {
   item: ActivityFeedItem
   isSelected: boolean
+  isEmbedded: boolean
   viewerUserId: Id<"users"> | null
   commentCount: number
   expandCommentsOnSelect: boolean
@@ -510,6 +523,7 @@ interface ActivityFeedRowProps {
 const ActivityFeedRow = memo(function ActivityFeedRow({
   item,
   isSelected,
+  isEmbedded,
   viewerUserId,
   commentCount,
   expandCommentsOnSelect,
@@ -588,6 +602,7 @@ const ActivityFeedRow = memo(function ActivityFeedRow({
           changeId={rowChangeId}
           viewerUserId={viewerUserId}
           commentCount={commentCount}
+          isEmbedded={isEmbedded}
           isSelected={isSelected}
           expandOnSelect={expandCommentsOnSelect}
           isExpanded={commentsExpanded}
@@ -610,15 +625,18 @@ export function ChangesPage({
   const { project } = useAccessibleProject()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
   const [selectionWasUserDriven, setSelectionWasUserDriven] = useState(false)
-  const [cachedSelectedChange, setCachedSelectedChange] = useState<ChangeWithContent | null>(null)
   const [expandedCommentChangeIds, setExpandedCommentChangeIds] = useState<Record<string, boolean>>({})
   const selectedUserId = searchParams.get('userId')
 
   // Get activity feed
-  const activity = useQuery(
+  const freshActivity = useQuery(
     api.activity.getRecentActivity,
     project?._id ? { projectId: project._id, limit: 100 } : 'skip'
   ) as ActivityFeedItem[] | undefined
+  const activity = useCachedQuery<ActivityFeedItem[] | undefined>(
+    project?._id ? getProjectChangesActivityCacheKey(project._id) : '__skip__',
+    freshActivity,
+  )
 
   const filteredActivity = useMemo(() => {
     if (!activity) return activity
@@ -640,13 +658,24 @@ export function ChangesPage({
     api.activity.getCommentCountsForChanges,
     project?._id && changeIds.length > 0 ? { projectId: project._id, changeIds } : 'skip'
   )
-  const selectedChange = useQuery(
+  const resolvedSelectedChangeId =
+    selectedChangeId ??
+    (!selectionWasUserDriven && filteredActivity && filteredActivity.length > 0
+      ? (filteredActivity[0].id as Id<"fileChanges">)
+      : null)
+  const freshSelectedChange = useQuery(
     api.activity.getChangeWithContent,
-    selectedChangeId ? { changeId: selectedChangeId } : 'skip'
+    resolvedSelectedChangeId ? { changeId: resolvedSelectedChangeId } : 'skip'
   ) as ChangeWithContent | null | undefined
-  const showSplitPane = Boolean(selectedChangeId)
-  const displayedSelectedChange = selectedChange ?? cachedSelectedChange
-  const isSelectedChangeLoading = Boolean(selectedChangeId) && selectedChange === undefined
+  const displayedSelectedChange = useCachedQuery<ChangeWithContent | null | undefined>(
+    resolvedSelectedChangeId ? getProjectChangesSelectedChangeCacheKey(resolvedSelectedChangeId) : '__skip__',
+    freshSelectedChange,
+  )
+  const isSelectedChangeLoading =
+    Boolean(resolvedSelectedChangeId) &&
+    freshSelectedChange === undefined &&
+    displayedSelectedChange === undefined
+  const showSplitPane = Boolean(resolvedSelectedChangeId)
   const groupedActivity = useMemo(
     () => (filteredActivity ? groupActivityByDate(filteredActivity) : []),
     [filteredActivity]
@@ -661,22 +690,6 @@ export function ChangesPage({
   )
 
   useEffect(() => {
-    if (!selectedChangeId) {
-      setCachedSelectedChange(null)
-      return
-    }
-
-    if (selectedChange) {
-      setCachedSelectedChange(selectedChange)
-      return
-    }
-
-    if (selectedChange === null) {
-      setCachedSelectedChange(null)
-    }
-  }, [selectedChange, selectedChangeId])
-
-  useEffect(() => {
     if (!filteredActivity || filteredActivity.length === 0) {
       if (selectedChangeId !== null) {
         setSelectionWasUserDriven(false)
@@ -689,9 +702,9 @@ export function ChangesPage({
       ? filteredActivity.some((item) => item.id === selectedChangeId)
       : false
 
-    if (selectedChangeId === null || !selectedStillVisible) {
+    if (selectedChangeId !== null && !selectedStillVisible) {
       setSelectionWasUserDriven(false)
-      setSelectedChangeId(filteredActivity[0].id as Id<"fileChanges">)
+      setSelectedChangeId(null)
     }
   }, [filteredActivity, selectedChangeId])
 
@@ -777,7 +790,7 @@ export function ChangesPage({
         ) : null}
 
         <div className={cn("flex items-center gap-2 min-w-0", !isEmbedded && "mt-4")}>
-          {selectedChangeId && displayedSelectedChange && (
+          {resolvedSelectedChangeId && displayedSelectedChange && (
             <>
               <div className="flex items-center gap-2 min-w-0 max-w-[520px]">
                 {getChangeIcon(displayedSelectedChange.changeType)}
@@ -817,17 +830,20 @@ export function ChangesPage({
               </div>
             </>
           )}
-          {selectedChangeId && !displayedSelectedChange && (
-            <Shimmer className="text-xs text-muted-foreground">Loading selected change…</Shimmer>
-          )}
-          {!selectedChangeId && (
+          {!resolvedSelectedChangeId && (
             <span className="text-xs text-muted-foreground">Select a change to view diff</span>
           )}
         </div>
       </div>
 
       <div className="relative flex h-full min-h-0 overflow-hidden bg-content-surface">
-        <div className={`flex min-h-0 min-w-0 overflow-hidden flex-col ${showSplitPane ? 'w-1/2' : 'w-full'} transition-all`}>
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 overflow-hidden flex-col",
+            showSplitPane ? "w-1/2" : "w-full",
+            !isEmbedded && "transition-all",
+          )}
+        >
           <div className="relative flex-1 min-h-0">
             <div className="flex h-full min-h-0 flex-col p-4">
               {!project?._id ? (
@@ -894,10 +910,11 @@ export function ChangesPage({
                           <div className="px-1 py-0.5">
                             <ActivityFeedRow
                               item={item}
-                              isSelected={selectedChangeId === item.id}
+                              isSelected={resolvedSelectedChangeId === item.id}
+                              isEmbedded={isEmbedded}
                               viewerUserId={convexUserId ?? null}
                               commentCount={commentCount}
-                              expandCommentsOnSelect={selectionWasUserDriven && selectedChangeId === item.id}
+                              expandCommentsOnSelect={selectionWasUserDriven && resolvedSelectedChangeId === item.id}
                               commentsExpanded={expandedCommentChangeIds[itemId] ?? false}
                               onCommentsExpandedChange={(expanded) => {
                                 setExpandedCommentChangeIds((current) => {
@@ -933,9 +950,9 @@ export function ChangesPage({
 
         {showSplitPane && (
           <div className="w-1/2 min-h-0 min-w-0 overflow-hidden bg-background">
-            {selectedChangeId ? (
+            {resolvedSelectedChangeId ? (
               <DiffPanel
-                changeId={selectedChangeId}
+                changeId={resolvedSelectedChangeId}
                 change={displayedSelectedChange}
                 isLoadingChange={isSelectedChangeLoading}
                 onClose={() => setSelectedChangeId(null)}

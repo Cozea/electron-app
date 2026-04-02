@@ -10,7 +10,6 @@ import {
 } from '@/lib/git/projectRepoAccess'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 import {
-  resolveEffectiveProjectGitBranch,
   resolveProjectGitRemoteConfig,
   resolveProjectGitSyncPolicy,
   resolveProjectWorkingCopyMode,
@@ -464,11 +463,14 @@ export async function prepareGitProjectForOpen({
 
   try {
     if (hasRemote && localPath) {
-      branch = await resolveEffectiveProjectGitBranch({
+      const collabLane = await window.electronAPI.project.ensureCollabLane({
+        projectId: String(project._id),
         projectPath: effectiveLocalPath,
-        fallbackBranch: configuredBranch,
-        usesExistingRemote,
+        branch: configuredBranch,
       })
+      const resolvedCollabLane =
+        collabLane.lanes.find((lane) => lane.id === collabLane.collabLaneId) ?? null
+      branch = resolvedCollabLane?.branch ?? configuredBranch
     }
 
     if (userId) {

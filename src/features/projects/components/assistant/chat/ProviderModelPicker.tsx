@@ -19,7 +19,8 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
-import { ClaudeAI, CursorIcon, Gemini, Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+import type { Icon } from "../Icons";
 import { cn } from "@/lib/utils";
 import { getProviderSnapshot } from "../../providerModels";
 

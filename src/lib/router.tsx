@@ -78,6 +78,7 @@ export function useSearch<TSearch = any>() {
 export function useSearchParams() {
   const search = useTanstackSearch({ strict: false } as never) as Record<string, unknown>
   const navigate = useTanstackNavigate({ from: '/' })
+  const location = useTanstackLocation()
 
   const searchParams = useMemo(() => {
     const params = new URLSearchParams()
@@ -125,12 +126,15 @@ export function useSearchParams() {
         }
       }
 
+      const searchString = params.toString()
+      const target = `${location.pathname}${searchString ? `?${searchString}` : ''}${location.hash ?? ''}`
+
       navigate({
-        search: Object.fromEntries(params.entries()) as never,
+        to: target,
         replace: options?.replace,
       } as never)
     },
-    [navigate, searchParams]
+    [location.hash, location.pathname, navigate, searchParams]
   )
 
   return [searchParams, setSearchParams] as const

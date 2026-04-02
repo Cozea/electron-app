@@ -20,18 +20,24 @@ export class WorkbenchBrowserService {
     return this.options.getMainWindow()
   }
 
+  private getNavigationHistory(view: WebContentsView) {
+    return view.webContents.navigationHistory
+  }
+
   private emitState(tileId: string): WorkbenchBrowserViewState | null {
     const record = this.records.get(tileId)
     if (!record) return null
 
     const { webContents } = record.view
+    const navigationHistory = this.getNavigationHistory(record.view)
     record.state = {
       tileId,
       url: webContents.getURL() || record.state.url,
       title: webContents.getTitle() || record.state.title || 'Browser',
       isLoading: webContents.isLoading(),
-      canGoBack: webContents.canGoBack(),
-      canGoForward: webContents.canGoForward(),
+      canGoBack: navigationHistory.canGoBack(),
+      canGoForward: navigationHistory.canGoForward(),
+      loadError: record.state.loadError ?? null,
     }
 
     this.getMainWindow()?.webContents.send('workbenchBrowser:state', record.state)
@@ -52,23 +58,77 @@ export class WorkbenchBrowserService {
       this.emitState(tileId)
     }
 
+    view.webContents.on('did-start-loading', () => {
+      const record = this.records.get(tileId)
+      if (record) {
+        record.state.loadError = null
+      }
+      emit()
+    })
+
     view.webContents.on('page-title-updated', (event) => {
       event.preventDefault()
       emit()
     })
-    view.webContents.on('did-start-loading', emit)
     view.webContents.on('did-stop-loading', emit)
     view.webContents.on('did-finish-load', emit)
     view.webContents.on('did-navigate', emit)
     view.webContents.on('did-navigate-in-page', emit)
-    view.webContents.on('did-fail-load', emit)
+    view.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame || errorCode === -3) {
+          emit()
+          return
+        }
+
+        const record = this.records.get(tileId)
+        if (record) {
+          record.state = {
+            ...record.state,
+            url: validatedURL || record.state.url,
+            isLoading: false,
+            loadError: `${errorDescription} (${errorCode})`,
+          }
+        }
+        emit()
+      },
+    )
+  }
+
+  private async loadUrlIntoRecord(
+    tileId: string,
+    record: WorkbenchBrowserRecord,
+    url: string,
+  ): Promise<WorkbenchBrowserViewState> {
+    record.state = {
+      ...record.state,
+      url,
+      isLoading: true,
+      loadError: null,
+    }
+    this.emitState(tileId)
+
+    try {
+      await record.view.webContents.loadURL(url)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load page.'
+      record.state = {
+        ...record.state,
+        url,
+        isLoading: false,
+        loadError: message,
+      }
+    }
+
+    return this.emitState(tileId) ?? record.state
   }
 
   async ensureTile(tileId: string, initialUrl?: string): Promise<WorkbenchBrowserViewState> {
     const existing = this.records.get(tileId)
     if (existing) {
       if (initialUrl && initialUrl !== existing.state.url) {
-        await existing.view.webContents.loadURL(initialUrl)
+        return this.loadUrlIntoRecord(tileId, existing, initialUrl)
       }
       return this.emitState(tileId) ?? existing.state
     }
@@ -92,6 +152,7 @@ export class WorkbenchBrowserService {
         isLoading: false,
         canGoBack: false,
         canGoForward: false,
+        loadError: null,
       },
     }
 
@@ -99,7 +160,7 @@ export class WorkbenchBrowserService {
     this.attachView(tileId, view)
 
     if (initialUrl) {
-      await view.webContents.loadURL(initialUrl)
+      return this.loadUrlIntoRecord(tileId, record, initialUrl)
     } else {
       this.emitState(tileId)
     }
@@ -114,8 +175,7 @@ export class WorkbenchBrowserService {
       return this.emitState(tileId)
     }
 
-    await record.view.webContents.loadURL(url)
-    return this.emitState(tileId)
+    return this.loadUrlIntoRecord(tileId, record, url)
   }
 
   setBounds(tileId: string, bounds: Rectangle | null, visible: boolean): boolean {
@@ -136,8 +196,9 @@ export class WorkbenchBrowserService {
   goBack(tileId: string): WorkbenchBrowserViewState | null {
     const record = this.records.get(tileId)
     if (!record) return null
-    if (record.view.webContents.canGoBack()) {
-      record.view.webContents.goBack()
+    const navigationHistory = this.getNavigationHistory(record.view)
+    if (navigationHistory.canGoBack()) {
+      navigationHistory.goBack()
     }
     return this.emitState(tileId)
   }
@@ -145,8 +206,9 @@ export class WorkbenchBrowserService {
   goForward(tileId: string): WorkbenchBrowserViewState | null {
     const record = this.records.get(tileId)
     if (!record) return null
-    if (record.view.webContents.canGoForward()) {
-      record.view.webContents.goForward()
+    const navigationHistory = this.getNavigationHistory(record.view)
+    if (navigationHistory.canGoForward()) {
+      navigationHistory.goForward()
     }
     return this.emitState(tileId)
   }

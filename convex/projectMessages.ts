@@ -37,6 +37,7 @@ const planOptionValidator = v.object({
       v.object({
         provider: v.string(),
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.string(),
         mergeStrategy: v.string(),
