@@ -21,6 +21,13 @@ import { type TurnDiffSummary } from "./types";
 import { summarizeTurnDiffStats } from "./turnDiffTree";
 import ChatMarkdown from "./ChatMarkdown";
 import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
   BotIcon,
   ChevronsUpDown,
   CheckIcon,
@@ -553,10 +560,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   if (!hasMessages && !isWorking) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
+      <div className="flex h-full w-full items-center justify-center p-6">
+        <Empty className="w-full max-w-md py-8">
+          <EmptyHeader>
+            <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
+              <BotIcon className="h-7 w-7" />
+            </EmptyMedia>
+            <EmptyTitle className="text-base font-medium">Ready to assist</EmptyTitle>
+            <EmptyDescription>
+              Send a message to start the conversation and begin building.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </div>
     );
   }
