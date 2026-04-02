@@ -155,29 +155,42 @@ export function useDevServerManager({
     let failureMessage: string | null = null
 
     if (window.electronAPI?.preview?.probeUrl) {
-      try {
-        const probe = await window.electronAPI.preview.probeUrl({ url, timeoutMs: 2500 })
+      probeReachable = false
+      const maxAttempts = 12 // up to 30s total
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         if (isStaleRunEvent(runId)) return
-        if (!probe.success || !probe.reachable) {
+        try {
+          const probe = await window.electronAPI.preview.probeUrl({ url, timeoutMs: 2500 })
+          if (isStaleRunEvent(runId)) return
+          
+          if (probe.success && probe.reachable) {
+            probeReachable = true
+            failureReason = null
+            failureMessage = null
+            break
+          }
+          
           const failure = getPreviewFailurePresentation(
             probe.reason ?? 'server_unreachable',
             probe.error ?? 'Dev server did not respond to probe',
             { context: 'server' },
           )
-          probeReachable = false
+          failureReason = failure.reason
+          failureMessage = failure.message
+        } catch (error) {
+          if (isStaleRunEvent(runId)) return
+          const failure = getPreviewFailurePresentation(
+            'server_unreachable',
+            error instanceof Error ? error.message : 'Dev server probe failed',
+            { context: 'server' },
+          )
           failureReason = failure.reason
           failureMessage = failure.message
         }
-      } catch (error) {
-        if (isStaleRunEvent(runId)) return
-        const failure = getPreviewFailurePresentation(
-          'server_unreachable',
-          error instanceof Error ? error.message : 'Dev server probe failed',
-          { context: 'server' },
-        )
-        probeReachable = false
-        failureReason = failure.reason
-        failureMessage = failure.message
+
+        if (attempt < maxAttempts && !isStaleRunEvent(runId)) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
       }
     }
 
