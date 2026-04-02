@@ -76,8 +76,8 @@ export function WorkbenchBrowserTile({
   }
 
   const toolbar = (
-    <div className="flex min-w-0 items-center gap-2">
-      <div className="flex items-center gap-1">
+    <div className="flex min-w-0 w-full items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 w-[88px]">
         <Button
           type="button"
           variant="ghost"
@@ -119,26 +119,31 @@ export function WorkbenchBrowserTile({
         </Button>
       </div>
 
-      <div className="relative min-w-0 flex-1">
-        {draftUrl.startsWith("https://") ? (
-          <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        ) : null}
-        <Input
-          value={draftUrl}
-          onChange={(event) => setDraftUrl(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault()
-              submitDraftUrl()
-            }
-          }}
-          placeholder="Enter a URL or localhost:port"
-          className={cn(
-            "h-8 border-0 bg-transparent pr-3 text-xs shadow-none focus-visible:ring-0",
-            draftUrl.startsWith("https://") ? "pl-9" : "pl-3",
-          )}
-        />
+      <div className="flex flex-1 min-w-0 items-center justify-center">
+        <div className="relative w-full max-w-[60%] min-w-[200px]">
+          {draftUrl.startsWith("https://") ? (
+            <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          ) : null}
+          <Input
+            value={draftUrl}
+            onChange={(event) => setDraftUrl(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                submitDraftUrl()
+              }
+            }}
+            placeholder="Enter a URL or localhost:port"
+            className={cn(
+              "h-7 border-0 bg-secondary/50 text-center text-xs shadow-none focus-visible:ring-0 focus-visible:bg-secondary",
+              draftUrl.startsWith("https://") ? "pl-9" : "px-3",
+            )}
+          />
+        </div>
       </div>
+      
+      {/* Spacer to balance the toolbar width for centering */}
+      <div className="w-[88px] shrink-0" />
     </div>
   )
 
