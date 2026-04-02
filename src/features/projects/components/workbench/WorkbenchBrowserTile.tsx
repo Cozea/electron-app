@@ -120,7 +120,7 @@ export function WorkbenchBrowserTile({
       </div>
 
       <div className="flex flex-1 min-w-0 items-center justify-center">
-        <div className="relative w-full max-w-[70%] min-w-[240px]">
+        <div className="relative w-full min-w-[240px]">
           {draftUrl.startsWith("https://") ? (
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           ) : null}
