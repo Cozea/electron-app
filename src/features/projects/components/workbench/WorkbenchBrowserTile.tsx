@@ -3,8 +3,8 @@ import type { DockviewApi, DockviewPanelApi } from "dockview"
 import {
   ArrowLeft,
   ArrowRight,
-  ExternalLink,
   Globe,
+  Lock,
   RefreshCcw,
 } from "lucide-react"
 
@@ -120,7 +120,9 @@ export function WorkbenchBrowserTile({
       </div>
 
       <div className="relative min-w-0 flex-1">
-        <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        {draftUrl.startsWith("https://") ? (
+          <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        ) : null}
         <Input
           value={draftUrl}
           onChange={(event) => setDraftUrl(event.target.value)}
@@ -131,28 +133,13 @@ export function WorkbenchBrowserTile({
             }
           }}
           placeholder="Enter a URL or localhost:port"
-          className="h-8 border-0 bg-transparent pl-9 pr-3 text-xs shadow-none focus-visible:ring-0"
+          className={cn(
+            "h-8 border-0 bg-transparent pr-3 text-xs shadow-none focus-visible:ring-0",
+            draftUrl.startsWith("https://") ? "pl-9" : "pl-3",
+          )}
         />
       </div>
     </div>
-  )
-
-  const chromeActions = (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="h-7 w-7"
-      disabled={!canInteract}
-      onClick={() => {
-        const targetUrl = state.url || url
-        if (!targetUrl) return
-        void window.electronAPI.shell.openExternal(targetUrl)
-      }}
-      aria-label="Open in external browser"
-    >
-      <ExternalLink className="h-3.5 w-3.5" />
-    </Button>
   )
 
   return (
@@ -161,7 +148,6 @@ export function WorkbenchBrowserTile({
       panelApi={panelApi}
       containerApi={containerApi}
       controls={toolbar}
-      actions={chromeActions}
     >
       <div className="relative h-full min-h-0 overflow-hidden bg-background p-px">
         {!url ? (
