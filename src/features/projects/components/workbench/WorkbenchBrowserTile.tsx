@@ -120,7 +120,7 @@ export function WorkbenchBrowserTile({
       </div>
 
       <div className="flex flex-1 min-w-0 items-center justify-center">
-        <div className="relative w-full max-w-[60%] min-w-[200px]">
+        <div className="relative w-full max-w-[70%] min-w-[240px]">
           {draftUrl.startsWith("https://") ? (
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           ) : null}
@@ -135,7 +135,7 @@ export function WorkbenchBrowserTile({
             }}
             placeholder="Enter a URL or localhost:port"
             className={cn(
-              "h-7 border-0 bg-secondary/50 text-center text-xs shadow-none focus-visible:ring-0 focus-visible:bg-secondary",
+              "h-7 border-0 bg-secondary/80 text-center text-xs shadow-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:bg-secondary",
               draftUrl.startsWith("https://") ? "pl-9" : "px-3",
             )}
           />
