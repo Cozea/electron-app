@@ -107,23 +107,17 @@ export function useWorkbenchBrowserView(
 
     const syncBounds = () => {
       const rect = element.getBoundingClientRect()
-      
-      const x = Math.round(rect.x)
-      const y = Math.round(rect.y)
-      const right = Math.round(rect.right)
-      const bottom = Math.round(rect.bottom)
-      
-      const width = Math.max(0, right - x)
-      const height = Math.max(0, bottom - y)
-      
+      const inset = 1
+      const width = Math.max(0, Math.round(rect.width) - inset * 2)
+      const height = Math.max(0, Math.round(rect.height) - inset * 2)
       const nextVisible = visible && Boolean(url) && width > 0 && height > 0
       const payload = nextVisible
         ? {
             tileId,
             visible: true,
             bounds: {
-              x,
-              y,
+              x: Math.round(rect.x) + inset,
+              y: Math.round(rect.y) + inset,
               width,
               height,
             },
