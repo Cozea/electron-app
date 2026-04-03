@@ -10,17 +10,15 @@ export type WorkspaceSurfaceAccessKey =
   | "roles"
   | "billing"
   | "settings"
-  | "ai"
   | "integrations"
   | "usage"
 
 export type SettingsSurfaceId =
   | "account"
   | "billing"
-  | "ai"
-  | "modelSelection"
   | "appearance"
   | "storage"
+  | "sourceControl"
   | "cliTools"
   | "tooling"
   | "general"

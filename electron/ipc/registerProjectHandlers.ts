@@ -19,10 +19,26 @@ import type {
 } from '../../shared/electronApiTypes'
 import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
-import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from '../services/gitAuth'
+import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
+import {
+  clearRegisteredProjectPath,
+  readRegisteredProjectPath,
+  rememberProjectPath,
+} from '../projectPathRegistry'
+import {
+  ensureProjectCollabLane,
+  readProjectLaneState,
+  setActiveProjectLane,
+  upsertProjectLane,
+} from '../projectLaneRegistry'
 import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
+import {
+  checkoutProjectGitBranch,
+  createProjectGitWorktree,
+  listProjectGitBranches,
+} from '../services/projectGitDesktopService'
 import {
   EXCLUDED_GENERATED_DIRECTORIES,
   shouldExcludeGeneratedDirectory,
@@ -139,15 +155,6 @@ async function preflightImportSource(
   }
 }
 
-function resolveCloneAccessToken(args: {
-  provider: string
-  accessToken?: string
-  encryptedCredentials?: string
-  keyId?: string
-}): { accessToken?: string; error?: string } {
-  return resolveRepositoryAccessToken(args)
-}
-
 function normalizeRepositoryUrl(repoUrl: string, provider: string): string | null {
   const trimmed = repoUrl.trim().replace(/\/+$/, '')
   if (!trimmed) return null
@@ -244,10 +251,20 @@ export function registerProjectHandlers(
     'project:createFolder',
     async (
       _event,
-      { slug, initGit = true }: { slug: string; initGit?: boolean }
+      {
+        slug,
+        initGit = true,
+        projectId,
+        baseDirectory,
+      }: {
+        slug: string
+        initGit?: boolean
+        projectId?: string
+        baseDirectory?: string
+      }
     ): Promise<CreateProjectFolderResult> => {
       const settings = deps.loadSettings()
-      const projectsDir = settings.projectsDirectory
+      const projectsDir = baseDirectory?.trim() || settings.projectsDirectory
 
       try {
         if (!fs.existsSync(projectsDir)) {
@@ -311,6 +328,10 @@ npm-debug.log*
           }
         }
 
+        if (typeof projectId === 'string' && projectId.trim().length > 0) {
+          rememberProjectPath(projectId, resolvedProjectPath)
+        }
+
         return {
           success: true,
           localPath: resolvedProjectPath,
@@ -336,39 +357,26 @@ npm-debug.log*
         provider,
         branch,
         accessToken,
-        encryptedCredentials,
-        keyId,
+        projectId,
+        baseDirectory,
       }: {
         slug: string
         repoUrl: string
         provider: string
         branch?: string
         accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
+        projectId?: string
+        baseDirectory?: string
       }
     ): Promise<CloneRepositoryResult> => {
       const settings = deps.loadSettings()
-      const projectsDir = settings.projectsDirectory
+      const projectsDir = baseDirectory?.trim() || settings.projectsDirectory
       const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
-      const resolvedCloneAuth = resolveCloneAccessToken({
-        provider,
-        accessToken,
-        encryptedCredentials,
-        keyId,
-      })
 
       if (!normalizedRepoUrl) {
         return {
           success: false,
           error: 'Invalid repository URL. Use a full URL or owner/repo format.',
-        }
-      }
-
-      if (resolvedCloneAuth.error) {
-        return {
-          success: false,
-          error: resolvedCloneAuth.error,
         }
       }
 
@@ -380,7 +388,7 @@ npm-debug.log*
         const resolvedTargetPath = resolveAvailableProjectPath(projectsDir, slug)
 
         const cloneArgs: string[] = []
-        const authHeader = buildGitAuthorizationHeader(provider, resolvedCloneAuth.accessToken)
+        const authHeader = buildGitAuthorizationHeader(provider, accessToken)
 
         if (authHeader && /^https?:\/\//i.test(normalizedRepoUrl)) {
           cloneArgs.push('-c', `http.extraheader=${authHeader}`)
@@ -398,6 +406,10 @@ npm-debug.log*
             success: false,
             error: cloneResult.error,
           }
+        }
+
+        if (typeof projectId === 'string' && projectId.trim().length > 0) {
+          rememberProjectPath(projectId, resolvedTargetPath)
         }
 
         return {
@@ -419,6 +431,12 @@ npm-debug.log*
     async (_event, value: string | { slug: string; projectId?: string }): Promise<string | null> => {
       const { slug, projectId } = normalizeProjectLookup(value)
       const settings = deps.loadSettings()
+      if (projectId) {
+        const registeredPath = readRegisteredProjectPath(projectId)
+        if (registeredPath) {
+          return registeredPath
+        }
+      }
       if (!slug || typeof settings.projectsDirectory !== 'string') {
         console.warn('[ProjectPath] Invalid getLocalPath lookup payload', {
           value,
@@ -429,7 +447,212 @@ npm-debug.log*
         })
         return null
       }
-      return resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
+      const resolvedPath = resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
+      if (resolvedPath && projectId) {
+        rememberProjectPath(projectId, resolvedPath)
+      }
+      return resolvedPath
+    },
+  )
+
+  ipcMain.handle(
+    'project:rememberLocalPath',
+    async (
+      _event,
+      {
+        projectId,
+        projectPath,
+      }: { projectId: string; projectPath: string }
+    ): Promise<{ success: boolean; localPath?: string; error?: string }> => {
+      try {
+        const localPath = rememberProjectPath(projectId, projectPath)
+        return {
+          success: true,
+          localPath,
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to remember project path',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'project:clearLocalPath',
+    async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
+      clearRegisteredProjectPath(projectId)
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    'project:getLaneState',
+    async (_event, { projectId }: { projectId: string }) => {
+      return readProjectLaneState(projectId)
+    },
+  )
+
+  ipcMain.handle(
+    'project:ensureCollabLane',
+    async (
+      _event,
+      {
+        projectId,
+        projectPath,
+        branch,
+      }: { projectId: string; projectPath: string; branch: string }
+    ) => {
+      return ensureProjectCollabLane({ projectId, projectPath, branch })
+    },
+  )
+
+  ipcMain.handle(
+    'project:upsertLane',
+    async (
+      _event,
+      {
+        projectId,
+        branch,
+        projectPath,
+        name,
+        isCollab,
+        laneId,
+      }: {
+        projectId: string
+        branch: string
+        projectPath: string
+        name?: string
+        isCollab?: boolean
+        laneId?: string
+      }
+    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
+      try {
+        const laneState = upsertProjectLane({
+          projectId,
+          branch,
+          projectPath,
+          name,
+          isCollab,
+          laneId,
+        })
+        return { success: true, laneState }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update project lane',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'project:setActiveLane',
+    async (
+      _event,
+      { projectId, laneId }: { projectId: string; laneId: string }
+    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
+      try {
+        const laneState = setActiveProjectLane({ projectId, laneId })
+        return { success: true, laneState }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to activate project lane',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'project:listGitBranches',
+    async (_event, { projectPath }: { projectPath: string }) => {
+      return listProjectGitBranches(projectPath)
+    },
+  )
+
+  ipcMain.handle(
+    'project:checkoutGitBranch',
+    async (_event, { projectPath, branch }: { projectPath: string; branch: string }) => {
+      return checkoutProjectGitBranch({ cwd: projectPath, branch })
+    },
+  )
+
+  ipcMain.handle(
+    'project:createGitWorktree',
+    async (
+      _event,
+      options: { projectPath: string; branch: string; newBranch?: string; path?: string | null }
+    ) => {
+      return createProjectGitWorktree({
+        cwd: options.projectPath,
+        branch: options.branch,
+        newBranch: options.newBranch,
+        path: options.path,
+      })
+    },
+  )
+
+  ipcMain.handle(
+    'project:mergeLaneIntoCollab',
+    async (
+      _event,
+      {
+        collabProjectPath,
+        collabBranch,
+        sourceBranch,
+      }: {
+        collabProjectPath: string
+        collabBranch: string
+        sourceBranch: string
+      }
+    ): Promise<{ success: boolean; error?: string }> => {
+      const resolvedProjectPath = path.resolve(collabProjectPath)
+      const normalizedCollabBranch = collabBranch.trim()
+      const normalizedSourceBranch = sourceBranch.trim()
+
+      if (!normalizedCollabBranch || !normalizedSourceBranch) {
+        return {
+          success: false,
+          error: 'Both collab branch and source branch are required.',
+        }
+      }
+
+      try {
+        const checkoutResult = await runGitCommand(
+          ['checkout', normalizedCollabBranch],
+          resolvedProjectPath,
+        )
+        if (!checkoutResult.success) {
+          return {
+            success: false,
+            error: checkoutResult.error,
+          }
+        }
+
+        if (normalizedSourceBranch === normalizedCollabBranch) {
+          return { success: true }
+        }
+
+        const mergeResult = await runGitCommand(
+          ['merge', '--no-ff', '--no-edit', normalizedSourceBranch],
+          resolvedProjectPath,
+        )
+        if (!mergeResult.success) {
+          return {
+            success: false,
+            error: mergeResult.error,
+          }
+        }
+
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to merge lane into collab',
+        }
+      }
     },
   )
 

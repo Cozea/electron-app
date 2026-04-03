@@ -1,15 +1,16 @@
-import { StrictMode } from 'react'
+import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, RouterProvider } from 'react-router-dom'
+import { RouterProvider } from "@/lib/router"
 
 import './lib/immer'
 import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
+import { ToastProvider } from './features/projects/components/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
-import { featureFlags } from './lib/featureFlags'
+
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
-import { appRouter } from './router/createRouter'
-import { LegacyRouterApp } from './router/LegacyRouterApp'
+import { appRouter } from './router/routes'
+
 
 ;(globalThis as { __COZEA_OFFSCREEN_SCREENSHOT_FLAG__?: string }).__COZEA_OFFSCREEN_SCREENSHOT_FLAG__ =
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
@@ -25,15 +26,11 @@ if (platform) {
 applyThemeClass(getStoredThemePreference())
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+  <React.StrictMode>
     <ConvexProvider>
-      {featureFlags.dataRouter ? (
+      <ToastProvider>
         <RouterProvider router={appRouter} />
-      ) : (
-        <BrowserRouter>
-          <LegacyRouterApp />
-        </BrowserRouter>
-      )}
+      </ToastProvider>
     </ConvexProvider>
-  </StrictMode>,
+  </React.StrictMode>,
 )

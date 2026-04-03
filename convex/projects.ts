@@ -9,6 +9,7 @@ import {
   normalizeProjectInviteEmail,
   PERSONAL_WORKSPACE_PREFIX,
 } from "./lib/projectSharing"
+import { getDefaultVersionControlSetupMode } from "../shared/versionControl"
 import {
   canAccessProjectByWorkspaceOrMembership,
   canArchiveProjectByWorkspaceOrMembership,
@@ -17,10 +18,15 @@ import {
   hasWorkspaceProjectPermission,
 } from "./lib/workspaceProjectAccess"
 import { applyProjectStorageDeltas, ensureProjectStorageUsage } from "./lib/workspaceLimits"
+import {
+  buildProjectRepositoryBindingRecord,
+  findWorkspaceConnectionByProvider,
+  upsertProjectRepositoryBindingDocument,
+} from "./sourceControl"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
-type ProjectSyncMode = "replica" | "git"
+type ProjectSyncMode = "git"
 type GitAccessState = "unknown" | "pending" | "granted" | "missing" | "error"
 
 interface GitRepositoryMetadata {
@@ -80,11 +86,15 @@ function stripDotGitSuffix(value: string): string {
 function parseRepositoryPathFromUrl(repoUrl: string): { owner: string; name: string } | null {
   const normalized = normalizeRepoUrl(repoUrl)
 
-  const sshMatch = normalized.match(/^(?:git@|ssh:\/\/git@)([^:/]+)[:/]([^/]+)\/(.+?)(?:\.git)?$/i)
+  const sshMatch = normalized.match(/^(?:git@|ssh:\/\/git@)[^:/]+[:/](.+?)(?:\.git)?$/i)
   if (sshMatch) {
+    const segments = stripDotGitSuffix(sshMatch[1]).split("/").filter(Boolean)
+    if (segments.length < 2) {
+      return null
+    }
     return {
-      owner: sshMatch[2],
-      name: stripDotGitSuffix(sshMatch[3]),
+      owner: segments.slice(0, -1).join("/"),
+      name: segments[segments.length - 1],
     }
   }
 
@@ -94,7 +104,7 @@ function parseRepositoryPathFromUrl(repoUrl: string): { owner: string; name: str
     if (segments.length < 2) return null
 
     return {
-      owner: segments[segments.length - 2],
+      owner: segments.slice(0, -1).join("/"),
       name: stripDotGitSuffix(segments[segments.length - 1]),
     }
   } catch {
@@ -317,9 +327,20 @@ export const create = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
+        defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
         mergeQueue: v.optional(v.string()),
+        syncPolicy: v.optional(
+          v.union(v.literal("auto"), v.literal("manual"))
+        ),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
       })
     ),
 
@@ -425,11 +446,40 @@ export const create = mutation({
     // For prompt/fresh, start as draft until AI generates/builds
     const initialStatus = args.creationPath === 'repo' ? 'active' : 'draft'
 
+    const organization = await ctx.db.get(args.organizationId)
+    if (!organization) {
+      throw new Error("Organization not found")
+    }
+
+    const defaultSetupMode = getDefaultVersionControlSetupMode(
+      organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+    )
+
+    const normalizedSourceControl = args.sourceControl
+      ? {
+          ...args.sourceControl,
+          activeCollabBranch:
+            args.sourceControl.activeCollabBranch?.trim() ||
+            args.sourceControl.defaultBranch?.trim() ||
+            args.repoSource?.branch?.trim() ||
+            "main",
+          defaultBranch:
+            args.sourceControl.defaultBranch?.trim() ||
+            args.sourceControl.activeCollabBranch?.trim() ||
+            args.repoSource?.branch?.trim() ||
+            "main",
+          setupMode: args.sourceControl.setupMode ?? defaultSetupMode,
+        }
+      : undefined
+
     // Create project with all fields
     const gitRepository = buildGitRepositoryMetadata({
-      provider: args.repoSource?.provider ?? args.sourceControl?.provider,
-      repoUrl: args.repoSource?.repoUrl ?? args.sourceControl?.repoUrl,
-      defaultBranch: args.repoSource?.branch,
+      provider: args.repoSource?.provider ?? normalizedSourceControl?.provider,
+      repoUrl: args.repoSource?.repoUrl ?? normalizedSourceControl?.repoUrl,
+      defaultBranch:
+        args.repoSource?.branch ??
+        normalizedSourceControl?.defaultBranch ??
+        normalizedSourceControl?.activeCollabBranch,
     })
 
     const syncMode: ProjectSyncMode = "git"
@@ -448,7 +498,7 @@ export const create = mutation({
         frameworkClass: "web-framework",
       },
       stack: args.stack,
-      sourceControl: args.sourceControl,
+      sourceControl: normalizedSourceControl,
       syncMode,
       gitRepository,
       gitSyncState: {
@@ -470,6 +520,39 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     })
+
+    const automatedProvider =
+      gitRepository?.provider === "github" || gitRepository?.provider === "gitlab"
+        ? gitRepository.provider
+        : normalizedSourceControl?.provider === "github" ||
+            normalizedSourceControl?.provider === "gitlab"
+          ? normalizedSourceControl.provider
+          : undefined
+      const workspaceConnection =
+        automatedProvider
+          ? await findWorkspaceConnectionByProvider(
+              ctx,
+              args.organizationId,
+              automatedProvider,
+              args.userId
+            )
+          : null
+
+      await upsertProjectRepositoryBindingDocument({
+        ctx,
+      binding: buildProjectRepositoryBindingRecord({
+        projectId,
+        organizationId: args.organizationId,
+          sourceControl: normalizedSourceControl,
+          gitRepository,
+          defaultSetupMode,
+          workspaceConnectionId:
+            workspaceConnection?.scopeType === "workspace"
+              ? workspaceConnection._id
+              : undefined,
+          now,
+        }),
+      })
 
     // Add creator as project manager
     // For local folder imports, also set the localPath so sync knows where files are
@@ -1282,9 +1365,20 @@ export const update = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
+        defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
         mergeQueue: v.optional(v.string()),
+        syncPolicy: v.optional(
+          v.union(v.literal("auto"), v.literal("manual"))
+        ),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
       })
     ),
     visuals: v.optional(
@@ -1370,7 +1464,74 @@ export const update = mutation({
     if (args.targetPlatform !== undefined) updates.targetPlatform = args.targetPlatform
     if (args.buildContract !== undefined) updates.buildContract = args.buildContract
     if (args.stack !== undefined) updates.stack = { ...project.stack, ...args.stack }
-    if (args.sourceControl !== undefined) updates.sourceControl = { ...project.sourceControl, ...args.sourceControl }
+    if (args.sourceControl !== undefined) {
+      const nextSourceControl = {
+        ...project.sourceControl,
+        ...args.sourceControl,
+        activeCollabBranch:
+          args.sourceControl.activeCollabBranch ??
+          args.sourceControl.defaultBranch ??
+          project.sourceControl?.activeCollabBranch ??
+          project.sourceControl?.defaultBranch ??
+          project.gitRepository?.defaultBranch ??
+          "main",
+        defaultBranch:
+          args.sourceControl.defaultBranch ??
+          args.sourceControl.activeCollabBranch ??
+          project.sourceControl?.defaultBranch ??
+          project.sourceControl?.activeCollabBranch ??
+          project.gitRepository?.defaultBranch ??
+          "main",
+      }
+      const nextGitRepository =
+        buildGitRepositoryMetadata({
+          provider: nextSourceControl.provider,
+          repoUrl: nextSourceControl.repoUrl,
+          defaultBranch:
+            project.gitRepository?.defaultBranch ??
+            nextSourceControl.defaultBranch ??
+            nextSourceControl.activeCollabBranch ??
+            "main",
+        }) ?? undefined
+      updates.sourceControl = nextSourceControl
+      updates.gitRepository = nextGitRepository
+
+      const organization = await ctx.db.get(project.organizationId)
+      const defaultSetupMode = getDefaultVersionControlSetupMode(
+        Boolean(organization?.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX))
+      )
+      const automatedProvider =
+        nextGitRepository?.provider === "github" || nextGitRepository?.provider === "gitlab"
+          ? nextGitRepository.provider
+          : nextSourceControl.provider === "github" || nextSourceControl.provider === "gitlab"
+            ? nextSourceControl.provider
+            : undefined
+      const workspaceConnection =
+        automatedProvider
+          ? await findWorkspaceConnectionByProvider(
+              ctx,
+              project.organizationId,
+              automatedProvider,
+              args.userId
+            )
+          : null
+
+      await upsertProjectRepositoryBindingDocument({
+        ctx,
+        binding: buildProjectRepositoryBindingRecord({
+          projectId: project._id,
+          organizationId: project.organizationId,
+          sourceControl: nextSourceControl,
+          gitRepository: nextGitRepository,
+          defaultSetupMode,
+          workspaceConnectionId:
+            workspaceConnection?.scopeType === "workspace"
+              ? workspaceConnection._id
+              : undefined,
+          now,
+        }),
+      })
+    }
     if (args.visuals !== undefined) updates.visuals = { ...project.visuals, ...args.visuals }
     if (args.originalPrompt !== undefined) updates.originalPrompt = args.originalPrompt
     if (args.promptSettings !== undefined) updates.promptSettings = args.promptSettings
@@ -1379,6 +1540,45 @@ export const update = mutation({
     await ctx.db.patch(args.projectId, updates)
 
     return await ctx.db.get(args.projectId)
+  },
+})
+
+export const updateFrameworkInfo = mutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    frameworkInfo: v.object({
+      framework: v.string(),
+      displayName: v.optional(v.string()),
+      routeConvention: v.optional(v.string()),
+      devCommand: v.optional(v.string()),
+      devPort: v.optional(v.number()),
+      buildCommand: v.optional(v.string()),
+      startCommand: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update project framework info")
+    }
+
+    await ctx.db.patch(args.projectId, {
+      frameworkInfo: {
+        ...(project.frameworkInfo ?? {}),
+        ...args.frameworkInfo,
+      },
+      updatedAt: Date.now(),
+    })
+
+    return { success: true }
   },
 })
 
@@ -1917,7 +2117,7 @@ export const getGitSyncMetadata = query({
     return {
       projectId: project._id,
       organizationId: project.organizationId,
-      syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
+      syncMode: (project.syncMode ?? "git") as ProjectSyncMode,
       gitRepository: project.gitRepository ?? null,
       gitSyncState: project.gitSyncState ?? null,
       sourceControl: project.sourceControl ?? null,
@@ -1930,7 +2130,7 @@ export const updateGitSyncMetadata = mutation({
   args: {
     projectId: v.id("projects"),
     userId: v.id("users"),
-    syncMode: v.optional(v.union(v.literal("replica"), v.literal("git"))),
+    syncMode: v.optional(v.literal("git")),
     gitRepository: v.optional(
       v.object({
         provider: v.string(),
@@ -2007,126 +2207,6 @@ export const updateGitSyncMetadata = mutation({
 
     await ctx.db.patch(args.projectId, updates)
 
-    return await ctx.db.get(args.projectId)
-  },
-})
-
-export const listLegacyReplicaProjectsForServer = query({
-  args: {
-    serverSecret: v.string(),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const limit = Math.max(1, Math.min(args.limit ?? 1000, 5000))
-    const projects = await ctx.db.query("projects").collect()
-
-    return projects
-      .filter((project) => project.status !== "deleted" && (project.syncMode ?? "replica") !== "git")
-      .sort((left, right) => left.updatedAt - right.updatedAt)
-      .slice(0, limit)
-      .map((project) => ({
-        _id: project._id,
-        slug: project.slug,
-        name: project.name,
-        organizationId: project.organizationId,
-        syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
-        gitRepository: project.gitRepository ?? null,
-        gitSyncState: project.gitSyncState ?? null,
-        updatedAt: project.updatedAt,
-      }))
-  },
-})
-
-export const listGitBackedProjectsForServer = query({
-  args: {
-    serverSecret: v.string(),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const limit = Math.max(1, Math.min(args.limit ?? 5000, 5000))
-    const projects = await ctx.db.query("projects").collect()
-
-    return projects
-      .filter((project) => project.status !== "deleted" && (project.syncMode ?? "replica") === "git")
-      .sort((left, right) => left.updatedAt - right.updatedAt)
-      .slice(0, limit)
-      .map((project) => ({
-        _id: project._id,
-        slug: project.slug,
-        name: project.name,
-        organizationId: project.organizationId,
-        syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
-        gitRepository: project.gitRepository ?? null,
-        gitSyncState: project.gitSyncState ?? null,
-        updatedAt: project.updatedAt,
-      }))
-  },
-})
-
-export const setGitSyncMetadataForServer = mutation({
-  args: {
-    projectId: v.id("projects"),
-    syncMode: v.union(v.literal("replica"), v.literal("git")),
-    gitRepository: v.optional(
-      v.object({
-        provider: v.string(),
-        owner: v.string(),
-        name: v.string(),
-        url: v.string(),
-        defaultBranch: v.string(),
-      })
-    ),
-    gitSyncState: v.optional(
-      v.object({
-        accessState: v.union(
-          v.literal("unknown"),
-          v.literal("pending"),
-          v.literal("granted"),
-          v.literal("missing"),
-          v.literal("error")
-        ),
-        lastFetchedCommit: v.optional(v.string()),
-        lastPushedCommit: v.optional(v.string()),
-        lastFetchAt: v.optional(v.number()),
-        lastPushAt: v.optional(v.number()),
-        repoBytes: v.optional(v.number()),
-        lastRepoSizeAt: v.optional(v.number()),
-        errorMessage: v.optional(v.string()),
-        migratedFromReplicaAt: v.optional(v.number()),
-      })
-    ),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const project = await ctx.db.get(args.projectId)
-    if (!project) {
-      throw new Error("Project not found")
-    }
-
-    const updates: Record<string, unknown> = {
-      syncMode: args.syncMode,
-      updatedAt: Date.now(),
-    }
-
-    if (args.gitRepository !== undefined) {
-      updates.gitRepository = args.gitRepository
-    }
-
-    if (args.gitSyncState !== undefined) {
-      const previousState = project.gitSyncState ?? { accessState: "unknown" as GitAccessState }
-      updates.gitSyncState = {
-        ...previousState,
-        ...args.gitSyncState,
-      } satisfies GitSyncStateMetadata
-    }
-
-    await ctx.db.patch(args.projectId, updates)
     return await ctx.db.get(args.projectId)
   },
 })

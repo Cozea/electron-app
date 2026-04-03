@@ -5,18 +5,16 @@ import { IconFolderCode } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { ContextSwitcher } from "@/components/context-switcher"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
 import { useAuth } from "@/contexts/AuthContext"
-import { prewarmAiSettingsData } from "@/hooks/useScopedAiData"
+import {} from "@/hooks/useScopedAiData"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { prewarmCloudStorageData } from "@/hooks/useScopedCloudStorageData"
 import {
@@ -82,7 +80,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         return async () => {
           await Promise.all([
             surface.preload?.(),
-            prewarmAiSettingsData({
+            Promise.resolve({
               organizationId: convexOrganizationId ?? null,
               userId: convexUserId ?? null,
               range: '30d',
@@ -169,9 +167,6 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         {...props}
       >
         <div className="h-10 shrink-0" aria-hidden="true" />
-        <SidebarHeader>
-          <ContextSwitcher />
-        </SidebarHeader>
         <SidebarContent>
           <NavMain label="Platform" items={platformItems} />
           {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}

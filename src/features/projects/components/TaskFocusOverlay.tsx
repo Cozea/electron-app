@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { ChevronDown, X } from 'lucide-react'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -22,10 +22,17 @@ import {
 
 interface TaskFocusOverlayProps {
   task: TaskOverlayPayload | null | undefined
+  presentation?: 'overlay' | 'docked'
+  onDismiss?: (() => void) | null
   className?: string
 }
 
-export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
+export function TaskFocusOverlay({
+  task,
+  presentation = 'overlay',
+  onDismiss = null,
+  className,
+}: TaskFocusOverlayProps) {
   const { convexUserId } = useAuth()
   const [isOpen, setIsOpen] = useState(true)
   const [isDismissed, setIsDismissed] = useState(false)
@@ -46,24 +53,14 @@ export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
     applyTaskOverlayCheckedMarkerIds(task, overlayState?.checkedMarkerIds),
   )
 
-  const [prevTask, setPrevTask] = useState(task)
-  if (task !== prevTask) {
-    setPrevTask(task)
+  useEffect(() => {
     setIsOpen(true)
     setIsDismissed(false)
-  }
+  }, [task])
 
-  const [prevOverlayStateIds, setPrevOverlayStateIds] = useState(overlayState?.checkedMarkerIds)
-  const [prevTaskForMarkers, setPrevTaskForMarkers] = useState(task)
-  
-  if (
-    task !== prevTaskForMarkers ||
-    overlayState?.checkedMarkerIds !== prevOverlayStateIds
-  ) {
-    setPrevTaskForMarkers(task)
-    setPrevOverlayStateIds(overlayState?.checkedMarkerIds)
+  useEffect(() => {
     setMarkers(applyTaskOverlayCheckedMarkerIds(task, overlayState?.checkedMarkerIds))
-  }
+  }, [task, overlayState?.checkedMarkerIds])
 
   if (!task || isDismissed) return null
   const activeTask = task
@@ -121,10 +118,17 @@ export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
     void persist()
   }
 
+  function handleDismiss(): void {
+    setIsDismissed(true)
+    onDismiss?.()
+  }
+
   return (
     <div
       className={cn(
-        'pointer-events-auto absolute bottom-4 right-4 z-20 w-[320px] max-w-[calc(100%-2rem)] rounded-[24px] bg-secondary/95 p-3 shadow-[0_20px_48px_rgba(15,23,42,0.16)] backdrop-blur dark:bg-secondary/80 dark:shadow-[0_24px_56px_rgba(0,0,0,0.42)]',
+        presentation === 'overlay'
+          ? 'pointer-events-auto absolute bottom-4 right-4 z-20 w-[320px] max-w-[calc(100%-2rem)] border border-border bg-card p-3'
+          : 'w-full border border-border bg-card p-3',
         className,
       )}
     >
@@ -133,16 +137,16 @@ export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-[11px] font-medium text-muted-foreground">Task</p>
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sidebar-accent/80 px-1.5 text-[10px] tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center bg-secondary px-1.5 text-[10px] tabular-nums text-secondary-foreground">
                 {checkedCount}/{markers.length}
               </span>
             </div>
-            <h3 className="truncate text-sm font-semibold text-foreground">{activeTask.title}</h3>
+            <h3 className="truncate text-sm font-medium text-foreground">{activeTask.title}</h3>
           </div>
 
           <div className="flex items-center gap-1">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="shrink-0 rounded-full">
+              <Button variant="ghost" size="icon-sm" className="shrink-0">
                 <ChevronDown
                   className={cn('h-4 w-4 transition-transform duration-200', !isOpen && '-rotate-90')}
                 />
@@ -151,8 +155,8 @@ export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="shrink-0 rounded-full"
-              onClick={() => setIsDismissed(true)}
+              className="shrink-0"
+              onClick={handleDismiss}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -169,7 +173,7 @@ export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
               {markers.map((marker) => (
                 <label
                   key={marker.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-xl px-1 py-1.5 transition-colors hover:bg-background/40"
+                  className="flex cursor-pointer items-center gap-3 px-1 py-1.5 transition-colors hover:bg-muted/50"
                 >
                   <Checkbox
                     checked={marker.checked}

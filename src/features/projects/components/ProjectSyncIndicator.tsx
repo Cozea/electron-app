@@ -127,7 +127,7 @@ export function ProjectSyncIndicator({
       return {
         icon: AlertTriangle,
         label: "Sync Error",
-        detail: syncMessage || "Sync failed. Retry from Sync Feed.",
+        detail: syncMessage || "Sync failed. Retry from Changes.",
         toneClassName: "text-destructive",
       }
     }

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import fs from 'node:fs'
+import type { Alias } from 'vite'
 
 function readBooleanFlag(name: string, fallback: boolean): boolean {
   const raw = process.env[name]
@@ -44,10 +45,44 @@ function resolveAiProxyTarget(): string {
 const aiProxyTarget = resolveAiProxyTarget()
 const reactCompilerEnabled = readBooleanFlag('VITE_FF_REACT_COMPILER', true)
 const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
+const sharedAliases: Alias[] = [
+  { find: '@', replacement: path.resolve(__dirname, './src') },
+  { find: '@shared', replacement: path.resolve(__dirname, './shared') },
+  {
+    find: /^@effect\/sql\/(.*)$/,
+    replacement: 'effect/unstable/sql/$1',
+  },
+  {
+    find: '@effect/sql',
+    replacement: 'effect/unstable/sql',
+  },
+  {
+    find: /^@cozea\/assistant-contracts\/(.*)$/,
+    replacement: `${path.resolve(__dirname, './shared/assistant-contracts')}/$1`,
+  },
+  {
+    find: '@cozea/assistant-contracts',
+    replacement: path.resolve(__dirname, './shared/assistant-contracts'),
+  },
+  {
+    find: /^@cozea\/assistant-shared\/(.*)$/,
+    replacement: `${path.resolve(__dirname, './shared/assistant-shared')}/$1`,
+  },
+  {
+    find: '@cozea/assistant-shared',
+    replacement: path.resolve(__dirname, './shared/assistant-shared'),
+  },
+]
 
 export default defineConfig({
   main: {
+    resolve: {
+      alias: sharedAliases,
+    },
     build: {
+      externalizeDeps: {
+        exclude: ['@pierre/diffs'],
+      },
       lib: {
         entry: {
           index: 'electron/main.ts',
@@ -77,6 +112,9 @@ export default defineConfig({
     },
   },
   preload: {
+    resolve: {
+      alias: sharedAliases,
+    },
     build: {
       lib: {
         entry: 'electron/preload.ts',
@@ -147,15 +185,20 @@ export default defineConfig({
     },
     resolve: {
       dedupe: ['vscode'],
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-        '@shared': path.resolve(__dirname, './shared'),
-      },
+      alias: sharedAliases,
     },
     optimizeDeps: {
       include: [
         '@codingame/monaco-vscode-api',
         '@codingame/monaco-vscode-api/extensions',
+        '@codingame/monaco-vscode-api/services',
+        '@codingame/monaco-vscode-api/vscode/vs/base/common/uri',
+        '@codingame/monaco-vscode-api/vscode/vs/base/common/event',
+        '@codingame/monaco-vscode-extensions-service-override',
+        '@codingame/monaco-vscode-files-service-override',
+        '@codingame/monaco-vscode-languages-service-override',
+        '@codingame/monaco-vscode-theme-service-override',
+        '@codingame/monaco-vscode-textmate-service-override',
         'vscode/localExtensionHost',
       ],
       exclude: [

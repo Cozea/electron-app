@@ -5,6 +5,7 @@ import { CreateWorkspaceDialog } from '@/components/workspaces/CreateWorkspaceDi
 export function CreateWorkspaceDialogHost() {
   const navigate = useViewTransitionNavigate()
   const isOpen = useCreateWorkspaceDialogStore((state) => state.isOpen)
+  const redirectTo = useCreateWorkspaceDialogStore((state) => state.redirectTo)
   const close = useCreateWorkspaceDialogStore((state) => state.close)
 
   return (
@@ -17,7 +18,7 @@ export function CreateWorkspaceDialogHost() {
       }}
       onCreated={() => {
         close()
-        navigate('/projects')
+        navigate(redirectTo || '/projects')
       }}
     />
   )

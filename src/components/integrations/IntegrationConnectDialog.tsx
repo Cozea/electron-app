@@ -28,6 +28,10 @@ interface IntegrationConnectDialogProps {
   onOpenChange: (open: boolean) => void
   onConnect: (credentials: IntegrationCredentials) => Promise<void>
   onStartOAuth?: () => Promise<void>
+  oauthHint?: {
+    title: string
+    description: string
+  }
   isConnecting?: boolean
   error?: string
 }
@@ -38,6 +42,7 @@ export function IntegrationConnectDialog({
   onOpenChange,
   onConnect,
   onStartOAuth,
+  oauthHint,
   isConnecting,
   error,
 }: IntegrationConnectDialogProps) {
@@ -169,6 +174,13 @@ export function IntegrationConnectDialog({
               : `Connect your ${integration.name} account to Cozea to enable seamless integration.`}
           </p>
         </div>
+
+        {integration.authType === 'oauth' && oauthHint ? (
+          <div className="rounded-xl border border-border/60 bg-secondary/40 px-4 py-3">
+            <p className="text-sm font-medium">{oauthHint.title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{oauthHint.description}</p>
+          </div>
+        ) : null}
 
         {/* Error message */}
         {error && (

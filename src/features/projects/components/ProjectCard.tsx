@@ -34,6 +34,7 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
+import { primeLocalProjectPath, useLocalProjectPath } from '../hooks/useLocalProjectPath'
 import { ProjectDeleteDialog } from './ProjectDeleteDialog'
 import { ProjectRenameDialog } from './ProjectRenameDialog'
 import { formatProjectDeleteError, formatProjectRenameError } from '../lib/projectMutationPresentation'
@@ -84,8 +85,7 @@ function formatRelativeTime(timestamp: number): string {
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
-const preloadProjectPagesPage = () => import('@/features/projects/pages/ProjectPagesPage')
-const preloadNewProjectPage = () => import('@/pages/NewProject')
+const preloadProjectWorkbenchPage = () => import('@/features/projects/pages/ProjectWorkbenchPage')
 
 export const ProjectCard = memo(function ProjectCard({ project, userId, workspaceScoped }: ProjectCardProps) {
   const convex = useConvex()
@@ -113,7 +113,13 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   const archiveProject = useMutation(api.projects.archive)
   const restoreProject = useMutation(api.projects.restore)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-  const [localPath, setLocalPath] = useState<string | null>(project.localPath ?? null)
+  const { localPath: cachedLocalPath } = useLocalProjectPath({
+    initialPath: project.localPath ?? null,
+    lookupOnMount: false,
+    projectId: String(project._id),
+    projectSlug: project.slug,
+  })
+  const [localPath, setLocalPath] = useState<string | null>(cachedLocalPath)
   const previewImageUrl = project.previewImageUrl ?? null
   const [imageError, setImageError] = useState(false)
 
@@ -122,20 +128,16 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   }, [previewImageUrl, project._id])
 
   useEffect(() => {
-    setLocalPath(project.localPath ?? null)
-  }, [project._id, project.localPath])
+    setLocalPath(cachedLocalPath)
+  }, [cachedLocalPath, project._id])
 
   useEffect(() => {
     setRenameValue(project.name)
   }, [project._id, project.name])
 
     const preloadProjectDestination = useCallback(() => {
-    if (project.status === 'draft') {
-      void preloadNewProjectPage()
-      return
-        }
-        void preloadProjectPagesPage()
-    }, [project.status])
+      void preloadProjectWorkbenchPage()
+    }, [])
 
     const handleCardClick = useCallback(async () => {
         if (syncState !== 'idle') {
@@ -143,12 +145,6 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
         }
 
         preloadProjectDestination()
-
-        // Draft projects go straight to wizard
-        if (project.status === 'draft') {
-            navigate(`/projects/new?resume=${project._id}`)
-            return
-        }
 
         // Start sync check
         setSyncState('checking')
@@ -171,12 +167,14 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
 
             if (gitOpenResult.cancelled) {
                 if (gitOpenResult.needsConflictResolution) {
+                    primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
                     navigate(buildProjectPath(String(project._id), 'conflicts'), {
                         state: {
                             projectId: String(project._id),
                             projectSlug: project.slug,
                             projectName: project.name,
                             projectTemplate: project.template ?? undefined,
+                            localPath: gitOpenResult.localPath,
                             syncMode: 'git',
                         },
                     })
@@ -191,6 +189,7 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
             }
 
             setLocalPath(gitOpenResult.localPath)
+            primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
             setSyncState('ready')
             setSyncMessage('Opening project...')
             setSyncDetail(null)
@@ -204,6 +203,7 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
+                        localPath: gitOpenResult.localPath,
                         syncMode: 'git',
                     },
                 })

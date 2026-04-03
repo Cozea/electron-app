@@ -9,12 +9,7 @@
  */
 
 import type * as activity from "../activity.js";
-import type * as aiConversations from "../aiConversations.js";
-import type * as aiRuntime from "../aiRuntime.js";
-import type * as aiUsage from "../aiUsage.js";
-import type * as aiWallets from "../aiWallets.js";
 import type * as billing from "../billing.js";
-import type * as builderRuns from "../builderRuns.js";
 import type * as crons from "../crons.js";
 import type * as debug from "../debug.js";
 import type * as deployments from "../deployments.js";
@@ -43,13 +38,11 @@ import type * as projectJoinLinks from "../projectJoinLinks.js";
 import type * as projectMembers from "../projectMembers.js";
 import type * as projectMessages from "../projectMessages.js";
 import type * as projectPresence from "../projectPresence.js";
-import type * as projectReplicaGit from "../projectReplicaGit.js";
-import type * as projectReplicaLfs from "../projectReplicaLfs.js";
+import type * as projectRepoAccess from "../projectRepoAccess.js";
 import type * as projectTasks from "../projectTasks.js";
 import type * as projectTemplates from "../projectTemplates.js";
 import type * as projects from "../projects.js";
-import type * as toolApprovals from "../toolApprovals.js";
-import type * as tools from "../tools.js";
+import type * as sourceControl from "../sourceControl.js";
 import type * as users from "../users.js";
 import type * as waitlist from "../waitlist.js";
 import type * as yjs from "../yjs.js";
@@ -63,12 +56,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activity: typeof activity;
-  aiConversations: typeof aiConversations;
-  aiRuntime: typeof aiRuntime;
-  aiUsage: typeof aiUsage;
-  aiWallets: typeof aiWallets;
   billing: typeof billing;
-  builderRuns: typeof builderRuns;
   crons: typeof crons;
   debug: typeof debug;
   deployments: typeof deployments;
@@ -97,13 +85,11 @@ declare const fullApi: ApiFromModules<{
   projectMembers: typeof projectMembers;
   projectMessages: typeof projectMessages;
   projectPresence: typeof projectPresence;
-  projectReplicaGit: typeof projectReplicaGit;
-  projectReplicaLfs: typeof projectReplicaLfs;
+  projectRepoAccess: typeof projectRepoAccess;
   projectTasks: typeof projectTasks;
   projectTemplates: typeof projectTemplates;
   projects: typeof projects;
-  toolApprovals: typeof toolApprovals;
-  tools: typeof tools;
+  sourceControl: typeof sourceControl;
   users: typeof users;
   waitlist: typeof waitlist;
   yjs: typeof yjs;

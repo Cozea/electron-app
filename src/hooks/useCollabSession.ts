@@ -82,7 +82,7 @@ export function useCollabSession({
 
     if (!accessToken || !gatewayBaseUrl) {
       setStatus('error')
-      setError('Collab gateway is not configured')
+      setError('WebSocket collaboration gateway is not configured')
       setSession(null)
       setCapabilities(null)
       return null
@@ -139,7 +139,10 @@ export function useCollabSession({
       setError(null)
       return parsedSession
     } catch (requestError) {
-      const message = requestError instanceof Error ? requestError.message : 'Failed to initialize collaboration session'
+      const message =
+        requestError instanceof Error
+          ? requestError.message
+          : 'Failed to initialize WebSocket collaboration session'
       setStatus('error')
       setSession(null)
       setCapabilities(null)

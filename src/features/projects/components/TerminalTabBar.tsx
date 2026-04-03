@@ -34,9 +34,11 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import type { ViewMode } from "./ProblemsView"
 
+export type TerminalPanelView = "terminal" | "problems"
+
 interface TerminalTabBarProps {
-    activeView: "terminal" | "problems"
-    onViewChange: (view: "terminal" | "problems") => void
+    activeView: TerminalPanelView
+    onViewChange: (view: TerminalPanelView) => void
     problemCount?: number
     projectPath: string
     onClose?: () => void
@@ -160,6 +162,7 @@ export function TerminalTabBar({
                 projectPath,
                 label,
                 kind: 'shell',
+                surface: 'panel',
                 nameSource: 'auto',
                 title: label,
                 status: 'starting',

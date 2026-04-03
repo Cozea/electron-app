@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import { useProblemsStore, selectProjectProblems, type ProblemItem } from "@/stores/useProblemsStore"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+
 
 interface ProblemsViewProps {
     projectPath?: string | null
@@ -69,7 +69,7 @@ export function ProblemsView({
 }: ProblemsViewProps) {
     const errors = useProblemsStore(selectProjectProblems(projectPath))
     const dismissError = useProblemsStore((state) => state.actions.dismissProblem)
-    const openWithPrompt = useAssistantPanelStore((state) => state.openWithPrompt)
+    
 
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
 
@@ -180,8 +180,8 @@ export function ProblemsView({
             "3. a code patch suggestion",
         ].join("\n")
 
-        openWithPrompt(prompt)
-    }, [openWithPrompt, projectPath])
+        console.log(prompt)
+    }, [console.log, projectPath])
 
     return (
         <div className="h-full min-w-0 flex flex-col bg-content-surface">

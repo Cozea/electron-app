@@ -7,7 +7,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { BreadcrumbCountChip } from '@/components/layouts/BreadcrumbCountChip'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -35,6 +35,10 @@ import { Plus, Plug } from 'lucide-react'
 
 type FilterType = 'all' | 'connected' | 'disconnected'
 
+const VISIBLE_INTEGRATION_CATEGORIES: IntegrationCategory[] = (
+  Object.keys(CATEGORY_INFO) as IntegrationCategory[]
+).filter((category) => category !== 'version_control')
+
 interface IntegrationsProps {
   surface?: 'page' | 'drawer'
   route?: string
@@ -43,8 +47,6 @@ interface IntegrationsProps {
 export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   const {
     settingsPage,
-    user,
-    logout,
     integrations: connectedIntegrations,
     connect,
     disconnect,
@@ -57,7 +59,6 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   const [filter, setFilter] = useState<FilterType>('all')
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationDefinition | null>(null)
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false)
-
   // Group integrations by category
   const groupedIntegrations = useMemo(() => getIntegrationsGroupedByCategory(), [])
 
@@ -110,6 +111,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   // Handle OAuth start
   const handleStartOAuth = async () => {
     if (!selectedIntegration) return
+
     await startOAuth(selectedIntegration.id)
   }
 
@@ -122,7 +124,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
     setIsConnectDialogOpen(open)
   }
 
-  const categories = Object.keys(CATEGORY_INFO) as IntegrationCategory[]
+  const categories = VISIBLE_INTEGRATION_CATEGORIES
 
   // Check if there are any integrations to show after filtering
   const hasFilteredIntegrations = categories.some(
@@ -175,8 +177,13 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   )
 
   const content = (
-    <>
-      <div className="space-y-8">
+    <div
+      className={
+        surface === 'drawer'
+          ? 'mx-auto w-full max-w-6xl space-y-8 px-6 py-6'
+          : 'max-w-6xl space-y-8 px-6 pt-6 pb-8'
+      }
+    >
         {!hasFilteredIntegrations ? (
           <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
             {filter === 'connected'
@@ -269,7 +276,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
             )
           })
         )}
-      </div>
+      
 
       {/* Connect dialog */}
       <IntegrationConnectDialog
@@ -281,7 +288,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
         isConnecting={!!connectingProvider}
         error={connectError || undefined}
       />
-    </>
+    </div>
   )
 
   if (surface === 'drawer') {
@@ -296,10 +303,8 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   }
 
   return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
+    <SettingsRouteShell
+      surfaceId="cliTools"
       breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
@@ -311,6 +316,6 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
       ) : (
         content
       )}
-    </DashboardLayout>
+    </SettingsRouteShell>
   )
 }

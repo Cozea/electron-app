@@ -1,0 +1,301 @@
+[simulator-server] STDERR: 2026-03-26 00:32:02.406 simulator-server-macos[72163:5115077] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 00:32:02.406 simulator-server-macos[72163:5115077] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 00:32:03.846 simulator-server-macos[72163:5115065] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:49824/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T16:32:03Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:49824/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 01:49:57.414 simulator-server-macos[18737:46228] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 01:49:57.416 simulator-server-macos[18737:46228] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 01:49:58.550 simulator-server-macos[18737:46219] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:49793/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T17:49:58Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:49793/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 01:57:43.936 simulator-server-macos[25620:63148] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 01:57:43.936 simulator-server-macos[25620:63148] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 01:57:44.598 simulator-server-macos[25620:63136] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50009/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T17:57:44Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50009/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 02:59:48.860 simulator-server-macos[84009:182039] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 02:59:48.861 simulator-server-macos[84009:182039] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 02:59:49.714 simulator-server-macos[84009:182029] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50683/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T18:59:49Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50683/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:00:09.719 simulator-server-macos[85345:184316] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:00:09.719 simulator-server-macos[85345:184316] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:00:10.525 simulator-server-macos[85345:184307] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50754/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:00:10Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50754/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:01:26.211 simulator-server-macos[87059:188456] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:01:26.211 simulator-server-macos[87059:188456] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:01:26.884 simulator-server-macos[87059:188444] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50770/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:01:26Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50770/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:02:42.684 simulator-server-macos[88670:191630] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:02:42.684 simulator-server-macos[88670:191630] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:02:43.359 simulator-server-macos[88670:191627] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50788/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:02:43Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50788/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:03:32.832 simulator-server-macos[90214:196504] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:03:32.835 simulator-server-macos[90214:196504] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:03:34.232 simulator-server-macos[90214:196501] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50828/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:03:34Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50828/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:05:35.468 simulator-server-macos[93441:204411] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:05:35.468 simulator-server-macos[93441:204411] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:05:36.147 simulator-server-macos[93441:204399] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:50880/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:05:36Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:50880/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:10:42.240 simulator-server-macos[2426:221928] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:10:42.240 simulator-server-macos[2426:221928] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:10:42.960 simulator-server-macos[2426:221916] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:51072/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:10:42Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:51072/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:10:53.117 simulator-server-macos[3052:223120] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:10:53.118 simulator-server-macos[3052:223120] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:10:53.823 simulator-server-macos[3052:223108] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:51084/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:10:53Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:51084/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:11:24.514 simulator-server-macos[4186:225980] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:11:24.514 simulator-server-macos[4186:225980] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:11:25.214 simulator-server-macos[4186:225969] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:51105/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:11:25Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:51105/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:11:28.743 simulator-server-macos[4618:226774] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:11:28.743 simulator-server-macos[4618:226774] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:11:29.431 simulator-server-macos[4618:226763] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:51114/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:11:29Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:51114/stream.mjpeg
+[simulator-server] STDERR: 2026-03-26 03:24:46.584 simulator-server-macos[29000:274276] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:24:46.585 simulator-server-macos[29000:274276] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:24:47.293 simulator-server-macos[29000:274264] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:51508/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:24:47Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:51508/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 03:42:02.014 simulator-server-macos[70037:349638] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:42:02.015 simulator-server-macos[70037:349638] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:42:03.221 simulator-server-macos[70037:349626] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:52060/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:42:03Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:52060/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 03:43:06.366 simulator-server-macos[72995:356922] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:43:06.368 simulator-server-macos[72995:356922] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:43:07.512 simulator-server-macos[72995:356907] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:52103/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:43:08Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:52103/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 03:43:42.466 simulator-server-macos[74496:360609] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:43:42.467 simulator-server-macos[74496:360609] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 03:43:43.370 simulator-server-macos[74496:360598] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:52139/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T19:43:43Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:52139/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:38:39.979 simulator-server-macos[74539:534611] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:38:39.980 simulator-server-macos[74539:534611] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:38:40.781 simulator-server-macos[74539:534599] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:53682/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:38:40Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:53682/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:41:20.203 simulator-server-macos[81672:547114] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:41:20.203 simulator-server-macos[81672:547114] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:41:21.090 simulator-server-macos[81672:547101] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:53812/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:41:21Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:53812/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:42:11.724 simulator-server-macos[84053:551616] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:42:11.724 simulator-server-macos[84053:551616] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:42:12.411 simulator-server-macos[84053:551605] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:53864/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:42:12Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:53864/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:47:15.337 simulator-server-macos[95192:571363] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:15.340 simulator-server-macos[95192:571363] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:16.449 simulator-server-macos[95192:571351] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:53994/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:47:16Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:53994/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:47:31.724 simulator-server-macos[96278:573397] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:31.726 simulator-server-macos[96278:573397] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:32.637 simulator-server-macos[96278:573385] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54032/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:47:32Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54032/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:47:37.940 simulator-server-macos[96850:574312] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:37.941 simulator-server-macos[96850:574312] H264 encoder initialized
+[simulator-server] EXIT: Process exited with code null and signal SIGTERM. Stop requested: true
+[simulator-server] STDERR: 2026-03-26 04:47:41.111 simulator-server-macos[97258:574908] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:41.112 simulator-server-macos[97258:574908] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:47:41.991 simulator-server-macos[97258:574896] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54053/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:47:42Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54053/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:48:38.661 simulator-server-macos[514:580268] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:48:38.661 simulator-server-macos[514:580268] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:48:39.882 simulator-server-macos[514:580254] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54092/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:48:39Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54092/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 04:51:56.998 simulator-server-macos[8780:595683] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:51:56.999 simulator-server-macos[8780:595683] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 04:51:58.040 simulator-server-macos[8780:595680] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54205/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T20:51:58Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54205/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 05:01:02.167 simulator-server-macos[44630:652302] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:01:02.167 simulator-server-macos[44630:652302] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:01:03.285 simulator-server-macos[44630:652292] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54413/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T21:01:03Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54413/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] STDERR: 2026-03-26 05:02:10.109 simulator-server-macos[47788:657868] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:02:10.109 simulator-server-macos[47788:657868] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:02:10.810 simulator-server-macos[47788:657856] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54493/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T21:02:10Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54493/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 05:10:46.244 simulator-server-macos[70618:699802] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:10:46.245 simulator-server-macos[70618:699802] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:10:47.084 simulator-server-macos[70618:699793] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54792/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T21:10:47Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54792/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 05:11:15.031 simulator-server-macos[72055:702221] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:11:15.032 simulator-server-macos[72055:702221] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:11:15.756 simulator-server-macos[72055:702210] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54808/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T21:11:15Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54808/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 05:14:01.622 simulator-server-macos[79442:715272] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:14:01.623 simulator-server-macos[79442:715272] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:14:02.510 simulator-server-macos[79442:715257] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54872/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T21:14:02Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54872/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 05:16:41.169 simulator-server-macos[87782:730899] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:16:41.171 simulator-server-macos[87782:730899] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:16:42.234 simulator-server-macos[87782:730888] Setting simulator keyboard language: en
+[simulator-server] STDERR: [2026-03-25T21:16:42Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:54977/stream.mjpeg
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:54977/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 05:20:16.624 simulator-server-macos[98662:751194] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:20:16.625 simulator-server-macos[98662:751194] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:20:18.748 simulator-server-macos[98662:751184] Setting simulator keyboard language: en
+[simulator-server] STDERR: [2026-03-25T21:20:18Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:55048/stream.mjpeg
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:55048/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 05:21:10.768 simulator-server-macos[2046:756800] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:21:10.770 simulator-server-macos[2046:756800] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 05:21:12.631 simulator-server-macos[2046:756790] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:55108/stream.mjpeg
+[simulator-server] STDERR: [2026-03-25T21:21:12Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:55108/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 17:26:04.019 simulator-server-macos[94461:1780013] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 17:26:04.020 simulator-server-macos[94461:1780013] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 17:26:05.354 simulator-server-macos[94461:1780005] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:56530/stream.mjpeg
+[simulator-server] STDERR: [2026-03-26T09:26:06Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:56530/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 17:26:44.585 simulator-server-macos[95520:1783491] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 17:26:44.586 simulator-server-macos[95520:1783491] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 17:26:45.387 simulator-server-macos[95520:1783446] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:56574/stream.mjpeg
+[simulator-server] STDERR: [2026-03-26T09:26:45Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:56574/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDERR: 2026-03-26 18:04:12.765 simulator-server-macos[59256:1923026] JPEG encoder initialized
+[simulator-server] STDERR: 2026-03-26 18:04:12.765 simulator-server-macos[59256:1923026] H264 encoder initialized
+[simulator-server] STDERR: 2026-03-26 18:04:13.423 simulator-server-macos[59256:1923015] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:57068/stream.mjpeg
+[simulator-server] STDERR: [2026-03-26T10:04:13Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:57068/stream.mjpeg
+[simulator-server] EXIT: Process exited with code null and signal SIGSEGV. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"free","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: 2026-03-26 18:26:04.179 simulator-server-macos[98902:2003609] JPEG encoder initialized
+[simulator-server] STDOUT: 2026-03-26 18:26:04.179 simulator-server-macos[98902:2003609] H264 encoder initialized
+[simulator-server] STDOUT: 2026-03-26 18:26:04.929 simulator-server-macos[98902:2003597] Setting simulator keyboard language: en
+[simulator-server] STDOUT: stream_ready http://127.0.0.1:57644/stream.mjpeg
+[simulator-server] STDOUT: [2026-03-26T10:26:04Z INFO  simulator_server::mjpeg_server] MJPEG server started at http://127.0.0.1:57644/stream.mjpeg
+[simulator-server] EXIT: Process exited with code 0 and signal 11. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false
+[simulator-server] Checking token validity...
+[simulator-server] Token State: {"status":"valid","tokenPresent":true,"tokenVerified":true,"plan":"pro","features":{"AndroidSmartphoneEmulators":"AVAILABLE","AndroidTabletEmulators":"PAYWALLED","AndroidPhysicalDevice":"PAYWALLED","Biometrics":"PAYWALLED","ComponentPreview":"AVAILABLE","DeviceAppearanceSettings":"AVAILABLE","DeviceFontSizeSettings":"AVAILABLE","DeviceLocalizationSettings":"PAYWALLED","DeviceRotation":"PAYWALLED","ElementInspector":"AVAILABLE","ExpoRouterIntegration":"AVAILABLE","IOSSmartphoneSimulators":"AVAILABLE","IOSTabletSimulators":"PAYWALLED","JSProfiler":"AVAILABLE","LocationSimulation":"PAYWALLED","NetworkInspection":"AVAILABLE","MaestroTesting":"PAYWALLED","OpenDeepLink":"AVAILABLE","OutlineRenders":"AVAILABLE","Permissions":"PAYWALLED","ReactProfiler":"AVAILABLE","ReactQueryDevTools":"AVAILABLE","RadonConnect":"AVAILABLE","RadonAI":"PAYWALLED","ReduxDevTools":"AVAILABLE","ScreenRecording":"PAYWALLED","ScreenReplay":"PAYWALLED","Screenshot":"PAYWALLED","SendFile":"PAYWALLED","StorybookIntegration":"PAYWALLED"},"missingFeatures":["AndroidTabletEmulators","AndroidPhysicalDevice","Biometrics","DeviceLocalizationSettings","DeviceRotation","IOSTabletSimulators","LocationSimulation","MaestroTesting","Permissions","RadonAI","ScreenRecording","ScreenReplay","Screenshot","SendFile","StorybookIntegration"]}
+[simulator-server] STDOUT: error: unexpected argument '-t' found
+[simulator-server] STDOUT: tip: to pass '-t' as a value, use '-- -t'
+[simulator-server] STDOUT: Usage: simulator-server-macos [OPTIONS] --id <ID> [CMD]
+[simulator-server] STDOUT: For more information, try '--help'.
+[simulator-server] EXIT: Process exited with code 2 and signal 0. Stop requested: false

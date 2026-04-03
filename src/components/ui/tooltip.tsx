@@ -1,58 +1,46 @@
 import * as React from "react"
-import * as TooltipPrimitive from "@radix-ui/react-tooltip"
+import { Tooltip as BaseTooltip } from "@base-ui/react"
 
 import { cn } from "@/lib/utils"
 
-function TooltipProvider({
-  delayDuration = 0,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
-  )
+function TooltipProvider({ children }: { children: React.ReactNode; delayDuration?: number }) {
+  return <>{children}</>
 }
 
-function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return (
-    <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
-    </TooltipProvider>
-  )
+function Tooltip({ ...props }: React.ComponentProps<typeof BaseTooltip.Root>) {
+  return <BaseTooltip.Root {...props} />
 }
 
-function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+function TooltipTrigger({ asChild, children, ...props }: React.ComponentProps<typeof BaseTooltip.Trigger> & { asChild?: boolean }) {
+  if (asChild) {
+    return <BaseTooltip.Trigger render={children as any} {...props} />
+  }
+  return <BaseTooltip.Trigger {...props}>{children}</BaseTooltip.Trigger>
 }
 
 function TooltipContent({
   className,
-  sideOffset = 0,
   children,
+  side,
+  align,
+  sideOffset,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: React.ComponentProps<typeof BaseTooltip.Popup> & { side?: string; align?: string; sideOffset?: number }) {
   return (
-    <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
-        sideOffset={sideOffset}
-        className={cn(
-          "bg-secondary text-secondary-foreground z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance shadow-lg",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        <TooltipPrimitive.Arrow className="bg-secondary fill-secondary z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
-      </TooltipPrimitive.Content>
-    </TooltipPrimitive.Portal>
+    <BaseTooltip.Portal>
+      <BaseTooltip.Positioner side={side as any} align={align as any} sideOffset={sideOffset}>
+        <BaseTooltip.Popup
+          className={cn(
+            "bg-secondary text-secondary-foreground z-50 w-fit rounded-md px-3 py-1.5 text-xs text-balance shadow-lg",
+            className
+          )}
+          {...props}
+        >
+          {children}
+          <BaseTooltip.Arrow className="bg-secondary fill-secondary z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
+        </BaseTooltip.Popup>
+      </BaseTooltip.Positioner>
+    </BaseTooltip.Portal>
   )
 }
 

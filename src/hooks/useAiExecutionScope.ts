@@ -44,7 +44,5 @@ export function useAiExecutionScope(options: UseAiExecutionScopeOptions = {}) {
       : true,
     billingHref:
       getSettingsSurfaceRoute('billing', scopeKind) ?? '/settings/billing',
-    aiSettingsHref: getSettingsSurfaceRoute('ai', scopeKind) ?? '/settings/ai',
   }
 }
-

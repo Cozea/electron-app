@@ -77,23 +77,32 @@ export function useCachedPreviewUrl(
     // Fetch and cache (avoid duplicate in-flight fetches)
     if (fetchingRef.current === projectId) return
     fetchingRef.current = projectId
+
+    let isMounted = true
     setError(false)
 
     fetchAndCachePreviewUrl(projectId, sourceUrl)
       .then((url) => {
+        if (!isMounted) return
         if (fetchingRef.current === projectId) {
           setState({ blobUrl: url, forProjectId: projectId })
         }
       })
       .catch(() => {
+        if (!isMounted) return
         if (fetchingRef.current === projectId) {
           setError(true)
           setState({ blobUrl: null, forProjectId: projectId })
         }
       })
       .finally(() => {
+        if (!isMounted) return
         fetchingRef.current = null
       })
+
+    return () => {
+      isMounted = false
+    }
   }, [projectId, sourceUrl])
 
   // Only use blobUrl if it belongs to the current project (avoids showing another project's screenshot)

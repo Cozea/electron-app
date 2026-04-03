@@ -1,10 +1,11 @@
-import { memo, useMemo, useRef, useState } from 'react'
-import { AppWindow, Route } from 'lucide-react'
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Monitor, Route, Smartphone, Tablet } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { PageRoute } from '@/stores/useProjectPagesStore'
+import type { PreviewDevice } from './types'
 
 function normalizePreviewPath(path?: string | null): string {
   if (!path) return '/'
@@ -14,14 +15,42 @@ function normalizePreviewPath(path?: string | null): string {
 interface ProjectPreviewRouteBarProps {
   currentRoute: PageRoute | null
   currentPath?: string | null
+  device: PreviewDevice
   routes: PageRoute[]
+  onCycleDevice: () => void
   onSelectRoute: (route: PageRoute) => void
+}
+
+function getPreviewDeviceLabel(device: PreviewDevice): string {
+  switch (device) {
+    case 'tablet':
+      return 'Tablet'
+    case 'mobile':
+      return 'Mobile'
+    case 'desktop':
+    default:
+      return 'Desktop'
+  }
+}
+
+function getPreviewDeviceIcon(device: PreviewDevice): ReactNode {
+  switch (device) {
+    case 'tablet':
+      return <Tablet className="h-3.5 w-3.5" />
+    case 'mobile':
+      return <Smartphone className="h-3.5 w-3.5" />
+    case 'desktop':
+    default:
+      return <Monitor className="h-3.5 w-3.5" />
+  }
 }
 
 export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
   currentRoute,
   currentPath,
+  device,
   routes,
+  onCycleDevice,
   onSelectRoute,
 }: ProjectPreviewRouteBarProps) {
   const widthClassName = 'w-[28rem] max-w-[42vw] min-w-0 max-xl:w-[22rem] max-lg:w-[18rem] max-[980px]:hidden'
@@ -31,6 +60,8 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const currentRoutePath = normalizePreviewPath(currentPath ?? currentRoute?.path)
   const inputValue = open ? query : currentRoutePath
+  const deviceIcon = getPreviewDeviceIcon(device)
+  const deviceLabel = getPreviewDeviceLabel(device)
 
   const filteredRoutes = useMemo(() => {
     const trimmedQuery = query.trim().toLowerCase()
@@ -93,10 +124,18 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
+      <PopoverAnchor>
         <div className={widthClassName}>
           <div className="flex h-7 items-center gap-2 rounded-full border border-border/60 bg-secondary/70 px-3 shadow-none">
-            <AppWindow className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <button
+              type="button"
+              onClick={onCycleDevice}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+              aria-label={`Preview device: ${deviceLabel}. Click to switch device.`}
+              title={`Preview device: ${deviceLabel}. Click to switch device.`}
+            >
+              {deviceIcon}
+            </button>
             <Input
               ref={inputRef}
               value={inputValue}
@@ -149,7 +188,7 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
         side="bottom"
         sideOffset={6}
         className="w-[28rem] max-w-[42vw] rounded-2xl border border-border/60 bg-secondary p-1 shadow-xl max-xl:w-[22rem] max-lg:w-[18rem] max-[980px]:hidden"
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        
       >
         <div className="max-h-72 overflow-y-auto">
           {filteredRoutes.length === 0 ? (
@@ -158,7 +197,6 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
             </div>
           ) : (
             filteredRoutes.map((route, index) => {
-              const normalizedPath = normalizePreviewPath(route.path)
               const isActive = currentRoute?.path === route.path
               const isHighlighted = index === highlightedIndex
 
@@ -169,8 +207,8 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
                   className={cn(
                     'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
                     isHighlighted
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-secondary-foreground hover:bg-accent/70'
+                      ? 'bg-muted text-foreground'
+                      : 'text-foreground/90 hover:bg-muted hover:text-foreground'
                   )}
                   onMouseDown={(event) => {
                     event.preventDefault()
@@ -179,8 +217,7 @@ export const ProjectPreviewRouteBar = memo(function ProjectPreviewRouteBar({
                   onMouseEnter={() => setHighlightedIndex(index)}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{route.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">{normalizedPath}</div>
+                    <div className="truncate text-[13px] font-normal">{route.name}</div>
                   </div>
                   {isActive ? (
                     <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Current</span>

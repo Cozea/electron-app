@@ -3,15 +3,9 @@ import {
   AlertTriangle,
   ChevronDown,
   Code2,
-  Globe,
-  Monitor,
   MousePointer2,
-  Smartphone,
-  Tablet,
 } from 'lucide-react'
-import { FaBrave, FaChrome, FaEdge, FaFirefoxBrowser, FaSafari } from 'react-icons/fa6'
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm, SiZedindustries } from 'react-icons/si'
-import { TbBrandArc } from 'react-icons/tb'
 import { VscVscode, VscVscodeInsiders } from 'react-icons/vsc'
 import type { IconType } from 'react-icons'
 
@@ -24,6 +18,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  getEffectiveExternalBrowserId,
+  getExternalBrowserIcon,
+  getVisibleExternalBrowsers,
+} from '@/features/projects/lib/externalBrowserPreference'
 import { cn } from '@/lib/utils'
 import type {
   AvailableExternalBrowser,
@@ -32,15 +31,12 @@ import type {
   ExternalEditorId,
 } from '@shared/electronApiTypes'
 
-import { type PreviewDevice } from './types'
-
 interface ProjectPreviewToolbarProps {
   availableBrowsers: AvailableExternalBrowser[]
   availableEditors: AvailableExternalEditor[]
   defaultBrowserId: ExternalBrowserId
-  device: PreviewDevice
   inspectorEnabled: boolean
-  onDeviceChange: (device: PreviewDevice) => void
+  inspectorSupported?: boolean
   onOpenCode: () => void
   onOpenExternally: () => void
   onSelectedEditorChange: (editorId: ExternalEditorId) => void
@@ -53,26 +49,6 @@ interface ProjectPreviewToolbarProps {
   selectedBrowserId: ExternalBrowserId
   serverRunning: boolean
   useCredentiallessPreview: boolean
-}
-
-function getBrowserIcon(browserId: ExternalBrowserId): IconType {
-  switch (browserId) {
-    case 'chrome':
-      return FaChrome
-    case 'arc':
-      return TbBrandArc
-    case 'firefox':
-      return FaFirefoxBrowser
-    case 'edge':
-      return FaEdge
-    case 'brave':
-      return FaBrave
-    case 'safari':
-      return FaSafari
-    case 'system':
-    default:
-      return Globe
-  }
 }
 
 function getEditorIcon(editorId: ExternalEditorId): IconType {
@@ -115,9 +91,8 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   availableBrowsers,
   availableEditors,
   defaultBrowserId,
-  device,
   inspectorEnabled,
-  onDeviceChange,
+  inspectorSupported = true,
   onOpenCode,
   onOpenExternally,
   onSelectedEditorChange,
@@ -137,15 +112,14 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
       ?? { id: 'system' as const, name: 'System Default' }
   }, [availableBrowsers, selectedBrowserId])
   const visibleBrowsers = useMemo(() => {
-    if (defaultBrowserId === 'system') return availableBrowsers
-    return availableBrowsers.filter((browser) => browser.id !== 'system')
+    return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
   }, [availableBrowsers, defaultBrowserId])
-  const effectiveBrowserId = selectedBrowserId === 'system' ? defaultBrowserId : selectedBrowser.id
+  const effectiveBrowserId = getEffectiveExternalBrowserId(selectedBrowserId, defaultBrowserId)
   const effectiveSelectedBrowser = useMemo(() => {
     return visibleBrowsers.find((browser) => browser.id === effectiveBrowserId)
       ?? selectedBrowser
   }, [effectiveBrowserId, selectedBrowser, visibleBrowsers])
-  const selectedBrowserIcon = getBrowserIcon(effectiveBrowserId)
+  const selectedBrowserIcon = getExternalBrowserIcon(effectiveBrowserId)
 
   const showBrowserPicker = visibleBrowsers.length > 1
   const selectedEditor = useMemo(() => {
@@ -157,70 +131,8 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   const showEditorPicker = availableEditors.length > 1
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider >
       <div className="flex items-center gap-2">
-        <div className="inline-flex h-7 min-w-0 items-center rounded-full border border-border/60 bg-secondary/70 p-0.5 shadow-none">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDeviceChange('desktop')}
-                aria-label="Desktop preview"
-                className={cn(
-                  'relative h-6 min-w-8 rounded-l-full rounded-r-none bg-transparent px-2 shadow-none',
-                  device === 'desktop'
-                    ? 'bg-secondary/80 text-secondary-foreground hover:bg-secondary/80'
-                    : 'text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground'
-                )}
-              >
-                <Monitor className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Desktop</TooltipContent>
-          </Tooltip>
-          <div className="h-4 w-px bg-border/60" aria-hidden />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDeviceChange('tablet')}
-                aria-label="Tablet preview"
-                className={cn(
-                  'relative h-6 min-w-8 rounded-none bg-transparent px-2 shadow-none',
-                  device === 'tablet'
-                    ? 'bg-secondary/80 text-secondary-foreground hover:bg-secondary/80'
-                    : 'text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground'
-                )}
-              >
-                <Tablet className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Tablet (768px)</TooltipContent>
-          </Tooltip>
-          <div className="h-4 w-px bg-border/60" aria-hidden />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDeviceChange('mobile')}
-                aria-label="Mobile preview"
-                className={cn(
-                  'relative h-6 min-w-8 rounded-l-none rounded-r-full bg-transparent px-2 shadow-none',
-                  device === 'mobile'
-                    ? 'bg-secondary/80 text-secondary-foreground hover:bg-secondary/80'
-                    : 'text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground'
-                )}
-              >
-                <Smartphone className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Mobile (375px)</TooltipContent>
-          </Tooltip>
-        </div>
-
         <div className="flex min-w-0 items-center gap-2">
           {serverRunning && useCredentiallessPreview ? (
             <Tooltip>
@@ -360,7 +272,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
                           onValueChange={(value) => onSelectedBrowserChange(value as ExternalBrowserId)}
                         >
                           {visibleBrowsers.map((browser) => {
-                            const BrowserIcon = getBrowserIcon(browser.id)
+                            const BrowserIcon = getExternalBrowserIcon(browser.id)
                             return (
                               <DropdownMenuRadioItem key={browser.id} value={browser.id}>
                                 <BrowserIcon className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -381,7 +293,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
                     variant={inspectorEnabled ? 'secondary' : 'ghost'}
                     size="icon"
                     className="h-7 w-7"
-                    disabled={!previewReady || previewEmbedBlocked}
+                    disabled={!inspectorSupported || !previewReady || previewEmbedBlocked}
                     onClick={onToggleInspector}
                   >
                     <MousePointer2 className={cn('h-3.5 w-3.5', inspectorEnabled ? 'text-foreground' : 'text-muted-foreground')} />
@@ -390,6 +302,8 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
                 <TooltipContent side="bottom">
                   {previewEmbedBlocked
                     ? 'Preview blocked. Open externally.'
+                    : !inspectorSupported
+                      ? 'Inspector is not available for native preview yet'
                     : previewReady
                       ? inspectorEnabled
                         ? 'Disable inspector'

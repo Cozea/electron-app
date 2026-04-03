@@ -121,9 +121,9 @@ export class ReconnectionProtocol {
         }
       }
 
-      console.log(
-        `[ReconnectionProtocol] Sync complete: sent 1 update, received ${receivedUpdates} updates, ${deleteConflicts.length} conflicts`
-      )
+      // console.log(
+      //   `[ReconnectionProtocol] Sync complete: sent 1 update, received ${receivedUpdates} updates, ${deleteConflicts.length} conflicts`
+      // )
 
       return {
         success: true,

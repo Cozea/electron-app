@@ -2,6 +2,26 @@ import type {
   OrganizationMembership,
   Session,
 } from './types'
+import type {
+  NativePreviewActionResult,
+  NativePreviewCaptureScreenshotRequest,
+  NativePreviewCaptureScreenshotResult,
+  NativePreviewListIosSimulatorsResult,
+  NativePreviewResolveLaunchConfigRequest,
+  NativePreviewResolveLaunchConfigResult,
+  NativePreviewRotateRequest,
+  NativePreviewSendButtonRequest,
+  NativePreviewSendKeyRequest,
+  NativePreviewSendTouchesRequest,
+  NativePreviewSendWheelRequest,
+  NativePreviewSessionLocator,
+  NativePreviewSessionState,
+  NativePreviewStartSessionRequest,
+  NativePreviewStartSessionResult,
+  NativePreviewStateChangedEvent,
+  NativePreviewStopSessionRequest,
+  NativePreviewStopSessionResult,
+} from './nativePreviewTypes'
 
 export type {
   OrganizationMembership,
@@ -100,41 +120,6 @@ export interface BuildContract {
   telemetryHints?: Record<string, unknown>
 }
 
-export type DependencyType =
-  | 'dependency'
-  | 'devDependency'
-  | 'optionalDependency'
-  | 'peerDependency'
-
-export interface DependencyItem {
-  name: string
-  type: DependencyType
-  declared: string
-  installed?: string
-  wanted?: string
-  latest?: string
-  status: 'upToDate' | 'outdated' | 'missing' | 'unknown'
-}
-
-export interface DependencySnapshot {
-  items: DependencyItem[]
-  pm: PackageManager
-  lastCheckedAt: number
-  error?: string
-}
-
-export interface DependencyJobPayload {
-  id: string
-  action: 'add' | 'update' | 'remove'
-  packageName: string
-  status: 'running' | 'success' | 'error'
-  startedAt: number
-  finishedAt?: number
-  stdout?: string
-  stderr?: string
-  error?: string
-}
-
 export type RuntimeKind =
   | 'node'
   | 'npm'
@@ -208,42 +193,6 @@ export interface RuntimeResolveCommandResult {
   error?: string
 }
 
-export interface DependenciesInspectResult {
-  success: boolean
-  snapshot?: DependencySnapshot
-  error?: string
-}
-
-export interface DependenciesRunResult {
-  success: boolean
-  jobId?: string
-  error?: string
-}
-
-export interface DependenciesRegistrySearchResult {
-  success: boolean
-  results?: {
-    objects: Array<{
-      package: {
-        name: string
-        version: string
-        description?: string
-        links?: Record<string, string>
-      }
-      score?: { final?: number }
-      searchScore?: number
-    }>
-    total?: number
-  }
-  error?: string
-}
-
-export interface DependenciesFetchPackageMetaResult {
-  success: boolean
-  results?: Record<string, { latest?: string; description?: string }>
-  error?: string
-}
-
 export interface CreateProjectFolderResult {
   success: boolean
   localPath?: string
@@ -255,6 +204,57 @@ export interface CloneRepositoryResult {
   localPath?: string
   normalizedRepoUrl?: string
   error?: string
+}
+
+export interface RepositoryOwnerDescriptor {
+  id: string
+  login: string
+  displayName: string
+  kind: 'user' | 'organization' | 'group'
+  installationId?: string
+  installationTargetType?: 'user' | 'organization'
+  installationTargetLogin?: string
+  installationTargetName?: string
+}
+
+export interface RepositoryDescriptor {
+  id: string
+  name: string
+  fullName: string
+  ownerLogin: string
+  ownerId?: string
+  ownerAvatarUrl?: string
+  lastActivityAt?: string
+  defaultBranch?: string
+  private: boolean
+  visibility?: 'public' | 'private' | 'internal'
+  url: string
+  provider: 'github' | 'gitlab'
+  canAdmin?: boolean
+  sizeBytes?: number
+  starsCount?: number
+  description?: string
+  language?: string
+}
+
+export interface RepositoryBranchDescriptor {
+  name: string
+  isDefault: boolean
+}
+
+export interface RepositoryLanguageDescriptor {
+  name: string
+  percentage: number
+}
+
+export interface RepositoryReadmeSnippetDescriptor {
+  excerpt: string | null
+}
+
+export interface RepositoryListPageResult {
+  items: RepositoryDescriptor[]
+  hasNextPage: boolean
+  nextPage?: number
 }
 
 export interface CopyDirectorySnapshotResult {
@@ -273,6 +273,53 @@ export interface ImportSourcePreflightResult {
   scannedFiles?: number
   issues?: ImportSourcePreflightIssue[]
   truncated?: boolean
+  error?: string
+}
+
+export interface ProjectLaneDescriptor {
+  id: string
+  name: string
+  branch: string
+  projectPath: string
+  isCollab: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectLaneState {
+  activeLaneId: string | null
+  collabLaneId: string
+  lanes: ProjectLaneDescriptor[]
+}
+
+export interface ProjectGitBranchDescriptor {
+  name: string
+  isRemote?: boolean
+  remoteName?: string
+  current: boolean
+  isDefault: boolean
+  worktreePath: string | null
+}
+
+export interface ProjectGitBranchListResult {
+  isRepo: boolean
+  hasOriginRemote: boolean
+  branches: ProjectGitBranchDescriptor[]
+  error?: string
+}
+
+export interface ProjectGitCheckoutResult {
+  success: boolean
+  branch?: string
+  error?: string
+}
+
+export interface ProjectGitCreateWorktreeResult {
+  success: boolean
+  worktree?: {
+    path: string
+    branch: string
+  }
   error?: string
 }
 
@@ -749,10 +796,37 @@ export interface TerminalOutputEvent {
   runId?: string
 }
 
+export interface TerminalActivityEvent {
+  terminalId: string
+  hasRunningSubprocess: boolean
+  runId?: string
+}
+
 export interface TerminalExitEvent {
   terminalId: string
   exitCode: number | null
   runId?: string
+}
+
+export type AgentToolId = 'claude' | 'gemini' | 'kilo' | 'shell' | 'copilot' | 'codex'
+
+export type AgentToolSource = 'builtin' | 'system' | 'managed' | 'missing'
+
+export interface AgentToolStatus {
+  toolId: AgentToolId
+  label: string
+  available: boolean
+  source: AgentToolSource
+  packageName?: string
+  commandPath?: string
+  launchCommand?: string
+  installRoot?: string
+  updatedAt?: number
+  error?: string
+}
+
+export interface AgentToolPrepareResult extends AgentToolStatus {
+  success: boolean
 }
 
 export interface DevServerStartOptions {
@@ -927,27 +1001,6 @@ export interface LocalAiRuntimeStatus {
   endpoint?: string
 }
 
-export interface DbSupabaseSelectResult {
-  success: boolean
-  rows?: unknown[]
-  error?: string
-}
-
-export interface DbFirestoreDocument {
-  id: string
-  path: string
-  createTime?: string
-  updateTime?: string
-  fields: Record<string, unknown>
-}
-
-export interface DbFirestoreListDocumentsResult {
-  success: boolean
-  documents?: DbFirestoreDocument[]
-  nextPageToken?: string
-  error?: string
-}
-
 export type ElectronWindowContext = 'main' | 'settings'
 
 export type AuthRefreshFailureReason = 'expired' | 'retryable' | 'missing_session'
@@ -1006,6 +1059,16 @@ export type AuthRefreshResult =
       statusCode?: number
     }
 
+export interface WorkbenchBrowserViewState {
+  tileId: string
+  url: string
+  title: string
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  loadError?: string | null
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
@@ -1040,6 +1103,102 @@ export interface ElectronAPI {
   localAiRuntime: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
   }
+  sourceControl: {
+    startOAuth: (options: {
+      provider: 'github' | 'gitlab'
+      orgId: string
+      metadata?: Record<string, unknown>
+    }) => Promise<{ success: boolean; error?: string }>
+    onOAuthSuccess: (callback: (data: {
+      provider: string
+      accessToken?: string
+      refreshToken?: string
+      tokenExpiresAt?: number
+      externalId?: string
+      externalAccountName?: string
+      scopes?: string[]
+      metadata?: Record<string, unknown>
+    }) => void) => () => void
+    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
+    listRepositoryOwners: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      bypassCache?: boolean
+    }) => Promise<RepositoryOwnerDescriptor[]>
+    listRepositoriesPage: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+      search?: string
+      page: number
+      pageSize: number
+      bypassCache?: boolean
+    }) => Promise<RepositoryListPageResult>
+    listBranches: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repositoryId?: string
+      repositoryFullName: string
+      defaultBranch?: string
+      bypassCache?: boolean
+    }) => Promise<RepositoryBranchDescriptor[]>
+    listRepositoryLanguages: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repoUrl: string
+      repositoryId?: string
+      bypassCache?: boolean
+    }) => Promise<RepositoryLanguageDescriptor[]>
+    getRepositoryReadmeSnippet: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repoUrl: string
+      branch?: string
+      repositoryId?: string
+      bypassCache?: boolean
+    }) => Promise<RepositoryReadmeSnippetDescriptor>
+    createRepository: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      name: string
+      description?: string
+      private?: boolean
+      autoInit?: boolean
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+    }) => Promise<RepositoryDescriptor>
+    invalidateProviderCache: (options?: {
+      provider?: 'github' | 'gitlab'
+      ownerId?: string
+      repositoryId?: string
+    }) => Promise<{ success: boolean }>
+    syncRepositoryAccess: (options: {
+      projectId?: string
+      provider: 'github' | 'gitlab'
+      repoUrl: string
+      providerHost?: string
+      accessToken?: string
+      action?: 'grant' | 'revoke'
+      role?: string
+      inviteEmail?: string
+      providerAccountHandle?: string
+    }) => Promise<{ success: boolean; error?: string; accessState?: 'pending' | 'error' | 'revoked' | 'granted' | 'needs_identity' | 'manual_required'; externalInvitationId?: string; providerAccountHandle?: string }>
+  }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
     generateKey: () => Promise<IntegrationKeyResult>
@@ -1057,7 +1216,7 @@ export interface ElectronAPI {
       scopes?: string[]
     }) => void) => () => void
     onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
-    startOAuth: (options: { provider: string; orgId: string }) => Promise<{ success: boolean; error?: string }>
+    startOAuth: (options: { provider: string; orgId: string; metadata?: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
     runTool: (options: {
       toolName: string
       args: string[]
@@ -1070,26 +1229,6 @@ export interface ElectronAPI {
     getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
     listTools: () => Promise<IntegrationToolDefinition[]>
   }
-  database: {
-    supabaseSelect: (options: {
-      table: string
-      select?: string
-      limit?: number
-      offset?: number
-      orderBy?: string
-      orderAscending?: boolean
-      credentials?: { url: string; anonKey: string }
-      encryptedCredentials?: string
-      keyId?: string
-    }) => Promise<DbSupabaseSelectResult>
-    firestoreListDocuments: (options: {
-      collection: string
-      pageSize?: number
-      pageToken?: string
-      encryptedCredentials: string
-      keyId: string
-    }) => Promise<DbFirestoreListDocumentsResult>
-  }
   tools: {
     run: (request: {
       name: string
@@ -1101,7 +1240,7 @@ export interface ElectronAPI {
     cancel: (request: { runId: string }) => Promise<{ success: boolean; canceled?: number; error?: string }>
   }
   shell: {
-    openExternal: (url: string) => Promise<{ success: boolean }>
+    openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
     listAvailableBrowsers: () => Promise<AvailableExternalBrowserResult>
     openInBrowser: (options: { url: string; browserId?: ExternalBrowserId }) => Promise<{ success: boolean; error?: string }>
   }
@@ -1123,7 +1262,13 @@ export interface ElectronAPI {
     set: (settings: Partial<AppSettings>) => Promise<{ success: boolean }>
   }
   dialog: {
-    selectDirectory: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
+    selectDirectory: (options?: {
+      title?: string
+    }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
+    selectFile: (options: {
+      title?: string
+      filters?: Array<{ name: string; extensions: string[] }>
+    }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
     showMessageBox: (options: import('electron').MessageBoxOptions) => Promise<import('electron').MessageBoxReturnValue>
   }
   storage: {
@@ -1141,6 +1286,21 @@ export interface ElectronAPI {
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
+  workbenchBrowser: {
+    ensureTile: (options: { tileId: string; initialUrl?: string }) => Promise<WorkbenchBrowserViewState>
+    destroyTile: (options: { tileId: string }) => Promise<boolean>
+    setBounds: (options: {
+      tileId: string
+      bounds?: { x: number; y: number; width: number; height: number }
+      visible?: boolean
+    }) => Promise<boolean>
+    navigate: (options: { tileId: string; url: string }) => Promise<WorkbenchBrowserViewState | null>
+    getState: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    goBack: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    goForward: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    reload: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
+  }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probePort: (options: { port: number; timeoutMs?: number }) => Promise<PreviewProbePortResult>
@@ -1151,18 +1311,64 @@ export interface ElectronAPI {
     updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
   }
+  nativePreview: {
+    listIosSimulators: () => Promise<NativePreviewListIosSimulatorsResult>
+    resolveLaunchConfig: (options: NativePreviewResolveLaunchConfigRequest) => Promise<NativePreviewResolveLaunchConfigResult>
+    startSession: (options: NativePreviewStartSessionRequest) => Promise<NativePreviewStartSessionResult>
+    stopSession: (options: NativePreviewStopSessionRequest) => Promise<NativePreviewStopSessionResult>
+    getSessionState: (options: NativePreviewSessionLocator) => Promise<NativePreviewSessionState | null>
+    sendTouches: (options: NativePreviewSendTouchesRequest) => Promise<NativePreviewActionResult>
+    sendWheel: (options: NativePreviewSendWheelRequest) => Promise<NativePreviewActionResult>
+    sendKey: (options: NativePreviewSendKeyRequest) => Promise<NativePreviewActionResult>
+    sendButton: (options: NativePreviewSendButtonRequest) => Promise<NativePreviewActionResult>
+    rotate: (options: NativePreviewRotateRequest) => Promise<NativePreviewActionResult>
+    captureScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewCaptureScreenshotResult>
+    copyLastScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewActionResult>
+    onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
+  }
   project: {
-    createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
+    createFolder: (options: {
+      slug: string
+      initGit?: boolean
+      projectId?: string
+      baseDirectory?: string
+    }) => Promise<CreateProjectFolderResult>
     cloneRepository: (options: {
       slug: string
       repoUrl: string
       provider: string
       branch?: string
       accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
+      projectId?: string
+      baseDirectory?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
+    rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
+    clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
+    getLaneState: (options: { projectId: string }) => Promise<ProjectLaneState | null>
+    ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) => Promise<ProjectLaneState>
+    upsertLane: (options: {
+      projectId: string
+      branch: string
+      projectPath: string
+      name?: string
+      isCollab?: boolean
+      laneId?: string
+    }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
+    setActiveLane: (options: { projectId: string; laneId: string }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
+    listGitBranches: (options: { projectPath: string }) => Promise<ProjectGitBranchListResult>
+    checkoutGitBranch: (options: { projectPath: string; branch: string }) => Promise<ProjectGitCheckoutResult>
+    createGitWorktree: (options: {
+      projectPath: string
+      branch: string
+      newBranch?: string
+      path?: string | null
+    }) => Promise<ProjectGitCreateWorktreeResult>
+    mergeLaneIntoCollab: (options: {
+      collabProjectPath: string
+      collabBranch: string
+      sourceBranch: string
+    }) => Promise<{ success: boolean; error?: string }>
     openFolder: (options: { projectPath: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>
@@ -1411,7 +1617,7 @@ export interface ElectronAPI {
   }
   terminal: {
     create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
-    input: (options: { terminalId: string; data: string }) => Promise<void>
+    input: (options: { terminalId: string; data: string }) => Promise<boolean>
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
     getProfiles: () => Promise<TerminalProfile[]>
@@ -1419,6 +1625,11 @@ export interface ElectronAPI {
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void
+    onActivity: (callback: (data: TerminalActivityEvent) => void) => () => void
+  }
+  agentTools: {
+    getStatus: (options: { toolId: AgentToolId }) => Promise<AgentToolStatus>
+    prepare: (options: { toolId: AgentToolId }) => Promise<AgentToolPrepareResult>
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
@@ -1438,20 +1649,6 @@ export interface ElectronAPI {
     install: () => Promise<{ success: boolean; error?: string }>
     getState: () => Promise<UpdateState>
     onStatus: (callback: (state: UpdateState) => void) => () => void
-  }
-  dependencies: {
-    inspect: (options: { projectPath: string }) => Promise<DependenciesInspectResult>
-    run: (options: {
-      projectPath: string
-      action: 'add' | 'update' | 'remove'
-      packageName: string
-      version?: string
-      dev?: boolean
-      updateMode?: 'latest' | 'range'
-    }) => Promise<DependenciesRunResult>
-    searchRegistry: (options: { query: string; size?: number }) => Promise<DependenciesRegistrySearchResult>
-    fetchPackageMeta: (options: { names: string[] }) => Promise<DependenciesFetchPackageMetaResult>
-    onJobStatus: (callback: (payload: { projectPath: string; job: DependencyJobPayload }) => void) => () => void
   }
   diagnostics: {
     start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>

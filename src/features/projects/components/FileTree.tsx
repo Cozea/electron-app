@@ -17,7 +17,7 @@ import {
   type MouseEvent,
 } from 'react'
 import { Virtuoso } from 'react-virtuoso'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from '@/lib/router'
 import { useFileExplorer } from '@/hooks/useFileExplorer'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { buildVisibleTreeRows, type VisibleTreeRow } from '@/lib/fileExplorer/visibleRows'

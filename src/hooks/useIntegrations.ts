@@ -16,6 +16,7 @@ import type {
   IntegrationProvider,
   IntegrationCredentials,
   ConnectedIntegration,
+  IntegrationOAuthStartOptions,
 } from '@/lib/integrations/types'
 import { getIntegration } from '@/lib/integrations/registry'
 
@@ -28,7 +29,7 @@ interface UseIntegrationsReturn {
   // Actions
   connect: (provider: IntegrationProvider, credentials: IntegrationCredentials) => Promise<void>
   disconnect: (integrationId: string) => Promise<void>
-  startOAuth: (provider: IntegrationProvider) => Promise<void>
+  startOAuth: (provider: IntegrationProvider, options?: IntegrationOAuthStartOptions) => Promise<void>
 
   // State
   connectingProvider: IntegrationProvider | null
@@ -212,7 +213,7 @@ export function useIntegrations(options: UseIntegrationsOptions = {}): UseIntegr
    * Start OAuth flow for an integration
    */
   const startOAuth = useCallback(
-    async (provider: IntegrationProvider) => {
+    async (provider: IntegrationProvider, options?: IntegrationOAuthStartOptions) => {
       if (!convexOrgId) {
         setConnectError('No organization selected')
         return
@@ -234,6 +235,7 @@ export function useIntegrations(options: UseIntegrationsOptions = {}): UseIntegr
         const result = await window.electronAPI.integrations.startOAuth({
           provider,
           orgId: convexOrgId,
+          metadata: options?.metadata,
         })
 
         if (!result.success) {
@@ -275,6 +277,7 @@ export function useIntegrations(options: UseIntegrationsOptions = {}): UseIntegr
       externalId?: string
       externalAccountName?: string
       scopes?: string[]
+      metadata?: Record<string, unknown>
     }) => {
       const orgId = convexOrgIdRef.current
       const userId = convexUserIdRef.current
@@ -350,6 +353,7 @@ export function useIntegrations(options: UseIntegrationsOptions = {}): UseIntegr
           tokenExpiresAt: data.tokenExpiresAt,
           externalId: data.externalId,
           externalAccountName: data.externalAccountName,
+          metadata: data.metadata,
         })
 
         setConnectingProvider(null)

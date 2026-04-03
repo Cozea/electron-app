@@ -358,12 +358,12 @@ function ActivityButton({
           variant="ghost"
           size="icon"
           className={cn(
-            'h-10 w-10 rounded-none',
-            active && 'border-l-2 border-primary bg-accent'
+            'h-12 w-12 rounded-none relative transition-none hover:bg-transparent hover:text-foreground group focus-visible:bg-transparent active:bg-transparent',
+            active && 'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-primary'
           )}
           onClick={onClick}
         >
-          <Icon className={cn('h-5 w-5', active ? 'text-foreground' : 'text-muted-foreground')} />
+          <Icon className={cn('h-6 w-6 transition-colors', active ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground')} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="right">{tooltip}</TooltipContent>

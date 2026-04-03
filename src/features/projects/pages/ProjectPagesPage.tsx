@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
-import { useMutation } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
+import { useLocation, useSearchParams } from '@/lib/router'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -12,7 +10,7 @@ import {
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { PREVIEW_SCREENSHOT_REQUEST_EVENT, usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
-import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
+
 import { useProblemsStore } from '@/stores/useProblemsStore'
 import { findBestPreviewRouteIndex, resolveNavigationPathFromBridge } from '@/lib/previewRouteMatching'
 import {
@@ -23,7 +21,7 @@ import {
   type SelectedElementData,
 } from '@/utils/previewBridge'
 import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
-import { ProjectPreviewRouteBar } from '@/features/projects/components/previews/ProjectPreviewRouteBar'
+import { IosSimulatorViewport } from '@/features/projects/components/previews/IosSimulatorViewport'
 import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
@@ -37,11 +35,14 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import type { AvailableExternalBrowser, AvailableExternalBrowserResult, ExternalBrowserId } from '@shared/electronApiTypes'
 import type { AvailableExternalEditor, ExternalEditorId } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useIosNativePreview } from '@/features/projects/hooks/useIosNativePreview'
 import {
   openProjectFileInExternalEditor,
   PREVIEW_EDITOR_PREFERENCE_KEY,
@@ -51,6 +52,12 @@ import {
 import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import { buildDirectVisualEdit } from '@/features/projects/lib/visualEditorPersistence'
 import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
+import type { Framework } from '@/utils/projectDetector'
+import {
+  PREVIEW_BROWSER_PREFERENCE_KEY,
+  readStoredExternalBrowserPreference,
+  resolvePreferredExternalBrowserId,
+} from '@/features/projects/lib/externalBrowserPreference'
 
 function normalizePreviewPath(path?: string | null): string {
     if (!path) return '/'
@@ -72,8 +79,6 @@ interface VisualSaveFeedback {
 }
 
 const BRIDGE_READY_TIMEOUT_MS = 2500
-const PREVIEW_BROWSER_PREFERENCE_KEY = 'cozea.preview.browser'
-
 function resolvePreviewEmbedModeForRun(
     serverStatus: ServerStatus,
     runId: string | null,
@@ -115,12 +120,13 @@ export function ProjectPagesPage() {
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
     const setPreviewScreenshot = usePageContextStore((state) => state.setPreviewScreenshot)
+    const isVisualEditorOpen = useVisualEditorStore((state) => state.isOpen)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
     const selectedElement = useVisualEditorStore((state) => state.selectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
-    const openWithScreenshot = useAssistantPanelStore((state) => state.openWithScreenshot)
-    const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
+    
+    
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
 
     // Local state
@@ -140,39 +146,22 @@ export function ProjectPagesPage() {
     )
     const [previewEmbedBlocked, setPreviewEmbedBlocked] = useState(false)
     const [previewReloadToken, setPreviewReloadToken] = useState(0)
+
     const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
         { id: 'system', name: 'System Default' },
     ])
     const [availableEditors, setAvailableEditors] = useState<AvailableExternalEditor[]>([])
     const [defaultBrowserId, setDefaultBrowserId] = useState<ExternalBrowserId>('system')
-    const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => {
-        try {
-            const stored = window.localStorage.getItem(PREVIEW_BROWSER_PREFERENCE_KEY)
-            switch (stored) {
-                case 'system':
-                case 'safari':
-                case 'chrome':
-                case 'arc':
-                case 'firefox':
-                case 'edge':
-                case 'brave':
-                    return stored
-                default:
-                    return 'system'
-            }
-        } catch {
-            return 'system'
-        }
-    })
+    const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
     const [selectedEditorId, setSelectedEditorId] = useState<ExternalEditorId>(() => {
         return readStoredExternalEditorPreference() ?? 'vscode'
     })
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
-        const focus = searchParams.get('focus')
+        const focus = searchParams.get('focus') as string
         return focus !== null ? parseInt(focus, 10) : null
     })
-    const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+    const [device] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
     const selectionHydrationSeqRef = useRef(0)
@@ -217,11 +206,31 @@ export function ProjectPagesPage() {
         })
     }, [selectedElementPathKey, selectedElementSelector])
 
+    const storedFrameworkInfo = useMemo<{
+        framework: Framework
+        devCommand?: string
+        devPort?: number
+    } | null>(() => {
+        if (!project?.frameworkInfo) return null
+        return {
+            framework: project.frameworkInfo.framework as Framework,
+            devCommand: project.frameworkInfo.devCommand ?? undefined,
+            devPort: project.frameworkInfo.devPort ?? undefined,
+        }
+    }, [project?.frameworkInfo])
+
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
     const previewRoute = focusedRoute
+    const isIosNativePreview = storedFrameworkInfo?.framework === 'expo' || storedFrameworkInfo?.framework === 'react-native'
     const previewServerActive = serverStatus === 'running' || serverStatus === 'unhealthy'
-    const focusedPreviewUrl = previewRoute && serverPort
+    const nativePreview = useIosNativePreview({
+        enabled: isIosNativePreview,
+        projectPath,
+        serverStatus,
+    })
+    const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
+    const focusedPreviewUrl = !isIosNativePreview && previewRoute && serverPort
         ? `http://localhost:${serverPort}${normalizePreviewPath(previewRoute.path)}`
         : null
     const useCredentiallessPreview = previewEmbedMode === 'credentialless'
@@ -244,14 +253,15 @@ export function ProjectPagesPage() {
     const compatProjectPreviewPath = normalizePreviewPath(previewRoute?.path ?? defaultProjectPreviewPath)
     const projectPreviewCapturePath = useCredentiallessPreview ? compatProjectPreviewPath : defaultProjectPreviewPath
     const projectPreviewCaptureUrl = buildRoutePreviewUrl(projectPreviewCapturePath)
-    const previewReady = bridgeReady && !previewEmbedBlocked
+    const previewReady = !isIosNativePreview && bridgeReady && !previewEmbedBlocked
+    const nativePreviewReady = isIosNativePreview && Boolean(nativeStreamUrl)
     const recentPreviewTimeline = useMemo(() => {
         return previewTimeline
             .filter((event) => event.category === 'preview' && (!activeServerRunId || !event.runId || event.runId === activeServerRunId))
             .slice(-6)
             .reverse()
     }, [activeServerRunId, previewTimeline])
-    const hasPreviewFailure = Boolean(bridgeError || previewReadiness.lastFailureMessage || previewReadiness.lastFailureReason)
+    const hasPreviewFailure = !isIosNativePreview && Boolean(bridgeError || previewReadiness.lastFailureMessage || previewReadiness.lastFailureReason)
     const previewFailurePresentation = useMemo(() => {
         if (!hasPreviewFailure) return null
 
@@ -267,18 +277,34 @@ export function ProjectPagesPage() {
         previewReadiness.lastFailureMessage,
         previewReadiness.lastFailureReason,
     ])
-    const showPreviewFailureOverlay = previewServerActive && (
+    const showPreviewFailureOverlay = !isIosNativePreview && previewServerActive && (
         previewFailurePresentation?.blocked || previewFailurePresentation?.reason === 'network_quality_degraded'
     )
-    const previewLoading = Boolean(previewRoute)
-        && !showPreviewFailureOverlay
-        && (
-            serverStatus === 'starting'
-            || (
-                previewServerActive
-                && Boolean(serverPort)
-                && Boolean(focusedPreviewUrl)
-                && !previewReady
+    const previewLoading = isIosNativePreview
+        ? (
+            Boolean(previewRoute)
+            && (
+                    serverStatus === 'starting'
+                    || nativePreview.simulatorsLoading
+                    || nativePreview.sessionLoading
+                    || (
+                        previewServerActive
+                        && nativePreview.selectedSimulator?.state === 'Booted'
+                        && !nativePreviewReady
+                    )
+                )
+        )
+        : (
+            Boolean(previewRoute)
+            && !showPreviewFailureOverlay
+            && (
+                serverStatus === 'starting'
+                || (
+                    previewServerActive
+                    && Boolean(serverPort)
+                    && Boolean(focusedPreviewUrl)
+                    && !previewReady
+                )
             )
         )
     const isFocusedPreview = Boolean(previewRoute)
@@ -317,8 +343,9 @@ export function ProjectPagesPage() {
     }, [])
 
     useEffect(() => {
-        if (availableBrowsers.some((browser) => browser.id === selectedBrowserId)) return
-        setSelectedBrowserId('system')
+        const resolvedBrowserId = resolvePreferredExternalBrowserId(availableBrowsers, selectedBrowserId)
+        if (resolvedBrowserId === selectedBrowserId) return
+        setSelectedBrowserId(resolvedBrowserId)
     }, [availableBrowsers, selectedBrowserId])
 
     useEffect(() => {
@@ -393,19 +420,11 @@ export function ProjectPagesPage() {
         [convexUserId, updatePreviewImage]
     )
 
-    // Extract stored framework info from project
-    const storedFrameworkInfo = useMemo(() => {
-        if (!project?.frameworkInfo) return null
-        return {
-            framework: project.frameworkInfo.framework,
-            devCommand: project.frameworkInfo.devCommand,
-            devPort: project.frameworkInfo.devPort,
-        }
-    }, [project?.frameworkInfo])
     const {
         routes: scannedRoutes,
         refreshRoutes,
     } = useProjectRouteScan({
+        enabled: true,
         projectPath,
         storedFrameworkInfo,
     })
@@ -482,8 +501,8 @@ export function ProjectPagesPage() {
 
     // Handle route/focus query params from external navigation
     useEffect(() => {
-        const routeParam = searchParams.get('route')
-        const focus = searchParams.get('focus')
+        const routeParam = searchParams.get('route') as string
+        const focus = searchParams.get('focus') as string
         if (routes.length > 0 && (routeParam !== null || focus !== null)) {
             let resolvedIndex: number | null = null
 
@@ -511,7 +530,7 @@ export function ProjectPagesPage() {
             const nextParams = new URLSearchParams(searchParams)
             nextParams.delete('route')
             nextParams.delete('focus')
-            setSearchParams(nextParams, { replace: true })
+            setSearchParams(Object.fromEntries(nextParams.entries()) as any)
         }
     }, [searchParams, routes, setSearchParams])
 
@@ -926,7 +945,7 @@ export function ProjectPagesPage() {
                             bridgeMeta,
                         },
                     )
-                    closeAssistantPanel()
+                    /*  */
                     void hydrateSelectedElementFromInspector(payload as SelectedElementData, bridgeMeta)
                     break
                 case 'bridge:selection-cleared':
@@ -953,7 +972,7 @@ export function ProjectPagesPage() {
 
                     // Keep visual editor selection in sync
                     closeVisualEditor()
-                    closeAssistantPanel()
+                    /*  */
                     void hydrateSelectedElementFromInspector(data as unknown as SelectedElementData, bridgeMeta)
 
                     // Inject inspected element context for AI
@@ -996,7 +1015,7 @@ export function ProjectPagesPage() {
                                     '',
                                     'What I want to change:',
                                 ].filter(Boolean).join('\n')
-                                useAssistantPanelStore.getState().openWithPrompt(prompt)
+                                console.log(prompt)
                             } else if (action === 'copy-selector') {
                                 void navigator.clipboard.writeText(data.selector)
                             } else if (action === 'copy-stack') {
@@ -1025,13 +1044,13 @@ export function ProjectPagesPage() {
                 }
 
                 case 'bridge:screenshot-ready': {
-                    const data = payload as { dataUrl?: string; error?: string }
+                    const data = payload as { dataUrl_unused?: string; error?: string }
                     if (data.error) {
                         setBridgeError(data.error)
-                    } else if (data.dataUrl && focusedRoute) {
-                        const attachment: PendingAttachment = {
+                    } else if (data.dataUrl_unused && focusedRoute) {
+                        /* const attachment: any = {
                             type: 'image',
-                            data: data.dataUrl,
+                            data: data.dataUrl_unused,
                             name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
                             mediaType: 'image/png',
                             context: {
@@ -1040,8 +1059,8 @@ export function ProjectPagesPage() {
                                 projectName: project?.name,
                                 serverPort: serverPort ?? undefined,
                             },
-                        }
-                        openWithScreenshot(attachment)
+                        } */
+                        /*  */
                     }
                     setIsCapturingScreenshot(false)
                     break
@@ -1112,7 +1131,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, setCurrentPage, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, availableEditors, selectedEditorId])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, setCurrentPage, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, availableEditors, selectedEditorId])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -1443,11 +1462,11 @@ export function ProjectPagesPage() {
                 return
             }
             
-            const dataUrl = `data:image/png;base64,${result.base64}`
+             
             if (focusedRoute) {
-                const attachment: PendingAttachment = {
+                /* const attachment: any = {
                     type: 'image',
-                    data: dataUrl,
+                    data: dataUrl_unused,
                     name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
                     mediaType: 'image/png',
                     context: {
@@ -1457,7 +1476,7 @@ export function ProjectPagesPage() {
                         serverPort: serverPort ?? undefined,
                     }
                 }
-                openWithScreenshot(attachment)
+                /*  */
             }
         } catch (error) {
             setBridgeError(error instanceof Error ? error.message : String(error))
@@ -1465,7 +1484,44 @@ export function ProjectPagesPage() {
         } finally {
             setIsCapturingScreenshot(false)
         }
-    }, [previewReady, ensureBridgeReady, focusedRoute, openWithScreenshot, previewServerActive, project?.name, serverPort])
+    }, [previewReady, ensureBridgeReady, focusedRoute, previewServerActive, project?.name, serverPort])
+
+    useEffect(() => {
+        setPreviewScreenshot({
+            visible: Boolean(previewRoute && previewServerActive && serverPort),
+            enabled: Boolean(previewReady && !previewEmbedBlocked && previewServerActive && serverPort),
+            capturing: isCapturingScreenshot,
+        })
+    }, [
+        isCapturingScreenshot,
+        previewEmbedBlocked,
+        previewReady,
+        previewRoute,
+        previewServerActive,
+        serverPort,
+        setPreviewScreenshot,
+    ])
+
+    useEffect(() => {
+        return () => {
+            setPreviewScreenshot({
+                visible: false,
+                enabled: false,
+                capturing: false,
+            })
+        }
+    }, [setPreviewScreenshot])
+
+    useEffect(() => {
+        const handlePreviewScreenshotRequest = () => {
+            void handleCaptureScreenshot()
+        }
+
+        window.addEventListener(PREVIEW_SCREENSHOT_REQUEST_EVENT, handlePreviewScreenshotRequest)
+        return () => {
+            window.removeEventListener(PREVIEW_SCREENSHOT_REQUEST_EVENT, handlePreviewScreenshotRequest)
+        }
+    }, [handleCaptureScreenshot])
 
     useEffect(() => {
         setPreviewScreenshot({
@@ -1629,7 +1685,7 @@ export function ProjectPagesPage() {
             promptParts.push(`and text content: "${pendingTextChange}"`)
         }
         const prompt = promptParts.join(' ')
-        useAssistantPanelStore.getState().openWithPrompt(prompt)
+        console.log(prompt)
     }, [])
 
     const handleApplyChanges = useCallback(async () => {
@@ -1776,27 +1832,77 @@ export function ProjectPagesPage() {
         })
     }, [addPreviewTimelineEvent, focusedPreviewUrl, previewEmbedMode, setPreviewFailure])
 
+    const externalPreviewUrl = isIosNativePreview ? nativeStreamUrl : focusedPreviewUrl
+
     const openFocusedPreviewExternally = useCallback(() => {
-        if (!focusedPreviewUrl) return
+        if (!externalPreviewUrl) return
         void (async () => {
             const result = await window.electronAPI.shell.openInBrowser({
-                url: focusedPreviewUrl,
+                url: externalPreviewUrl,
                 browserId: selectedBrowserId === 'system' ? defaultBrowserId : selectedBrowserId,
             })
             if (!result.success) {
                 console.error('[PagesPreview] Failed to open preview in browser', result.error)
             }
         })()
-    }, [defaultBrowserId, focusedPreviewUrl, selectedBrowserId])
+    }, [defaultBrowserId, externalPreviewUrl, selectedBrowserId])
+
+    const handleNativeSendTouches = useCallback(async (request: {
+        type: 'start' | 'move' | 'end'
+        touches: Array<{ xRatio: number; yRatio: number }>
+        rotation?: 'Portrait' | 'LandscapeLeft' | 'LandscapeRight' | 'PortraitUpsideDown'
+    }) => {
+        if (!projectPath || !nativePreview.selectedSimulator) {
+            return
+        }
+
+        await window.electronAPI.nativePreview.sendTouches({
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: 'ios',
+            ...request,
+        })
+    }, [nativePreview.selectedSimulator, projectPath])
+
+    const handleNativeSendWheel = useCallback(async (request: {
+        point: { xRatio: number; yRatio: number }
+        deltaX: number
+        deltaY: number
+    }) => {
+        if (!projectPath || !nativePreview.selectedSimulator) {
+            return
+        }
+
+        await window.electronAPI.nativePreview.sendWheel({
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: 'ios',
+            ...request,
+        })
+    }, [nativePreview.selectedSimulator, projectPath])
+
+    const handleNativeSendKey = useCallback(async (request: {
+        direction: 'down' | 'up'
+        keyCode: number
+    }) => {
+        if (!projectPath || !nativePreview.selectedSimulator) {
+            return
+        }
+
+        await window.electronAPI.nativePreview.sendKey({
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: 'ios',
+            ...request,
+        })
+    }, [nativePreview.selectedSimulator, projectPath])
 
     const headerControls = useMemo(() => (
         <ProjectPreviewToolbar
             availableBrowsers={availableBrowsers}
             availableEditors={availableEditors}
             defaultBrowserId={defaultBrowserId}
-            device={device}
             inspectorEnabled={inspectorEnabled}
-            onDeviceChange={setDevice}
             onOpenCode={() => {
                 if (previewRoute) {
                     void handleOpenCode(previewRoute.file)
@@ -1806,20 +1912,23 @@ export function ProjectPagesPage() {
             onSelectedEditorChange={setSelectedEditorId}
             onSelectedBrowserChange={setSelectedBrowserId}
             onToggleInspector={toggleInspector}
-            previewEmbedBlocked={previewEmbedBlocked}
+            inspectorSupported={!isIosNativePreview}
+            previewEmbedBlocked={isIosNativePreview ? false : previewEmbedBlocked}
             previewLoading={previewLoading}
-            previewReady={previewReady}
+            previewReady={isIosNativePreview ? nativePreviewReady : previewReady}
             selectedEditorId={selectedEditorId}
             selectedBrowserId={selectedBrowserId}
-            serverRunning={previewServerActive && Boolean(serverPort)}
+            serverRunning={previewServerActive && (isIosNativePreview ? Boolean(nativePreview.selectedSimulator) : Boolean(serverPort))}
             useCredentiallessPreview={useCredentiallessPreview}
         />
     ), [
         availableBrowsers,
         availableEditors,
         defaultBrowserId,
-        device,
         inspectorEnabled,
+        isIosNativePreview,
+        nativePreview.selectedSimulator,
+        nativePreviewReady,
         previewEmbedBlocked,
         previewLoading,
         previewReady,
@@ -1839,11 +1948,20 @@ export function ProjectPagesPage() {
             <div className="h-4 w-px shrink-0 bg-border/60" />
             <ServerControl
                 projectPath={projectPath}
+                projectId={project?._id ?? null}
                 storedDevCommand={storedFrameworkInfo?.devCommand}
                 storedDevPort={storedFrameworkInfo?.devPort}
+                previewMode={isIosNativePreview ? 'native' : 'web'}
+                nativePlatform={isIosNativePreview ? 'ios' : null}
             />
         </div>
-    ), [projectPath, storedFrameworkInfo?.devCommand, storedFrameworkInfo?.devPort])
+    ), [
+        isIosNativePreview,
+        project?._id,
+        projectPath,
+        storedFrameworkInfo?.devCommand,
+        storedFrameworkInfo?.devPort,
+    ])
 
     const focusedPreviewBreadcrumbAddon = useMemo(() => (
         <div className="flex min-w-0 items-center gap-2">
@@ -1867,7 +1985,7 @@ export function ProjectPagesPage() {
     useProjectHeader(
         null,
         focusedPreviewBreadcrumbAddon,
-        focusedPreviewCenterAddon,
+        null,
         true
     )
 
@@ -1892,7 +2010,7 @@ export function ProjectPagesPage() {
 
             {/* Main Content + Inspector + Terminal */}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-                {isFocusedPreview && inspectorSide === 'left' && (
+                {isFocusedPreview && isVisualEditorOpen && inspectorSide === 'left' && (
                     <VisualEditorSidebar
                         onPreviewStyle={handlePreviewStyle}
                         onPreviewText={handlePreviewText}
@@ -1908,7 +2026,7 @@ export function ProjectPagesPage() {
 
                 <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
                     {/* Content */}
-                    <div className="relative flex-1 overflow-hidden flex flex-col">
+                    <div className="relative flex-1 overflow-hidden flex flex-col pt-10">
                         {routes.length === 0 ? (
                             /* Empty State */
                             <div
@@ -1951,28 +2069,50 @@ export function ProjectPagesPage() {
                                 {previewRoute ? (
                                     <div className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
                                         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                                            <FocusedProjectPreview
-                                                credentiallessAttribute={credentiallessAttribute}
-                                                device={device}
-                                                focusedPreviewFrameName={focusedPreviewFrameName}
-                                                focusedPreviewUrl={focusedPreviewUrl}
-                                                iframeRef={iframeRef}
-                                                onIframeError={handleFocusedIframeError}
-                                                onIframeLoad={handleIframeLoad}
-                                                onOpenExternally={openFocusedPreviewExternally}
-                                                onRetryPreview={() => reloadFocusedPreview('manual')}
-                                                previewEmbedBlocked={previewEmbedBlocked}
-                                                previewEmbedMode={previewEmbedMode}
-                                                previewFailureMessage={previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
-                                                previewFailureTitle={previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
-                                                previewLoading={previewLoading}
-                                                previewReloadToken={previewReloadToken}
-                                                recentPreviewTimeline={recentPreviewTimeline}
-                                                route={previewRoute}
-                                                serverRunning={previewServerActive && Boolean(serverPort)}
-                                                showPreviewFailureOverlay={showPreviewFailureOverlay}
-                                                taskOverlay={taskOverlay}
-                                            />
+                                            {isIosNativePreview ? (
+                                                <IosSimulatorViewport
+                                                    device={device}
+                                                    route={previewRoute}
+                                                    serverRunning={previewServerActive}
+                                                    sessionState={nativePreview.sessionState}
+                                                    simulators={nativePreview.iosSimulators}
+                                                    selectedSimulatorId={nativePreview.selectedIosSimulatorId}
+                                                    simulatorsLoading={nativePreview.simulatorsLoading}
+                                                    simulatorsError={nativePreview.simulatorsError}
+                                                    sessionLoading={nativePreview.sessionLoading}
+                                                    sessionError={nativePreview.sessionError}
+                                                    taskOverlay={taskOverlay}
+                                                    onSelectSimulator={nativePreview.setSelectedIosSimulatorId}
+                                                    onRefreshSimulators={nativePreview.refreshSimulators}
+                                                    onOpenExternally={openFocusedPreviewExternally}
+                                                    onSendTouches={handleNativeSendTouches}
+                                                    onSendWheel={handleNativeSendWheel}
+                                                    onSendKey={handleNativeSendKey}
+                                                />
+                                            ) : (
+                                                <FocusedProjectPreview
+                                                    credentiallessAttribute={credentiallessAttribute}
+                                                    device={device}
+                                                    focusedPreviewFrameName={focusedPreviewFrameName}
+                                                    focusedPreviewUrl={focusedPreviewUrl}
+                                                    iframeRef={iframeRef}
+                                                    onIframeError={handleFocusedIframeError}
+                                                    onIframeLoad={handleIframeLoad}
+                                                    onOpenExternally={openFocusedPreviewExternally}
+                                                    onRetryPreview={() => reloadFocusedPreview('manual')}
+                                                    previewEmbedBlocked={previewEmbedBlocked}
+                                                    previewEmbedMode={previewEmbedMode}
+                                                    previewFailureMessage={previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
+                                                    previewFailureTitle={previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
+                                                    previewLoading={previewLoading}
+                                                    previewReloadToken={previewReloadToken}
+                                                    recentPreviewTimeline={recentPreviewTimeline}
+                                                    route={previewRoute}
+                                                    serverRunning={previewServerActive && Boolean(serverPort)}
+                                                    showPreviewFailureOverlay={showPreviewFailureOverlay}
+                                                    taskOverlay={taskOverlay}
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                 ) : null}
@@ -1983,11 +2123,14 @@ export function ProjectPagesPage() {
 
                     {/* Terminal Panel */}
                     {projectPath && (
-                        <TerminalPanel projectPath={projectPath} onOpenFile={handleOpenCode} />
+                        <TerminalPanel
+                            projectPath={projectPath}
+                            onOpenFile={handleOpenCode}
+                        />
                     )}
                 </div>
 
-                {isFocusedPreview && inspectorSide === 'right' && (
+                {isFocusedPreview && isVisualEditorOpen && inspectorSide === 'right' && (
                     <VisualEditorSidebar
                         onPreviewStyle={handlePreviewStyle}
                         onPreviewText={handlePreviewText}
@@ -2003,7 +2146,6 @@ export function ProjectPagesPage() {
             </div>
 
             {/* (Removed custom inspector context menu in favor of native Electron menu) */}
-
         </div>
     )
 }

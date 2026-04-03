@@ -475,7 +475,6 @@ export const listPersonalContactsForUser = query({
     }
 
     return [...contacts.values()]
-      .filter((contact) => !excludedEmails.has(normalizeProjectInviteEmail(contact.email)))
       .sort((left, right) => {
         const timestampDelta = right.lastSharedAt - left.lastSharedAt
         if (timestampDelta !== 0) return timestampDelta

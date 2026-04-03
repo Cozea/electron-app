@@ -1,10 +1,13 @@
 import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
+import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { cancelToolRuns, disposeToolRuntime, runTool } from './tools'
+import net from 'node:net'
+
 import { autoUpdater } from 'electron-updater'
+import { Cause, Effect, Exit, Fiber } from 'effect'
 import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
@@ -13,24 +16,27 @@ import { createApplicationMenu } from './menu'
 import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
-import { DatabaseService } from './services/DatabaseService'
+import { ProjectSourceControlService } from './services/ProjectSourceControlService'
 import { DiagnosticsService } from './services/DiagnosticsService'
-import { DependenciesService } from './services/DependenciesService'
-import { ProviderAuthService } from './services/ProviderAuthService'
-import { LocalAiRuntimeService } from './services/LocalAiRuntimeService'
+import { AgentToolService } from './services/AgentToolService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
+import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
+import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
-import { loadSyncState } from './services/syncReplicaStore'
+import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { loadSyncState } from './services/syncJournalStore'
+import { startAssistantRuntime } from './assistant-runtime/boot'
 
 import { DevServerService } from './services/DevServerService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
+import { WorkbenchBrowserService } from './services/WorkbenchBrowserService'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
 import { listAvailableEditors, openFileInExternalEditor } from './lib/externalEditor'
 
@@ -59,6 +65,9 @@ const DEFAULT_PROTOCOL = VITE_DEV_SERVER_URL ? 'cozea-dev' : 'cozea'
 const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
 const LEGACY_PROTOCOL = 'cozea'
 const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
+const ASSISTANT_RUNTIME_WS_URL =
+  process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || 'ws://127.0.0.1:3773'
+const ASSISTANT_RUNTIME_WS_URL_ARG = `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
 const DEV_SERVER_ORIGIN = (() => {
   if (!VITE_DEV_SERVER_URL) return null
   try {
@@ -104,7 +113,13 @@ function extractNavigationPath(protocolUrl: string): string | null {
     const host = parsedUrl.hostname.replace(/^\/+/, '')
     const pathname = parsedUrl.pathname.replace(/^\/+/, '')
     const routePath = `/${[host, pathname].filter(Boolean).join('/')}`.replace(/\/{2,}/g, '/')
-    if (routePath === '/' || routePath.startsWith('/auth/callback') || routePath.startsWith('/billing/') || routePath.startsWith('/oauth/callback')) {
+    if (
+      routePath === '/' ||
+      routePath.startsWith('/auth/callback') ||
+      routePath.startsWith('/billing/') ||
+      routePath.startsWith('/oauth/callback') ||
+      routePath.startsWith('/source-control/callback')
+    ) {
       return null
     }
 
@@ -243,6 +258,248 @@ let previewHeaderCompatDisabledLogged = false
 const previewHeaderDiagnostics = new Map<string, PreviewHeaderDiagnostic>()
 const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
 const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
+const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
+const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
+const ASSISTANT_RUNTIME_CONNECT_TIMEOUT_MS = 500
+const ASSISTANT_RUNTIME_READY_TIMEOUT_MS = 15_000
+const ASSISTANT_RUNTIME_READY_POLL_MS = 250
+const ASSISTANT_RUNTIME_RECOVERY_POLL_MS = 1_500
+const ASSISTANT_RUNTIME_RESTART_DELAY_MS = 2_000
+
+type AssistantRuntimePhase = 'idle' | 'starting' | 'ready' | 'error'
+
+interface AssistantRuntimeStatus {
+  phase: AssistantRuntimePhase
+  wsUrl: string
+  lastError: string | null
+  updatedAt: number
+}
+
+const assistantRuntimeSocketTarget = (() => {
+  try {
+    const parsed = new URL(ASSISTANT_RUNTIME_WS_URL)
+    const port = Number.parseInt(parsed.port, 10)
+    return {
+      host: parsed.hostname,
+      port: Number.isFinite(port) ? port : 80,
+    }
+  } catch {
+    return null
+  }
+})()
+
+let assistantRuntimeStatus: AssistantRuntimeStatus = {
+  phase: 'idle',
+  wsUrl: ASSISTANT_RUNTIME_WS_URL,
+  lastError: null,
+  updatedAt: Date.now(),
+}
+let assistantRuntimeFiber: unknown | null = null
+let assistantRuntimeGeneration = 0
+let assistantRuntimeRestartTimer: NodeJS.Timeout | null = null
+let appIsQuitting = false
+let assistantRuntimeBridgeHandlersRegistered = false
+
+function logAssistantBridge(event: string, details?: Record<string, unknown>): void {
+  if (details && Object.keys(details).length > 0) {
+    console.info('[CozeaChatBridge]', event, details)
+    return
+  }
+  console.info('[CozeaChatBridge]', event)
+}
+
+function readAssistantRuntimeStatus(): AssistantRuntimeStatus {
+  return { ...assistantRuntimeStatus }
+}
+
+function broadcastAssistantRuntimeStatus(): void {
+  const payload = readAssistantRuntimeStatus()
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) continue
+    browserWindow.webContents.send(ASSISTANT_RUNTIME_STATUS_CHANNEL, payload)
+  }
+}
+
+function setAssistantRuntimeStatus(
+  patch: Partial<Omit<AssistantRuntimeStatus, 'updatedAt'>>,
+): void {
+  const previousStatus = assistantRuntimeStatus
+  const nextStatus: AssistantRuntimeStatus = {
+    ...assistantRuntimeStatus,
+    ...patch,
+    updatedAt: Date.now(),
+  }
+
+  if (
+    nextStatus.phase === assistantRuntimeStatus.phase &&
+    nextStatus.wsUrl === assistantRuntimeStatus.wsUrl &&
+    nextStatus.lastError === assistantRuntimeStatus.lastError
+  ) {
+    assistantRuntimeStatus = nextStatus
+    return
+  }
+
+  assistantRuntimeStatus = nextStatus
+  logAssistantBridge('runtime-status', {
+    previousPhase: previousStatus.phase,
+    nextPhase: nextStatus.phase,
+    lastError: nextStatus.lastError,
+  })
+  broadcastAssistantRuntimeStatus()
+}
+
+async function probeAssistantRuntimeListener(): Promise<boolean> {
+  if (!assistantRuntimeSocketTarget) {
+    return false
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({
+      host: assistantRuntimeSocketTarget.host,
+      port: assistantRuntimeSocketTarget.port,
+    })
+
+    let settled = false
+
+    const finalize = (value: boolean) => {
+      if (settled) return
+      settled = true
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(value)
+    }
+
+    socket.once('connect', () => finalize(true))
+    socket.once('error', () => finalize(false))
+    socket.setTimeout(ASSISTANT_RUNTIME_CONNECT_TIMEOUT_MS, () => finalize(false))
+  })
+}
+
+function formatAssistantRuntimeExitMessage(exit: unknown): string {
+  if (Exit.isFailure(exit)) {
+    return Cause.pretty(exit.cause).trim()
+  }
+  return 'Local chat runtime stopped.'
+}
+
+async function monitorAssistantRuntimeReadiness(generation: number): Promise<void> {
+  const startedAt = Date.now()
+  let timeoutReported = false
+  logAssistantBridge('runtime-readiness-monitor-started', { generation })
+
+  while (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
+    const isReady = await probeAssistantRuntimeListener()
+    if (isReady) {
+      logAssistantBridge('runtime-ready', {
+        generation,
+        elapsedMs: Date.now() - startedAt,
+      })
+      setAssistantRuntimeStatus({
+        phase: 'ready',
+        lastError: null,
+      })
+      return
+    }
+
+    const elapsedMs = Date.now() - startedAt
+    if (!timeoutReported && elapsedMs >= ASSISTANT_RUNTIME_READY_TIMEOUT_MS) {
+      timeoutReported = true
+      logAssistantBridge('runtime-ready-timeout', {
+        generation,
+        elapsedMs,
+      })
+      setAssistantRuntimeStatus({
+        phase: 'error',
+        lastError: 'Local chat runtime is taking longer than expected to start.',
+      })
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, timeoutReported ? ASSISTANT_RUNTIME_RECOVERY_POLL_MS : ASSISTANT_RUNTIME_READY_POLL_MS)
+    })
+  }
+}
+
+function scheduleAssistantRuntimeRestart(): void {
+  if (appIsQuitting || assistantRuntimeRestartTimer) {
+    logAssistantBridge('runtime-restart-skipped', {
+      appIsQuitting,
+      restartAlreadyScheduled: Boolean(assistantRuntimeRestartTimer),
+    })
+    return
+  }
+
+  logAssistantBridge('runtime-restart-scheduled', {
+    delayMs: ASSISTANT_RUNTIME_RESTART_DELAY_MS,
+  })
+  assistantRuntimeRestartTimer = setTimeout(() => {
+    assistantRuntimeRestartTimer = null
+    logAssistantBridge('runtime-restart-triggered')
+    ensureAssistantRuntimeStarted()
+  }, ASSISTANT_RUNTIME_RESTART_DELAY_MS)
+}
+
+function ensureAssistantRuntimeStarted(): void {
+  if (assistantRuntimeFiber) {
+    logAssistantBridge('runtime-start-reused', {
+      generation: assistantRuntimeGeneration,
+    })
+    return
+  }
+
+  assistantRuntimeGeneration += 1
+  const generation = assistantRuntimeGeneration
+  logAssistantBridge('runtime-starting', {
+    generation,
+    wsUrl: ASSISTANT_RUNTIME_WS_URL,
+  })
+  setAssistantRuntimeStatus({
+    phase: 'starting',
+    lastError: null,
+  })
+  const fiber = startAssistantRuntime()
+  assistantRuntimeFiber = fiber
+  Effect.runFork(
+    Effect.flatMap(Fiber.await(fiber), (exit) =>
+      Effect.sync(() => {
+        logAssistantBridge('runtime-exited', {
+          generation,
+          exitMessage: formatAssistantRuntimeExitMessage(exit),
+        })
+        if (assistantRuntimeFiber === fiber) {
+          assistantRuntimeFiber = null
+        }
+        if (appIsQuitting) {
+          return
+        }
+
+        setAssistantRuntimeStatus({
+          phase: 'error',
+          lastError: formatAssistantRuntimeExitMessage(exit),
+        })
+        scheduleAssistantRuntimeRestart()
+      }),
+    ),
+  )
+  void monitorAssistantRuntimeReadiness(generation)
+}
+
+function registerAssistantRuntimeBridgeHandlers(): void {
+  if (assistantRuntimeBridgeHandlersRegistered) {
+    logAssistantBridge('ipc-bridge-handlers-reused', {
+      statusHandle: ASSISTANT_RUNTIME_STATUS_HANDLE,
+    })
+    return
+  }
+
+  ipcMain.removeHandler(ASSISTANT_RUNTIME_STATUS_HANDLE)
+  logAssistantBridge('ipc-bridge-handlers-registered', {
+    statusChannel: ASSISTANT_RUNTIME_STATUS_CHANNEL,
+    statusHandle: ASSISTANT_RUNTIME_STATUS_HANDLE,
+  })
+  ipcMain.handle(ASSISTANT_RUNTIME_STATUS_HANDLE, () => readAssistantRuntimeStatus())
+  assistantRuntimeBridgeHandlersRegistered = true
+}
 
 function prunePreviewHeaderDiagnostics(now = Date.now()): void {
   for (const [url, entry] of previewHeaderDiagnostics.entries()) {
@@ -482,12 +739,14 @@ function installPreviewHeaderCompatibilityPolicy(): void {
 type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
+const workbenchBrowserService = new WorkbenchBrowserService({
+  getMainWindow: () => win,
+})
 
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
   '/settings/billing',
-  '/settings/ai',
   '/settings/appearance',
   '/settings/storage',
   '/settings/tooling',
@@ -772,6 +1031,12 @@ app.on('open-url', async (event, url) => {
       integrationService: IntegrationService.getInstance(),
       sender: win?.webContents ?? null,
     })
+  } else if (matchesProtocolUrl(url, 'source-control/callback')) {
+    await forwardSourceControlOAuthCallback({
+      url,
+      sourceControlService: ProjectSourceControlService.getInstance(),
+      sender: win?.webContents ?? null,
+    })
   } else {
     const navigationPath = extractNavigationPath(url)
     if (navigationPath) {
@@ -813,6 +1078,12 @@ if (!gotTheLock) {
           integrationService: IntegrationService.getInstance(),
           sender: win?.webContents ?? null,
         })
+      } else if (matchesProtocolUrl(url, 'source-control/callback')) {
+        void forwardSourceControlOAuthCallback({
+          url,
+          sourceControlService: ProjectSourceControlService.getInstance(),
+          sender: win?.webContents ?? null,
+        })
       } else {
         const navigationPath = extractNavigationPath(url)
         if (navigationPath) {
@@ -846,7 +1117,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !isReleaseBuild,
-      additionalArguments: ['--cozea-window=main'],
+      additionalArguments: ['--cozea-window=main', ASSISTANT_RUNTIME_WS_URL_ARG],
     },
     // Native material effects:
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
@@ -970,17 +1241,15 @@ function createWindow() {
 // IPC Handlers
 // Register Services
 AuthService.getInstance().registerIpcHandlers()
-ProviderAuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
-DatabaseService.getInstance().registerIpcHandlers()
+ProjectSourceControlService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
-DependenciesService.getInstance().registerIpcHandlers()
-LocalAiRuntimeService.getInstance().registerIpcHandlers()
+AgentToolService.getInstance().registerIpcHandlers()
 
 registerCoreHandlers(ipcMain, {
-  runTool,
-  cancelToolRuns: async (runId) => cancelToolRuns(runId),
+  
+  
   getUpdateState: () => updateState,
   isAutoUpdateEnabled,
   checkForUpdates,
@@ -1013,6 +1282,11 @@ registerPreviewHandlers(ipcMain, {
   getLatestPreviewHeaderDiagnostic,
 })
 
+registerNativePreviewHandlers(ipcMain, {
+  getMainWindow: () => win,
+})
+
+
 registerSettingsStorageHandlers(ipcMain, {
   getMainWindow: () => win,
   loadSettings,
@@ -1027,6 +1301,10 @@ registerRuntimeHandlers(ipcMain)
 
 registerSyncHandlers(ipcMain)
 
+registerWorkbenchBrowserHandlers(ipcMain, {
+  service: workbenchBrowserService,
+})
+
 registerDevServerHandlers(ipcMain, {
   getMainWindow: () => win,
 })
@@ -1036,6 +1314,7 @@ registerContextMenuHandlers(ipcMain, {
 })
 
 app.on('window-all-closed', () => {
+  workbenchBrowserService.dispose()
   win = null
 
   // Kill all DevServer background processes
@@ -1052,8 +1331,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  appIsQuitting = true
+  logAssistantBridge('app-before-quit')
+  workbenchBrowserService.dispose()
   PreviewSnapshotService.getInstance().dispose()
-  disposeToolRuntime()
+  
   stopUpdateChecks()
 })
 
@@ -1063,10 +1345,18 @@ app.on('activate', () => {
   }
 })
 
+// Sync macOS PATH/SSH before initializing services
+if (process.platform === 'darwin') {
+  syncShellEnvironment()
+}
+
+registerAssistantRuntimeBridgeHandlers()
+
 app.whenReady().then(() => {
   loadSyncState()
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
+  ensureAssistantRuntimeStarted()
   createWindow()
   startUpdateChecks()
 

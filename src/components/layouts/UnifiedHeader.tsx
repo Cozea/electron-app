@@ -9,11 +9,12 @@ import {
   useRef,
   useState,
 } from "react"
-import { Link } from "react-router-dom"
+import { Link, useLocation } from '@/lib/router'
 import {
   CheckCircle2,
   ChevronDown,
   Copy,
+  GitCompareArrows,
   Inbox,
   ListTodo,
   Link2,
@@ -28,14 +29,18 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { scheduleTask } from "@/lib/scheduler"
+import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { buildProjectJoinUrl } from "@shared/projectShare"
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import {
+  getProjectChangesActivityCacheKey,
+  getProjectChangesSelectedChangeCacheKey,
+} from "@/features/projects/lib/changesQueryCache"
 import { GitDurabilityCoordinator } from "@/lib/git/GitDurabilityCoordinator"
 import type { Id } from "../../../convex/_generated/dataModel"
 import { useConvex, useMutation, useQuery } from "convex/react"
@@ -83,6 +88,7 @@ import {
 } from "@/components/ui/tooltip"
 import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys"
 import { useQueryCache } from "@/stores/useQueryCache"
+import { syncProjectRepositoryAccess } from "@/lib/git/projectRepoAutomation"
 
 interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
@@ -116,6 +122,14 @@ type PersonalProjectContact = {
   email: string
   user: InviteLookupUser | null
   lastSharedAt: number
+}
+
+interface ProjectRepoAccessRecord {
+  accessState: 'pending' | 'granted' | 'needs_identity' | 'manual_required' | 'revoked' | 'error'
+  errorMessage?: string
+  inviteEmail?: string
+  memberUserId?: Id<'users'>
+  providerAccountHandle?: string
 }
 
 const PERSONAL_CONTACTS_CACHE_MAX_AGE_MS = 10 * 60 * 1000
@@ -501,16 +515,41 @@ function HeaderProjectShareButton({
   const convex = useConvex()
   const syncContext = useOptionalProjectSyncContext()
   const inviteMember = useMutation(api.projectInvites.inviteMember)
+  const cancelProjectInvite = useMutation(api.projectInvites.cancelInvite)
   const createOrUpdateActiveLink = useMutation(api.projectJoinLinks.createOrUpdateActiveLink)
+  const removeProjectMember = useMutation(api.projectMembers.removeMember)
+  const resendProjectInvite = useMutation(api.projectInvites.resendInvite)
   const rotateJoinLink = useMutation(api.projectJoinLinks.rotateLink)
   const revokeJoinLink = useMutation(api.projectJoinLinks.revokeLink)
+  const updateProjectMemberRole = useMutation(api.projectMembers.updateRole)
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
     projectId && convexUserId ? { projectId, userId: convexUserId } : "skip"
   )
+  const projectMembers = useQuery(
+    api.projectMembers.listMembers,
+    projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : 'skip'
+  )
   const joinLinkState = useQuery(
     api.projectJoinLinks.getForProject,
     projectId && convexUserId ? { projectId, userId: convexUserId } : "skip"
+  )
+  const pendingProjectInvites = useQuery(
+    api.projectInvites.listForProject,
+    projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : 'skip'
+  )
+  const repoAccessRecords = useQuery(
+    api.projectRepoAccess.listForProject,
+    projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : 'skip'
+  )
+  const project = useQuery(
+    api.projects.getAccessibleById,
+    projectId && convexUserId
+      ? {
+          projectId,
+          userId: convexUserId,
+        }
+      : 'skip'
   )
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [emailInput, setEmailInput] = useState("")
@@ -526,6 +565,8 @@ function HeaderProjectShareButton({
   const [joinLinkAction, setJoinLinkAction] = useState<"copy" | "rotate" | "disable" | null>(null)
   const [isLoadingPersonalContacts, setIsLoadingPersonalContacts] = useState(false)
   const [personalContactsError, setPersonalContactsError] = useState<string | null>(null)
+  const [teamError, setTeamError] = useState<string | null>(null)
+  const [teamActionKey, setTeamActionKey] = useState<string | null>(null)
   const inviteEmailCandidates = useMemo(
     () =>
       Array.from(
@@ -564,6 +605,41 @@ function HeaderProjectShareButton({
   const activeJoinLink = joinLinkState?.activeLink ?? null
   const canSendProjectInvites = canInvite && isPersonalProject
   const canManageJoinLinks = canInvite && isPersonalProject
+  const canManagePersonalProjectAccess = canInvite && isPersonalProject
+  const projectMembersByEmail = useMemo(() => {
+    const next = new Map<string, NonNullable<(typeof projectMembers)>[number]>()
+    for (const member of projectMembers ?? []) {
+      const email = member.user?.email?.trim().toLowerCase()
+      if (!email) continue
+      next.set(email, member)
+    }
+    return next
+  }, [projectMembers])
+  const pendingInvitesByEmail = useMemo(() => {
+    const next = new Map<string, NonNullable<(typeof pendingProjectInvites)>[number]>()
+    for (const invite of pendingProjectInvites ?? []) {
+      const email = invite.email?.trim().toLowerCase()
+      if (!email) continue
+      next.set(email, invite)
+    }
+    return next
+  }, [pendingProjectInvites])
+  const repoAccessByUserId = useMemo(() => {
+    const next = new Map<string, ProjectRepoAccessRecord>()
+    for (const record of repoAccessRecords ?? []) {
+      if (!record.memberUserId) continue
+      next.set(String(record.memberUserId), record)
+    }
+    return next
+  }, [repoAccessRecords])
+  const repoAccessByEmail = useMemo(() => {
+    const next = new Map<string, ProjectRepoAccessRecord>()
+    for (const record of repoAccessRecords ?? []) {
+      if (!record.inviteEmail) continue
+      next.set(record.inviteEmail.trim().toLowerCase(), record)
+    }
+    return next
+  }, [repoAccessRecords])
   const unavailableContactEmails = useMemo(() => {
     const emails = new Set<string>()
     inviteMembers.forEach((member) => {
@@ -653,6 +729,7 @@ function HeaderProjectShareButton({
 
   const flushProjectBeforeShare = useCallback(async () => {
     if (!projectId || !convexUserId || !syncContext?.projectPath) return
+    if (project?.sourceControl?.syncPolicy === 'manual') return
 
     const coordinator = GitDurabilityCoordinator.acquireShared({
       projectId,
@@ -662,16 +739,169 @@ function HeaderProjectShareButton({
     })
 
     try {
-      await coordinator.flushNow()
+      await coordinator.flushNow(true)
     } finally {
       coordinator.release()
     }
-  }, [convex, convexUserId, projectId, syncContext?.projectPath])
+  }, [convex, convexUserId, project?.sourceControl?.syncPolicy, projectId, syncContext?.projectPath])
 
   useEffect(() => {
     if (!isInviteOpen || !activeJoinLink) return
     setJoinLinkRole(activeJoinLink.role)
   }, [activeJoinLink, isInviteOpen])
+
+  const handleProjectMemberRoleChange = useCallback(
+    async (memberUserId: Id<'users'>, nextRole: ProjectInviteRole) => {
+      if (!projectId || !project || !convexUserId || !canManagePersonalProjectAccess) return
+      const actionKey = `role:${String(memberUserId)}`
+      setTeamActionKey(actionKey)
+      setTeamError(null)
+      try {
+        await updateProjectMemberRole({
+          projectId,
+          actorUserId: convexUserId,
+          memberUserId,
+          newRole: nextRole,
+        })
+      } catch (error) {
+        setTeamError(cleanConvexError(error, 'Failed to update member role'))
+      } finally {
+        setTeamActionKey(null)
+      }
+    },
+    [
+      canManagePersonalProjectAccess,
+      convexUserId,
+      project,
+      projectId,
+      updateProjectMemberRole,
+    ]
+  )
+
+  const handleProjectMemberRemove = useCallback(
+    async (memberUserId: Id<'users'>) => {
+      if (!projectId || !project || !convexUserId || !canManagePersonalProjectAccess) return
+      const actionKey = `remove:${String(memberUserId)}`
+      setTeamActionKey(actionKey)
+      setTeamError(null)
+      try {
+        const member = (projectMembers ?? []).find((entry) => entry.userId === memberUserId)
+        const repoAccess =
+          repoAccessByUserId.get(String(memberUserId)) ??
+          (member?.user?.email
+            ? repoAccessByEmail.get(member.user.email.trim().toLowerCase())
+            : undefined)
+        await removeProjectMember({
+          projectId,
+          actorUserId: convexUserId,
+          memberUserId,
+        })
+
+        if (member?.user?.email) {
+          const syncOutcome = await syncProjectRepositoryAccess({
+            convex,
+            project,
+            actorUserId: convexUserId,
+            subjectType: 'member',
+            memberUserId,
+            inviteEmail: member.user.email,
+            providerAccountHandle: repoAccess?.providerAccountHandle,
+            role: member.role,
+            action: 'revoke',
+            isPersonalWorkspace: true,
+          })
+
+          if (!syncOutcome.success && syncOutcome.error) {
+            setTeamError(syncOutcome.error)
+          }
+        }
+      } catch (error) {
+        setTeamError(cleanConvexError(error, 'Failed to remove member'))
+      } finally {
+        setTeamActionKey(null)
+      }
+    },
+    [
+      canManagePersonalProjectAccess,
+      convex,
+      convexUserId,
+      project,
+      projectId,
+      projectMembers,
+      removeProjectMember,
+      repoAccessByEmail,
+      repoAccessByUserId,
+    ]
+  )
+
+  const handleProjectInviteResend = useCallback(
+    async (inviteId: Id<'projectInvites'>) => {
+      if (!project || !convexUserId || !canManagePersonalProjectAccess) return
+      const actionKey = `resend:${String(inviteId)}`
+      setTeamActionKey(actionKey)
+      setTeamError(null)
+      try {
+        await resendProjectInvite({ inviteId, resentBy: convexUserId })
+      } catch (error) {
+        setTeamError(cleanConvexError(error, 'Failed to resend invite'))
+      } finally {
+        setTeamActionKey(null)
+      }
+    },
+    [
+      canManagePersonalProjectAccess,
+      convexUserId,
+      project,
+      resendProjectInvite,
+    ]
+  )
+
+  const handleProjectInviteCancel = useCallback(
+    async (inviteId: Id<'projectInvites'>) => {
+      if (!project || !convexUserId || !canManagePersonalProjectAccess) return
+      const actionKey = `cancel:${String(inviteId)}`
+      setTeamActionKey(actionKey)
+      setTeamError(null)
+      try {
+        const invite = (pendingProjectInvites ?? []).find((entry) => entry._id === inviteId)
+        const repoAccess = invite?.email
+          ? repoAccessByEmail.get(invite.email.trim().toLowerCase())
+          : undefined
+        await cancelProjectInvite({ inviteId, cancelledBy: convexUserId })
+
+        if (invite?.email) {
+          const syncOutcome = await syncProjectRepositoryAccess({
+            convex,
+            project,
+            actorUserId: convexUserId,
+            subjectType: 'invite',
+            inviteEmail: invite.email,
+            providerAccountHandle: repoAccess?.providerAccountHandle,
+            role: invite.role,
+            action: 'revoke',
+            isPersonalWorkspace: true,
+          })
+
+          if (!syncOutcome.success && syncOutcome.error) {
+            setTeamError(syncOutcome.error)
+          }
+        }
+      } catch (error) {
+        setTeamError(cleanConvexError(error, 'Failed to cancel invite'))
+      } finally {
+        setTeamActionKey(null)
+      }
+    },
+    [
+      cancelProjectInvite,
+      canManagePersonalProjectAccess,
+      convex,
+      convexUserId,
+      pendingProjectInvites,
+      project,
+      repoAccessByEmail,
+    ]
+  )
 
   const queueInviteEmail = useCallback((rawEmail: string) => {
     const email = rawEmail.trim().toLowerCase()
@@ -724,6 +954,8 @@ function HeaderProjectShareButton({
       setIsSubmitting(false)
       setIsLoadingPersonalContacts(false)
       setPersonalContactsError(null)
+      setTeamError(null)
+      setTeamActionKey(null)
       setJoinLinkError(null)
       setJoinLinkNotice(null)
       setJoinLinkAction(null)
@@ -874,7 +1106,7 @@ function HeaderProjectShareButton({
           <DialogTrigger asChild>
             <Button
               variant="ghost"
-              className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 gap-1.5 rounded-full border border-border/60 bg-secondary/70 px-3 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground shadow-none"
               disabled={!projectId || roleCheckPending || shareStatePending}
               onMouseEnter={prewarmPersonalContacts}
               onFocus={prewarmPersonalContacts}
@@ -924,6 +1156,11 @@ function HeaderProjectShareButton({
                 {inviteNotice}
               </div>
             ) : null}
+            {teamError ? (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {teamError}
+              </div>
+            ) : null}
             {joinLinkNotice ? (
               <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
                 {joinLinkNotice}
@@ -957,6 +1194,15 @@ function HeaderProjectShareButton({
                   <div className="app-scrollbar max-h-[18rem] space-y-1 overflow-y-auto pr-1">
                     {filteredPersonalContacts.map((contact: PersonalProjectContact) => {
                       const contactName = formatInviteeDisplayName(contact.email, contact.user)
+                      const normalizedEmail = contact.email.trim().toLowerCase()
+                      const existingMember = projectMembersByEmail.get(normalizedEmail)
+                      const existingInvite = pendingInvitesByEmail.get(normalizedEmail)
+                      const isExistingMember = Boolean(existingMember)
+                      const isExistingInvite = Boolean(existingInvite)
+                      const roleActionKey = existingMember ? `role:${String(existingMember.userId)}` : null
+                      const removeActionKey = existingMember ? `remove:${String(existingMember.userId)}` : null
+                      const resendActionKey = existingInvite ? `resend:${String(existingInvite._id)}` : null
+                      const cancelActionKey = existingInvite ? `cancel:${String(existingInvite._id)}` : null
                       return (
                         <div
                           key={contact.email}
@@ -976,26 +1222,135 @@ function HeaderProjectShareButton({
                               <span className="block truncate text-sm font-medium">
                                 {contactName}
                               </span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {contact.email}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {contact.email}
+                                </span>
+                                {isExistingMember ? (
+                                  <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                    In project
+                                  </span>
+                                ) : null}
+                                {isExistingInvite ? (
+                                  <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                    Pending
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 shrink-0 rounded-full px-3 text-xs"
-                            disabled={isSubmitting}
-                            onClick={() => {
-                              setInviteError(null)
-                              queueInviteEmail(contact.email)
-                              setEmailInput("")
-                            }}
-                          >
-                            <Plus className="mr-1.5 h-3.5 w-3.5" />
-                            Add
-                          </Button>
+                          {isExistingMember && existingMember ? (
+                            <div className="flex items-center gap-1.5">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                                    disabled={isSubmitting || !canManagePersonalProjectAccess || existingMember.userId === convexUserId}
+                                  >
+                                    {PROJECT_INVITE_ROLE_OPTIONS.find((option) => option.value === existingMember.role)?.label ?? 'Role'}
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
+                                    <DropdownMenuItem
+                                      key={option.value}
+                                      disabled={
+                                        existingMember.role === option.value ||
+                                        teamActionKey === roleActionKey ||
+                                        existingMember.userId === convexUserId
+                                      }
+                                      onClick={() => {
+                                        void handleProjectMemberRoleChange(existingMember.userId, option.value)
+                                      }}
+                                    >
+                                      {teamActionKey === roleActionKey && existingMember.role !== option.value ? (
+                                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                      ) : null}
+                                      {option.label}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                disabled={
+                                  isSubmitting ||
+                                  !canManagePersonalProjectAccess ||
+                                  existingMember.userId === convexUserId ||
+                                  teamActionKey === removeActionKey
+                                }
+                                onClick={() => {
+                                  void handleProjectMemberRemove(existingMember.userId)
+                                }}
+                              >
+                                {teamActionKey === removeActionKey ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                <span className="sr-only">Remove member</span>
+                              </Button>
+                            </div>
+                          ) : isExistingInvite && existingInvite ? (
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 shrink-0 rounded-full px-3 text-xs"
+                                disabled={isSubmitting || !canManagePersonalProjectAccess || teamActionKey === resendActionKey}
+                                onClick={() => {
+                                  void handleProjectInviteResend(existingInvite._id)
+                                }}
+                              >
+                                {teamActionKey === resendActionKey ? (
+                                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                                )}
+                                Resend
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                disabled={isSubmitting || !canManagePersonalProjectAccess || teamActionKey === cancelActionKey}
+                                onClick={() => {
+                                  void handleProjectInviteCancel(existingInvite._id)
+                                }}
+                              >
+                                {teamActionKey === cancelActionKey ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                <span className="sr-only">Cancel invite</span>
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 shrink-0 rounded-full px-3 text-xs"
+                              disabled={isSubmitting}
+                              onClick={() => {
+                                setInviteError(null)
+                                queueInviteEmail(contact.email)
+                                setEmailInput("")
+                              }}
+                            >
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              Add
+                            </Button>
+                          )}
                         </div>
                       )
                     })}
@@ -1011,8 +1366,9 @@ function HeaderProjectShareButton({
                         const inviteeUser = inviteLookupByEmail.get(member.email)
                         const inviteeName = formatInviteeDisplayName(member.email, inviteeUser)
                         return (
-                        <div key={member.email} className="flex items-center justify-between px-1 py-2">
-                          <div className="flex items-center gap-3">
+                        <div key={member.email} className="flex items-start justify-between gap-3 px-1 py-2">
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex items-center gap-3">
                             <Avatar className="h-10 w-10">
                               <AvatarImage
                                 src={inviteeUser?.profileImageUrl ?? undefined}
@@ -1028,8 +1384,13 @@ function HeaderProjectShareButton({
                                 <span className="block max-w-[220px] truncate text-xs text-muted-foreground">
                                   {member.email}
                                 </span>
-                              ) : null}
+                              ) : (
+                                <span className="block max-w-[220px] truncate text-xs text-muted-foreground">
+                                  {member.email}
+                                </span>
+                              )}
                             </div>
+                          </div>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <DropdownMenu>
@@ -1203,6 +1564,103 @@ function HeaderProjectShareButton({
   )
 }
 
+function HeaderProjectChangesButton({
+  projectId,
+}: {
+  projectId: Id<"projects"> | null
+}) {
+  const navigate = useViewTransitionNavigate()
+  const location = useLocation()
+  const convex = useConvex()
+
+  const prewarmChanges = useCallback(() => {
+    if (!projectId) return
+
+    const activityCacheKey = getProjectChangesActivityCacheKey(projectId)
+    const queryCache = useQueryCache.getState()
+    if (queryCache.get(activityCacheKey, 30_000) !== undefined) {
+      return
+    }
+
+    void scheduleTask(async () => {
+      try {
+        const activity = await convex.query(api.activity.getRecentActivity, {
+          projectId,
+          limit: 100,
+        })
+
+        if (activity !== undefined) {
+          useQueryCache.getState().set(activityCacheKey, activity)
+        }
+
+        const firstChangeId = activity?.[0]?.id
+        if (!firstChangeId) return
+
+        const selectedChange = await convex.query(api.activity.getChangeWithContent, {
+          changeId: firstChangeId,
+        })
+
+        if (selectedChange !== undefined) {
+          useQueryCache.getState().set(
+            getProjectChangesSelectedChangeCacheKey(firstChangeId),
+            selectedChange,
+          )
+        }
+      } catch {
+        // Ignore prewarm failures and let the drawer queries resolve normally.
+      }
+    }, "background")
+  }, [convex, projectId])
+
+  if (!projectId) return null
+
+  const workbenchPath = buildProjectPath(String(projectId), "workbench")
+  const currentParams = new URLSearchParams(location.search)
+  const isOnWorkbench = location.pathname === workbenchPath
+  const isChangesOpen = currentParams.get("changes") === "1" || currentParams.get("openTile") === "changes"
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-full border border-border/60 bg-secondary/70 px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary hover:text-foreground"
+          onMouseEnter={prewarmChanges}
+          onFocus={prewarmChanges}
+          onPointerDown={prewarmChanges}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+
+            const nextParams = new URLSearchParams(location.search)
+
+            if (isOnWorkbench && isChangesOpen) {
+              nextParams.delete("changes")
+              nextParams.delete("openTile")
+              nextParams.delete("userId")
+            } else {
+              nextParams.set("changes", "1")
+              nextParams.delete("openTile")
+            }
+
+            const nextSearch = nextParams.toString()
+
+            navigate({
+              pathname: workbenchPath,
+              search: nextSearch ? `?${nextSearch}` : "",
+            })
+          }}
+        >
+          <GitCompareArrows className="h-3.5 w-3.5" />
+          Changes
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Open changes</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function UnifiedHeader({
   breadcrumbs,
   header,
@@ -1220,8 +1678,7 @@ export function UnifiedHeader({
 }: UnifiedHeaderProps) {
   const { personalScoped } = useScopedAppContext()
   const windowChrome = useWindowChrome()
-  const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== "closed")
-  const shouldShowWindowsCaptionSpacer = windowChrome.isWindows && !isAssistantOpen
+  const shouldShowWindowsCaptionSpacer = windowChrome.isWindows
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
   const shouldApplyLeftWindowControlsInset = leftWindowControlsInset && windowChrome.isMac
   const headerSurfaceClassName = "border-b border-border/60 bg-background"
@@ -1366,10 +1823,13 @@ export function UnifiedHeader({
   const collaborationControl = personalScoped
     ? projectInviteContext
       ? (
-          <HeaderProjectShareButton
-            projectId={projectInviteContext.projectId}
-            projectName={projectInviteContext.projectName}
-          />
+          <div className="flex items-center gap-2">
+            <HeaderProjectChangesButton projectId={projectInviteContext.projectId} />
+            <HeaderProjectShareButton
+              projectId={projectInviteContext.projectId}
+              projectName={projectInviteContext.projectName}
+            />
+          </div>
         )
       : !hideInbox ? <HeaderInboxButton /> : null
     : null

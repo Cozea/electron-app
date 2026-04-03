@@ -1,7 +1,7 @@
 "use client"
 
-import { type ReactNode, memo, useRef, useState, useCallback, useEffect, useMemo } from "react"
-import { Outlet, useLocation, useParams } from 'react-router-dom'
+import { type ReactNode, memo, useRef, useCallback, useEffect, useMemo } from "react"
+import { Outlet, useLocation, useParams } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
@@ -11,16 +11,11 @@ import { ProjectSidebar } from "../components/ProjectSidebar"
 import {
     SidebarInset,
     SidebarProvider,
-    useOptionalSidebar,
 } from "@/components/ui/sidebar"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { StatusBar } from "@/components/StatusBar"
-import { ChatPanel } from "@/components/chat/ChatPanel"
-import { AssistantPanel } from "@/components/assistant/AssistantPanel"
-import { ChatHistorySidebar } from "@/components/assistant/ChatHistorySidebar"
+import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge"
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator"
-import { useChatPanelStore } from "@/stores/useChatPanelStore"
-import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { usePageContextStore } from "@/stores/usePageContextStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { useAuth } from "@/contexts/AuthContext"
@@ -28,12 +23,10 @@ import { cn } from "@/lib/utils"
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
-import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
 import { ensureVscodeServicesInitialized } from "@/lib/editor/vscodeServices"
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
-import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
-import { Building2, FolderKanban, GripVertical, Layers3, Loader2, UserRound } from "lucide-react"
+import { Building2, FolderKanban, UserRound } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
@@ -41,35 +34,7 @@ import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectO
 import { logGitOpenDebug } from "@/lib/git/gitOpenDebug"
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
-
-interface PathRecoveryChoice {
-    previousPath: string
-    targetPath: string
-    targetPathExists: boolean
-    projectsDirectory: string
-}
-
-interface StoredPathPreference {
-    acceptedExternalPath: string
-    projectsDirectory: string
-}
-
-function normalizePath(value: string): string {
-    return value.replace(/\\/g, "/").replace(/\/+$/, "")
-}
-
-function pathIsInsideDirectory(candidate: string, directory: string): boolean {
-    const normalizedCandidate = normalizePath(candidate)
-    const normalizedDirectory = normalizePath(directory)
-    return (
-        normalizedCandidate === normalizedDirectory ||
-        normalizedCandidate.startsWith(`${normalizedDirectory}/`)
-    )
-}
-
-function buildPathPreferenceKey(projectId: string, userId: string): string {
-    return `cozea:path-preference:${projectId}:${userId}`
-}
+import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath"
 
 function getProjectSubpageLabel(pathname: string, basePath: string | null): string | null {
     if (!basePath) return null
@@ -80,24 +45,20 @@ function getProjectSubpageLabel(pathname: string, basePath: string | null): stri
     const segment = rest.split("/")[0] ?? ""
 
     switch (segment) {
+        case "workbench":
+            return "Workbench"
         case "pages":
-            return "Previews"
-        case "backend":
-            return "Backend Studio"
-        case "dependencies":
-            return "Dependencies"
+            return "Workbench"
         case "changes":
-            return "Changes"
+            return "Workbench"
         case "conflicts":
             return "Conflicts"
         case "settings":
             return "Settings"
         case "team":
             return "Team"
-        case "database":
-            return "Database"
         case "tasks":
-            return "Tasks"
+            return "Workbench"
         default:
             return null
     }
@@ -158,7 +119,8 @@ interface ProjectLayoutProps {
 }
 
 interface ProjectLayoutLocationState {
-    syncMode?: 'replica' | 'git'
+    syncMode?: 'git'
+    localPath?: string | null
     pendingTeamSetup?: Array<{
         email: string
         name?: string
@@ -168,59 +130,16 @@ interface ProjectLayoutLocationState {
     }>
 }
 
-const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
-const ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY = 'assistant-history-sidebar-width'
-const ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH = 224
-const ASSISTANT_HISTORY_SIDEBAR_MIN_WIDTH = 200
-const ASSISTANT_HISTORY_SIDEBAR_MAX_WIDTH = 320
-
-interface SidebarFullscreenSyncProps {
-    assistantPanelMode: 'closed' | 'panel' | 'fullscreen'
-}
-
-function SidebarFullscreenSync({ assistantPanelMode }: SidebarFullscreenSyncProps) {
-    const sidebar = useOptionalSidebar()
-
-    useEffect(() => {
-        if (!sidebar) return
-
-        const { isMobile, open, setOpen, setOpenMobile } = sidebar
-
-        if (assistantPanelMode !== 'fullscreen') return
-
-        if (isMobile) {
-            setOpenMobile(false)
-            return
-        }
-
-        if (!open) return
-
-        const collapseTimer = window.setTimeout(() => {
-            setOpen(false)
-        }, FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS)
-
-        return () => {
-            window.clearTimeout(collapseTimer)
-        }
-    }, [assistantPanelMode, sidebar])
-
-    return null
-}
-
 export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
-    const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
     const { convexUserId, user, logout } = useAuth()
     const { preferredConvexOrganizationId, workspaceName, scopeKind } = useScopedAppContext()
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
-    const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
+    const { slug: routeSlug, projectId: routeProjectId } = useParams()
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
     const initialSyncMode = locationState?.syncMode ?? null
-
-    const chatPanelMode = useChatPanelStore((state) => state.mode)
-    const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
 
     // Get project data (with caching)
     const freshProjectById = useQuery(
@@ -277,38 +196,23 @@ export function ProjectLayout({
                 ? buildLegacyProjectPath(projectSlug)
                 : null
 
-    // Get per-user local path for this project (machine-specific) (with caching)
-    const freshMemberLocalPath = useQuery(
-        api.projectMembers.getMemberLocalPath,
-        project?._id && convexUserId
-            ? { projectId: project._id, userId: convexUserId }
-            : "skip"
-    )
-    const memberLocalPath = freshMemberLocalPath
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup)
-
-    const [effectiveLocalPath, setEffectiveLocalPath] = useState<string | null>(null)
-    const [pathRecoveryChoice, setPathRecoveryChoice] = useState<PathRecoveryChoice | null>(null)
-    const [isResolvingPath, setIsResolvingPath] = useState(false)
-    const [pathResolutionError, setPathResolutionError] = useState<string | null>(null)
     const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set())
-
-    useEffect(() => {
-        setEffectiveLocalPath(null)
-        setPathRecoveryChoice(null)
-        setPathResolutionError(null)
-    }, [project?._id, convexUserId, projectSlug])
+    const mirroredLocalPathRef = useRef<string | null>(null)
+    const navigationLocalPath = locationState?.localPath ?? null
+    const { localPath: effectiveLocalPath } = useLocalProjectPath({
+        initialPath: navigationLocalPath,
+        preferInitialPath: Boolean(navigationLocalPath),
+        projectId: project?._id ? String(project._id) : routeProjectId,
+        projectSlug,
+    })
 
     const pendingTeamSetup = useMemo(() => locationState?.pendingTeamSetup ?? [], [locationState?.pendingTeamSetup])
     const pendingTeamSetupReady =
         pendingTeamSetup.length > 0 &&
         project?._id &&
-        convexUserId &&
-        memberLocalPath !== undefined &&
-        !isResolvingPath &&
-        !pathResolutionError &&
-        effectiveLocalPath !== null
+        convexUserId
 
     useEffect(() => {
         if (!pendingTeamSetupReady || !project?._id || !convexUserId) {
@@ -339,8 +243,11 @@ export function ProjectLayout({
                     return
                 }
 
-                const nextState = locationState?.syncMode
-                    ? { syncMode: locationState.syncMode }
+                const nextState = locationState?.syncMode || navigationLocalPath
+                    ? {
+                        syncMode: locationState?.syncMode,
+                        localPath: navigationLocalPath,
+                    }
                     : null
                 navigate(`${location.pathname}${location.search}${location.hash}`, {
                     replace: true,
@@ -358,211 +265,55 @@ export function ProjectLayout({
     }, [
         applyInitialTeamSetup,
         convexUserId,
-        effectiveLocalPath,
-        isResolvingPath,
         location.hash,
         location.pathname,
         location.search,
+        navigationLocalPath,
         locationState?.syncMode,
-        memberLocalPath,
         navigate,
-        pathResolutionError,
         pendingTeamSetup,
         pendingTeamSetupReady,
         project?._id,
     ])
 
-    const resolvedMemberPathRef = useRef<string | null | undefined>(undefined)
-
-    const resolvePathPreference = useCallback(async (force = false) => {
-        if (!project?._id || !convexUserId || !projectSlug) {
-            setEffectiveLocalPath(null)
-            setPathRecoveryChoice(null)
-            setPathResolutionError(null)
-            resolvedMemberPathRef.current = undefined
+    const rememberResolvedProjectPath = useCallback(async (projectPath: string) => {
+        if (!project?._id) {
             return
         }
 
-        if (memberLocalPath === undefined) {
-            return
+        const result = await window.electronAPI.project.rememberLocalPath({
+            projectId: String(project._id),
+            projectPath,
+        })
+
+        if (!result.success) {
+            console.warn("[ProjectLayout] Failed to persist local project path:", result.error)
         }
-
-        if (!force && resolvedMemberPathRef.current === memberLocalPath) {
-            return
-        }
-        resolvedMemberPathRef.current = memberLocalPath
-
-        setIsResolvingPath(true)
-        setPathResolutionError(null)
-
-        try {
-            const storedPath = memberLocalPath ?? null
-            if (!storedPath) {
-                setPathRecoveryChoice(null)
-                setEffectiveLocalPath(null)
-                return
-            }
-
-            const settings = await window.electronAPI.settings.get()
-            const projectsDirectory = settings.projectsDirectory
-            const normalizedStoredPath = normalizePath(storedPath)
-            const normalizedProjectsDirectory = normalizePath(projectsDirectory)
-            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUserId.toString())
-
-            if (pathIsInsideDirectory(normalizedStoredPath, normalizedProjectsDirectory)) {
-                localStorage.removeItem(preferenceKey)
-                setPathRecoveryChoice(null)
-                setEffectiveLocalPath(storedPath)
-                return
-            }
-
-            const storedPreferenceRaw = localStorage.getItem(preferenceKey)
-            if (storedPreferenceRaw) {
-                try {
-                    const storedPreference = JSON.parse(storedPreferenceRaw) as StoredPathPreference
-                    if (
-                        normalizePath(storedPreference.acceptedExternalPath) === normalizedStoredPath &&
-                        normalizePath(storedPreference.projectsDirectory) === normalizedProjectsDirectory
-                    ) {
-                        setPathRecoveryChoice(null)
-                        setEffectiveLocalPath(storedPath)
-                        return
-                    }
-                } catch {
-                    localStorage.removeItem(preferenceKey)
-                }
-            }
-
-            const [previousPathExists, existingTargetPath] = await Promise.all([
-                window.electronAPI.project.pathExists(storedPath),
-                window.electronAPI.project.getLocalPath({
-                    slug: projectSlug,
-                    projectId: project?._id ? String(project._id) : undefined,
-                }),
-            ])
-
-            if (!previousPathExists) {
-                let nextPath = existingTargetPath
-                if (!nextPath) {
-                    const created = await window.electronAPI.project.createFolder({
-                        slug: projectSlug,
-                        initGit: true,
-                    })
-                    if (!created.success || !created.localPath) {
-                        throw new Error(created.error || "Failed to create project folder in current directory")
-                    }
-                    nextPath = created.localPath
-                }
-
-                await updateMemberLocalPath({
-                    projectId: project._id,
-                    userId: convexUserId,
-                    localPath: nextPath,
-                })
-                localStorage.removeItem(preferenceKey)
-                setPathRecoveryChoice(null)
-                setEffectiveLocalPath(nextPath)
-                return
-            }
-
-            const targetPath =
-                existingTargetPath ??
-                `${projectsDirectory.replace(/[\\/]+$/, "")}/${projectSlug}`
-
-            setEffectiveLocalPath(null)
-            setPathRecoveryChoice({
-                previousPath: storedPath,
-                targetPath,
-                targetPathExists: Boolean(existingTargetPath),
-                projectsDirectory,
-            })
-        } catch (err) {
-            const message =
-                err instanceof Error
-                    ? err.message
-                    : "Failed to resolve local project directory"
-            setPathResolutionError(message)
-            setPathRecoveryChoice(null)
-            setEffectiveLocalPath(memberLocalPath ?? null)
-        } finally {
-            setIsResolvingPath(false)
-        }
-    }, [convexUserId, memberLocalPath, project?._id, projectSlug, updateMemberLocalPath])
+    }, [project?._id])
 
     useEffect(() => {
-        void resolvePathPreference()
-    }, [resolvePathPreference])
-
-    const handleUsePreviousDirectory = useCallback(() => {
-        if (!project?._id || !convexUserId || !pathRecoveryChoice) return
-        const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUserId.toString())
-        const payload: StoredPathPreference = {
-            acceptedExternalPath: pathRecoveryChoice.previousPath,
-            projectsDirectory: pathRecoveryChoice.projectsDirectory,
+        if (!effectiveLocalPath || !project?._id || !convexUserId) {
+            return
         }
-        localStorage.setItem(preferenceKey, JSON.stringify(payload))
-        setPathRecoveryChoice(null)
-        setPathResolutionError(null)
-        setEffectiveLocalPath(pathRecoveryChoice.previousPath)
-    }, [convexUserId, pathRecoveryChoice, project?._id])
 
-    const handleUseCurrentDirectory = useCallback(async () => {
-        if (!project?._id || !convexUserId || !projectSlug || !pathRecoveryChoice) return
-
-        setIsResolvingPath(true)
-        setPathResolutionError(null)
-
-        try {
-            let targetPath = await window.electronAPI.project.getLocalPath({
-                slug: projectSlug,
-                projectId: project?._id ? String(project._id) : undefined,
-            })
-            if (!targetPath) {
-                const created = await window.electronAPI.project.createFolder({
-                    slug: projectSlug,
-                    initGit: true,
-                })
-                if (!created.success || !created.localPath) {
-                    throw new Error(created.error || "Failed to create project folder in current directory")
-                }
-                targetPath = created.localPath
-            }
-
-            if (
-                normalizePath(pathRecoveryChoice.previousPath) !== normalizePath(targetPath)
-            ) {
-                const copyResult = await window.electronAPI.project.copyDirectorySnapshot({
-                    sourcePath: pathRecoveryChoice.previousPath,
-                    targetPath,
-                })
-                if (!copyResult.success) {
-                    throw new Error(copyResult.error || "Failed to copy project files to the new directory")
-                }
-            }
-
-            await updateMemberLocalPath({
-                projectId: project._id,
-                userId: convexUserId,
-                localPath: targetPath,
-            })
-
-            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUserId.toString())
-            localStorage.removeItem(preferenceKey)
-            setPathRecoveryChoice(null)
-            setEffectiveLocalPath(targetPath)
-        } catch (err) {
-            const message =
-                err instanceof Error
-                    ? err.message
-                    : "Failed to switch project directory"
-            setPathResolutionError(message)
-        } finally {
-            setIsResolvingPath(false)
+        const mirrorKey = `${String(project._id)}:${convexUserId}:${effectiveLocalPath}`
+        if (mirroredLocalPathRef.current === mirrorKey) {
+            return
         }
-    }, [convexUserId, pathRecoveryChoice, project?._id, projectSlug, updateMemberLocalPath])
+        mirroredLocalPathRef.current = mirrorKey
+
+        void rememberResolvedProjectPath(effectiveLocalPath)
+        void updateMemberLocalPath({
+            projectId: project._id,
+            userId: convexUserId,
+            localPath: effectiveLocalPath,
+        }).catch((error) => {
+            mirroredLocalPathRef.current = null
+            console.warn("[ProjectLayout] Failed to mirror local project path to cloud metadata:", error)
+        })
+    }, [convexUserId, effectiveLocalPath, project?._id, rememberResolvedProjectPath, updateMemberLocalPath])
 
     useDiagnosticsBridge(effectiveLocalPath)
-    useDependenciesMonitor(effectiveLocalPath)
 
     useEffect(() => {
         setVscodeWorkspaceProjectPath(effectiveLocalPath)
@@ -604,7 +355,7 @@ export function ProjectLayout({
 
             // Clear any stale terminal tabs in renderer state so we don't
             // keep dead terminal IDs after project path changes.
-            useTerminalStore.getState().actions.reset()
+            useTerminalStore.getState().actions.resetProject(projectPath)
         }
     }, [effectiveLocalPath])
 
@@ -633,21 +384,17 @@ export function ProjectLayout({
     const handlePresenceUserClick = useCallback(
         (presenceUser: PresenceUser) => {
             if (!projectBasePath) return
-            navigate(`${projectBasePath}/changes?userId=${encodeURIComponent(presenceUser.userId)}`)
+            navigate(`${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`)
         },
         [navigate, projectBasePath]
     )
 
     // Check if we are on views that need full-bleed content (no padding)
+    const isWorkbenchView = location.pathname.endsWith('/workbench')
     const isPagesView = location.pathname.endsWith('/pages')
-    const isBackendStudioView = location.pathname.endsWith('/backend')
-    const isDependenciesView = location.pathname.endsWith('/dependencies')
     const isChangesView = location.pathname.endsWith('/changes')
-    const shouldRemovePadding = isPagesView || isBackendStudioView || isDependenciesView || isChangesView
+    const shouldRemovePadding = isWorkbenchView || isPagesView || isChangesView
 
-    // Determine if we can enable sync (need project + user data + resolved path decision)
-    const hasSyncIdentities = Boolean(project?._id && convexUserId && projectSlug) && memberLocalPath !== undefined
-    const canSync = hasSyncIdentities && !isResolvingPath
     const {
         header: headerContent,
         breadcrumbAddon,
@@ -683,108 +430,6 @@ export function ProjectLayout({
         [hideBreadcrumbs, project?.name, projectBasePath, subpageLabel]
     )
     const headerSlot = headerContent
-    const [assistantHistorySidebarWidth, setAssistantHistorySidebarWidth] = useState(() => {
-        if (typeof window === 'undefined') return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
-        const stored = localStorage.getItem(ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY)
-        if (!stored) return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
-        const parsed = Number.parseInt(stored, 10)
-        if (!Number.isFinite(parsed)) return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
-        return Math.max(
-            ASSISTANT_HISTORY_SIDEBAR_MIN_WIDTH,
-            Math.min(ASSISTANT_HISTORY_SIDEBAR_MAX_WIDTH, parsed)
-        )
-    })
-    const [isResizingAssistantHistorySidebar, setIsResizingAssistantHistorySidebar] = useState(false)
-    const assistantHistorySidebarWidthRef = useRef(assistantHistorySidebarWidth)
-    const assistantHistoryPendingWidthRef = useRef<number | null>(null)
-    const assistantHistoryResizeRafRef = useRef<number | null>(null)
-    const assistantHistoryResizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null)
-
-    useEffect(() => {
-        assistantHistorySidebarWidthRef.current = assistantHistorySidebarWidth
-    }, [assistantHistorySidebarWidth])
-
-    const flushPendingAssistantHistoryWidth = useCallback(() => {
-        if (assistantHistoryPendingWidthRef.current == null) return
-        const nextWidth = assistantHistoryPendingWidthRef.current
-        assistantHistoryPendingWidthRef.current = null
-        if (nextWidth === assistantHistorySidebarWidthRef.current) return
-        assistantHistorySidebarWidthRef.current = nextWidth
-        setAssistantHistorySidebarWidth(nextWidth)
-    }, [])
-
-    useEffect(() => {
-        if (!isResizingAssistantHistorySidebar) return
-
-        const scheduleWidthUpdate = (width: number) => {
-            assistantHistoryPendingWidthRef.current = width
-            if (assistantHistoryResizeRafRef.current !== null) return
-            assistantHistoryResizeRafRef.current = window.requestAnimationFrame(() => {
-                assistantHistoryResizeRafRef.current = null
-                flushPendingAssistantHistoryWidth()
-            })
-        }
-
-        const handleMouseMove = (event: MouseEvent) => {
-            const resizeStart = assistantHistoryResizeStartRef.current
-            if (!resizeStart) return
-            const delta = event.clientX - resizeStart.startX
-            const nextWidth = resizeStart.startWidth + delta
-            const clampedWidth = Math.max(
-                ASSISTANT_HISTORY_SIDEBAR_MIN_WIDTH,
-                Math.min(ASSISTANT_HISTORY_SIDEBAR_MAX_WIDTH, nextWidth)
-            )
-            scheduleWidthUpdate(Math.round(clampedWidth))
-        }
-
-        const handleMouseUp = () => {
-            if (assistantHistoryResizeRafRef.current !== null) {
-                window.cancelAnimationFrame(assistantHistoryResizeRafRef.current)
-                assistantHistoryResizeRafRef.current = null
-            }
-            flushPendingAssistantHistoryWidth()
-            setIsResizingAssistantHistorySidebar(false)
-            assistantHistoryResizeStartRef.current = null
-            localStorage.setItem(
-                ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY,
-                assistantHistorySidebarWidthRef.current.toString()
-            )
-        }
-
-        document.addEventListener('mousemove', handleMouseMove)
-        document.addEventListener('mouseup', handleMouseUp)
-        document.body.style.cursor = 'col-resize'
-        document.body.style.userSelect = 'none'
-
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove)
-            document.removeEventListener('mouseup', handleMouseUp)
-            document.body.style.cursor = ''
-            document.body.style.userSelect = ''
-            if (assistantHistoryResizeRafRef.current !== null) {
-                window.cancelAnimationFrame(assistantHistoryResizeRafRef.current)
-                assistantHistoryResizeRafRef.current = null
-            }
-        }
-    }, [flushPendingAssistantHistoryWidth, isResizingAssistantHistorySidebar])
-
-    useEffect(() => {
-        return () => {
-            if (assistantHistoryResizeRafRef.current !== null) {
-                window.cancelAnimationFrame(assistantHistoryResizeRafRef.current)
-            }
-        }
-    }, [])
-
-    const handleAssistantHistoryResizeStart = useCallback((event: React.MouseEvent) => {
-        event.preventDefault()
-        assistantHistoryPendingWidthRef.current = null
-        assistantHistoryResizeStartRef.current = {
-            startX: event.clientX,
-            startWidth: assistantHistorySidebarWidthRef.current,
-        }
-        setIsResizingAssistantHistorySidebar(true)
-    }, [])
 
     const presenceHeaderAddon = useMemo(
         () =>
@@ -802,16 +447,22 @@ export function ProjectLayout({
         Boolean(headerSlot) ||
         Boolean(breadcrumbAddon) ||
         Boolean(presenceHeaderAddon)
-    const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
-    const showAssistantHistorySidebar = assistantPanelMode === 'fullscreen'
     const workspaceIcon = scopeKind === 'personal' ? UserRound : Building2
     const statusBar = (
         <StatusBar
-            leftAddon={<ProjectSyncIndicator variant="compact" className="h-5 w-5 rounded-sm bg-transparent" />}
-            leftItems={[
-                ...(project?.name ? [{ icon: FolderKanban, label: project.name }] : []),
-                { icon: Layers3, label: subpageLabel ?? 'Project' },
-            ]}
+            leftAddon={
+                project?._id ? (
+                    <ProjectSyncIndicator variant="compact" className="h-5 w-5 rounded-sm bg-transparent" />
+                ) : null
+            }
+            leftItems={
+                project?.name
+                    ? [
+                        { icon: FolderKanban, label: project.name },
+                        ...(subpageLabel ? [{ icon: FolderKanban, label: subpageLabel }] : []),
+                    ]
+                    : [{ icon: FolderKanban, label: subpageLabel ?? 'Projects' }]
+            }
             rightItems={[
                 { icon: workspaceIcon, label: workspaceName },
                 { label: 'Cozea' },
@@ -819,25 +470,8 @@ export function ProjectLayout({
         />
     )
 
-    if (pathRecoveryChoice) {
-        return (
-            <ProjectPathRecoveryScreen
-                projectName={project?.name}
-                previousPath={pathRecoveryChoice.previousPath}
-                targetPath={pathRecoveryChoice.targetPath}
-                targetPathExists={pathRecoveryChoice.targetPathExists}
-                onUsePreviousPath={handleUsePreviousDirectory}
-                onUseTargetPath={handleUseCurrentDirectory}
-                onRetry={() => void resolvePathPreference(true)}
-                isBusy={isResolvingPath}
-                error={pathResolutionError}
-            />
-        )
-    }
-
     const layoutContent = (
         <SidebarProvider>
-            <SidebarFullscreenSync assistantPanelMode={assistantPanelMode} />
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
                 {/* Main content */}
                 <div className="flex-1 flex min-h-0 overflow-hidden relative">
@@ -847,37 +481,6 @@ export function ProjectLayout({
                         onLogout={logout}
                         projectId={project?._id ?? null}
                     />
-                    {showAssistantHistorySidebar ? (
-                        <div
-                            style={{
-                                "--sidebar-width": `${assistantHistorySidebarWidth}px`,
-                                width: assistantHistorySidebarWidth,
-                                minWidth: assistantHistorySidebarWidth,
-                            } as React.CSSProperties}
-                            className="relative hidden h-full shrink-0 overflow-hidden md:flex"
-                        >
-                            <ChatHistorySidebar projectId={project?._id ?? null} />
-                            <div
-                                onMouseDown={handleAssistantHistoryResizeStart}
-                                className={cn(
-                                    "absolute right-0 top-0 bottom-0 z-50 hidden w-1 cursor-col-resize md:block group",
-                                    "hover:bg-primary/20 active:bg-primary/30",
-                                    isResizingAssistantHistorySidebar && "bg-primary/30"
-                                )}
-                                aria-hidden="true"
-                            >
-                                <div
-                                    className={cn(
-                                        "absolute right-0 top-1/2 flex h-8 w-3 -translate-y-1/2 items-center justify-center rounded-sm bg-border opacity-0 transition-opacity",
-                                        "group-hover:opacity-100",
-                                        isResizingAssistantHistorySidebar && "opacity-100"
-                                    )}
-                                >
-                                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                                </div>
-                            </div>
-                        </div>
-                    ) : null}
                     <SidebarInset
                         color="currentColor"
                         className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
@@ -888,11 +491,7 @@ export function ProjectLayout({
                             breadcrumbAddon={breadcrumbAddon ?? undefined}
                             centerAddon={centerAddon ?? undefined}
                             preSearchAddon={presenceHeaderAddon ?? undefined}
-                            className={
-                                isWindowsClient
-                                    ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
-                                    : "bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/40"
-                            }
+                        className="bg-background"
                             insetLeft={insetLeft}
                             insetRight={insetRight}
                             compactHeaderActions
@@ -910,58 +509,29 @@ export function ProjectLayout({
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}
-                                style={{
-                                    flex: isAnyPanelFullscreen ? '0 0 0' : '1 1 0',
-                                    width: isAnyPanelFullscreen ? 0 : undefined,
-                                    minWidth: isAnyPanelFullscreen ? 0 : undefined,
-                                    opacity: isAnyPanelFullscreen ? 0 : 1,
-                                    pointerEvents: isAnyPanelFullscreen ? 'none' : 'auto',
-                                }}
                             >
                                 {children || <Outlet />}
                             </div>
-                            <ChatPanel />
-                            <AssistantPanel
-                                className="[--assistant-surface:var(--content-surface)]"
-                                projectPath={effectiveLocalPath ?? undefined}
-                                projectId={project?._id ?? null}
-                                projectName={project?.name}
-                                projectSlug={projectSlug}
-                            />
+                            <TerminalEventBridge />
                         </div>
                     </SidebarInset>
                 </div >
-                {isResolvingPath && hasSyncIdentities && (
-                    <div className="pointer-events-none absolute left-0 right-0 top-12 z-20 flex justify-center px-4">
-                        <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            Resolving project directory...
-                        </div>
-                    </div>
-                )}
                 {statusBar}
             </div>
         </SidebarProvider >
     )
 
-    // Wrap with sync provider if we have all the required data
-    if (canSync && project && convexUserId && projectSlug) {
-        return (
-            <ProjectSyncProvider
-                key={project._id}
-                projectId={project._id}
-                userId={convexUserId}
-                userName={user?.firstName || user?.email || "User"}
-                projectSlug={projectSlug}
-                localPath={effectiveLocalPath}
-                lastSyncAt={project.lastSyncAt}
-                skipInitialSyncCheck={shouldSkipInitialSyncCheck}
-            >
-                {layoutContent}
-            </ProjectSyncProvider>
-        )
-    }
-
-    // Render without sync if data isn't available yet
-    return layoutContent
+    return (
+        <ProjectSyncProvider
+            projectId={project?._id ?? null}
+            userId={convexUserId ?? null}
+            userName={user?.firstName || user?.email || "User"}
+            projectSlug={projectSlug}
+            localPath={effectiveLocalPath}
+            lastSyncAt={project?.lastSyncAt}
+            skipInitialSyncCheck={shouldSkipInitialSyncCheck}
+        >
+            {layoutContent}
+        </ProjectSyncProvider>
+    )
 }

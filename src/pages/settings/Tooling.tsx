@@ -3,7 +3,7 @@ import { AlertTriangle, Check, Download, Loader2, Package, Plus, RefreshCw, Term
 import { FaApple, FaLinux, FaWindows } from 'react-icons/fa6'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { useAuth } from '../../contexts/AuthContext'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { AppShellLayout } from '../../components/layouts/AppShellLayout'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Switch } from '../../components/ui/switch'
@@ -496,13 +496,13 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
   }
 
   return (
-    <DashboardLayout
+    <AppShellLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Settings' }, { label: 'Tooling' }]}
       header={headerActions}
     >
       {content}
-    </DashboardLayout>
+    </AppShellLayout>
   )
 }

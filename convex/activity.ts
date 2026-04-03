@@ -158,32 +158,35 @@ export const getRecentActivity = query({
       .filter((change) => !shouldExcludeActivityPath(change.filePath))
       .slice(0, limit)
 
-    // Fetch user images for each change
-    const results = await Promise.all(
-      visibleChanges.map(async (change) => {
-        let userImage: string | undefined = undefined
-        if (change.userId) {
-          const user = await ctx.db.get(change.userId)
-          userImage = user?.profileImageUrl ?? undefined
-        }
+    const uniqueUserIds = new Map<string, typeof visibleChanges[number]["userId"]>()
+    for (const change of visibleChanges) {
+      if (!change.userId) continue
+      uniqueUserIds.set(change.userId.toString(), change.userId)
+    }
 
-        return {
-          id: change._id,
-          userId: change.userId,
-          filePath: change.filePath,
-          changeType: change.changeType,
-          additions: change.additions,
-          deletions: change.deletions,
-          totalLines: change.totalLines,
-          origin: change.origin,
-          userName: change.userName || "Unknown",
-          userColor: change.userColor || "#6b7280",
-          userImage,
-          isAgent: change.origin === "agent",
-          timestamp: change.timestamp,
-        }
+    const userImageEntries = await Promise.all(
+      Array.from(uniqueUserIds.entries()).map(async ([userKey, userId]) => {
+        const user = userId ? await ctx.db.get(userId) : null
+        return [userKey, user?.profileImageUrl ?? undefined] as const
       })
     )
+    const userImages = new Map(userImageEntries)
+
+    const results = visibleChanges.map((change) => ({
+      id: change._id,
+      userId: change.userId,
+      filePath: change.filePath,
+      changeType: change.changeType,
+      additions: change.additions,
+      deletions: change.deletions,
+      totalLines: change.totalLines,
+      origin: change.origin,
+      userName: change.userName || "Unknown",
+      userColor: change.userColor || "#6b7280",
+      userImage: change.userId ? userImages.get(change.userId.toString()) : undefined,
+      isAgent: change.origin === "agent",
+      timestamp: change.timestamp,
+    }))
 
     return results
   },
@@ -446,18 +449,31 @@ export const toggleCommentReaction = mutation({
  */
 export const getCommentCountsForChanges = query({
   args: {
+    projectId: v.id("projects"),
     changeIds: v.array(v.id("fileChanges")),
   },
   handler: async (ctx, args) => {
     const counts: Record<string, number> = {}
+    const targetChangeIds = new Set(args.changeIds.map((changeId) => changeId.toString()))
 
     for (const changeId of args.changeIds) {
-      const comments = await ctx.db
-        .query("changeComments")
-        .withIndex("by_change", (q) => q.eq("changeId", changeId))
-        .filter((q) => q.eq(q.field("status"), "active"))
-        .collect()
-      counts[changeId] = comments.length
+      counts[changeId] = 0
+    }
+
+    if (targetChangeIds.size === 0) {
+      return counts
+    }
+
+    const comments = await ctx.db
+      .query("changeComments")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect()
+
+    for (const comment of comments) {
+      const changeKey = comment.changeId.toString()
+      if (!targetChangeIds.has(changeKey)) continue
+      counts[changeKey] = (counts[changeKey] ?? 0) + 1
     }
 
     return counts
