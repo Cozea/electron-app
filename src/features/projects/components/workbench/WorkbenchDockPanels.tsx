@@ -18,16 +18,19 @@ import {
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
+  buildWorkbenchScopeKey,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
 
 export interface WorkbenchDockPanelParams {
   projectId: string
+  laneId: string
   tileId: string
 }
 
 interface WorkbenchDockRuntimeValue {
   projectId: string
+  laneId: string
   projectPath: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -67,8 +70,10 @@ function MissingTilePlaceholder() {
   )
 }
 
-function useWorkbenchTile(projectId: string, tileId: string): WorkbenchTile | null {
-  return useProjectWorkbenchStore((state) => state.projects[projectId]?.tiles[tileId] ?? null)
+function useWorkbenchTile(projectId: string, laneId: string, tileId: string): WorkbenchTile | null {
+  return useProjectWorkbenchStore(
+    (state) => state.workbenches[buildWorkbenchScopeKey(projectId, laneId)]?.tiles[tileId] ?? null,
+  )
 }
 
 function useSyncPanelTitle(
@@ -82,7 +87,7 @@ function useSyncPanelTitle(
 }
 
 function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const actions = useProjectWorkbenchStore((state) => state.actions)
 
   useSyncPanelTitle(props.api, tile?.title)
@@ -109,19 +114,19 @@ function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
       panelApi={props.api}
       containerApi={props.containerApi}
       onUrlCommitted={(nextUrl) => {
-        actions.updateBrowserTile(props.params.projectId, browserTile.id, { url: nextUrl })
+        actions.updateBrowserTile(props.params.projectId, props.params.laneId, browserTile.id, { url: nextUrl })
       }}
       onTitleObserved={(title) => {
         const normalized = title.trim()
         if (!normalized) return
-        actions.updateTileTitle(props.params.projectId, browserTile.id, normalized)
+        actions.updateTileTitle(props.params.projectId, props.params.laneId, browserTile.id, normalized)
       }}
     />
   )
 }
 
 function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
 
   useSyncPanelTitle(props.api, tile?.title)
@@ -143,7 +148,7 @@ function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
 }
 
 function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
 
   useSyncPanelTitle(props.api, tile?.title)
@@ -170,7 +175,7 @@ function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
 }
 
 function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
   const actions = useProjectWorkbenchStore((state) => state.actions)
 
@@ -198,7 +203,7 @@ function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
       containerApi={props.containerApi}
       onLinkedBrowserReady={(nextUrl) => {
         if (!devServerTile.linkedBrowserTileId) return
-        actions.updateBrowserTile(props.params.projectId, devServerTile.linkedBrowserTileId, {
+        actions.updateBrowserTile(props.params.projectId, props.params.laneId, devServerTile.linkedBrowserTileId, {
           url: nextUrl,
           linkedDevServerTileId: devServerTile.id,
         })
@@ -208,7 +213,7 @@ function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
 }
 
 function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.tileId)
+  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
 
   useSyncPanelTitle(props.api, tile?.title)
@@ -226,11 +231,12 @@ function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>
   }
 
   return (
-    <WorkbenchAssistantChatTile
-      projectId={props.params.projectId}
-      projectPath={runtime.projectPath}
-      tile={tile as WorkbenchAssistantChatTileRecord}
-      panelApi={props.api}
+      <WorkbenchAssistantChatTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        projectPath={runtime.projectPath}
+        tile={tile as WorkbenchAssistantChatTileRecord}
+        panelApi={props.api}
       containerApi={props.containerApi}
       onDuplicate={runtime.onDuplicateAssistantTile}
     />
@@ -247,6 +253,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
 
 export function WorkbenchDockRuntimeProvider(props: {
   projectId: string
+  laneId: string
   projectPath: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -260,6 +267,7 @@ export function WorkbenchDockRuntimeProvider(props: {
     <WorkbenchDockRuntimeContext.Provider
       value={{
         projectId: props.projectId,
+        laneId: props.laneId,
         projectPath: props.projectPath,
         onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
         onDuplicateAssistantTile: props.onDuplicateAssistantTile,

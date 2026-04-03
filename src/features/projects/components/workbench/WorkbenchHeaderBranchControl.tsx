@@ -14,6 +14,8 @@ import {
   Loader2,
   Plus,
   RefreshCcw,
+  User,
+  Users,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -712,6 +714,7 @@ export function WorkbenchHeaderBranchControl({
 
   const statusSummary = useMemo(() => getStatusSummary(gitStatus), [gitStatus])
   const isBusy = isLoading || isSwitching || activeAction !== null
+  const LaneScopeIcon = activeLane?.isCollab === false ? User : Users
   const actionLabel =
     activeLane?.isCollab === false && chromeLabel !== collabBranch
       ? `Target ${collabBranch}`
@@ -730,6 +733,7 @@ export function WorkbenchHeaderBranchControl({
           disabled={!branchCwd}
         >
           {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          <LaneScopeIcon className="h-3 w-3 shrink-0 opacity-80" />
           <span className="max-w-[160px] truncate">{chromeLabel}</span>
           <ChevronDown className="h-3.5 w-3.5 opacity-70" />
         </Button>

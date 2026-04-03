@@ -251,10 +251,20 @@ export function registerProjectHandlers(
     'project:createFolder',
     async (
       _event,
-      { slug, initGit = true, projectId }: { slug: string; initGit?: boolean; projectId?: string }
+      {
+        slug,
+        initGit = true,
+        projectId,
+        baseDirectory,
+      }: {
+        slug: string
+        initGit?: boolean
+        projectId?: string
+        baseDirectory?: string
+      }
     ): Promise<CreateProjectFolderResult> => {
       const settings = deps.loadSettings()
-      const projectsDir = settings.projectsDirectory
+      const projectsDir = baseDirectory?.trim() || settings.projectsDirectory
 
       try {
         if (!fs.existsSync(projectsDir)) {
@@ -348,6 +358,7 @@ npm-debug.log*
         branch,
         accessToken,
         projectId,
+        baseDirectory,
       }: {
         slug: string
         repoUrl: string
@@ -355,10 +366,11 @@ npm-debug.log*
         branch?: string
         accessToken?: string
         projectId?: string
+        baseDirectory?: string
       }
     ): Promise<CloneRepositoryResult> => {
       const settings = deps.loadSettings()
-      const projectsDir = settings.projectsDirectory
+      const projectsDir = baseDirectory?.trim() || settings.projectsDirectory
       const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
 
       if (!normalizedRepoUrl) {

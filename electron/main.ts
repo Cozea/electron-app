@@ -747,7 +747,6 @@ const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
   '/settings/billing',
-  '/settings/ai',
   '/settings/appearance',
   '/settings/storage',
   '/settings/tooling',

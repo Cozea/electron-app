@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { featureFlags } from '@/lib/featureFlags'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Badge } from '../../components/ui/badge'
@@ -87,7 +87,12 @@ type TableRowData = {
 type SortField = 'name' | 'role' | 'date'
 type SortDirection = 'asc' | 'desc'
 
-export function Members() {
+interface MembersProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
+
+export function Members({ surface = 'page', route = '/teams' }: MembersProps = {}) {
   const navigate = useViewTransitionNavigate()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const {
@@ -99,7 +104,6 @@ export function Members() {
   const {
     settingsPage,
     user,
-    logout,
     convexUserId,
     convexOrg,
     workspaceOrganizationId,
@@ -113,7 +117,7 @@ export function Members() {
     seatManagement,
     isLoading,
   } = useScopedWorkspacePeopleData({
-    route: '/teams',
+    route,
     surfaceId: 'members',
     includeSeatManagement: true,
   })
@@ -696,14 +700,8 @@ export function Members() {
     </div>
   )
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-      breadcrumbAddon={breadcrumbAddon}
-      header={headerContent}
-    >
+  const content = (
+    <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Member access required"
@@ -866,7 +864,13 @@ export function Members() {
                                   ))}
                                 </DropdownMenuSubContent>
                               </DropdownMenuSub>
-                              <DropdownMenuItem onClick={() => navigate(`/teams/members/${row.id}`)}>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  surface === 'drawer'
+                                    ? openSettingsDrawer(`/teams/members/${row.id}`)
+                                    : navigate(`/teams/members/${row.id}`)
+                                }
+                              >
                                 <User className="h-4 w-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
@@ -959,6 +963,21 @@ export function Members() {
         )}
       </div>
       )}
-    </DashboardLayout>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <SettingsRouteShell
+      surfaceId="members"
+      route={route}
+      breadcrumbAddon={breadcrumbAddon}
+      header={headerContent}
+    >
+      {content}
+    </SettingsRouteShell>
   )
 }

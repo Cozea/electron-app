@@ -693,7 +693,7 @@ export function CozeaChatSurface(props: CozeaChatSurfaceProps) {
                       modelOptionsByProvider={props.modelOptionsByProvider}
                       compact
                       disabled={!props.isRuntimeReady || props.isRunning}
-                      triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent"
+                      triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
                       onProviderModelChange={props.onProviderModelChange}
                     />
                   </div>

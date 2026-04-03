@@ -19,7 +19,7 @@ import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControl
 import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { Building2, Layers3, UserRound } from "lucide-react"
 
-interface DashboardLayoutProps {
+interface AppShellLayoutProps {
   children: ReactNode
   header?: ReactNode
   breadcrumbAddon?: ReactNode
@@ -38,10 +38,8 @@ interface DashboardLayoutProps {
   headerAbsolute?: boolean
 }
 
-const DEFAULT_BREADCRUMBS = [{ label: "Projects" }];
+const DEFAULT_BREADCRUMBS = [{ label: "Projects" }]
 const PERSONAL_ACCOUNT_ROUTE = getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
-const PERSONAL_AI_ROUTE = getSettingsSurfaceRoute('ai', 'personal') ?? '/settings/ai'
-const WORKSPACE_AI_ROUTE = getSettingsSurfaceRoute('ai', 'workspace') ?? '/workspace/ai'
 const SETTINGS_WINDOW_ITEMS = listSettingsSurfaces({
   scopeKind: 'personal',
   placement: 'settingsWindow',
@@ -50,7 +48,7 @@ const SETTINGS_WINDOW_ITEMS = listSettingsSurfaces({
   label: surface.label,
 }))
 
-interface DashboardLayoutContentProps {
+interface AppShellLayoutContentProps {
   children: ReactNode
   header?: ReactNode
   breadcrumbAddon?: ReactNode
@@ -69,7 +67,7 @@ interface DashboardLayoutContentProps {
   headerAbsolute?: boolean
 }
 
-function DashboardLayoutContent({
+function AppShellLayoutContent({
   children,
   header,
   breadcrumbAddon,
@@ -81,7 +79,7 @@ function DashboardLayoutContent({
   user,
   onLogout,
   headerAbsolute,
-}: DashboardLayoutContentProps) {
+}: AppShellLayoutContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const windowChrome = useWindowChrome()
@@ -91,10 +89,7 @@ function DashboardLayoutContent({
   const isSettingsWindow = windowChrome.windowContext === 'settings'
   const isMacClient = windowChrome.isMac
   const isWindowsClient = windowChrome.isWindows
-  const effectiveBreadcrumbAddon =
-    normalizedPath === PERSONAL_AI_ROUTE || normalizedPath === WORKSPACE_AI_ROUTE
-      ? undefined
-      : breadcrumbAddon
+  const effectiveBreadcrumbAddon = breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
   const activeLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? 'Projects'
@@ -109,6 +104,7 @@ function DashboardLayoutContent({
       ]}
     />
   )
+
   useEffect(() => {
     if (!isSettingsWindow) return
     if (normalizedPath.startsWith('/settings/')) return
@@ -180,7 +176,6 @@ function DashboardLayoutContent({
 
   return (
     <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
-      {/* Main Content with Sidebar */}
       <div className="flex flex-1 overflow-hidden relative">
         <AppSidebar user={user} onLogout={onLogout} />
         <SidebarInset>
@@ -230,7 +225,7 @@ function DashboardLayoutContent({
   )
 }
 
-export function DashboardLayout({
+export function AppShellLayout({
   children,
   header,
   breadcrumbAddon,
@@ -242,10 +237,10 @@ export function DashboardLayout({
   user,
   onLogout,
   headerAbsolute,
-}: DashboardLayoutProps) {
+}: AppShellLayoutProps) {
   return (
     <SidebarProvider>
-      <DashboardLayoutContent
+      <AppShellLayoutContent
         children={children}
         header={header}
         breadcrumbAddon={breadcrumbAddon}

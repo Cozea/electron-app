@@ -1,3 +1,5 @@
+import type { ContextMenuItem } from '@cozea/assistant-contracts'
+
 export * from '@shared/electronApiTypes'
 
 interface DesktopBridgeSurface {
@@ -11,7 +13,7 @@ interface DesktopBridgeSurface {
   pickFolder: () => Promise<string | null>
   confirm: (message: string) => Promise<boolean>
   showContextMenu: <T extends string>(
-    items: readonly Array<{ id: T; label?: string; destructive?: boolean }>,
+    items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },
   ) => Promise<T | null>
   openExternal: (url: string) => Promise<boolean>

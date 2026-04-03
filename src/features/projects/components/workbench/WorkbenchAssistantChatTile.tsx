@@ -59,6 +59,7 @@ import {
 } from "@/lib/wsNativeApi"
 import { useStore } from "@/stores/assistant-store"
 import {
+  buildWorkbenchScopeKey,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
@@ -71,6 +72,7 @@ import { useAssistantRuntimeStatus } from "@/features/projects/components/workbe
 
 interface WorkbenchAssistantChatTileProps {
   projectId: string
+  laneId: string
   projectPath: string | null
   tile: WorkbenchAssistantChatTileRecord
   panelApi: DockviewPanelApi
@@ -161,10 +163,12 @@ async function withWorkspaceBindingLock<T>(
 
 function getLiveAssistantTile(
   projectId: string,
+  laneId: string,
   tileId: string,
 ): WorkbenchAssistantChatTileRecord | null {
-  const project = useProjectWorkbenchStore.getState().projects[projectId]
-  const tile = project?.tiles[tileId]
+  const workbench =
+    useProjectWorkbenchStore.getState().workbenches[buildWorkbenchScopeKey(projectId, laneId)]
+  const tile = workbench?.tiles[tileId]
   return tile?.type === "assistantChat" ? tile : null
 }
 
@@ -475,8 +479,8 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
       return
     }
 
-    updateAssistantTile(props.projectId, props.tile.id, patch)
-  }, [props.projectId, props.tile, thread, updateAssistantTile])
+    updateAssistantTile(props.projectId, props.laneId, props.tile.id, patch)
+  }, [props.laneId, props.projectId, props.tile, thread, updateAssistantTile])
 
   useEffect(() => {
     const timeline = timelineRef.current
@@ -513,7 +517,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
       try {
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
-          const liveTile = () => getLiveAssistantTile(props.projectId, props.tile.id) ?? props.tile
+          const liveTile = () => getLiveAssistantTile(props.projectId, props.laneId, props.tile.id) ?? props.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
 
           await refreshAssistantRuntimeSnapshot()
@@ -611,7 +615,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
           }
 
           if (!cancelled && Object.keys(patch).length > 0) {
-            updateAssistantTile(props.projectId, props.tile.id, patch)
+            updateAssistantTile(props.projectId, props.laneId, props.tile.id, patch)
           }
 
           if (!cancelled) {
@@ -638,6 +642,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
     }
   }, [
     bindingRevision,
+    props.laneId,
     isRuntimeReady,
     props.projectId,
     props.projectPath,
@@ -692,7 +697,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
           : null) ?? preferredModelSelection.model,
     } satisfies ModelSelection
 
-    updateAssistantTile(props.projectId, props.tile.id, {
+    updateAssistantTile(props.projectId, props.laneId, props.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
     })
@@ -720,7 +725,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
         resolveModelSlugForProvider(selectedProvider, nextModel),
     } satisfies ModelSelection
 
-    updateAssistantTile(props.projectId, props.tile.id, {
+    updateAssistantTile(props.projectId, props.laneId, props.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
     })
@@ -742,7 +747,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
 
   const handleRuntimeModeChange = async (nextValue: string) => {
     const nextRuntimeMode = nextValue as RuntimeMode
-    updateAssistantTile(props.projectId, props.tile.id, {
+    updateAssistantTile(props.projectId, props.laneId, props.tile.id, {
       runtimeMode: nextRuntimeMode,
     })
 
@@ -764,7 +769,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
 
   const handleInteractionModeChange = async (nextValue: string) => {
     const nextInteractionMode = nextValue as ProviderInteractionMode
-    updateAssistantTile(props.projectId, props.tile.id, {
+    updateAssistantTile(props.projectId, props.laneId, props.tile.id, {
       interactionMode: nextInteractionMode,
     })
 
@@ -810,7 +815,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
     try {
       const api = ensureNativeApi()
       if (isFirstUserMessage && nextThreadTitle) {
-        updateAssistantTile(props.projectId, props.tile.id, {
+        updateAssistantTile(props.projectId, props.laneId, props.tile.id, {
           title: nextThreadTitle,
         })
 

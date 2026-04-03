@@ -8,12 +8,15 @@ import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
+import { General } from '@/pages/workspace/General'
 import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
-import ModelSelection from "@/pages/settings/ModelSelection"
+import { Sync } from '@/pages/workspace/Sync'
+import { Policies } from '@/pages/workspace/Policies'
+import { Members } from '@/pages/teams/Members'
+import { MemberDetailsContent } from '@/pages/teams/MemberDetails'
+import { Roles } from '@/pages/teams/Roles'
 import { Billing } from '@/pages/workspace/Billing'
-import AI from "@/pages/workspace/AI"
-import { useAuth } from '@/contexts/AuthContext'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 
 import { prewarmCloudStorageData } from '@/hooks/useScopedCloudStorageData'
@@ -37,12 +40,8 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
     return <Billing surface="drawer" route={route} />
   }
 
-  if (section === 'ai') {
-    return <AI />
-  }
-
-  if (section === 'modelSelection') {
-    return <ModelSelection />
+  if (section === 'general') {
+    return <General surface="drawer" route={route} />
   }
 
   if (section === 'appearance') {
@@ -61,11 +60,40 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
     return <SourceControl surface="drawer" route={route} />
   }
 
+  if (section === 'cloudStorage') {
+    return <Sync surface="drawer" route={route} />
+  }
+
+  if (section === 'policies') {
+    return <Policies surface="drawer" route={route} />
+  }
+
+  if (section === 'members') {
+    if (route.startsWith('/teams/members/')) {
+      return <MemberDetailsContent surface="drawer" route={route} />
+    }
+    return <Members surface="drawer" route={route} />
+  }
+
+  if (section === 'permissions') {
+    return <Roles surface="drawer" route={route} />
+  }
+
   return <Tooling surface="drawer" route={route} />
 }
 
+function getDrawerSurfaceLabel(
+  surface: ReturnType<typeof listSettingsSurfaces>[number],
+  scopeKind: 'personal' | 'workspace',
+) {
+  if (surface.id === 'cliTools') {
+    return scopeKind === 'workspace' ? 'Integrations' : 'CLI Tools'
+  }
+
+  return getSettingsSurfaceDisplayLabel(surface, scopeKind)
+}
+
 export function SettingsDrawer() {
-  const { convexUserId } = useAuth()
   const isOpen = useSettingsDrawerStore((state) => state.isOpen)
   const section = useSettingsDrawerStore((state) => state.section)
   const route = useSettingsDrawerStore((state) => state.route)
@@ -94,9 +122,13 @@ export function SettingsDrawer() {
     scopeKind: workspaceScoped ? 'workspace' : 'personal',
     placement: 'drawer',
   }).filter((surface) => {
-    if (!workspaceScoped) return true
-    return canAccessWorkspaceSurface(surface, surfaceAccess)
+    if (workspaceScoped) {
+      return canAccessWorkspaceSurface(surface, surfaceAccess)
+    }
+
+    return true
   })
+  const drawerSidebarLabel = workspaceScoped ? 'Workspace' : 'Settings'
 
   const preloadSurface = useCallback((route: string, preload?: () => Promise<unknown>) => {
     if (!preload) return
@@ -120,22 +152,9 @@ export function SettingsDrawer() {
         }
       }
 
-      if (surface.id === 'ai') {
-        return async () => {
-          await Promise.all([
-            surface.preload?.(),
-            Promise.resolve({
-              organizationId: convexOrganizationId ?? null,
-              userId: convexUserId ?? null,
-              range: '30d',
-            }),
-          ])
-        }
-      }
-
       return surface.preload
     },
-    [convexOrganizationId, convexUserId]
+    [convexOrganizationId]
   )
 
   useEffect(() => {
@@ -203,7 +222,9 @@ export function SettingsDrawer() {
       >
         <SheetHeader className="sr-only">
           <SheetTitle>Settings</SheetTitle>
-          <SheetDescription>Browse and update account, billing, AI, appearance, storage, CLI tools, and tooling settings.</SheetDescription>
+          <SheetDescription>
+            Browse and update account, workspace, billing, integrations, storage, members, and permissions settings.
+          </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <aside
@@ -221,7 +242,9 @@ export function SettingsDrawer() {
                 ref={sidebarScrollRef}
                 className="h-full overflow-y-auto scrollbar-hide px-2 py-3"
               >
-                <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">Settings</div>
+                <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
+                  {drawerSidebarLabel}
+                </div>
                 <div className="space-y-1">
                   {settingsDrawerItems.map((item) => {
                     const Icon = item.icon
@@ -241,12 +264,12 @@ export function SettingsDrawer() {
                         onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
                         onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
                         onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                        className={cn(
+                            className={cn(
                           'flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
                         )}
                       >
                         <Icon className="opacity-60" />
-                        <span>{getSettingsSurfaceDisplayLabel(item, workspaceScoped ? 'workspace' : 'personal')}</span>
+                        <span>{getDrawerSurfaceLabel(item, workspaceScoped ? 'workspace' : 'personal')}</span>
                       </button>
                     )
                   })}

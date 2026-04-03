@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
 
@@ -12,7 +12,23 @@ interface UseProjectLaneStateResult {
   laneState: ProjectLaneState | null
   activeLane: ProjectLaneDescriptor | null
   collabLane: ProjectLaneDescriptor | null
+  isLoading: boolean
   refreshLaneState: () => Promise<void>
+}
+
+interface ScopedLaneState {
+  scopeKey: string | null
+  laneState: ProjectLaneState | null
+  isLoading: boolean
+}
+
+function buildLaneScopeKey(
+  projectId: string | null,
+  projectPath: string | null,
+  collabBranch: string | null,
+): string | null {
+  if (!projectId) return null
+  return [projectId, projectPath ?? "", collabBranch ?? ""].join("::")
 }
 
 export function useProjectLaneState({
@@ -20,13 +36,35 @@ export function useProjectLaneState({
   projectPath,
   collabBranch,
 }: UseProjectLaneStateArgs): UseProjectLaneStateResult {
-  const [laneState, setLaneState] = useState<ProjectLaneState | null>(null)
+  const scopeKey = useMemo(
+    () => buildLaneScopeKey(projectId, projectPath, collabBranch),
+    [collabBranch, projectId, projectPath],
+  )
+  const [scopedLaneState, setScopedLaneState] = useState<ScopedLaneState>({
+    scopeKey,
+    laneState: null,
+    isLoading: false,
+  })
+  const refreshRequestIdRef = useRef(0)
 
   const refreshLaneState = useCallback(async () => {
-    if (!projectId) {
-      setLaneState(null)
+    const requestId = refreshRequestIdRef.current + 1
+    refreshRequestIdRef.current = requestId
+
+    if (!projectId || !scopeKey) {
+      setScopedLaneState({
+        scopeKey,
+        laneState: null,
+        isLoading: false,
+      })
       return
     }
+
+    setScopedLaneState((current) => ({
+      scopeKey,
+      laneState: current.scopeKey === scopeKey ? current.laneState : null,
+      isLoading: true,
+    }))
 
     try {
       if (projectPath && collabBranch) {
@@ -35,21 +73,39 @@ export function useProjectLaneState({
           projectPath,
           branch: collabBranch,
         })
-        setLaneState(ensuredLaneState)
+        if (refreshRequestIdRef.current !== requestId) return
+        setScopedLaneState({
+          scopeKey,
+          laneState: ensuredLaneState,
+          isLoading: false,
+        })
         return
       }
 
       const existingLaneState = await window.electronAPI.project.getLaneState({ projectId })
-      setLaneState(existingLaneState)
+      if (refreshRequestIdRef.current !== requestId) return
+      setScopedLaneState({
+        scopeKey,
+        laneState: existingLaneState,
+        isLoading: false,
+      })
     } catch (error) {
+      if (refreshRequestIdRef.current !== requestId) return
       console.error("[ProjectLane] Failed to load lane state", error)
-      setLaneState(null)
+      setScopedLaneState({
+        scopeKey,
+        laneState: null,
+        isLoading: false,
+      })
     }
-  }, [collabBranch, projectId, projectPath])
+  }, [collabBranch, projectId, projectPath, scopeKey])
 
   useEffect(() => {
     void refreshLaneState()
   }, [refreshLaneState])
+
+  const laneState = scopedLaneState.scopeKey === scopeKey ? scopedLaneState.laneState : null
+  const isLoading = scopedLaneState.scopeKey === scopeKey ? scopedLaneState.isLoading : Boolean(scopeKey)
 
   const activeLane = useMemo(() => {
     if (!laneState) return null
@@ -71,6 +127,7 @@ export function useProjectLaneState({
     laneState,
     activeLane,
     collabLane,
+    isLoading,
     refreshLaneState,
   }
 }

@@ -17,7 +17,7 @@ import {
   getVersionControlSetupDescription,
   getVersionControlSetupLabel,
 } from '@shared/versionControl'
-import { DashboardLayout } from '@/components/layouts/DashboardLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,7 +39,6 @@ import {
   resolveSourceControlProviderPreference,
   type DefaultSourceControlProvider,
 } from '@/lib/sourceControlDefaultProvider'
-import { useAuth } from '@/contexts/AuthContext'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
 import { api } from '../../../convex/_generated/api'
 
@@ -522,7 +521,6 @@ function SourceControlProviderCard({
 }
 
 export function SourceControl({ surface = 'page', route }: SourceControlProps = {}) {
-  const { user, logout } = useAuth()
   const settingsPage = useScopedSettingsPage({
     route,
     surfaceId: 'sourceControl',
@@ -812,11 +810,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
   }
 
   return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-    >
+    <SettingsRouteShell surfaceId="sourceControl">
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Source control access required"
@@ -825,6 +819,6 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
       ) : (
         content
       )}
-    </DashboardLayout>
+    </SettingsRouteShell>
   )
 }

@@ -56,10 +56,10 @@ export function useOptionalProjectSyncContext() {
 
 interface ProjectSyncProviderProps {
   children: ReactNode
-  projectId: Id<"projects">
-  userId: Id<"users">
-  userName: string
-  projectSlug: string
+  projectId: Id<"projects"> | null
+  userId: Id<"users"> | null
+  userName: string | null
+  projectSlug: string | null
   localPath: string | null
   lastSyncAt?: number
   skipInitialSyncCheck?: boolean
@@ -72,8 +72,8 @@ function AgentFileSyncBridge({
   projectPath,
   children,
 }: {
-  projectId: Id<"projects">
-  userId: Id<"users">
+  projectId: Id<"projects"> | null
+  userId: Id<"users"> | null
   projectPath: string | null
   children: ReactNode
 }) {
@@ -114,6 +114,9 @@ export function ProjectSyncProvider({
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
 }: ProjectSyncProviderProps) {
+  const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
+  const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
+  const resolvedUserName = userName ?? "User"
   const convex = useConvex()
   const { accessToken } = useAuth()
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
@@ -127,7 +130,7 @@ export function ProjectSyncProvider({
     setLastSyncAt(initialLastSyncAt ?? null)
   }, [initialLastSyncAt])
 
-  const canSync = Boolean(localPath)
+  const canSync = Boolean(projectId && userId && localPath)
   const shouldUseWsCollab = canSync && collabTransport === "ws"
 
   const {
@@ -135,7 +138,7 @@ export function ProjectSyncProvider({
     session: collabSession,
     refresh: refreshCollabSession,
   } = useCollabSession({
-    projectId: String(projectId),
+    projectId: String(resolvedProjectId),
     accessToken,
     enabled: shouldUseWsCollab && Boolean(accessToken),
   })
@@ -143,7 +146,7 @@ export function ProjectSyncProvider({
   const activeCollabSession: CollabSessionDescriptor | null =
     shouldUseWsCollab && collabSessionStatus === "ready" && collabSession
       ? {
-          projectId: String(projectId),
+          projectId: String(resolvedProjectId),
           roomId: collabSession.roomId,
           collabWsUrl: collabSession.collabWsUrl,
           token: collabSession.token,
@@ -163,18 +166,18 @@ export function ProjectSyncProvider({
       }
 
       return {
-        projectId: String(projectId),
+        projectId: String(resolvedProjectId),
         roomId: nextSession.roomId,
         collabWsUrl: nextSession.collabWsUrl,
         token: nextSession.token,
         protocolVersion: nextSession.protocolVersion,
       }
     },
-    [projectId, refreshCollabSession, shouldUseWsCollab]
+    [refreshCollabSession, resolvedProjectId, shouldUseWsCollab]
   )
 
   const triggerSync = useCallback(async () => {
-    if (!localPath) {
+    if (!projectId || !userId || !localPath) {
       return
     }
 
@@ -225,36 +228,36 @@ export function ProjectSyncProvider({
 
   return (
     <ProjectSyncContext.Provider
-      value={{
-        isSynced: canSync,
-        cloudSyncBlocked: false,
-        lastSyncAt,
-        projectPath: localPath,
-        triggerSync,
-        syncProgress: progress,
-      }}
+      value={
+        canSync
+          ? {
+              isSynced: true,
+              cloudSyncBlocked: false,
+              lastSyncAt,
+              projectPath: localPath,
+              triggerSync,
+              syncProgress: progress,
+            }
+          : null
+      }
     >
       <YjsProjectProvider
-        projectId={projectId}
-        userId={userId}
-        userName={userName}
+        projectId={resolvedProjectId}
+        userId={resolvedUserId}
+        userName={resolvedUserName}
         projectPath={localPath}
         enabled={canSync}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
       >
         <DeleteConflictDialog />
-        {canSync ? (
-          <AgentFileSyncBridge
-            projectId={projectId}
-            userId={userId}
-            projectPath={localPath}
-          >
-            {children}
-          </AgentFileSyncBridge>
-        ) : (
-          children
-        )}
+        <AgentFileSyncBridge
+          projectId={projectId}
+          userId={userId}
+          projectPath={localPath}
+        >
+          {children}
+        </AgentFileSyncBridge>
       </YjsProjectProvider>
     </ProjectSyncContext.Provider>
   )

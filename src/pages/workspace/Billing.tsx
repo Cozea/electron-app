@@ -3,7 +3,7 @@ import { useMutation } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 import { api } from '../../../convex/_generated/api'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
@@ -729,8 +729,6 @@ function getPlanBadge(
 
 export function Billing({ surface = 'page', route }: BillingProps) {
   const {
-    user,
-    logout,
     convexUserId,
     accessToken,
     settingsPage,
@@ -2363,11 +2361,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   }
 
   return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-    >
+    <SettingsRouteShell surfaceId="billing">
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Billing access required"
@@ -2376,6 +2370,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       ) : (
         content
       )}
-    </DashboardLayout>
+    </SettingsRouteShell>
   )
 }

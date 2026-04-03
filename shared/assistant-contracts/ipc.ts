@@ -56,8 +56,14 @@ import { ServerSettings, ServerSettingsPatch } from "./settings";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
-  label: string;
+  label?: string;
   destructive?: boolean;
+  type?: "item" | "separator" | "checkbox" | "radio";
+  enabled?: boolean;
+  checked?: boolean;
+  accelerator?: string;
+  sublabel?: string;
+  submenu?: readonly ContextMenuItem<T>[];
 }
 
 export type DesktopUpdateStatus =

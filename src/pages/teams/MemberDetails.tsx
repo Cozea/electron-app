@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import { useParams } from '@/lib/router'
 import { formatOrganizationWorkspaceRole } from '@/lib/workspaces/organizationRoles'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedMemberDetailsData } from '@/hooks/useScopedMemberDetailsData'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Badge } from '../../components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
@@ -178,12 +178,26 @@ function isPresent<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined
 }
 
-export function MemberDetails() {
-  const { memberId } = useParams()
+function resolveMemberIdFromRoute(route?: string): string | undefined {
+  if (!route) return undefined
+  const match = route.match(/^\/teams\/members\/([^/?#]+)/)
+  return match?.[1]
+}
+
+export function MemberDetails(props: MemberDetailsProps = {}) {
+  return <MemberDetailsContent {...props} />
+}
+
+interface MemberDetailsProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
+
+export function MemberDetailsContent({ surface = 'page', route = '/teams' }: MemberDetailsProps = {}) {
+  const params = useParams()
+  const memberId = resolveMemberIdFromRoute(route) ?? params.memberId
   const {
     settingsPage,
-    user,
-    logout,
     convexOrg,
     workspaceName,
     member,
@@ -192,7 +206,7 @@ export function MemberDetails() {
     memberProjects,
     organizationMembers,
     isLoading,
-  } = useScopedMemberDetailsData({ memberId, route: '/teams' })
+  } = useScopedMemberDetailsData({ memberId, route })
 
   const scopedProjects = useMemo(() => {
     if (!memberProjects) return []
@@ -252,15 +266,8 @@ export function MemberDetails() {
     })
   }
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[
-        ...settingsPage.breadcrumbs,
-        { label: isLoading ? 'Loading...' : member ? memberName : 'Not Found' },
-      ]}
-    >
+  const content = (
+    <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Member access required"
@@ -399,6 +406,23 @@ export function MemberDetails() {
         </div>
         </div>
       )}
-    </DashboardLayout>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <SettingsRouteShell
+      surfaceId="members"
+      route={route}
+      breadcrumbs={[
+        ...settingsPage.breadcrumbs,
+        { label: isLoading ? 'Loading...' : member ? memberName : 'Not Found' },
+      ]}
+    >
+      {content}
+    </SettingsRouteShell>
   )
 }

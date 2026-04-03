@@ -30,11 +30,18 @@ export class WorkbenchBrowserService {
 
     const { webContents } = record.view
     const navigationHistory = this.getNavigationHistory(record.view)
+    const currentUrl = webContents.getURL()
+    const isLoading = webContents.isLoading()
+    const resolvedUrl =
+      isLoading && record.state.url
+        ? record.state.url
+        : currentUrl || record.state.url
+
     record.state = {
       tileId,
-      url: webContents.getURL() || record.state.url,
+      url: resolvedUrl,
       title: webContents.getTitle() || record.state.title || 'Browser',
-      isLoading: webContents.isLoading(),
+      isLoading,
       canGoBack: navigationHistory.canGoBack(),
       canGoForward: navigationHistory.canGoForward(),
       loadError: record.state.loadError ?? null,

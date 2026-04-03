@@ -86,7 +86,6 @@ function formatRelativeTime(timestamp: number): string {
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
 const preloadProjectWorkbenchPage = () => import('@/features/projects/pages/ProjectWorkbenchPage')
-const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 export const ProjectCard = memo(function ProjectCard({ project, userId, workspaceScoped }: ProjectCardProps) {
   const convex = useConvex()
@@ -137,12 +136,8 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   }, [project._id, project.name])
 
     const preloadProjectDestination = useCallback(() => {
-    if (project.status === 'draft') {
-      void preloadNewProjectPage()
-      return
-    }
-    void preloadProjectWorkbenchPage()
-    }, [project.status])
+      void preloadProjectWorkbenchPage()
+    }, [])
 
     const handleCardClick = useCallback(async () => {
         if (syncState !== 'idle') {
@@ -150,12 +145,6 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
         }
 
         preloadProjectDestination()
-
-        // Draft projects go straight to wizard
-        if (project.status === 'draft') {
-            navigate(`/projects/new?resume=${project._id}`)
-            return
-        }
 
         // Start sync check
         setSyncState('checking')

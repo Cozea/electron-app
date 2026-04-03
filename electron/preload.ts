@@ -12,6 +12,7 @@ import type {
   UpdateState,
 } from '../shared/electronApiTypes'
 import type { MessageBoxOptions } from 'electron'
+import type { ContextMenuItem } from '../shared/assistant-contracts/ipc'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
@@ -271,7 +272,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     set: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:set', settings),
   },
   dialog: {
-    selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
+    selectDirectory: (options?: { title?: string }) => ipcRenderer.invoke('dialog:selectDirectory', options ?? {}),
     selectFile: (options?: {
       title?: string
       filters?: Array<{ name: string; extensions: string[] }>
@@ -393,7 +394,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   project: {
-    createFolder: (options: { slug: string; initGit?: boolean; projectId?: string }) => ipcRenderer.invoke('project:createFolder', options),
+    createFolder: (options: { slug: string; initGit?: boolean; projectId?: string; baseDirectory?: string }) =>
+      ipcRenderer.invoke('project:createFolder', options),
     cloneRepository: (options: {
       slug: string
       repoUrl: string
@@ -401,6 +403,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       branch?: string
       accessToken?: string
       projectId?: string
+      baseDirectory?: string
     }) =>
       ipcRenderer.invoke('project:cloneRepository', options),
     getLocalPath: (options: string | { slug: string; projectId?: string }) =>
@@ -848,9 +851,16 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   },
   setTheme: async (_theme: 'light' | 'dark' | 'system') => undefined,
   showContextMenu: async <T extends string>(
-    _items: readonly Array<{ id: T }>,
-    _position?: { x: number; y: number },
-  ): Promise<T | null> => null,
+    items: readonly ContextMenuItem<T>[],
+    position?: { x: number; y: number },
+  ): Promise<T | null> => {
+    const result = await ipcRenderer.invoke('contextMenu:showGeneric', {
+      items,
+      x: position?.x,
+      y: position?.y,
+    })
+    return (result?.action as T | null | undefined) ?? null
+  },
   openExternal: async (url: string) => {
     const result = await ipcRenderer.invoke('shell:openExternal', url)
     return Boolean(result?.success)

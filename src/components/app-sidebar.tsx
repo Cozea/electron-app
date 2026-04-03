@@ -5,12 +5,10 @@ import { IconFolderCode } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { ContextSwitcher } from "@/components/context-switcher"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
@@ -169,9 +167,6 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         {...props}
       >
         <div className="h-10 shrink-0" aria-hidden="true" />
-        <SidebarHeader>
-          <ContextSwitcher />
-        </SidebarHeader>
         <SidebarContent>
           <NavMain label="Platform" items={platformItems} />
           {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}

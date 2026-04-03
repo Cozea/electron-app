@@ -8,10 +8,11 @@ import {
 } from '@tanstack/react-router'
 
 import { AppRoot } from '@/App'
+import { Outlet } from '@/lib/router'
 import { useAuth } from '@/contexts/AuthContext'
 import { useResolvedScope } from '@/hooks/useResolvedScope'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
-import { Projects } from '@/pages/Projects'
+import { ProjectsLaunchPage } from '@/features/projects/pages/ProjectsLaunchPage'
 import { ProjectLayout } from '@/features/projects/layouts/ProjectLayout'
 import { ProjectJoinPage } from '@/features/projects/pages/ProjectJoinPage'
 import { ProjectInvitePage } from '@/features/projects/pages/ProjectInvitePage'
@@ -23,13 +24,11 @@ import { ProjectConflictsPage } from '@/features/projects/pages/ProjectConflicts
 import { ProjectTeamPage } from '@/features/projects/pages/ProjectTeamPage'
 import { General } from '@/pages/workspace/General'
 import { Billing } from '@/pages/workspace/Billing'
-import AI from '@/pages/workspace/AI'
 import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
 import { Sync } from '@/pages/workspace/Sync'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
-import ModelSelection from '@/pages/settings/ModelSelection'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
 import {
@@ -43,9 +42,6 @@ import type {
 } from '@/lib/settings/settingsSurfaceTypes'
 const NewProject = lazy(() =>
   import('@/pages/NewProject').then((module) => ({ default: module.default }))
-)
-const ProjectBuild = lazy(() =>
-  import('@/pages/ProjectBuild').then((module) => ({ default: module.default }))
 )
 const Members = lazy(() =>
   import('@/pages/teams/Members').then((module) => ({ default: module.Members }))
@@ -90,12 +86,6 @@ const WORKSPACE_BILLING_ROUTE =
   getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
 const PERSONAL_BILLING_ROUTE =
   getSettingsSurfaceRoute('billing', 'personal') ?? '/settings/billing'
-const WORKSPACE_AI_ROUTE = getSettingsSurfaceRoute('ai', 'workspace') ?? '/workspace/ai'
-const PERSONAL_AI_ROUTE = getSettingsSurfaceRoute('ai', 'personal') ?? '/settings/ai'
-const WORKSPACE_MODEL_SELECTION_ROUTE =
-  getSettingsSurfaceRoute('modelSelection', 'workspace') ?? '/workspace/ai/model-selection'
-const PERSONAL_MODEL_SELECTION_ROUTE =
-  getSettingsSurfaceRoute('modelSelection', 'personal') ?? '/settings/ai/model-selection'
 const WORKSPACE_INTEGRATIONS_ROUTE =
   getSettingsSurfaceRoute('cliTools', 'workspace') ?? '/workspace/integrations'
 const PERSONAL_INTEGRATIONS_ROUTE =
@@ -223,27 +213,33 @@ const indexRoute = createRoute({
   component: () => <Navigate to="/projects" replace />,
 })
 
-const projectsListRoute = createRoute({
+const projectsShellRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
-  component: Projects,
+  component: ProjectLayout,
+})
+
+const projectsIndexRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: '/',
+  component: ProjectsLaunchPage,
 })
 
 const projectNewRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects/new',
+  getParentRoute: () => projectsShellRoute,
+  path: '/new',
   component: NewProject,
 })
 
 const projectJoinRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects/join/$token',
+  getParentRoute: () => projectsShellRoute,
+  path: '/join/$token',
   component: ProjectJoinPage,
 })
 
 const projectInviteRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects/invite/$inviteId',
+  getParentRoute: () => projectsShellRoute,
+  path: '/invite/$inviteId',
   component: ProjectInvitePage,
 })
 
@@ -254,97 +250,97 @@ const joinProjectRoute = createRoute({
 })
 
 const projectBuildRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects/$projectId/build',
-  component: ProjectBuild,
+  getParentRoute: () => projectsShellRoute,
+  path: '/$projectId/build',
+  component: ProjectWorkbenchRedirect,
 })
 
-const projectLayoutRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects/p/$projectId',
-  component: ProjectLayout,
+const projectRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: '/p/$projectId',
+  component: Outlet,
 })
 
 const projectIndexRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/',
   component: ProjectIndexRedirect,
 })
 
 const projectFilesRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/files',
   component: ProjectFilesRedirect,
 })
 
 const projectPagesRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/pages',
   component: ProjectWorkbenchRedirect,
 })
 
 const projectWorkbenchRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/workbench',
   component: ProjectWorkbenchPage,
 })
 
 const projectChangesRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/changes',
   component: ProjectChangesRedirect,
 })
 
 const projectFeedRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/feed',
   component: ProjectChangesRedirect,
 })
 
 const projectMergeQueueRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/merge-queue',
   component: ProjectChangesRedirect,
 })
 
 const projectVersionControlRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/version-control',
   component: ProjectChangesRedirect,
 })
 
 const projectTasksRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/tasks',
   component: TasksPage,
 })
 
 const projectTeamRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/team',
   component: ProjectTeamPage,
 })
 
 const projectConflictsRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/conflicts',
   component: ProjectConflictsPage,
 })
 
 const projectSettingsRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/settings',
   component: ProjectSettingsPage,
 })
 
 const projectSettingsTeamRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/settings/team',
   component: ProjectSettingsTeamRedirect,
 })
 
 const projectSettingsSectionRoute = createRoute({
-  getParentRoute: () => projectLayoutRoute,
+  getParentRoute: () => projectRoute,
   path: '/settings/$section',
   component: ProjectSettingsPage,
 })
@@ -435,30 +431,6 @@ const workspaceBillingRoute = createRoute({
   ),
 })
 
-const workspaceAiRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_AI_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_AI_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="ai" fallback="/projects">
-        <AI />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
-})
-
-const workspaceModelSelectionRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_MODEL_SELECTION_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_MODEL_SELECTION_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="modelSelection" fallback="/projects">
-        <ModelSelection />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
-})
-
 const workspaceIntegrationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
@@ -525,18 +497,6 @@ const personalBillingRoute = createRoute({
   component: Billing,
 })
 
-const personalAiRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_AI_ROUTE),
-  component: AI,
-})
-
-const personalModelSelectionRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_MODEL_SELECTION_ROUTE),
-  component: ModelSelection,
-})
-
 const personalAppearanceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_APPEARANCE_ROUTE),
@@ -563,27 +523,29 @@ const inviteRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  projectsListRoute,
-  projectNewRoute,
-  projectJoinRoute,
-  projectInviteRoute,
   joinProjectRoute,
-  projectBuildRoute,
-  projectLayoutRoute.addChildren([
-    projectIndexRoute,
-  projectFilesRoute,
-  projectWorkbenchRoute,
-  projectPagesRoute,
-    projectChangesRoute,
-    projectFeedRoute,
-    projectMergeQueueRoute,
-    projectVersionControlRoute,
-    projectTasksRoute,
-    projectTeamRoute,
-    projectConflictsRoute,
-    projectSettingsRoute,
-    projectSettingsTeamRoute,
-    projectSettingsSectionRoute,
+  projectsShellRoute.addChildren([
+    projectsIndexRoute,
+    projectNewRoute,
+    projectJoinRoute,
+    projectInviteRoute,
+    projectBuildRoute,
+    projectRoute.addChildren([
+      projectIndexRoute,
+      projectFilesRoute,
+      projectWorkbenchRoute,
+      projectPagesRoute,
+      projectChangesRoute,
+      projectFeedRoute,
+      projectMergeQueueRoute,
+      projectVersionControlRoute,
+      projectTasksRoute,
+      projectTeamRoute,
+      projectConflictsRoute,
+      projectSettingsRoute,
+      projectSettingsTeamRoute,
+      projectSettingsSectionRoute,
+    ]),
   ]),
   legacyProjectRoute,
   teamsMembersRoute,
@@ -595,8 +557,6 @@ export const routeTree = rootRoute.addChildren([
   personalGeneralRoute,
   workspaceGeneralRoute,
   workspaceBillingRoute,
-  workspaceAiRoute,
-  workspaceModelSelectionRoute,
   workspaceIntegrationsRoute,
   personalIntegrationsRoute,
   workspaceSourceControlRoute,
@@ -605,8 +565,6 @@ export const routeTree = rootRoute.addChildren([
   personalCloudStorageRoute,
   personalAccountRoute,
   personalBillingRoute,
-  personalAiRoute,
-  personalModelSelectionRoute,
   personalAppearanceRoute,
   personalToolingRoute,
   personalStorageRoute,

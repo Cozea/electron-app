@@ -192,14 +192,14 @@ export function WorkbenchDevServerTile({
 
   const chromeControls = (
     <div className="flex min-w-0 items-center">
-      <div className="inline-flex h-7 items-center overflow-hidden rounded-full border border-border/60 bg-secondary/70 shadow-none">
+      <div className="inline-flex h-8 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               className={cn(
-                "flex h-7 w-8 items-center justify-center border-0 bg-transparent text-muted-foreground transition-colors",
-                "hover:bg-secondary hover:text-foreground",
+                "flex h-full w-9 items-center justify-center border-0 bg-transparent text-muted-foreground/80 transition-colors",
+                "hover:text-foreground",
               )}
               aria-label="Choose preview destination"
               title={
@@ -208,7 +208,7 @@ export function WorkbenchDevServerTile({
                   : `Choose preview destination (currently ${effectiveSelectedBrowser.name})`
               }
             >
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
@@ -233,13 +233,14 @@ export function WorkbenchDevServerTile({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="h-4 w-px bg-border/60" aria-hidden />
+        <div className="mx-1 h-4 w-px bg-border/45" aria-hidden />
         <button
           type="button"
           className={cn(
-            "flex h-7 w-10 items-center justify-center border-0 bg-transparent text-muted-foreground transition-colors",
-            "hover:bg-secondary hover:text-foreground",
-            viewMode === "preview" && "bg-background text-foreground shadow-none",
+            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
+            "hover:text-foreground",
+            viewMode === "preview" &&
+              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
           )}
           onClick={() => {
             setViewMode("preview")
@@ -251,22 +252,23 @@ export function WorkbenchDevServerTile({
           aria-label={previewDestination === "cozea" ? "Preview in Cozea" : `Preview in ${effectiveSelectedBrowser.name}`}
           title={previewDestination === "cozea" ? "Preview in Cozea" : `Preview in ${effectiveSelectedBrowser.name}`}
         >
-          {createElement(PreviewIcon, { className: "h-3.5 w-3.5" })}
+          {createElement(PreviewIcon, { className: "h-4 w-4" })}
         </button>
-        <div className="h-4 w-px bg-border/60" aria-hidden />
+        <div className="mx-1 h-4 w-px bg-border/45" aria-hidden />
         <button
           type="button"
           className={cn(
-            "flex h-7 w-10 items-center justify-center border-0 bg-transparent text-muted-foreground transition-colors",
-            "hover:bg-secondary hover:text-foreground",
-            viewMode === "code" && "bg-background text-foreground shadow-none",
+            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
+            "hover:text-foreground",
+            viewMode === "code" &&
+              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
           )}
           onClick={() => setViewMode("code")}
           aria-pressed={viewMode === "code"}
           aria-label="Code"
           title="Code"
         >
-          <SquareTerminal className="h-3.5 w-3.5" />
+          <SquareTerminal className="h-4 w-4" />
         </button>
       </div>
     </div>

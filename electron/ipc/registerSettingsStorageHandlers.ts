@@ -517,13 +517,13 @@ export function registerSettingsStorageHandlers(
     return { success: true }
   })
 
-  ipcMain.handle('dialog:selectDirectory', async () => {
+  ipcMain.handle('dialog:selectDirectory', async (_event, options?: { title?: string }) => {
     const win = deps.getMainWindow()
     if (!win) return { success: false, error: 'No window available' }
 
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory', 'createDirectory'],
-      title: 'Select Projects Directory',
+      title: options?.title ?? 'Select Projects Directory',
     })
 
     if (result.canceled || result.filePaths.length === 0) {

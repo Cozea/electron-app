@@ -1573,12 +1573,6 @@ function HeaderProjectChangesButton({
   const location = useLocation()
   const convex = useConvex()
 
-  if (!projectId) return null
-
-  const workbenchPath = buildProjectPath(String(projectId), "workbench")
-  const currentParams = new URLSearchParams(location.search)
-  const isOnWorkbench = location.pathname === workbenchPath
-  const isChangesOpen = currentParams.get("changes") === "1" || currentParams.get("openTile") === "changes"
   const prewarmChanges = useCallback(() => {
     if (!projectId) return
 
@@ -1617,6 +1611,13 @@ function HeaderProjectChangesButton({
       }
     }, "background")
   }, [convex, projectId])
+
+  if (!projectId) return null
+
+  const workbenchPath = buildProjectPath(String(projectId), "workbench")
+  const currentParams = new URLSearchParams(location.search)
+  const isOnWorkbench = location.pathname === workbenchPath
+  const isChangesOpen = currentParams.get("changes") === "1" || currentParams.get("openTile") === "changes"
 
   return (
     <Tooltip>

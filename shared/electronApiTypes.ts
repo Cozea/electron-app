@@ -1262,7 +1262,9 @@ export interface ElectronAPI {
     set: (settings: Partial<AppSettings>) => Promise<{ success: boolean }>
   }
   dialog: {
-    selectDirectory: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
+    selectDirectory: (options?: {
+      title?: string
+    }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
     selectFile: (options: {
       title?: string
       filters?: Array<{ name: string; extensions: string[] }>
@@ -1325,7 +1327,12 @@ export interface ElectronAPI {
     onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
   }
   project: {
-    createFolder: (options: { slug: string; initGit?: boolean; projectId?: string }) => Promise<CreateProjectFolderResult>
+    createFolder: (options: {
+      slug: string
+      initGit?: boolean
+      projectId?: string
+      baseDirectory?: string
+    }) => Promise<CreateProjectFolderResult>
     cloneRepository: (options: {
       slug: string
       repoUrl: string
@@ -1333,6 +1340,7 @@ export interface ElectronAPI {
       branch?: string
       accessToken?: string
       projectId?: string
+      baseDirectory?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
     rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>

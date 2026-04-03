@@ -50,7 +50,6 @@ import { formatProjectDeleteError, formatProjectRenameError } from '../lib/proje
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
 const preloadProjectWorkbenchPage = () => import('@/features/projects/pages/ProjectWorkbenchPage')
-const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 interface ProjectSummary extends ProjectOpenGitProjectLike {
     name: string
@@ -136,12 +135,8 @@ export const ProjectListRow = memo(function ProjectListRow({
   }, [project._id, project.name])
 
     const preloadProjectDestination = useCallback(() => {
-        if (project.status === 'draft') {
-            void preloadNewProjectPage()
-            return
-        }
         void preloadProjectWorkbenchPage()
-    }, [project.status])
+    }, [])
 
     const handleDelete = async (confirmName: string) => {
         if (!userId || isDeleting || confirmName !== project.name) return
@@ -272,12 +267,6 @@ export const ProjectListRow = memo(function ProjectListRow({
 
     const handleRowClick = useCallback(async () => {
         preloadProjectDestination()
-
-        // Draft projects go straight to wizard
-        if (project.status === 'draft') {
-            navigate(`/projects/new?resume=${project._id}`)
-            return
-        }
 
         // Start sync check
         setSyncState('checking')

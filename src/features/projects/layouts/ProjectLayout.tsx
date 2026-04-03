@@ -395,7 +395,6 @@ export function ProjectLayout({
     const isChangesView = location.pathname.endsWith('/changes')
     const shouldRemovePadding = isWorkbenchView || isPagesView || isChangesView
 
-    const canSync = Boolean(project?._id && convexUserId && projectSlug && effectiveLocalPath)
     const {
         header: headerContent,
         breadcrumbAddon,
@@ -451,11 +450,19 @@ export function ProjectLayout({
     const workspaceIcon = scopeKind === 'personal' ? UserRound : Building2
     const statusBar = (
         <StatusBar
-            leftAddon={<ProjectSyncIndicator variant="compact" className="h-5 w-5 rounded-sm bg-transparent" />}
-            leftItems={[
-                ...(project?.name ? [{ icon: FolderKanban, label: project.name }] : []),
-                { icon: FolderKanban, label: subpageLabel ?? 'Project' },
-            ]}
+            leftAddon={
+                project?._id ? (
+                    <ProjectSyncIndicator variant="compact" className="h-5 w-5 rounded-sm bg-transparent" />
+                ) : null
+            }
+            leftItems={
+                project?.name
+                    ? [
+                        { icon: FolderKanban, label: project.name },
+                        ...(subpageLabel ? [{ icon: FolderKanban, label: subpageLabel }] : []),
+                    ]
+                    : [{ icon: FolderKanban, label: subpageLabel ?? 'Projects' }]
+            }
             rightItems={[
                 { icon: workspaceIcon, label: workspaceName },
                 { label: 'Cozea' },
@@ -514,24 +521,17 @@ export function ProjectLayout({
         </SidebarProvider >
     )
 
-    // Wrap with sync provider if we have all the required data
-    if (canSync && project && convexUserId && projectSlug) {
-        return (
-            <ProjectSyncProvider
-                key={project._id}
-                projectId={project._id}
-                userId={convexUserId}
-                userName={user?.firstName || user?.email || "User"}
-                projectSlug={projectSlug}
-                localPath={effectiveLocalPath}
-                lastSyncAt={project.lastSyncAt}
-                skipInitialSyncCheck={shouldSkipInitialSyncCheck}
-            >
-                {layoutContent}
-            </ProjectSyncProvider>
-        )
-    }
-
-    // Render without sync if data isn't available yet
-    return layoutContent
+    return (
+        <ProjectSyncProvider
+            projectId={project?._id ?? null}
+            userId={convexUserId ?? null}
+            userName={user?.firstName || user?.email || "User"}
+            projectSlug={projectSlug}
+            localPath={effectiveLocalPath}
+            lastSyncAt={project?.lastSyncAt}
+            skipInitialSyncCheck={shouldSkipInitialSyncCheck}
+        >
+            {layoutContent}
+        </ProjectSyncProvider>
+    )
 }

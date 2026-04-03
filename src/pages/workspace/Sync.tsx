@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import {
@@ -135,22 +135,25 @@ const getLegendLabel = (category: StorageCategory): string => {
     case 'assets':
       return 'Assets'
     default:
-      return category.name
+  return category.name
   }
 }
 
-export function Sync() {
+interface SyncProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
+
+export function Sync({ surface = 'page', route }: SyncProps = {}) {
   const {
     settingsPage,
-    user,
-    logout,
     convexOrgId,
     usageLimits,
     totalUsed,
     totalLimit,
     isUnlimited,
     clearStorageCategory,
-  } = useScopedCloudStorageData()
+  } = useScopedCloudStorageData({ route })
   const [clearingCategory, setClearingCategory] = useState<StorageCategory | null>(null)
   const [isClearing, setIsClearing] = useState(false)
 
@@ -195,12 +198,8 @@ export function Sync() {
     }
   }
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-    >
+  const content = (
+    <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Cloud storage access required"
@@ -407,6 +406,16 @@ export function Sync() {
           </AlertDialog>
         </>
       )}
-    </DashboardLayout>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <SettingsRouteShell surfaceId="cloudStorage" route={route}>
+      {content}
+    </SettingsRouteShell>
   )
 }

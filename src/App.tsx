@@ -6,6 +6,7 @@ import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { SettingsDrawer } from './components/settings/SettingsDrawer'
 import { CreateWorkspaceDialogHost } from './components/workspaces/CreateWorkspaceDialogHost'
+import { CreateProjectDialogHost } from './features/projects/components/CreateProjectDialogHost'
 import { UpdateMenu } from './components/updates/UpdateMenu'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
@@ -252,7 +253,6 @@ function AppContent() {
 
     const warmupTimer = window.setTimeout(() => {
       void import('./pages/NewProject')
-      void import('./pages/ProjectBuild')
 
       if (shouldWarmProjectEditor) {
         void import('./features/projects/pages/ProjectWorkbenchPage')
@@ -290,6 +290,7 @@ function AppContent() {
       <>
         <Onboarding />
         <CreateWorkspaceDialogHost />
+        <CreateProjectDialogHost />
       </>
     )
   }
@@ -313,6 +314,7 @@ function AppContent() {
       {!isSettingsWindow && <UpdateMenu />}
       <Outlet />
       <CreateWorkspaceDialogHost />
+      <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       {!isSettingsWindow && <SettingsDrawer />}
     </>

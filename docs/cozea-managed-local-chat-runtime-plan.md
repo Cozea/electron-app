@@ -2,7 +2,7 @@
 
 Status: Implementation in progress
 
-Last updated: 2026-04-02
+Last updated: 2026-04-03
 
 Owner: Codex + project team
 
@@ -49,7 +49,6 @@ Landed in the current pass:
 - The changed-files header actions are now icon-only ghost controls with tooltips/labels instead of full text buttons, reducing visual weight and aligning them with the rest of the Cozea chat controls.
 - Fresh assistant tiles now mirror T3’s first-send title behavior: the first user prompt immediately becomes the thread title in the runtime and the Dockview header/tab, instead of leaving tiles stuck on generic labels like `AI Agent 2`.
 - Claude sessions now flow their SDK session summaries back through the same normalized `thread.metadata.updated` runtime event used by Codex, so later CLI-supplied thread renames propagate into Cozea thread state and tile headers instead of stopping at the first-prompt seed title.
-- The global context switcher no longer doubles as a recent-project launcher, which moves Cozea a step closer to a cleaner shell split where workspace/scope switching stays global while project and workbench navigation live in project-local surfaces instead of the legacy dashboard pattern.
 - The imported chat primitives now resolve through Cozea’s real folder layout again, including local alert wrappers, proposed-plan helpers, clipboard helpers, theme resolution, and native API paths, so the shared chat surface can boot in Vite without the copied T3 import drift.
 - Cozea now has an assistant-side UI compatibility layer for the imported chat primitives, covering button sizes/variants, alerts, dialogs, command menus, grouping, toggles, sidebar trigger access, and toast calls that the original T3 components expect.
 - The active assistant UI primitives are being replaced with direct T3-style implementations instead of thin Cozea wrappers, including `button`, `badge`, `input`, `alert`, `toggle`, `menu`, `popover`, `tooltip`, `group`, `scroll-area`, `autocomplete`, `command`, `dialog`, and the real Base UI toast manager/provider.
@@ -61,6 +60,23 @@ Landed in the current pass:
 - Duplicate `assistant/` utility files that matched `assistant/chat/` byte-for-byte now re-export the canonical `assistant/chat/` modules instead of carrying separate copies.
 - The first Cozea branding pass removed leftover inherited runtime strings from provider status, Codex app-server metadata, and checkpoint commit metadata.
 - The dead legacy `agentChat` store path and its stale Electron API surface were removed.
+- Workbench persistence is now scoped to `projectId + laneId`, so each lane keeps its own Dockview layout, active tile, and tile inventory instead of sharing one project-wide workspace state.
+- The project sidebar now renders a multilevel Cozea tree modeled on T3’s compact hierarchy: current-project header, active-lane chip, quick add actions, then projects -> lanes -> agents/surfaces with lane switching wired to real workbench state.
+- Lane rows now derive their agent/surface contents from the persisted lane-scoped workbench, so agent thread titles, provider icons, and active tool rows survive route changes and lane switches.
+- Sidebar lane navigation now opens the correct project workbench, switches the active lane through Electron first, and can focus an existing tile or spawn a new one through workbench route params.
+- The new sidebar tree now subscribes to lane-scoped workbench state through a shallow-memoized selector, fixing the React/Zustand infinite render loop caused by returning a fresh lane-workbench object on every render.
+- The native workbench browser now keeps the requested URL authoritative while a navigation is in flight, preventing stale `did-start-loading` state from echoing the previous URL back into the store and causing repeated browser refresh loops.
+- The Cozea project sidebar has been simplified to rely on the existing selection/highlight model instead of redundant project/lane summary cards: quick-create actions stay in the header, the standalone workbench button is removed, project settings/sync now live in per-project overflow menus, and lane refresh now lives in the active lane row menu.
+- The project navigation is now visually closer to T3’s sidebar language: favicon-or-folder project marks, flatter menu-row geometry, hover-revealed row actions, quieter uppercase section labels, softer active fills, and lightweight inline status indicators instead of heavier chip/card treatments.
+- The sidebar now enforces a single active target at a time with route-aware priority: visible agent/surface rows win on workbench, otherwise the active lane row is highlighted on empty workbench states, and only non-workbench project pages highlight the project row.
+- The current project row in the sidebar now reuses the same branch-switching dropdown pattern as the workbench header, so branch/lane switching stays consistent instead of introducing a separate static branch display just for navigation.
+- The sidebar navigation has since been simplified again to keep lanes explicit as collapsible rows under each project, removing the experimental project-row lane selector and restoring the clearer project -> lanes -> agents/surfaces hierarchy.
+- Lane rows are now real disclosures with per-lane open state and centered single-line metadata, so the chevron reflects actual expansion instead of acting like a decorative branch marker.
+- Sidebar project icons now preserve their original image aspect ratio instead of being visually rounded into a square badge treatment.
+- Workspace switching has been folded into the bottom user menu so both the global app sidebar and the project sidebar can drop the redundant top workspace-switcher control.
+- The bottom user menu’s workspace switch action now opens through a real Electron-backed native context menu, backed by a newly wired generic `showContextMenu` bridge instead of an inline custom list.
+- Project creation now runs through one shared modal instead of the old prompt/build flow: empty projects create a connected GitHub remote up front, repository import browses connected repos first, local-folder import now requires or provisions a remote before saving, and the new flow promotes created projects straight into active workbench state instead of leaving them in the old draft-only path.
+- Workspace and team settings routes now share a dedicated route-level settings shell that mirrors the user-settings drawer language, grouping supported surfaces under `Workspace` and `Team` while automatically collapsing personal workspaces down to the smaller relevant set.
 
 ## Goal
 
