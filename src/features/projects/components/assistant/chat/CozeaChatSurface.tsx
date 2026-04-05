@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import {
   type ClipboardEventHandler,
+  memo,
   type ReactNode,
   type RefObject,
   useEffect,
@@ -221,7 +222,7 @@ function renderSendIcon(isBusy: boolean) {
   )
 }
 
-export function CozeaChatSurface(props: CozeaChatSurfaceProps) {
+export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
   const resolvedTheme = resolveTimelineTheme()
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
@@ -908,4 +909,4 @@ export function CozeaChatSurface(props: CozeaChatSurfaceProps) {
       ) : null}
     </div>
   )
-}
+})

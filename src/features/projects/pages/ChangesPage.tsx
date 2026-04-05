@@ -734,14 +734,14 @@ export function ChangesPage({
       markSyncFeedAsSeen(project.slug)
     }
   }, [project?.slug])
-  const projectPagesPath = project?._id ? buildProjectPath(String(project._id), 'pages') : '/projects'
+  const projectWorkbenchPath = project?._id ? buildProjectPath(String(project._id), 'workbench') : '/projects'
 
   function closeChangesModal(): void {
     if (isEmbedded) {
       onRequestClose?.()
       return
     }
-    navigate(projectPagesPath, { replace: true })
+    navigate(projectWorkbenchPath, { replace: true })
   }
 
   useEffect(() => {
@@ -755,7 +755,7 @@ export function ChangesPage({
     return () => {
       window.removeEventListener('keydown', handleEscape)
     }
-  }, [isEmbedded, projectPagesPath])
+  }, [isEmbedded, projectWorkbenchPath])
 
   const shell = (
     <div

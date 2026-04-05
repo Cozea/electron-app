@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
+import type { IconType } from "react-icons"
 import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  Cloud,
-  CloudOff,
-  Loader2,
-  type LucideIcon,
-} from "lucide-react"
+  MdCloudDone,
+  MdCloudDownload,
+  MdCloudOff,
+  MdCloudSync,
+  MdCloudUpload,
+  MdWarning,
+} from "react-icons/md"
 
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -21,12 +21,18 @@ interface ProjectSyncIndicatorProps {
   className?: string
 }
 
+/** Match sidebar collapse control: muted, foreground when the control is hovered. */
+const INDICATOR_ICON_CLASS = "text-muted-foreground group-hover:text-foreground"
+/** Labels / counts: same base tone as the toggle (no hover on non-interactive text). */
+const INDICATOR_TEXT_CLASS = "text-muted-foreground"
+
 interface IndicatorState {
-  icon: LucideIcon
+  icon: IconType
   label: string
   detail: string
-  toneClassName: string
-  animate?: boolean
+  /** Material cloud icons read `fill` from `currentColor` for solid glyphs */
+  filled?: boolean
+  motion?: "spin" | "pulse"
   transfer?: "upload" | "download"
   liveCount?: string
 }
@@ -45,15 +51,13 @@ function formatProgressCount(current: number, total: number): string {
 }
 
 function getIndicatorStateKey(state: IndicatorState): string {
-  const iconName = state.icon.displayName ?? state.icon.name ?? "icon"
   return [
-    iconName,
     state.label,
     state.detail,
-    state.toneClassName,
     state.transfer ?? "",
     state.liveCount ?? "",
-    state.animate ? "1" : "0",
+    state.motion ?? "",
+    state.filled ? "1" : "0",
   ].join("|")
 }
 
@@ -98,57 +102,57 @@ export function ProjectSyncIndicator({
   const computedState = useMemo<IndicatorState>(() => {
     if (!syncContext || !hasSyncProgress) {
       return {
-        icon: CloudOff,
+        icon: MdCloudOff,
         label: "Disconnected",
         detail: "Connecting to collaboration server",
-        toneClassName: "text-muted-foreground",
+        filled: true,
       }
     }
 
     if (syncContext.cloudSyncBlocked) {
       return {
-        icon: CloudOff,
+        icon: MdCloudOff,
         label: "Local Only",
         detail: "Billing is inactive, so cloud sync is disabled",
-        toneClassName: "text-amber-600",
+        filled: true,
       }
     }
 
     if (!isOnline) {
       return {
-        icon: CloudOff,
+        icon: MdCloudOff,
         label: "Offline",
         detail: "Changes are queued locally",
-        toneClassName: "text-amber-600",
+        filled: true,
       }
     }
 
     if (syncStatus === "error") {
       return {
-        icon: AlertTriangle,
+        icon: MdWarning,
         label: "Sync Error",
         detail: syncMessage || "Sync failed. Retry from Changes.",
-        toneClassName: "text-destructive",
+        filled: true,
       }
     }
 
     if (syncStatus === "checking") {
       return {
-        icon: Loader2,
+        icon: MdCloudSync,
         label: "Checking",
         detail: "Comparing local and cloud state",
-        toneClassName: "text-muted-foreground",
-        animate: true,
+        filled: true,
+        motion: "spin",
       }
     }
 
     if (syncStatus === "planning") {
       return {
-        icon: Loader2,
+        icon: MdCloudSync,
         label: "Planning",
         detail: "Preparing reconciliation",
-        toneClassName: "text-muted-foreground",
-        animate: true,
+        filled: true,
+        motion: "spin",
       }
     }
 
@@ -157,16 +161,18 @@ export function ProjectSyncIndicator({
         ? String(pendingCount)
         : formatProgressCount(syncCurrent, syncTotal)
 
+      const transferIcon = isDownloading
+        ? MdCloudDownload
+        : isUploading
+          ? MdCloudUpload
+          : MdCloudSync
+
       return {
-        icon: isDownloading ? ArrowDown : ArrowUp,
+        icon: transferIcon,
         label: isUploading ? "Uploading" : isDownloading ? "Downloading" : "Syncing",
         detail: formatPendingCount(pendingCount),
-        toneClassName: isUploading
-          ? "text-blue-600"
-          : isDownloading
-            ? "text-emerald-600"
-            : "text-blue-600",
-        animate: true,
+        filled: true,
+        motion: "pulse",
         transfer: isUploading ? "upload" : isDownloading ? "download" : undefined,
         liveCount,
       }
@@ -174,19 +180,19 @@ export function ProjectSyncIndicator({
 
     if (!isConnected) {
       return {
-        icon: Loader2,
+        icon: MdCloudSync,
         label: "Reconnecting",
         detail: "Trying to reach collaboration server",
-        toneClassName: "text-muted-foreground",
-        animate: true,
+        filled: true,
+        motion: "spin",
       }
     }
 
     return {
-      icon: Cloud,
+      icon: MdCloudDone,
       label: "Synced",
       detail: "Connected to cloud",
-      toneClassName: "text-emerald-600",
+      filled: true,
     }
   }, [
     isConnected,
@@ -229,10 +235,11 @@ export function ProjectSyncIndicator({
 
   const Icon = displayState.icon
   const iconClassName = cn(
-    "h-4 w-4 transition-colors duration-200 ease-out",
-    displayState.toneClassName,
-    displayState.animate && (Icon === Loader2 ? "animate-spin" : "animate-pulse"),
-    Icon === Cloud && "fill-current"
+    "h-4 w-4 shrink-0 transition-colors duration-200 ease-out",
+    INDICATOR_ICON_CLASS,
+    displayState.motion === "spin" && "animate-spin",
+    displayState.motion === "pulse" && "animate-pulse",
+    displayState.filled && "fill-current",
   )
 
   if (variant === "compact") {
@@ -241,7 +248,7 @@ export function ProjectSyncIndicator({
         <TooltipTrigger asChild>
           <div
             className={cn(
-              "relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
+              "group relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
               className
             )}
             aria-label={`${displayState.label} - ${displayState.detail}`}
@@ -269,7 +276,7 @@ export function ProjectSyncIndicator({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-1 py-1 transition-colors duration-200 ease-out",
+        "group flex items-center gap-2 px-1 py-1 transition-colors duration-200 ease-out",
         className
       )}
       title={displayState.detail}
@@ -286,7 +293,7 @@ export function ProjectSyncIndicator({
         <p
           className={cn(
             "text-xs font-medium leading-none transition-[color,opacity,transform] duration-200 ease-out",
-            displayState.toneClassName,
+            INDICATOR_TEXT_CLASS,
             isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
           )}
         >
@@ -295,7 +302,8 @@ export function ProjectSyncIndicator({
       </div>
       <div
         className={cn(
-          "shrink-0 min-w-[2.5rem] text-right text-xs text-muted-foreground tabular-nums transition-[opacity,transform] duration-200 ease-out",
+          "shrink-0 min-w-[2.5rem] text-right text-xs tabular-nums transition-[opacity,transform] duration-200 ease-out",
+          INDICATOR_TEXT_CLASS,
           displayState.liveCount && isContentVisible
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-0.5"

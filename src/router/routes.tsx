@@ -273,6 +273,7 @@ const projectFilesRoute = createRoute({
   component: ProjectFilesRedirect,
 })
 
+// Legacy bookmark URL; in-app navigation uses /workbench directly.
 const projectPagesRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: '/pages',

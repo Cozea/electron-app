@@ -93,9 +93,11 @@ export function NavUser({
     () => resolveScopedSettingsHref("/settings/general", workspaceScoped),
     [workspaceScoped],
   )
-  const menuSummarySublabel = [currentWorkspace?.organizationName, activePlanLabel]
-    .filter((value): value is string => Boolean(value))
-    .join(" · ")
+  const menuSummarySublabel = workspaceScoped
+    ? [currentWorkspace?.organizationName, activePlanLabel]
+        .filter((value): value is string => Boolean(value))
+        .join(" · ")
+    : userData.email || activePlanLabel
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -215,8 +217,10 @@ export function NavUser({
       openSettingsDrawerFromRoute,
       setTheme,
       theme,
+      userData.email,
       userData.name,
       workspaceSettingsHref,
+      workspaceScoped,
     ],
   )
 
@@ -229,15 +233,15 @@ export function NavUser({
           className="rounded-2xl"
           onClick={handleMenuClick}
         >
-          <Avatar className="h-8 w-8 rounded-full">
+          <Avatar className="h-6 w-6 rounded-full">
             <AvatarImage src={userData.avatar} alt={userData.name} />
             <AvatarFallback className="rounded-full">
               {userData.name.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+          <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-medium">{userData.name}</span>
-            <span className="truncate text-xs">{userData.email}</span>
+            <span className="truncate text-muted-foreground">{activePlanLabel}</span>
           </div>
           <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>

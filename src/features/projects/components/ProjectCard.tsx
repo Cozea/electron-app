@@ -197,7 +197,7 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
             setSyncErrorActionLabel(null)
 
             setTimeout(() => {
-                navigate(buildProjectPath(String(project._id), 'pages'), {
+                navigate(buildProjectPath(String(project._id), 'workbench'), {
                     state: {
                         projectId: String(project._id),
                         projectSlug: project.slug,

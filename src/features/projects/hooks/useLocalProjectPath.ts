@@ -19,6 +19,23 @@ function normalizeProjectPath(projectPath: string): string {
   return projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
+/**
+ * Prefer an explicit UI/navigation path, then a Convex-synced member `localPath`,
+ * before falling back to Electron `getLocalPath` resolution.
+ */
+export function mergeProjectLocalPathHints(
+  primary: string | null | undefined,
+  cloudHint: string | null | undefined
+): string | null {
+  if (primary?.trim()) {
+    return normalizeProjectPath(primary.trim())
+  }
+  if (cloudHint?.trim()) {
+    return normalizeProjectPath(cloudHint.trim())
+  }
+  return null
+}
+
 function getProjectPathCacheKeys(projectId?: string | null, projectSlug?: string | null): string[] {
   const keys: string[] = []
   if (projectId) {

@@ -1066,6 +1066,15 @@ export interface WorkbenchBrowserViewState {
   isLoading: boolean
   canGoBack: boolean
   canGoForward: boolean
+  favicon?: string | null
+  focused: boolean
+  visible: boolean
+  isDevToolsOpen: boolean
+  storageScope: import('./browserHostTypes').BrowserStorageScope
+  zoomFactor: number
+  canZoomIn: boolean
+  canZoomOut: boolean
+  find: import('./browserHostTypes').BrowserFindState
   loadError?: string | null
 }
 
@@ -1287,7 +1296,12 @@ export interface ElectronAPI {
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
   workbenchBrowser: {
-    ensureTile: (options: { tileId: string; initialUrl?: string }) => Promise<WorkbenchBrowserViewState>
+    ensureTile: (options: {
+      tileId: string
+      initialUrl?: string
+      storageScope?: import('./browserHostTypes').BrowserStorageScope
+      workspaceId?: string
+    }) => Promise<WorkbenchBrowserViewState>
     destroyTile: (options: { tileId: string }) => Promise<boolean>
     setBounds: (options: {
       tileId: string
@@ -1298,8 +1312,25 @@ export interface ElectronAPI {
     getState: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
     goBack: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
     goForward: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    reload: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    reload: (options: { tileId: string; hard?: boolean }) => Promise<WorkbenchBrowserViewState | null>
+    focus: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    toggleDevTools: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    openExternal: (options: { tileId: string }) => Promise<{ success: boolean; error?: string }>
+    zoomIn: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    zoomOut: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    resetZoom: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    findInPage: (options: {
+      tileId: string
+      text: string
+      forward?: boolean
+      recompute?: boolean
+      matchCase?: boolean
+    }) => Promise<WorkbenchBrowserViewState | null>
+    stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) => Promise<WorkbenchBrowserViewState | null>
+    getSelectedText: (options: { tileId: string }) => Promise<string>
     onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
+    onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
+    onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
@@ -1595,6 +1626,7 @@ export interface ElectronAPI {
     getJournalState: (options: { projectId: string }) => Promise<SyncJournalState>
   }
   yjs: {
+    setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
@@ -1624,6 +1656,7 @@ export interface ElectronAPI {
     list: (options: { projectPath: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
+    onOutputForTerminal: (terminalId: string, callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void
     onActivity: (callback: (data: TerminalActivityEvent) => void) => () => void
   }
@@ -1642,6 +1675,12 @@ export interface ElectronAPI {
       selectionText?: string
       linkUrl?: string
     }) => Promise<{ shown: boolean }>
+    showOpenInEditorPicker: (options: {
+      x: number
+      y: number
+      editors: ReadonlyArray<{ id: ExternalEditorId; name: string }>
+      selectedEditorId: ExternalEditorId | null
+    }) => Promise<{ editorId: ExternalEditorId | null }>
   }
   updates: {
     check: () => Promise<UpdateState>

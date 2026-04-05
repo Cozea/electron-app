@@ -1,16 +1,15 @@
 import {
   createContext,
+  lazy,
+  memo,
+  Suspense,
   useContext,
   useEffect,
+  useMemo,
   type ReactNode,
 } from "react"
 import type { IDockviewPanelProps } from "dockview"
 
-import { WorkbenchBrowserTile } from "@/features/projects/components/workbench/WorkbenchBrowserTile"
-import { WorkbenchAssistantChatTile } from "@/features/projects/components/workbench/WorkbenchAssistantChatTile"
-import { WorkbenchDevServerTile } from "@/features/projects/components/workbench/WorkbenchDevServerTile"
-import { WorkbenchSelectionTile } from "@/features/projects/components/workbench/WorkbenchSelectionTile"
-import { WorkbenchTerminalTile } from "@/features/projects/components/workbench/WorkbenchTerminalTile"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
@@ -33,6 +32,7 @@ interface WorkbenchDockRuntimeValue {
   laneId: string
   projectPath: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
+  onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
@@ -41,6 +41,36 @@ interface WorkbenchDockRuntimeValue {
 }
 
 const WorkbenchDockRuntimeContext = createContext<WorkbenchDockRuntimeValue | null>(null)
+
+const panelSuspenseFallback = (
+  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading panel…</div>
+)
+
+const LazyWorkbenchBrowserTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchBrowserTile").then((m) => ({
+    default: m.WorkbenchBrowserTile,
+  })),
+)
+const LazyWorkbenchAssistantChatTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchAssistantChatTile").then((m) => ({
+    default: m.WorkbenchAssistantChatTile,
+  })),
+)
+const LazyWorkbenchDevServerTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
+    default: m.WorkbenchDevServerTile,
+  })),
+)
+const LazyWorkbenchSelectionTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchSelectionTile").then((m) => ({
+    default: m.WorkbenchSelectionTile,
+  })),
+)
+const LazyWorkbenchTerminalTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchTerminalTile").then((m) => ({
+    default: m.WorkbenchTerminalTile,
+  })),
+)
 
 function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
   const value = useContext(WorkbenchDockRuntimeContext)
@@ -86,9 +116,10 @@ function useSyncPanelTitle(
   }, [api, title])
 }
 
-function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const actions = useProjectWorkbenchStore((state) => state.actions)
+  const runtime = useWorkbenchDockRuntime()
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -107,25 +138,32 @@ function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const browserTile = tile as WorkbenchBrowserTileRecord
 
   return (
-    <WorkbenchBrowserTile
-      tileId={browserTile.id}
-      url={browserTile.url}
-      linkedDevServerTileId={browserTile.linkedDevServerTileId}
-      panelApi={props.api}
-      containerApi={props.containerApi}
-      onUrlCommitted={(nextUrl) => {
-        actions.updateBrowserTile(props.params.projectId, props.params.laneId, browserTile.id, { url: nextUrl })
-      }}
-      onTitleObserved={(title) => {
-        const normalized = title.trim()
-        if (!normalized) return
-        actions.updateTileTitle(props.params.projectId, props.params.laneId, browserTile.id, normalized)
-      }}
-    />
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchBrowserTile
+        tileId={browserTile.id}
+        url={browserTile.url}
+        storageScope={browserTile.storageScope ?? "workspace"}
+        workspaceId={props.params.projectId}
+        linkedDevServerTileId={browserTile.linkedDevServerTileId}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        onUrlCommitted={(nextUrl) => {
+          actions.updateBrowserTile(props.params.projectId, props.params.laneId, browserTile.id, { url: nextUrl })
+        }}
+        onTitleObserved={(title) => {
+          const normalized = title.trim()
+          if (!normalized) return
+          actions.updateTileTitle(props.params.projectId, props.params.laneId, browserTile.id, normalized)
+        }}
+        onNewPageRequest={(nextUrl) => {
+          runtime.onOpenBrowserFromBrowser(browserTile.id, nextUrl)
+        }}
+      />
+    </Suspense>
   )
-}
+})
 
-function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
 
@@ -138,16 +176,18 @@ function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const selectionTile = tile as WorkbenchSelectionTileRecord
 
   return (
-    <WorkbenchSelectionTile
-      tile={selectionTile}
-      onChoose={(type) => {
-        runtime.onResolveSelectionTile(selectionTile.id, type)
-      }}
-    />
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchSelectionTile
+        tile={selectionTile}
+        onChoose={(type) => {
+          runtime.onResolveSelectionTile(selectionTile.id, type)
+        }}
+      />
+    </Suspense>
   )
-}
+})
 
-function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
 
@@ -166,15 +206,17 @@ function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   }
 
   return (
-    <WorkbenchTerminalTile
-      projectPath={runtime.projectPath}
-      panelApi={props.api}
-      containerApi={props.containerApi}
-    />
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchTerminalTile
+        projectPath={runtime.projectPath}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      />
+    </Suspense>
   )
-}
+})
 
-function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
   const actions = useProjectWorkbenchStore((state) => state.actions)
@@ -196,23 +238,26 @@ function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const devServerTile = tile as WorkbenchDevServerTileRecord
 
   return (
-    <WorkbenchDevServerTile
-      tile={devServerTile}
-      projectPath={runtime.projectPath}
-      panelApi={props.api}
-      containerApi={props.containerApi}
-      onLinkedBrowserReady={(nextUrl) => {
-        if (!devServerTile.linkedBrowserTileId) return
-        actions.updateBrowserTile(props.params.projectId, props.params.laneId, devServerTile.linkedBrowserTileId, {
-          url: nextUrl,
-          linkedDevServerTileId: devServerTile.id,
-        })
-      }}
-    />
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchDevServerTile
+        tile={devServerTile}
+        projectId={runtime.projectId}
+        projectPath={runtime.projectPath}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        onLinkedBrowserReady={(nextUrl) => {
+          if (!devServerTile.linkedBrowserTileId) return
+          actions.updateBrowserTile(props.params.projectId, props.params.laneId, devServerTile.linkedBrowserTileId, {
+            url: nextUrl,
+            linkedDevServerTileId: devServerTile.id,
+          })
+        }}
+      />
+    </Suspense>
   )
-}
+})
 
-function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
 
@@ -231,17 +276,19 @@ function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>
   }
 
   return (
-      <WorkbenchAssistantChatTile
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchAssistantChatTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
         projectPath={runtime.projectPath}
         tile={tile as WorkbenchAssistantChatTileRecord}
         panelApi={props.api}
-      containerApi={props.containerApi}
-      onDuplicate={runtime.onDuplicateAssistantTile}
-    />
+        containerApi={props.containerApi}
+        onDuplicate={runtime.onDuplicateAssistantTile}
+      />
+    </Suspense>
   )
-}
+})
 
 export const WORKBENCH_DOCK_COMPONENTS = {
   selection: SelectionPanel,
@@ -256,6 +303,7 @@ export function WorkbenchDockRuntimeProvider(props: {
   laneId: string
   projectPath: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
+  onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
@@ -263,17 +311,29 @@ export function WorkbenchDockRuntimeProvider(props: {
   ) => void
   children: ReactNode
 }) {
+  const value = useMemo<WorkbenchDockRuntimeValue>(
+    () => ({
+      projectId: props.projectId,
+      laneId: props.laneId,
+      projectPath: props.projectPath,
+      onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
+      onOpenBrowserFromBrowser: props.onOpenBrowserFromBrowser,
+      onDuplicateAssistantTile: props.onDuplicateAssistantTile,
+      onResolveSelectionTile: props.onResolveSelectionTile,
+    }),
+    [
+      props.projectId,
+      props.laneId,
+      props.projectPath,
+      props.onOpenBrowserFromDevServer,
+      props.onOpenBrowserFromBrowser,
+      props.onDuplicateAssistantTile,
+      props.onResolveSelectionTile,
+    ],
+  )
+
   return (
-    <WorkbenchDockRuntimeContext.Provider
-      value={{
-        projectId: props.projectId,
-        laneId: props.laneId,
-        projectPath: props.projectPath,
-        onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
-        onDuplicateAssistantTile: props.onDuplicateAssistantTile,
-        onResolveSelectionTile: props.onResolveSelectionTile,
-      }}
-    >
+    <WorkbenchDockRuntimeContext.Provider value={value}>
       {props.children}
     </WorkbenchDockRuntimeContext.Provider>
   )

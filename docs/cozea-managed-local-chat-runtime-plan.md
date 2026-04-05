@@ -2,7 +2,7 @@
 
 Status: Implementation in progress
 
-Last updated: 2026-04-03
+Last updated: 2026-04-04
 
 Owner: Codex + project team
 
@@ -66,6 +66,7 @@ Landed in the current pass:
 - Sidebar lane navigation now opens the correct project workbench, switches the active lane through Electron first, and can focus an existing tile or spawn a new one through workbench route params.
 - The new sidebar tree now subscribes to lane-scoped workbench state through a shallow-memoized selector, fixing the React/Zustand infinite render loop caused by returning a fresh lane-workbench object on every render.
 - The native workbench browser now keeps the requested URL authoritative while a navigation is in flight, preventing stale `did-start-loading` state from echoing the previous URL back into the store and causing repeated browser refresh loops.
+- The integrated workbench browser now has a native find-in-page session and browser-keyboard command bridge closer to VS Code: `Cmd/Ctrl+F` opens a real find widget with live match counts, `Cmd/Ctrl+L` focuses the URL bar, native browser focus can still trigger find/url commands through Electron, and browser-local reload/back-forward/find-next/zoom shortcuts now work even when focus is inside the page itself.
 - The Cozea project sidebar has been simplified to rely on the existing selection/highlight model instead of redundant project/lane summary cards: quick-create actions stay in the header, the standalone workbench button is removed, project settings/sync now live in per-project overflow menus, and lane refresh now lives in the active lane row menu.
 - The project navigation is now visually closer to T3’s sidebar language: favicon-or-folder project marks, flatter menu-row geometry, hover-revealed row actions, quieter uppercase section labels, softer active fills, and lightweight inline status indicators instead of heavier chip/card treatments.
 - The sidebar now enforces a single active target at a time with route-aware priority: visible agent/surface rows win on workbench, otherwise the active lane row is highlighted on empty workbench states, and only non-workbench project pages highlight the project row.

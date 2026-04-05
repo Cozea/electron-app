@@ -316,7 +316,7 @@ export const ProjectListRow = memo(function ProjectListRow({
             setSyncErrorActionLabel(null)
 
             setTimeout(() => {
-                navigate(buildProjectPath(String(project._id), 'pages'), {
+                navigate(buildProjectPath(String(project._id), 'workbench'), {
                     state: {
                         projectId: String(project._id),
                         projectSlug: project.slug,

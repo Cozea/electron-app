@@ -13,6 +13,7 @@ import {
   buildAnsiPalette,
   compositeColorToHex,
   getThemeColorHex,
+  loadXtermWebglAddon,
   relativeLuminance,
   resolveThemeColor,
   syncTerminalTheme,
@@ -180,7 +181,8 @@ export function TerminalInstance({
 
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
-        const projectPath = useTerminalStore.getState().terminals[terminalId]?.projectPath || ''
+    loadXtermWebglAddon(term)
+    const projectPath = useTerminalStore.getState().terminals[terminalId]?.projectPath || ''
     
     const terminalLinksDisposable = term.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
@@ -295,10 +297,8 @@ export function TerminalInstance({
     }
 
     // Stream new data directly from backend, bypassing React renders
-    const unsubscribeOutput = window.electronAPI.terminal.onOutput(({ terminalId: eventTerminalId, data }) => {
-      if (eventTerminalId === terminalId) {
-        term.write(data)
-      }
+    const unsubscribeOutput = window.electronAPI.terminal.onOutputForTerminal(terminalId, ({ data }) => {
+      term.write(data)
     })
 
     const inputDisposable = term.onData((data) => {

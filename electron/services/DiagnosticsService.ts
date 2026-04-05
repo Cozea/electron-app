@@ -1,4 +1,6 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
+
+import { forEachBroadcastWindow } from '../broadcastWindows'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -89,7 +91,8 @@ function resolveTsServerPath(tsModulePath: string): string | null {
 }
 
 function sendToRenderers(channel: string, payload: unknown) {
-  BrowserWindow.getAllWindows().forEach((win) => {
+  forEachBroadcastWindow((win) => {
+    if (win.webContents.isDestroyed()) return
     win.webContents.send(channel, payload)
   })
 }

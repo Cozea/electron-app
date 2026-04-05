@@ -55,7 +55,7 @@ export function WorkbenchSelectionTile({
   const isHorizontalTile = tile.edge === "top" || tile.edge === "bottom"
 
   return (
-    <div className="flex h-full min-h-0 items-center justify-center bg-background px-8 py-10">
+    <div className="flex h-full min-h-0 items-center justify-center bg-content-surface px-8 py-10">
       <div
         className={cn(
           "grid shrink-0 place-items-center",

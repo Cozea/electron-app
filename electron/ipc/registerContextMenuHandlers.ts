@@ -376,4 +376,56 @@ export function registerContextMenuHandlers(
       return { shown: true }
     }
   )
+
+  ipcMain.handle(
+    'contextMenu:showOpenInEditorPicker',
+    async (
+      event,
+      options: {
+        x: number
+        y: number
+        editors: ReadonlyArray<{ id: string; name: string }>
+        selectedEditorId: string | null
+      },
+    ): Promise<{ editorId: string | null }> => {
+      const { editors, selectedEditorId, x, y } = options
+      if (editors.length === 0) {
+        return { editorId: null }
+      }
+
+      return new Promise((resolve) => {
+        let resolved = false
+        const window = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
+
+        const template: Electron.MenuItemConstructorOptions[] = [
+          {
+            label: 'Open in editor',
+            enabled: false,
+          },
+          { type: 'separator' },
+          ...editors.map((editor) => ({
+            type: 'radio' as const,
+            label: editor.name,
+            checked: editor.id === selectedEditorId,
+            click: () => {
+              resolved = true
+              resolve({ editorId: editor.id })
+            },
+          })),
+        ]
+
+        const menu = Menu.buildFromTemplate(template)
+        menu.popup({
+          window: window || undefined,
+          x,
+          y,
+          callback: () => {
+            if (!resolved) {
+              resolve({ editorId: null })
+            }
+          },
+        })
+      })
+    },
+  )
 }

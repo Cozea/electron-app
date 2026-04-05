@@ -80,6 +80,19 @@ function AgentFileSyncBridge({
   const { yjsDoc } = useYjsProject()
 
   useEffect(() => {
+    if (!projectPath) return
+    const yjsApi = window.electronAPI?.yjs
+    if (yjsApi?.setInterestRoots) {
+      void yjsApi.setInterestRoots({ roots: [projectPath] })
+    }
+    return () => {
+      if (yjsApi?.setInterestRoots) {
+        void yjsApi.setInterestRoots({ roots: [] })
+      }
+    }
+  }, [projectPath])
+
+  useEffect(() => {
     if (!projectPath || !yjsDoc) return
 
     let cancelled = false

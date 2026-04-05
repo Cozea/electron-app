@@ -1,4 +1,6 @@
 import { BrowserWindow, ipcMain, shell, type WebContents } from 'electron'
+
+import { forEachBroadcastWindow } from '../broadcastWindows'
 import { createServer, type Server } from 'node:http'
 
 import { SourceControlProviderService } from './sourceControlProviderService'
@@ -104,11 +106,10 @@ export class ProjectSourceControlService {
       return
     }
 
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send('sourceControl:oauthSuccess', payload)
-      }
-    }
+    forEachBroadcastWindow((window) => {
+      if (window.webContents.isDestroyed()) return
+      window.webContents.send('sourceControl:oauthSuccess', payload)
+    })
   }
 
   private emitOAuthError(
@@ -120,11 +121,10 @@ export class ProjectSourceControlService {
       return
     }
 
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send('sourceControl:oauthError', payload)
-      }
-    }
+    forEachBroadcastWindow((window) => {
+      if (window.webContents.isDestroyed()) return
+      window.webContents.send('sourceControl:oauthError', payload)
+    })
   }
 
   private async parseJsonBody(response: Response): Promise<unknown> {

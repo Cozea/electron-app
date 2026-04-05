@@ -2,16 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ChevronDown, Code2 } from "lucide-react"
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm } from "react-icons/si"
 import { VscVscodeInsiders } from "react-icons/vsc"
-import type { ComponentType, SVGProps } from "react"
+import type { ComponentType, MouseEvent, SVGProps } from "react"
 
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvailableExternalEditor, ExternalEditorId } from "@shared/electronApiTypes"
 import {
@@ -185,52 +178,57 @@ export function WorkbenchHeaderEditorControl({
     })
   }, [orderedEditors, projectPath, selectedEditorId, selectedEditorOption])
 
+  const handleShowEditorPicker = useCallback(
+    async (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (orderedEditors.length === 0) return
+
+      const rect = event.currentTarget.getBoundingClientRect()
+      const { editorId } = await window.electronAPI.contextMenu.showOpenInEditorPicker({
+        x: Math.round(rect.left),
+        y: Math.round(rect.bottom + 4),
+        editors: orderedEditors.map(({ editor }) => ({ id: editor.id, name: editor.name })),
+        selectedEditorId: selectedEditorOption?.editor.id ?? selectedEditorId,
+      })
+      if (editorId) {
+        setSelectedEditorId(editorId)
+      }
+    },
+    [orderedEditors, selectedEditorId, selectedEditorOption],
+  )
+
   const SelectedEditorIcon = selectedEditorOption?.Icon ?? Code2
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="inline-flex h-7 items-center overflow-hidden rounded-full border border-border/60 bg-secondary/70 shadow-none">
+        <div className="inline-flex h-6 items-center overflow-hidden rounded-full border border-border/60 bg-secondary/70 shadow-none">
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1.5 rounded-none border-0 bg-transparent px-2 shadow-none hover:bg-secondary data-[state=open]:bg-secondary"
+            className="h-6 gap-1 rounded-none border-0 bg-transparent px-1.5 shadow-none hover:bg-secondary data-[state=open]:bg-secondary"
             onClick={handleOpenProjectInEditor}
             disabled={!projectPath || !selectedEditorOption}
           >
-            <SelectedEditorIcon className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Open</span>
+            <SelectedEditorIcon className="h-3 w-3 text-muted-foreground" />
+            <span className="text-[11px] text-muted-foreground leading-none">Open</span>
           </Button>
 
           {orderedEditors.length > 1 ? (
             <>
-              <div className="h-4 w-px bg-border/60" aria-hidden />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-6 rounded-none border-0 bg-transparent shadow-none hover:bg-secondary data-[state=open]:bg-secondary"
-                    aria-label="Choose editor"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Open in editor</div>
-                  <DropdownMenuRadioGroup
-                    value={selectedEditorOption?.editor.id ?? ""}
-                    onValueChange={(value) => setSelectedEditorId(value as ExternalEditorId)}
-                  >
-                    {orderedEditors.map(({ editor, Icon }) => (
-                      <DropdownMenuRadioItem key={editor.id} value={editor.id}>
-                        <Icon className="mr-2 h-4 w-4 text-muted-foreground" />
-                        {editor.name}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="h-3 w-px bg-border/60" aria-hidden />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-5 rounded-none border-0 bg-transparent shadow-none hover:bg-secondary [&_svg]:size-3"
+                aria-label="Choose editor"
+                aria-haspopup="menu"
+                onClick={handleShowEditorPicker}
+              >
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </Button>
             </>
           ) : null}
         </div>

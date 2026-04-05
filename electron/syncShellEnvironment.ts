@@ -1,4 +1,7 @@
-import { execFileSync } from "node:child_process";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCallback);
 
 function buildEnvironmentCaptureCommand(names: ReadonlyArray<string>): string {
   return names
@@ -33,16 +36,17 @@ function extractEnvironmentValue(output: string, name: string): string | undefin
   return value.length > 0 ? value : undefined;
 }
 
-export function syncShellEnvironment(): void {
+export async function syncShellEnvironment(): Promise<void> {
   if (process.platform !== "darwin") return;
 
   try {
     const shell = process.env.SHELL ?? "/bin/zsh";
-    
+
     const names = ["PATH", "SSH_AUTH_SOCK"];
-    const output = execFileSync(shell, ["-ilc", buildEnvironmentCaptureCommand(names)], {
+    const { stdout: output } = await execFile(shell, ["-ilc", buildEnvironmentCaptureCommand(names)], {
       encoding: "utf8",
       timeout: 5000,
+      maxBuffer: 10 * 1024 * 1024,
     });
 
     for (const name of names) {
@@ -55,7 +59,7 @@ export function syncShellEnvironment(): void {
         }
       }
     }
-    
+
     console.log("[Boot] Shell environment synced successfully from", shell);
   } catch (err) {
     console.error("[Boot] Failed to sync shell environment:", err);

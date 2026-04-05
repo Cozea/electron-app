@@ -76,7 +76,7 @@ export function ProjectInvitePage() {
         inviteId,
         userId: convexUserId,
       })
-      navigate(buildProjectPath(String(result.projectId), 'pages'), { replace: true })
+      navigate(buildProjectPath(String(result.projectId), 'workbench'), { replace: true })
     } catch (error) {
       setActionError(cleanConvexError(error, "Unable to accept this invite."))
     } finally {

@@ -26,6 +26,7 @@ import {
   type TaskOverlayPayload,
 } from '@/features/projects/lib/taskFocusOverlay'
 import { scanForRoutes, type ScannedRoute } from '@/utils/routeScanner'
+import { GroupedVirtuoso } from 'react-virtuoso'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
@@ -1243,6 +1244,20 @@ export function TasksPage({
     [boardItemsByStatus],
   )
 
+  const tasksBoardVirtuoso = useMemo(() => {
+    const groupCounts: number[] = []
+    const flatItems: BoardItem[] = []
+    for (const section of statusSections) {
+      if (collapsedGroups[section.status]) {
+        groupCounts.push(0)
+      } else {
+        groupCounts.push(section.items.length)
+        flatItems.push(...section.items)
+      }
+    }
+    return { groupCounts, flatItems }
+  }, [statusSections, collapsedGroups])
+
   function closeTasksModal(): void {
     if (isEmbedded) {
       onRequestClose?.()
@@ -1528,7 +1543,7 @@ export function TasksPage({
         )}
       </div>
 
-      <div className="app-scrollbar flex-1 overflow-auto px-5 py-5">
+      <div className="flex min-h-0 flex-1 flex-col px-5 py-5">
         {project === null ? (
           <div className="flex h-full items-center justify-center p-6">
             <Empty>
@@ -1576,67 +1591,69 @@ export function TasksPage({
             </Empty>
           </div>
         ) : (
-          <div className={cn("flex w-full flex-col gap-5", isEmbedded ? "max-w-none" : "mx-auto max-w-5xl")}>
-            {statusSections.map(({ status, items }) => {
-              const statusMeta = STATUS_META[status]
-              const StatusIcon = statusMeta.icon
-              const isCollapsed = collapsedGroups[status]
+          <div
+            className={cn(
+              "flex min-h-0 w-full flex-1 flex-col",
+              isEmbedded ? "max-w-none" : "mx-auto max-w-5xl",
+            )}
+          >
+            <GroupedVirtuoso
+              data={tasksBoardVirtuoso.flatItems}
+              groupCounts={tasksBoardVirtuoso.groupCounts}
+              defaultItemHeight={96}
+              increaseViewportBy={{ top: 240, bottom: 480 }}
+              style={{ height: "100%", minHeight: 0 }}
+              computeItemKey={(_index, item) => item.id}
+              groupContent={(groupIndex) => {
+                const section = statusSections[groupIndex]
+                if (!section) return null
+                const statusMeta = STATUS_META[section.status]
+                const StatusIcon = statusMeta.icon
+                const isCollapsed = collapsedGroups[section.status]
 
-              return (
-                <Collapsible
-                  key={status}
-                  open={!isCollapsed}
-                  onOpenChange={(open) =>
-                    setCollapsedGroups((current) => ({
-                      ...current,
-                      [status]: !open,
-                    }))
-                  }
-                  className="space-y-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <CollapsibleTrigger asChild>
-                      <button
-                        type="button"
-                        title={statusMeta.ariaLabel}
-                        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${statusMeta.ariaLabel}`}
-                        className="group inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        <ChevronDown
-                          className={cn(
-                            'h-4 w-4 transition-transform duration-200',
-                            isCollapsed && '-rotate-90',
-                          )}
-                        />
-                        <span className="inline-flex h-7 w-7 items-center justify-center">
-                          <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                        </span>
-                        <span className="font-medium text-foreground">{statusMeta.ariaLabel}</span>
-                        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sidebar-accent/80 px-2 text-xs tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
-                          {items.length}
-                        </span>
-                      </button>
-                    </CollapsibleTrigger>
-
+                return (
+                  <div className="flex items-center gap-3 pt-4 first:pt-0">
+                    <button
+                      type="button"
+                      title={statusMeta.ariaLabel}
+                      aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${statusMeta.ariaLabel}`}
+                      className="group inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() =>
+                        setCollapsedGroups((current) => ({
+                          ...current,
+                          [section.status]: !current[section.status],
+                        }))
+                      }
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-200",
+                          isCollapsed && "-rotate-90",
+                        )}
+                      />
+                      <span className="inline-flex h-7 w-7 items-center justify-center">
+                        <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                      <span className="font-medium text-foreground">{statusMeta.ariaLabel}</span>
+                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sidebar-accent/80 px-2 text-xs tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
+                        {section.items.length}
+                      </span>
+                    </button>
                     <div className="h-px flex-1 bg-border/70" aria-hidden="true" />
                   </div>
-
-                  <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                    <div className="space-y-3 pt-1">
-                      {items.map((item) => (
-                        <TaskListRow
-                          key={item.id}
-                          item={item}
-                          projectId={projectId ?? ''}
-                          projectPath={projectPath}
-                          onToggleMarker={handleToggleMarker}
-                        />
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              )
-            })}
+                )
+              }}
+              itemContent={(_index, _groupIndex, item) => (
+                <div className="pt-3">
+                  <TaskListRow
+                    item={item}
+                    projectId={projectId ?? ""}
+                    projectPath={projectPath}
+                    onToggleMarker={handleToggleMarker}
+                  />
+                </div>
+              )}
+            />
           </div>
         )}
       </div>

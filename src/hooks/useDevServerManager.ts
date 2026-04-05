@@ -5,6 +5,7 @@ import {
   getDevServerConfig,
   getInstallCommand,
   hasPackageJson,
+  type DevServerLaunchContext,
 } from '@/utils/projectDetector'
 import {
   initialDevServerLifecycle,
@@ -21,6 +22,10 @@ const RESTART_DELAY_MS = 500
 interface UseDevServerManagerOptions {
   projectPath: string | null
   autoStart?: boolean
+  storedDevCommand?: string | null
+  storedDevPort?: number | null
+  previewMode?: DevServerLaunchContext['previewMode']
+  nativePlatform?: DevServerLaunchContext['nativePlatform']
   onReady?: (url: string) => void
   onError?: (error: string) => void
   onOutput?: (output: string) => void
@@ -63,6 +68,10 @@ const MAX_TIMELINE_EVENTS = 80
 export function useDevServerManager({
   projectPath,
   autoStart = false,
+  storedDevCommand = null,
+  storedDevPort = null,
+  previewMode = 'web',
+  nativePlatform = null,
   onReady,
   onError,
   onOutput,
@@ -251,7 +260,10 @@ export function useDevServerManager({
 
     try {
       // Get dev server config (command and port)
-      const config = await getDevServerConfig(projectPath)
+      const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort, {
+        previewMode,
+        nativePlatform,
+      })
       if (config.requiresUserSelection) {
         throw new Error('Dev server command selection is required. Open the Workbench dev-server tile and choose a command first.')
       }
@@ -324,7 +336,18 @@ export function useDevServerManager({
       })
       onError?.(errorMessage)
     }
-  }, [appendTimeline, markReadyFromPort, onError, projectPath, state.status, transitionLifecycle])
+  }, [
+    appendTimeline,
+    markReadyFromPort,
+    nativePlatform,
+    onError,
+    previewMode,
+    projectPath,
+    state.status,
+    storedDevCommand,
+    storedDevPort,
+    transitionLifecycle,
+  ])
 
   // Stop the dev server
   const stop = useCallback(async () => {

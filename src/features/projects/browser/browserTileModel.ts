@@ -1,6 +1,7 @@
 import type { WorkbenchBrowserViewState } from "@shared/electronApiTypes"
 import type {
   BrowserCreateOptions,
+  BrowserFindInPageOptions,
   BrowserHostBounds,
   BrowserState,
 } from "@shared/browserHostTypes"
@@ -14,6 +15,22 @@ const DEFAULT_BROWSER_STATE = (tileId: string, url = ""): BrowserState => ({
   isLoading: false,
   canGoBack: false,
   canGoForward: false,
+  favicon: null,
+  focused: false,
+  visible: false,
+  isDevToolsOpen: false,
+  storageScope: "workspace",
+  zoomFactor: 1,
+  canZoomIn: true,
+  canZoomOut: true,
+  find: {
+    query: "",
+    visible: false,
+    matchCase: false,
+    activeMatchOrdinal: 0,
+    matches: 0,
+    finalUpdate: false,
+  },
   loadError: null,
 })
 
@@ -25,26 +42,66 @@ function toBrowserState(state: WorkbenchBrowserViewState): BrowserState {
     isLoading: state.isLoading,
     canGoBack: state.canGoBack,
     canGoForward: state.canGoForward,
+    favicon: state.favicon ?? null,
+    focused: state.focused,
+    visible: state.visible,
+    isDevToolsOpen: state.isDevToolsOpen,
+    storageScope: state.storageScope,
+    zoomFactor: state.zoomFactor,
+    canZoomIn: state.canZoomIn,
+    canZoomOut: state.canZoomOut,
+    find: state.find,
     loadError: state.loadError ?? null,
   }
 }
 
+interface BrowserTileModelRegistryEntry {
+  model: BrowserTileModel
+  refCount: number
+  persistent: boolean
+}
+
+const browserTileModelRegistry = new Map<string, BrowserTileModelRegistryEntry>()
+
+const stateChangeRouter = (() => {
+  const subscribers = new Map<string, BrowserTileModel>()
+  let unsubscribe: (() => void) | null = null
+
+  function ensureGlobalListener() {
+    if (unsubscribe) return
+    unsubscribe = window.electronAPI.workbenchBrowser.onStateChange((nextState) => {
+      const model = subscribers.get(nextState.tileId)
+      if (!model) return
+      model.handleStateUpdate(nextState)
+    })
+  }
+
+  return {
+    register(id: string, model: BrowserTileModel) {
+      subscribers.set(id, model)
+      ensureGlobalListener()
+    },
+    unregister(id: string) {
+      subscribers.delete(id)
+    },
+  }
+})()
+
 export class BrowserTileModel {
   private stateValue: BrowserState
   private listeners = new Set<BrowserStateListener>()
-  private unsubscribeStateChange: (() => void) | null = null
   private initializePromise: Promise<void> | null = null
   private initialized = false
   private lastRequestedUrl = ""
-  private lastBoundsSignature: string | null = null
 
   constructor(readonly id: string) {
     this.stateValue = DEFAULT_BROWSER_STATE(id)
-    this.unsubscribeStateChange = window.electronAPI.workbenchBrowser.onStateChange((nextState) => {
-      if (nextState.tileId !== this.id) return
-      this.stateValue = toBrowserState(nextState)
-      this.emit()
-    })
+    stateChangeRouter.register(id, this)
+  }
+
+  handleStateUpdate(nextState: WorkbenchBrowserViewState): void {
+    this.stateValue = toBrowserState(nextState)
+    this.emit()
   }
 
   get state(): BrowserState {
@@ -72,6 +129,8 @@ export class BrowserTileModel {
         const ensuredState = await window.electronAPI.workbenchBrowser.ensureTile({
           tileId: this.id,
           initialUrl: options.initialUrl,
+          storageScope: options.storageScope,
+          workspaceId: options.workspaceId,
         })
 
         this.stateValue = toBrowserState(ensuredState)
@@ -87,25 +146,19 @@ export class BrowserTileModel {
   }
 
   async setVisible(visible: boolean): Promise<void> {
-    const payload = visible
-      ? { tileId: this.id, visible: true as const }
-      : { tileId: this.id, visible: false as const }
-    const signature = JSON.stringify(payload)
-    if (signature === this.lastBoundsSignature) return
-    this.lastBoundsSignature = signature
-    await window.electronAPI.workbenchBrowser.setBounds(payload)
+    await window.electronAPI.workbenchBrowser.setBounds(
+      visible
+        ? { tileId: this.id, visible: true as const }
+        : { tileId: this.id, visible: false as const },
+    )
   }
 
   async layout(bounds: BrowserHostBounds): Promise<void> {
-    const payload = {
+    await window.electronAPI.workbenchBrowser.setBounds({
       tileId: this.id,
       visible: true as const,
       bounds,
-    }
-    const signature = JSON.stringify(payload)
-    if (signature === this.lastBoundsSignature) return
-    this.lastBoundsSignature = signature
-    await window.electronAPI.workbenchBrowser.setBounds(payload)
+    })
   }
 
   async loadURL(url: string): Promise<BrowserState> {
@@ -156,6 +209,96 @@ export class BrowserTileModel {
     return this.stateValue
   }
 
+  async hardReload(): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.reload({
+      tileId: this.id,
+      hard: true,
+    })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async focus(): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.focus({ tileId: this.id })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async toggleDevTools(): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.toggleDevTools({ tileId: this.id })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async zoomIn(): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.zoomIn({ tileId: this.id })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async zoomOut(): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.zoomOut({ tileId: this.id })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async resetZoom(): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.resetZoom({ tileId: this.id })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async findInPage(text: string, options: BrowserFindInPageOptions = {}): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.findInPage({
+      tileId: this.id,
+      text,
+      ...options,
+    })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async stopFindInPage(keepSelection = false): Promise<BrowserState> {
+    const nextState = await window.electronAPI.workbenchBrowser.stopFindInPage({
+      tileId: this.id,
+      keepSelection,
+    })
+    if (nextState) {
+      this.stateValue = toBrowserState(nextState)
+      this.emit()
+    }
+    return this.stateValue
+  }
+
+  async getSelectedText(): Promise<string> {
+    return window.electronAPI.workbenchBrowser.getSelectedText({ tileId: this.id })
+  }
+
+  async openExternal(): Promise<{ success: boolean; error?: string }> {
+    return window.electronAPI.workbenchBrowser.openExternal({ tileId: this.id })
+  }
+
   async refreshState(): Promise<BrowserState> {
     const nextState = await window.electronAPI.workbenchBrowser.getState({ tileId: this.id })
     if (nextState) {
@@ -167,9 +310,7 @@ export class BrowserTileModel {
 
   async dispose(): Promise<void> {
     this.listeners.clear()
-    this.unsubscribeStateChange?.()
-    this.unsubscribeStateChange = null
-    this.lastBoundsSignature = null
+    stateChangeRouter.unregister(this.id)
     await window.electronAPI.workbenchBrowser.destroyTile({ tileId: this.id })
   }
 
@@ -178,4 +319,47 @@ export class BrowserTileModel {
       listener(this.stateValue)
     }
   }
+}
+
+export function acquireBrowserTileModel(
+  id: string,
+  options: { persistent?: boolean } = {},
+): BrowserTileModel {
+  const existing = browserTileModelRegistry.get(id)
+  if (existing) {
+    existing.refCount += 1
+    if (options.persistent) {
+      existing.persistent = true
+    }
+    return existing.model
+  }
+
+  const entry: BrowserTileModelRegistryEntry = {
+    model: new BrowserTileModel(id),
+    refCount: 1,
+    persistent: Boolean(options.persistent),
+  }
+  browserTileModelRegistry.set(id, entry)
+  return entry.model
+}
+
+export async function releaseBrowserTileModel(id: string): Promise<void> {
+  const entry = browserTileModelRegistry.get(id)
+  if (!entry) return
+
+  entry.refCount = Math.max(0, entry.refCount - 1)
+  if (entry.refCount > 0 || entry.persistent) {
+    return
+  }
+
+  browserTileModelRegistry.delete(id)
+  await entry.model.dispose()
+}
+
+export async function disposeBrowserTileModel(id: string): Promise<void> {
+  const entry = browserTileModelRegistry.get(id)
+  if (!entry) return
+
+  browserTileModelRegistry.delete(id)
+  await entry.model.dispose()
 }

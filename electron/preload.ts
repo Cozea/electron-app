@@ -42,6 +42,64 @@ function resolveAssistantWsUrl(argv: readonly string[]): string | null {
 const windowContext = resolveWindowContext(process.argv)
 const assistantWsUrl = resolveAssistantWsUrl(process.argv)
 
+type TerminalOutputPayload = { terminalId: string; data: string; runId?: string }
+
+function createTerminalOutputBridge() {
+  const wildcardSubscribers = new Set<(payload: TerminalOutputPayload) => void>()
+  const byTerminalId = new Map<string, Set<(payload: TerminalOutputPayload) => void>>()
+  let ipcAttached = false
+
+  const dispatch = (_event: Electron.IpcRendererEvent, data: TerminalOutputPayload) => {
+    byTerminalId.get(data.terminalId)?.forEach((cb) => {
+      try {
+        cb(data)
+      } catch (err) {
+        console.error('[preload] terminal:onOutput per-terminal subscriber failed', err)
+      }
+    })
+    wildcardSubscribers.forEach((cb) => {
+      try {
+        cb(data)
+      } catch (err) {
+        console.error('[preload] terminal:onOutput wildcard subscriber failed', err)
+      }
+    })
+  }
+
+  function ensureIpcListener() {
+    if (ipcAttached) return
+    ipcAttached = true
+    ipcRenderer.on('terminal:output', dispatch)
+  }
+
+  return {
+    onOutput(callback: (payload: TerminalOutputPayload) => void) {
+      ensureIpcListener()
+      wildcardSubscribers.add(callback)
+      return () => {
+        wildcardSubscribers.delete(callback)
+      }
+    },
+    onOutputForTerminal(terminalId: string, callback: (payload: TerminalOutputPayload) => void) {
+      ensureIpcListener()
+      let bucket = byTerminalId.get(terminalId)
+      if (!bucket) {
+        bucket = new Set()
+        byTerminalId.set(terminalId, bucket)
+      }
+      bucket.add(callback)
+      return () => {
+        bucket.delete(callback)
+        if (bucket.size === 0) {
+          byTerminalId.delete(terminalId)
+        }
+      }
+    },
+  }
+}
+
+const terminalOutputBridge = createTerminalOutputBridge()
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -301,7 +359,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
   workbenchBrowser: {
-    ensureTile: (options: { tileId: string; initialUrl?: string }) =>
+    ensureTile: (options: {
+      tileId: string
+      initialUrl?: string
+      storageScope?: import("../shared/browserHostTypes").BrowserStorageScope
+      workspaceId?: string
+    }) =>
       ipcRenderer.invoke('workbenchBrowser:ensureTile', options),
     destroyTile: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:destroyTile', options),
@@ -318,8 +381,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workbenchBrowser:goBack', options),
     goForward: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:goForward', options),
-    reload: (options: { tileId: string }) =>
+    reload: (options: { tileId: string; hard?: boolean }) =>
       ipcRenderer.invoke('workbenchBrowser:reload', options),
+    focus: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:focus', options),
+    toggleDevTools: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:toggleDevTools', options),
+    openExternal: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:openExternal', options),
+    zoomIn: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:zoomIn', options),
+    zoomOut: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:zoomOut', options),
+    resetZoom: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:resetZoom', options),
+    findInPage: (options: {
+      tileId: string
+      text: string
+      forward?: boolean
+      recompute?: boolean
+      matchCase?: boolean
+    }) => ipcRenderer.invoke('workbenchBrowser:findInPage', options),
+    stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) =>
+      ipcRenderer.invoke('workbenchBrowser:stopFindInPage', options),
+    getSelectedText: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:getSelectedText', options),
     onStateChange: (callback: (state: import('../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -327,6 +413,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ) => callback(state)
       ipcRenderer.on('workbenchBrowser:state', handler)
       return () => ipcRenderer.removeListener('workbenchBrowser:state', handler)
+    },
+    onNewPageRequest: (callback: (request: import('../shared/browserHostTypes').BrowserNewPageRequest) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        request: import('../shared/browserHostTypes').BrowserNewPageRequest,
+      ) => callback(request)
+      ipcRenderer.on('workbenchBrowser:new-page-request', handler)
+      return () => ipcRenderer.removeListener('workbenchBrowser:new-page-request', handler)
+    },
+    onCommand: (callback: (command: import('../shared/browserHostTypes').BrowserUiCommand) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        command: import('../shared/browserHostTypes').BrowserUiCommand,
+      ) => callback(command)
+      ipcRenderer.on('workbenchBrowser:command', handler)
+      return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
     },
   },
   preview: {
@@ -682,6 +784,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sync:getJournalState', options),
   },
   yjs: {
+    setInterestRoots: (options: { roots: string[] }) =>
+      ipcRenderer.invoke('yjs:setInterestRoots', options),
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -756,11 +860,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('terminal:list', options),
     getInfo: (options: { terminalId: string }) =>
       ipcRenderer.invoke('terminal:getInfo', options),
-    onOutput: (callback: (data: { terminalId: string; data: string; runId?: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; data: string; runId?: string }) => callback(data)
-      ipcRenderer.on('terminal:output', handler)
-      return () => ipcRenderer.removeListener('terminal:output', handler)
-    },
+    onOutput: (callback: (data: { terminalId: string; data: string; runId?: string }) => void) =>
+      terminalOutputBridge.onOutput(callback),
+    onOutputForTerminal: (
+      terminalId: string,
+      callback: (data: { terminalId: string; data: string; runId?: string }) => void,
+    ) => terminalOutputBridge.onOutputForTerminal(terminalId, callback),
     onExit: (callback: (data: { terminalId: string; exitCode: number | null; runId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; exitCode: number | null; runId?: string }) => callback(data)
       ipcRenderer.on('terminal:exit', handler)
@@ -792,6 +897,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       selectionText?: string
       linkUrl?: string
     }) => ipcRenderer.invoke('contextMenu:showNative', options),
+    showOpenInEditorPicker: (options: {
+      x: number
+      y: number
+      editors: ReadonlyArray<{ id: import('../shared/electronApiTypes').ExternalEditorId; name: string }>
+      selectedEditorId: import('../shared/electronApiTypes').ExternalEditorId | null
+    }) => ipcRenderer.invoke('contextMenu:showOpenInEditorPicker', options),
   },
   updates: {
     check: () => ipcRenderer.invoke('updates:check'),

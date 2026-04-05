@@ -8,7 +8,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
-import { StatusBar } from "@/components/StatusBar"
 import { featureFlags } from "@/lib/featureFlags"
 import {
   getSettingsSurfaceRoute,
@@ -16,14 +15,11 @@ import {
 } from "@/lib/settings/settingsRegistry"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
-import { useResolvedScope } from "@/hooks/useResolvedScope"
-import { Building2, Layers3, UserRound } from "lucide-react"
 
 interface AppShellLayoutProps {
   children: ReactNode
   header?: ReactNode
   breadcrumbAddon?: ReactNode
-  footer?: ReactNode
   breadcrumbs?: { label: string; href?: string }[]
   contentMode?: 'scroll' | 'fixed'
   headerContentInsetClassName?: string
@@ -52,7 +48,6 @@ interface AppShellLayoutContentProps {
   children: ReactNode
   header?: ReactNode
   breadcrumbAddon?: ReactNode
-  footer?: ReactNode
   breadcrumbs: { label: string; href?: string }[]
   contentMode: 'scroll' | 'fixed'
   headerContentInsetClassName?: string
@@ -71,7 +66,6 @@ function AppShellLayoutContent({
   children,
   header,
   breadcrumbAddon,
-  footer,
   breadcrumbs,
   contentMode,
   headerContentInsetClassName,
@@ -85,25 +79,12 @@ function AppShellLayoutContent({
   const windowChrome = useWindowChrome()
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
-  const { activeWorkspace, activeScopeKind } = useResolvedScope({ ignoreLocation: true })
   const isSettingsWindow = windowChrome.windowContext === 'settings'
   const isMacClient = windowChrome.isMac
   const isWindowsClient = windowChrome.isWindows
   const effectiveBreadcrumbAddon = breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
-  const activeLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? 'Projects'
-  const workspaceLabel = activeWorkspace?.organizationName ?? 'Workspace'
-  const workspaceIcon = activeScopeKind === 'personal' ? UserRound : Building2
-  const statusBar = (
-    <StatusBar
-      leftItems={[{ icon: Layers3, label: activeLabel }]}
-      rightItems={[
-        { icon: workspaceIcon, label: workspaceLabel },
-        { label: 'Cozea' },
-      ]}
-    />
-  )
 
   useEffect(() => {
     if (!isSettingsWindow) return
@@ -164,18 +145,12 @@ function AppShellLayoutContent({
           </ScrollArea>
         )}
 
-        {footer && (
-          <div className="flex-none bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            {footer}
-          </div>
-        )}
-        {statusBar}
       </div>
     )
   }
 
   return (
-    <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
       <div className="flex flex-1 overflow-hidden relative">
         <AppSidebar user={user} onLogout={onLogout} />
         <SidebarInset>
@@ -215,12 +190,6 @@ function AppShellLayoutContent({
           </div>
         </SidebarInset>
       </div>
-      {footer && (
-        <div className="flex-none bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          {footer}
-        </div>
-      )}
-      {statusBar}
     </div>
   )
 }
@@ -229,7 +198,6 @@ export function AppShellLayout({
   children,
   header,
   breadcrumbAddon,
-  footer,
   breadcrumbs = DEFAULT_BREADCRUMBS,
   contentMode = 'scroll',
   headerContentInsetClassName,
@@ -244,7 +212,6 @@ export function AppShellLayout({
         children={children}
         header={header}
         breadcrumbAddon={breadcrumbAddon}
-        footer={footer}
         breadcrumbs={breadcrumbs}
         contentMode={contentMode}
         headerContentInsetClassName={headerContentInsetClassName}

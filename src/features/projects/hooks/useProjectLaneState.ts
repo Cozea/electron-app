@@ -17,95 +17,142 @@ interface UseProjectLaneStateResult {
 }
 
 interface ScopedLaneState {
-  scopeKey: string | null
+  identityKey: string | null
   laneState: ProjectLaneState | null
   isLoading: boolean
 }
 
-function buildLaneScopeKey(
-  projectId: string | null,
-  projectPath: string | null,
-  collabBranch: string | null,
-): string | null {
+/** Stable across local path resolution — avoids wiping lanes when `projectPath` goes "" → real path. */
+function buildLaneIdentityKey(projectId: string | null, collabBranch: string | null): string | null {
   if (!projectId) return null
-  return [projectId, projectPath ?? "", collabBranch ?? ""].join("::")
+  return `${projectId}::${collabBranch ?? ""}`
 }
+
+const laneStateCache = new Map<string, ProjectLaneState>()
 
 export function useProjectLaneState({
   projectId,
   projectPath,
   collabBranch,
 }: UseProjectLaneStateArgs): UseProjectLaneStateResult {
-  const scopeKey = useMemo(
-    () => buildLaneScopeKey(projectId, projectPath, collabBranch),
-    [collabBranch, projectId, projectPath],
+  const identityKey = useMemo(
+    () => buildLaneIdentityKey(projectId, collabBranch),
+    [collabBranch, projectId],
   )
-  const [scopedLaneState, setScopedLaneState] = useState<ScopedLaneState>({
-    scopeKey,
-    laneState: null,
+
+  const [scoped, setScoped] = useState<ScopedLaneState>(() => ({
+    identityKey,
+    laneState: identityKey ? laneStateCache.get(identityKey) ?? null : null,
     isLoading: false,
-  })
+  }))
+
   const refreshRequestIdRef = useRef(0)
+
+  useEffect(() => {
+    setScoped((current) => {
+      if (current.identityKey === identityKey) return current
+      const cached = identityKey ? laneStateCache.get(identityKey) ?? null : null
+      return {
+        identityKey,
+        laneState: cached,
+        isLoading: false,
+      }
+    })
+  }, [identityKey])
 
   const refreshLaneState = useCallback(async () => {
     const requestId = refreshRequestIdRef.current + 1
     refreshRequestIdRef.current = requestId
 
-    if (!projectId || !scopeKey) {
-      setScopedLaneState({
-        scopeKey,
+    if (!projectId || !identityKey) {
+      setScoped({
+        identityKey,
         laneState: null,
         isLoading: false,
       })
       return
     }
 
-    setScopedLaneState((current) => ({
-      scopeKey,
-      laneState: current.scopeKey === scopeKey ? current.laneState : null,
-      isLoading: true,
-    }))
+    setScoped((current) => {
+      if (current.identityKey === identityKey) {
+        return {
+          identityKey,
+          laneState: current.laneState,
+          isLoading: true,
+        }
+      }
+      return {
+        identityKey,
+        laneState: laneStateCache.get(identityKey) ?? null,
+        isLoading: true,
+      }
+    })
 
     try {
+      let nextLaneState: ProjectLaneState
+
       if (projectPath && collabBranch) {
-        const ensuredLaneState = await window.electronAPI.project.ensureCollabLane({
+        nextLaneState = await window.electronAPI.project.ensureCollabLane({
           projectId,
           projectPath,
           branch: collabBranch,
         })
-        if (refreshRequestIdRef.current !== requestId) return
-        setScopedLaneState({
-          scopeKey,
-          laneState: ensuredLaneState,
-          isLoading: false,
-        })
-        return
+      } else {
+        const loaded = await window.electronAPI.project.getLaneState({ projectId })
+        if (loaded == null) {
+          if (refreshRequestIdRef.current !== requestId) return
+          setScoped((current) => ({
+            identityKey,
+            laneState:
+              current.identityKey === identityKey && current.laneState
+                ? current.laneState
+                : laneStateCache.get(identityKey) ?? null,
+            isLoading: false,
+          }))
+          return
+        }
+        nextLaneState = loaded
       }
 
-      const existingLaneState = await window.electronAPI.project.getLaneState({ projectId })
       if (refreshRequestIdRef.current !== requestId) return
-      setScopedLaneState({
-        scopeKey,
-        laneState: existingLaneState,
+
+      laneStateCache.set(identityKey, nextLaneState)
+      setScoped({
+        identityKey,
+        laneState: nextLaneState,
         isLoading: false,
       })
     } catch (error) {
       if (refreshRequestIdRef.current !== requestId) return
       console.error("[ProjectLane] Failed to load lane state", error)
-      setScopedLaneState({
-        scopeKey,
-        laneState: null,
+      setScoped((current) => ({
+        identityKey,
+        laneState:
+          current.identityKey === identityKey && current.laneState
+            ? current.laneState
+            : laneStateCache.get(identityKey) ?? null,
         isLoading: false,
-      })
+      }))
     }
-  }, [collabBranch, projectId, projectPath, scopeKey])
+  }, [collabBranch, identityKey, projectId, projectPath])
 
   useEffect(() => {
     void refreshLaneState()
   }, [refreshLaneState])
 
-  const laneState = scopedLaneState.scopeKey === scopeKey ? scopedLaneState.laneState : null
-  const isLoading = scopedLaneState.scopeKey === scopeKey ? scopedLaneState.isLoading : Boolean(scopeKey)
+  const laneState = useMemo(() => {
+    if (scoped.identityKey === identityKey) {
+      return scoped.laneState
+    }
+    return identityKey ? laneStateCache.get(identityKey) ?? null : null
+  }, [identityKey, scoped.identityKey, scoped.laneState])
+
+  const isLoading = useMemo(() => {
+    if (scoped.identityKey === identityKey) {
+      return scoped.isLoading
+    }
+    return Boolean(identityKey)
+  }, [identityKey, scoped.identityKey, scoped.isLoading])
 
   const activeLane = useMemo(() => {
     if (!laneState) return null

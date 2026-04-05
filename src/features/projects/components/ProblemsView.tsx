@@ -1,5 +1,5 @@
  
-import { useMemo, useState, useCallback, createElement } from "react"
+import { useMemo, useState, useCallback, createElement, memo } from "react"
 import {
     AlertTriangle,
     Info,
@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useProblemsStore, selectProjectProblems, type ProblemItem } from "@/stores/useProblemsStore"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Virtuoso } from "react-virtuoso"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 
@@ -185,12 +186,12 @@ export function ProblemsView({
 
     return (
         <div className="h-full min-w-0 flex flex-col bg-content-surface">
-            <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:!w-full [&>[data-slot=scroll-area-viewport]>div]:!min-w-0">
-                {filteredErrors.length === 0 ? (
-                    <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                        No problems detected
-                    </div>
-                ) : viewMode === "tree" ? (
+            {filteredErrors.length === 0 ? (
+                <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+                    No problems detected
+                </div>
+            ) : viewMode === "tree" ? (
+                <ScrollArea className="min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:!w-full [&>[data-slot=scroll-area-viewport]>div]:!min-w-0">
                     <div className="w-full min-w-0 overflow-hidden p-2 space-y-2">
                         {groupedErrors.map((group) => {
                             const isCollapsed = collapsedGroups.has(group.id)
@@ -238,21 +239,25 @@ export function ProblemsView({
                             )
                         })}
                     </div>
-                ) : (
-                    <div className="w-full min-w-0 overflow-hidden p-2 space-y-1">
-                        {sortedErrors.map((error) => (
+                </ScrollArea>
+            ) : (
+                <div className="min-h-0 flex-1 min-w-0 overflow-hidden p-2">
+                    <Virtuoso
+                        style={{ height: "100%", minWidth: 0 }}
+                        data={sortedErrors}
+                        computeItemKey={(_index, error) => error.id}
+                        itemContent={(_index, error) => (
                             <ProblemRow
-                                key={error.id}
                                 error={error}
                                 onOpenFile={handleOpenFile}
                                 onAskAI={handleAskAI}
                                 onDismiss={handleDismiss}
                                 projectPath={projectPath}
                             />
-                        ))}
-                    </div>
-                )}
-            </ScrollArea>
+                        )}
+                    />
+                </div>
+            )}
         </div>
     )
 }
@@ -268,7 +273,7 @@ interface ProblemRowProps {
     showSource?: boolean
 }
 
-function ProblemRow({
+const ProblemRow = memo(function ProblemRow({
     error,
     onOpenFile,
     onAskAI,
@@ -353,4 +358,4 @@ function ProblemRow({
             </div>
         </div>
     )
-}
+})

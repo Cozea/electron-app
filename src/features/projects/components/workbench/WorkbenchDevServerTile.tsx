@@ -1,12 +1,16 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
+import { useQuery } from "convex/react"
 import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
   ExternalBrowserId,
 } from "@shared/electronApiTypes"
+import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 import { AppWindow, ChevronDown, Eye, Play, RefreshCcw, Square, SquareTerminal } from "lucide-react"
 
+import { api } from "../../../../../convex/_generated/api"
+import type { Id } from "../../../../../convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -22,8 +26,10 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
+import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import {
   getEffectiveExternalBrowserId,
   getExternalBrowserIcon,
@@ -35,12 +41,51 @@ import {
   type PreviewDestination,
   resolvePreferredExternalBrowserId,
 } from "@/features/projects/lib/externalBrowserPreference"
-import { useDevServerManager } from "@/hooks/useDevServerManager"
+import { useDevServerManager, type DevServerStatus } from "@/hooks/useDevServerManager"
+import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
+import type { PageRoute, ServerStatus } from "@/stores/useProjectPagesStore"
 import type { WorkbenchDevServerTile } from "@/stores/useProjectWorkbenchStore"
+import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
+
+function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
+  switch (status) {
+    case "idle":
+    case "stopped":
+      return "stopped"
+    case "starting":
+      return "starting"
+    case "ready":
+      return "running"
+    case "unhealthy":
+      return "unhealthy"
+    case "error":
+      return "error"
+    default:
+      return "stopped"
+  }
+}
+
+/** Same gate as legacy ProjectPagesPage: native preview for Expo / React Native dev servers. */
+function useNativeMobilePreviewMode(framework: string | undefined): "ios" | "android" | null {
+  if (framework === "expo" || framework === "react-native") {
+    return "ios"
+  }
+  // Future: e.g. `framework === 'react-native'` + platform metadata → 'android'
+  return null
+}
+
+const NATIVE_PREVIEW_ROUTE: PageRoute = {
+  name: "App",
+  path: "/",
+  file: "",
+  type: "static",
+  status: "active",
+}
 
 interface WorkbenchDevServerTileProps {
   tile: WorkbenchDevServerTile
+  projectId: string
   projectPath: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
@@ -49,12 +94,57 @@ interface WorkbenchDevServerTileProps {
 
 export function WorkbenchDevServerTile({
   tile,
+  projectId,
   projectPath,
   panelApi,
   containerApi,
   onLinkedBrowserReady,
 }: WorkbenchDevServerTileProps) {
+  const { convexUserId } = useAuth()
+  const projectDoc = useQuery(
+    api.projects.getAccessibleById,
+    convexUserId ? { projectId: projectId as Id<"projects">, userId: convexUserId } : "skip",
+  )
+  const storedFramework = projectDoc?.frameworkInfo?.framework as Framework | null | undefined
+  const storedDevCommand = projectDoc?.frameworkInfo?.devCommand ?? null
+  const storedDevPort = projectDoc?.frameworkInfo?.devPort ?? null
+  const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
+    storedFramework && storedFramework !== "unknown" ? storedFramework : null,
+  )
+
+  useEffect(() => {
+    if (storedFramework && storedFramework !== "unknown") {
+      setResolvedFramework(storedFramework)
+      return
+    }
+    if (!projectPath) {
+      setResolvedFramework(null)
+      return
+    }
+
+    let cancelled = false
+
+    void getFrameworkInfo(projectPath, storedFramework ?? null, storedDevCommand, storedDevPort)
+      .then((frameworkInfo) => {
+        if (cancelled) return
+        setResolvedFramework(frameworkInfo.framework)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setResolvedFramework(storedFramework && storedFramework !== "unknown" ? storedFramework : null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectPath, storedDevCommand, storedDevPort, storedFramework])
+
+  const framework = resolvedFramework ?? storedFramework ?? undefined
+  const nativePreviewPlatform = useNativeMobilePreviewMode(framework)
+  const isIosNativePreview = nativePreviewPlatform === "ios"
+
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview")
+  const [previewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop")
   const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
     { id: "system", name: "System Default" },
   ])
@@ -64,14 +154,31 @@ export function WorkbenchDevServerTile({
   const devServer = useDevServerManager({
     projectPath,
     autoStart: false,
+    storedDevCommand,
+    storedDevPort,
+    previewMode: isIosNativePreview ? "native" : "web",
+    nativePlatform: nativePreviewPlatform,
   })
   const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
   const previewTileId = useMemo(() => `${tile.id}::preview`, [tile.id])
+  const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
+  const nativePreview = useIosNativePreview({
+    enabled: isIosNativePreview,
+    projectPath,
+    serverStatus: serverStatusForNative,
+  })
+  const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
+  const previewServerActive =
+    devServer.status === "ready" || devServer.status === "unhealthy" || devServer.status === "starting"
+
   const showEmbeddedPreview = viewMode === "preview" && previewDestination === "cozea"
+  const showWebEmbeddedPreview = showEmbeddedPreview && !isIosNativePreview
   const { hostRef, state: previewState, boundsReady } = useWorkbenchBrowserView({
     tileId: previewTileId,
-    url: showEmbeddedPreview ? previewUrl : "",
-    visible: showEmbeddedPreview,
+    url: showWebEmbeddedPreview ? previewUrl : "",
+    visible: showWebEmbeddedPreview,
+    storageScope: "ephemeral",
+    persistModel: false,
   })
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
@@ -119,9 +226,9 @@ export function WorkbenchDevServerTile({
   }, [previewDestination])
 
   useEffect(() => {
-    if (!previewUrl || !tile.linkedBrowserTileId) return
+    if (!previewUrl || !tile.linkedBrowserTileId || isIosNativePreview) return
     onLinkedBrowserReady(previewUrl)
-  }, [onLinkedBrowserReady, previewUrl, tile.linkedBrowserTileId])
+  }, [isIosNativePreview, onLinkedBrowserReady, previewUrl, tile.linkedBrowserTileId])
 
   const visibleBrowsers = useMemo(() => {
     return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
@@ -144,18 +251,20 @@ export function WorkbenchDevServerTile({
     ? Eye
     : getExternalBrowserIcon(effectiveBrowserId)
 
+  const externalPreviewUrl = isIosNativePreview ? nativeStreamUrl ?? previewUrl : previewUrl
+
   const openPreviewExternally = useCallback(
     async (force = false) => {
-      if (!previewUrl) return
+      if (!externalPreviewUrl) return
 
-      const nextKey = `${effectiveBrowserId}:${previewUrl}`
+      const nextKey = `${effectiveBrowserId}:${externalPreviewUrl}`
       if (!force && lastExternalPreviewKeyRef.current === nextKey) {
         return
       }
 
       lastExternalPreviewKeyRef.current = nextKey
       const result = await window.electronAPI.shell.openInBrowser({
-        url: previewUrl,
+        url: externalPreviewUrl,
         browserId: effectiveBrowserId,
       })
 
@@ -164,11 +273,58 @@ export function WorkbenchDevServerTile({
         console.error("[WorkbenchDevServerTile] Failed to open preview in browser", result.error)
       }
     },
-    [effectiveBrowserId, previewUrl]
+    [effectiveBrowserId, externalPreviewUrl]
+  )
+
+  const handleNativeSendTouches = useCallback(
+    async (request: {
+      type: "start" | "move" | "end"
+      touches: Array<{ xRatio: number; yRatio: number }>
+      rotation?: NativePreviewRotation
+    }) => {
+      if (!projectPath || !nativePreview.selectedSimulator) return
+      await window.electronAPI.nativePreview.sendTouches({
+        projectPath,
+        deviceId: nativePreview.selectedSimulator.udid,
+        platform: "ios",
+        ...request,
+      })
+    },
+    [nativePreview.selectedSimulator, projectPath],
+  )
+
+  const handleNativeSendWheel = useCallback(
+    async (request: {
+      point: { xRatio: number; yRatio: number }
+      deltaX: number
+      deltaY: number
+    }) => {
+      if (!projectPath || !nativePreview.selectedSimulator) return
+      await window.electronAPI.nativePreview.sendWheel({
+        projectPath,
+        deviceId: nativePreview.selectedSimulator.udid,
+        platform: "ios",
+        ...request,
+      })
+    },
+    [nativePreview.selectedSimulator, projectPath],
+  )
+
+  const handleNativeSendKey = useCallback(
+    async (request: { direction: "down" | "up"; keyCode: number }) => {
+      if (!projectPath || !nativePreview.selectedSimulator) return
+      await window.electronAPI.nativePreview.sendKey({
+        projectPath,
+        deviceId: nativePreview.selectedSimulator.udid,
+        platform: "ios",
+        ...request,
+      })
+    },
+    [nativePreview.selectedSimulator, projectPath],
   )
 
   useEffect(() => {
-    if (!previewUrl) {
+    if (!externalPreviewUrl) {
       lastExternalPreviewKeyRef.current = null
       return
     }
@@ -178,7 +334,7 @@ export function WorkbenchDevServerTile({
     }
 
     void openPreviewExternally()
-  }, [openPreviewExternally, previewDestination, previewUrl, viewMode])
+  }, [externalPreviewUrl, openPreviewExternally, previewDestination, viewMode])
 
   const handlePreviewDestinationChange = useCallback((value: string) => {
     if (value === "cozea") {
@@ -190,9 +346,16 @@ export function WorkbenchDevServerTile({
     setPreviewDestination("external")
   }, [])
 
+  const nativePreviewLabel =
+    nativePreviewPlatform === "ios"
+      ? "Native (iOS)"
+      : nativePreviewPlatform === "android"
+        ? "Native (Android)"
+        : null
+
   const chromeControls = (
-    <div className="flex min-w-0 items-center">
-      <div className="inline-flex h-8 items-center">
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="inline-flex h-8 min-w-0 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -271,6 +434,14 @@ export function WorkbenchDevServerTile({
           <SquareTerminal className="h-4 w-4" />
         </button>
       </div>
+      {nativePreviewLabel ? (
+        <span
+          className="inline-flex max-w-[9rem] shrink truncate rounded-md border border-border/60 bg-muted/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+          title="Preview uses the device simulator stream instead of the in-app browser."
+        >
+          {nativePreviewLabel}
+        </span>
+      ) : null}
     </div>
   )
 
@@ -283,13 +454,17 @@ export function WorkbenchDevServerTile({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            disabled={!previewUrl}
+            disabled={!previewUrl && !isIosNativePreview}
             onClick={() => {
-              if (!previewUrl) return
               if (previewDestination === "external") {
                 void openPreviewExternally(true)
                 return
               }
+              if (isIosNativePreview) {
+                void nativePreview.refreshSimulators()
+                return
+              }
+              if (!previewUrl) return
               void window.electronAPI.workbenchBrowser.reload({ tileId: previewTileId })
             }}
             aria-label={previewDestination === "external" ? `Open preview in ${effectiveSelectedBrowser.name} again` : "Reload preview"}
@@ -355,12 +530,12 @@ export function WorkbenchDevServerTile({
             {createElement(getExternalBrowserIcon(effectiveBrowserId), { className: "h-7 w-7" })}
           </EmptyMedia>
           <EmptyTitle className="text-base font-medium">
-            {!previewUrl
+            {!externalPreviewUrl
               ? "No preview yet"
               : `Preview opens in ${effectiveSelectedBrowser.name}`}
           </EmptyTitle>
           <EmptyDescription>
-            {!previewUrl
+            {!externalPreviewUrl
               ? `Start the dev server to open the local preview in ${effectiveSelectedBrowser.name}.`
               : `Cozea is sending this preview to ${effectiveSelectedBrowser.name}. Use refresh to reopen it, or switch back to Cozea to embed it here.`}
           </EmptyDescription>
@@ -369,8 +544,8 @@ export function WorkbenchDevServerTile({
     </div>
   )
 
-  const previewBody = (
-    <div className="relative h-full min-h-0 overflow-hidden bg-background p-px">
+  const webEmbeddedPreviewBody = (
+    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface p-px">
       {!previewUrl ? (
         <div className="flex h-full w-full items-center justify-center p-6">
           <Empty className="w-full max-w-md py-8">
@@ -391,7 +566,7 @@ export function WorkbenchDevServerTile({
         </div>
       ) : null}
       {previewUrl && previewState.loadError ? (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/92 p-6 text-center">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-content-surface/92 p-6 text-center">
           <div className="max-w-md space-y-2">
             <div className="text-sm font-medium text-foreground">
               This preview could not be loaded.
@@ -404,7 +579,7 @@ export function WorkbenchDevServerTile({
         <div
           ref={hostRef}
           className={cn(
-            "absolute inset-px overflow-hidden bg-background",
+            "absolute inset-px overflow-hidden bg-content-surface",
             !boundsReady ? "opacity-70" : "opacity-100",
           )}
         />
@@ -412,13 +587,39 @@ export function WorkbenchDevServerTile({
     </div>
   )
 
+  const nativeIosPreviewBody = (
+    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface p-px">
+      <IosSimulatorViewport
+        device={previewDevice}
+        route={NATIVE_PREVIEW_ROUTE}
+        serverRunning={previewServerActive && Boolean(nativePreview.selectedSimulator)}
+        sessionState={nativePreview.sessionState}
+        simulators={nativePreview.iosSimulators}
+        selectedSimulatorId={nativePreview.selectedIosSimulatorId}
+        simulatorsLoading={nativePreview.simulatorsLoading}
+        simulatorsError={nativePreview.simulatorsError}
+        sessionLoading={nativePreview.sessionLoading}
+        sessionError={nativePreview.sessionError}
+        taskOverlay={null}
+        onSelectSimulator={nativePreview.setSelectedIosSimulatorId}
+        onRefreshSimulators={nativePreview.refreshSimulators}
+        onOpenExternally={() => void openPreviewExternally(true)}
+        onSendTouches={handleNativeSendTouches}
+        onSendWheel={handleNativeSendWheel}
+        onSendKey={handleNativeSendKey}
+      />
+    </div>
+  )
+
+  const cozeaEmbeddedPreviewBody = isIosNativePreview ? nativeIosPreviewBody : webEmbeddedPreviewBody
+
   const body = !projectPath ? (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
       Open or relink a local project folder to manage a dev server here.
     </div>
   ) : viewMode === "preview"
     ? previewDestination === "cozea"
-      ? previewBody
+      ? cozeaEmbeddedPreviewBody
       : externalPreviewBody
     : logsBody
 
@@ -430,7 +631,7 @@ export function WorkbenchDevServerTile({
       controls={chromeControls}
       actions={chromeActions}
     >
-      <div className="h-full min-h-0 bg-background">{body}</div>
+      <div className="h-full min-h-0 bg-content-surface">{body}</div>
     </WorkbenchTileChrome>
   )
 }

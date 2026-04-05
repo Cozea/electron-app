@@ -59,7 +59,13 @@ export function WorkbenchEdgeInsertion({
         return (
           <div
             key={edge}
-            className={cn("absolute z-20", getZoneClasses(edge))}
+            className={cn(
+              "absolute z-20",
+              getZoneClasses(edge),
+              // When disarmed these strips must not steal clicks from controls
+              // (tabs, close buttons, etc.) along the window edge.
+              !armed && "pointer-events-none",
+            )}
             onPointerEnter={() => {
               if (!armed) return
               setHoveredEdge(edge)

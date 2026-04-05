@@ -1,32 +1,15 @@
 import { useConvex } from "convex/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import type { MouseEvent } from "react"
 import type { Id } from "../../../../../convex/_generated/dataModel"
-import type { GitBranch as NativeGitBranch, GitStatusResult } from "@cozea/assistant-contracts"
-import {
-  ArrowDownToLine,
-  ArrowUpToLine,
-  Check,
-  ChevronDown,
-  ExternalLink,
-  GitBranch,
-  GitFork,
-  GitPullRequest,
-  Loader2,
-  Plus,
-  RefreshCcw,
-  User,
-  Users,
-} from "lucide-react"
+import type {
+  ContextMenuItem,
+  GitBranch as NativeGitBranch,
+  GitStatusResult,
+} from "@cozea/assistant-contracts"
+import { ChevronDown, Loader2, User, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { readNativeApi } from "@/lib/nativeApi"
 import {
   dedupeRemoteBranchesWithLocalMatches,
@@ -59,6 +42,228 @@ type LaneAction =
   | "updateFromCollab"
   | "mergeIntoCollab"
   | "openPullRequest"
+
+const WB_BRANCH_MENU = {
+  switchCollab: "workbench-branch:switch-collab",
+  newPersonalLane: "workbench-branch:new-personal-lane",
+  pull: "workbench-branch:pull",
+  push: "workbench-branch:push",
+  updateFromCollab: "workbench-branch:update-from-collab",
+  mergeIntoCollab: "workbench-branch:merge-into-collab",
+  openPr: "workbench-branch:open-pr",
+  lane: (laneId: string) => `workbench-branch:lane#${encodeURIComponent(laneId)}`,
+  branch: (index: number) => `workbench-branch:branch#${index}`,
+} as const
+
+interface GitToolbarSnapshot {
+  isRepo: boolean
+  branches: NativeGitBranch[]
+  currentGitBranch: string | null
+  gitStatus: GitStatusResult | null
+  loadError: string | null
+}
+
+function parseWorkbenchBranchMenuLaneId(action: string): string | null {
+  const prefix = "workbench-branch:lane#"
+  if (!action.startsWith(prefix)) return null
+  try {
+    return decodeURIComponent(action.slice(prefix.length))
+  } catch {
+    return null
+  }
+}
+
+function parseWorkbenchBranchMenuBranchIndex(action: string): number | null {
+  const prefix = "workbench-branch:branch#"
+  if (!action.startsWith(prefix)) return null
+  const index = Number.parseInt(action.slice(prefix.length), 10)
+  return Number.isFinite(index) ? index : null
+}
+
+async function showWorkbenchBranchNativeMenu(
+  position: { x: number; y: number },
+  items: readonly ContextMenuItem<string>[],
+): Promise<string | null> {
+  if (items.length === 0) return null
+
+  if (window.desktopBridge?.showContextMenu) {
+    return window.desktopBridge.showContextMenu(items, position)
+  }
+  if (window.nativeApi?.contextMenu?.show) {
+    return window.nativeApi.contextMenu.show(items, position)
+  }
+  return null
+}
+
+function buildWorkbenchBranchMenuItems(input: {
+  snapshot: GitToolbarSnapshot
+  activeLane: ProjectLaneDescriptor | null
+  collabBranch: string
+  projectPath: string | null
+  rememberedPersonalLanes: ProjectLaneDescriptor[]
+  laneActionsLocked: boolean
+  newLaneDisabled: boolean
+  /** Shown when git snapshot has no loadError (e.g. prior lane merge failure). */
+  priorPanelError?: string | null
+}): ContextMenuItem<string>[] {
+  const {
+    snapshot,
+    activeLane,
+    collabBranch,
+    projectPath,
+    rememberedPersonalLanes,
+    laneActionsLocked,
+    newLaneDisabled,
+    priorPanelError,
+  } = input
+
+  const footerMessage = snapshot.loadError ?? priorPanelError ?? null
+
+  const displayedBranch = activeLane?.branch ?? snapshot.currentGitBranch ?? collabBranch
+  const chromeLabel = displayedBranch || "Select branch"
+  const actionLabel =
+    activeLane?.isCollab === false && chromeLabel !== collabBranch
+      ? `Target ${collabBranch}`
+      : "Collab lane"
+  const statusSummary = getStatusSummary(snapshot.gitStatus)
+  const laneKind = activeLane?.isCollab ? "Collab Lane" : "Personal Lane"
+
+  const items: ContextMenuItem<string>[] = [
+    {
+      id: "workbench-branch:header-kind",
+      label: laneKind,
+      enabled: false,
+    },
+    {
+      id: "workbench-branch:header-status",
+      label: actionLabel,
+      sublabel: statusSummary ?? undefined,
+      enabled: false,
+    },
+    { id: "workbench-branch:sep-after-header", type: "separator" },
+  ]
+
+  if (!snapshot.isRepo) {
+    items.push({
+      id: "workbench-branch:no-repo",
+      label: projectPath ? "No git repository detected." : "Local project path is not ready yet.",
+      enabled: false,
+    })
+    if (footerMessage) {
+      items.push({ id: "workbench-branch:sep-err", type: "separator" })
+      items.push({
+        id: "workbench-branch:last-error",
+        label: footerMessage,
+        enabled: false,
+      })
+    }
+    return items
+  }
+
+  if (!activeLane?.isCollab) {
+    items.push({
+      id: WB_BRANCH_MENU.switchCollab,
+      label: "Switch To Collab Lane",
+    })
+  }
+
+  for (const lane of rememberedPersonalLanes) {
+    items.push({
+      id: WB_BRANCH_MENU.lane(lane.id),
+      label: lane.branch,
+    })
+  }
+
+  items.push({
+    id: WB_BRANCH_MENU.newPersonalLane,
+    label: "New Personal Lane",
+    enabled: !newLaneDisabled,
+  })
+
+  const showLaneActionSeparator =
+    rememberedPersonalLanes.length > 0 || !activeLane?.isCollab
+  if (showLaneActionSeparator) {
+    items.push({ id: "workbench-branch:sep-lane-actions", type: "separator" })
+  }
+
+  items.push(
+    {
+      id: WB_BRANCH_MENU.pull,
+      label: "Pull Active Lane",
+      enabled: !laneActionsLocked,
+    },
+    {
+      id: WB_BRANCH_MENU.push,
+      label: "Push Active Lane",
+      enabled: !laneActionsLocked,
+    },
+  )
+
+  if (!activeLane?.isCollab && chromeLabel !== collabBranch) {
+    items.push({
+      id: WB_BRANCH_MENU.updateFromCollab,
+      label: "Merge Collab Into Lane",
+      enabled: !laneActionsLocked,
+    })
+  }
+
+  if (!activeLane?.isCollab) {
+    items.push({
+      id: WB_BRANCH_MENU.mergeIntoCollab,
+      label: "Merge Lane Into Collab",
+      enabled: !laneActionsLocked,
+    })
+    items.push({
+      id: WB_BRANCH_MENU.openPr,
+      label: snapshot.gitStatus?.pr?.url ? "Open Current PR" : "Start Pull Request",
+      enabled: !laneActionsLocked,
+    })
+  }
+
+  items.push({ id: "workbench-branch:sep-branches", type: "separator" })
+  items.push({
+    id: "workbench-branch:branches-label",
+    label: "Branches",
+    enabled: false,
+  })
+
+  if (snapshot.branches.length === 0) {
+    items.push({
+      id: "workbench-branch:no-branches",
+      label: "No branches available.",
+      enabled: false,
+    })
+  } else {
+    for (let i = 0; i < snapshot.branches.length; i += 1) {
+      const branch = snapshot.branches[i]!
+      const nextBranchName = branch.isRemote
+        ? deriveLocalBranchNameFromRemoteRef(branch.name)
+        : branch.name
+      const isActive = nextBranchName === chromeLabel
+      const isCollabTarget = nextBranchName === collabBranch
+      const worktreeExtra =
+        branch.worktreePath && branch.worktreePath !== projectPath ? " (worktree)" : ""
+      const collabExtra = isCollabTarget ? " · collab" : ""
+      items.push({
+        id: WB_BRANCH_MENU.branch(i),
+        type: "radio",
+        label: `${branch.name}${collabExtra}${worktreeExtra}`,
+        checked: isActive,
+      })
+    }
+  }
+
+  if (footerMessage) {
+    items.push({ id: "workbench-branch:sep-footer-err", type: "separator" })
+    items.push({
+      id: "workbench-branch:footer-error",
+      label: footerMessage,
+      enabled: false,
+    })
+  }
+
+  return items
+}
 
 function buildLaneId(branch: string): string {
   const sanitized = branch
@@ -289,12 +494,10 @@ export function WorkbenchHeaderBranchControl({
   triggerClassName,
 }: WorkbenchHeaderBranchControlProps) {
   const convex = useConvex()
-  const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
   const [activeAction, setActiveAction] = useState<LaneAction | null>(null)
   const [lastError, setLastError] = useState<string | null>(null)
-  const [isRepo, setIsRepo] = useState(false)
   const [branches, setBranches] = useState<NativeGitBranch[]>([])
   const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(null)
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
@@ -309,17 +512,16 @@ export function WorkbenchHeaderBranchControl({
     [activeLane?.id, laneState?.lanes],
   )
 
-  const refreshGitState = useCallback(async () => {
+  const loadGitToolbarSnapshot = useCallback(async (): Promise<GitToolbarSnapshot | null> => {
     if (!branchCwd) {
-      setIsRepo(false)
-      setBranches([])
-      setCurrentGitBranch(null)
-      setGitStatus(null)
-      return
+      return {
+        isRepo: false,
+        branches: [],
+        currentGitBranch: null,
+        gitStatus: null,
+        loadError: null,
+      }
     }
-
-    setIsLoading(true)
-    setLastError(null)
 
     try {
       const [branchResult, statusResult] = await Promise.all([
@@ -328,42 +530,67 @@ export function WorkbenchHeaderBranchControl({
       ])
 
       const nextIsRepo = Boolean(branchResult.isRepo || statusResult.isRepo)
-      setIsRepo(nextIsRepo)
-      setBranches([...dedupeRemoteBranchesWithLocalMatches(branchResult.branches)])
-      setGitStatus(toToolbarGitStatus(statusResult))
-      setCurrentGitBranch(
-        statusResult.currentBranch ??
+      let loadError: string | null = null
+      if (branchResult.error) {
+        loadError = branchResult.error
+      } else if (statusResult.success === false && nextIsRepo && statusResult.error) {
+        loadError = statusResult.error
+      }
+
+      return {
+        isRepo: nextIsRepo,
+        branches: [...dedupeRemoteBranchesWithLocalMatches(branchResult.branches)],
+        currentGitBranch:
+          statusResult.currentBranch ??
           branchResult.branches.find((branch) => branch.current)?.name ??
           null,
-      )
-
-      if (branchResult.error) {
-        setLastError(branchResult.error)
-      } else if (statusResult.success === false && nextIsRepo && statusResult.error) {
-        setLastError(statusResult.error)
+        gitStatus: toToolbarGitStatus(statusResult),
+        loadError,
       }
     } catch (error) {
       console.error("[Workbench] Failed to load branch toolbar state", error)
-      setIsRepo(false)
+      return {
+        isRepo: false,
+        branches: [],
+        currentGitBranch: null,
+        gitStatus: null,
+        loadError:
+          error instanceof Error ? error.message : "Failed to inspect the local git repository.",
+      }
+    }
+  }, [branchCwd])
+
+  const applyGitToolbarSnapshot = useCallback((snapshot: GitToolbarSnapshot) => {
+    setBranches(snapshot.branches)
+    setCurrentGitBranch(snapshot.currentGitBranch)
+    setGitStatus(snapshot.gitStatus)
+    setLastError(snapshot.loadError)
+  }, [])
+
+  const refreshGitState = useCallback(async () => {
+    if (!branchCwd) {
       setBranches([])
       setCurrentGitBranch(null)
       setGitStatus(null)
-      setLastError(
-        error instanceof Error ? error.message : "Failed to inspect the local git repository.",
-      )
+      setLastError(null)
+      return
+    }
+
+    setIsLoading(true)
+    setLastError(null)
+
+    try {
+      const snapshot = await loadGitToolbarSnapshot()
+      if (!snapshot) return
+      applyGitToolbarSnapshot(snapshot)
     } finally {
       setIsLoading(false)
     }
-  }, [branchCwd])
+  }, [applyGitToolbarSnapshot, branchCwd, loadGitToolbarSnapshot])
 
   useEffect(() => {
     void refreshGitState()
   }, [refreshGitState])
-
-  useEffect(() => {
-    if (!isOpen) return
-    void refreshGitState()
-  }, [isOpen, refreshGitState])
 
   const resolveLaneContext = useCallback(async (): Promise<ResolvedProjectLaneGitContext> => {
     if (!projectId || !projectPath) {
@@ -466,7 +693,6 @@ export function WorkbenchHeaderBranchControl({
         console.error("[Workbench] Failed to switch branch lane", error)
       } finally {
         setIsSwitching(false)
-        setIsOpen(false)
       }
     },
     [
@@ -550,7 +776,6 @@ export function WorkbenchHeaderBranchControl({
 
       await refreshGitState()
       await onLaneStateChange?.()
-      setIsOpen(false)
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to create personal lane"
@@ -707,226 +932,147 @@ export function WorkbenchHeaderBranchControl({
     [gitStatus?.pr?.url, onLaneStateChange, projectId, refreshGitState, resolveLaneContext],
   )
 
+  const handleOpenNativeBranchMenu = useCallback(
+    async (event: MouseEvent<HTMLButtonElement>) => {
+      if (!branchCwd) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      // Capture anchor before any await — React clears `currentTarget` after async gaps.
+      const rect = event.currentTarget.getBoundingClientRect()
+      const menuPosition = {
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.bottom + 4),
+      }
+
+      const priorPanelError = lastError
+      setLastError(null)
+      const snapshot = await loadGitToolbarSnapshot()
+
+      if (!snapshot) return
+      applyGitToolbarSnapshot(snapshot)
+
+      const menuItems = buildWorkbenchBranchMenuItems({
+        snapshot,
+        activeLane,
+        collabBranch,
+        projectPath,
+        rememberedPersonalLanes,
+        laneActionsLocked: activeAction !== null,
+        newLaneDisabled: isSwitching || activeAction !== null,
+        priorPanelError,
+      })
+
+      const action = await showWorkbenchBranchNativeMenu(menuPosition, menuItems)
+      if (!action || !projectId) return
+
+      const laneIdFromMenu = parseWorkbenchBranchMenuLaneId(action)
+      if (laneIdFromMenu) {
+        void (async () => {
+          try {
+            await switchToLane(projectId, laneIdFromMenu)
+            await onLaneStateChange?.()
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Failed to activate saved lane"
+            setLastError(message)
+          }
+        })()
+        return
+      }
+
+      if (action === WB_BRANCH_MENU.switchCollab) {
+        void (async () => {
+          try {
+            await switchToLane(projectId, "collab")
+            await onLaneStateChange?.()
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Failed to switch to collab lane"
+            setLastError(message)
+          }
+        })()
+        return
+      }
+
+      if (action === WB_BRANCH_MENU.newPersonalLane) {
+        void handleCreatePersonalLane()
+        return
+      }
+
+      if (action === WB_BRANCH_MENU.pull) {
+        void handleLaneAction("pull")
+        return
+      }
+      if (action === WB_BRANCH_MENU.push) {
+        void handleLaneAction("push")
+        return
+      }
+      if (action === WB_BRANCH_MENU.updateFromCollab) {
+        void handleLaneAction("updateFromCollab")
+        return
+      }
+      if (action === WB_BRANCH_MENU.mergeIntoCollab) {
+        void handleLaneAction("mergeIntoCollab")
+        return
+      }
+      if (action === WB_BRANCH_MENU.openPr) {
+        void handleLaneAction("openPullRequest")
+        return
+      }
+
+      const branchIndex = parseWorkbenchBranchMenuBranchIndex(action)
+      if (branchIndex !== null) {
+        const branch = snapshot.branches[branchIndex]
+        if (branch) {
+          void handleBranchSelect(branch)
+        }
+      }
+    },
+    [
+      activeAction,
+      activeLane,
+      applyGitToolbarSnapshot,
+      branchCwd,
+      collabBranch,
+      handleBranchSelect,
+      handleCreatePersonalLane,
+      handleLaneAction,
+      isSwitching,
+      loadGitToolbarSnapshot,
+      onLaneStateChange,
+      projectId,
+      projectPath,
+      rememberedPersonalLanes,
+      lastError,
+    ],
+  )
+
   const chromeLabel = useMemo(() => {
     if (!displayedBranch) return "Select branch"
     return displayedBranch
   }, [displayedBranch])
 
-  const statusSummary = useMemo(() => getStatusSummary(gitStatus), [gitStatus])
   const isBusy = isLoading || isSwitching || activeAction !== null
   const LaneScopeIcon = activeLane?.isCollab === false ? User : Users
-  const actionLabel =
-    activeLane?.isCollab === false && chromeLabel !== collabBranch
-      ? `Target ${collabBranch}`
-      : "Collab lane"
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "h-7 gap-1.5 rounded-full border border-border/60 bg-secondary/70 px-2 text-xs font-medium text-muted-foreground shadow-none hover:bg-secondary",
-            triggerClassName,
-          )}
-          disabled={!branchCwd}
-        >
-          {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          <LaneScopeIcon className="h-3 w-3 shrink-0 opacity-80" />
-          <span className="max-w-[160px] truncate">{chromeLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="w-72">
-        <DropdownMenuLabel>{activeLane?.isCollab ? "Collab Lane" : "Personal Lane"}</DropdownMenuLabel>
-        <div className="px-2 pb-2 text-xs text-muted-foreground">
-          <div className="font-medium text-foreground">{actionLabel}</div>
-          {statusSummary ? <div className="pt-1">{statusSummary}</div> : null}
-        </div>
-        {!branchCwd || !isRepo ? (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-3 text-sm text-muted-foreground">
-              {branchCwd ? "No git repository detected." : "Local project path is not ready yet."}
-            </div>
-          </>
-        ) : (
-          <>
-            <DropdownMenuSeparator />
-            {!activeLane?.isCollab ? (
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  if (!projectId) return
-                  void (async () => {
-                    try {
-                      await switchToLane(projectId, "collab")
-                      await onLaneStateChange?.()
-                      setIsOpen(false)
-                    } catch (error) {
-                      const message =
-                        error instanceof Error ? error.message : "Failed to switch to collab lane"
-                      setLastError(message)
-                    }
-                  })()
-                }}
-              >
-                <GitBranch className="mr-2 h-3.5 w-3.5" />
-                Switch To Collab Lane
-              </DropdownMenuItem>
-            ) : null}
-            {rememberedPersonalLanes.map((lane) => (
-              <DropdownMenuItem
-                key={lane.id}
-                onSelect={(event) => {
-                  event.preventDefault()
-                  if (!projectId) return
-                  void (async () => {
-                    try {
-                      await switchToLane(projectId, lane.id)
-                      await onLaneStateChange?.()
-                      setIsOpen(false)
-                    } catch (error) {
-                      const message =
-                        error instanceof Error ? error.message : "Failed to activate saved lane"
-                      setLastError(message)
-                    }
-                  })()
-                }}
-              >
-                <GitFork className="mr-2 h-3.5 w-3.5" />
-                <span className="truncate">{lane.branch}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault()
-                void handleCreatePersonalLane()
-              }}
-              disabled={isBusy}
-            >
-              <Plus className="mr-2 h-3.5 w-3.5" />
-              New Personal Lane
-            </DropdownMenuItem>
-            {rememberedPersonalLanes.length > 0 || !activeLane?.isCollab ? (
-              <DropdownMenuSeparator />
-            ) : null}
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault()
-                void handleLaneAction("pull")
-              }}
-              disabled={activeAction !== null}
-            >
-              <ArrowDownToLine className="mr-2 h-3.5 w-3.5" />
-              Pull Active Lane
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault()
-                void handleLaneAction("push")
-              }}
-              disabled={activeAction !== null}
-            >
-              <ArrowUpToLine className="mr-2 h-3.5 w-3.5" />
-              Push Active Lane
-            </DropdownMenuItem>
-            {!activeLane?.isCollab && chromeLabel !== collabBranch ? (
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  void handleLaneAction("updateFromCollab")
-                }}
-                disabled={activeAction !== null}
-              >
-                <RefreshCcw className="mr-2 h-3.5 w-3.5" />
-                Merge Collab Into Lane
-              </DropdownMenuItem>
-            ) : null}
-            {!activeLane?.isCollab ? (
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  void handleLaneAction("mergeIntoCollab")
-                }}
-                disabled={activeAction !== null}
-              >
-                <GitBranch className="mr-2 h-3.5 w-3.5" />
-                Merge Lane Into Collab
-              </DropdownMenuItem>
-            ) : null}
-            {!activeLane?.isCollab ? (
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  void handleLaneAction("openPullRequest")
-                }}
-                disabled={activeAction !== null}
-              >
-                {gitStatus?.pr?.url ? (
-                  <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                ) : (
-                  <GitPullRequest className="mr-2 h-3.5 w-3.5" />
-                )}
-                {gitStatus?.pr?.url ? "Open Current PR" : "Start Pull Request"}
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Branches</DropdownMenuLabel>
-            <div className="max-h-80 overflow-y-auto">
-              {branches.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  No branches available.
-                </div>
-              ) : (
-                branches.map((branch) => {
-                  const nextBranchName = branch.isRemote
-                    ? deriveLocalBranchNameFromRemoteRef(branch.name)
-                    : branch.name
-                  const isActive = nextBranchName === chromeLabel
-                  const isCollabTarget = nextBranchName === collabBranch
-
-                  return (
-                    <DropdownMenuItem
-                      key={branch.name}
-                      className="flex items-center justify-between gap-3"
-                      onSelect={(event) => {
-                        event.preventDefault()
-                        void handleBranchSelect(branch)
-                      }}
-                    >
-                      <span className="min-w-0 truncate">{branch.name}</span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {isCollabTarget ? (
-                          <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
-                            collab
-                          </span>
-                        ) : null}
-                        {branch.worktreePath && branch.worktreePath !== projectPath ? (
-                          <GitFork className="h-3.5 w-3.5 text-muted-foreground/70" />
-                        ) : null}
-                        <Check
-                          className={cn(
-                            "h-3.5 w-3.5 text-foreground/80",
-                            isActive ? "opacity-100" : "opacity-0",
-                          )}
-                        />
-                      </span>
-                    </DropdownMenuItem>
-                  )
-                })
-              )}
-            </div>
-          </>
-        )}
-        {lastError ? (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-2 text-xs text-destructive">{lastError}</div>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn(
+        "h-6 gap-1 rounded-full border border-border/60 bg-secondary/70 px-1.5 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-secondary",
+        triggerClassName,
+      )}
+      disabled={!branchCwd}
+      aria-busy={isBusy}
+      aria-haspopup="menu"
+      onClick={handleOpenNativeBranchMenu}
+    >
+      {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+      <LaneScopeIcon className="h-2.5 w-2.5 shrink-0 opacity-80" />
+      <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
+      <ChevronDown className="h-3 w-3 opacity-70" />
+    </Button>
   )
 }

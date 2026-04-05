@@ -329,6 +329,7 @@ export const useTerminalStore = create<TerminalState>()(
           set((state) => {
             const terminal = state.terminals[terminalId]
             if (!terminal) return state
+            if (terminal.hasOutput === hasOutput) return state
 
             return {
               terminals: {

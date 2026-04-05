@@ -5,6 +5,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOptionalSidebar } from '@/components/ui/sidebar'
+import { useLocation } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import type { SVGProps } from 'react'
 
@@ -23,12 +24,14 @@ function PanelLeftIcon({ active = false, className, ...props }: PanelIconProps) 
 }
 
 export function LayoutToggles() {
+    const location = useLocation()
     const sidebar = useOptionalSidebar()
     const sidebarState = sidebar?.state ?? 'collapsed'
+    const sidebarToggleInWorkbenchHeader = location.pathname.endsWith('/workbench')
 
     return (
         <div className="flex items-center gap-0.5">
-            {sidebar ? (
+            {sidebar && !sidebarToggleInWorkbenchHeader ? (
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button

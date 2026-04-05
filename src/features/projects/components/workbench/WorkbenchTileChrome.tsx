@@ -47,9 +47,9 @@ export function WorkbenchTileChrome({
   }, [containerApi, panelApi])
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-background", className)}>
+    <div className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
       <div
-        className="flex h-9 shrink-0 items-center gap-2 border-b border-border/70 bg-muted/45 px-2 text-xs shadow-none"
+        className="flex h-9 shrink-0 items-center gap-2 border-b border-border/70 bg-content-surface px-2 text-xs shadow-none"
         data-workbench-chrome="true"
       >
         <div className="min-w-0 flex-1">

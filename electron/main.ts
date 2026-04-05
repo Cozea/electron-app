@@ -30,7 +30,9 @@ import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
+import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
 import { startAssistantRuntime } from './assistant-runtime/boot'
 
@@ -314,10 +316,10 @@ function readAssistantRuntimeStatus(): AssistantRuntimeStatus {
 
 function broadcastAssistantRuntimeStatus(): void {
   const payload = readAssistantRuntimeStatus()
-  for (const browserWindow of BrowserWindow.getAllWindows()) {
-    if (browserWindow.isDestroyed()) continue
+  forEachBroadcastWindow((browserWindow) => {
+    if (browserWindow.webContents.isDestroyed()) return
     browserWindow.webContents.send(ASSISTANT_RUNTIME_STATUS_CHANNEL, payload)
-  }
+  })
 }
 
 function setAssistantRuntimeStatus(
@@ -850,7 +852,8 @@ let updateInterval: NodeJS.Timeout | null = null
 const isAutoUpdateEnabled = () => app.isPackaged
 
 function broadcastUpdateState(state: UpdateState): void {
-  BrowserWindow.getAllWindows().forEach((window) => {
+  forEachBroadcastWindow((window) => {
+    if (window.webContents.isDestroyed()) return
     window.webContents.send('updates:status', state)
   })
 }
@@ -1236,6 +1239,8 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  setBroadcastMainWindow(win)
 }
 
 // IPC Handlers
@@ -1301,6 +1306,8 @@ registerRuntimeHandlers(ipcMain)
 
 registerSyncHandlers(ipcMain)
 
+registerYjsHandlers(ipcMain)
+
 registerWorkbenchBrowserHandlers(ipcMain, {
   service: workbenchBrowserService,
 })
@@ -1315,6 +1322,7 @@ registerContextMenuHandlers(ipcMain, {
 
 app.on('window-all-closed', () => {
   workbenchBrowserService.dispose()
+  setBroadcastMainWindow(null)
   win = null
 
   // Kill all DevServer background processes
@@ -1345,9 +1353,9 @@ app.on('activate', () => {
   }
 })
 
-// Sync macOS PATH/SSH before initializing services
+// Sync macOS PATH/SSH without blocking startup (PTY/tools pick up env when ready)
 if (process.platform === 'darwin') {
-  syncShellEnvironment()
+  void syncShellEnvironment()
 }
 
 registerAssistantRuntimeBridgeHandlers()
