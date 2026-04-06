@@ -1,4 +1,6 @@
 import { app, safeStorage, dialog, shell, ipcMain, BrowserWindow } from 'electron'
+
+import { forEachBroadcastWindow } from '../broadcastWindows'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
@@ -211,11 +213,10 @@ export class AuthService {
             win.webContents.send('auth:success', session)
             return
         }
-        for (const browserWindow of BrowserWindow.getAllWindows()) {
-            if (!browserWindow.isDestroyed()) {
-                browserWindow.webContents.send('auth:success', session)
-            }
-        }
+        forEachBroadcastWindow((browserWindow) => {
+            if (browserWindow.webContents.isDestroyed()) return
+            browserWindow.webContents.send('auth:success', session)
+        })
     }
 
     private emitAuthError(message: string, win?: BrowserWindow | null): void {
@@ -223,11 +224,10 @@ export class AuthService {
             win.webContents.send('auth:error', message)
             return
         }
-        for (const browserWindow of BrowserWindow.getAllWindows()) {
-            if (!browserWindow.isDestroyed()) {
-                browserWindow.webContents.send('auth:error', message)
-            }
-        }
+        forEachBroadcastWindow((browserWindow) => {
+            if (browserWindow.webContents.isDestroyed()) return
+            browserWindow.webContents.send('auth:error', message)
+        })
     }
 
     private async exchangeOneTimeToken(token: string): Promise<Session> {

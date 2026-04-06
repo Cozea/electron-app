@@ -107,7 +107,7 @@ export function useAgentFileSync(
         // Normalize path separators
         const normalizedPath = relativePath.replace(/\\/g, '/')
 
-        console.log(`[AgentSync] External file change: ${normalizedPath}`)
+        // console.log(`[AgentSync] External file change: ${normalizedPath}`)
 
         // Apply the change to Yjs document
         yjsDoc.applyExternalChange(normalizedPath, content, origin ?? 'agent')
@@ -133,7 +133,7 @@ export function useAgentFileSync(
           .replace(/^[/\\]+/, '')
         const normalizedPath = relativePath.replace(/\\/g, '/')
 
-        console.log(`[AgentSync] External file delete: ${normalizedPath}`)
+        // console.log(`[AgentSync] External file delete: ${normalizedPath}`)
         yjsDoc.deletePath(normalizedPath, origin ?? 'agent')
         requestEditorDiagnosticsRefresh()
         if (origin === 'sync' || origin === 'remote') {

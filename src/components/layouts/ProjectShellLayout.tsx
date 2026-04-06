@@ -81,9 +81,9 @@ export function ProjectShellLayout({
       <header className="h-10 mt-10 flex items-center justify-between px-2 bg-background">
         {/* Left: Project & Branch */}
         <div className="flex items-center gap-2 pl-16">
-          <Button variant="ghost" size="sm" className="gap-1 h-7 text-sm">
+          <Button variant="ghost" size="sm" className="group gap-1 h-7 text-sm">
             <span className="font-medium">{projectName}</span>
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <ChevronDown className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
           </Button>
           <Separator orientation="vertical" className="h-4" />
           <Button variant="ghost" size="sm" className="gap-1 h-7 text-xs text-muted-foreground">
@@ -358,12 +358,12 @@ function ActivityButton({
           variant="ghost"
           size="icon"
           className={cn(
-            'h-10 w-10 rounded-none',
-            active && 'border-l-2 border-primary bg-accent'
+            'h-12 w-12 rounded-none relative transition-none hover:bg-transparent hover:text-foreground group focus-visible:bg-transparent active:bg-transparent',
+            active && 'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-primary'
           )}
           onClick={onClick}
         >
-          <Icon className={cn('h-5 w-5', active ? 'text-foreground' : 'text-muted-foreground')} />
+          <Icon className={cn('h-6 w-6 transition-colors', active ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground')} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="right">{tooltip}</TooltipContent>

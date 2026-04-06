@@ -194,8 +194,7 @@ export function CreateWorkspaceDialog({
           <DialogHeader className="items-start text-left">
             <DialogTitle>Create workspace</DialogTitle>
             <DialogDescription>
-              Create another workspace for members, permissions, and shared
-              settings.
+              Create another workspace for members, permissions, and shared project settings.
             </DialogDescription>
           </DialogHeader>
         </div>

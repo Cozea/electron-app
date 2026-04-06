@@ -1,13 +1,12 @@
 import {
-  Bot,
   Cloud,
   CreditCard,
   FileText,
+  FolderGit2,
   HardDrive,
   Lock,
   Palette,
   Shield,
-  SlidersHorizontal,
   Terminal,
   UserCircle2,
   Users,
@@ -26,14 +25,13 @@ import type {
 
 const preloadAccountPage = () => import("@/pages/settings/Account")
 const preloadBillingPage = () => import("@/pages/workspace/Billing")
-const preloadAiPage = () => import("@/pages/workspace/AI")
-const preloadModelSelectionPage = () => import("@/pages/settings/ModelSelection")
 const preloadAppearancePage = () => import("@/pages/settings/Appearance")
 const preloadGeneralPage = () => import("@/pages/workspace/General")
 const preloadStoragePage = async () => {
   const module = await import("@/pages/settings/Storage")
   await module.prewarmStorageSettings?.()
 }
+const preloadSourceControlPage = () => import("@/pages/workspace/SourceControl")
 const preloadCliToolsPage = () => import("@/pages/workspace/Integrations")
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
@@ -68,32 +66,6 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     commandKeywords: ["billing", "subscription", "payment", "usage", "plan"],
   },
   {
-    id: "ai",
-    label: "AI",
-    icon: Bot,
-    routes: { personal: "/settings/ai", workspace: "/workspace/ai" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { workspace: "workspace" },
-    workspaceAccessKey: "ai",
-    preload: preloadAiPage,
-    commandKeywords: ["ai", "providers", "models", "settings"],
-  },
-  {
-    id: "modelSelection",
-    label: "Model Selection",
-    icon: SlidersHorizontal,
-    routes: {
-      personal: "/settings/ai/model-selection",
-      workspace: "/workspace/ai/model-selection",
-    },
-    storageMode: { personal: "local", workspace: "cloud" },
-    placements: ["drawer", "command"],
-    workspaceAccessKey: "ai",
-    preload: preloadModelSelectionPage,
-    commandKeywords: ["models", "model selection", "allowlist", "ai policy"],
-  },
-  {
     id: "appearance",
     label: "Appearance",
     icon: Palette,
@@ -114,6 +86,21 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     commandKeywords: ["storage", "disk", "local files"],
   },
   {
+    id: "sourceControl",
+    label: "Source Control",
+    icon: FolderGit2,
+    routes: {
+      personal: "/settings/source-control",
+      workspace: "/workspace/source-control",
+    },
+    storageMode: { personal: "cloud", workspace: "cloud" },
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
+    workspaceAccessKey: "settings",
+    preload: preloadSourceControlPage,
+    commandKeywords: ["source control", "git", "github", "gitlab", "repository", "repos"],
+  },
+  {
     id: "cliTools",
     label: "CLI Tools",
     icon: Wrench,
@@ -122,7 +109,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
       workspace: "/workspace/integrations",
     },
     storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["sidebar", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
     sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "integrations",
     preload: preloadCliToolsPage,
@@ -144,7 +131,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: FileText,
     routes: { personal: "/settings/general", workspace: "/workspace/general" },
     storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["sidebar", "command"],
+    placements: ["drawer", "sidebar", "command"],
     sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "general",
     preload: preloadGeneralPage,
@@ -156,7 +143,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: Lock,
     routes: { workspace: "/workspace/policies" },
     storageMode: { workspace: "cloud" },
-    placements: ["sidebar", "command"],
+    placements: ["drawer", "sidebar", "command"],
     sidebarGroups: { workspace: "team" },
     workspaceAccessKey: "settings",
     commandKeywords: ["policies", "governance", "sharing", "retention"],
@@ -168,7 +155,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: Users,
     routes: { workspace: "/teams" },
     storageMode: { workspace: "cloud" },
-    placements: ["sidebar", "command"],
+    placements: ["drawer", "sidebar", "command"],
     sidebarGroups: { workspace: "team" },
     workspaceAccessKey: "members",
     preload: preloadMembersPage,
@@ -180,7 +167,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: Shield,
     routes: { workspace: "/teams/roles" },
     storageMode: { workspace: "cloud" },
-    placements: ["sidebar", "command"],
+    placements: ["drawer", "sidebar", "command"],
     sidebarGroups: { workspace: "team" },
     workspaceAccessKey: "roles",
     alpha: true,
@@ -193,7 +180,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: Cloud,
     routes: { personal: "/settings/cloud-storage", workspace: "/workspace/sync" },
     storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["sidebar", "command"],
+    placements: ["drawer", "sidebar", "command"],
     sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "usage",
     alpha: true,
@@ -332,8 +319,6 @@ export function canAccessWorkspaceSurface(
       return access.canViewWorkspaceUsage || access.canManageWorkspaceBilling
     case "settings":
       return access.canViewWorkspaceSettings
-    case "ai":
-      return access.canViewWorkspaceAi
     case "integrations":
       return access.canViewWorkspaceIntegrations
     case "usage":

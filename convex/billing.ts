@@ -8,7 +8,7 @@ import {
   resolveAccountEntitlementForProject,
   ACCOUNT_TRIAL_LENGTH_MS,
 } from "./lib/accountEntitlements"
-import { grantIncludedWalletBalance } from "./aiWallets"
+
 import { hasOrganizationPermission } from "./lib/organizationRoles"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
@@ -565,21 +565,7 @@ export const setAccountSeatAssignmentForServer = mutation({
           : null
 
       if (walletPlan) {
-        await grantIncludedWalletBalance(ctx, {
-          organizationId: args.organizationId,
-          targetUserId: args.assignedUserId,
-          billingUserId: args.billingUserId,
-          actorUserId: args.assignedByUserId ?? args.billingUserId,
-          plan: walletPlan,
-          cycle: accountSubscription?.cycle ?? "monthly",
-          periodStart: accountSubscription?.currentPeriodStart,
-          periodEnd: accountSubscription?.currentPeriodEnd,
-          source: "seat_assignment",
-          grantKey: `server-seat-assignment:${String(assignmentId)}:${Date.now()}`,
-          metadata: {
-            source: args.source,
-          },
-        })
+        
       }
     }
 
@@ -841,26 +827,7 @@ export const setSeatAssignment = mutation({
         ownerEntitlement.plan === "startup" ||
         ownerEntitlement.plan === "enterprise")
     ) {
-      await grantIncludedWalletBalance(ctx, {
-        organizationId: args.organizationId,
-        targetUserId: args.assignedUserId,
-        billingUserId: billingAccount.billingUserId,
-        actorUserId: args.actorUserId,
-        plan:
-          ownerEntitlement.plan === "startup" || ownerEntitlement.plan === "enterprise"
-            ? ownerEntitlement.plan
-            : "startup",
-        cycle: ownerEntitlement.cycle ?? "monthly",
-        periodStart: ownerEntitlement.currentPeriodStart,
-        periodEnd: ownerEntitlement.currentPeriodEnd,
-        source: "seat_assignment",
-        grantKey: `seat-assignment:${String(assignmentId)}:${Date.now()}`,
-        metadata: {
-          assignedByUserId: args.actorUserId,
-          billingUserId: billingAccount.billingUserId,
-          entitlementSource: ownerEntitlement.source,
-        },
-      })
+      
     }
 
     await ctx.db.insert("auditLogs", {

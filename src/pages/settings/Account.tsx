@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { AppShellLayout } from '../../components/layouts/AppShellLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -27,7 +27,7 @@ import {
   Upload,
 } from 'lucide-react'
 
-interface NotificationPrefs {
+interface UserPrefs {
   emailNotifications: boolean
   pushNotifications: boolean
 }
@@ -48,23 +48,20 @@ export function Account({ surface = 'page' }: AccountProps) {
   // Mutations
   const updatePreferencesMutation = useMutation(api.users.updatePreferences)
 
-  // Notification preferences state
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>({
+  // User preferences state
+  const [userPrefs, setUserPrefs] = useState<UserPrefs>({
     emailNotifications: true,
     pushNotifications: true,
   })
 
-  // Initialize notification prefs from Convex profile
-  const [prevProfile, setPrevProfile] = useState(profile)
-  if (profile !== prevProfile) {
-    setPrevProfile(profile)
-    if (profile) {
-      setNotificationPrefs({
-        emailNotifications: profile.preferences?.emailNotifications ?? true,
-        pushNotifications: profile.preferences?.pushNotifications ?? true,
-      })
-    }
-  }
+  useEffect(() => {
+    if (!profile) return
+
+    setUserPrefs({
+      emailNotifications: profile.preferences?.emailNotifications ?? true,
+      pushNotifications: profile.preferences?.pushNotifications ?? true,
+    })
+  }, [profile])
 
   // Derived state
   const displayName = profile?.firstName
@@ -75,11 +72,11 @@ export function Account({ surface = 'page' }: AccountProps) {
   const avatarImageUrl = profile?.profileImageUrl || user?.profileImageUrl || undefined
 
   // Handlers
-  const handleNotificationToggle = async (key: keyof NotificationPrefs, value: boolean) => {
+  const handlePrefChange = async (key: keyof UserPrefs, value: boolean | string) => {
     if (!convexUserId) return
 
-    const newPrefs = { ...notificationPrefs, [key]: value }
-    setNotificationPrefs(newPrefs)
+    const newPrefs = { ...userPrefs, [key]: value }
+    setUserPrefs(newPrefs)
 
     try {
       await updatePreferencesMutation({
@@ -88,8 +85,8 @@ export function Account({ surface = 'page' }: AccountProps) {
       })
     } catch (error) {
       // Revert on error
-      setNotificationPrefs(notificationPrefs)
-      console.error('Failed to update notification preference:', error)
+      setUserPrefs(userPrefs)
+      console.error(`Failed to update preference ${key}:`, error)
     }
   }
 
@@ -176,8 +173,8 @@ export function Account({ surface = 'page' }: AccountProps) {
                 </div>
               </div>
               <Switch
-                checked={notificationPrefs.emailNotifications}
-                onCheckedChange={(checked) => handleNotificationToggle('emailNotifications', checked)}
+                checked={userPrefs.emailNotifications}
+                onCheckedChange={(checked) => handlePrefChange('emailNotifications', checked)}
                 disabled={isProfileLoading}
               />
             </div>
@@ -192,8 +189,8 @@ export function Account({ surface = 'page' }: AccountProps) {
                 </div>
               </div>
               <Switch
-                checked={notificationPrefs.pushNotifications}
-                onCheckedChange={(checked) => handleNotificationToggle('pushNotifications', checked)}
+                checked={userPrefs.pushNotifications}
+                onCheckedChange={(checked) => handlePrefChange('pushNotifications', checked)}
                 disabled={isProfileLoading}
               />
             </div>
@@ -251,12 +248,12 @@ export function Account({ surface = 'page' }: AccountProps) {
   }
 
   return (
-    <DashboardLayout
+    <AppShellLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
     >
       {content}
-    </DashboardLayout>
+    </AppShellLayout>
   )
 }

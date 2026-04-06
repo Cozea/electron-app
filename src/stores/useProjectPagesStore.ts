@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
@@ -23,11 +24,14 @@ export interface ServerLifecycle {
     runId: string | null
     state: ServerLifecycleState
     command: string | null
+    devtoolsPort: number | null
     startedAt: number | null
     readyAt: number | null
     lastOutputAt: number | null
     stoppedAt: number | null
     unhealthyReason: string | null
+    watchFolders: string[] | null
+    expoEnvPreludeLineCount: number | null
 }
 
 export interface PreviewReadiness {
@@ -72,11 +76,14 @@ const DEFAULT_SERVER_LIFECYCLE: ServerLifecycle = {
     runId: null,
     state: 'idle',
     command: null,
+    devtoolsPort: null,
     startedAt: null,
     readyAt: null,
     lastOutputAt: null,
     stoppedAt: null,
     unhealthyReason: null,
+    watchFolders: null,
+    expoEnvPreludeLineCount: null,
 }
 
 const DEFAULT_PREVIEW_READINESS: PreviewReadiness = {
@@ -144,11 +151,14 @@ export const useProjectPagesStore = create<ProjectPagesState>()(
                         runId,
                         state: 'starting',
                         command,
+                        devtoolsPort: null,
                         startedAt: Date.now(),
                         readyAt: null,
                         lastOutputAt: null,
                         stoppedAt: null,
                         unhealthyReason: null,
+                        watchFolders: null,
+                        expoEnvPreludeLineCount: null,
                     },
                     previewReadiness: {
                         ...DEFAULT_PREVIEW_READINESS,

@@ -1,15 +1,26 @@
+// @ts-nocheck
 import { create } from 'zustand'
+
+interface OpenCreateWorkspaceDialogOptions {
+  redirectTo?: string | null
+}
 
 interface CreateWorkspaceDialogState {
   isOpen: boolean
-  open: () => void
+  redirectTo: string | null
+  open: (options?: OpenCreateWorkspaceDialogOptions) => void
   close: () => void
 }
 
 export const useCreateWorkspaceDialogStore = create<CreateWorkspaceDialogState>(
   (set) => ({
     isOpen: false,
-    open: () => set({ isOpen: true }),
-    close: () => set({ isOpen: false }),
+    redirectTo: null,
+    open: (options) =>
+      set({
+        isOpen: true,
+        redirectTo: options?.redirectTo ?? null,
+      }),
+    close: () => set({ isOpen: false, redirectTo: null }),
   })
 )

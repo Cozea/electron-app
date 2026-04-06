@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -7,7 +6,6 @@ import { convex } from '@/lib/convex'
 import { useCachedQuery, useQueryCache } from '../stores/useQueryCache'
 import { useAuth } from '../contexts/AuthContext'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
-import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
 import { ProjectCard } from '../features/projects/components/ProjectCard'
@@ -53,6 +51,8 @@ import {
 
 import { Badge } from '../components/ui/badge'
 import { featureFlags } from '@/lib/featureFlags'
+import { useProjectCreationMenu } from '@/features/projects/hooks/useProjectCreationMenu'
+import { useProjectHeader } from '@/hooks/useProjectHeader'
 
 
 type SortOption = 'last_modified' | 'name' | 'created'
@@ -171,9 +171,9 @@ export async function prewarmProjectsPageData(args: {
 }
 
 export function Projects() {
-  const { user, convexUserId, logout } = useAuth()
+  const { convexUserId } = useAuth()
   const { personalScoped, workspaceScoped, convexOrg, capabilities, permissions } = useScopedAppContext()
-  const navigate = useViewTransitionNavigate()
+  const { openProjectCreationMenu } = useProjectCreationMenu()
   const [sortBy, setSortBy] = useState<SortOption>(DEFAULT_SORT_BY)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATUS_FILTER)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -366,7 +366,7 @@ export function Projects() {
               <span>
                 <Button
                   className="gap-2 h-7 px-2 text-xs rounded-full"
-                  onClick={() => navigate('/projects/new')}
+                  onClick={(event) => void openProjectCreationMenu(event)}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   New Project
@@ -382,161 +382,154 @@ export function Projects() {
 
   const showPagination = totalProjects > ITEMS_PER_PAGE
 
+  useProjectHeader(headerContent, breadcrumbAddon)
+
   return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Projects' }]}
-      breadcrumbAddon={breadcrumbAddon}
-      header={headerContent || undefined}
-    >
-      <TooltipProvider>
-        {!isLoading && !hasProjects ? (
-          <div className="flex min-h-full flex-1 items-center justify-center">
-            <div className="w-full p-6 md:p-10">
-              <Empty className="py-6">
-                <EmptyHeader>
-                  <EmptyMedia>
-                    <FolderOpen className="h-8 w-8" />
-                  </EmptyMedia>
-                  <EmptyTitle>
-                    {canStartProjectFlow
-                      ? canCreateProjects
-                        ? 'Start your first project'
-                        : 'Import your first project'
-                      : 'No projects available'}
-                  </EmptyTitle>
-                  <EmptyDescription>
-                    {canStartProjectFlow
-                      ? canCreateProjects
-                        ? 'Create a project to generate a plan, scaffold code, and collaborate with your team.'
-                        : 'Import an existing project to start working in this workspace.'
-                      : 'Projects will appear here when this workspace has active projects you can access.'}
-                  </EmptyDescription>
-                </EmptyHeader>
-                {canStartProjectFlow ? (
-                  <EmptyContent>
-                    <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-                      <Plus className="h-4 w-4" />
-                      {canCreateProjects ? 'Create Project' : 'Import Project'}
-                    </Button>
-                  </EmptyContent>
-                ) : null}
-              </Empty>
-            </div>
+    <TooltipProvider>
+      {!isLoading && !hasProjects ? (
+        <div className="flex min-h-full flex-1 items-center justify-center">
+          <div className="w-full p-6 md:p-10">
+            <Empty className="py-6">
+              <EmptyHeader>
+                <EmptyMedia>
+                  <FolderOpen className="h-8 w-8" />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {canStartProjectFlow
+                    ? canCreateProjects
+                      ? 'Start your first project'
+                      : 'Import your first project'
+                    : 'No projects available'}
+                </EmptyTitle>
+                <EmptyDescription>
+                  {canStartProjectFlow
+                    ? canCreateProjects
+                      ? 'Create a project to generate a plan, scaffold code, and collaborate with your team.'
+                      : 'Import an existing project to start working in this workspace.'
+                    : 'Projects will appear here when this workspace has active projects you can access.'}
+                </EmptyDescription>
+              </EmptyHeader>
+              {canStartProjectFlow ? (
+                <EmptyContent>
+                  <Button className="gap-2" onClick={(event) => void openProjectCreationMenu(event)}>
+                    <Plus className="h-4 w-4" />
+                    {canCreateProjects ? 'Create Project' : 'Import Project'}
+                  </Button>
+                </EmptyContent>
+              ) : null}
+            </Empty>
           </div>
-        ) : effectiveViewMode === 'grid' ? (
+        </div>
+      ) : effectiveViewMode === 'grid' ? (
+        <div
+          className={cn(
+            featureFlags.contentVisibility && 'perf-contain-auto',
+            'grid grid-cols-1 gap-4 pb-10 md:grid-cols-2 lg:grid-cols-3'
+          )}
+        >
+          {paginatedProjects.length > 0 ? (
+            paginatedProjects.map((project) => (
+              <ProjectCard
+                key={project._id}
+                project={project}
+                userId={convexUserId ?? undefined}
+                workspaceScoped={workspaceScoped}
+              />
+            ))
+          ) : (
+            <div className="col-span-full rounded-xl border border-dashed border-border/60 bg-card/70 p-6 text-sm text-muted-foreground">
+              {isLoading
+                ? 'Loading projects...'
+                : statusFilter === 'all'
+                  ? allStatusEmptyMessage
+                  : 'No projects match the current filters.'}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className={cn(featureFlags.contentVisibility && 'perf-contain-auto', 'pb-10')}>
           <div
             className={cn(
-              featureFlags.contentVisibility && 'perf-contain-auto',
-              'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-10'
+              featureFlags.contentVisibility && 'perf-contain-card',
+              'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40'
             )}
           >
-            {paginatedProjects.length > 0 ? (
-              paginatedProjects.map((project) => (
-                <ProjectCard
-                  key={project._id}
-                  project={project}
-                  userId={convexUserId ?? undefined}
-                  workspaceScoped={workspaceScoped}
-                />
-              ))
-            ) : (
-              <div className="col-span-full rounded-xl border border-dashed border-border/60 bg-card/70 p-6 text-sm text-muted-foreground">
-                {isLoading
-                  ? 'Loading projects...'
-                  : statusFilter === 'all'
-                    ? allStatusEmptyMessage
-                    : 'No projects match the current filters.'}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className={cn(featureFlags.contentVisibility && 'perf-contain-auto', 'pb-10')}>
-            <div
-              className={cn(
-                featureFlags.contentVisibility && 'perf-contain-card',
-                'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40'
-              )}
-            >
-              <Table className="[&_th]:px-4 [&_td]:px-4">
-                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+            <Table className="[&_th]:px-4 [&_td]:px-4">
+              <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                <TableRow>
+                  <TableHead className="w-[45%] sm:w-[38%] md:w-[32%]">Name</TableHead>
+                  <TableHead className="w-[13%] text-center">Status</TableHead>
+                  <TableHead className="hidden md:table-cell md:w-[24%]">Last modified by</TableHead>
+                  <TableHead className="hidden lg:table-cell lg:w-[11%] text-center">Sync</TableHead>
+                  <TableHead className="hidden sm:table-cell sm:w-[14%] text-right">Last modified</TableHead>
+                  <TableHead className="w-[10%] text-right" />
+                </TableRow>
+              </TableHeader>
+              <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                {paginatedProjects.length > 0 ? (
+                  paginatedProjects.map((project) => {
+                    const modifier = userMap[project.lastSyncBy || project.createdBy]
+                    return (
+                      <ProjectListRow
+                        key={project._id}
+                        project={project}
+                        userId={convexUserId ?? undefined}
+                        creatorName={modifier?.name || 'Unknown'}
+                        creatorImage={modifier?.image}
+                        workspaceScoped={workspaceScoped}
+                      />
+                    )
+                  })
+                ) : (
                   <TableRow>
-                    <TableHead className="w-[45%] sm:w-[38%] md:w-[32%]">Name</TableHead>
-                    <TableHead className="w-[13%] text-center">Status</TableHead>
-                    <TableHead className="hidden md:table-cell md:w-[24%]">Last modified by</TableHead>
-                    <TableHead className="hidden lg:table-cell lg:w-[11%] text-center">Sync</TableHead>
-                    <TableHead className="hidden sm:table-cell sm:w-[14%] text-right">Last modified</TableHead>
-                    <TableHead className="w-[10%] text-right" />
+                    <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                      {isLoading
+                        ? 'Loading projects...'
+                        : statusFilter === 'all'
+                          ? allStatusEmptyMessage
+                          : 'No projects match the current filters.'}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {paginatedProjects.length > 0 ? (
-                    paginatedProjects.map((project) => {
-                      const modifier = userMap[project.lastSyncBy || project.createdBy]
-                      return (
-                        <ProjectListRow
-                          key={project._id}
-                          project={project}
-                          userId={convexUserId ?? undefined}
-                          creatorName={modifier?.name || 'Unknown'}
-                          creatorImage={modifier?.image}
-                          workspaceScoped={workspaceScoped}
-                        />
-                      )
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
-                        {isLoading
-                          ? 'Loading projects...'
-                          : statusFilter === 'all'
-                            ? allStatusEmptyMessage
-                            : 'No projects match the current filters.'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {!isLoading && totalProjects === 0 && statusFilter === 'all' && canStartProjectFlow && (
+            <div className="mt-3 flex justify-end">
+              <Button className="gap-2" onClick={(event) => void openProjectCreationMenu(event)}>
+                <Plus className="h-4 w-4" />
+                {canCreateProjects ? 'Create Project' : 'Import Project'}
+              </Button>
             </div>
-            {!isLoading && totalProjects === 0 && statusFilter === 'all' && canStartProjectFlow && (
-              <div className="mt-3 flex justify-end">
-                <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-                  <Plus className="h-4 w-4" />
-                  {canCreateProjects ? 'Create Project' : 'Import Project'}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* Floating Pagination Pill */}
-        {showPagination && (
-          <div className="fixed bottom-8 right-4 z-50 flex items-center gap-1 bg-background/95 backdrop-blur border rounded-full shadow-lg px-1 py-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-full"
-              onClick={() => setCurrentPage(Math.max(1, displayPage - 1))}
-              disabled={displayPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-xs font-medium px-2 min-w-[4rem] text-center">
-              {displayPage} / {totalPages}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-full"
-              onClick={() => setCurrentPage(Math.min(totalPages, displayPage + 1))}
-              disabled={displayPage === totalPages}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-      </TooltipProvider>
-    </DashboardLayout>
+      {showPagination && (
+        <div className="fixed bottom-8 right-4 z-50 flex items-center gap-1 rounded-full border bg-background/95 px-1 py-1 shadow-lg backdrop-blur">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full"
+            onClick={() => setCurrentPage(Math.max(1, displayPage - 1))}
+            disabled={displayPage === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="min-w-[4rem] px-2 text-center text-xs font-medium">
+            {displayPage} / {totalPages}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full"
+            onClick={() => setCurrentPage(Math.min(totalPages, displayPage + 1))}
+            disabled={displayPage === totalPages}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </TooltipProvider>
   )
 }

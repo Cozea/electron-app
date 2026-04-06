@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react'
 
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { AppShellLayout } from '../../components/layouts/AppShellLayout'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
 import { useAuth } from '../../contexts/AuthContext'
@@ -192,12 +192,12 @@ export function Appearance({ surface = 'page' }: AppearanceProps) {
   }
 
   return (
-    <DashboardLayout
+    <AppShellLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Settings' }, { label: 'Appearance' }]}
     >
       {content}
-    </DashboardLayout>
+    </AppShellLayout>
   )
 }

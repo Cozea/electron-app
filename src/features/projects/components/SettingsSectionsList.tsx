@@ -1,6 +1,6 @@
 "use client"
 
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import {
     Settings,
@@ -17,7 +17,7 @@ const settingsSections = [
 
 export function SettingsSectionsList() {
     const navigate = useViewTransitionNavigate()
-    const { slug, projectId } = useParams<{ slug?: string; projectId?: string }>()
+    const { slug, projectId } = useParams()
     const location = useLocation()
 
     // Extract current section from URL (e.g., /projects/my-project/settings/general)

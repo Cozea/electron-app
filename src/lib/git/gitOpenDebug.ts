@@ -10,10 +10,10 @@ export function isGitOpenDebugEnabled(): boolean {
   return window.localStorage.getItem('gitOpenDebug') === '1'
 }
 
-export function logGitOpenDebug(event: string, payload: Record<string, unknown>): void {
+export function logGitOpenDebug(_event: string, _payload: Record<string, unknown>): void {
   if (!isGitOpenDebugEnabled()) {
     return
   }
 
-  console.info(`[GitOpenDebug] ${event}`, payload)
+  // console.info(`[GitOpenDebug] ${_event}`, _payload)
 }

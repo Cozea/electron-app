@@ -1,3 +1,4 @@
+import { WebglAddon } from '@xterm/addon-webgl'
 import type { ITheme, Terminal } from '@xterm/xterm'
 
 const ROOT_THEME_SELECTOR = '.dark, .navy, .wine, .clay, .forest'
@@ -138,6 +139,19 @@ export function observeThemeChanges(onThemeChange: () => void): () => void {
     if (frameId !== null) {
       window.cancelAnimationFrame(frameId)
     }
+  }
+}
+
+export function loadXtermWebglAddon(terminal: Terminal): WebglAddon | null {
+  try {
+    const addon = new WebglAddon()
+    terminal.loadAddon(addon)
+    addon.onContextLoss(() => {
+      addon.dispose()
+    })
+    return addon
+  } catch {
+    return null
   }
 }
 

@@ -1,12 +1,12 @@
 import { useAuth } from '../contexts/AuthContext'
-import { DashboardLayout } from '../components/layouts/DashboardLayout'
+import { AppShellLayout } from '../components/layouts/AppShellLayout'
 import { Construction } from 'lucide-react'
 
 export function Dashboard() {
   const { user, logout } = useAuth()
 
   return (
-    <DashboardLayout
+    <AppShellLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Dashboard' }]}
@@ -18,6 +18,6 @@ export function Dashboard() {
           The dashboard is under construction. Check back later for analytics, activity feeds, and quick actions.
         </p>
       </div>
-    </DashboardLayout>
+    </AppShellLayout>
   )
 }

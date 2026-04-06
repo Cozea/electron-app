@@ -5,18 +5,16 @@ import { IconFolderCode } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { ContextSwitcher } from "@/components/context-switcher"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
 import { useAuth } from "@/contexts/AuthContext"
-import { prewarmAiSettingsData } from "@/hooks/useScopedAiData"
+import {} from "@/hooks/useScopedAiData"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { prewarmCloudStorageData } from "@/hooks/useScopedCloudStorageData"
 import {
@@ -82,7 +80,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         return async () => {
           await Promise.all([
             surface.preload?.(),
-            prewarmAiSettingsData({
+            Promise.resolve({
               organizationId: convexOrganizationId ?? null,
               userId: convexUserId ?? null,
               range: '30d',
@@ -162,28 +160,25 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         })
 
   return (
-    <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
-      <Sidebar
-        collapsible="icon"
-        className={cn("h-full w-56 shrink-0 z-20 sidebar-glass", className)}
-        {...props}
-      >
-        <div className="h-10 shrink-0" aria-hidden="true" />
-        <SidebarHeader>
-          <ContextSwitcher />
-        </SidebarHeader>
-        <SidebarContent>
-          <NavMain label="Platform" items={platformItems} />
-          {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}
-          <NavMain label="Workspace" items={workspaceItems} />
-        </SidebarContent>
-        <SidebarFooter className="mt-auto pb-2 group-data-[collapsible=icon]:pb-2">
-          <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-            <NavUser user={user} onLogout={onLogout} />
-          </div>
-        </SidebarFooter>
-        <SidebarRail />
-      </Sidebar>
-    </div>
+    <Sidebar
+      collapsible="icon"
+      rootClassName="h-full"
+      rootStyle={{ "--sidebar-width": "14rem" } as React.CSSProperties}
+      className={cn("h-full w-56 shrink-0 z-20 sidebar-glass", className)}
+      {...props}
+    >
+      <div className="h-10 shrink-0" aria-hidden="true" />
+      <SidebarContent>
+        <NavMain label="Platform" items={platformItems} />
+        {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}
+        <NavMain label="Workspace" items={workspaceItems} />
+      </SidebarContent>
+      <SidebarFooter className="mt-auto pb-2 group-data-[collapsible=icon]:pb-2">
+        <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+          <NavUser user={user} onLogout={onLogout} />
+        </div>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   )
 }

@@ -27,7 +27,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     oauthConfig: {
       authUrl: 'https://github.com/login/oauth/authorize',
       tokenUrl: 'https://github.com/login/oauth/access_token',
-      scopes: ['repo', 'read:user', 'workflow'],
+      scopes: ['repo', 'read:user', 'user:email', 'read:org', 'workflow'],
       pkce: false,
       clientIdEnvVar: 'GITHUB_CLIENT_ID',
     },
@@ -99,33 +99,18 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     icon: 'gitlab',
     website: 'https://gitlab.com',
     docsUrl: 'https://docs.gitlab.com',
-    authType: 'api_key',
-    apiKeyConfig: {
-      fields: [
-        {
-          name: 'personalAccessToken',
-          label: 'Personal Access Token',
-          placeholder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
-          helpUrl: 'https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html',
-          secret: true,
-          required: true,
-        },
-        {
-          name: 'gitlabUrl',
-          label: 'GitLab URL',
-          placeholder: 'https://gitlab.com',
-          helpText: 'Leave default for GitLab.com, or enter your self-hosted URL',
-          secret: false,
-          required: false,
-        },
-      ],
+    authType: 'oauth',
+    oauthConfig: {
+      authUrl: 'https://gitlab.com/oauth/authorize',
+      tokenUrl: 'https://gitlab.com/oauth/token',
+      scopes: ['api', 'read_user', 'read_repository', 'write_repository'],
+      pkce: false,
+      clientIdEnvVar: 'GITLAB_CLIENT_ID',
     },
     envVarMapping: {
-      personalAccessToken: 'GITLAB_TOKEN',
-      gitlabUrl: 'GITLAB_HOST',
+      accessToken: 'GITLAB_TOKEN',
     },
     tools: [],
-    isComingSoon: true,
   },
 
   // ----------------------------------------

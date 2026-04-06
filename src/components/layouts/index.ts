@@ -1,5 +1,5 @@
 export { PublicLayout } from './PublicLayout'
-export { DashboardLayout } from './DashboardLayout'
+export { AppShellLayout } from './AppShellLayout'
 export { ProjectShellLayout } from './ProjectShellLayout'
 export { WizardLayout, type WizardStep } from './WizardLayout'
 export { BuilderLayout, type BuildPhase } from './BuilderLayout'

@@ -42,14 +42,14 @@ import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
+import { primeLocalProjectPath, useLocalProjectPath } from '../hooks/useLocalProjectPath'
 import { ProjectDeleteDialog } from './ProjectDeleteDialog'
 import { ProjectRenameDialog } from './ProjectRenameDialog'
 import { formatProjectDeleteError, formatProjectRenameError } from '../lib/projectMutationPresentation'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
-const preloadProjectPagesPage = () => import('@/features/projects/pages/ProjectPagesPage')
-const preloadNewProjectPage = () => import('@/pages/NewProject')
+const preloadProjectWorkbenchPage = () => import('@/features/projects/pages/ProjectWorkbenchPage')
 
 interface ProjectSummary extends ProjectOpenGitProjectLike {
     name: string
@@ -117,24 +117,26 @@ export const ProjectListRow = memo(function ProjectListRow({
   const restoreProject = useMutation(api.projects.restore)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const [showMenu, setShowMenu] = useState(false)
-  const [localPath, setLocalPath] = useState<string | null>(project.localPath ?? null)
+  const { localPath: cachedLocalPath } = useLocalProjectPath({
+    initialPath: project.localPath ?? null,
+    lookupOnMount: false,
+    projectId: String(project._id),
+    projectSlug: project.slug,
+  })
+  const [localPath, setLocalPath] = useState<string | null>(cachedLocalPath)
   const shouldHydrateSyncStatus = isInViewport || syncState !== 'idle'
 
   useEffect(() => {
-    setLocalPath(project.localPath ?? null)
-  }, [project._id, project.localPath])
+    setLocalPath(cachedLocalPath)
+  }, [cachedLocalPath, project._id])
 
   useEffect(() => {
     setRenameValue(project.name)
   }, [project._id, project.name])
 
     const preloadProjectDestination = useCallback(() => {
-        if (project.status === 'draft') {
-            void preloadNewProjectPage()
-            return
-        }
-        void preloadProjectPagesPage()
-    }, [project.status])
+        void preloadProjectWorkbenchPage()
+    }, [])
 
     const handleDelete = async (confirmName: string) => {
         if (!userId || isDeleting || confirmName !== project.name) return
@@ -266,12 +268,6 @@ export const ProjectListRow = memo(function ProjectListRow({
     const handleRowClick = useCallback(async () => {
         preloadProjectDestination()
 
-        // Draft projects go straight to wizard
-        if (project.status === 'draft') {
-            navigate(`/projects/new?resume=${project._id}`)
-            return
-        }
-
         // Start sync check
         setSyncState('checking')
         setSyncMessage('Preparing project...')
@@ -292,12 +288,14 @@ export const ProjectListRow = memo(function ProjectListRow({
 
             if (gitOpenResult.cancelled) {
                 if (gitOpenResult.needsConflictResolution) {
+                    primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
                     navigate(buildProjectPath(String(project._id), 'conflicts'), {
                         state: {
                             projectId: String(project._id),
                             projectSlug: project.slug,
                             projectName: project.name,
                             projectTemplate: project.template ?? undefined,
+                            localPath: gitOpenResult.localPath,
                             syncMode: 'git',
                         },
                     })
@@ -311,18 +309,20 @@ export const ProjectListRow = memo(function ProjectListRow({
             }
 
             setLocalPath(gitOpenResult.localPath)
+            primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
             setSyncState('ready')
             setSyncMessage('Opening project...')
             setSyncErrorActionHref(null)
             setSyncErrorActionLabel(null)
 
             setTimeout(() => {
-                navigate(buildProjectPath(String(project._id), 'pages'), {
+                navigate(buildProjectPath(String(project._id), 'workbench'), {
                     state: {
                         projectId: String(project._id),
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
+                        localPath: gitOpenResult.localPath,
                         syncMode: 'git',
                     },
                 })

@@ -396,18 +396,87 @@ body {
   z-index: 5;
 }
 
-/* Solid treatment for primary left sidebars (no glass). */
+/* Primary left sidebars: translucent surface + blur (native window vibrancy/Mica shows through). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: var(--left-sidebar-surface) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  isolation: auto;
+  background-color: color-mix(in oklch, var(--left-sidebar-surface) 58%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(1.12);
+  -webkit-backdrop-filter: blur(22px) saturate(1.12);
+  isolation: isolate;
 }
 
-@supports not (backdrop-filter: blur(1px)) {
+.dark .sidebar-glass [data-slot="sidebar-inner"],
+.navy .sidebar-glass [data-slot="sidebar-inner"],
+.wine .sidebar-glass [data-slot="sidebar-inner"],
+.forest .sidebar-glass [data-slot="sidebar-inner"],
+.clay .sidebar-glass [data-slot="sidebar-inner"] {
+  background-color: color-mix(in oklch, var(--left-sidebar-surface) 72%, transparent) !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sidebar-glass [data-slot="sidebar-inner"] {
     background-color: var(--left-sidebar-surface) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
+}
+
+/* Glass sidebar: hover / selection tints follow sidebar foreground (readable on vibrancy). */
+.sidebar-glass {
+  --sidebar-pill-hover-bg: color-mix(in oklch, var(--sidebar-foreground) 10%, transparent);
+  --sidebar-pill-active-bg: color-mix(in oklch, var(--sidebar-foreground) 17%, transparent);
+  --sidebar-pill-hover-fg: var(--sidebar-foreground);
+  --sidebar-pill-active-fg: var(--primary);
+}
+
+.dark .sidebar-glass,
+.navy .sidebar-glass,
+.wine .sidebar-glass,
+.forest .sidebar-glass,
+.clay .sidebar-glass {
+  --sidebar-pill-hover-bg: color-mix(in oklch, var(--sidebar-foreground) 14%, transparent);
+  --sidebar-pill-active-bg: color-mix(in oklch, var(--sidebar-foreground) 24%, transparent);
+}
+
+.sidebar-glass [data-slot="sidebar-menu-button"],
+.sidebar-glass [data-slot="sidebar-menu-sub-button"] {
+  border-radius: 0.375rem;
+}
+
+.sidebar-glass [data-slot="sidebar-menu-button"]:hover,
+.sidebar-glass [data-slot="sidebar-menu-button"]:focus-visible {
+  background-color: var(--sidebar-pill-hover-bg) !important;
+}
+
+.sidebar-glass [data-slot="sidebar-menu-button"][data-active="true"] {
+  background-color: var(--sidebar-pill-active-bg) !important;
+  color: var(--sidebar-pill-active-fg) !important;
+}
+
+.sidebar-glass [data-slot="sidebar-menu-button"][data-active="true"]:hover,
+.sidebar-glass [data-slot="sidebar-menu-button"][data-active="true"]:focus-visible {
+  background-color: var(--sidebar-pill-active-bg) !important;
+}
+
+.sidebar-glass [data-slot="sidebar-menu-sub-button"]:hover,
+.sidebar-glass [data-slot="sidebar-menu-sub-button"]:focus-visible {
+  background-color: var(--sidebar-pill-hover-bg) !important;
+}
+
+.sidebar-glass [data-slot="sidebar-menu-sub-button"][data-active="true"] {
+  background-color: var(--sidebar-pill-active-bg) !important;
+  color: var(--sidebar-pill-active-fg) !important;
+}
+
+.sidebar-glass [data-slot="sidebar-group-action"]:hover,
+.sidebar-glass [data-slot="sidebar-group-action"]:focus-visible {
+  background-color: var(--sidebar-pill-hover-bg) !important;
+  color: var(--sidebar-pill-hover-fg) !important;
+}
+
+.sidebar-glass [data-slot="sidebar-menu-action"]:hover,
+.sidebar-glass [data-slot="sidebar-menu-action"]:focus-visible {
+  background-color: var(--sidebar-pill-hover-bg) !important;
+  color: var(--sidebar-pill-active-fg) !important;
 }
 
 .sidebar-fade-border::before,
@@ -519,6 +588,29 @@ body {
   min-width: 1.5rem !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
+}
+
+/* Project workbench header (left cluster): no full pills; align with flat h-7 header icons. */
+.shared-header-action-pills .workbench-header-toolbar :where([data-slot="button"], button, [role="button"]) {
+  height: 1.75rem !important;
+  min-height: 1.75rem !important;
+  border-radius: 0.375rem !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.shared-header-action-pills .workbench-header-toolbar :where([data-slot="button"], button, [role="button"])[data-size="icon"] {
+  width: 1.75rem !important;
+  min-width: 1.75rem !important;
+}
+
+.shared-header-action-pills .workbench-header-toolbar :where([data-slot="button"], button, [role="button"])[data-size="sm"] {
+  width: auto !important;
+  min-width: auto !important;
+  padding-left: 0.375rem !important;
+  padding-right: 0.375rem !important;
 }
 
 @theme inline {
@@ -784,7 +876,13 @@ body {
   /* Removed a, button cursor resets to preserve standard web behaviors or native ones where appropriate. */
 
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background-color: var(--background);
+  }
+
+  /* Electron: transparent body so macOS vibrancy / Win Mica can show through sidebar gaps */
+  html[class*="platform-"] body {
+    background-color: transparent;
   }
 }
 

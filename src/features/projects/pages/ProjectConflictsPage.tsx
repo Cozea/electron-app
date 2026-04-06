@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Check, FolderOpen, GitMerge, Loader2, RefreshCw } from 'lucide-react'
 
 import { useViewTransitionNavigate } from '@/lib/navigation'
+import { useLocation } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/CodeMirrorMergeViewer'
 
@@ -22,10 +24,24 @@ interface ConflictFileState {
 
 export function ProjectConflictsPage() {
   const navigate = useViewTransitionNavigate()
+  const location = useLocation()
   const { project, projectIdParam } = useAccessibleProject()
   const syncContext = useOptionalProjectSyncContext()
   const projectId = project?._id ? String(project._id) : projectIdParam
-  const projectPath = syncContext?.projectPath ?? project?.localPath ?? null
+  const navigationLocalPath =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'localPath' in location.state &&
+    typeof (location.state as { localPath?: unknown }).localPath === 'string'
+      ? (location.state as { localPath: string }).localPath
+      : null
+  const { localPath: resolvedLocalPath } = useLocalProjectPath({
+    initialPath: navigationLocalPath,
+    preferInitialPath: Boolean(navigationLocalPath),
+    projectId,
+    projectSlug: project?.slug ?? null,
+  })
+  const projectPath = syncContext?.projectPath ?? resolvedLocalPath
   const projectName = project?.name ?? project?.slug ?? 'Project'
 
   const [conflictedPaths, setConflictedPaths] = useState<string[]>([])
@@ -157,7 +173,7 @@ export function ProjectConflictsPage() {
       }
 
       if (resolveResult.mergeCompleted && projectId) {
-        navigate(buildProjectPath(projectId, 'pages'), { replace: true })
+        navigate(buildProjectPath(projectId, 'workbench'), { replace: true })
         return
       }
 
@@ -167,7 +183,7 @@ export function ProjectConflictsPage() {
 
       if (nextPaths.length === 0) {
         if (projectId) {
-          navigate(buildProjectPath(projectId, 'pages'), { replace: true })
+          navigate(buildProjectPath(projectId, 'workbench'), { replace: true })
         }
         return
       }
@@ -332,7 +348,7 @@ export function ProjectConflictsPage() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Your changes vs incoming changes</CardTitle>
                   <CardDescription>
-                    Left side is your local version. Right side is the incoming cloud version.
+                    Reviewing your local version against the incoming cloud version.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex min-h-0 flex-1 flex-col gap-3">

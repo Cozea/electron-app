@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-    "target": "ES2022",
+    "target": "ES2023",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "types": ["vite/client", "node"],
     "skipLibCheck": true,
@@ -28,6 +28,9 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
+      "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
+      "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
+      "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
       "@/*": ["./src/*"],
       "@shared/*": ["./shared/*"]
     }

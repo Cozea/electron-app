@@ -1,8 +1,44 @@
 import { BrowserWindow, clipboard, Menu, shell, type IpcMain } from 'electron'
 import path from 'node:path'
+import type { ContextMenuItem } from '../../shared/assistant-contracts/ipc'
 
 interface RegisterContextMenuHandlersDeps {
   getMainWindow: () => BrowserWindow | null
+}
+
+function buildGenericContextMenuTemplate(
+  items: readonly ContextMenuItem<string>[],
+  resolve: (result: { action: string | null }) => void,
+  state: { resolved: boolean },
+): Electron.MenuItemConstructorOptions[] {
+  return items.flatMap((item) => {
+    if (item.type === 'separator') {
+      return [{ type: 'separator' }]
+    }
+
+    const hasSubmenu = Array.isArray(item.submenu) && item.submenu.length > 0
+    const itemType = item.type === 'checkbox' || item.type === 'radio' ? item.type : 'normal'
+
+    return [
+      {
+        type: hasSubmenu ? 'submenu' : itemType,
+        label: item.label ?? '',
+        sublabel: item.sublabel,
+        accelerator: item.accelerator,
+        enabled: item.enabled ?? true,
+        checked: itemType === 'checkbox' || itemType === 'radio' ? Boolean(item.checked) : undefined,
+        submenu: hasSubmenu
+          ? buildGenericContextMenuTemplate(item.submenu ?? [], resolve, state)
+          : undefined,
+        click: hasSubmenu
+          ? undefined
+          : () => {
+              state.resolved = true
+              resolve({ action: item.id })
+            },
+      },
+    ]
+  })
 }
 
 export function registerContextMenuHandlers(
@@ -240,6 +276,41 @@ export function registerContextMenuHandlers(
       })
     }
   )
+  ipcMain.handle(
+    'contextMenu:showGeneric',
+    async (
+      event,
+      options: {
+        items: readonly ContextMenuItem<string>[]
+        x?: number
+        y?: number
+      }
+    ): Promise<{ action: string | null }> => {
+      const { items, x, y } = options
+      if (!items.length) {
+        return { action: null }
+      }
+
+      return new Promise((resolve) => {
+        const state = { resolved: false }
+        const window = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
+        const template = buildGenericContextMenuTemplate(items, resolve, state)
+        const menu = Menu.buildFromTemplate(template)
+        const firstActionableIndex = template.findIndex((item) => item.type !== 'separator')
+        menu.popup({
+          window: window || undefined,
+          x,
+          y,
+          positioningItem: firstActionableIndex >= 0 ? firstActionableIndex : undefined,
+          callback: () => {
+            if (!state.resolved) {
+              resolve({ action: null })
+            }
+          },
+        })
+      })
+    }
+  )
 
   ipcMain.handle(
     'contextMenu:showNative',
@@ -304,5 +375,57 @@ export function registerContextMenuHandlers(
 
       return { shown: true }
     }
+  )
+
+  ipcMain.handle(
+    'contextMenu:showOpenInEditorPicker',
+    async (
+      event,
+      options: {
+        x: number
+        y: number
+        editors: ReadonlyArray<{ id: string; name: string }>
+        selectedEditorId: string | null
+      },
+    ): Promise<{ editorId: string | null }> => {
+      const { editors, selectedEditorId, x, y } = options
+      if (editors.length === 0) {
+        return { editorId: null }
+      }
+
+      return new Promise((resolve) => {
+        let resolved = false
+        const window = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
+
+        const template: Electron.MenuItemConstructorOptions[] = [
+          {
+            label: 'Open in editor',
+            enabled: false,
+          },
+          { type: 'separator' },
+          ...editors.map((editor) => ({
+            type: 'radio' as const,
+            label: editor.name,
+            checked: editor.id === selectedEditorId,
+            click: () => {
+              resolved = true
+              resolve({ editorId: editor.id })
+            },
+          })),
+        ]
+
+        const menu = Menu.buildFromTemplate(template)
+        menu.popup({
+          window: window || undefined,
+          x,
+          y,
+          callback: () => {
+            if (!resolved) {
+              resolve({ editorId: null })
+            }
+          },
+        })
+      })
+    },
   )
 }

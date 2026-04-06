@@ -52,10 +52,10 @@ const YjsProjectContext = createContext<YjsProjectContextValue>({
   resolveDeleteConflict: async () => {},
 })
 
-function normalizeCollabTransport(raw: string | undefined): CollabTransport {
+export function normalizeCollabTransport(raw: string | undefined): CollabTransport {
   const normalized = raw?.trim().toLowerCase()
-  if (normalized === 'convex') return 'convex'
-  return 'ws'
+  if (normalized === 'ws') return 'ws'
+  return 'convex'
 }
 
 function generateColor(id: string): string {

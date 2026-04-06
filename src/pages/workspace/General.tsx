@@ -4,8 +4,8 @@ import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { WorkspaceIdentityPicker } from '@/components/workspaces/WorkspaceIdentityPicker'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { useScopedGeneralData } from '@/hooks/useScopedGeneralData'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -25,12 +25,15 @@ import {
   type WorkspaceIdentityInput,
 } from '@shared/workspaceIdentity.ts'
 
-export function General() {
+interface GeneralProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
+
+export function General({ surface = 'page', route }: GeneralProps = {}) {
   const navigate = useViewTransitionNavigate()
   const {
     settingsPage,
-    user,
-    logout,
     convexUserId,
     convexOrg,
     workspaceOrganizationId,
@@ -38,7 +41,7 @@ export function General() {
     updateWorkosOrganization,
     deleteWorkosOrganization,
     isLoading,
-  } = useScopedGeneralData()
+  } = useScopedGeneralData({ route })
 
   // Form state
   const [workspaceName, setWorkspaceName] = useState('')
@@ -169,12 +172,8 @@ export function General() {
 
 
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-    >
+  const content = (
+    <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Workspace access required"
@@ -349,6 +348,16 @@ export function General() {
 
       </div>
       )}
-    </DashboardLayout>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <SettingsRouteShell surfaceId="general" route={route}>
+      {content}
+    </SettingsRouteShell>
   )
 }

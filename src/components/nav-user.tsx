@@ -1,11 +1,8 @@
+import * as React from "react"
 import {
   ChevronsUpDown,
-  LogOut,
-  Moon,
-  Sun,
-  Settings,
-  Monitor,
 } from "lucide-react"
+import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import {
   Avatar,
@@ -13,23 +10,22 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from "@/components/ui/sidebar"
 import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
 import { useTheme } from "@/contexts/ThemeContext"
-import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/AuthContext"
+import { useResolvedScope } from "@/hooks/useResolvedScope"
+import { useCreateWorkspaceDialogStore } from "@/stores/useCreateWorkspaceDialogStore"
+import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useScopedBillingData } from "@/hooks/useScopedBillingData"
+import {
+  getOrganizationPlanLabel,
+  getPersonalPlanLabel,
+} from "@/lib/billing/planLabels"
+import { resolveScopedSettingsHref } from "@/lib/workspaces/settingsRoutes"
 
 // Raw user type from auth context
 interface RawUser {
@@ -77,116 +73,178 @@ export function NavUser({
   user: RawUser | FormattedUser | null | undefined
   onLogout?: () => void
 }) {
-  const { isMobile } = useSidebar()
   const { theme, setTheme } = useTheme()
   const userData = formatUserData(user)
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.open)
+  const openSettingsDrawerFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
+  const openCreateWorkspaceDialog = useCreateWorkspaceDialogStore((state) => state.open)
+  const navigate = useViewTransitionNavigate()
+  const { organizationWorkspaces, personalWorkspace } = useAuth()
+  const { activeWorkspace: currentWorkspace } = useResolvedScope({ ignoreLocation: true })
+  const { seatManagement, workspaceScoped } = useScopedBillingData()
+  const hasWorkspaceSettings = currentWorkspace?.workspaceType === "organization"
+  const availableWorkspaceCount =
+    organizationWorkspaces.length +
+    (personalWorkspace || currentWorkspace?.workspaceType === "personal" ? 1 : 0)
+  const activePlanLabel = workspaceScoped
+    ? getOrganizationPlanLabel(seatManagement?.entitlement?.plan)
+    : getPersonalPlanLabel(seatManagement?.entitlement?.plan)
+  const workspaceSettingsHref = React.useMemo(
+    () => resolveScopedSettingsHref("/settings/general", workspaceScoped),
+    [workspaceScoped],
+  )
+  const menuSummarySublabel = workspaceScoped
+    ? [currentWorkspace?.organizationName, activePlanLabel]
+        .filter((value): value is string => Boolean(value))
+        .join(" · ")
+    : userData.email || activePlanLabel
+
+  const handleMenuClick = React.useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect()
+      const items: ContextMenuItem<
+        | "summary"
+        | "workspace-settings"
+        | "switch-workspace"
+        | "create-workspace"
+        | "account-settings"
+        | "theme-light"
+        | "theme-dark"
+        | "theme-system"
+        | "theme-group"
+        | "logout"
+        | "separator-top"
+        | "separator-middle"
+        | "separator-bottom"
+      >[] = []
+
+      if (userData.name || menuSummarySublabel) {
+        items.push({
+          id: "summary",
+          label: userData.name || "User",
+          sublabel: menuSummarySublabel || undefined,
+          enabled: false,
+        })
+        items.push({ id: "separator-top", label: "", type: "separator" })
+      }
+
+      if (hasWorkspaceSettings) {
+        items.push({
+          id: "workspace-settings",
+          label: "Workspace Settings",
+        })
+      }
+
+      if (availableWorkspaceCount > 1) {
+        items.push({
+          id: "switch-workspace",
+          label: "Switch Workspace",
+        })
+      }
+
+      items.push({
+        id: "create-workspace",
+        label: "Create Workspace",
+      })
+      items.push({ id: "separator-middle", label: "", type: "separator" })
+      items.push({
+        id: "account-settings",
+        label: "Settings",
+      })
+      items.push({
+        id: "theme-group",
+        label: "Theme",
+        submenu: [
+          { id: "theme-light", label: "Light", type: "radio", checked: theme === "light" },
+          { id: "theme-dark", label: "Dark", type: "radio", checked: theme === "dark" },
+          { id: "theme-system", label: "System", type: "radio", checked: theme === "system" },
+        ],
+      })
+      items.push({ id: "separator-bottom", label: "", type: "separator" })
+      items.push({
+        id: "logout",
+        label: "Log out",
+      })
+
+      const position = {
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top),
+      }
+
+      const action = window.desktopBridge?.showContextMenu
+        ? await window.desktopBridge.showContextMenu(items, position)
+        : window.nativeApi?.contextMenu?.show
+          ? await window.nativeApi.contextMenu.show(items, position)
+          : null
+
+      switch (action) {
+        case "workspace-settings":
+          openSettingsDrawerFromRoute(workspaceSettingsHref)
+          break
+        case "switch-workspace":
+          navigate("/workspaces/select")
+          break
+        case "create-workspace":
+          openCreateWorkspaceDialog()
+          break
+        case "account-settings":
+          openSettingsDrawer("account")
+          break
+        case "theme-light":
+          setTheme("light")
+          break
+        case "theme-dark":
+          setTheme("dark")
+          break
+        case "theme-system":
+          setTheme("system")
+          break
+        case "logout":
+          onLogout?.()
+          break
+      }
+    },
+    [
+      activePlanLabel,
+      availableWorkspaceCount,
+      currentWorkspace?.organizationName,
+      hasWorkspaceSettings,
+      menuSummarySublabel,
+      navigate,
+      onLogout,
+      openCreateWorkspaceDialog,
+      openSettingsDrawer,
+      openSettingsDrawerFromRoute,
+      setTheme,
+      theme,
+      userData.email,
+      userData.name,
+      workspaceSettingsHref,
+      workspaceScoped,
+    ],
+  )
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="rounded-2xl data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-            >
-              <Avatar className="h-8 w-8 rounded-full">
-                <AvatarImage src={userData.avatar} alt={userData.name} />
-                <AvatarFallback className="rounded-full">
-                  {userData.name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                <span className="truncate font-medium">{userData.name}</span>
-                <span className="truncate text-xs">{userData.email}</span>
-              </div>
-              <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-2xl"
-            side={isMobile ? "bottom" : "right"}
-            align="end"
-            sideOffset={4}
-          >
-            <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-full">
-                  <AvatarImage src={userData.avatar} alt={userData.name} />
-                  <AvatarFallback className="rounded-full">
-                    {userData.name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{userData.name}</span>
-                  <span className="truncate text-xs">{userData.email}</span>
-                </div>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onSelect={() => openSettingsDrawer("account")}>
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="px-2 py-1 text-xs text-muted-foreground">
-                Theme
-              </DropdownMenuLabel>
-              <div className="px-1 pb-1">
-                <div className="grid grid-cols-3 gap-1 rounded-2xl bg-foreground/6 p-1">
-                  <button
-                    type="button"
-                    aria-label="Light theme"
-                    onClick={() => setTheme('light')}
-                    className={cn(
-                      "flex h-8 items-center justify-center rounded-xl transition-colors",
-                      theme === 'light'
-                        ? "bg-foreground/14 text-foreground"
-                        : "text-muted-foreground hover:bg-foreground/10"
-                    )}
-                  >
-                    <Sun className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Dark theme"
-                    onClick={() => setTheme('dark')}
-                    className={cn(
-                      "flex h-8 items-center justify-center rounded-xl transition-colors",
-                      theme === 'dark'
-                        ? "bg-foreground/14 text-foreground"
-                        : "text-muted-foreground hover:bg-foreground/10"
-                    )}
-                  >
-                    <Moon className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="System theme"
-                    onClick={() => setTheme('system')}
-                    className={cn(
-                      "flex h-8 items-center justify-center rounded-xl transition-colors",
-                      theme === 'system'
-                        ? "bg-foreground/14 text-foreground"
-                        : "text-muted-foreground hover:bg-foreground/10"
-                    )}
-                  >
-                    <Monitor className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <SidebarMenuButton
+          size="lg"
+          type="button"
+          className="group rounded-2xl"
+          onClick={handleMenuClick}
+        >
+          <Avatar className="h-6 w-6 rounded-full">
+            <AvatarImage src={userData.avatar} alt={userData.name} />
+            <AvatarFallback className="rounded-full">
+              {userData.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate font-medium">{userData.name}</span>
+            <span className="truncate text-muted-foreground">{activePlanLabel}</span>
+          </div>
+          <ChevronsUpDown className="ml-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
+        </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
   )

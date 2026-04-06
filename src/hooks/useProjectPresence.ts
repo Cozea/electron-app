@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { useLocation } from "react-router-dom"
+import { useLocation } from '@/lib/router'
 import { useCollaborationActivityStore } from "@/stores/useCollaborationActivityStore"
 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000 // 30 seconds
@@ -67,10 +67,8 @@ export function useProjectPresence({
   // Determine active tab from current route
   const getActiveTab = useCallback(() => {
     const path = location.pathname
-    if (path.includes("/pages")) return "pages"
-    if (path.includes("/backend")) return "backend"
+    if (path.includes("/workbench")) return "workbench"
     if (path.includes("/settings")) return "settings"
-    if (path.includes("/dependencies")) return "dependencies"
     if (path.includes("/deployments")) return "deployments"
     return "editor"
   }, [location.pathname])

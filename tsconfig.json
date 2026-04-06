@@ -7,6 +7,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
+      "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
+      "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
       "@/*": ["./src/*"],
       "@shared/*": ["./shared/*"]
     }

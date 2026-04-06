@@ -62,6 +62,7 @@ function observeLongTasks(): void {
 }
 
 export function initJankDiagnostics(): void {
+  return // Diagnostics disabled
   if (initialized) return
   initialized = true
 

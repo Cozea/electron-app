@@ -10,7 +10,7 @@ import {
 import { useConvex } from "convex/react"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import type { SyncProgress } from "@/lib/sync/types"
-import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
+import { YjsProjectProvider, normalizeCollabTransport } from "@/contexts/YjsProjectContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
@@ -56,10 +56,10 @@ export function useOptionalProjectSyncContext() {
 
 interface ProjectSyncProviderProps {
   children: ReactNode
-  projectId: Id<"projects">
-  userId: Id<"users">
-  userName: string
-  projectSlug: string
+  projectId: Id<"projects"> | null
+  userId: Id<"users"> | null
+  userName: string | null
+  projectSlug: string | null
   localPath: string | null
   lastSyncAt?: number
   skipInitialSyncCheck?: boolean
@@ -72,12 +72,25 @@ function AgentFileSyncBridge({
   projectPath,
   children,
 }: {
-  projectId: Id<"projects">
-  userId: Id<"users">
+  projectId: Id<"projects"> | null
+  userId: Id<"users"> | null
   projectPath: string | null
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
+
+  useEffect(() => {
+    if (!projectPath) return
+    const yjsApi = window.electronAPI?.yjs
+    if (yjsApi?.setInterestRoots) {
+      void yjsApi.setInterestRoots({ roots: [projectPath] })
+    }
+    return () => {
+      if (yjsApi?.setInterestRoots) {
+        void yjsApi.setInterestRoots({ roots: [] })
+      }
+    }
+  }, [projectPath])
 
   useEffect(() => {
     if (!projectPath || !yjsDoc) return
@@ -114,36 +127,39 @@ export function ProjectSyncProvider({
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
 }: ProjectSyncProviderProps) {
+  const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
+  const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
+  const resolvedUserName = userName ?? "User"
   const convex = useConvex()
   const { accessToken } = useAuth()
-  const [currentLocalPath, setCurrentLocalPath] = useState<string | null>(localPath)
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
-
-  useEffect(() => {
-    setCurrentLocalPath(localPath)
-  }, [localPath])
+  const collabTransport = useMemo(
+    () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
+    []
+  )
 
   useEffect(() => {
     setLastSyncAt(initialLastSyncAt ?? null)
   }, [initialLastSyncAt])
 
-  const canSync = Boolean(currentLocalPath)
+  const canSync = Boolean(projectId && userId && localPath)
+  const shouldUseWsCollab = canSync && collabTransport === "ws"
 
   const {
     status: collabSessionStatus,
     session: collabSession,
     refresh: refreshCollabSession,
   } = useCollabSession({
-    projectId: String(projectId),
+    projectId: String(resolvedProjectId),
     accessToken,
-    enabled: canSync && Boolean(accessToken),
+    enabled: shouldUseWsCollab && Boolean(accessToken),
   })
 
   const activeCollabSession: CollabSessionDescriptor | null =
-    collabSessionStatus === "ready" && collabSession
+    shouldUseWsCollab && collabSessionStatus === "ready" && collabSession
       ? {
-          projectId: String(projectId),
+          projectId: String(resolvedProjectId),
           roomId: collabSession.roomId,
           collabWsUrl: collabSession.collabWsUrl,
           token: collabSession.token,
@@ -153,30 +169,34 @@ export function ProjectSyncProvider({
 
   const refreshActiveCollabSession = useMemo(
     () => async (): Promise<CollabSessionDescriptor | null> => {
+      if (!shouldUseWsCollab) {
+        return null
+      }
+
       const nextSession = await refreshCollabSession()
       if (!nextSession?.token || !nextSession?.roomId) {
         return null
       }
 
       return {
-        projectId: String(projectId),
+        projectId: String(resolvedProjectId),
         roomId: nextSession.roomId,
         collabWsUrl: nextSession.collabWsUrl,
         token: nextSession.token,
         protocolVersion: nextSession.protocolVersion,
       }
     },
-    [projectId, refreshCollabSession]
+    [refreshCollabSession, resolvedProjectId, shouldUseWsCollab]
   )
 
   const triggerSync = useCallback(async () => {
-    if (!currentLocalPath) {
+    if (!projectId || !userId || !localPath) {
       return
     }
 
     const coordinator = GitDurabilityCoordinator.acquireShared({
       projectId,
-      projectPath: currentLocalPath,
+      projectPath: localPath,
       convex,
       userId,
     })
@@ -190,7 +210,7 @@ export function ProjectSyncProvider({
     })
 
     try {
-      await coordinator.flushNow()
+      await coordinator.flushNow(true)
       const now = Date.now()
       setLastSyncAt(now)
       onFilesChanged?.()
@@ -217,40 +237,40 @@ export function ProjectSyncProvider({
     } finally {
       coordinator.release()
     }
-  }, [convex, currentLocalPath, onFilesChanged, projectId, userId])
+  }, [convex, localPath, onFilesChanged, projectId, userId])
 
   return (
     <ProjectSyncContext.Provider
-      value={{
-        isSynced: canSync,
-        cloudSyncBlocked: false,
-        lastSyncAt,
-        projectPath: currentLocalPath,
-        triggerSync,
-        syncProgress: progress,
-      }}
+      value={
+        canSync
+          ? {
+              isSynced: true,
+              cloudSyncBlocked: false,
+              lastSyncAt,
+              projectPath: localPath,
+              triggerSync,
+              syncProgress: progress,
+            }
+          : null
+      }
     >
       <YjsProjectProvider
-        projectId={projectId}
-        userId={userId}
-        userName={userName}
-        projectPath={currentLocalPath}
+        projectId={resolvedProjectId}
+        userId={resolvedUserId}
+        userName={resolvedUserName}
+        projectPath={localPath}
         enabled={canSync}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
       >
         <DeleteConflictDialog />
-        {canSync ? (
-          <AgentFileSyncBridge
-            projectId={projectId}
-            userId={userId}
-            projectPath={currentLocalPath}
-          >
-            {children}
-          </AgentFileSyncBridge>
-        ) : (
-          children
-        )}
+        <AgentFileSyncBridge
+          projectId={projectId}
+          userId={userId}
+          projectPath={localPath}
+        >
+          {children}
+        </AgentFileSyncBridge>
       </YjsProjectProvider>
     </ProjectSyncContext.Provider>
   )
