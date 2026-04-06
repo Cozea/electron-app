@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { AppShellLayout } from '../../components/layouts/AppShellLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
@@ -997,12 +997,12 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }
 
   return (
-    <DashboardLayout
+    <AppShellLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Settings' }, { label: 'Storage' }]}
     >
       {content}
-    </DashboardLayout>
+    </AppShellLayout>
   )
 }

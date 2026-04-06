@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useState, type MouseEvent } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft } from 'lucide-react'
 import { useConvex, useQuery, useMutation } from 'convex/react'
@@ -31,8 +31,10 @@ import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialog
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '@/features/projects/lib/projectCloudAccessPresentation'
+import { primeLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { WorkspaceAvatar } from '@/components/workspaces/WorkspaceAvatar'
+import { useProjectCreationMenu } from '@/features/projects/hooks/useProjectCreationMenu'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -47,7 +49,8 @@ interface ProjectNavigationState {
   projectSlug?: string
   projectName?: string
   projectTemplate?: string
-  syncMode?: 'replica' | 'git'
+  localPath?: string | null
+  syncMode?: 'git'
 }
 
 export function ContextSwitcher() {
@@ -58,6 +61,7 @@ export function ContextSwitcher() {
   const openCreateWorkspaceDialog = useCreateWorkspaceDialogStore(
     (state) => state.open
   )
+  const { openProjectCreationMenu } = useProjectCreationMenu()
   const location = useLocation()
   const { organizationWorkspaces, personalWorkspace, convexUserId } = useAuth()
   const {
@@ -190,13 +194,6 @@ export function ContextSwitcher() {
     event?.preventDefault()
     if (syncState !== 'idle') return
 
-    // Draft projects go straight to wizard
-    if (project.status === 'draft') {
-      setOpen(false)
-      navigate(`/projects/new?resume=${project._id}`)
-      return
-    }
-
     setActiveProjectName(project.name ?? null)
     setSyncState('checking')
     setSyncMessage('Preparing project...')
@@ -208,10 +205,7 @@ export function ContextSwitcher() {
       const gitOpenResult = await prepareGitProjectForOpen({
         convex,
         project,
-        localPath: project.localPath ?? await window.electronAPI.project.getLocalPath({
-          slug: project.slug,
-          projectId: String(project._id),
-        }),
+        localPath: null,
         userId: convexUserId,
         onProgress: (message) => {
           setSyncMessage(message)
@@ -222,12 +216,14 @@ export function ContextSwitcher() {
       if (gitOpenResult.cancelled) {
         if (gitOpenResult.needsConflictResolution) {
           setOpen(false)
+          primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
           navigate(buildProjectPath(String(project._id), 'conflicts'), {
             state: {
               projectSlug: project.slug,
               projectId: String(project._id),
               projectName: project.name ?? undefined,
               projectTemplate: project.template ?? undefined,
+              localPath: gitOpenResult.localPath,
               syncMode: 'git',
             } satisfies ProjectNavigationState,
           })
@@ -240,15 +236,17 @@ export function ContextSwitcher() {
 
       setSyncState('ready')
       setSyncMessage('Opening project...')
+      primeLocalProjectPath(String(project._id), gitOpenResult.localPath, project.slug)
 
       setTimeout(() => {
         setOpen(false)
-        navigate(buildProjectPath(String(project._id), 'pages'), {
+        navigate(buildProjectPath(String(project._id), 'workbench'), {
           state: {
             projectSlug: project.slug,
             projectId: String(project._id),
             projectName: project.name ?? undefined,
             projectTemplate: project.template ?? undefined,
+            localPath: gitOpenResult.localPath,
             syncMode: 'git',
           } satisfies ProjectNavigationState,
         })
@@ -279,8 +277,8 @@ export function ContextSwitcher() {
 
   const handleNewProject = useCallback(() => {
     setOpen(false)
-    navigate('/projects/new')
-  }, [navigate])
+    void openProjectCreationMenu()
+  }, [openProjectCreationMenu])
 
   const handleSwitchWorkspace = useCallback(() => {
     setOpen(false)
@@ -306,7 +304,7 @@ export function ContextSwitcher() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="group data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   {isInProject ? (
@@ -323,7 +321,7 @@ export function ContextSwitcher() {
                     />
                   )}
                 </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-medium">
                   {isInProject
                     ? currentProject?.name ??
@@ -346,7 +344,7 @@ export function ContextSwitcher() {
                   </span>
                 )}
               </div>
-              <ChevronsUpDown className="ml-auto size-4" />
+              <ChevronsUpDown className="ml-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100 group-data-[collapsible=icon]:hidden" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

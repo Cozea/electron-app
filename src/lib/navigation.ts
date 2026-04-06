@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { createPath, type NavigateOptions, type NavigateFunction, type To, useNavigate } from 'react-router-dom'
+import { createPath, type NavigateFunction, type NavigateOptions, type To, useNavigate } from '@/lib/router'
 
 import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'
@@ -55,7 +55,7 @@ export function navigateWithTransition(
       navigate(to)
       return
     }
-    navigate(to, options)
+      navigate(to, options)
     return
   }
 

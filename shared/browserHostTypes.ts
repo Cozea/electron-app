@@ -1,0 +1,63 @@
+export type BrowserStorageScope = 'global' | 'workspace' | 'ephemeral'
+
+export interface BrowserHostBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface BrowserLoadError {
+  message: string
+}
+
+export interface BrowserFindInPageOptions {
+  forward?: boolean
+  recompute?: boolean
+  matchCase?: boolean
+}
+
+export interface BrowserFindState {
+  query: string
+  visible: boolean
+  matchCase: boolean
+  activeMatchOrdinal: number
+  matches: number
+  finalUpdate: boolean
+}
+
+export interface BrowserUiCommand {
+  tileId: string
+  type: 'focus-url' | 'show-find' | 'hide-find'
+  query?: string
+}
+
+export interface BrowserState {
+  tileId: string
+  url: string
+  title: string
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  favicon?: string | null
+  focused: boolean
+  visible: boolean
+  isDevToolsOpen: boolean
+  storageScope: BrowserStorageScope
+  zoomFactor: number
+  canZoomIn: boolean
+  canZoomOut: boolean
+  find: BrowserFindState
+  loadError?: string | null
+}
+
+export interface BrowserCreateOptions {
+  initialUrl?: string
+  storageScope?: BrowserStorageScope
+  workspaceId?: string
+}
+
+export interface BrowserNewPageRequest {
+  sourceTileId: string
+  url: string
+}

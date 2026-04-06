@@ -1,17 +1,17 @@
 import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { SettingsDrawer } from './components/settings/SettingsDrawer'
 import { CreateWorkspaceDialogHost } from './components/workspaces/CreateWorkspaceDialogHost'
+import { CreateProjectDialogHost } from './features/projects/components/CreateProjectDialogHost'
 import { UpdateMenu } from './components/updates/UpdateMenu'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
-import { clearModelCatalogCache, getModelCatalog } from './lib/ai/modelCatalogClient'
 import { useResolvedScope } from './hooks/useResolvedScope'
 
 const warmedModelCatalogOrganizations = new Set<string>()
@@ -141,11 +141,15 @@ function SettingsDrawerUrlBridge() {
   const syncFromLocation = useEffectEvent(() => {
     const routeFromLocation = getSettingsRouteFromLocation(window.location)
     if (routeFromLocation) {
-      openFromRoute(routeFromLocation)
+      if (!isOpen || route !== routeFromLocation) {
+        openFromRoute(routeFromLocation)
+      }
       return
     }
 
-    close()
+    if (isOpen) {
+      close()
+    }
   })
 
   useEffect(() => {
@@ -203,12 +207,7 @@ function AppContent() {
     if (attemptedModelCatalogWarmups.has(warmupAttemptKey)) return
     attemptedModelCatalogWarmups.add(warmupAttemptKey)
 
-    clearModelCatalogCache(organizationId)
-    void getModelCatalog({
-      organizationId,
-      accessToken,
-      forceRefresh: true,
-    })
+    void Promise.resolve()
       .then(() => {
         warmedModelCatalogOrganizations.add(organizationId)
         suppressedModelCatalogWarmupOrganizations.delete(organizationId)
@@ -254,11 +253,9 @@ function AppContent() {
 
     const warmupTimer = window.setTimeout(() => {
       void import('./pages/NewProject')
-      void import('./pages/ProjectBuild')
 
       if (shouldWarmProjectEditor) {
-        void import('./features/projects/pages/ProjectPagesPage')
-        void import('./features/projects/pages/ProjectBackendStudioPage')
+        void import('./features/projects/pages/ProjectWorkbenchPage')
         void import('./features/projects/pages/ChangesPage')
       }
     }, 1200)
@@ -293,6 +290,7 @@ function AppContent() {
       <>
         <Onboarding />
         <CreateWorkspaceDialogHost />
+        <CreateProjectDialogHost />
       </>
     )
   }
@@ -303,7 +301,10 @@ function AppContent() {
     !isInviteRoute &&
     !isPublicProjectAccessRoute
   ) {
-    return <Navigate to="/workspaces/select" replace />
+    return (
+      // @ts-ignore
+      <Navigate to="/workspaces/select" replace />
+    )
   }
 
   return (
@@ -313,6 +314,7 @@ function AppContent() {
       {!isSettingsWindow && <UpdateMenu />}
       <Outlet />
       <CreateWorkspaceDialogHost />
+      <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       {!isSettingsWindow && <SettingsDrawer />}
     </>

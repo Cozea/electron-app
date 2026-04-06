@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Check, Plus } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -75,7 +75,9 @@ export function WorkspaceSelect() {
         <div className="flex justify-center">
           <Button
             variant="secondary"
-            onClick={openCreateWorkspaceDialog}
+            onClick={() => {
+              openCreateWorkspaceDialog()
+            }}
             className="gap-2"
           >
             <Plus className="size-4" />

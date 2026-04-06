@@ -19,25 +19,25 @@ This is an Electron desktop application with a React frontend and Convex backend
 
 ```shell
 # Install dependencies
-npm install
+bun install
 
 # Development (runs Electron + Vite)
-npm run dev
+bun run dev
 
 # Deploy Convex to production (ALWAYS use this, NEVER use `convex dev`)
-npx convex deploy
+bunx convex deploy
 
 # Run API server
-cd server && npm run dev
+cd server && bun run dev
 
 # Type checking
-npm run typecheck
+bun run typecheck
 
 # Linting
-npm run lint
+bun run lint
 
 # Build for production
-npm run build
+bun run build
 ```
 
 ## Desktop Releases (GitHub)
@@ -362,3 +362,4 @@ The builder agent MUST use web search to:
 - Follow the technology choices from the approved plan
 - Generate code with proper error handling and types
 - Use established patterns from the existing codebase
+- ALWAYS use `bun` instead of `npm`, `yarn`, or `pnpm` for project generation and package management (e.g. `bun create vite`, `bun install`, `bun add`).

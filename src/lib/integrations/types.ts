@@ -4,6 +4,8 @@
  * Types for the integration registry, credentials, and tools.
  */
 
+import type { VersionControlIntegrationMetadata } from '@shared/versionControl'
+
 // ============================================
 // Integration Provider Types
 // ============================================
@@ -152,13 +154,17 @@ export interface ConnectedIntegration {
   tokenExpiresAt?: number
   externalId?: string
   externalAccountName?: string
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> | VersionControlIntegrationMetadata
   enabledTools?: string[]
   status: IntegrationStatus
   lastVerifiedAt?: number
   connectedBy: string
   connectedAt: number
   updatedAt: number
+}
+
+export interface IntegrationOAuthStartOptions {
+  metadata?: Record<string, unknown>
 }
 
 // ============================================

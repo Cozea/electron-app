@@ -74,7 +74,7 @@ export function DevCommandPickerDialog({
           <Input
             value={command}
             onChange={(event) => setCommand(event.target.value)}
-            placeholder="npm run dev"
+            placeholder="bun run dev"
           />
         </div>
 

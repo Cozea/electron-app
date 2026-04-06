@@ -1,7 +1,7 @@
 import { Lock, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
-import { DashboardLayout } from '@/components/layouts/DashboardLayout'
 import { Badge } from '@/components/ui/badge'
 import { CardTitle } from '@/components/ui/card'
 import { useScopedPoliciesData } from '@/hooks/useScopedPoliciesData'
@@ -27,15 +27,16 @@ const POLICY_CARDS = [
   },
 ]
 
-export function Policies() {
-  const { settingsPage, user, logout, workspaceName } = useScopedPoliciesData()
+interface PoliciesProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-    >
+export function Policies({ surface = 'page', route }: PoliciesProps = {}) {
+  const { settingsPage, workspaceName } = useScopedPoliciesData({ route })
+
+  const content = (
+    <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Policies access required"
@@ -97,6 +98,16 @@ export function Policies() {
         </div>
       </div>
       )}
-    </DashboardLayout>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <SettingsRouteShell surfaceId="policies" route={route}>
+      {content}
+    </SettingsRouteShell>
   )
 }

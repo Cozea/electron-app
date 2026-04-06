@@ -517,13 +517,13 @@ export function registerSettingsStorageHandlers(
     return { success: true }
   })
 
-  ipcMain.handle('dialog:selectDirectory', async () => {
+  ipcMain.handle('dialog:selectDirectory', async (_event, options?: { title?: string }) => {
     const win = deps.getMainWindow()
     if (!win) return { success: false, error: 'No window available' }
 
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory', 'createDirectory'],
-      title: 'Select Projects Directory',
+      title: options?.title ?? 'Select Projects Directory',
     })
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -540,6 +540,32 @@ export function registerSettingsStorageHandlers(
 
     return { success: true, path: result.filePaths[0] }
   })
+
+  ipcMain.handle(
+    'dialog:selectFile',
+    async (
+      _event,
+      options?: {
+        title?: string
+        filters?: Array<{ name: string; extensions: string[] }>
+      }
+    ) => {
+      const win = deps.getMainWindow()
+      if (!win) return { success: false, error: 'No window available' }
+
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        title: options?.title ?? 'Select File',
+        filters: options?.filters,
+      })
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true }
+      }
+
+      return { success: true, path: result.filePaths[0] }
+    }
+  )
 
   ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
     const win = deps.getMainWindow()

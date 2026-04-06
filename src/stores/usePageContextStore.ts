@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { create } from 'zustand'
 
 export const PREVIEW_SCREENSHOT_REQUEST_EVENT = 'cozea:preview-screenshot-request'

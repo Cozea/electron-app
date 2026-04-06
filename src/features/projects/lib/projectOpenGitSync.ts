@@ -1,9 +1,20 @@
 import type { ConvexReactClient } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
 import { isGitOpenDebugEnabled, logGitOpenDebug } from '@/lib/git/gitOpenDebug'
 import { recordGitOpenTelemetry, type GitOpenTelemetryEvent } from '@/lib/git/gitOpenTelemetry'
+import { syncProjectRepositoryAccess } from '@/lib/git/projectRepoAutomation'
+import {
+  resolveProjectIntegrationProvider,
+  resolveProjectRepoAccessStatus,
+} from '@/lib/git/projectRepoAccess'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
+import {
+  resolveProjectGitRemoteConfig,
+  resolveProjectGitSyncPolicy,
+  resolveProjectWorkingCopyMode,
+  type ProjectGitRuntimeSourceControlLike,
+} from '@/lib/git/projectGitRuntime'
 
 export interface GitRepositoryMetadataLike {
   provider?: string
@@ -13,15 +24,14 @@ export interface GitRepositoryMetadataLike {
 
 export interface ProjectOpenGitProjectLike {
   _id: Id<'projects'>
+  name?: string | null
   slug: string
   organizationId: Id<'organizations'>
-  syncMode?: 'replica' | 'git'
+  createdBy?: Id<'users'> | string | null
+  syncMode?: 'git'
   localPath?: string | null
   gitRepository?: GitRepositoryMetadataLike | null
-  sourceControl?: {
-    provider?: string
-    repoUrl?: string | null
-  } | null
+  sourceControl?: ProjectGitRuntimeSourceControlLike | null
 }
 
 export interface PrepareGitProjectForOpenOptions {
@@ -48,30 +58,7 @@ export interface PrepareGitProjectForOpenResult {
 }
 
 function shouldAdoptWorkspaceForMissingRemote(project: ProjectOpenGitProjectLike): boolean {
-  if (project.sourceControl?.provider === 'local') {
-    return true
-  }
-
-  const provider = project.gitRepository?.provider?.trim().toLowerCase()
-  return Boolean(provider && provider !== 'cozea')
-}
-
-interface GitAuthPayload {
-  accessToken?: string
-}
-
-function resolveGitBranch(project: ProjectOpenGitProjectLike): string {
-  return project.gitRepository?.defaultBranch?.trim() || 'main'
-}
-
-async function resolveGitAuthPayload(): Promise<GitAuthPayload> {
-  try {
-    const session = await window.electronAPI.auth.getSession()
-    return { accessToken: session?.accessToken }
-  } catch (error) {
-    console.warn('[GitOpen] Failed to resolve Cozea Git session:', error)
-    return {}
-  }
+  return resolveProjectWorkingCopyMode(project.sourceControl) === 'attached'
 }
 
 async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike, '_id' | 'slug'>): Promise<string> {
@@ -85,6 +72,17 @@ async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike,
 
   const settings = await window.electronAPI.settings.get()
   return `${settings.projectsDirectory.replace(/\/+$/, '')}/${project.slug}`
+}
+
+async function rememberProjectOpenPath(projectId: string, localPath: string): Promise<void> {
+  const result = await window.electronAPI.project.rememberLocalPath({
+    projectId,
+    projectPath: localPath,
+  })
+
+  if (!result.success) {
+    console.warn('[GitOpen] Failed to persist local project path:', result.error)
+  }
 }
 
 async function isEffectivelyEmptyLocalWorkspace(projectPath: string): Promise<boolean> {
@@ -186,6 +184,203 @@ async function promptForGitConflicts(args: {
   return 'open-folder'
 }
 
+async function promptForMissingProjectSourceControl(args: {
+  provider: 'github' | 'gitlab'
+  projectName: string
+  settingsScope: 'user' | 'workspace'
+  detail: string
+}): Promise<'later' | 'open-settings'> {
+  const providerLabel = args.provider === 'github' ? 'GitHub' : 'GitLab'
+  const result = await window.electronAPI.dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Later', 'Open Source Control'],
+    defaultId: 1,
+    cancelId: 0,
+    title: `${providerLabel} setup needed`,
+    message: `Set up ${providerLabel} before opening ${args.projectName}.`,
+    detail: args.detail,
+    noLink: true,
+  })
+
+  if (result.response !== 1) {
+    return 'later'
+  }
+
+  const settingsRoute =
+    args.settingsScope === 'workspace'
+      ? '/workspace/source-control'
+      : '/settings/source-control'
+  const openResult = await window.electronAPI.window.openSettings(settingsRoute)
+  if (!openResult?.success) {
+    throw new Error(openResult?.error || 'Failed to open Source Control settings')
+  }
+
+  return 'open-settings'
+}
+
+async function ensureProjectSourceControlReadyForOpen(args: {
+  convex: ConvexReactClient
+  project: ProjectOpenGitProjectLike
+  userId: Id<'users'>
+}): Promise<boolean> {
+  const provider = resolveProjectIntegrationProvider(args.project)
+  const workingCopyMode = resolveProjectWorkingCopyMode(args.project.sourceControl)
+  const repoUrl =
+    args.project.gitRepository?.url?.trim() ||
+    args.project.sourceControl?.repoUrl?.trim() ||
+    ''
+
+  if (!provider || workingCopyMode === 'attached' || !repoUrl) {
+    return true
+  }
+
+  const providerContext = await args.convex.query(
+    api.sourceControl.getProjectProviderContext,
+    {
+      projectId: args.project._id,
+      userId: args.userId,
+    }
+  )
+
+  const repoAccessStatus = resolveProjectRepoAccessStatus({
+    project: args.project,
+    sourceControlConnection: providerContext?.connection ?? null,
+    isPersonalWorkspace: providerContext?.isPersonalWorkspace,
+  })
+
+  if (
+    repoAccessStatus.state !== 'integration_missing' &&
+    repoAccessStatus.state !== 'integration_mismatch'
+  ) {
+    return true
+  }
+
+  const projectName = args.project.name?.trim() || args.project.slug
+  await promptForMissingProjectSourceControl({
+    provider,
+    projectName,
+    settingsScope: providerContext?.settingsScope === 'workspace' ? 'workspace' : 'user',
+    detail: repoAccessStatus.description,
+  })
+
+  return false
+}
+
+async function ensureProjectRepositoryAccessForOpen(args: {
+  convex: ConvexReactClient
+  project: ProjectOpenGitProjectLike
+  userId: Id<'users'>
+}): Promise<boolean> {
+  const provider =
+    args.project.gitRepository?.provider?.trim().toLowerCase() ??
+    args.project.sourceControl?.provider?.trim().toLowerCase()
+  const workingCopyMode = resolveProjectWorkingCopyMode(args.project.sourceControl)
+  const repoUrl =
+    args.project.gitRepository?.url?.trim() ||
+    args.project.sourceControl?.repoUrl?.trim() ||
+    ''
+
+  if (
+    workingCopyMode === 'attached' ||
+    !repoUrl ||
+    (provider !== 'github' && provider !== 'gitlab')
+  ) {
+    return true
+  }
+
+  if (args.project.createdBy === args.userId) {
+    return true
+  }
+
+  const [user, memberRole, repoAccessRows] = await Promise.all([
+    args.convex.query(api.users.getById, {
+      userId: args.userId,
+    }),
+    args.convex.query(api.projectMembers.getMemberRole, {
+      projectId: args.project._id,
+      userId: args.userId,
+    }),
+    args.convex.query(api.projectRepoAccess.listForProject, {
+      projectId: args.project._id,
+      viewerUserId: args.userId,
+    }),
+  ])
+
+  const normalizedEmail = user?.email?.trim().toLowerCase() || undefined
+  const currentRole =
+    memberRole === 'project_manager' ||
+    memberRole === 'developer' ||
+    memberRole === 'designer' ||
+    memberRole === 'viewer'
+      ? memberRole
+      : 'viewer'
+  const existingRepoAccess =
+    repoAccessRows.find((entry) => entry.memberUserId === args.userId) ??
+    (normalizedEmail
+      ? repoAccessRows.find((entry) => entry.inviteEmail === normalizedEmail)
+      : undefined)
+
+  if (
+    existingRepoAccess?.accessState === 'granted' &&
+    existingRepoAccess.role === currentRole
+  ) {
+    return true
+  }
+
+  let providerAccountHandle = existingRepoAccess?.providerAccountHandle
+
+  if (provider === 'github' && !providerAccountHandle) {
+    const providedHandle = window.prompt(
+      'Enter your GitHub username to grant repository access for this project.'
+    )
+    if (!providedHandle?.trim()) {
+      return false
+    }
+    providerAccountHandle = providedHandle.trim()
+  }
+
+  if (provider === 'gitlab' && !normalizedEmail) {
+    throw new Error(
+      'Repository access requires an email address on your account before this project can open.'
+    )
+  }
+
+  const outcome = await syncProjectRepositoryAccess({
+    convex: args.convex,
+    project: args.project,
+    actorUserId: args.userId,
+    subjectType: 'member',
+    memberUserId: args.userId,
+    inviteEmail: normalizedEmail,
+    providerAccountHandle,
+    role: currentRole,
+    action: 'grant',
+    isPersonalWorkspace: args.project.sourceControl?.setupMode !== 'organization',
+  })
+
+  if (outcome.accessState === 'granted') {
+    return true
+  }
+
+  if (outcome.accessState === 'pending') {
+    throw new Error(
+      outcome.error ||
+        'Repository access is pending. Accept the provider invitation, then reopen this project.'
+    )
+  }
+
+  if (outcome.accessState === 'needs_identity') {
+    throw new Error(
+      outcome.error ||
+        'Repository access requires your provider identity before this project can open.'
+    )
+  }
+
+  throw new Error(
+    outcome.error || 'Repository access must be resolved before this project can open.'
+  )
+}
+
 export async function prepareGitProjectForOpen({
   convex,
   project,
@@ -194,13 +389,22 @@ export async function prepareGitProjectForOpen({
   onProgress,
   updateMemberLocalPath,
 }: PrepareGitProjectForOpenOptions): Promise<PrepareGitProjectForOpenResult> {
-  void convex
-  const repoUrl = buildCozeaGitRemoteUrl(String(project._id))
-  const branch = resolveGitBranch(project)
-  const auth = await resolveGitAuthPayload()
-  const extraHeader = buildCozeaGitAuthHeader(auth.accessToken)
+  const remoteConfig = await resolveProjectGitRemoteConfig({
+    convex,
+    project,
+    userId,
+  })
+  const {
+    branch: configuredBranch,
+    repoUrl,
+    provider,
+    accessToken,
+    usesExistingRemote,
+  } = remoteConfig
+  const hasRemote = Boolean(repoUrl || usesExistingRemote)
   const debug = isGitOpenDebugEnabled()
-  let effectiveLocalPath = localPath ?? project.localPath ?? (await resolveTargetProjectPath(project))
+  let effectiveLocalPath = localPath ?? (await resolveTargetProjectPath(project))
+  let branch = configuredBranch
   let changed = false
   const startedAt = Date.now()
   let strategy: GitOpenTelemetryEvent['strategy'] = 'clean'
@@ -226,25 +430,96 @@ export async function prepareGitProjectForOpen({
     })
   }
 
+  const finalizeProjectOpenResult = async (
+    result: PrepareGitProjectForOpenResult
+  ): Promise<PrepareGitProjectForOpenResult> => {
+    await rememberProjectOpenPath(String(project._id), result.localPath)
+
+    if (userId && updateMemberLocalPath) {
+      try {
+        await updateMemberLocalPath({
+          projectId: project._id,
+          userId,
+          localPath: result.localPath,
+        })
+      } catch (error) {
+        console.warn('[GitOpen] Failed to mirror local project path to cloud metadata:', error)
+      }
+    }
+
+    return result
+  }
+
   logGitOpenDebug('prepare:start', {
     projectId: String(project._id),
     projectSlug: project.slug,
-    branch,
+    branch: configuredBranch,
     repoUrl,
     providedLocalPath: localPath ?? null,
-    projectLocalPath: project.localPath ?? null,
     effectiveLocalPath,
-    hasAuthToken: Boolean(auth.accessToken),
+    provider: provider ?? null,
+    hasRemote,
   })
 
   try {
+    if (hasRemote && localPath) {
+      const collabLane = await window.electronAPI.project.ensureCollabLane({
+        projectId: String(project._id),
+        projectPath: effectiveLocalPath,
+        branch: configuredBranch,
+      })
+      const resolvedCollabLane =
+        collabLane.lanes.find((lane) => lane.id === collabLane.collabLaneId) ?? null
+      branch = resolvedCollabLane?.branch ?? configuredBranch
+    }
+
+    if (userId) {
+      onProgress?.('Checking source control setup...')
+      const sourceControlReady = await ensureProjectSourceControlReadyForOpen({
+        convex,
+        project,
+        userId,
+      })
+      if (!sourceControlReady) {
+        const result: PrepareGitProjectForOpenResult = {
+          localPath: effectiveLocalPath,
+          skipInitialSyncCheck: true,
+          changed,
+          cancelled: true,
+        }
+        recordOutcome('cancelled')
+        return finalizeProjectOpenResult(result)
+      }
+
+      onProgress?.('Checking repository access...')
+      const repositoryAccessReady = await ensureProjectRepositoryAccessForOpen({
+        convex,
+        project,
+        userId,
+      })
+      if (!repositoryAccessReady) {
+        const result: PrepareGitProjectForOpenResult = {
+          localPath: effectiveLocalPath,
+          skipInitialSyncCheck: true,
+          changed,
+          cancelled: true,
+        }
+        recordOutcome('cancelled')
+        return finalizeProjectOpenResult(result)
+      }
+    }
+
     if (!localPath) {
+      if (!repoUrl) {
+        throw new Error('This project has no configured remote repository yet.')
+      }
       onProgress?.('Cloning repository...')
       const cloneResult = await window.electronAPI.sync.gitCloneIfMissing({
         projectPath: effectiveLocalPath,
         repoUrl,
         branch,
-        extraHeader,
+        provider,
+        accessToken,
         debug,
       })
       logGitOpenDebug('prepare:clone_result', {
@@ -277,12 +552,53 @@ export async function prepareGitProjectForOpen({
       changed = changed || Boolean(ensureResult.initialized)
     }
 
+    if (!hasRemote) {
+      const localStatus = await window.electronAPI.sync.gitStatus({
+        projectPath: effectiveLocalPath,
+        branch,
+        debug,
+      })
+      if (!localStatus.success || !localStatus.isRepo) {
+        throw new Error(localStatus.error || 'Failed to verify local git repository')
+      }
+
+      const result: PrepareGitProjectForOpenResult = {
+        localPath: effectiveLocalPath,
+        skipInitialSyncCheck: true,
+        changed,
+        currentBranch: localStatus.currentBranch ?? undefined,
+      }
+      recordOutcome('opened')
+      return finalizeProjectOpenResult(result)
+    }
+
+    if (resolveProjectGitSyncPolicy(project.sourceControl) === 'manual') {
+      const localStatus = await window.electronAPI.sync.gitStatus({
+        projectPath: effectiveLocalPath,
+        branch,
+        debug,
+      })
+      if (!localStatus.success || !localStatus.isRepo) {
+        throw new Error(localStatus.error || 'Failed to verify local git repository')
+      }
+
+      const result: PrepareGitProjectForOpenResult = {
+        localPath: effectiveLocalPath,
+        skipInitialSyncCheck: true,
+        changed,
+        currentBranch: localStatus.currentBranch ?? undefined,
+      }
+      recordOutcome('opened')
+      return finalizeProjectOpenResult(result)
+    }
+
     onProgress?.('Fetching latest changes...')
     const fetchResult = await window.electronAPI.sync.gitFetchMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
-      extraHeader,
+      provider,
+      accessToken,
       debug,
     })
   logGitOpenDebug('prepare:fetch_result', {
@@ -337,12 +653,17 @@ export async function prepareGitProjectForOpen({
     )
     logGitOpenDebug('prepare:missing_initial_commit_recovery', recoveryContext)
 
+    if (!repoUrl) {
+      throw new Error('Automatic recovery requires a configured remote repository URL.')
+    }
+
     onProgress?.('Recovering local project...')
     const salvageResult = await window.electronAPI.sync.gitSalvageReclone({
       projectPath: effectiveLocalPath,
       repoUrl,
       branch,
-      extraHeader,
+      provider,
+      accessToken,
       debug,
     })
 
@@ -447,7 +768,7 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
 
   if (
@@ -458,12 +779,16 @@ export async function prepareGitProjectForOpen({
     repoHealth.health === 'broken'
   ) {
     strategy = 'salvage-reclone'
+    if (!repoUrl) {
+      throw new Error('Automatic recovery requires a configured remote repository URL.')
+    }
     onProgress?.('Recovering local project...')
     const salvageResult = await window.electronAPI.sync.gitSalvageReclone({
       projectPath: effectiveLocalPath,
       repoUrl,
       branch,
-      extraHeader,
+      provider,
+      accessToken,
       debug,
     })
     logGitOpenDebug('prepare:salvage_reclone', {
@@ -513,7 +838,7 @@ export async function prepareGitProjectForOpen({
       adoptResult,
     })
     if (!adoptResult.success) {
-      throw new Error(adoptResult.error || 'Failed to prepare imported project for Cozea Git')
+      throw new Error(adoptResult.error || 'Failed to prepare imported project for remote git')
     }
     changed = changed || Boolean(adoptResult.commitCreated)
     status = await window.electronAPI.sync.gitStatus({
@@ -533,12 +858,13 @@ export async function prepareGitProjectForOpen({
 
   if (!remoteHeadCommit && status.headCommit) {
     strategy = 'bootstrap-publish'
-    onProgress?.('Publishing missing cloud history...')
+    onProgress?.('Publishing missing remote history...')
     const bootstrapPushResult = await window.electronAPI.sync.gitPushMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
-      extraHeader,
+      provider,
+      accessToken,
     })
     logGitOpenDebug('prepare:bootstrap_remote_push', {
       projectId: String(project._id),
@@ -547,7 +873,7 @@ export async function prepareGitProjectForOpen({
       localHeadCommit: status.headCommit,
     })
     if (!bootstrapPushResult.success) {
-      throw new Error(bootstrapPushResult.error || 'Failed to restore missing cloud history')
+      throw new Error(bootstrapPushResult.error || 'Failed to restore missing remote history')
     }
     remoteHeadCommit = bootstrapPushResult.headCommit ?? status.headCommit
     changed = true
@@ -567,7 +893,7 @@ export async function prepareGitProjectForOpen({
       status,
     })
     if (!status.success || !status.isRepo) {
-      throw new Error(status.error || 'Failed to verify git status after restoring cloud history')
+      throw new Error(status.error || 'Failed to verify git status after restoring remote history')
     }
   }
 
@@ -575,10 +901,10 @@ export async function prepareGitProjectForOpen({
 
   if (!remoteHeadCommit && !status.headCommit && !effectivelyEmptyWorkspace) {
     strategy = 'bootstrap-publish'
-    onProgress?.('Publishing local project to cloud...')
+    onProgress?.('Publishing local project to remote...')
     const bootstrapCommitResult = await window.electronAPI.sync.gitCommitAll({
       projectPath: effectiveLocalPath,
-      message: 'cozea: bootstrap cloud history',
+      message: 'bootstrap remote history',
     })
     logGitOpenDebug('prepare:bootstrap_initial_commit', {
       projectId: String(project._id),
@@ -593,7 +919,8 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
-      extraHeader,
+      provider,
+      accessToken,
     })
     logGitOpenDebug('prepare:bootstrap_initial_push', {
       projectId: String(project._id),
@@ -602,7 +929,7 @@ export async function prepareGitProjectForOpen({
       commitSha: bootstrapCommitResult.commitSha ?? null,
     })
     if (!bootstrapPushResult.success) {
-      throw new Error(bootstrapPushResult.error || 'Failed to publish project files to cloud')
+      throw new Error(bootstrapPushResult.error || 'Failed to publish project files to the remote')
     }
 
     remoteHeadCommit = bootstrapPushResult.headCommit ?? bootstrapCommitResult.commitSha ?? null
@@ -649,12 +976,12 @@ export async function prepareGitProjectForOpen({
     // We return gracefully here so the AI builder can populate the files first.
     // The final initial commit will be triggered later via syncLocalSnapshotToCloud.
     recordOutcome('opened')
-    return {
+    return finalizeProjectOpenResult({
       localPath: effectiveLocalPath,
       skipInitialSyncCheck: true,
       changed,
       currentBranch: status.currentBranch ?? undefined,
-    }
+    })
   }
 
   if (shouldRestoreWorkspace) {
@@ -664,7 +991,8 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
-      extraHeader,
+      provider,
+      accessToken,
       debug,
     })
     logGitOpenDebug('prepare:restore_result', {
@@ -673,7 +1001,7 @@ export async function prepareGitProjectForOpen({
       restoreResult,
     })
     if (!restoreResult.success) {
-      const restoreError = restoreResult.error || 'Failed to restore project files from cloud'
+      const restoreError = restoreResult.error || 'Failed to restore project files from the remote'
       const recovered = await attemptInitialCommitRecovery('restore', restoreError)
       if (!recovered) {
         throw new Error(restoreError)
@@ -720,7 +1048,7 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
 
   if (status.behind && status.behind > 0) {
@@ -745,7 +1073,8 @@ export async function prepareGitProjectForOpen({
         projectPath: effectiveLocalPath,
         branch,
         repoUrl,
-        extraHeader,
+        provider,
+        accessToken,
         debug,
       })
       logGitOpenDebug('prepare:replay_result', {
@@ -771,11 +1100,11 @@ export async function prepareGitProjectForOpen({
         recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
           conflictedPathsCount: result.conflictedPaths?.length ?? 0,
         })
-        return result
+        return finalizeProjectOpenResult(result)
       }
       if (!replayResult.success) {
         const replayError =
-          replayResult.error || 'Failed to replay local changes on top of cloud history'
+          replayResult.error || 'Failed to replay local changes on top of remote history'
         const recovered = await attemptInitialCommitRecovery('replay', replayError)
         if (!recovered) {
           throw new Error(replayError)
@@ -795,7 +1124,8 @@ export async function prepareGitProjectForOpen({
         projectPath: effectiveLocalPath,
         branch,
         repoUrl,
-        extraHeader,
+        provider,
+        accessToken,
         debug,
       })
       logGitOpenDebug('prepare:restore_behind_result', {
@@ -805,7 +1135,7 @@ export async function prepareGitProjectForOpen({
       })
       if (!restoreResult.success) {
         const restoreError =
-          restoreResult.error || 'Failed to refresh local project from cloud'
+          restoreResult.error || 'Failed to refresh local project from the remote'
         const recovered = await attemptInitialCommitRecovery(
           'restore-behind',
           restoreError
@@ -857,7 +1187,7 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
 
   if (status.ahead && status.ahead > 0) {
@@ -866,7 +1196,8 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
-      extraHeader,
+      provider,
+      accessToken,
     })
     if (!pushResult.success) {
       throw new Error(pushResult.error || 'Failed to publish local git changes')
@@ -912,16 +1243,8 @@ export async function prepareGitProjectForOpen({
     recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
       conflictedPathsCount: result.conflictedPaths?.length ?? 0,
     })
-    return result
+    return finalizeProjectOpenResult(result)
   }
-
-    if (userId && updateMemberLocalPath) {
-      await updateMemberLocalPath({
-        projectId: project._id,
-        userId,
-        localPath: effectiveLocalPath,
-      })
-    }
 
     const result: PrepareGitProjectForOpenResult = {
       localPath: effectiveLocalPath,
@@ -930,7 +1253,7 @@ export async function prepareGitProjectForOpen({
       currentBranch: finalStatus.currentBranch ?? undefined,
     }
     recordOutcome('opened')
-    return result
+    return finalizeProjectOpenResult(result)
   } catch (error) {
     recordOutcome('failed', {
       errorMessage: error instanceof Error ? error.message : String(error),

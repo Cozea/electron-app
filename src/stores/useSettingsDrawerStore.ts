@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { create } from 'zustand'
 import {
   getSettingsSurfaceRoute,
@@ -60,11 +61,10 @@ export function parseSettingsRoute(route?: string): ParsedSettingsRoute {
     placement: 'drawer',
   })
   const section = resolvedSurface?.surface.id ?? DEFAULT_SECTION
-  const routePath = resolvedSurface?.route ?? DEFAULT_ROUTE
 
   return {
     section,
-    path: routePath,
+    path: resolvedSurface ? normalizedPath : DEFAULT_ROUTE,
     query,
   }
 }

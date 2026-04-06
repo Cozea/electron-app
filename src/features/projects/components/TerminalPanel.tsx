@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import {
     useTerminalStore,
     useTerminalActions,
+    selectPanelTerminalCount,
 } from "@/stores/useTerminalStore"
 import {
     useProblemsStore,
@@ -10,7 +11,7 @@ import {
     selectUnreadCount,
 } from "@/stores/useProblemsStore"
 import { requestEditorDiagnosticsRefresh } from "@/hooks/useDiagnosticsBridge"
-import { TerminalTabBar } from "./TerminalTabBar"
+import { TerminalTabBar, type TerminalPanelView } from "./TerminalTabBar"
 import { TerminalInstance } from "./TerminalInstance"
 import { TerminalSplitView } from "./TerminalSplitView"
 import { ProblemsView, type ViewMode } from "./ProblemsView"
@@ -25,7 +26,11 @@ interface TerminalPanelProps {
     onOpenFile?: (filePath: string, line?: number, column?: number) => void
 }
 
-export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPanelProps) {
+export function TerminalPanel({
+    className,
+    projectPath,
+    onOpenFile,
+}: TerminalPanelProps) {
     // Use individual primitive selectors to avoid infinite loops
     const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
     const isMaximized = useTerminalStore((s) => s.isMaximized)
@@ -54,7 +59,7 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     }, [activeGroup, terminals])
     const previousTerminalStatusesRef = useRef<Record<string, string>>({})
 
-    const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
+    const [activeView, setActiveView] = useState<TerminalPanelView>("terminal")
     const [isDragging, setIsDragging] = useState(false)
     const dragStartY = useRef(0)
     const dragStartHeight = useRef(0)
@@ -114,20 +119,23 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     }, [setPanelHeight])
 
     // Get terminal count for display
-    const terminalCount = Object.keys(terminals).length
+    const terminalCount = useTerminalStore(selectPanelTerminalCount)
 
     // Determine the actual panel height (maximized = full height)
     const actualHeight = isMaximized ? '100%' : `${panelHeight}px`
 
     // Hide panel instead of unmounting to keep terminals alive
-    const handleViewChange = useCallback((view: "terminal" | "problems") => {
+    const handleViewChange = useCallback((view: TerminalPanelView) => {
         setActiveView(view)
         if (view === "problems") {
             markRead(projectPath)
         }
     }, [markRead, projectPath])
 
-    const terminalInstances = useMemo(() => Object.values(terminals), [terminals])
+    const terminalInstances = useMemo(() =>
+        Object.values(terminals).filter((terminal) => terminal.surface !== 'assistant'),
+        [terminals]
+    )
 
     useEffect(() => {
         const previousStatuses = previousTerminalStatusesRef.current

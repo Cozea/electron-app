@@ -1,6 +1,6 @@
 import { type IpcMain } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import fs from 'node:fs'
+import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit } from '../gitRuntime'
@@ -12,7 +12,7 @@ import {
   getSyncJournalStateSnapshot,
   normalizeSyncPath,
   type SyncOpRecord,
-} from '../services/syncReplicaStore'
+} from '../services/syncJournalStore'
 import { GitSyncService } from '../services/gitSyncService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
@@ -26,7 +26,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'sync:hashFile',
     async (_event, { filePath }: { filePath: string }): Promise<{ hash: string; size: number }> => {
-      const content = fs.readFileSync(filePath)
+      const content = await readFile(filePath)
       const hash = sha256Hex(content)
 
       return { hash, size: content.length }
@@ -67,9 +67,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
           const fullPath = resolvePathWithinDirectory(projectPath, file.path)
           const dir = path.dirname(fullPath)
 
-          if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true })
-          }
+          await mkdir(dir, { recursive: true })
 
           // Prevent the project watcher from treating this as an external change.
           markInternalFsChange(fullPath)
@@ -78,11 +76,11 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
               ? Buffer.from(file.content, 'base64')
               : Buffer.from(file.content, 'utf-8')
           if (file.encoding === 'base64') {
-            fs.writeFileSync(fullPath, bytes)
+            await writeFile(fullPath, bytes)
           } else {
-            fs.writeFileSync(fullPath, file.content, 'utf-8')
+            await writeFile(fullPath, file.content, 'utf-8')
           }
-          const stats = fs.statSync(fullPath)
+          const stats = await stat(fullPath)
           results.push({ path: file.path, success: true })
           console.log(`[Sync] Wrote file: ${file.path}`)
 
@@ -162,11 +160,16 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
       for (const relPath of paths) {
         try {
           const fullPath = resolvePathWithinDirectory(projectPath, relPath)
-          if (fs.existsSync(fullPath)) {
+          try {
             // Prevent the project watcher from treating this as an external change.
             markInternalFsChange(fullPath)
-            fs.unlinkSync(fullPath)
+            await unlink(fullPath)
             console.log(`[Sync] Deleted file: ${relPath}`)
+          } catch (unlinkErr) {
+            const code = (unlinkErr as NodeJS.ErrnoException)?.code
+            if (code !== 'ENOENT') {
+              throw unlinkErr
+            }
           }
           results.push({ path: relPath, success: true })
 

@@ -1,0 +1,26 @@
+{
+  "name": "@cozea/pty",
+  "version": "0.1.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "cozea_pty",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform"
+  },
+  "dependencies": {
+    "@node-rs/helper": "^1.6.0"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.14.7",
+    "typescript": "^5.3.3"
+  }
+}

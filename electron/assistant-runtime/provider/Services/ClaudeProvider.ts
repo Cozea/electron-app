@@ -1,0 +1,10 @@
+// @ts-nocheck
+import { ServiceMap } from "effect";
+
+import type { ServerProviderShape } from "./ServerProvider";
+
+export interface ClaudeProviderShape extends ServerProviderShape {}
+
+export class ClaudeProvider extends ServiceMap.Service<ClaudeProvider, ClaudeProviderShape>()(
+  "cozea/assistant-runtime/provider/Services/ClaudeProvider",
+) {}

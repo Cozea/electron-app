@@ -1,23 +1,24 @@
+const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-4 w-full'}`} />;
 import { memo, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from '@/lib/router'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
-import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
+import { useCachedQuery } from '@/stores/useQueryCache'
 import { Card } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { GroupedVirtuoso } from 'react-virtuoso'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Shimmer } from '@/components/ai-elements/shimmer'
+
 import {
   Activity,
   Asterisk,
@@ -26,22 +27,19 @@ import {
   Minus,
   Plus,
   Smile,
+  X,
 } from 'lucide-react'
-import { DiffPanel } from '../components/changes/DiffPanel'
+import { DiffPanel, type ChangeWithContent } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
 import { CommentRichText } from '@/components/comments/CommentRichText'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-
-interface SelectedChangeSummary {
-  id: Id<"fileChanges">
-  filePath: string
-  changeType: string
-  userImage?: string
-  userName: string
-  userColor: string
-  timestamp: number
-}
+import { useViewTransitionNavigate } from '@/lib/navigation'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import {
+  getProjectChangesActivityCacheKey,
+  getProjectChangesSelectedChangeCacheKey,
+} from '@/features/projects/lib/changesQueryCache'
 
 interface ActivityFeedItem {
   id: Id<"fileChanges">
@@ -82,9 +80,16 @@ interface ChangeCommentsProps {
   changeId: Id<"fileChanges">
   viewerUserId: Id<"users"> | null
   commentCount: number
+  isEmbedded: boolean
   isSelected: boolean
-  shouldPreload: boolean
   expandOnSelect: boolean
+  isExpanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}
+
+interface ChangesPageProps {
+  presentation?: 'modal' | 'embedded'
+  onRequestClose?: (() => void) | null
 }
 
 function formatTimeOnly(timestamp: number) {
@@ -187,14 +192,15 @@ const ChangeComments = memo(function ChangeComments({
   changeId,
   viewerUserId,
   commentCount,
+  isEmbedded,
   isSelected,
-  shouldPreload,
   expandOnSelect,
+  isExpanded,
+  onExpandedChange,
 }: ChangeCommentsProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
   const comments = useQuery(
     api.activity.getCommentsForChange,
-    commentCount > 0 && (isExpanded || shouldPreload)
+    commentCount > 0 && isExpanded
       ? {
           changeId,
           viewerUserId: viewerUserId ?? undefined,
@@ -210,9 +216,9 @@ const ChangeComments = memo(function ChangeComments({
 
   useEffect(() => {
     if (isSelected && expandOnSelect) {
-      setIsExpanded(true)
+      onExpandedChange(true)
     }
-  }, [expandOnSelect, isSelected])
+  }, [expandOnSelect, isSelected, onExpandedChange])
 
   const commentsByParent = useMemo(() => {
     const grouped = new Map<string, ChangeComment[]>()
@@ -446,11 +452,11 @@ const ChangeComments = memo(function ChangeComments({
 
   return (
     <div className="ml-[88px] mt-2 mb-3">
-      <button
+          <button
         type="button"
         onClick={(event) => {
           event.stopPropagation()
-          setIsExpanded((current) => !current)
+          onExpandedChange(!isExpanded)
         }}
         className="text-xs font-medium text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
       >
@@ -459,10 +465,15 @@ const ChangeComments = memo(function ChangeComments({
       <div
         aria-hidden={!isExpanded}
         className={cn(
-          "grid overflow-hidden transition-[grid-template-rows,opacity,transform] duration-300 ease-out",
-          isExpanded
-            ? "grid-rows-[1fr] opacity-100 translate-y-0"
-            : "grid-rows-[0fr] opacity-0 -translate-y-1"
+          "grid overflow-hidden",
+          isEmbedded
+            ? isExpanded
+              ? "grid-rows-[1fr]"
+              : "grid-rows-[0fr]"
+            : isExpanded
+              ? "grid-rows-[1fr] opacity-100 translate-y-0"
+              : "grid-rows-[0fr] opacity-0 -translate-y-1",
+          !isEmbedded && "transition-[grid-template-rows,opacity,transform] duration-300 ease-out",
         )}
       >
         <div className="min-h-0">
@@ -497,20 +508,135 @@ const ChangeComments = memo(function ChangeComments({
 })
 ChangeComments.displayName = "ChangeComments"
 
-export function ChangesPage() {
+interface ActivityFeedRowProps {
+  item: ActivityFeedItem
+  isSelected: boolean
+  isEmbedded: boolean
+  viewerUserId: Id<"users"> | null
+  commentCount: number
+  expandCommentsOnSelect: boolean
+  commentsExpanded: boolean
+  onCommentsExpandedChange: (expanded: boolean) => void
+  onSelect: () => void
+}
+
+const ActivityFeedRow = memo(function ActivityFeedRow({
+  item,
+  isSelected,
+  isEmbedded,
+  viewerUserId,
+  commentCount,
+  expandCommentsOnSelect,
+  commentsExpanded,
+  onCommentsExpandedChange,
+  onSelect,
+}: ActivityFeedRowProps) {
+  const rowChangeId = item.id as Id<"fileChanges">
+
+  return (
+    <div>
+      <div
+        onClick={onSelect}
+        className={cn(
+          'flex items-start gap-3 rounded-full px-3 py-2 cursor-pointer transition-colors',
+          isSelected ? 'bg-primary/10' : 'hover:bg-muted/50'
+        )}
+      >
+        <div className="w-20 shrink-0 pt-1 mr-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            {formatTimeOnly(item.timestamp)}
+          </span>
+        </div>
+
+        <div className="shrink-0 pt-0.5">
+          {item.userImage ? (
+            <img
+              src={item.userImage}
+              alt={item.userName}
+              className="w-8 h-8 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white"
+              style={{ backgroundColor: item.userColor }}
+            >
+              {item.isAgent ? (
+                <Bot className="h-4 w-4" />
+              ) : (
+                item.userName?.charAt(0).toUpperCase() || 'U'
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
+          <span className="font-medium text-sm truncate max-w-[120px]" title={item.userName}>
+            {item.userName}
+          </span>
+          {getChangeIcon(item.changeType)}
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs shrink min-w-0 max-w-[180px]">
+            {getFileIcon(item.filePath.split('/').pop() || item.filePath, { width: 14, height: 14 })}
+            <span className="truncate">{item.filePath.split('/').pop()}</span>
+          </span>
+          {item.isAgent && (
+            <Badge variant="outline" className="text-[10px] px-1 py-0">
+              AI
+            </Badge>
+          )}
+          {(item.additions !== undefined && item.additions > 0) && (
+            <span className="text-xs text-green-500">+{item.additions}</span>
+          )}
+          {(item.deletions !== undefined && item.deletions > 0) && (
+            <span className="text-xs text-red-500">-{item.deletions}</span>
+          )}
+          {commentCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+              <MessageSquare className="h-3 w-3" />
+              {commentCount}
+            </span>
+          )}
+        </div>
+      </div>
+      {commentCount > 0 && (
+        <ChangeComments
+          changeId={rowChangeId}
+          viewerUserId={viewerUserId}
+          commentCount={commentCount}
+          isEmbedded={isEmbedded}
+          isSelected={isSelected}
+          expandOnSelect={expandCommentsOnSelect}
+          isExpanded={commentsExpanded}
+          onExpandedChange={onCommentsExpandedChange}
+        />
+      )}
+    </div>
+  )
+})
+ActivityFeedRow.displayName = 'ActivityFeedRow'
+
+export function ChangesPage({
+  presentation = 'modal',
+  onRequestClose = null,
+}: ChangesPageProps = {}) {
+  const isEmbedded = presentation === 'embedded'
+  const navigate = useViewTransitionNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
   const [selectionWasUserDriven, setSelectionWasUserDriven] = useState(false)
-  const [backgroundPreloadIds, setBackgroundPreloadIds] = useState<Id<"fileChanges">[]>([])
+  const [expandedCommentChangeIds, setExpandedCommentChangeIds] = useState<Record<string, boolean>>({})
   const selectedUserId = searchParams.get('userId')
 
   // Get activity feed
-  const activity = useQuery(
+  const freshActivity = useQuery(
     api.activity.getRecentActivity,
     project?._id ? { projectId: project._id, limit: 100 } : 'skip'
   ) as ActivityFeedItem[] | undefined
+  const activity = useCachedQuery<ActivityFeedItem[] | undefined>(
+    project?._id ? getProjectChangesActivityCacheKey(project._id) : '__skip__',
+    freshActivity,
+  )
 
   const filteredActivity = useMemo(() => {
     if (!activity) return activity
@@ -530,150 +656,77 @@ export function ChangesPage() {
   )
   const commentCounts = useQuery(
     api.activity.getCommentCountsForChanges,
-    changeIds.length > 0 ? { changeIds } : 'skip'
+    project?._id && changeIds.length > 0 ? { projectId: project._id, changeIds } : 'skip'
   )
-  const selectedChange = useQuery(
+  const resolvedSelectedChangeId =
+    selectedChangeId ??
+    (!selectionWasUserDriven && filteredActivity && filteredActivity.length > 0
+      ? (filteredActivity[0].id as Id<"fileChanges">)
+      : null)
+  const freshSelectedChange = useQuery(
     api.activity.getChangeWithContent,
-    selectedChangeId ? { changeId: selectedChangeId } : 'skip'
-  ) as SelectedChangeSummary | null | undefined
-  const showSplitPane = Boolean(selectedChangeId)
-  const [cachedSelectedChange, setCachedSelectedChange] = useState<SelectedChangeSummary | null>(null)
-  const displayedSelectedChange = selectedChange ?? cachedSelectedChange
-  const isSelectedChangeLoading = Boolean(selectedChangeId) && selectedChange === undefined
+    resolvedSelectedChangeId ? { changeId: resolvedSelectedChangeId } : 'skip'
+  ) as ChangeWithContent | null | undefined
+  const displayedSelectedChange = useCachedQuery<ChangeWithContent | null | undefined>(
+    resolvedSelectedChangeId ? getProjectChangesSelectedChangeCacheKey(resolvedSelectedChangeId) : '__skip__',
+    freshSelectedChange,
+  )
+  const isSelectedChangeLoading =
+    Boolean(resolvedSelectedChangeId) &&
+    freshSelectedChange === undefined &&
+    displayedSelectedChange === undefined
+  const showSplitPane = Boolean(resolvedSelectedChangeId)
   const groupedActivity = useMemo(
     () => (filteredActivity ? groupActivityByDate(filteredActivity) : []),
     [filteredActivity]
   )
-  const latestChangeId = filteredActivity?.[0]?.id as Id<"fileChanges"> | undefined
-  const backgroundPreloadIdSet = useMemo(
-    () => new Set(backgroundPreloadIds.map((id) => id.toString())),
-    [backgroundPreloadIds]
+  const flatActivity = useMemo(
+    () => groupedActivity.flatMap((group) => group.items),
+    [groupedActivity]
+  )
+  const groupCounts = useMemo(
+    () => groupedActivity.map((group) => group.items.length),
+    [groupedActivity]
   )
 
-  const [prevSelectedChangeDeps, setPrevSelectedChangeDeps] = useState({ selectedChange, selectedChangeId })
-  if (selectedChange !== prevSelectedChangeDeps.selectedChange || selectedChangeId !== prevSelectedChangeDeps.selectedChangeId) {
-    setPrevSelectedChangeDeps({ selectedChange, selectedChangeId })
-    if (!selectedChangeId) {
-      setCachedSelectedChange(null)
-    } else if (selectedChange) {
-      setCachedSelectedChange(selectedChange)
-    } else if (selectedChange === null) {
-      setCachedSelectedChange(null)
-    }
-  }
-
-  // Auto-select the most recent change when activity loads
-  const [prevActivityDeps, setPrevActivityDeps] = useState({ filteredActivity, selectedChangeId })
-  if (filteredActivity !== prevActivityDeps.filteredActivity || selectedChangeId !== prevActivityDeps.selectedChangeId) {
-    setPrevActivityDeps({ filteredActivity, selectedChangeId })
+  useEffect(() => {
     if (!filteredActivity || filteredActivity.length === 0) {
+      if (selectedChangeId !== null) {
+        setSelectionWasUserDriven(false)
+        setSelectedChangeId(null)
+      }
+      return
+    }
+
+    const selectedStillVisible = selectedChangeId
+      ? filteredActivity.some((item) => item.id === selectedChangeId)
+      : false
+
+    if (selectedChangeId !== null && !selectedStillVisible) {
       setSelectionWasUserDriven(false)
       setSelectedChangeId(null)
-    } else {
-      const selectedStillVisible = selectedChangeId
-        ? filteredActivity.some((item) => item.id === selectedChangeId)
-        : false
-
-      if (selectedChangeId === null || !selectedStillVisible) {
-        setSelectionWasUserDriven(false)
-        setSelectedChangeId(filteredActivity[0].id as Id<"fileChanges">)
-      }
     }
-  }
-
-  const [prevPreloadDeps, setPrevPreloadDeps] = useState({ filteredActivity, latestChangeId })
-  if (filteredActivity !== prevPreloadDeps.filteredActivity || latestChangeId !== prevPreloadDeps.latestChangeId) {
-    setPrevPreloadDeps({ filteredActivity, latestChangeId })
-    if (!filteredActivity || filteredActivity.length === 0 || !latestChangeId) {
-      setBackgroundPreloadIds([])
-    } else {
-      const deferredIds = filteredActivity
-        .map((item) => item.id as Id<"fileChanges">)
-        .filter((id) => id !== latestChangeId)
-
-      if (deferredIds.length === 0) {
-        setBackgroundPreloadIds([])
-      } else {
-        setBackgroundPreloadIds([])
-      }
-    }
-  }
+  }, [filteredActivity, selectedChangeId])
 
   useEffect(() => {
-    if (!filteredActivity || filteredActivity.length === 0 || !latestChangeId) {
+    if (!filteredActivity) {
       return
     }
 
-    const deferredIds = filteredActivity
-      .map((item) => item.id as Id<"fileChanges">)
-      .filter((id) => id !== latestChangeId)
-
-    if (deferredIds.length === 0) {
-      return
-    }
-
-    const preloadBatchSize = 6
-    let cursor = 0
-    let cancelled = false
-    const canUseIdleCallbacks =
-      typeof window !== "undefined" &&
-      typeof window.requestIdleCallback === "function" &&
-      typeof window.cancelIdleCallback === "function"
-    const idleHandles: number[] = []
-    const timeoutHandles: Array<ReturnType<typeof setTimeout>> = []
-
-    const preloadNextBatch = () => {
-      if (cancelled || cursor >= deferredIds.length) return
-
-      const batch = deferredIds.slice(cursor, cursor + preloadBatchSize)
-      cursor += preloadBatchSize
-
-      setBackgroundPreloadIds((current) => {
-        if (batch.length === 0) return current
-        const existing = new Set(current.map((id) => id.toString()))
-        const next = [...current]
-        for (const id of batch) {
-          const key = id.toString()
-          if (!existing.has(key)) {
-            existing.add(key)
-            next.push(id)
-          }
-        }
-        return next
-      })
-
-      scheduleNextBatch()
-    }
-
-    const scheduleNextBatch = () => {
-      if (cancelled || cursor >= deferredIds.length) return
-      if (canUseIdleCallbacks) {
-        const handle = window.requestIdleCallback(
-          () => preloadNextBatch(),
-          { timeout: 1200 }
-        )
-        idleHandles.push(handle)
-        return
-      }
-
-      const timeoutHandle = globalThis.setTimeout(() => preloadNextBatch(), 120)
-      timeoutHandles.push(timeoutHandle)
-    }
-
-    scheduleNextBatch()
-
-    return () => {
-      cancelled = true
-      if (canUseIdleCallbacks) {
-        for (const handle of idleHandles) {
-          window.cancelIdleCallback(handle)
+    const visibleIds = new Set(filteredActivity.map((item) => item.id.toString()))
+    setExpandedCommentChangeIds((current) => {
+      let changed = false
+      const next: Record<string, boolean> = {}
+      for (const [key, value] of Object.entries(current)) {
+        if (value && visibleIds.has(key)) {
+          next[key] = value
+        } else if (value) {
+          changed = true
         }
       }
-      for (const handle of timeoutHandles) {
-        globalThis.clearTimeout(handle)
-      }
-    }
-  }, [filteredActivity, latestChangeId])
+      return changed ? next : current
+    })
+  }, [filteredActivity])
 
   // Mark sync feed as seen when page loads
   useEffect(() => {
@@ -681,71 +734,118 @@ export function ChangesPage() {
       markSyncFeedAsSeen(project.slug)
     }
   }, [project?.slug])
+  const projectWorkbenchPath = project?._id ? buildProjectPath(String(project._id), 'workbench') : '/projects'
 
-  const headerControls = useMemo(
-    () => (
-      <div className="flex items-center gap-2">
-        {selectedChangeId && displayedSelectedChange && (
-          <>
-            <div className="flex items-center gap-2 min-w-0 max-w-[420px]">
-              {getChangeIcon(displayedSelectedChange.changeType)}
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs min-w-0 max-w-[260px]">
-                {getFileIcon(displayedSelectedChange.filePath.split('/').pop() || displayedSelectedChange.filePath, {
-                  width: 14,
-                  height: 14,
-                })}
-                <span className="truncate">
-                  {displayedSelectedChange.filePath.split('/').pop() || displayedSelectedChange.filePath}
+  function closeChangesModal(): void {
+    if (isEmbedded) {
+      onRequestClose?.()
+      return
+    }
+    navigate(projectWorkbenchPath, { replace: true })
+  }
+
+  useEffect(() => {
+    if (isEmbedded) return
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      closeChangesModal()
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isEmbedded, projectWorkbenchPath])
+
+  const shell = (
+    <div
+      role={isEmbedded ? undefined : 'dialog'}
+      aria-modal={isEmbedded ? undefined : true}
+      aria-labelledby={isEmbedded ? undefined : 'changes-modal-title'}
+      className={cn(
+        'flex h-full w-full flex-col overflow-hidden bg-background',
+        !isEmbedded &&
+          'max-w-6xl rounded-[32px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className={cn("border-b border-border/60", isEmbedded ? "px-4 py-3" : "px-6 py-5")}>
+        {!isEmbedded ? (
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 id="changes-modal-title" className="text-xl font-semibold text-foreground">
+                Changes
+              </h1>
+            </div>
+
+            <button
+              type="button"
+              onClick={closeChangesModal}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              aria-label="Close changes"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
+
+        <div className={cn("flex items-center gap-2 min-w-0", !isEmbedded && "mt-4")}>
+          {resolvedSelectedChangeId && displayedSelectedChange && (
+            <>
+              <div className="flex items-center gap-2 min-w-0 max-w-[520px]">
+                {getChangeIcon(displayedSelectedChange.changeType)}
+                <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  {getFileIcon(displayedSelectedChange.filePath.split('/').pop() || displayedSelectedChange.filePath, {
+                    width: 14,
+                    height: 14,
+                  })}
+                  <span className="truncate">
+                    {displayedSelectedChange.filePath.split('/').pop() || displayedSelectedChange.filePath}
+                  </span>
                 </span>
-              </span>
-              {isSelectedChangeLoading && (
-                <Shimmer className="text-[11px] text-muted-foreground">Updating…</Shimmer>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {displayedSelectedChange.userImage ? (
-                <img
-                  src={displayedSelectedChange.userImage}
-                  alt={displayedSelectedChange.userName}
-                  className="h-4 w-4 rounded-full object-cover"
-                  title={displayedSelectedChange.userName}
-                />
-              ) : (
-                <div
-                  className="h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-medium text-white"
-                  style={{ backgroundColor: displayedSelectedChange.userColor }}
-                  title={displayedSelectedChange.userName}
-                >
-                  {displayedSelectedChange.userName?.charAt(0).toUpperCase() || 'U'}
-                </div>
-              )}
-              <span className="text-xs text-muted-foreground">
-                {formatRelativeTime(displayedSelectedChange.timestamp)}
-              </span>
-            </div>
-          </>
-        )}
-        {selectedChangeId && !displayedSelectedChange && (
-          <Shimmer className="text-xs text-muted-foreground">Loading selected change…</Shimmer>
-        )}
-        {!selectedChangeId && (
-          <span className="text-xs text-muted-foreground">Select a change to view diff</span>
-        )}
+                {isSelectedChangeLoading && (
+                  <Shimmer className="text-[11px] text-muted-foreground">Updating…</Shimmer>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {displayedSelectedChange.userImage ? (
+                  <img
+                    src={displayedSelectedChange.userImage}
+                    alt={displayedSelectedChange.userName}
+                    className="h-4 w-4 rounded-full object-cover"
+                    title={displayedSelectedChange.userName}
+                  />
+                ) : (
+                  <div
+                    className="h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-medium text-white"
+                    style={{ backgroundColor: displayedSelectedChange.userColor }}
+                    title={displayedSelectedChange.userName}
+                  >
+                    {displayedSelectedChange.userName?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {formatRelativeTime(displayedSelectedChange.timestamp)}
+                </span>
+              </div>
+            </>
+          )}
+          {!resolvedSelectedChangeId && (
+            <span className="text-xs text-muted-foreground">Select a change to view diff</span>
+          )}
+        </div>
       </div>
-    ),
-    [displayedSelectedChange, isSelectedChangeLoading, selectedChangeId]
-  )
 
-  useProjectHeader(headerControls)
-
-  return (
-    <div className="relative flex h-full min-h-0 overflow-hidden bg-content-surface">
-      {/* Timeline Panel */}
-      <div className={`flex min-h-0 min-w-0 overflow-hidden flex-col ${showSplitPane ? 'w-1/2' : 'w-full'} transition-all`}>
-        {/* Timeline Content */}
-        <div className="relative flex-1 min-h-0">
-          <ScrollArea className="h-full">
-            <div className="p-4">
+      <div className="relative flex h-full min-h-0 overflow-hidden bg-content-surface">
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 overflow-hidden flex-col",
+            showSplitPane ? "w-1/2" : "w-full",
+            !isEmbedded && "transition-all",
+          )}
+        >
+          <div className="relative flex-1 min-h-0">
+            <div className="flex h-full min-h-0 flex-col p-4">
               {!project?._id ? (
                 null
               ) : filteredActivity === undefined ? (
@@ -761,7 +861,7 @@ export function ChangesPage() {
                   </p>
                 </Card>
               ) : (
-                <div className="space-y-6">
+                <div className="flex min-h-0 flex-1 flex-col gap-6">
                   {selectedUserId && (
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-[11px]">
@@ -776,145 +876,116 @@ export function ChangesPage() {
                         onClick={() => {
                           const nextParams = new URLSearchParams(searchParams)
                           nextParams.delete('userId')
-                          setSearchParams(nextParams, { replace: true })
+                          setSearchParams(Object.fromEntries(nextParams.entries()) as any)
                         }}
                       >
                         Clear filter
                       </Button>
                     </div>
                   )}
-                  {groupedActivity.map((group) => (
-                    <div key={group.dateHeader}>
-                      {/* Date Header */}
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-xs font-semibold text-muted-foreground tracking-wider">
-                          {group.dateHeader}
-                        </span>
-                        <div className="flex-1 h-px bg-border" />
-                      </div>
+                  <div className="min-h-0 flex-1">
+                    <GroupedVirtuoso
+                      data={flatActivity}
+                      groupCounts={groupCounts}
+                      defaultItemHeight={60}
+                      increaseViewportBy={{ top: 360, bottom: 720 }}
+                      style={{ height: '100%' }}
+                      computeItemKey={(_index, item) => item.id}
+                      groupContent={(groupIndex) => (
+                        <div className="bg-content-surface px-1 py-3">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-semibold text-muted-foreground tracking-wider">
+                              {groupedActivity[groupIndex]?.dateHeader ?? ''}
+                            </span>
+                            <div className="flex-1 h-px bg-border" />
+                          </div>
+                        </div>
+                      )}
+                      itemContent={(_index, _groupIndex, item) => {
+                        const itemId = item.id.toString()
+                        const rowChangeId = item.id as Id<"fileChanges">
+                        const commentCount = commentCounts?.[item.id] ?? 0
 
-                      {/* Items for this date */}
-                      <div className="space-y-1">
-                        {group.items.map((item) => {
-                          const rowChangeId = item.id as Id<"fileChanges">
-                          const shouldPreloadRowComments =
-                            rowChangeId === latestChangeId ||
-                            backgroundPreloadIdSet.has(rowChangeId.toString())
-
-                          return (
-                            <div key={item.id}>
-                            <div
-                              onClick={() => {
+                        return (
+                          <div className="px-1 py-0.5">
+                            <ActivityFeedRow
+                              item={item}
+                              isSelected={resolvedSelectedChangeId === item.id}
+                              isEmbedded={isEmbedded}
+                              viewerUserId={convexUserId ?? null}
+                              commentCount={commentCount}
+                              expandCommentsOnSelect={selectionWasUserDriven && resolvedSelectedChangeId === item.id}
+                              commentsExpanded={expandedCommentChangeIds[itemId] ?? false}
+                              onCommentsExpandedChange={(expanded) => {
+                                setExpandedCommentChangeIds((current) => {
+                                  if ((current[itemId] ?? false) === expanded) {
+                                    return current
+                                  }
+                                  if (!expanded) {
+                                    const next = { ...current }
+                                    delete next[itemId]
+                                    return next
+                                  }
+                                  return {
+                                    ...current,
+                                    [itemId]: true,
+                                  }
+                                })
+                              }}
+                              onSelect={() => {
                                 setSelectionWasUserDriven(true)
                                 setSelectedChangeId(rowChangeId)
                               }}
-                              className={`
-                                flex items-start gap-3 py-2 px-3 rounded-full cursor-pointer transition-colors
-                                ${selectedChangeId === item.id
-                                  ? 'bg-primary/10'
-                                  : 'hover:bg-muted/50'
-                                }
-                              `}
-                            >
-                              {/* Time Column */}
-                              <div className="w-20 shrink-0 pt-1 mr-2">
-                                <span className="text-sm text-muted-foreground whitespace-nowrap">
-                                  {formatTimeOnly(item.timestamp)}
-                                </span>
-                              </div>
-
-                              {/* Avatar */}
-                              <div className="shrink-0 pt-0.5">
-                                {item.userImage ? (
-                                  <img
-                                    src={item.userImage}
-                                    alt={item.userName}
-                                    className="w-8 h-8 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div
-                                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white"
-                                    style={{ backgroundColor: item.userColor }}
-                                  >
-                                    {item.isAgent ? (
-                                      <Bot className="h-4 w-4" />
-                                    ) : (
-                                      item.userName?.charAt(0).toUpperCase() || 'U'
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Content - single line */}
-                              <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
-                                <span className="font-medium text-sm truncate max-w-[120px]" title={item.userName}>
-                                  {item.userName}
-                                </span>
-                                {getChangeIcon(item.changeType)}
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs shrink min-w-0 max-w-[180px]">
-                                  {getFileIcon(item.filePath.split('/').pop() || item.filePath, { width: 14, height: 14 })}
-                                  <span className="truncate">{item.filePath.split('/').pop()}</span>
-                                </span>
-                                {item.isAgent && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0">
-                                    AI
-                                  </Badge>
-                                )}
-                                {(item.additions !== undefined && item.additions > 0) && (
-                                  <span className="text-xs text-green-500">+{item.additions}</span>
-                                )}
-                                {(item.deletions !== undefined && item.deletions > 0) && (
-                                  <span className="text-xs text-red-500">-{item.deletions}</span>
-                                )}
-                                {commentCounts && commentCounts[item.id] > 0 && (
-                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
-                                    <MessageSquare className="h-3 w-3" />
-                                    {commentCounts[item.id]}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {/* Comments under this change */}
-                            {commentCounts && commentCounts[item.id] > 0 && (
-                              <ChangeComments
-                                changeId={rowChangeId}
-                                viewerUserId={convexUserId ?? null}
-                                commentCount={commentCounts[item.id]}
-                                isSelected={selectedChangeId === item.id}
-                                shouldPreload={shouldPreloadRowComments}
-                                expandOnSelect={selectionWasUserDriven && selectedChangeId === item.id}
-                              />
-                            )}
+                            />
                           </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                        )
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </div>
-      </div>
 
-      {/* Diff Panel */}
-      {showSplitPane && (
-        <div className="w-1/2 min-h-0 min-w-0 overflow-hidden bg-background">
-          {selectedChangeId ? (
-            <DiffPanel
-              changeId={selectedChangeId}
-              onClose={() => setSelectedChangeId(null)}
-              showHeader={false}
-            />
-          ) : null}
-        </div>
-      )}
-      {showSplitPane && (
-        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 -translate-x-1/2">
-          <div className="h-full w-px bg-border" />
-        </div>
-      )}
+        {showSplitPane && (
+          <div className="w-1/2 min-h-0 min-w-0 overflow-hidden bg-background">
+            {resolvedSelectedChangeId ? (
+              <DiffPanel
+                changeId={resolvedSelectedChangeId}
+                change={displayedSelectedChange}
+                isLoadingChange={isSelectedChangeLoading}
+                onClose={() => setSelectedChangeId(null)}
+                showHeader={false}
+              />
+            ) : null}
+          </div>
+        )}
+        {showSplitPane && (
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 -translate-x-1/2">
+            <div className="h-full w-px bg-border" />
+          </div>
+        )}
+      </div>
     </div>
+  )
+
+  return (
+    <>
+      {!isEmbedded ? (
+        <div
+          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
+          onClick={closeChangesModal}
+          aria-hidden="true"
+        />
+      ) : null}
+      {!isEmbedded ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-12 sm:p-6 sm:pt-14">
+          {shell}
+        </div>
+      ) : (
+        shell
+      )}
+    </>
   )
 }

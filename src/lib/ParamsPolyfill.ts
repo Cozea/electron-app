@@ -1,0 +1,1 @@
+export { useSearchParamsPolyfill as useSearchParams } from './useSearchParamsPolyfill';

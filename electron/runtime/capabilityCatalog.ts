@@ -14,6 +14,19 @@ const DEFAULT_CAPABILITY_CATALOG: CapabilityCatalog = {
   generatedAt: new Date(0).toISOString(),
   rules: [
     {
+      id: 'expo-native',
+      matchAnyFile: ['app.json', 'app.config.js', 'app.config.ts'],
+      matchAnyScript: ['ios', 'android', 'start'],
+      suggestedCommands: [
+        {
+          command: 'npm start',
+          runtime: 'npm',
+          confidence: 0.92,
+          reason: 'Found Expo app config and native mobile scripts.',
+        },
+      ],
+    },
+    {
       id: 'node-default',
       matchAnyFile: ['package.json'],
       suggestedCommands: [

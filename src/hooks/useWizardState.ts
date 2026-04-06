@@ -5,16 +5,9 @@ import { getDefaultWebBuildContract, normalizeGeneratedPlan, type BuildContract,
 import type { Id } from '../../convex/_generated/dataModel'
 import {
   Sparkles,
-  Lightbulb,
-  LayoutTemplate,
-  Wrench,
   FolderGit2,
-  Palette,
   Users,
   ClipboardCheck,
-  FileCode2,
-  Rocket,
-  Zap,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -22,7 +15,7 @@ import {
 // TYPES
 // ============================================
 
-export type CreationPath = 'fresh' | 'repo' | 'prompt'
+export type CreationPath = 'repo' | 'prompt'
 export type ProjectStatus = 'draft' | 'generating' | 'building' | 'active' | 'archived' | 'deleted'
 export type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
 
@@ -43,9 +36,13 @@ export interface WizardStack {
 export interface WizardSourceControl {
   provider: string
   repoUrl?: string
+  defaultBranch?: string
   visibility: string
   mergeStrategy: string
   mergeQueue?: string
+  syncPolicy?: 'auto' | 'manual'
+  workingCopyMode?: 'managed' | 'attached'
+  setupMode?: 'personal' | 'organization'
 }
 
 export interface WizardVisuals {
@@ -70,6 +67,11 @@ export interface WizardRepoSource {
   provider: string
   repoUrl: string
   branch: string
+  ownerLogin?: string
+  ownerAvatarUrl?: string
+  lastActivityAt?: string
+  sizeBytes?: number
+  starsCount?: number
   detectedStack?: {
     framework?: string
     styling?: string
@@ -178,17 +180,8 @@ export interface WizardStepDef {
   icon: LucideIcon
 }
 
-export const FRESH_STEPS: WizardStepDef[] = [
+export const ENTRY_STEPS: WizardStepDef[] = [
   { id: 'entry', title: 'Start', description: 'Choose how to create', icon: Sparkles },
-  { id: 'intent', title: 'Intent', description: 'Tell us about your project', icon: Lightbulb },
-  { id: 'template', title: 'Architecture', description: 'Choose a starting point', icon: LayoutTemplate },
-  { id: 'stack', title: 'Stack', description: 'Choose your tech stack', icon: Wrench },
-  { id: 'source', title: 'Source', description: 'Source control & CI/CD', icon: FolderGit2 },
-  { id: 'visuals', title: 'Visuals', description: 'Visual style & branding', icon: Palette },
-  { id: 'team', title: 'Team', description: 'Team & roles', icon: Users },
-  { id: 'review', title: 'Review', description: 'Review configuration', icon: ClipboardCheck },
-  { id: 'plan', title: 'Plan', description: 'Generate project plan', icon: FileCode2 },
-  { id: 'build', title: 'Build', description: 'Build your project', icon: Rocket },
 ]
 
 export const REPO_STEPS: WizardStepDef[] = [
@@ -196,14 +189,6 @@ export const REPO_STEPS: WizardStepDef[] = [
   { id: 'repo-source', title: 'Source', description: 'Select repository', icon: FolderGit2 },
   { id: 'team', title: 'Team', description: 'Team & roles', icon: Users },
   { id: 'review', title: 'Review', description: 'Review & import', icon: ClipboardCheck },
-]
-
-export const PROMPT_STEPS: WizardStepDef[] = [
-  { id: 'entry', title: 'Start', description: 'Choose how to create', icon: Sparkles },
-  { id: 'prompt', title: 'Prompt', description: 'Describe your project', icon: Zap },
-  { id: 'quick-review', title: 'Review', description: 'Quick review', icon: ClipboardCheck },
-  { id: 'plan', title: 'Plan', description: 'Generate project plan', icon: FileCode2 },
-  { id: 'build', title: 'Build', description: 'Build your project', icon: Rocket },
 ]
 
 function maybeFilterTeamStep(steps: WizardStepDef[], includeTeamStep: boolean): WizardStepDef[] {
@@ -232,8 +217,12 @@ const DEFAULT_STACK: WizardStack = {
 
 const DEFAULT_SOURCE_CONTROL: WizardSourceControl = {
   provider: 'github',
+  defaultBranch: 'main',
   visibility: 'private',
   mergeStrategy: 'squash',
+  syncPolicy: 'auto',
+  workingCopyMode: 'managed',
+  setupMode: 'personal',
 }
 
 const DEFAULT_VISUALS: WizardVisuals = {
@@ -278,18 +267,15 @@ export function useWizardState(
   const updateWizardStep = useMutation(api.projects.updateWizardStep)
   const updateStatus = useMutation(api.projects.updateStatus)
   const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
+  const recordRepoAccessSyncResult = useMutation(api.projectRepoAccess.recordSyncResult)
 
   // Get current step definitions based on path
   const steps = useMemo(() => {
     switch (state.path) {
-      case 'fresh':
-        return maybeFilterTeamStep(FRESH_STEPS, includeTeamStep)
       case 'repo':
         return maybeFilterTeamStep(REPO_STEPS, includeTeamStep)
-      case 'prompt':
-        return maybeFilterTeamStep(PROMPT_STEPS, includeTeamStep)
       default:
-        return maybeFilterTeamStep(FRESH_STEPS, includeTeamStep)
+        return ENTRY_STEPS
     }
   }, [includeTeamStep, state.path])
 
@@ -455,7 +441,7 @@ export function useWizardState(
           organizationId,
           userId,
           name: state.intent.name || 'Untitled Project',
-          creationPath: effectivePath || 'fresh',
+          creationPath: effectivePath || 'prompt',
           description: state.intent.description,
           audience: state.intent.audience || undefined,
           targetLaunchDate: state.intent.targetLaunchDate,
@@ -467,9 +453,39 @@ export function useWizardState(
           visuals: state.visuals,
           originalPrompt: effectivePrompt,
           promptSettings: effectiveSettings,
-          repoSource: state.repoSource,
+          repoSource: state.repoSource
+            ? {
+                provider: state.repoSource.provider,
+                repoUrl: state.repoSource.repoUrl,
+                branch: state.repoSource.branch,
+                detectedStack: state.repoSource.detectedStack,
+              }
+            : undefined,
           team: state.team,
         })
+        const provider =
+          state.sourceControl.provider === 'github' || state.sourceControl.provider === 'gitlab'
+            ? state.sourceControl.provider
+            : undefined
+        const repoUrl =
+          state.sourceControl.repoUrl?.trim() ||
+          (state.repoSource?.provider !== 'local' ? state.repoSource?.repoUrl?.trim() : undefined)
+        if (provider && repoUrl) {
+          try {
+            await recordRepoAccessSyncResult({
+              projectId: result.projectId,
+              actorUserId: userId,
+              provider,
+              repoUrl,
+              subjectType: 'member',
+              memberUserId: userId,
+              role: 'project_manager',
+              accessState: 'granted',
+            })
+          } catch (error) {
+            console.warn('Failed to mark creator repository access as granted:', error)
+          }
+        }
         setState((prev) => ({ ...prev, projectId: result.projectId }))
         return result.projectId
       }
@@ -497,6 +513,7 @@ export function useWizardState(
     state.repoSource,
     state.team,
     createProject,
+    recordRepoAccessSyncResult,
     updateProject,
   ])
 
@@ -556,29 +573,13 @@ export function useWizardState(
     if (!state.path) return true // Entry step always allows proceed
 
     switch (currentStepDef?.id) {
-      case 'intent':
-        return state.intent.name.trim().length > 0 && state.intent.description.trim().length > 0
-      case 'template':
-        return true // Template is optional for blank canvas
-      case 'stack':
-        return state.stack.backend && state.stack.hosting
-      case 'source':
-        return state.sourceControl.provider && state.sourceControl.visibility
-      case 'visuals':
-        return state.visuals.uiLibrary && state.visuals.primaryColor
       case 'team':
         // Require at least one project manager
         return state.team.some((m) => m.role === 'project_manager')
       case 'review':
         return true
-      case 'plan':
-        return !!state.generatedPlan
-      case 'prompt':
-        return (state.originalPrompt?.trim().length ?? 0) > 0
       case 'repo-source':
         return !!state.repoSource?.repoUrl
-      case 'repo-scan':
-        return !!state.repoSource?.detectedStack
       default:
         return true
     }

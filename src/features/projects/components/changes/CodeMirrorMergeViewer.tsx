@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { EditorState, type Extension } from '@codemirror/state'
-import { lineNumbers } from '@codemirror/view'
+import { lineNumbers, EditorView } from '@codemirror/view'
 import { unifiedMergeView } from '@codemirror/merge'
-import { EditorView, minimalSetup } from 'codemirror'
+import { minimalSetup } from 'codemirror'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
@@ -81,6 +81,7 @@ export function CodeMirrorMergeViewer({
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+
     const languageExtension = getLanguageExtension(filePath)
 
     const extensions: Extension[] = [
@@ -100,38 +101,41 @@ export function CodeMirrorMergeViewer({
           minSize: 4,
         },
       }),
-      EditorView.theme({
-        '&': {
-          backgroundColor: 'transparent',
-          color: 'var(--foreground)',
-          fontSize: '13px',
+      EditorView.theme(
+        {
+          '&': {
+            backgroundColor: 'transparent',
+            color: 'var(--foreground)',
+            fontSize: '13px',
+          },
+          '.cm-scroller': {
+            fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
+            lineHeight: '1.55',
+            paddingBottom: '24px',
+          },
+          '.cm-gutters': {
+            backgroundColor: 'transparent',
+            border: 'none',
+            color: 'var(--muted-foreground)',
+          },
+          '.cm-activeLine': {
+            backgroundColor: 'color-mix(in oklab, var(--muted) 45%, transparent)',
+          },
+          '.cm-activeLineGutter': {
+            backgroundColor: 'transparent',
+          },
+          '.cm-content': {
+            caretColor: 'var(--foreground)',
+          },
+          '.cm-cursor, .cm-dropCursor': {
+            borderLeftColor: 'var(--foreground)',
+          },
+          '&.cm-focused': {
+            outline: 'none',
+          },
         },
-        '.cm-scroller': {
-          fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-          lineHeight: '1.55',
-          paddingBottom: '24px',
-        },
-        '.cm-gutters': {
-          backgroundColor: 'transparent',
-          border: 'none',
-          color: 'var(--muted-foreground)',
-        },
-        '.cm-activeLine': {
-          backgroundColor: 'color-mix(in oklab, var(--muted) 45%, transparent)',
-        },
-        '.cm-activeLineGutter': {
-          backgroundColor: 'transparent',
-        },
-        '.cm-content': {
-          caretColor: 'var(--foreground)',
-        },
-        '.cm-cursor, .cm-dropCursor': {
-          borderLeftColor: 'var(--foreground)',
-        },
-        '&.cm-focused': {
-          outline: 'none',
-        },
-      }, { dark: true }),
+        { dark: true },
+      ),
     ]
 
     if (languageExtension) {

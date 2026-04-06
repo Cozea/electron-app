@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from '@/lib/router'
 import { X, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useFileTabsStore, pathsReferToSameFile } from "@/stores/useFileTabsStore"
@@ -158,7 +158,7 @@ export function EditorTabs() {
             if (!urlPath || !pathsReferToSameFile(activeFile, urlPath)) {
                 const nextParams = new URLSearchParams(searchParams)
                 nextParams.set('path', activeFile)
-                setSearchParams(nextParams, { replace: true })
+                setSearchParams(Object.fromEntries(nextParams.entries()) as any)
             }
             return
         }
@@ -166,7 +166,7 @@ export function EditorTabs() {
         if (urlPath) {
             const nextParams = new URLSearchParams(searchParams)
             nextParams.delete('path')
-            setSearchParams(nextParams, { replace: true })
+            setSearchParams(Object.fromEntries(nextParams.entries()) as any)
         }
     }, [activeFile, filePath, projectId, searchParams, setSearchParams])
 

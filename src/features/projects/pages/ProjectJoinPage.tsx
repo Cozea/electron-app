@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useParams } from '@/lib/router'
 import { useMutation, useQuery } from "convex/react"
 import { AlertCircle, Link2, Loader2, LogIn } from "lucide-react"
 
@@ -23,7 +23,7 @@ function cleanConvexError(error: unknown, fallback: string): string {
 
 export function ProjectJoinPage() {
   const navigate = useViewTransitionNavigate()
-  const { token } = useParams<{ token: string }>()
+  const { token } = useParams()
   const { convexUserId, isAuthenticated, isLoading, login } = useAuth()
   const joinByToken = useMutation(api.projectJoinLinks.joinByToken)
   const preview = useQuery(
@@ -59,7 +59,7 @@ export function ProjectJoinPage() {
         token,
         userId: convexUserId,
       })
-      navigate(buildProjectPath(String(result.projectId), 'pages'), { replace: true })
+      navigate(buildProjectPath(String(result.projectId), 'workbench'), { replace: true })
     } catch (error) {
       setJoinError(cleanConvexError(error, "Unable to join this project."))
     } finally {

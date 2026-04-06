@@ -5,6 +5,7 @@ import {
   getDevServerConfig,
   getInstallCommand,
   hasPackageJson,
+  type DevServerLaunchContext,
 } from '@/utils/projectDetector'
 import {
   initialDevServerLifecycle,
@@ -21,6 +22,10 @@ const RESTART_DELAY_MS = 500
 interface UseDevServerManagerOptions {
   projectPath: string | null
   autoStart?: boolean
+  storedDevCommand?: string | null
+  storedDevPort?: number | null
+  previewMode?: DevServerLaunchContext['previewMode']
+  nativePlatform?: DevServerLaunchContext['nativePlatform']
   onReady?: (url: string) => void
   onError?: (error: string) => void
   onOutput?: (output: string) => void
@@ -63,6 +68,10 @@ const MAX_TIMELINE_EVENTS = 80
 export function useDevServerManager({
   projectPath,
   autoStart = false,
+  storedDevCommand = null,
+  storedDevPort = null,
+  previewMode = 'web',
+  nativePlatform = null,
   onReady,
   onError,
   onOutput,
@@ -140,34 +149,57 @@ export function useDevServerManager({
     if (isStaleRunEvent(runId)) return
     const url = `http://localhost:${port}`
 
+    setState((prev) => ({
+      ...prev,
+      runId,
+      url,
+      port,
+      reachable: false,
+      failureReason: null,
+      error: null,
+    }))
+
     let probeReachable = true
     let failureReason: PreviewFailureReason | null = null
     let failureMessage: string | null = null
 
     if (window.electronAPI?.preview?.probeUrl) {
-      try {
-        const probe = await window.electronAPI.preview.probeUrl({ url, timeoutMs: 2500 })
+      probeReachable = false
+      const maxAttempts = 12 // up to 30s total
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         if (isStaleRunEvent(runId)) return
-        if (!probe.success || !probe.reachable) {
+        try {
+          const probe = await window.electronAPI.preview.probeUrl({ url, timeoutMs: 2500 })
+          if (isStaleRunEvent(runId)) return
+          
+          if (probe.success && probe.reachable) {
+            probeReachable = true
+            failureReason = null
+            failureMessage = null
+            break
+          }
+          
           const failure = getPreviewFailurePresentation(
             probe.reason ?? 'server_unreachable',
             probe.error ?? 'Dev server did not respond to probe',
             { context: 'server' },
           )
-          probeReachable = false
+          failureReason = failure.reason
+          failureMessage = failure.message
+        } catch (error) {
+          if (isStaleRunEvent(runId)) return
+          const failure = getPreviewFailurePresentation(
+            'server_unreachable',
+            error instanceof Error ? error.message : 'Dev server probe failed',
+            { context: 'server' },
+          )
           failureReason = failure.reason
           failureMessage = failure.message
         }
-      } catch (error) {
-        if (isStaleRunEvent(runId)) return
-        const failure = getPreviewFailurePresentation(
-          'server_unreachable',
-          error instanceof Error ? error.message : 'Dev server probe failed',
-          { context: 'server' },
-        )
-        probeReachable = false
-        failureReason = failure.reason
-        failureMessage = failure.message
+
+        if (attempt < maxAttempts && !isStaleRunEvent(runId)) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
       }
     }
 
@@ -228,9 +260,12 @@ export function useDevServerManager({
 
     try {
       // Get dev server config (command and port)
-      const config = await getDevServerConfig(projectPath)
+      const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort, {
+        previewMode,
+        nativePlatform,
+      })
       if (config.requiresUserSelection) {
-        throw new Error('Dev server command selection is required. Open Project Pages and choose a command first.')
+        throw new Error('Dev server command selection is required. Open the Workbench dev-server tile and choose a command first.')
       }
 
       let command = config.command
@@ -301,7 +336,18 @@ export function useDevServerManager({
       })
       onError?.(errorMessage)
     }
-  }, [appendTimeline, markReadyFromPort, onError, projectPath, state.status, transitionLifecycle])
+  }, [
+    appendTimeline,
+    markReadyFromPort,
+    nativePlatform,
+    onError,
+    previewMode,
+    projectPath,
+    state.status,
+    storedDevCommand,
+    storedDevPort,
+    transitionLifecycle,
+  ])
 
   // Stop the dev server
   const stop = useCallback(async () => {

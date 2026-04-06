@@ -1,5 +1,5 @@
 import { memo, type ComponentType, type MouseEvent as ReactMouseEvent, useCallback, useRef } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation } from '@/lib/router'
 
 import {
   SidebarGroup,
@@ -92,10 +92,10 @@ export const NavMain = memo(function NavMain({
                 onFocus={() => preloadItem(item)}
                 onPointerDown={() => preloadItem(item)}
               >
-                {item.icon && <item.icon className="opacity-60" />}
-                <span>{item.title}</span>
+                {item.icon && <item.icon className="transition-opacity group-data-[active=true]:opacity-100 opacity-70 shrink-0" />}
+                <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                 {item.alpha && (
-                  <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
+                  <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal group-data-[collapsible=icon]:hidden">
                     alpha
                   </Badge>
                 )}

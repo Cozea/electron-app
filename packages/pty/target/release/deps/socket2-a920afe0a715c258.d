@@ -1,0 +1,11 @@
+/Users/admin/Downloads/electron-app-main/packages/pty/target/release/deps/socket2-a920afe0a715c258.d: /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/lib.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockaddr.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/socket.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockref.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sys/unix.rs
+
+/Users/admin/Downloads/electron-app-main/packages/pty/target/release/deps/libsocket2-a920afe0a715c258.rlib: /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/lib.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockaddr.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/socket.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockref.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sys/unix.rs
+
+/Users/admin/Downloads/electron-app-main/packages/pty/target/release/deps/libsocket2-a920afe0a715c258.rmeta: /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/lib.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockaddr.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/socket.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockref.rs /Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sys/unix.rs
+
+/Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/lib.rs:
+/Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockaddr.rs:
+/Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/socket.rs:
+/Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sockref.rs:
+/Users/admin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.3/src/sys/unix.rs:

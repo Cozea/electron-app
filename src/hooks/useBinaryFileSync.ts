@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { useConvex } from 'convex/react'
 import type { Id } from '../../convex/_generated/dataModel'
 import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
@@ -95,11 +95,7 @@ export function useBinaryFileSync(
     }
   }, [])
 
-  const getPendingUploads = useCallback(() => {
-    return binarySyncRef.current?.getPendingCount() ?? 0
-  }, [])
-
   return {
-    pendingUploads: getPendingUploads(),
+    pendingUploads: 0,
   }
 }

@@ -16,10 +16,15 @@ export default defineSchema({
     // User preferences
     preferences: v.optional(
       v.object({
+        // Legacy compatibility for existing production docs from older Radon-backed builds.
+        radonToken: v.optional(v.string()),
         theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
+        sourceControlDefaultProvider: v.optional(
+          v.union(v.literal("github"), v.literal("gitlab"))
+        ),
       })
     ),
 
@@ -68,6 +73,14 @@ export default defineSchema({
         // Default model tier for new users
         defaultModelTier: v.optional(
           v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))
+        ),
+      })
+    ),
+
+    sourceControlSettings: v.optional(
+      v.object({
+        defaultProvider: v.optional(
+          v.union(v.literal("github"), v.literal("gitlab"))
         ),
       })
     ),
@@ -559,194 +572,6 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"]),
 
-  // AI usage tracking - individual requests
-  aiUsage: defineTable({
-    organizationId: v.id("organizations"),
-    userId: v.id("users"),
-
-    // Idempotency key (prevents double-charging on retries)
-    requestId: v.optional(v.string()),
-
-    // Request details
-    model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.3-codex"
-    modelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
-    provider: v.string(),
-
-    // Token counts from AI SDK response.usage
-    promptTokens: v.number(),
-    completionTokens: v.number(),
-    totalTokens: v.number(),
-
-    // Extended usage from AI SDK v6
-    extendedUsage: v.optional(
-      v.object({
-        reasoningTokens: v.optional(v.number()),
-        cachedInputTokens: v.optional(v.number()),
-        cacheWriteTokens: v.optional(v.number()),
-        toolCallTokens: v.optional(v.number()),
-      })
-    ),
-
-    // Cost tracking (visibility only)
-    trackedUnits: v.number(),
-
-    // Context
-    feature: v.optional(v.string()), // e.g., "code-generation", "chat", "review"
-    actionType: v.optional(v.string()), // e.g., "chat", "agent", "build"
-    conversationId: v.optional(v.string()),
-    projectId: v.optional(v.string()), // For future project tracking
-
-    // Tool usage tracking
-    toolCalls: v.optional(
-      v.object({
-        count: v.number(),
-        names: v.array(v.string()),
-        approvalCount: v.optional(v.number()),
-      })
-    ),
-
-    // Performance metrics
-    durationMs: v.optional(v.number()),
-    finishReason: v.optional(v.string()), // e.g., "stop", "length", "tool_calls"
-    rawFinishReason: v.optional(v.string()), // Provider-specific finish reason
-
-    // Key source
-    keySource: v.union(v.literal("organization"), v.literal("provider_auth")),
-
-    timestamp: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_timestamp", ["organizationId", "timestamp"])
-    .index("by_user", ["userId"])
-    .index("by_user_and_timestamp", ["userId", "timestamp"])
-    .index("by_request_id", ["requestId"]),
-
-  // Pre-computed usage aggregates for billing/analytics
-  aiUsageAggregates: defineTable({
-    organizationId: v.id("organizations"),
-    period: v.union(v.literal("daily"), v.literal("monthly")),
-    periodStart: v.number(), // Start of day/month timestamp
-
-    // Aggregated totals
-    totalPromptTokens: v.number(),
-    totalCompletionTokens: v.number(),
-    totalTokens: v.number(),
-    totalTrackedUnits: v.number(),
-    requestCount: v.number(),
-
-    // Breakdown by model (stored as JSON)
-    byModel: v.optional(v.any()),
-    // Breakdown by user (stored as JSON)
-    byUser: v.optional(v.any()),
-
-    updatedAt: v.number(),
-  })
-    .index("by_organization_and_period", ["organizationId", "period", "periodStart"]),
-
-  // Agent run metadata for durable status tracking and replay.
-  aiAgentRuns: defineTable({
-    runId: v.string(),
-    organizationWorkosId: v.string(),
-    conversationId: v.optional(v.string()),
-    model: v.string(),
-    provider: v.string(),
-    status: v.union(
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("failed"),
-      v.literal("budget_exceeded")
-    ),
-    maxCostUsd: v.optional(v.number()),
-    cumulativeCostUsd: v.number(),
-    promptTokens: v.number(),
-    completionTokens: v.number(),
-    totalTokens: v.number(),
-    billedUsd: v.optional(v.number()),
-    walletHoldId: v.optional(v.string()),
-    stepsCount: v.number(),
-    error: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-    startedAt: v.number(),
-    finishedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_run_id", ["runId"])
-    .index("by_organization_and_started", ["organizationWorkosId", "startedAt"])
-    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
-
-  // Per-step usage/cost rows for each agent run.
-  aiAgentRunSteps: defineTable({
-    runId: v.string(),
-    organizationWorkosId: v.string(),
-    step: v.number(),
-    promptTokens: v.number(),
-    completionTokens: v.number(),
-    totalTokens: v.number(),
-    costUsd: v.number(),
-    cumulativeCostUsd: v.number(),
-    timestamp: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_run", ["runId"])
-    .index("by_run_and_step", ["runId", "step"])
-    .index("by_organization_and_created", ["organizationWorkosId", "createdAt"]),
-
-  // Versioned model catalog snapshots after models.dev normalization.
-  aiModelSnapshots: defineTable({
-    snapshotId: v.string(),
-    source: v.string(),
-    updatedAt: v.number(),
-    modelCount: v.number(),
-    models: v.any(),
-    createdAt: v.number(),
-  })
-    .index("by_snapshot_id", ["snapshotId"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Versioned pricing snapshots derived from model catalog snapshots.
-  aiPricingSnapshots: defineTable({
-    snapshotId: v.string(),
-    source: v.string(),
-    updatedAt: v.number(),
-    modelCount: v.number(),
-    pricing: v.any(),
-    createdAt: v.number(),
-  })
-    .index("by_snapshot_id", ["snapshotId"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Organization-scoped router rules for capability-based model routing.
-  aiRouterRules: defineTable({
-    organizationWorkosId: v.string(),
-    rules: v.any(),
-    version: v.string(),
-    source: v.optional(v.string()),
-    updatedByWorkosUserId: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationWorkosId"])
-    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
-
-  // Workspace/repo runtime session metadata for local execution and tool policy context.
-  aiRepoSessions: defineTable({
-    sessionId: v.string(),
-    organizationWorkosId: v.string(),
-    projectId: v.optional(v.string()),
-    workspaceRoot: v.string(),
-    runtime: v.union(v.literal("local"), v.literal("cloud")),
-    status: v.union(v.literal("active"), v.literal("archived")),
-    metadata: v.optional(v.any()),
-    lastSeenAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_session_id", ["sessionId"])
-    .index("by_organization_and_status", ["organizationWorkosId", "status"])
-    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
-
   // Audit logs for compliance
   auditLogs: defineTable({
     organizationId: v.id("organizations"),
@@ -775,113 +600,6 @@ export default defineSchema({
   })
     .index("by_started_at", ["startedAt"])
     .index("by_status", ["status"]),
-
-  // Tool registry for agent capabilities
-  tools: defineTable({
-    // Identity
-    name: v.string(), // e.g., "file_read", "web_search"
-    displayName: v.string(), // e.g., "Read File", "Web Search"
-    description: v.string(),
-
-    // Categorization
-    category: v.union(
-      v.literal("filesystem"),
-      v.literal("web"),
-      v.literal("code"),
-      v.literal("data"),
-      v.literal("custom")
-    ),
-
-    // Provider (for provider-supplied tools like web search)
-    provider: v.optional(
-      v.union(
-        v.literal("anthropic"),
-        v.literal("openai"),
-        v.literal("google"),
-        v.literal("xai"),
-        v.literal("moonshotai")
-      )
-    ),
-
-    // Tool type (function/provider/dynamic)
-    toolType: v.optional(
-      v.union(v.literal("function"), v.literal("provider"), v.literal("dynamic"))
-    ),
-    providerToolId: v.optional(v.string()),
-    providerToolArgs: v.optional(v.any()),
-    supportsDeferredResults: v.optional(v.boolean()),
-
-    // JSON Schema for tool input validation
-    inputSchema: v.any(),
-
-    // Permissions & safety
-    requiresApproval: v.boolean(), // Human-in-the-loop required
-    allowedRoles: v.array(
-      v.union(v.literal("admin"), v.literal("member"), v.literal("viewer"))
-    ),
-    riskLevel: v.union(
-      v.literal("safe"),      // Auto-approve
-      v.literal("moderate"),  // Prompt user for confirmation
-      v.literal("dangerous")  // Always require explicit approval
-    ),
-
-    // Execution context
-    executionEnvironment: v.union(
-      v.literal("local"),   // Runs in Electron main process
-      v.literal("server"),  // Runs on Railway server
-      v.literal("provider") // Provider-supplied (e.g., web search)
-    ),
-
-    // Status
-    isBuiltin: v.boolean(),
-    isEnabled: v.boolean(),
-
-    // Timestamps
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_name", ["name"])
-    .index("by_category", ["category"])
-    .index("by_provider", ["provider"]),
-
-  // Tool approval requests (human-in-the-loop)
-  toolApprovalRequests: defineTable({
-    organizationId: v.id("organizations"),
-    userId: v.id("users"),
-
-    // Tool info
-    toolName: v.string(),
-    toolInput: v.any(), // The proposed arguments
-    approvalId: v.optional(v.string()),
-
-    // Context
-    conversationId: v.string(),
-    agentRunId: v.optional(v.string()),
-    messageId: v.optional(v.string()),
-
-    // Status
-    status: v.union(
-      v.literal("pending"),
-      v.literal("approved"),
-      v.literal("rejected"),
-      v.literal("expired"),
-      v.literal("auto_approved")
-    ),
-
-    // Response
-    resolvedBy: v.optional(v.id("users")),
-    resolvedAt: v.optional(v.number()),
-    rejectionReason: v.optional(v.string()),
-
-    // TTL for cleanup
-    expiresAt: v.number(),
-    createdAt: v.number(),
-  })
-    .index("by_organization_pending", ["organizationId", "status"])
-    .index("by_conversation", ["conversationId"])
-    .index("by_agent_run", ["agentRunId"])
-    .index("by_expiration", ["expiresAt"])
-    .index("by_approval_id", ["approvalId"]),
 
   // Stripe catalog metadata (products/prices) for workspace-wide use
   stripeCatalog: defineTable({
@@ -973,113 +691,6 @@ export default defineSchema({
     .index("by_organization_assigned", ["organizationId", "assignedUserId"])
     .index("by_updated_at", ["updatedAt"]),
 
-  // AI wallet balances for Cozea-managed provider billing.
-  aiWallets: defineTable({
-    scopeType: v.union(v.literal("organization"), v.literal("user")),
-    scopeKey: v.string(),
-    organizationId: v.optional(v.id("organizations")),
-    ownerUserId: v.optional(v.id("users")),
-    currency: v.string(),
-    balanceCents: v.number(),
-    heldCents: v.number(),
-    totalDebitedCents: v.number(),
-    totalCreditedCents: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_scope_key", ["scopeKey"])
-    .index("by_organization", ["organizationId"])
-    .index("by_owner_user", ["ownerUserId"])
-    .index("by_owner_and_organization", ["ownerUserId", "organizationId"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Temporary holds while AI requests are in flight.
-  aiWalletHolds: defineTable({
-    walletId: v.id("aiWallets"),
-    requestId: v.string(),
-    organizationId: v.id("organizations"),
-    actorUserId: v.id("users"),
-    payerUserId: v.id("users"),
-    amountCents: v.number(),
-    capturedCents: v.number(),
-    releasedCents: v.number(),
-    status: v.union(v.literal("held"), v.literal("captured"), v.literal("released")),
-    feature: v.optional(v.string()),
-    model: v.optional(v.string()),
-    provider: v.optional(v.string()),
-    capturedAt: v.optional(v.number()),
-    expiresAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_wallet", ["walletId"])
-    .index("by_wallet_and_request", ["walletId", "requestId"])
-    .index("by_request", ["requestId"])
-    .index("by_status", ["status"])
-    .index("by_expires_at", ["expiresAt"]),
-
-  // Immutable wallet ledger entries.
-  aiWalletLedger: defineTable({
-    walletId: v.id("aiWallets"),
-    organizationId: v.id("organizations"),
-    actorUserId: v.optional(v.id("users")),
-    payerUserId: v.id("users"),
-    holdId: v.optional(v.id("aiWalletHolds")),
-    requestId: v.optional(v.string()),
-    kind: v.union(
-      v.literal("credit"),
-      v.literal("debit"),
-      v.literal("hold"),
-      v.literal("release"),
-      v.literal("adjustment")
-    ),
-    amountCents: v.number(),
-    balanceAfterCents: v.number(),
-    availableAfterCents: v.number(),
-    metadata: v.optional(v.any()),
-    createdAt: v.number(),
-  })
-    .index("by_wallet", ["walletId"])
-    .index("by_wallet_and_created", ["walletId", "createdAt"])
-    .index("by_request", ["requestId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_payer_user", ["payerUserId"])
-    .index("by_created_at", ["createdAt"]),
-
-  // Idempotent cycle/assignment wallet reset records.
-  aiWalletPeriodGrants: defineTable({
-    grantKey: v.string(),
-    walletId: v.id("aiWallets"),
-    organizationId: v.id("organizations"),
-    targetUserId: v.id("users"),
-    billingUserId: v.optional(v.id("users")),
-    actorUserId: v.optional(v.id("users")),
-    plan: v.union(
-      v.literal("free"),
-      v.literal("pro"),
-      v.literal("max"),
-      v.literal("startup"),
-      v.literal("enterprise")
-    ),
-    cycle: v.optional(v.union(v.literal("monthly"), v.literal("yearly"))),
-    source: v.union(
-      v.literal("subscription_cycle"),
-      v.literal("seat_assignment"),
-      v.literal("manual")
-    ),
-    includedCents: v.number(),
-    appliedDeltaCents: v.number(),
-    periodStart: v.optional(v.number()),
-    periodEnd: v.optional(v.number()),
-    metadata: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_grant_key", ["grantKey"])
-    .index("by_wallet_and_created", ["walletId", "createdAt"])
-    .index("by_organization_and_created", ["organizationId", "createdAt"])
-    .index("by_target_user", ["targetUserId"]),
-
   // ============================================
   // PROJECT SYSTEM TABLES
   // ============================================
@@ -1130,16 +741,25 @@ export default defineSchema({
       v.object({
         provider: v.optional(v.string()), // github, gitlab, bitbucket, local
         repoUrl: v.optional(v.string()),
+        activeCollabBranch: v.optional(v.string()),
+        defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()), // public, private
         mergeStrategy: v.optional(v.string()), // squash, merge, rebase
         mergeQueue: v.optional(v.string()),
+        syncPolicy: v.optional(
+          v.union(v.literal("auto"), v.literal("manual"))
+        ),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
       })
     ),
 
-    // Sync backend selection. Existing projects continue to use replica until migrated.
-    syncMode: v.optional(
-      v.union(v.literal("replica"), v.literal("git"))
-    ),
+    // Git is the only supported durability mode for projects.
+    syncMode: v.optional(v.literal("git")),
 
     // Canonical Git repository metadata for Git-backed sync.
     gitRepository: v.optional(
@@ -1148,7 +768,7 @@ export default defineSchema({
         owner: v.string(),
         name: v.string(),
         url: v.string(),
-        defaultBranch: v.string(), // currently always main
+        defaultBranch: v.string(),
       })
     ),
 
@@ -1405,6 +1025,121 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_project_and_status", ["projectId", "status"]),
 
+  projectRepoAccess: defineTable({
+    projectId: v.id("projects"),
+    provider: v.union(v.literal("github"), v.literal("gitlab")),
+    repoUrl: v.optional(v.string()),
+    subjectType: v.union(v.literal("member"), v.literal("invite")),
+    memberUserId: v.optional(v.id("users")),
+    inviteEmail: v.optional(v.string()),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    accessState: v.union(
+      v.literal("pending"),
+      v.literal("granted"),
+      v.literal("needs_identity"),
+      v.literal("manual_required"),
+      v.literal("revoked"),
+      v.literal("error")
+    ),
+    providerAccountHandle: v.optional(v.string()),
+    externalInvitationId: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    lastAttemptAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+    lastAttemptedBy: v.optional(v.id("users")),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_member_provider", ["projectId", "memberUserId", "provider"])
+    .index("by_project_and_email_provider", ["projectId", "inviteEmail", "provider"]),
+
+  workspaceSourceControlConnections: defineTable({
+    organizationId: v.id("organizations"),
+    scopeType: v.union(v.literal("user"), v.literal("workspace")),
+    userId: v.optional(v.id("users")),
+    provider: v.union(v.literal("github"), v.literal("gitlab")),
+    authType: v.union(v.literal("oauth")),
+    authStatus: v.union(
+      v.literal("active"),
+      v.literal("needs_reauth"),
+      v.literal("revoked"),
+      v.literal("missing_setup"),
+      v.literal("error")
+    ),
+    setupMode: v.union(v.literal("personal"), v.literal("organization")),
+    providerHost: v.optional(v.string()),
+    externalAccountId: v.optional(v.string()),
+    externalAccountName: v.optional(v.string()),
+    externalAccountLogin: v.optional(v.string()),
+    oauthScopes: v.optional(v.array(v.string())),
+    tokenExpiresAt: v.optional(v.number()),
+    encryptedCredentials: v.string(),
+    namespaceId: v.optional(v.string()),
+    namespaceName: v.optional(v.string()),
+    namespaceLogin: v.optional(v.string()),
+    namespaceType: v.optional(
+      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
+    ),
+    installationId: v.optional(v.string()),
+    installationTargetType: v.optional(
+      v.union(v.literal("user"), v.literal("organization"))
+    ),
+    installationTargetLogin: v.optional(v.string()),
+    installationTargetName: v.optional(v.string()),
+    lastVerifiedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    connectedBy: v.id("users"),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_provider", ["organizationId", "provider"])
+    .index("by_scope_user", ["scopeType", "userId"])
+    .index("by_scope_user_provider", ["scopeType", "userId", "provider"])
+    .index("by_scope_organization", ["scopeType", "organizationId"])
+    .index("by_scope_organization_provider", ["scopeType", "organizationId", "provider"]),
+
+  projectRepositoryBindings: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    workspaceConnectionId: v.optional(v.id("workspaceSourceControlConnections")),
+    provider: v.union(
+      v.literal("github"),
+      v.literal("gitlab"),
+      v.literal("bitbucket"),
+      v.literal("local")
+    ),
+    setupMode: v.union(v.literal("personal"), v.literal("organization")),
+    syncPolicy: v.union(v.literal("auto"), v.literal("manual")),
+    workingCopyMode: v.union(v.literal("managed"), v.literal("attached")),
+    repoUrl: v.optional(v.string()),
+    activeCollabBranch: v.string(),
+    defaultBranch: v.string(),
+    ownerId: v.optional(v.string()),
+    ownerLogin: v.optional(v.string()),
+    ownerName: v.optional(v.string()),
+    ownerType: v.optional(
+      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
+    ),
+    repoId: v.optional(v.string()),
+    repoName: v.optional(v.string()),
+    repoFullName: v.optional(v.string()),
+    visibility: v.optional(v.string()),
+    providerHost: v.optional(v.string()),
+    repoAccessPolicy: v.union(v.literal("on_first_open")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_provider", ["organizationId", "provider"])
+    .index("by_workspace_connection", ["workspaceConnectionId"]),
+
   // Shared project tasks created from the task board UI.
   projectTasks: defineTable({
     projectId: v.id("projects"),
@@ -1654,6 +1389,8 @@ export default defineSchema({
               v.object({
                 provider: v.string(),
                 repoUrl: v.optional(v.string()),
+                activeCollabBranch: v.optional(v.string()),
+                defaultBranch: v.optional(v.string()),
                 visibility: v.string(),
                 mergeStrategy: v.string(),
               })
@@ -1699,51 +1436,6 @@ export default defineSchema({
     })
     .index("by_project", ["projectId"])
     .index("by_project_and_created", ["projectId", "createdAt"]),
-
-  // Builder run lifecycle (AI build execution tracking)
-  builderRuns: defineTable({
-    projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
-    userId: v.id("users"),
-    runId: v.string(),
-    status: v.union(
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("failed"),
-      v.literal("interrupted")
-    ),
-    attempt: v.number(),
-    conversationId: v.optional(v.string()),
-    localPath: v.optional(v.string()),
-
-    // Latest task state (from todowrite tool)
-    tasks: v.optional(
-      v.array(
-        v.object({
-          content: v.string(),
-          activeForm: v.string(),
-          status: v.union(
-            v.literal("pending"),
-            v.literal("in_progress"),
-            v.literal("completed")
-          ),
-          files: v.optional(v.array(v.string())),
-        })
-      )
-    ),
-    progress: v.optional(v.number()),
-    statusMessage: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-    logs: v.optional(v.array(v.string())),
-
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    lastCheckpointAt: v.optional(v.number()),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_updated", ["projectId", "updatedAt"])
-    .index("by_run_id", ["runId"])
-    .index("by_user", ["userId"]),
 
   // Project templates (system-defined)
   projectTemplates: defineTable({
@@ -1810,71 +1502,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_project_and_status", ["projectId", "status"])
-    .index("by_storage_id", ["storageId"]),
-
-  // Canonical Git replica metadata (secondary sync truth).
-  projectReplicaGit: defineTable({
-    projectId: v.id("projects"),
-    canonicalRef: v.string(),
-    headCommit: v.optional(v.string()),
-    bundleStorageId: v.optional(v.id("_storage")),
-    bundleChecksum: v.optional(v.string()),
-    bundleSizeBytes: v.optional(v.number()),
-    version: v.number(),
-    updatedAt: v.number(),
-    updatedBy: v.id("users"),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Git replica session lifecycle and diagnostics.
-  projectReplicaGitSessions: defineTable({
-    projectId: v.id("projects"),
-    sessionId: v.string(),
-    userId: v.id("users"),
-    deviceId: v.optional(v.string()),
-    baseCommit: v.optional(v.string()),
-    localCommit: v.optional(v.string()),
-    remoteCommit: v.optional(v.string()),
-    resultCommit: v.optional(v.string()),
-    status: v.union(
-      v.literal("planned"),
-      v.literal("applied"),
-      v.literal("conflict"),
-      v.literal("failed"),
-      v.literal("queued")
-    ),
-    diagnostics: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_session", ["projectId", "sessionId"])
-    .index("by_status", ["status"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Optional lock observability for server-side distributed lock operations.
-  projectReplicaGitLocks: defineTable({
-    projectId: v.id("projects"),
-    lockKey: v.string(),
-    owner: v.string(),
-    expiresAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_expires_at", ["expiresAt"]),
-
-  // Binary/LFS-like payload objects for Git replica.
-  projectReplicaLfsObjects: defineTable({
-    projectId: v.id("projects"),
-    oid: v.string(),
-    size: v.number(),
-    storageId: v.id("_storage"),
-    createdAt: v.number(),
-    createdBy: v.id("users"),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_oid", ["projectId", "oid"])
     .index("by_storage_id", ["storageId"]),
 
   // ============================================
@@ -2003,57 +1630,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_time", ["projectId", "timestamp"])
     .index("by_user", ["userId"]),
-
-  // ============================================
-  // AI CONVERSATION HISTORY
-  // ============================================
-
-  // AI conversations for chat history persistence
-  aiConversations: defineTable({
-    projectId: v.id("projects"),
-    userId: v.id("users"),
-    title: v.string(),
-    messages: v.array(v.object({
-      id: v.string(),
-      role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
-      content: v.string(),
-      createdAt: v.number(),
-      // Optional tool call data
-      toolInvocations: v.optional(v.any()),
-      // Optional attachments (screenshots, files)
-      attachments: v.optional(v.array(v.object({
-        url: v.string(),
-        contentType: v.string(),
-      }))),
-    })),
-    status: v.union(v.literal("active"), v.literal("archived")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_user", ["projectId", "userId"])
-    .index("by_user_and_status", ["userId", "status"])
-    .index("by_project_user_status", ["projectId", "userId", "status"]),
-
-  // Conversation continuation linkage for Responses-style providers.
-  // Stores provider response linkage state so continuation survives server restarts.
-  aiContinuationState: defineTable({
-    organizationId: v.string(), // WorkOS org id from AI runtime request
-    conversationId: v.string(),
-    provider: v.string(),
-    model: v.string(),
-    previousResponseId: v.string(),
-    updatedAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_org_conversation_provider_model", [
-      "organizationId",
-      "conversationId",
-      "provider",
-      "model",
-    ])
-    .index("by_org_conversation", ["organizationId", "conversationId"])
-    .index("by_expires_at", ["expiresAt"]),
 
   // Conversation compaction checkpoints for auto-context compression.
   aiCompactionState: defineTable({

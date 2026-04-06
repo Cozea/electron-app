@@ -25,7 +25,7 @@ export function useScopedMemberDetailsData(
     settingsPage.resolvedScope.scopedWorkspace?.organizationName ??
     'Workspace'
 
-  const member = useQuery(
+  const member = useQuery<any>(
     api.organizations.getMember,
     convexOrg?._id && convexUserId && options.memberId
       ? {
@@ -36,15 +36,15 @@ export function useScopedMemberDetailsData(
       : 'skip',
   )
 
-  const usageRecords = useQuery(
-    api.aiUsage.getRecentForUser,
+  const usageRecords = useQuery<any>(
+    undefined,
     member?.user?.id ? { userId: member.user.id, limit: 500 } : 'skip',
   )
-  const memberProjects = useQuery(
+  const memberProjects = useQuery<any>(
     api.projects.listForUser,
     member?.user?.id ? { userId: member.user.id } : 'skip',
   )
-  const organizationMembers = useQuery(
+  const organizationMembers = useQuery<any>(
     api.organizations.getMembers,
     convexOrg?._id && convexUserId
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }

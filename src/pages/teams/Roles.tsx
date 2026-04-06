@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation } from 'convex/react'
 
 import { api } from '../../../convex/_generated/api'
-import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
@@ -179,15 +179,18 @@ function getEffectivePermissionCount(row: AccessRow) {
   return 0
 }
 
-export function Roles() {
+interface RolesProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
+
+export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps = {}) {
   const {
     updateInvitationRole: updateWorkosInvitationRole,
     updateMemberRole: updateWorkosMemberRole,
   } = useOrganization()
   const {
     settingsPage,
-    user,
-    logout,
     convexUserId,
     convexOrg,
     workspaceOrganizationId,
@@ -200,7 +203,7 @@ export function Roles() {
     canAssignRoles,
     isLoading,
   } = useScopedWorkspacePeopleData({
-    route: '/teams/roles',
+    route,
     surfaceId: 'permissions',
   })
 
@@ -641,13 +644,8 @@ export function Roles() {
     }
   }
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={settingsPage.breadcrumbs}
-      header={headerContent}
-    >
+  const content = (
+    <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Permissions access required"
@@ -696,16 +694,16 @@ export function Roles() {
                               <div className="flex items-center gap-3">
                                 <button
                                   type="button"
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
+                                  className="group flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
                                   onClick={(event) => {
                                     event.stopPropagation()
                                     toggleRoleGroup(group.key)
                                   }}
                                 >
                                   {expanded ? (
-                                    <ChevronDown className="h-4 w-4" />
+                                    <ChevronDown className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                                   ) : (
-                                    <ChevronRight className="h-4 w-4" />
+                                    <ChevronRight className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                                   )}
                                 </button>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -1053,10 +1051,10 @@ export function Roles() {
                               </div>
                               <Select
                                 value={overrideDraft[permission.key]}
-                                onValueChange={(value: PermissionOverrideMode) =>
+                                onValueChange={(value) =>
                                   setOverrideDraft((current) => ({
                                     ...current,
-                                    [permission.key]: value,
+                                    [permission.key]: value as PermissionOverrideMode,
                                   }))
                                 }
                               >
@@ -1101,6 +1099,20 @@ export function Roles() {
         </Sheet>
       </div>
       )}
-    </DashboardLayout>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <SettingsRouteShell
+      surfaceId="permissions"
+      route={route}
+      header={headerContent}
+    >
+      {content}
+    </SettingsRouteShell>
   )
 }

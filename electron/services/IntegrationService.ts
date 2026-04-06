@@ -3,6 +3,12 @@ import * as integrationKeys from '../integrationKeys'
 import * as integrationCrypto from '../integrationCrypto'
 import { startOAuthFlow, handleOAuthCallback } from '../oauthHandler'
 import { runIntegrationTool, isIntegrationTool, getIntegrationToolDefinition, INTEGRATION_TOOLS } from '../integrationToolExecutor'
+import { syncRepositoryAccess } from './repositoryAccessService'
+import {
+    listRepositoryOwners,
+    listRepositories,
+    createRepository,
+} from './repositoryManagementService'
 
 export class IntegrationService {
     private static instance: IntegrationService
@@ -58,8 +64,72 @@ export class IntegrationService {
         })
 
         // OAuth
-        ipcMain.handle('integrations:startOAuth', async (_event, options: { provider: string; orgId: string }) => {
-            return startOAuthFlow(options.provider, options.orgId)
+        ipcMain.handle('integrations:startOAuth', async (
+            _event,
+            options: { provider: string; orgId: string; metadata?: Record<string, unknown> }
+        ) => {
+            return startOAuthFlow(options.provider, options.orgId, 'cozea://oauth/callback', options.metadata)
+        })
+
+        ipcMain.handle('integrations:syncRepositoryAccess', async (
+            _event,
+            options: {
+                provider: 'github' | 'gitlab'
+                repoUrl: string
+                encryptedCredentials?: string
+                keyId?: string
+                action: 'grant' | 'revoke'
+                role: 'project_manager' | 'developer' | 'designer' | 'viewer'
+                inviteEmail?: string
+                providerAccountHandle?: string
+            }
+        ) => {
+            return syncRepositoryAccess(options)
+        })
+
+        ipcMain.handle('integrations:listRepositoryOwners', async (
+            _event,
+            options: {
+                provider: 'github' | 'gitlab'
+                encryptedCredentials?: string
+                keyId?: string
+                providerHost?: string
+            }
+        ) => {
+            return listRepositoryOwners(options)
+        })
+
+        ipcMain.handle('integrations:listRepositories', async (
+            _event,
+            options: {
+                provider: 'github' | 'gitlab'
+                encryptedCredentials?: string
+                keyId?: string
+                providerHost?: string
+                ownerId?: string
+                ownerLogin?: string
+                ownerKind?: 'user' | 'organization' | 'group'
+                search?: string
+            }
+        ) => {
+            return listRepositories(options)
+        })
+
+        ipcMain.handle('integrations:createRepository', async (
+            _event,
+            options: {
+                provider: 'github' | 'gitlab'
+                encryptedCredentials?: string
+                keyId?: string
+                providerHost?: string
+                ownerId?: string
+                ownerLogin?: string
+                ownerKind?: 'user' | 'organization' | 'group'
+                name: string
+                private: boolean
+            }
+        ) => {
+            return createRepository(options)
         })
 
         // Tool Execution

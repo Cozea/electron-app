@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
+      "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
+      "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": [
+    "electron/assistant-runtime/**/*.ts",
+    "electron/assistant-runtime/**/*.tsx",
+    "shared/assistant-contracts/**/*.ts",
+    "shared/assistant-shared/**/*.ts"
+  ]
+}

@@ -13,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     buildAnsiPalette,
     getThemeColorHex,
+    loadXtermWebglAddon,
     relativeLuminance,
     syncTerminalTheme,
 } from "@/lib/xtermTheme"
@@ -141,6 +142,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
 
         const fitAddon = new FitAddon()
         term.loadAddon(fitAddon)
+        loadXtermWebglAddon(term)
         term.loadAddon(new WebLinksAddon())
 
         // Load search addon

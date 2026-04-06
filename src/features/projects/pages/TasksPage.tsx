@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import {
   AppWindow,
@@ -17,7 +17,6 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { openProjectFileInExternalEditor } from '@/features/projects/lib/externalEditorPreference'
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
@@ -27,6 +26,7 @@ import {
   type TaskOverlayPayload,
 } from '@/features/projects/lib/taskFocusOverlay'
 import { scanForRoutes, type ScannedRoute } from '@/utils/routeScanner'
+import { GroupedVirtuoso } from 'react-virtuoso'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
@@ -186,6 +186,11 @@ interface BoardItem {
   claimants: TaskClaimant[]
   context: TaskContextAttachment
   files?: string[]
+}
+
+interface TasksPageProps {
+  presentation?: 'modal' | 'embedded'
+  onRequestClose?: (() => void) | null
 }
 
 const HEADER_STATUS_ORDER: BoardStatus[] = ['planned', 'active', 'done']
@@ -423,14 +428,6 @@ function deadlineDateToTimestamp(deadlineDate?: string): number | null {
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
-function formatAbsoluteDate(timestamp: number): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(timestamp))
-}
-
 function truncatePath(path: string, maxLength = 34): string {
   if (path.length <= maxLength) return path
   const parts = path.split('/').filter(Boolean)
@@ -451,7 +448,7 @@ function getFileSelectionPriority(filePath: string): number {
   return 4
 }
 
-function getDeadlineMeta(deadlineTimestamp: number | null | undefined, status: BoardStatus): {
+function getDeadlineMeta(deadlineTimestamp: number | null | undefined): {
   label: string
   className: string
 } {
@@ -462,45 +459,35 @@ function getDeadlineMeta(deadlineTimestamp: number | null | undefined, status: B
     }
   }
 
-  if (status === 'done') {
-    return {
-      label: formatAbsoluteDate(deadlineTimestamp),
-      className: 'text-emerald-700 dark:text-emerald-400',
-    }
-  }
-
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diffDays = Math.ceil((deadlineTimestamp - today.getTime()) / 86_400_000)
 
   if (diffDays < 0) {
     return {
-      label: `${formatAbsoluteDate(deadlineTimestamp)} · overdue`,
+      label: `${Math.abs(diffDays)}d overdue`,
       className: 'text-rose-700 dark:text-rose-400',
     }
   }
 
-  if (diffDays <= 2) {
+  if (diffDays === 0) {
     return {
-      label: `${formatAbsoluteDate(deadlineTimestamp)} · soon`,
+      label: 'Due today',
+      className: 'text-amber-700 dark:text-amber-400',
+    }
+  }
+
+  if (diffDays === 1) {
+    return {
+      label: '1d left',
       className: 'text-amber-700 dark:text-amber-400',
     }
   }
 
   return {
-    label: formatAbsoluteDate(deadlineTimestamp),
+    label: `${diffDays}d left`,
     className: 'text-foreground',
   }
-}
-
-function getCompactDeadlineValue(deadlineTimestamp: number | null | undefined): string {
-  if (!deadlineTimestamp) return '--'
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffDays = Math.ceil((deadlineTimestamp - today.getTime()) / 86_400_000)
-
-  return `${diffDays}d`
 }
 
 function createFileContextAttachment(
@@ -652,7 +639,7 @@ function buildAssigneeClaimants(
   ]
 }
 
-function TaskTile({
+function TaskListRow({
   item,
   projectId,
   projectPath,
@@ -664,8 +651,8 @@ function TaskTile({
   onToggleMarker: (item: BoardItem, markerId: string) => void
 }) {
   const navigate = useViewTransitionNavigate()
-  const deadlineMeta = getDeadlineMeta(item.deadlineTimestamp, item.status)
-  const compactDeadlineValue = getCompactDeadlineValue(item.deadlineTimestamp)
+  const [isOpen, setIsOpen] = useState(item.status !== 'done')
+  const deadlineMeta = getDeadlineMeta(item.deadlineTimestamp)
   const fileIconName = item.context.title.split('/').filter(Boolean).pop() ?? item.context.title
   const taskOverlay: TaskOverlayPayload = {
     projectId,
@@ -701,149 +688,104 @@ function TaskTile({
     navigate(item.context.href, { state: navigationState })
   }
 
-  function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.target !== event.currentTarget) return
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    void openContext()
-  }
-
   return (
-    <div
-      className="h-full cursor-pointer rounded-[28px] bg-secondary/80 p-3 transition-transform duration-200 ease-out hover:scale-[1.015] dark:bg-secondary/40"
-      role="link"
-      tabIndex={0}
-      aria-label={`Open ${item.context.kind}: ${item.context.title}`}
-      onClick={() => {
-        void openContext()
-      }}
-      onKeyDown={handleCardKeyDown}
-    >
-      <div className="flex h-full flex-col rounded-[20px] bg-secondary/45 px-3.5 pt-3.5 pb-3">
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="text-[15px] font-semibold leading-5 text-foreground">{item.title}</h3>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="-mr-1 -mt-1 shrink-0"
-              onClick={(event) => {
-                event.stopPropagation()
-                void openContext()
-              }}
-              aria-label={`Open ${item.context.title}`}
-            >
-              <ArrowUpRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="mt-2 space-y-1">
-            <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
-          </div>
-
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b border-border/50 py-3 last:border-b-0">
+      <div className="flex items-start gap-2">
+        <CollapsibleTrigger asChild>
           <button
             type="button"
-            title={item.context.title}
-            aria-label={`Open context: ${item.context.title}`}
-            className="mt-3 inline-flex h-7 max-w-full items-center gap-1.5 self-start rounded-full bg-sidebar-accent/80 px-2.5 text-xs text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/90 dark:bg-sidebar-accent dark:hover:bg-sidebar-accent/80"
-            onClick={(event) => {
-              event.stopPropagation()
-              void openContext()
-            }}
+            className="group flex min-w-0 flex-1 items-start gap-3 text-left"
+            aria-label={`${isOpen ? 'Collapse' : 'Expand'} task ${item.title}`}
           >
-            {item.context.kind === 'file' ? (
-              getFileIcon(fileIconName, { className: 'h-3.5 w-3.5' })
-            ) : (
-              <AppWindow className="h-3.5 w-3.5 shrink-0" />
-            )}
-            <span className="truncate">{item.context.label}</span>
-          </button>
-        </div>
+            <ChevronDown
+              className={cn(
+                'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100',
+                !isOpen && '-rotate-90',
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <h3 className="truncate text-[15px] font-normal leading-5 text-foreground">
+                  {item.title}
+                </h3>
 
-        <div className="mt-3 flex flex-1 flex-col">
-          <div className="space-y-1">
-            {item.markers.map((marker) => (
-              <label
-                key={marker.id}
-                className="flex cursor-pointer items-center gap-3 rounded-xl px-1 py-1.5 transition-colors hover:bg-background/40"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Checkbox
-                  checked={marker.checked}
-                  onCheckedChange={() => onToggleMarker(item, marker.id)}
-                  aria-label={marker.label}
-                />
-                <span
-                  className={cn(
-                    'text-sm',
-                    marker.checked
-                      ? 'text-muted-foreground line-through'
-                      : 'text-foreground',
-                  )}
-                >
-                  {marker.label}
+                <span className={cn('inline-flex items-center gap-1.5', deadlineMeta.className)} title={deadlineMeta.label}>
+                  <Clock3 className="h-3.5 w-3.5" />
+                  {deadlineMeta.label}
                 </span>
-              </label>
-            ))}
-          </div>
 
-          <div className="mt-auto flex min-h-6 items-center justify-between border-t border-border/40 pt-1.5">
-            <div
-              className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
-              title={deadlineMeta.label}
-              aria-label={deadlineMeta.label}
-            >
-              <Clock3 className="h-3 w-3 shrink-0" />
-              <span className="truncate">{compactDeadlineValue}</span>
-            </div>
+                <span title={item.context.title} className="inline-flex min-w-0 items-center gap-1.5">
+                  {item.context.kind === 'file' ? (
+                    getFileIcon(fileIconName, { className: 'h-3.5 w-3.5' })
+                  ) : (
+                    <AppWindow className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span className="truncate">{item.context.label}</span>
+                </span>
 
-            <div className="flex min-w-0 items-center">
-              <div className="flex -space-x-1.5">
-                {item.claimants.length > 0 ? (
-                  <>
-                    {item.claimants.slice(0, 3).map((claimant) => (
-                      <Avatar
-                        key={claimant.id}
-                        className="h-5 w-5 border border-border/70 bg-background"
-                        title={claimant.name}
-                      >
-                        <AvatarImage src={claimant.avatarUrl ?? undefined} alt={claimant.name} />
-                        <AvatarFallback className="text-[9px] font-medium">
-                          {getInitials(claimant.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))}
-                    {item.claimants.length > 3 ? (
-                      <Avatar
-                        className="h-5 w-5 border border-border/70 bg-muted/70"
-                        title={`${item.claimants.length - 3} more claimants`}
-                      >
-                        <AvatarFallback className="text-[8px] font-medium text-muted-foreground">
-                          +{item.claimants.length - 3}
-                        </AvatarFallback>
-                      </Avatar>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <Avatar className="h-5 w-5 border border-border/70 bg-muted/70" aria-hidden="true">
-                      <AvatarFallback className="bg-muted/70" />
-                    </Avatar>
-                    <Avatar className="h-5 w-5 border border-border/70 bg-muted/50" aria-hidden="true">
-                      <AvatarFallback className="bg-muted/50" />
-                    </Avatar>
-                  </>
-                )}
+                <span className="truncate">
+                  {item.claimants.length > 0
+                    ? `Assigned to ${item.claimants.map((claimant) => claimant.name).join(', ')}`
+                    : 'Unassigned'}
+                </span>
               </div>
             </div>
-          </div>
-        </div>
+          </button>
+        </CollapsibleTrigger>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="-mr-1 -mt-1 shrink-0"
+          onClick={(event) => {
+            event.stopPropagation()
+            void openContext()
+          }}
+          aria-label={`Open ${item.context.title}`}
+        >
+          <ArrowUpRight className="h-4 w-4" />
+        </Button>
       </div>
-    </div>
+
+      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+        <div className="space-y-3 pl-7 pt-3">
+          {item.description ? (
+            <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
+          ) : null}
+
+          <ul className="space-y-2">
+            {item.markers.map((marker) => (
+              <li key={marker.id}>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <Checkbox
+                    checked={marker.checked}
+                    onCheckedChange={() => onToggleMarker(item, marker.id)}
+                    aria-label={marker.label}
+                  />
+                  <span
+                    className={cn(
+                      'text-sm leading-6',
+                      marker.checked ? 'text-muted-foreground line-through' : 'text-foreground',
+                    )}
+                  >
+                    {marker.label}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
-export function TasksPage() {
+export function TasksPage({
+  presentation = 'modal',
+  onRequestClose = null,
+}: TasksPageProps = {}) {
+  const isEmbedded = presentation === 'embedded'
+  const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
   const projectWorkspace = useProjectWorkspaceContext(project)
   const { convexUserId } = useAuth()
@@ -907,7 +849,7 @@ export function TasksPage() {
 
   const projectId = project ? String(project._id) : null
 
-  const projectPagesPath = projectId ? buildProjectPath(projectId, 'pages') : '/projects'
+  const projectPagesPath = projectId ? buildProjectPath(projectId, 'workbench') : '/projects'
   const storedFrameworkInfo = useMemo(() => {
     if (!project?.frameworkInfo) return null
     return {
@@ -1302,51 +1244,42 @@ export function TasksPage() {
     [boardItemsByStatus],
   )
 
-  const headerControls = useMemo(
-    () => (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {statusStats.map(({ status, count }) => {
-          const statusMeta = STATUS_META[status]
-          const StatusIcon = statusMeta.icon
+  const tasksBoardVirtuoso = useMemo(() => {
+    const groupCounts: number[] = []
+    const flatItems: BoardItem[] = []
+    for (const section of statusSections) {
+      if (collapsedGroups[section.status]) {
+        groupCounts.push(0)
+      } else {
+        groupCounts.push(section.items.length)
+        flatItems.push(...section.items)
+      }
+    }
+    return { groupCounts, flatItems }
+  }, [statusSections, collapsedGroups])
 
-          return (
-            <Badge
-              key={status}
-              variant="outline"
-              title={statusMeta.ariaLabel}
-              aria-label={`${statusMeta.ariaLabel}: ${count}`}
-              className={cn(
-                'gap-1.5 rounded-full border-transparent px-2.5 py-1',
-                statusMeta.surfaceClassName,
-              )}
-            >
-              <StatusIcon className={cn('h-3.5 w-3.5', statusMeta.iconClassName)} />
-              <span className="tabular-nums text-foreground">{count}</span>
-              <span className="sr-only">{statusMeta.ariaLabel}</span>
-            </Badge>
-          )
-        })}
-        {boardItems.length > 0 ? (
-          <Button
-            size="sm"
-            className="h-8 rounded-full px-3 text-xs"
-            disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks}
-            onClick={() => {
-              resetDraft()
-              setIsCreateDialogOpen(true)
-            }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {isCreatingTask ? 'Adding...' : 'Add Task'}
-          </Button>
-        ) : null}
-      </div>
-    ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [boardItems.length, convexUserId, isCreatingTask, isSyncingLocalTasks, statusStats],
-  )
+  function closeTasksModal(): void {
+    if (isEmbedded) {
+      onRequestClose?.()
+      return
+    }
+    navigate(projectPagesPath, { replace: true })
+  }
 
-  useProjectHeader(headerControls)
+  useEffect(() => {
+    if (isEmbedded) return
+    if (isCreateDialogOpen) return
+
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      closeTasksModal()
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isCreateDialogOpen, isEmbedded, projectPagesPath])
 
   function resetDraft(): void {
     setDraftTitle('')
@@ -1482,148 +1415,267 @@ export function TasksPage() {
   }
 
   if (project === undefined) {
+    if (isEmbedded) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      )
+    }
     return (
-      <div className="flex h-full items-center justify-center bg-content-surface p-6">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
+        <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-border/60 bg-background/95 shadow-xl">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       </div>
     )
   }
 
-  if (project === null) {
-    return (
-      <div className="flex h-full items-center justify-center bg-content-surface p-6">
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia>
-              <ListTodo className="h-8 w-8" />
-            </EmptyMedia>
-            <EmptyTitle>Project not found</EmptyTitle>
-            <EmptyDescription>
-              The task board needs a valid project before it can show tasks.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+  const shell = (
+    <div
+      role={isEmbedded ? undefined : 'dialog'}
+      aria-modal={isEmbedded ? undefined : true}
+      aria-labelledby={isEmbedded ? undefined : 'tasks-modal-title'}
+      className={cn(
+        'flex h-full w-full flex-col overflow-hidden bg-background',
+        !isEmbedded &&
+          'max-w-2xl rounded-[32px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className={cn("border-b border-border/60", isEmbedded ? "px-4 py-3" : "px-6 py-5")}>
+        {!isEmbedded ? (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h1 id="tasks-modal-title" className="text-xl font-semibold text-foreground">
+                  Tasks
+                </h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Track shared work, objectives, deadlines, and linked context for this project.
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+                  disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks || project === null}
+                  onClick={() => {
+                    resetDraft()
+                    setIsCreateDialogOpen(true)
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {isCreatingTask ? 'Adding...' : 'Add Task'}
+                </Button>
+                <button
+                  type="button"
+                  onClick={closeTasksModal}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  aria-label="Close tasks"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {statusStats.map(({ status, count }) => {
+                const statusMeta = STATUS_META[status]
+                const StatusIcon = statusMeta.icon
+
+                return (
+                  <Badge
+                    key={status}
+                    variant="outline"
+                    title={statusMeta.ariaLabel}
+                    aria-label={`${statusMeta.ariaLabel}: ${count}`}
+                    className={cn(
+                      'gap-1.5 rounded-full border-transparent px-2.5 py-1',
+                      statusMeta.surfaceClassName,
+                    )}
+                  >
+                    <StatusIcon className={cn('h-3.5 w-3.5', statusMeta.iconClassName)} />
+                    <span className="tabular-nums text-foreground">{count}</span>
+                  </Badge>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {statusStats.map(({ status, count }) => {
+                const statusMeta = STATUS_META[status]
+                const StatusIcon = statusMeta.icon
+
+                return (
+                  <Badge
+                    key={status}
+                    variant="outline"
+                    title={statusMeta.ariaLabel}
+                    aria-label={`${statusMeta.ariaLabel}: ${count}`}
+                    className={cn(
+                      'gap-1.5 rounded-full border-transparent px-2.5 py-1',
+                      statusMeta.surfaceClassName,
+                    )}
+                  >
+                    <StatusIcon className={cn('h-3.5 w-3.5', statusMeta.iconClassName)} />
+                    <span className="tabular-nums text-foreground">{count}</span>
+                  </Badge>
+                )
+              })}
+            </div>
+            <Button
+              size="sm"
+              className="h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs"
+              disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks || project === null}
+              onClick={() => {
+                resetDraft()
+                setIsCreateDialogOpen(true)
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {isCreatingTask ? 'Adding...' : 'Add Task'}
+            </Button>
+          </div>
+        )}
       </div>
-    )
-  }
+
+      <div className="flex min-h-0 flex-1 flex-col px-5 py-5">
+        {project === null ? (
+          <div className="flex h-full items-center justify-center p-6">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia>
+                  <ListTodo className="h-8 w-8" />
+                </EmptyMedia>
+                <EmptyTitle>Project not found</EmptyTitle>
+                <EmptyDescription>
+                  The task board needs a valid project before it can show tasks.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </div>
+        ) : boardItems.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <Empty className="w-full max-w-2xl py-6">
+              <EmptyHeader>
+                <EmptyMedia>
+                  <ListTodo className="h-8 w-8" />
+                </EmptyMedia>
+                <EmptyTitle>No tasks yet</EmptyTitle>
+                <EmptyDescription>
+                  {isSyncingLocalTasks
+                    ? 'Syncing your existing local tasks into the shared board...'
+                    : 'Create a task to assign work, track objectives, and keep progress shared with the project.'}
+                </EmptyDescription>
+              </EmptyHeader>
+              {!isSyncingLocalTasks ? (
+                <EmptyContent>
+                  <Button
+                    type="button"
+                    className="gap-2"
+                    disabled={!convexUserId || isCreatingTask}
+                    onClick={() => {
+                      resetDraft()
+                      setIsCreateDialogOpen(true)
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {isCreatingTask ? 'Adding...' : 'Add Task'}
+                  </Button>
+                </EmptyContent>
+              ) : null}
+            </Empty>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "flex min-h-0 w-full flex-1 flex-col",
+              isEmbedded ? "max-w-none" : "mx-auto max-w-5xl",
+            )}
+          >
+            <GroupedVirtuoso
+              data={tasksBoardVirtuoso.flatItems}
+              groupCounts={tasksBoardVirtuoso.groupCounts}
+              defaultItemHeight={96}
+              increaseViewportBy={{ top: 240, bottom: 480 }}
+              style={{ height: "100%", minHeight: 0 }}
+              computeItemKey={(_index, item) => item.id}
+              groupContent={(groupIndex) => {
+                const section = statusSections[groupIndex]
+                if (!section) return null
+                const statusMeta = STATUS_META[section.status]
+                const StatusIcon = statusMeta.icon
+                const isCollapsed = collapsedGroups[section.status]
+
+                return (
+                  <div className="flex items-center gap-3 pt-4 first:pt-0">
+                    <button
+                      type="button"
+                      title={statusMeta.ariaLabel}
+                      aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${statusMeta.ariaLabel}`}
+                      className="group inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() =>
+                        setCollapsedGroups((current) => ({
+                          ...current,
+                          [section.status]: !current[section.status],
+                        }))
+                      }
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                          isCollapsed && "-rotate-90",
+                        )}
+                      />
+                      <span className="inline-flex h-7 w-7 items-center justify-center">
+                        <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                      <span className="font-medium text-foreground">{statusMeta.ariaLabel}</span>
+                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sidebar-accent/80 px-2 text-xs tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
+                        {section.items.length}
+                      </span>
+                    </button>
+                    <div className="h-px flex-1 bg-border/70" aria-hidden="true" />
+                  </div>
+                )
+              }}
+              itemContent={(_index, _groupIndex, item) => (
+                <div className="pt-3">
+                  <TaskListRow
+                    item={item}
+                    projectId={projectId ?? ""}
+                    projectPath={projectPath}
+                    onToggleMarker={handleToggleMarker}
+                  />
+                </div>
+              )}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <>
-      <div className="flex h-full flex-col bg-content-surface">
-        <div className="relative flex-1 min-h-0">
-          <div className="app-scrollbar h-full overflow-auto">
-            <div
-              className={cn(
-                "mx-auto flex w-full max-w-[1600px] flex-col px-6",
-                boardItems.length === 0 ? "min-h-full justify-center py-10" : "gap-4 py-6",
-              )}
-            >
-              {boardItems.length === 0 ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-full p-6 md:p-10">
-                    <Empty className="py-6">
-                      <EmptyHeader>
-                        <EmptyMedia>
-                          <ListTodo className="h-8 w-8" />
-                        </EmptyMedia>
-                        <EmptyTitle>No tasks yet</EmptyTitle>
-                        <EmptyDescription>
-                          {isSyncingLocalTasks
-                            ? 'Syncing your existing local tasks into the shared board...'
-                            : 'Create a task to assign work, track objectives, and keep progress shared with the project.'}
-                        </EmptyDescription>
-                      </EmptyHeader>
-                      {!isSyncingLocalTasks ? (
-                        <EmptyContent>
-                          <Button
-                            type="button"
-                            className="gap-2"
-                            disabled={!convexUserId || isCreatingTask}
-                            onClick={() => {
-                              resetDraft()
-                              setIsCreateDialogOpen(true)
-                            }}
-                          >
-                            <Plus className="h-4 w-4" />
-                            {isCreatingTask ? 'Adding...' : 'Add Task'}
-                          </Button>
-                        </EmptyContent>
-                      ) : null}
-                    </Empty>
-                  </div>
-                </div>
-              ) : (
-                <div className="mx-auto flex w-full max-w-[1424px] flex-col gap-7">
-                  {statusSections.map(({ status, items }) => {
-                    const statusMeta = STATUS_META[status]
-                    const StatusIcon = statusMeta.icon
-                    const isCollapsed = collapsedGroups[status]
-
-                    return (
-                      <Collapsible
-                        key={status}
-                        open={!isCollapsed}
-                        onOpenChange={(open) =>
-                          setCollapsedGroups((current) => ({
-                            ...current,
-                            [status]: !open,
-                          }))
-                        }
-                        className="space-y-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <CollapsibleTrigger asChild>
-                            <button
-                              type="button"
-                              title={statusMeta.ariaLabel}
-                              aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${statusMeta.ariaLabel}`}
-                              className="group inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                            >
-                              <ChevronDown
-                                className={cn(
-                                  'h-4 w-4 transition-transform duration-200',
-                                  isCollapsed && '-rotate-90',
-                                )}
-                              />
-                              <span className="inline-flex h-7 w-7 items-center justify-center">
-                                <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                              </span>
-                              <span className="font-medium text-foreground">{statusMeta.ariaLabel}</span>
-                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sidebar-accent/80 px-2 text-xs tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
-                                {items.length}
-                              </span>
-                              <span className="sr-only">{statusMeta.ariaLabel}</span>
-                            </button>
-                          </CollapsibleTrigger>
-
-                          <div className="h-px flex-1 bg-border/70" aria-hidden="true" />
-                        </div>
-
-                        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                          <div className="grid justify-start gap-4 pt-1 grid-cols-[repeat(auto-fit,minmax(min(100%,272px),272px))]">
-                            {items.map((item) => (
-                              <TaskTile
-                                key={item.id}
-                                item={item}
-                                projectId={projectId ?? ''}
-                                projectPath={projectPath}
-                                onToggleMarker={handleToggleMarker}
-                              />
-                            ))}
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    )
-                  })}
-                </div>
-              )}
-
-            </div>
-          </div>
-          <div className="pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-content-surface to-transparent z-10" />
-          <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-content-surface to-transparent z-10" />
+      {!isEmbedded ? (
+        <div
+          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
+          onClick={closeTasksModal}
+          aria-hidden="true"
+        />
+      ) : null}
+      {!isEmbedded ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16">
+          {shell}
         </div>
-      </div>
+      ) : (
+        shell
+      )}
 
       <Dialog
         open={isCreateDialogOpen}

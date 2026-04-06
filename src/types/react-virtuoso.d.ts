@@ -12,4 +12,18 @@ declare module 'react-virtuoso' {
   }
 
   export function Virtuoso<T>(props: VirtuosoProps<T>): React.ReactElement
+
+  export interface GroupedVirtuosoProps<T> {
+    data?: readonly T[]
+    groupCounts?: number[]
+    defaultItemHeight?: number
+    increaseViewportBy?: number | { top?: number; bottom?: number }
+    customScrollParent?: HTMLElement
+    style?: React.CSSProperties
+    computeItemKey?: (index: number, item: T) => React.Key
+    groupContent: (groupIndex: number) => React.ReactNode
+    itemContent: (index: number, groupIndex: number, item: T) => React.ReactNode
+  }
+
+  export function GroupedVirtuoso<T>(props: GroupedVirtuosoProps<T>): React.ReactElement
 }

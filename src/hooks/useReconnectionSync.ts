@@ -47,9 +47,9 @@ export function useReconnectionSync(
       const result = await protocol.performSync()
 
       if (result.success) {
-        console.log(
-          `[useReconnectionSync] Sync complete: ${result.sentUpdates} sent, ${result.receivedUpdates} received`
-        )
+        // console.log(
+        //   `[useReconnectionSync] Sync complete: ${result.sentUpdates} sent, ${result.receivedUpdates} received`
+        // )
 
         // Expose any delete conflicts for UI resolution
         if (result.deleteConflicts.length > 0) {
@@ -108,7 +108,7 @@ export function useReconnectionSync(
     if (!projectId || !yjsDoc) return
 
     const handleOnline = () => {
-      console.log('[useReconnectionSync] Network online, triggering sync...')
+      // console.log('[useReconnectionSync] Network online, triggering sync...')
       performSync()
     }
 
@@ -128,7 +128,7 @@ export function useReconnectionSync(
       hasSyncedOnMountRef.current = true
       // Delay slightly to let other initialization complete
       const timer = setTimeout(() => {
-        console.log('[useReconnectionSync] Initial sync on mount...')
+        // console.log('[useReconnectionSync] Initial sync on mount...')
         performSync()
       }, 1000)
 

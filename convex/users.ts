@@ -246,6 +246,9 @@ export const updatePreferences = mutation({
       defaultModel: v.optional(v.string()),
       emailNotifications: v.optional(v.boolean()),
       pushNotifications: v.optional(v.boolean()),
+      sourceControlDefaultProvider: v.optional(
+        v.union(v.literal("github"), v.literal("gitlab"), v.null())
+      ),
     }),
   },
   handler: async (ctx, args) => {
@@ -253,8 +256,28 @@ export const updatePreferences = mutation({
     if (!user) throw new Error("User not found")
 
     // Merge with existing preferences to allow partial updates
+    const nextPreferences: NonNullable<typeof user.preferences> = {
+      ...(user.preferences || {}),
+    }
+    if (args.preferences.theme !== undefined) nextPreferences.theme = args.preferences.theme
+    if (args.preferences.defaultModel !== undefined) {
+      nextPreferences.defaultModel = args.preferences.defaultModel
+    }
+    if (args.preferences.emailNotifications !== undefined) {
+      nextPreferences.emailNotifications = args.preferences.emailNotifications
+    }
+    if (args.preferences.pushNotifications !== undefined) {
+      nextPreferences.pushNotifications = args.preferences.pushNotifications
+    }
+    if (args.preferences.sourceControlDefaultProvider === null) {
+      delete nextPreferences.sourceControlDefaultProvider
+    } else if (args.preferences.sourceControlDefaultProvider !== undefined) {
+      nextPreferences.sourceControlDefaultProvider =
+        args.preferences.sourceControlDefaultProvider
+    }
+
     await ctx.db.patch(args.userId, {
-      preferences: { ...user.preferences, ...args.preferences },
+      preferences: nextPreferences,
       updatedAt: Date.now(),
     })
   },

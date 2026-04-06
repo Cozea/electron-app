@@ -9,6 +9,9 @@ export interface ProjectEvidence {
 
 const PROBE_FILES = [
   'package.json',
+  'app.json',
+  'app.config.js',
+  'app.config.ts',
   'package-lock.json',
   'pnpm-lock.yaml',
   'yarn.lock',
@@ -47,4 +50,3 @@ export function collectProjectEvidence(projectPath: string): ProjectEvidence {
 
   return { files, scripts, lockfiles }
 }
-

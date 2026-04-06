@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { useConvex, useQuery } from 'convex/react'
 
+import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
-import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   GIT_STATUS_EVENT_NAME,
   type GitStatusEventDetail,
 } from '@/lib/git/gitStatusEvents'
+import { resolveProjectGitRemoteConfig } from '@/lib/git/projectGitRuntime'
 import {
   useProjectDiffStore,
   type ProjectDiffStatus,
@@ -68,16 +71,6 @@ function isNonRepoStateError(message: string): boolean {
   )
 }
 
-async function resolveGitExtraHeader(): Promise<string | undefined> {
-  try {
-    const session = await window.electronAPI.auth.getSession()
-    return buildCozeaGitAuthHeader(session?.accessToken)
-  } catch (error) {
-    console.warn('[ProjectDiffStatus] Failed to resolve git auth header:', error)
-    return undefined
-  }
-}
-
 interface UseProjectDiffStatusOptions {
   projectId: Id<'projects'>
   projectSlug: string
@@ -93,11 +86,17 @@ export function useProjectDiffStatus({
   lastSyncAt,
   initialRefreshMode = 'remote',
 }: UseProjectDiffStatusOptions): ProjectDiffStatus | undefined {
+  const convex = useConvex()
+  const { convexUserId } = useAuth()
   const diffStatus = useProjectDiffStore((state) => state.diffs[projectSlug])
   const setDiffStatus = useProjectDiffStore((state) => state.setDiffStatus)
   const setChecking = useProjectDiffStore((state) => state.setChecking)
   const initialRefreshKeyRef = useRef<string | null>(null)
   const localRefreshKeyRef = useRef<string | null>(null)
+  const gitMetadata = useQuery(
+    api.projects.getGitSyncMetadata,
+    convexUserId ? { projectId, userId: convexUserId } : 'skip'
+  )
 
   const checkDiff = useCallback(async (
     options?: {
@@ -146,15 +145,66 @@ export function useProjectDiffStatus({
         return
       }
 
-      if (fetchRemote) {
-        const extraHeader = await resolveGitExtraHeader()
-        const repoUrl = buildCozeaGitRemoteUrl(String(projectId))
+      const localStatusResult = await withTimeout(
+        window.electronAPI.sync.gitStatus({
+          projectPath: localPath,
+        }),
+        GIT_CHECK_TIMEOUT_MS,
+        'Git status timed out'
+      )
+
+      if (!localStatusResult.success) {
+        throw new Error(localStatusResult.error || 'Failed to read local git status')
+      }
+
+      if (!localStatusResult.repoExists || !localStatusResult.isRepo) {
+        setDiffStatus(projectSlug, {
+          downloads: 0,
+          uploads: 0,
+          conflicts: 0,
+          error: undefined,
+        })
+        return
+      }
+
+      let branch = localStatusResult.currentBranch || 'main'
+      let statusResult = localStatusResult
+
+      if (gitMetadata?.syncMode === 'git') {
+        const remoteConfig = await resolveProjectGitRemoteConfig({
+          convex,
+          project: gitMetadata,
+          userId: convexUserId,
+        })
+
+        if (remoteConfig.usesExistingRemote && localStatusResult.currentBranch) {
+          branch = localStatusResult.currentBranch
+        } else if (remoteConfig.branch) {
+          branch = remoteConfig.branch
+        }
+
+        if (fetchRemote && (remoteConfig.repoUrl || remoteConfig.usesExistingRemote)) {
+          const fetchResult = await withTimeout(
+            window.electronAPI.sync.gitFetchMain({
+              projectPath: localPath,
+              branch,
+              repoUrl: remoteConfig.repoUrl,
+              provider: remoteConfig.provider,
+              accessToken: remoteConfig.accessToken,
+            }),
+            GIT_CHECK_TIMEOUT_MS,
+            'Git fetch timed out'
+          )
+
+          if (!fetchResult.success) {
+            throw new Error(fetchResult.error || 'Failed to fetch latest project changes')
+          }
+        }
+      } else if (fetchRemote) {
         const fetchResult = await withTimeout(
           window.electronAPI.sync.gitFetchMain({
             projectPath: localPath,
-            branch: 'main',
-            repoUrl,
-            extraHeader,
+            branch,
           }),
           GIT_CHECK_TIMEOUT_MS,
           'Git fetch timed out'
@@ -165,27 +215,29 @@ export function useProjectDiffStatus({
         }
       }
 
-      const statusResult = await withTimeout(
-        window.electronAPI.sync.gitStatus({
-          projectPath: localPath,
-          branch: 'main',
-        }),
-        GIT_CHECK_TIMEOUT_MS,
-        'Git status timed out'
-      )
+      if (fetchRemote || branch !== localStatusResult.currentBranch) {
+        statusResult = await withTimeout(
+          window.electronAPI.sync.gitStatus({
+            projectPath: localPath,
+            branch,
+          }),
+          GIT_CHECK_TIMEOUT_MS,
+          'Git status timed out'
+        )
 
-      if (!statusResult.success) {
-        throw new Error(statusResult.error || 'Failed to read local git status')
-      }
+        if (!statusResult.success) {
+          throw new Error(statusResult.error || 'Failed to read local git status')
+        }
 
-      if (!statusResult.repoExists || !statusResult.isRepo) {
-        setDiffStatus(projectSlug, {
-          downloads: 0,
-          uploads: 0,
-          conflicts: 0,
-          error: undefined,
-        })
-        return
+        if (!statusResult.repoExists || !statusResult.isRepo) {
+          setDiffStatus(projectSlug, {
+            downloads: 0,
+            uploads: 0,
+            conflicts: 0,
+            error: undefined,
+          })
+          return
+        }
       }
 
       const conflicts =
@@ -241,7 +293,7 @@ export function useProjectDiffStatus({
       setChecking(projectSlug, false)
       inFlightBySlug.delete(projectSlug)
     }
-  }, [localPath, projectId, projectSlug, setChecking, setDiffStatus])
+  }, [convex, convexUserId, gitMetadata, localPath, projectId, projectSlug, setChecking, setDiffStatus])
 
   useEffect(() => {
     const initialRefreshKey = localPath ? `${projectSlug}:${localPath}` : null
