@@ -461,6 +461,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   text={messageText}
                   cwd={markdownCwd}
                   isStreaming={Boolean(row.message.streaming)}
+                  variant="timeline"
                 />
                 {(() => {
                   const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
@@ -491,12 +492,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             type="button"
                             size="icon-sm"
                             variant="ghost"
-                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+                            className="group rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
                             onClick={() => onToggleAllDirectories(turnSummary.turnId)}
                             title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                             aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           >
-                            <ChevronsUpDown className="size-3.5" />
+                            <ChevronsUpDown className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                           </Button>
                           <Button
                             type="button"
@@ -724,7 +725,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="wrap-break-word whitespace-pre-wrap text-sm leading-6 text-foreground">
+          <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-foreground">
             {inlineNodes}
           </div>
         );
@@ -752,7 +753,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="wrap-break-word whitespace-pre-wrap text-sm leading-6 text-foreground">
+      <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-foreground">
         {inlineNodes}
       </div>
     );
@@ -763,7 +764,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="wrap-break-word whitespace-pre-wrap text-sm leading-6 text-foreground">
+    <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-foreground">
       {props.text}
     </div>
   );

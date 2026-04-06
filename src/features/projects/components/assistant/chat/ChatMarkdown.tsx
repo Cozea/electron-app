@@ -29,6 +29,7 @@ import {
 import { LRUCache } from "@/features/projects/components/assistant/lib/lruCache";
 import { resolveMarkdownFileLinkTarget } from "@/stores/markdown-links";
 import { readNativeApi } from "@/lib/nativeApi";
+import { cn } from "@/lib/utils";
 
 class CodeHighlightErrorBoundary extends React.Component<
   { fallback: ReactNode; children: ReactNode },
@@ -54,7 +55,9 @@ class CodeHighlightErrorBoundary extends React.Component<
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
-  isStreaming?: boolean;
+  isStreaming?: boolean
+  /** Timeline assistant bubbles: match workbench sidebar body (`text-xs`). */
+  variant?: "default" | "timeline"
 }
 
 const CODE_FENCE_LANGUAGE_REGEX = /(?:^|\s)language-([^\s]+)/;
@@ -241,7 +244,7 @@ function SuspenseShikiCodeBlock({
   );
 }
 
-function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
+function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: ChatMarkdownProps) {
   const { theme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolveAppliedTheme(theme));
   const markdownComponents = useMemo<Components>(
@@ -295,7 +298,12 @@ function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
   );
 
   return (
-    <div className="chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/80">
+    <div
+      className={cn(
+        "chat-markdown w-full min-w-0 text-foreground/80",
+        variant === "timeline" ? "text-xs leading-normal" : "text-sm leading-relaxed",
+      )}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {text}
       </ReactMarkdown>

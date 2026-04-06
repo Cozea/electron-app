@@ -81,9 +81,9 @@ export function ProjectShellLayout({
       <header className="h-10 mt-10 flex items-center justify-between px-2 bg-background">
         {/* Left: Project & Branch */}
         <div className="flex items-center gap-2 pl-16">
-          <Button variant="ghost" size="sm" className="gap-1 h-7 text-sm">
+          <Button variant="ghost" size="sm" className="group gap-1 h-7 text-sm">
             <span className="font-medium">{projectName}</span>
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <ChevronDown className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
           </Button>
           <Separator orientation="vertical" className="h-4" />
           <Button variant="ghost" size="sm" className="gap-1 h-7 text-xs text-muted-foreground">

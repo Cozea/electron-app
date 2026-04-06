@@ -406,6 +406,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workbenchBrowser:stopFindInPage', options),
     getSelectedText: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:getSelectedText', options),
+    captureScreenshot: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:captureScreenshot', options),
     onStateChange: (callback: (state: import('../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,

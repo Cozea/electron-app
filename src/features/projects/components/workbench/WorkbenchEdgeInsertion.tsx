@@ -83,6 +83,8 @@ export function WorkbenchEdgeInsertion({
             {armed && hoveredEdge === edge ? (
               <div
                 aria-hidden="true"
+                data-workbench-browser-overlay="true"
+                data-workbench-browser-overlay-reason="Add Tile controls"
                 className={cn(
                   "pointer-events-none absolute z-10 flex items-center justify-center bg-muted text-foreground",
                   getBandClasses(edge),

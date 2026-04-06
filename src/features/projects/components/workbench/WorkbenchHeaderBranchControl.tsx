@@ -7,7 +7,7 @@ import type {
   GitBranch as NativeGitBranch,
   GitStatusResult,
 } from "@cozea/assistant-contracts"
-import { ChevronDown, Loader2, User, Users } from "lucide-react"
+import { ChevronDown, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { readNativeApi } from "@/lib/nativeApi"
@@ -1053,7 +1053,6 @@ export function WorkbenchHeaderBranchControl({
   }, [displayedBranch])
 
   const isBusy = isLoading || isSwitching || activeAction !== null
-  const LaneScopeIcon = activeLane?.isCollab === false ? User : Users
 
   return (
     <Button
@@ -1061,7 +1060,7 @@ export function WorkbenchHeaderBranchControl({
       variant="ghost"
       size="sm"
       className={cn(
-        "h-6 gap-1 rounded-full border border-border/60 bg-secondary/70 px-1.5 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-secondary",
+        "group h-6 gap-1 rounded-md border-0 bg-transparent px-1.5 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-muted/60",
         triggerClassName,
       )}
       disabled={!branchCwd}
@@ -1070,9 +1069,8 @@ export function WorkbenchHeaderBranchControl({
       onClick={handleOpenNativeBranchMenu}
     >
       {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-      <LaneScopeIcon className="h-2.5 w-2.5 shrink-0 opacity-80" />
       <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
-      <ChevronDown className="h-3 w-3 opacity-70" />
+      <ChevronDown className="hidden h-3 w-3 opacity-70 group-hover:block group-focus-visible:block" />
     </Button>
   )
 }

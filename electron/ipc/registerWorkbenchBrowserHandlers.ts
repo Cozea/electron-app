@@ -159,4 +159,11 @@ export function registerWorkbenchBrowserHandlers(
       return service.getSelectedText(options.tileId)
     },
   )
+
+  ipcMain.handle(
+    'workbenchBrowser:captureScreenshot',
+    async (_event, options: { tileId: string }): Promise<string | null> => {
+      return service.captureScreenshot(options.tileId)
+    },
+  )
 }

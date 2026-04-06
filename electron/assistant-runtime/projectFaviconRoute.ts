@@ -34,6 +34,19 @@ const FAVICON_CANDIDATES = [
   "assets/icon.png",
   "assets/logo.svg",
   "assets/logo.png",
+  // Electron / native app icon paths (electron-builder, electron-forge, etc.)
+  "build/icon.png",
+  "build/icon.ico",
+  "build/icon.svg",
+  "resources/icon.png",
+  "resources/icon.ico",
+  "resources/icon.svg",
+  "electron/resources/icon.png",
+  "electron/resources/icon.svg",
+  // electron-builder generates numbered icons (e.g. 256x256.png)
+  "build/icons/256x256.png",
+  "build/icons/512x512.png",
+  "build/icons/128x128.png",
 ];
 
 // Files that may contain a <link rel="icon"> or icon metadata declaration.
@@ -45,6 +58,16 @@ const ICON_SOURCE_FILES = [
   "app/root.tsx",
   "src/root.tsx",
   "src/index.html",
+];
+
+// Electron-builder config files that may declare a custom icon path.
+const ELECTRON_BUILDER_CONFIGS = [
+  "electron-builder.yml",
+  "electron-builder.yaml",
+  "electron-builder.config.cjs",
+  "electron-builder.config.js",
+  "electron-builder.json",
+  "electron-builder.json5",
 ];
 
 // Matches <link ...> tags or object-like icon metadata where rel/href can appear in any order.
@@ -59,6 +82,27 @@ function extractIconHref(source: string): string | null {
   const objMatch = source.match(LINK_ICON_OBJ_RE);
   if (objMatch?.[1]) return objMatch[1];
   return null;
+}
+
+// Extracts icon paths from electron-builder config content (YAML, JSON, or JS/CJS).
+// Returns browser-renderable variants (.png, .svg, .ico) derived from the declared icon path.
+const EB_ICON_RE = /\bicon\s*[:=]\s*["']([^"']+)["']/g;
+
+function extractElectronBuilderIconPaths(content: string): string[] {
+  const paths = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = EB_ICON_RE.exec(content)) !== null) {
+    const raw = match[1]!;
+    paths.add(raw);
+    const base = raw.replace(/\.[^.]+$/, "");
+    for (const ext of [".png", ".svg", ".ico"]) {
+      paths.add(base + ext);
+    }
+  }
+  EB_ICON_RE.lastIndex = 0;
+  return Array.from(paths).filter(
+    (p) => /\.(png|svg|ico|jpg|jpeg)$/i.test(p),
+  );
 }
 
 function resolveIconHref(projectCwd: string, href: string): string[] {
@@ -148,9 +192,30 @@ export function tryHandleProjectFaviconRequest(url: URL, res: http.ServerRespons
     });
   };
 
+  const tryElectronBuilderConfigs = (index: number): void => {
+    if (index >= ELECTRON_BUILDER_CONFIGS.length) {
+      trySourceFiles(0);
+      return;
+    }
+    const configFile = path.join(projectCwd, ELECTRON_BUILDER_CONFIGS[index]!);
+    fs.readFile(configFile, "utf8", (err, content) => {
+      if (err) {
+        tryElectronBuilderConfigs(index + 1);
+        return;
+      }
+      const iconPaths = extractElectronBuilderIconPaths(content);
+      if (iconPaths.length === 0) {
+        tryElectronBuilderConfigs(index + 1);
+        return;
+      }
+      const resolved = iconPaths.map((p) => path.join(projectCwd, p));
+      tryResolvedPaths(resolved, 0, () => tryElectronBuilderConfigs(index + 1));
+    });
+  };
+
   const tryCandidates = (index: number): void => {
     if (index >= FAVICON_CANDIDATES.length) {
-      trySourceFiles(0);
+      tryElectronBuilderConfigs(0);
       return;
     }
     const candidate = path.join(projectCwd, FAVICON_CANDIDATES[index]!);

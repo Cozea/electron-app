@@ -203,12 +203,12 @@ export function ProblemsView({
                                     <button
                                         type="button"
                                         onClick={() => toggleGroup(group.id)}
-                                        className="w-full min-w-0 flex items-center gap-2 px-2 py-1.5 text-left text-xs font-medium text-foreground/80 hover:bg-muted/40 transition-colors"
+                                        className="group w-full min-w-0 flex items-center gap-2 px-2 py-1.5 text-left text-xs font-medium text-foreground/80 hover:bg-muted/40 transition-colors"
                                     >
                                         {isCollapsed ? (
-                                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                                         ) : (
-                                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                                         )}
                                         <div className="min-w-0 flex-1 flex items-center gap-1 overflow-hidden">
                                             <span className="truncate">{fileName}</span>

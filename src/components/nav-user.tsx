@@ -230,7 +230,7 @@ export function NavUser({
         <SidebarMenuButton
           size="lg"
           type="button"
-          className="rounded-2xl"
+          className="group rounded-2xl"
           onClick={handleMenuClick}
         >
           <Avatar className="h-6 w-6 rounded-full">
@@ -243,7 +243,7 @@ export function NavUser({
             <span className="truncate font-medium">{userData.name}</span>
             <span className="truncate text-muted-foreground">{activePlanLabel}</span>
           </div>
-          <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
+          <ChevronsUpDown className="ml-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>

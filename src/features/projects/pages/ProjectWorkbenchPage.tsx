@@ -323,6 +323,9 @@ export function ProjectWorkbenchPage() {
   const locationState = (location.state as TaskOverlayLocationState | null) ?? null;
   const { theme } = useTheme();
   const sidebar = useOptionalSidebar();
+  const sidebarChromeOpen = Boolean(
+    sidebar && (sidebar.isMobile ? sidebar.openMobile : sidebar.open),
+  );
   const { convexUserId } = useAuth();
   const resolvedScope = useResolvedScope({ ignoreLocation: true });
   const dockviewApiRef = useRef<DockviewApi | null>(null);
@@ -377,19 +380,14 @@ export function ProjectWorkbenchPage() {
   const headerCenter = useMemo(
     () => (
       <div className="flex min-w-0 max-w-[52vw] items-center justify-center gap-2">
-        {project?._id ? (
-          <ProjectSyncIndicator
-            variant="compact"
-            className="h-5 w-5 shrink-0 rounded-sm bg-transparent"
-          />
-        ) : null}
-        <div className="flex h-6 min-w-0 max-w-full items-center overflow-hidden rounded-full border border-border/60 bg-secondary/70 shadow-none">
+        <div className="flex h-6 min-w-0 max-w-full items-center">
           <div
             className="flex h-6 min-w-0 max-w-[320px] items-center px-2.5 text-xs font-medium text-foreground"
             title={project?.name ?? "Project"}
           >
             <span className="block truncate">{project?.name ?? "Project"}</span>
           </div>
+          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
           <WorkbenchHeaderBranchControl
             project={project ?? null}
             projectId={projectId}
@@ -401,9 +399,15 @@ export function ProjectWorkbenchPage() {
             onLaneStateChange={() => {
               void refreshLaneState();
             }}
-            triggerClassName="h-6 rounded-none border-0 border-l border-border/60 bg-transparent px-1.5 hover:bg-background/30"
+            triggerClassName="h-6 rounded-md border-0 bg-transparent px-1.5 hover:bg-muted/60"
           />
         </div>
+        {project?._id ? (
+          <ProjectSyncIndicator
+            variant="compact"
+            className="h-5 w-5 shrink-0 rounded-sm bg-transparent"
+          />
+        ) : null}
       </div>
     ),
     [
@@ -421,12 +425,29 @@ export function ProjectWorkbenchPage() {
   );
   const headerControls = useMemo(
     () => (
-      <div className="flex min-w-0 items-center gap-2">
-        <SidebarTrigger className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-3.5" />
-        <WorkbenchHeaderEditorControl projectPath={activeWorkbenchPath} />
+      <div className="workbench-header-toolbar flex min-w-0 items-center gap-0">
+        <SidebarTrigger
+          className={cn(
+            "h-7 w-7 shrink-0 rounded-md",
+            sidebarChromeOpen
+              ? "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          )}
+        />
+        <div
+          className={cn(
+            "mx-0.5 h-4 w-px shrink-0",
+            sidebarChromeOpen ? "bg-sidebar-border" : "bg-border",
+          )}
+          aria-hidden
+        />
+        <WorkbenchHeaderEditorControl
+          projectPath={activeWorkbenchPath}
+          adjacentOpenSidebar={sidebarChromeOpen}
+        />
       </div>
     ),
-    [activeWorkbenchPath],
+    [activeWorkbenchPath, sidebarChromeOpen],
   );
 
   useProjectHeader(null, headerControls, headerCenter, true);
@@ -1064,6 +1085,7 @@ export function ProjectWorkbenchPage() {
       projectId={projectId}
       laneId={activeLaneId}
       projectPath={activeWorkbenchPath}
+      projectName={project?.name ?? null}
       onOpenBrowserFromDevServer={handleOpenBrowser}
       onOpenBrowserFromBrowser={handleOpenBrowserFromBrowser}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
@@ -1156,11 +1178,17 @@ export function ProjectWorkbenchPage() {
                 <button
                   type="button"
                   aria-label="Close changes"
+                  data-workbench-browser-overlay="true"
+                  data-workbench-browser-overlay-reason="Changes overlay"
                   className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
                   onClick={closeChangesOverlay}
                 />
 
-                <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(52rem,calc(100%-2rem))] max-w-full flex-col border-l border-border/60 bg-background shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+                <aside
+                  data-workbench-browser-overlay="true"
+                  data-workbench-browser-overlay-reason="Changes overlay"
+                  className="absolute inset-y-0 right-0 z-30 flex w-[min(52rem,calc(100%-2rem))] max-w-full flex-col border-l border-border/60 bg-background shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
+                >
                   <div className="min-h-0 flex-1 overflow-hidden">
                     <ChangesPage presentation="embedded" />
                   </div>

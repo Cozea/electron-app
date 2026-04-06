@@ -295,6 +295,10 @@ export class BrowserTileModel {
     return window.electronAPI.workbenchBrowser.getSelectedText({ tileId: this.id })
   }
 
+  async captureScreenshot(): Promise<string | null> {
+    return window.electronAPI.workbenchBrowser.captureScreenshot({ tileId: this.id })
+  }
+
   async openExternal(): Promise<{ success: boolean; error?: string }> {
     return window.electronAPI.workbenchBrowser.openExternal({ tileId: this.id })
   }

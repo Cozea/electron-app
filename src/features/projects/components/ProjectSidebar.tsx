@@ -7,24 +7,19 @@ import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
 import { useShallow } from "zustand/react/shallow";
 import type {
-  GitSyncStatusResult,
   ProjectLaneDescriptor,
   ProjectLaneState,
 } from "@shared/electronApiTypes";
 import {
   AppWindow,
-  ChevronDown,
   ChevronRight,
   Clock3,
   EllipsisVertical,
-  FolderIcon,
   Loader2,
   MonitorCog,
   SquarePen,
   SlidersHorizontal,
   SquareTerminal,
-  User,
-  Users,
 } from "lucide-react";
 
 import { useViewTransitionNavigate } from "@/lib/navigation";
@@ -83,6 +78,7 @@ import {
 } from "@/features/projects/components/assistant/Icons";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectRenameDialog } from "./ProjectRenameDialog";
+import { ProjectFavicon } from "./ProjectFavicon";
 
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -115,12 +111,10 @@ interface SidebarProjectTreeItemProps {
   projectCount: number;
   isCurrentProject: boolean;
   isExpanded: boolean;
-  expandedLaneIds: string[];
   activeSelectionLevel: "none" | "project" | "lane" | "tile";
   activeTileId: string | null;
   currentProjectPath: string | null;
   onToggleExpanded: (projectId: string) => void;
-  onToggleLaneExpanded: (projectId: string, laneId: string) => void;
   onOpenProject: (project: SidebarProjectItem, localPath: string | null) => Promise<void>;
   onOpenProjectFolder: (project: SidebarProjectItem, localPath: string | null) => Promise<void>;
   onOpenProjectSettings: (project: SidebarProjectItem) => void;
@@ -141,75 +135,13 @@ interface SidebarProjectTreeItemProps {
   ) => Promise<void>;
   prefetchedLaneState?: ProjectLaneState | null;
   prefetchedActiveLane?: ProjectLaneDescriptor | null;
-  onRefreshActiveLaneState?: () => Promise<void>;
 }
 
-const loadedProjectFaviconSrcs = new Set<string>();
 const PROJECT_SIDEBAR_STATE_STORAGE_KEY = "cozea.projectSidebar.state.v1";
-const PROJECT_FAVICON_HTTP_ORIGIN = resolveWsHttpOrigin();
 
 interface PersistedProjectSidebarState {
   expandedProjectIds: string[];
-  expandedLaneIdsByProjectId: Record<string, string[]>;
   projectOrderIds: string[];
-}
-
-function resolveWsHttpOrigin(): string {
-  if (typeof window === "undefined") return "";
-  const bridgeWsUrl = window.desktopBridge?.getWsUrl?.();
-  const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
-  const wsCandidate =
-    typeof bridgeWsUrl === "string" && bridgeWsUrl.length > 0
-      ? bridgeWsUrl
-      : typeof envWsUrl === "string" && envWsUrl.length > 0
-        ? envWsUrl
-        : null;
-  if (!wsCandidate) return window.location.origin;
-  try {
-    const wsUrl = new URL(wsCandidate);
-    const protocol =
-      wsUrl.protocol === "wss:" ? "https:" : wsUrl.protocol === "ws:" ? "http:" : wsUrl.protocol;
-    return `${protocol}//${wsUrl.host}`;
-  } catch {
-    return window.location.origin;
-  }
-}
-
-function ProjectFavicon(props: { cwd: string | null; className?: string }) {
-  const iconClassName = props.className ?? "size-3.5";
-  const imageClassName = props.className ?? "h-3.5 w-auto max-w-8";
-  const src = React.useMemo(() => {
-    if (!props.cwd) return null;
-    return `${PROJECT_FAVICON_HTTP_ORIGIN}/api/project-favicon?cwd=${encodeURIComponent(props.cwd)}`;
-  }, [props.cwd]);
-  const [status, setStatus] = React.useState<"loading" | "loaded" | "error">(() =>
-    src && loadedProjectFaviconSrcs.has(src) ? "loaded" : "loading",
-  );
-
-  React.useEffect(() => {
-    if (!src) {
-      setStatus("error");
-      return;
-    }
-    setStatus(loadedProjectFaviconSrcs.has(src) ? "loaded" : "loading");
-  }, [src]);
-
-  if (!src || status === "error") {
-    return <FolderIcon className={cn(iconClassName, "shrink-0 text-muted-foreground/55")} />;
-  }
-
-  return (
-    <img
-      src={src}
-      alt=""
-      className={cn(imageClassName, "shrink-0 object-contain", status === "loading" && "hidden")}
-      onLoad={() => {
-        loadedProjectFaviconSrcs.add(src);
-        setStatus("loaded");
-      }}
-      onError={() => setStatus("error")}
-    />
-  );
 }
 
 function sortProjectsAlphabetically(projects: SidebarProjectItem[]): SidebarProjectItem[] {
@@ -236,26 +168,11 @@ function areStringArraysEqual(left: readonly string[], right: readonly string[])
   return left.every((value, index) => value === right[index]);
 }
 
-function normalizeExpandedLaneIdsByProjectId(
-  value: PersistedProjectSidebarState["expandedLaneIdsByProjectId"] | null | undefined,
-): Record<string, string[]> {
-  if (!value) return {};
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(
-        ([projectId, laneIds]) =>
-          [projectId, dedupeStringArray(Array.isArray(laneIds) ? laneIds : [])] as const,
-      )
-      .filter(([, laneIds]) => laneIds.length > 0),
-  );
-}
 
 function readPersistedProjectSidebarState(): PersistedProjectSidebarState {
   if (typeof window === "undefined") {
     return {
       expandedProjectIds: [],
-      expandedLaneIdsByProjectId: {},
       projectOrderIds: [],
     };
   }
@@ -265,7 +182,6 @@ function readPersistedProjectSidebarState(): PersistedProjectSidebarState {
     if (!raw) {
       return {
         expandedProjectIds: [],
-        expandedLaneIdsByProjectId: {},
         projectOrderIds: [],
       };
     }
@@ -275,9 +191,6 @@ function readPersistedProjectSidebarState(): PersistedProjectSidebarState {
       expandedProjectIds: dedupeStringArray(
         Array.isArray(parsed.expandedProjectIds) ? parsed.expandedProjectIds : [],
       ),
-      expandedLaneIdsByProjectId: normalizeExpandedLaneIdsByProjectId(
-        parsed.expandedLaneIdsByProjectId,
-      ),
       projectOrderIds: dedupeStringArray(
         Array.isArray(parsed.projectOrderIds) ? parsed.projectOrderIds : [],
       ),
@@ -285,7 +198,6 @@ function readPersistedProjectSidebarState(): PersistedProjectSidebarState {
   } catch {
     return {
       expandedProjectIds: [],
-      expandedLaneIdsByProjectId: {},
       projectOrderIds: [],
     };
   }
@@ -326,9 +238,6 @@ function areSidebarProjectItemsEqual(left: SidebarProjectItem, right: SidebarPro
   );
 }
 
-function areStringListsEqual(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
 
 async function showNativeSidebarMenu<T extends string>(
   event: React.MouseEvent<HTMLElement>,
@@ -367,47 +276,6 @@ function resolveProjectCollabBranch(project: SidebarProjectItem): string {
   );
 }
 
-function getLaneStatusBadges(status: GitSyncStatusResult | null): string[] {
-  if (!status?.success || !status.isRepo) {
-    return [];
-  }
-
-  const badges: string[] = [];
-
-  if ((status.behind ?? 0) > 0) {
-    badges.push(`↓${status.behind}`);
-  }
-  if ((status.ahead ?? 0) > 0) {
-    badges.push(`↑${status.ahead}`);
-  }
-  if (status.hasConflicts) {
-    badges.push("Conflicts");
-  }
-  if (
-    status.clean === false ||
-    status.hasStagedChanges ||
-    status.hasUnstagedChanges ||
-    status.hasUntrackedChanges
-  ) {
-    badges.push("Dirty");
-  }
-
-  return badges;
-}
-
-function formatRelativeAge(createdAt: number, now: number): string {
-  const diffMs = Math.max(0, now - createdAt);
-  const diffMinutes = Math.floor(diffMs / 60_000);
-
-  if (diffMinutes < 1) return "now";
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d`;
-}
 
 function getTileCollections(workbench: WorkbenchProjectState | null | undefined): {
   agents: WorkbenchAssistantChatTile[];
@@ -432,43 +300,6 @@ function getTileCollections(workbench: WorkbenchProjectState | null | undefined)
   };
 }
 
-function useLaneGitStatus(projectPath: string | null, enabled: boolean) {
-  const [status, setStatus] = React.useState<GitSyncStatusResult | null>(null);
-  const [isLoading, setIsLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!enabled || !projectPath) {
-      setStatus(null);
-      setIsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoading(true);
-
-    void window.electronAPI.sync
-      .gitStatus({ projectPath })
-      .then((result) => {
-        if (cancelled) return;
-        setStatus(result);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setStatus(null);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, projectPath]);
-
-  return { status, isLoading };
-}
 
 function ProviderGlyph(props: { provider?: string | null; className?: string }) {
   const className = props.className ?? "size-3.5";
@@ -615,6 +446,75 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   );
 }
 
+function ActiveLaneTiles(props: {
+  activeLane: ProjectLaneDescriptor | null;
+  laneWorkbenches: Record<string, WorkbenchProjectState>;
+  activeSelectionLevel: "none" | "project" | "lane" | "tile";
+  activeTileId: string | null;
+  onOpenLaneWorkbench: (options?: {
+    openTile?: "assistantChat" | "browser" | "terminal" | "devServer";
+    focusTileId?: string;
+  }) => void;
+}) {
+  const { activeLane, laneWorkbenches, activeSelectionLevel, activeTileId, onOpenLaneWorkbench } = props;
+  const activeLaneWorkbench = activeLane ? (laneWorkbenches[activeLane.id] ?? null) : null;
+  const { agents, surfaces } = React.useMemo(
+    () => getTileCollections(activeLaneWorkbench),
+    [activeLaneWorkbench],
+  );
+  const resolvedActiveTileId = activeSelectionLevel === "tile" ? activeTileId : null;
+
+  if (agents.length === 0 && surfaces.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="ml-4 mt-0.5 space-y-1 border-l border-border/60 pl-3">
+      {agents.map((tile) => (
+        <button
+          key={tile.id}
+          type="button"
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+            resolvedActiveTileId === tile.id && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
+          )}
+          onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
+        >
+          <ProviderGlyph
+            provider={tile.provider}
+            className="size-4 shrink-0 text-muted-foreground/75"
+          />
+          <span className="min-w-0 flex-1 truncate text-xs">{tile.title}</span>
+          <AgentStatusPill threadId={tile.threadId} />
+        </button>
+      ))}
+      {surfaces.map((tile) => {
+        const Icon =
+          tile.type === "browser"
+            ? AppWindow
+            : tile.type === "devServer"
+              ? MonitorCog
+              : SquareTerminal;
+
+        return (
+          <button
+            key={tile.id}
+            type="button"
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+              resolvedActiveTileId === tile.id && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
+            )}
+            onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
+          >
+            <Icon className="size-4 shrink-0 text-muted-foreground/75" />
+            <span className="min-w-0 flex-1 truncate text-xs">{tile.title}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 const SidebarProjectTreeItem = React.memo(
   function SidebarProjectTreeItem({
     project,
@@ -622,12 +522,10 @@ const SidebarProjectTreeItem = React.memo(
     projectCount,
     isCurrentProject,
     isExpanded,
-    expandedLaneIds,
     activeSelectionLevel,
     activeTileId,
     currentProjectPath,
     onToggleExpanded,
-    onToggleLaneExpanded,
     onOpenProject,
     onOpenProjectFolder,
     onOpenProjectSettings,
@@ -641,7 +539,6 @@ const SidebarProjectTreeItem = React.memo(
     onOpenLaneWorkbench,
     prefetchedLaneState,
     prefetchedActiveLane,
-    onRefreshActiveLaneState,
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = isExpanded || isCurrentProject;
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project]);
@@ -661,7 +558,6 @@ const SidebarProjectTreeItem = React.memo(
       projectPath: prefetchedLaneState ? null : shouldLoadLanes ? localPath : null,
       collabBranch,
     });
-    const laneState = prefetchedLaneState ?? fetchedLaneState.laneState;
     const activeLane = prefetchedActiveLane ?? fetchedLaneState.activeLane;
     const laneWorkbenches = useProjectWorkbenchStore(
       useShallow(selectProjectLaneWorkbenches(project.id)),
@@ -778,7 +674,7 @@ const SidebarProjectTreeItem = React.memo(
           <button
             type="button"
             className={cn(
-              "flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+              "group flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
               activeSelectionLevel === "project" && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
             )}
             onClick={() => onToggleExpanded(project.id)}
@@ -788,7 +684,7 @@ const SidebarProjectTreeItem = React.memo(
               <span className="min-w-0 truncate text-xs font-normal">{project.name}</span>
               <ChevronRight
                 className={cn(
-                  "size-4 shrink-0 text-muted-foreground/75 transition-transform",
+                  "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
                   isExpanded && "rotate-90",
                 )}
               />
@@ -807,39 +703,16 @@ const SidebarProjectTreeItem = React.memo(
         </div>
 
         <CollapsibleContent className="overflow-hidden">
-          <div className="ml-4 mt-0.5 space-y-1 border-l border-border/60 pl-3">
-            {!shouldLoadLanes ? null : laneState === null ? (
-              <div className="flex items-center gap-2 px-2 py-2 text-[11px] text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" />
-                Loading lanes…
-              </div>
-            ) : laneState.lanes.length === 0 ? (
-              <div className="px-2 py-2 text-[11px] text-muted-foreground">No lanes yet</div>
-            ) : (
-              laneState.lanes.map((lane) => (
-                <SidebarLaneRow
-                  key={lane.id}
-                  lane={lane}
-                  workbench={laneWorkbenches[lane.id] ?? null}
-                  isCurrentLane={lane.id === activeLane?.id}
-                  isExpanded={expandedLaneIds.includes(lane.id)}
-                  isVisuallyActive={lane.id === activeLane?.id && activeSelectionLevel === "lane"}
-                  activeTileId={
-                    lane.id === activeLane?.id && activeSelectionLevel === "tile"
-                      ? activeTileId
-                      : null
-                  }
-                  onToggleExpanded={() => onToggleLaneExpanded(project.id, lane.id)}
-                  onOpenLaneWorkbench={(options) => onOpenLaneWorkbench(project, lane.id, options)}
-                  onRefreshLaneState={
-                    lane.id === activeLane?.id && onRefreshActiveLaneState
-                      ? onRefreshActiveLaneState
-                      : undefined
-                  }
-                />
-              ))
-            )}
-          </div>
+          <ActiveLaneTiles
+            activeLane={activeLane}
+            laneWorkbenches={laneWorkbenches}
+            activeSelectionLevel={activeSelectionLevel}
+            activeTileId={activeTileId}
+            onOpenLaneWorkbench={(options) => {
+              if (!activeLane) return;
+              void onOpenLaneWorkbench(project, activeLane.id, options);
+            }}
+          />
         </CollapsibleContent>
       </Collapsible>
     );
@@ -851,7 +724,6 @@ const SidebarProjectTreeItem = React.memo(
       prev.projectCount === next.projectCount &&
       prev.isCurrentProject === next.isCurrentProject &&
       prev.isExpanded === next.isExpanded &&
-      areStringListsEqual(prev.expandedLaneIds, next.expandedLaneIds) &&
       prev.activeSelectionLevel === next.activeSelectionLevel &&
       prev.activeTileId === next.activeTileId &&
       prev.currentProjectPath === next.currentProjectPath &&
@@ -859,7 +731,6 @@ const SidebarProjectTreeItem = React.memo(
       prev.prefetchedLaneState === next.prefetchedLaneState &&
       prev.prefetchedActiveLane === next.prefetchedActiveLane &&
       prev.onToggleExpanded === next.onToggleExpanded &&
-      prev.onToggleLaneExpanded === next.onToggleLaneExpanded &&
       prev.onOpenProject === next.onOpenProject &&
       prev.onOpenProjectFolder === next.onOpenProjectFolder &&
       prev.onOpenProjectSettings === next.onOpenProjectSettings &&
@@ -869,222 +740,11 @@ const SidebarProjectTreeItem = React.memo(
       prev.onDeleteProject === next.onDeleteProject &&
       prev.onSyncProject === next.onSyncProject &&
       prev.onMoveProject === next.onMoveProject &&
-      prev.onOpenLaneWorkbench === next.onOpenLaneWorkbench &&
-      prev.onRefreshActiveLaneState === next.onRefreshActiveLaneState
+      prev.onOpenLaneWorkbench === next.onOpenLaneWorkbench
     );
   },
 );
 
-const SidebarLaneRow = React.memo(
-  function SidebarLaneRow(props: {
-    lane: ProjectLaneDescriptor;
-    workbench: WorkbenchProjectState | null;
-    isCurrentLane: boolean;
-    isExpanded: boolean;
-    isVisuallyActive: boolean;
-    activeTileId: string | null;
-    onToggleExpanded: () => void;
-    onOpenLaneWorkbench: (options?: {
-      openTile?: "assistantChat" | "browser" | "terminal" | "devServer";
-      focusTileId?: string;
-    }) => Promise<void>;
-    onRefreshLaneState?: () => Promise<void>;
-  }) {
-    const [relativeNow, setRelativeNow] = React.useState(() => Date.now());
-    const { agents, surfaces } = React.useMemo(
-      () => getTileCollections(props.workbench),
-      [props.workbench],
-    );
-    const { status, isLoading } = useLaneGitStatus(props.lane.projectPath, props.isCurrentLane);
-    const statusBadges = React.useMemo(() => getLaneStatusBadges(status), [status]);
-    const LaneScopeIcon = props.lane.isCollab ? Users : User;
-    const laneScopeLabel = props.lane.isCollab ? "Collaboration lane" : "Personal lane";
-    const handleLaneMenuClick = React.useCallback(
-      async (event: React.MouseEvent<HTMLButtonElement>) => {
-        if (!props.onRefreshLaneState) return;
-
-        const action = await showNativeSidebarMenu(event, [
-          { id: "refresh", label: "Refresh lane" },
-        ] satisfies readonly ContextMenuItem<"refresh">[]);
-
-        if (action === "refresh") {
-          void props.onRefreshLaneState();
-        }
-      },
-      [props.onRefreshLaneState],
-    );
-
-    React.useEffect(() => {
-      const intervalId = window.setInterval(() => {
-        setRelativeNow(Date.now());
-      }, 60_000);
-
-      return () => {
-        window.clearInterval(intervalId);
-      };
-    }, []);
-
-    return (
-      <Collapsible open={props.isExpanded}>
-        <div className="group/lane-row space-y-1">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className={cn(
-                "flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-                props.isVisuallyActive && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
-              )}
-              aria-expanded={props.isExpanded}
-              onClick={() => {
-                props.onToggleExpanded();
-                if (!props.isCurrentLane || !props.isVisuallyActive) {
-                  void props.onOpenLaneWorkbench();
-                }
-              }}
-            >
-              <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
-                <span className="min-w-0 truncate text-xs text-muted-foreground/75">
-                  {props.lane.branch}
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "size-4 shrink-0 text-muted-foreground/75 transition-transform",
-                    !props.isExpanded && "-rotate-90",
-                  )}
-                />
-                <span className="shrink-0 text-muted-foreground/35">·</span>
-                <span
-                  className="inline-flex shrink-0 items-center text-xs text-muted-foreground/70"
-                  aria-label={laneScopeLabel}
-                  title={laneScopeLabel}
-                >
-                  <LaneScopeIcon className="size-4" />
-                </span>
-                {isLoading ? (
-                  <>
-                    <span className="shrink-0 text-muted-foreground/35">·</span>
-                    <span className="shrink-0 text-xs text-muted-foreground/70">Checking…</span>
-                  </>
-                ) : (
-                  statusBadges.map((badge) => (
-                    <React.Fragment key={badge}>
-                      <span className="shrink-0 text-muted-foreground/35">·</span>
-                      <span className="shrink-0 text-xs font-medium text-muted-foreground/60">
-                        {badge}
-                      </span>
-                    </React.Fragment>
-                  ))
-                )}
-              </div>
-            </button>
-            {props.onRefreshLaneState ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0 rounded-md p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/lane-row:opacity-100 group-focus-within/lane-row:opacity-100 hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
-                onClick={handleLaneMenuClick}
-                aria-label={`${props.lane.name} options`}
-              >
-                <EllipsisVertical className="size-3.5" />
-              </Button>
-            ) : null}
-          </div>
-
-          <CollapsibleContent className="overflow-hidden">
-            <div className="space-y-2 pb-1">
-              {agents.length > 0 ? (
-                <div className="space-y-1">
-                  <div className="px-2 text-[11px] font-medium text-muted-foreground/55">
-                    Agents
-                  </div>
-                  {agents.map((tile) => (
-                    <button
-                      key={tile.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-                        props.activeTileId === tile.id && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
-                      )}
-                      onClick={() => {
-                        void props.onOpenLaneWorkbench({ focusTileId: tile.id });
-                      }}
-                    >
-                      <ProviderGlyph
-                        provider={tile.provider}
-                        className="size-4 shrink-0 text-muted-foreground/75"
-                      />
-                      <span className="min-w-0 flex-1 truncate text-xs">{tile.title}</span>
-                      <AgentStatusPill threadId={tile.threadId} />
-                      <span className="shrink-0 text-xs text-muted-foreground/65">
-                        {formatRelativeAge(tile.createdAt, relativeNow)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {surfaces.length > 0 ? (
-                <div className="space-y-1">
-                  <div className="px-2 text-[11px] font-medium text-muted-foreground/55">
-                    Surfaces
-                  </div>
-                  {surfaces.map((tile) => {
-                    const Icon =
-                      tile.type === "browser"
-                        ? AppWindow
-                        : tile.type === "devServer"
-                          ? MonitorCog
-                          : SquareTerminal;
-
-                    return (
-                      <button
-                        key={tile.id}
-                        type="button"
-                        className={cn(
-                          "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-                          props.activeTileId === tile.id && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
-                        )}
-                        onClick={() => {
-                          void props.onOpenLaneWorkbench({ focusTileId: tile.id });
-                        }}
-                      >
-                        <Icon className="size-4 shrink-0 text-muted-foreground/75" />
-                        <span className="min-w-0 flex-1 truncate text-xs">{tile.title}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground/65">
-                          {formatRelativeAge(tile.createdAt, relativeNow)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {agents.length === 0 && surfaces.length === 0 ? (
-                <div className="px-2 py-1 text-xs text-muted-foreground">
-                  No workbench tiles in this lane yet
-                </div>
-              ) : null}
-            </div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
-    );
-  },
-  (prev, next) => {
-    return (
-      prev.lane === next.lane &&
-      prev.workbench === next.workbench &&
-      prev.isCurrentLane === next.isCurrentLane &&
-      prev.isExpanded === next.isExpanded &&
-      prev.isVisuallyActive === next.isVisuallyActive &&
-      prev.activeTileId === next.activeTileId &&
-      prev.onToggleExpanded === next.onToggleExpanded &&
-      prev.onOpenLaneWorkbench === next.onOpenLaneWorkbench &&
-      prev.onRefreshLaneState === next.onRefreshLaneState
-    );
-  },
-);
 
 export function ProjectSidebar({
   user,
@@ -1114,9 +774,6 @@ export function ProjectSidebar({
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
     () => persistedSidebarState.expandedProjectIds,
   );
-  const [expandedLaneIdsByProjectId, setExpandedLaneIdsByProjectId] = React.useState<
-    Record<string, string[]>
-  >(() => persistedSidebarState.expandedLaneIdsByProjectId);
   const [projectOrderIds, setProjectOrderIds] = React.useState<string[]>(
     () => persistedSidebarState.projectOrderIds,
   );
@@ -1220,26 +877,6 @@ export function ProjectSidebar({
       return areStringArraysEqual(current, filtered) ? current : filtered;
     });
 
-    setExpandedLaneIdsByProjectId((current) => {
-      const filteredEntries = Object.entries(current)
-        .filter(([projectId]) => nextProjectIdSet.has(projectId))
-        .map(([projectId, laneIds]) => [projectId, dedupeStringArray(laneIds)] as const)
-        .filter(([, laneIds]) => laneIds.length > 0);
-
-      const next = Object.fromEntries(filteredEntries);
-      const currentKeys = Object.keys(current);
-      const nextKeys = Object.keys(next);
-      if (
-        currentKeys.length === nextKeys.length &&
-        currentKeys.every(
-          (key) => key in next && areStringArraysEqual(current[key] ?? [], next[key] ?? []),
-        )
-      ) {
-        return current;
-      }
-
-      return next;
-    });
   }, [projectItems]);
 
   React.useEffect(() => {
@@ -1249,11 +886,10 @@ export function ProjectSidebar({
       PROJECT_SIDEBAR_STATE_STORAGE_KEY,
       JSON.stringify({
         expandedProjectIds,
-        expandedLaneIdsByProjectId,
         projectOrderIds,
       } satisfies PersistedProjectSidebarState),
     );
-  }, [expandedLaneIdsByProjectId, expandedProjectIds, projectOrderIds]);
+  }, [expandedProjectIds, projectOrderIds]);
 
   const currentProjectItem = React.useMemo(
     () => sortedProjects.find((project) => project.id === currentProjectId) ?? null,
@@ -1266,7 +902,6 @@ export function ProjectSidebar({
   const {
     laneState: currentLaneState,
     activeLane: currentActiveLane,
-    refreshLaneState: refreshCurrentLaneState,
   } = useProjectLaneState({
     projectId: currentProjectId,
     projectPath: currentProjectPath,
@@ -1291,30 +926,6 @@ export function ProjectSidebar({
       return current.includes(projectId)
         ? current.filter((id) => id !== projectId)
         : [...current, projectId];
-    });
-  }, []);
-
-  const toggleExpandedLane = React.useCallback((projectId: string, laneId: string) => {
-    setExpandedLaneIdsByProjectId((current) => {
-      const existing = current[projectId] ?? [];
-      const nextLaneIds = existing.includes(laneId)
-        ? existing.filter((id) => id !== laneId)
-        : [...existing, laneId];
-
-      if (nextLaneIds.length === 0) {
-        if (!(projectId in current)) return current;
-        const { [projectId]: _removed, ...remaining } = current;
-        return remaining;
-      }
-
-      if (areStringArraysEqual(existing, nextLaneIds)) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [projectId]: nextLaneIds,
-      };
     });
   }, []);
 
@@ -1755,14 +1366,12 @@ export function ProjectSidebar({
                   projectCount={sortedProjects.length}
                   isCurrentProject={project.id === currentProjectId}
                   isExpanded={expandedProjectIds.includes(project.id)}
-                  expandedLaneIds={expandedLaneIdsByProjectId[project.id] ?? []}
                   activeSelectionLevel={
                     project.id === currentProjectId ? currentSelectionLevel : "none"
                   }
                   activeTileId={project.id === currentProjectId ? currentVisibleActiveTileId : null}
                   currentProjectPath={project.id === currentProjectId ? currentProjectPath : null}
                   onToggleExpanded={toggleExpandedProject}
-                  onToggleLaneExpanded={toggleExpandedLane}
                   onOpenProject={handleOpenProject}
                   onOpenProjectFolder={handleOpenProjectFolder}
                   onOpenProjectSettings={handleOpenProjectSettings}
@@ -1779,13 +1388,6 @@ export function ProjectSidebar({
                   }
                   prefetchedActiveLane={
                     project.id === currentProjectId ? currentActiveLane : undefined
-                  }
-                  onRefreshActiveLaneState={
-                    project.id === currentProjectId
-                      ? async () => {
-                          await refreshCurrentLaneState();
-                        }
-                      : undefined
                   }
                 />
               ))

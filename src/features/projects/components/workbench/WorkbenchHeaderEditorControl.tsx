@@ -4,6 +4,7 @@ import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, S
 import { VscVscodeInsiders } from "react-icons/vsc"
 import type { ComponentType, MouseEvent, SVGProps } from "react"
 
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvailableExternalEditor, ExternalEditorId } from "@shared/electronApiTypes"
@@ -22,6 +23,8 @@ import {
 
 interface WorkbenchHeaderEditorControlProps {
   projectPath: string | null
+  /** When the project drawer is open, use sidebar palette so icons read on glass/vibrancy. */
+  adjacentOpenSidebar?: boolean
 }
 
 interface OrderedEditorOption {
@@ -114,6 +117,7 @@ function orderDetectedEditors(availableEditors: ReadonlyArray<AvailableExternalE
 
 export function WorkbenchHeaderEditorControl({
   projectPath,
+  adjacentOpenSidebar = false,
 }: WorkbenchHeaderEditorControlProps) {
   const [availableEditors, setAvailableEditors] = useState<AvailableExternalEditor[]>([])
   const [selectedEditorId, setSelectedEditorId] = useState<ExternalEditorId | null>(() =>
@@ -200,34 +204,41 @@ export function WorkbenchHeaderEditorControl({
 
   const SelectedEditorIcon = selectedEditorOption?.Icon ?? Code2
 
+  const chromeButtonClass = adjacentOpenSidebar
+    ? "text-sidebar-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+    : "text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground"
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="inline-flex h-6 items-center overflow-hidden rounded-full border border-border/60 bg-secondary/70 shadow-none">
+        <div className="group inline-flex h-7 items-center">
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 rounded-none border-0 bg-transparent px-1.5 shadow-none hover:bg-secondary data-[state=open]:bg-secondary"
+            className={cn("h-7 shrink-0 gap-1 rounded-md border-0 bg-transparent px-1.5", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
             disabled={!projectPath || !selectedEditorOption}
           >
-            <SelectedEditorIcon className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[11px] text-muted-foreground leading-none">Open</span>
+            <SelectedEditorIcon className="size-3 shrink-0" />
+            <span className="text-[11px] leading-none">Open</span>
           </Button>
 
           {orderedEditors.length > 1 ? (
             <>
-              <div className="h-3 w-px bg-border/60" aria-hidden />
+              <div
+                className={cn("hidden h-4 w-px shrink-0 group-hover:block group-focus-within:block", adjacentOpenSidebar ? "bg-sidebar-border" : "bg-border")}
+                aria-hidden
+              />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-6 w-5 rounded-none border-0 bg-transparent shadow-none hover:bg-secondary [&_svg]:size-3"
+                className={cn("hidden h-7 w-7 shrink-0 rounded-md border-0 bg-transparent group-hover:inline-flex group-focus-within:inline-flex", chromeButtonClass)}
                 aria-label="Choose editor"
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
               >
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                <ChevronDown className="size-3 shrink-0" />
               </Button>
             </>
           ) : null}

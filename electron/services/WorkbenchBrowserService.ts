@@ -670,6 +670,18 @@ export class WorkbenchBrowserService {
     }
   }
 
+  async captureScreenshot(tileId: string): Promise<string | null> {
+    const record = this.records.get(tileId)
+    if (!record) return null
+
+    try {
+      const image = await record.view.webContents.capturePage(undefined, { stayHidden: true })
+      return image.toDataURL()
+    } catch {
+      return null
+    }
+  }
+
   destroyTile(tileId: string): boolean {
     const record = this.records.get(tileId)
     if (!record) return false

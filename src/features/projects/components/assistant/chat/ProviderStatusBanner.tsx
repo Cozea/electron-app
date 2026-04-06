@@ -21,12 +21,14 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const title = `${providerLabel} provider status`;
 
   return (
-    <div className="pt-3 mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl px-3 pt-3 sm:px-5">
       <Alert variant={status.status === "error" ? "error" : "warning"}>
         <CircleAlertIcon />
-        <AlertTitle>{title}</AlertTitle>
-        <AlertDescription className="line-clamp-3" title={status.message ?? defaultMessage}>
-          {status.message ?? defaultMessage}
+        <AlertTitle className="line-clamp-1">{title}</AlertTitle>
+        <AlertDescription title={status.message ?? defaultMessage}>
+          <span className="line-clamp-2 block min-w-0">
+            {status.message ?? defaultMessage}
+          </span>
         </AlertDescription>
       </Alert>
     </div>

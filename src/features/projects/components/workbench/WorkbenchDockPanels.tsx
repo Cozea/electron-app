@@ -31,6 +31,7 @@ interface WorkbenchDockRuntimeValue {
   projectId: string
   laneId: string
   projectPath: string | null
+  projectName: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
   onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -166,6 +167,12 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const singletonEmptyWorkbench = useProjectWorkbenchStore((state) => {
+    const wb = state.workbenches[buildWorkbenchScopeKey(props.params.projectId, props.params.laneId)]
+    if (!wb || wb.order.length !== 1) return false
+    const sole = wb.tiles[wb.order[0]]
+    return sole?.type === "selection" && sole.mode === "emptyState"
+  })
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -179,6 +186,9 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
     <Suspense fallback={panelSuspenseFallback}>
       <LazyWorkbenchSelectionTile
         tile={selectionTile}
+        singletonEmptyWorkbench={singletonEmptyWorkbench}
+        projectName={runtime.projectName}
+        projectPath={runtime.projectPath}
         onChoose={(type) => {
           runtime.onResolveSelectionTile(selectionTile.id, type)
         }}
@@ -302,6 +312,7 @@ export function WorkbenchDockRuntimeProvider(props: {
   projectId: string
   laneId: string
   projectPath: string | null
+  projectName: string | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
   onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -316,6 +327,7 @@ export function WorkbenchDockRuntimeProvider(props: {
       projectId: props.projectId,
       laneId: props.laneId,
       projectPath: props.projectPath,
+      projectName: props.projectName,
       onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
       onOpenBrowserFromBrowser: props.onOpenBrowserFromBrowser,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
@@ -325,6 +337,7 @@ export function WorkbenchDockRuntimeProvider(props: {
       props.projectId,
       props.laneId,
       props.projectPath,
+      props.projectName,
       props.onOpenBrowserFromDevServer,
       props.onOpenBrowserFromBrowser,
       props.onDuplicateAssistantTile,

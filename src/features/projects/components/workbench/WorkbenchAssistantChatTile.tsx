@@ -1094,7 +1094,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
   const renderComposerStatus = () => {
     if (runtimeErrorMessage) {
       return (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
           {runtimeErrorMessage}
         </div>
       )
@@ -1102,14 +1102,14 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
 
     if (bindingError) {
       return (
-        <div className="flex items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <AlertCircle className="h-4 w-4" />
-          <span className="min-w-0 flex-1">{bindingError}</span>
+        <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2 min-w-0 flex-1">{bindingError}</span>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-destructive"
+            className="h-7 shrink-0 px-2 text-destructive"
             onClick={() => setBindingRevision((current) => current + 1)}
           >
             Retry
@@ -1120,7 +1120,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
 
     if (sendError || requestError) {
       return (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
           {sendError ?? requestError}
         </div>
       )
@@ -1128,7 +1128,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
 
     if (configError && !config) {
       return (
-        <div className="rounded-2xl border border-border/70 bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/70 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
           {configError}
         </div>
       )
@@ -1155,6 +1155,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
         }
       >
         <CozeaChatSurface
+          dockComposerOnHover
           isRuntimeReady={isRuntimeReady}
           runtimeErrorMessage={runtimeErrorMessage}
           projectPath={props.projectPath}
@@ -1236,7 +1237,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
                 Loading diff…
               </div>
             ) : diffDialog?.error ? (
-              <div className="rounded-3xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              <div className="rounded-3xl border border-destructive/30 bg-destructive/5 p-4 text-xs leading-normal text-destructive">
                 {diffDialog.error}
               </div>
             ) : (

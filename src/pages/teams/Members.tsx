@@ -650,9 +650,9 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                     <div className="flex items-center gap-2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+                          <Button variant="ghost" size="sm" className="group text-muted-foreground gap-1">
                             {formatOrganizationWorkspaceRole(member.role, member.roleName)}
-                            <ChevronDown className="h-3.5 w-3.5" />
+                            <ChevronDown className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">

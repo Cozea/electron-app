@@ -1328,6 +1328,7 @@ export interface ElectronAPI {
     }) => Promise<WorkbenchBrowserViewState | null>
     stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) => Promise<WorkbenchBrowserViewState | null>
     getSelectedText: (options: { tileId: string }) => Promise<string>
+    captureScreenshot: (options: { tileId: string }) => Promise<string | null>
     onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
     onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void

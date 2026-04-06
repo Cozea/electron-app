@@ -694,12 +694,12 @@ function TaskListRow({
         <CollapsibleTrigger asChild>
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+            className="group flex min-w-0 flex-1 items-start gap-3 text-left"
             aria-label={`${isOpen ? 'Collapse' : 'Expand'} task ${item.title}`}
           >
             <ChevronDown
               className={cn(
-                'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100',
                 !isOpen && '-rotate-90',
               )}
             />
@@ -1627,7 +1627,7 @@ export function TasksPage({
                     >
                       <ChevronDown
                         className={cn(
-                          "h-4 w-4 transition-transform duration-200",
+                          "h-4 w-4 transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
                           isCollapsed && "-rotate-90",
                         )}
                       />

@@ -3,6 +3,7 @@ import type { DockviewApi, DockviewPanelApi } from "dockview"
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   ChevronDown,
   ChevronUp,
   ExternalLink,
@@ -71,9 +72,19 @@ export function WorkbenchBrowserTile({
   const [isFindVisible, setIsFindVisible] = useState(false)
   const [findQuery, setFindQuery] = useState("")
   const [findMatchCase, setFindMatchCase] = useState(false)
+  const [omniHover, setOmniHover] = useState(false)
+  const [omniFocused, setOmniFocused] = useState(false)
   const urlInputRef = useRef<HTMLInputElement | null>(null)
   const findInputRef = useRef<HTMLInputElement | null>(null)
-  const { hostRef, state, boundsReady, actions } = useWorkbenchBrowserView({
+  const {
+    hostRef,
+    state,
+    boundsReady,
+    overlayPaused,
+    overlayPauseReason,
+    placeholderScreenshot,
+    actions,
+  } = useWorkbenchBrowserView({
     tileId,
     url,
     storageScope,
@@ -112,7 +123,14 @@ export function WorkbenchBrowserTile({
     setFindQuery("")
   }, [url])
 
+  const handleOmnibarBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget as Node | null
+    if (next && event.currentTarget.contains(next)) return
+    setOmniFocused(false)
+  }, [])
+
   const canInteract = useMemo(() => Boolean(url), [url])
+  const showOmniChrome = omniHover || omniFocused || isFindVisible
   const hasFindQuery = useMemo(() => findQuery.trim().length > 0, [findQuery])
   const findResultLabel = useMemo(() => {
     if (!hasFindQuery) return ""
@@ -130,9 +148,12 @@ export function WorkbenchBrowserTile({
 
   const focusUrlInput = useCallback(() => {
     panelApi.setActive()
+    setOmniFocused(true)
     window.requestAnimationFrame(() => {
-      urlInputRef.current?.focus()
-      urlInputRef.current?.select()
+      window.requestAnimationFrame(() => {
+        urlInputRef.current?.focus()
+        urlInputRef.current?.select()
+      })
     })
   }, [panelApi])
 
@@ -146,8 +167,10 @@ export function WorkbenchBrowserTile({
       }
     }
     window.requestAnimationFrame(() => {
-      findInputRef.current?.focus()
-      findInputRef.current?.select()
+      window.requestAnimationFrame(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
     })
   }, [panelApi])
 
@@ -291,254 +314,333 @@ export function WorkbenchBrowserTile({
     ],
   )
 
-  const toolbar = (
-    <div className="flex min-w-0 w-full items-center gap-2">
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={!state.canGoBack}
-          onClick={() => {
-            void actions.goBack()
-          }}
-          aria-label="Back"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={!state.canGoForward}
-          onClick={() => {
-            void actions.goForward()
-          }}
-          aria-label="Forward"
-        >
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={!canInteract}
-          onClick={(event) => {
-            void actions.reload(event.altKey || event.shiftKey)
-          }}
-          aria-label="Reload"
-          title="Reload page. Hold Alt or Shift for hard reload."
-        >
-          <RefreshCcw className={cn("h-3.5 w-3.5", state.isLoading && "animate-spin")} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn("h-7 w-7", isFindVisible && "text-foreground")}
-          disabled={!canInteract}
-          onClick={() => {
-            openFind()
-          }}
-          aria-label="Find in page"
-          title={`Find in page (${isMac ? "Cmd" : "Ctrl"}+F)`}
-        >
-          <Search className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+  const navChipClass =
+    "h-7 w-7 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
 
-      <div className="flex flex-1 min-w-0 items-center justify-center">
-        <div className="relative w-full min-w-[240px]">
-          {state.favicon ? (
-            <img
-              src={state.favicon}
-              alt=""
-              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-sm object-contain"
+  const trayGhostClass =
+    "inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+
+  const canSubmitUrl = Boolean(normalizeUrlInput(draftUrl))
+  const browserViewportInsetClass = showOmniChrome
+    ? isFindVisible
+      ? "bottom-[12.5rem] sm:bottom-[13.5rem]"
+      : "bottom-[8.75rem] sm:bottom-[9.5rem]"
+    : "bottom-px"
+
+  const omnibarStack = (
+    <div className="flex w-full min-w-0 flex-col gap-1">
+      <div className="overflow-hidden rounded-2xl bg-secondary">
+        {isFindVisible ? (
+          <div className="border-b border-border/30 bg-background/10 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-1">
+              <Search className="ml-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <Input
+                ref={findInputRef}
+                value={findQuery}
+                onChange={(event) => setFindQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    if (event.shiftKey) {
+                      findPrevious()
+                    } else {
+                      findNext()
+                    }
+                  }
+                }}
+                placeholder="Find in page"
+                className="h-8 min-w-[8rem] flex-1 border-0 bg-transparent px-2 text-sm shadow-none focus-visible:ring-0"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  trayGhostClass,
+                  "h-7 px-2.5",
+                  findMatchCase && "bg-accent text-foreground",
+                )}
+                onClick={() => {
+                  setFindMatchCase((current) => !current)
+                }}
+                aria-label="Match case"
+                title="Match case"
+              >
+                Aa
+              </Button>
+              <span className="min-w-[3rem] shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                {findResultLabel}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-full"
+                disabled={!hasFindQuery}
+                onClick={() => {
+                  findPrevious()
+                }}
+                aria-label="Find previous"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-full"
+                disabled={!hasFindQuery}
+                onClick={() => {
+                  findNext()
+                }}
+                aria-label="Find next"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-full"
+                onClick={() => {
+                  closeFind(true)
+                }}
+                aria-label="Close find"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            "relative px-3 pb-2",
+            isFindVisible ? "pt-2.5" : "pt-3",
+          )}
+        >
+          <div className="flex min-h-6 items-center gap-2">
+            {state.favicon ? (
+              <img
+                src={state.favicon}
+                alt=""
+                className="size-4 shrink-0 rounded-sm object-contain"
+              />
+            ) : draftUrl.startsWith("https://") ? (
+              <Lock className="size-4 shrink-0 text-muted-foreground" />
+            ) : null}
+            <Input
+              ref={urlInputRef}
+              value={draftUrl}
+              onChange={(event) => setDraftUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  submitDraftUrl()
+                }
+              }}
+              placeholder="Enter a URL or localhost:port"
+              className={cn(
+                "h-auto min-h-6 min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent p-0 text-left text-sm leading-6 shadow-none",
+                "placeholder:text-muted-foreground/35",
+                "focus-visible:ring-0 focus-visible:outline-none",
+              )}
             />
-          ) : draftUrl.startsWith("https://") ? (
-            <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          ) : null}
-          <Input
-            ref={urlInputRef}
-            value={draftUrl}
-            onChange={(event) => setDraftUrl(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
+          </div>
+        </div>
+
+        <div
+          data-browser-omnibar-footer="true"
+          className="mb-1.5 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={navChipClass}
+              disabled={!state.canGoBack}
+              onClick={() => {
+                void actions.goBack()
+              }}
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={navChipClass}
+              disabled={!state.canGoForward}
+              onClick={() => {
+                void actions.goForward()
+              }}
+              aria-label="Forward"
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={navChipClass}
+              disabled={!canInteract}
+              onClick={(event) => {
+                void actions.reload(event.altKey || event.shiftKey)
+              }}
+              aria-label="Reload"
+              title="Reload page. Hold Alt or Shift for hard reload."
+            >
+              <RefreshCcw className={cn("h-3.5 w-3.5", state.isLoading && "animate-spin")} />
+            </Button>
+          </div>
+
+          <div data-browser-omnibar-actions="right" className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
+              disabled={!canSubmitUrl}
+              aria-label="Go to URL"
+              title="Go to URL"
+              onClick={() => {
                 submitDraftUrl()
-              }
-            }}
-            placeholder="Enter a URL or localhost:port"
-            className={cn(
-              "h-7 border-0 bg-muted/20 text-center text-xs shadow-none transition-colors hover:bg-muted/35 focus-visible:bg-muted/30 focus-visible:ring-1 focus-visible:ring-ring",
-              (draftUrl.startsWith("https://") || state.favicon) ? "pl-9" : "px-3",
-            )}
-          />
+              }}
+            >
+              <ArrowUp className="size-3.5" aria-hidden />
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={!state.canZoomOut}
-          onClick={() => {
-            void actions.zoomOut()
-          }}
-          aria-label="Zoom out"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-7 min-w-[3rem] px-2 text-[11px] tabular-nums text-muted-foreground"
-          onClick={() => {
-            void actions.resetZoom()
-          }}
-          aria-label="Reset zoom"
-          title="Reset zoom"
-        >
-          {Math.round(state.zoomFactor * 100)}%
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={!state.canZoomIn}
-          onClick={() => {
-            void actions.zoomIn()
-          }}
-          aria-label="Zoom in"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn("h-7 w-7", state.isDevToolsOpen && "text-foreground")}
-          onClick={() => {
-            void actions.toggleDevTools()
-          }}
-          aria-label="Toggle developer tools"
-          title="Toggle developer tools"
-        >
-          <SquareTerminal className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled={!canInteract}
-          onClick={() => {
-            void actions.openExternal()
-          }}
-          aria-label="Open in external browser"
-          title="Open in external browser"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
+      <div className="flex flex-wrap items-center gap-1 px-1 pt-1 sm:gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(trayGhostClass, isFindVisible && "bg-accent text-foreground")}
+            disabled={!canInteract}
+            onClick={() => {
+              openFind()
+            }}
+            title={`Find in page (${isMac ? "Cmd" : "Ctrl"}+F)`}
+          >
+            <Search className="size-3.5 shrink-0" />
+            <span>Find</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+            disabled={!state.canZoomOut}
+            onClick={() => {
+              void actions.zoomOut()
+            }}
+            aria-label="Zoom out"
+          >
+            <Minus className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={trayGhostClass}
+            onClick={() => {
+              void actions.resetZoom()
+            }}
+            aria-label="Reset zoom"
+            title="Reset zoom"
+          >
+            <span className="tabular-nums">{Math.round(state.zoomFactor * 100)}%</span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+            disabled={!state.canZoomIn}
+            onClick={() => {
+              void actions.zoomIn()
+            }}
+            aria-label="Zoom in"
+          >
+            <Plus className="size-3.5" />
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(trayGhostClass, state.isDevToolsOpen && "bg-accent text-foreground")}
+            onClick={() => {
+              void actions.toggleDevTools()
+            }}
+            title="Toggle developer tools"
+          >
+            <SquareTerminal className="size-3.5 shrink-0" />
+            <span>Devtools</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={trayGhostClass}
+            disabled={!canInteract}
+            onClick={() => {
+              void actions.openExternal()
+            }}
+            title="Open in external browser"
+          >
+            <ExternalLink className="size-3.5 shrink-0" />
+            <span>Open</span>
+          </Button>
       </div>
     </div>
   )
 
   return (
     <div className="h-full min-h-0" onKeyDownCapture={handleKeyDownCapture}>
-      <WorkbenchTileChrome
-        title={state.title || "Browser"}
-        panelApi={panelApi}
-        containerApi={containerApi}
-        controls={toolbar}
-      >
-        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-content-surface p-px">
-          {isFindVisible ? (
-            <div className="shrink-0 border-b border-border/60 bg-content-surface px-3 py-2">
-              <div className="ml-auto flex w-full max-w-md items-center gap-1 rounded-xl border border-border/60 bg-muted/20 p-1 shadow-sm">
-                <Search className="ml-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <Input
-                  ref={findInputRef}
-                  value={findQuery}
-                  onChange={(event) => setFindQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault()
-                      if (event.shiftKey) {
-                        findPrevious()
-                      } else {
-                        findNext()
-                      }
-                    }
-                  }}
-                  placeholder="Find in page"
-                  className="h-8 border-0 bg-transparent px-2 text-xs shadow-none focus-visible:ring-0"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className={cn(
-                    "h-8 min-w-0 shrink-0 px-2 text-[11px] text-muted-foreground",
-                    findMatchCase && "bg-muted text-foreground",
-                  )}
-                  onClick={() => {
-                    setFindMatchCase((current) => !current)
-                  }}
-                  aria-label="Match case"
-                  title="Match case"
-                >
-                  Aa
-                </Button>
-                <div className="min-w-[3.25rem] px-1 text-right text-[11px] tabular-nums text-muted-foreground">
-                  {findResultLabel}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  disabled={!hasFindQuery}
-                  onClick={() => {
-                    findPrevious()
-                  }}
-                  aria-label="Find previous"
-                >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  disabled={!hasFindQuery}
-                  onClick={() => {
-                    findNext()
-                  }}
-                  aria-label="Find next"
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={() => {
-                    closeFind(true)
-                  }}
-                  aria-label="Close find"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+      <WorkbenchTileChrome title={state.title || "Browser"} panelApi={panelApi} containerApi={containerApi}>
+        <div
+          className="relative flex h-full min-h-0 flex-col overflow-hidden bg-content-surface p-px"
+          onMouseEnter={() => {
+            setOmniHover(true)
+          }}
+          onMouseLeave={() => {
+            setOmniHover(false)
+          }}
+        >
+          <div
+            className={cn(
+              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 flex flex-col items-center justify-end px-3 sm:right-4 sm:px-5",
+              showOmniChrome && "pt-1.5 pb-4 sm:pt-2 sm:pb-5",
+            )}
+          >
+            <div
+              className={cn(
+                "pointer-events-none h-40 w-full max-w-2xl shrink-0 bg-gradient-to-t from-background/92 via-background/55 to-transparent transition-opacity duration-300",
+                showOmniChrome ? "opacity-100" : "opacity-0",
+              )}
+              aria-hidden
+            />
+            <div
+              className={cn(
+                "relative z-[1] w-full max-w-2xl space-y-2 overflow-hidden transition-all duration-200 ease-out",
+                showOmniChrome
+                  ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
+                  : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
+              )}
+              onFocusCapture={() => {
+                setOmniFocused(true)
+              }}
+              onBlurCapture={handleOmnibarBlurCapture}
+            >
+              {omnibarStack}
             </div>
-          ) : null}
+          </div>
 
           <div className="relative min-h-0 flex-1 overflow-hidden bg-content-surface">
             {!url ? (
@@ -550,7 +652,8 @@ export function WorkbenchBrowserTile({
                     </EmptyMedia>
                     <EmptyTitle className="text-base font-medium">No page loaded yet</EmptyTitle>
                     <EmptyDescription>
-                      Enter a URL above or open a linked dev server in this tile.
+                      Hover this browser panel (or press {isMac ? "⌘L" : "Ctrl+L"}) to show the address bar, or open a
+                      linked dev server in this tile.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -566,11 +669,34 @@ export function WorkbenchBrowserTile({
                 </div>
               </div>
             ) : null}
+            {url && overlayPaused && !state.loadError ? (
+              <div className="absolute inset-px z-[90] overflow-hidden rounded-[inherit] border border-border/40 bg-content-surface">
+                {placeholderScreenshot ? (
+                  <div
+                    className="absolute inset-0 bg-cover bg-top bg-no-repeat"
+                    style={{ backgroundImage: `url("${placeholderScreenshot}")` }}
+                    aria-hidden
+                  />
+                ) : null}
+                <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
+                <div className="absolute inset-x-4 bottom-4">
+                  <div className="mx-auto max-w-sm rounded-2xl border border-border/60 bg-background/88 px-3 py-2 text-center shadow-sm">
+                    <div className="text-xs font-medium text-foreground">Browser paused</div>
+                    <div className="mt-1 text-[11px] leading-normal text-muted-foreground">
+                      {overlayPauseReason
+                        ? `Hidden while ${overlayPauseReason} is open.`
+                        : "Hidden while a workbench overlay is open."}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {url ? (
               <div
                 ref={hostRef}
                 className={cn(
-                  "absolute inset-px overflow-hidden bg-content-surface",
+                  "absolute left-px right-px top-px overflow-hidden bg-content-surface",
+                  browserViewportInsetClass,
                   (!boundsReady || state.loadError) ? "pointer-events-none opacity-0" : "opacity-100",
                 )}
               />

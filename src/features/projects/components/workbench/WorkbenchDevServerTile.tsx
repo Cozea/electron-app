@@ -361,7 +361,7 @@ export function WorkbenchDevServerTile({
             <button
               type="button"
               className={cn(
-                "flex h-full w-9 items-center justify-center border-0 bg-transparent text-muted-foreground/80 transition-colors",
+                "group flex h-full w-9 items-center justify-center border-0 bg-transparent text-muted-foreground/80 transition-colors",
                 "hover:text-foreground",
               )}
               aria-label="Choose preview destination"
@@ -371,7 +371,7 @@ export function WorkbenchDevServerTile({
                   : `Choose preview destination (currently ${effectiveSelectedBrowser.name})`
               }
             >
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">

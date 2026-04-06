@@ -350,12 +350,12 @@ export function TerminalTabBar({
 
                 {/* New terminal dropdown */}
                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <button className={cn(buttonClass, "flex items-center gap-0.5")} title="New Terminal">
-                            <Plus className="h-4 w-4" />
-                            <ChevronDown className="h-3 w-3" />
-                        </button>
-                    </DropdownMenuTrigger>
+                        <DropdownMenuTrigger asChild>
+                            <button className={cn(buttonClass, "group flex items-center gap-0.5")} title="New Terminal">
+                                <Plus className="h-4 w-4" />
+                                <ChevronDown className="h-3 w-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
+                            </button>
+                        </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
                         {profiles.map((profile) => (
                             <DropdownMenuItem

@@ -24,6 +24,7 @@ import {
   memo,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -123,6 +124,15 @@ interface CozeaChatSurfaceProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void | Promise<void>
   onDismissThreadError?: () => void
   onRevertToTurnCount?: (turnCount: number) => void | Promise<void>
+  /** Workbench tiles: bottom composer floats and expands on card hover or focus (like the browser omnibar). */
+  dockComposerOnHover?: boolean
+}
+
+function isNonEmptyReactNode(node: ReactNode): boolean {
+  if (node == null || node === false) {
+    return false
+  }
+  return true
 }
 
 function resolveTimelineTheme(): "light" | "dark" {
@@ -230,6 +240,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [pendingQuestionIndexByRequestId, setPendingQuestionIndexByRequestId] = useState<
     Record<string, number>
   >({})
+  const [composerDockHover, setComposerDockHover] = useState(false)
+  const [composerDockFocused, setComposerDockFocused] = useState(false)
 
   const activeTurn = props.thread?.latestTurn ?? null
   const latestTurnSettled = isLatestTurnSettled(activeTurn, props.thread?.session ?? null)
@@ -413,6 +425,27 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const workspaceRoot = props.projectPath ?? undefined
   const threadError = props.thread?.error ?? null
 
+  const dockComposerOnHover = Boolean(props.dockComposerOnHover)
+  const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget as Node | null
+    if (next && event.currentTarget.contains(next)) {
+      return
+    }
+    setComposerDockFocused(false)
+  }, [])
+  const showComposerDockChrome =
+    !dockComposerOnHover ||
+    composerDockHover ||
+    composerDockFocused ||
+    activePendingApproval !== null ||
+    activePendingUserInput !== null ||
+    showPlanFollowUpPrompt ||
+    isNonEmptyReactNode(props.composerStatus) ||
+    props.composer.trim().length > 0 ||
+    props.isRunning ||
+    props.isSending ||
+    props.isInterrupting
+
   useEffect(() => {
     if (!isWorking) {
       setNowTick(Date.now())
@@ -551,12 +584,275 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     ? expandedImage.images[expandedImage.index] ?? null
     : null
 
+  const composerForm = (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        void props.onSend()
+      }}
+      className="mx-auto w-full min-w-0 max-w-2xl"
+    >
+      {props.composerStatus}
+
+      <div className="mt-3 overflow-hidden rounded-2xl bg-secondary">
+        {activePendingApproval ? (
+          <div className="border-b border-border/30 bg-background/10">
+            <ComposerPendingApprovalPanel
+              approval={activePendingApproval}
+              pendingCount={props.pendingApprovals.length}
+            />
+          </div>
+        ) : activePendingUserInput ? (
+          <div className="border-b border-border/30 bg-background/10">
+            <ComposerPendingUserInputPanel
+              pendingUserInputs={props.pendingUserInputs}
+              respondingRequestIds={
+                activePendingIsResponding && activePendingUserInput
+                  ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
+                  : []
+              }
+              answers={activePendingDraftAnswers}
+              questionIndex={activePendingQuestionIndex}
+              onSelectOption={handleSelectPendingUserInputOption}
+              onAdvance={handleAdvancePendingQuestion}
+            />
+          </div>
+        ) : showPlanFollowUpPrompt && activeProposedPlan ? (
+          <div className="border-b border-border/30 bg-background/10">
+            <ComposerPlanFollowUpBanner
+              key={activeProposedPlan.id}
+              planTitle={planTitleFromMarkdown(activeProposedPlan.planMarkdown)}
+            />
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            "relative px-3 pb-2",
+            hasComposerHeader ? "pt-2.5" : "pt-3",
+          )}
+        >
+          <ComposerPromptEditor
+            value={composerValue}
+            cursor={props.composerCursor}
+            terminalContexts={[]}
+            onRemoveTerminalContext={() => {}}
+            onChange={handleComposerChange}
+            onCommandKeyDown={props.onComposerCommandKey}
+            onPaste={props.onComposerPaste}
+            placeholder={
+              isComposerApprovalState
+                ? (activePendingApproval?.detail ?? "Resolve this approval request to continue")
+                : activePendingProgress
+                  ? "Type your own answer, or leave this blank to use the selected option"
+                  : showPlanFollowUpPrompt
+                    ? "Add feedback to refine the plan"
+                    : props.runtimeErrorMessage
+                      ? "Local chat runtime unavailable. Waiting for recovery..."
+                      : phase === "disconnected"
+                        ? "Ask for follow-up changes or attach images"
+                        : "Ask anything, @tag files/folders, or use / to show available commands"
+            }
+            className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
+            disabled={composerDisabled}
+          />
+        </div>
+
+        {activePendingApproval ? (
+          <div className="mb-2 flex items-center justify-end gap-2 px-2">
+            <ComposerPendingApprovalActions
+              requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
+              isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
+              onRespondToApproval={async (requestId, decision) => {
+                await props.onApprovalDecision(String(requestId), decision)
+              }}
+            />
+          </div>
+        ) : (
+          <div
+            data-chat-composer-footer="true"
+            className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
+              <ProviderModelPicker
+                provider={props.selectedProvider}
+                model={props.selectedModelSelection.model}
+                lockedProvider={null}
+                providers={props.providers}
+                modelOptionsByProvider={props.modelOptionsByProvider}
+                compact
+                disabled={!props.isRuntimeReady || props.isRunning}
+                triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
+                onProviderModelChange={props.onProviderModelChange}
+              />
+            </div>
+
+            <div data-chat-composer-actions="right" className="flex shrink-0 items-center gap-2">
+              {activePendingProgress ? (
+                <div className="flex items-center gap-2">
+                  {activePendingProgress.questionIndex > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full"
+                      type="button"
+                      onClick={handlePreviousPendingQuestion}
+                      disabled={activePendingIsResponding}
+                    >
+                      Previous
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="rounded-full px-4"
+                    onClick={() => {
+                      if (activePendingProgress.isLastQuestion) {
+                        handleSubmitPendingUserInput()
+                        return
+                      }
+                      handleAdvancePendingQuestion()
+                    }}
+                    disabled={
+                      activePendingIsResponding ||
+                      (activePendingProgress.isLastQuestion
+                        ? !activePendingResolvedAnswers
+                        : !activePendingProgress.canAdvance)
+                    }
+                  >
+                    {activePendingIsResponding
+                      ? "Submitting..."
+                      : activePendingProgress.isLastQuestion
+                        ? "Submit answers"
+                        : "Next question"}
+                  </Button>
+                </div>
+              ) : props.isRunning ? (
+                <button
+                  type="button"
+                  className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => {
+                    void props.onInterrupt()
+                  }}
+                  aria-label="Stop generation"
+                  disabled={!props.isRuntimeReady || props.isInterrupting}
+                >
+                  {props.isInterrupting ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                      <rect x="2" y="2" width="8" height="8" rx="1.5" />
+                    </svg>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
+                  disabled={
+                    !props.isRuntimeReady ||
+                    !props.thread ||
+                    !props.composer.trim() ||
+                    props.isSending ||
+                    props.isBinding
+                  }
+                  aria-label={
+                    !props.isRuntimeReady
+                      ? "Local runtime unavailable"
+                      : props.isBinding
+                        ? "Binding agent"
+                        : props.isSending
+                          ? "Sending"
+                          : "Send message"
+                  }
+                >
+                  {renderSendIcon(props.isSending)}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!activePendingApproval ? (
+        <div className="flex items-center justify-between gap-3 px-1 pt-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              size="sm"
+              type="button"
+              disabled={!props.isRuntimeReady || props.isRunning}
+              onClick={() => {
+                void props.onToggleInteractionMode()
+              }}
+              title={
+                props.selectedInteractionMode === "plan"
+                  ? "Plan mode - click to return to normal chat mode"
+                  : "Default mode - click to enter plan mode"
+              }
+            >
+              {showPlanFollowUpPrompt ? <ListTodoIcon /> : <BotIcon />}
+              <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              size="sm"
+              type="button"
+              disabled={!props.isRuntimeReady || props.isRunning}
+              onClick={() => {
+                void props.onToggleRuntimeMode()
+              }}
+              title={
+                props.selectedRuntimeMode === "full-access"
+                  ? "Full access - click to require approvals"
+                  : "Approval required - click for full access"
+              }
+            >
+              {props.selectedRuntimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
+              <span>
+                {props.selectedRuntimeMode === "full-access" ? "Full access" : "Supervised"}
+              </span>
+            </Button>
+          </div>
+
+          {props.activeContextWindow ? (
+            <div className="shrink-0">
+              <ContextWindowMeter usage={props.activeContextWindow} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </form>
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background">
       <ProviderStatusBanner status={props.providerSnapshot} />
       <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col",
+          dockComposerOnHover && "overflow-hidden",
+        )}
+        onMouseEnter={
+          dockComposerOnHover
+            ? () => {
+                setComposerDockHover(true)
+              }
+            : undefined
+        }
+        onMouseLeave={
+          dockComposerOnHover
+            ? () => {
+                setComposerDockHover(false)
+              }
+            : undefined
+        }
+      >
         {!props.projectPath ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">
@@ -593,252 +889,41 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             />
           </div>
         )}
-      </div>
-
-      <div className="px-3 pt-1.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            void props.onSend()
-          }}
-          className="mx-auto w-full min-w-0 max-w-2xl"
-        >
-          {props.composerStatus}
-
-          <div className="mt-3 overflow-hidden rounded-2xl bg-secondary">
-              {activePendingApproval ? (
-                <div className="border-b border-border/30 bg-background/10">
-                  <ComposerPendingApprovalPanel
-                    approval={activePendingApproval}
-                    pendingCount={props.pendingApprovals.length}
-                  />
-                </div>
-              ) : activePendingUserInput ? (
-                <div className="border-b border-border/30 bg-background/10">
-                  <ComposerPendingUserInputPanel
-                    pendingUserInputs={props.pendingUserInputs}
-                    respondingRequestIds={
-                      activePendingIsResponding && activePendingUserInput
-                        ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
-                        : []
-                    }
-                    answers={activePendingDraftAnswers}
-                    questionIndex={activePendingQuestionIndex}
-                    onSelectOption={handleSelectPendingUserInputOption}
-                    onAdvance={handleAdvancePendingQuestion}
-                  />
-                </div>
-              ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-                <div className="border-b border-border/30 bg-background/10">
-                  <ComposerPlanFollowUpBanner
-                    key={activeProposedPlan.id}
-                    planTitle={planTitleFromMarkdown(activeProposedPlan.planMarkdown)}
-                  />
-                </div>
-              ) : null}
-
-              <div
-                className={cn(
-                  "relative px-3 pb-2",
-                  hasComposerHeader ? "pt-2.5" : "pt-3",
-                )}
-              >
-                <ComposerPromptEditor
-                  value={composerValue}
-                  cursor={props.composerCursor}
-                  terminalContexts={[]}
-                  onRemoveTerminalContext={() => {}}
-                  onChange={handleComposerChange}
-                  onCommandKeyDown={props.onComposerCommandKey}
-                  onPaste={props.onComposerPaste}
-                  placeholder={
-                    isComposerApprovalState
-                      ? (activePendingApproval?.detail ??
-                        "Resolve this approval request to continue")
-                      : activePendingProgress
-                        ? "Type your own answer, or leave this blank to use the selected option"
-                        : showPlanFollowUpPrompt
-                          ? "Add feedback to refine the plan"
-                          : props.runtimeErrorMessage
-                            ? "Local chat runtime unavailable. Waiting for recovery..."
-                            : phase === "disconnected"
-                              ? "Ask for follow-up changes or attach images"
-                              : "Ask anything, @tag files/folders, or use / to show available commands"
-                  }
-                  className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
-                  disabled={composerDisabled}
-                />
-              </div>
-
-              {activePendingApproval ? (
-                <div className="mb-2 flex items-center justify-end gap-2 px-2">
-                  <ComposerPendingApprovalActions
-                    requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
-                    isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
-                    onRespondToApproval={async (requestId, decision) => {
-                      await props.onApprovalDecision(String(requestId), decision)
-                    }}
-                  />
-                </div>
-              ) : (
-                <div
-                  data-chat-composer-footer="true"
-                  className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
-                    <ProviderModelPicker
-                      provider={props.selectedProvider}
-                      model={props.selectedModelSelection.model}
-                      lockedProvider={null}
-                      providers={props.providers}
-                      modelOptionsByProvider={props.modelOptionsByProvider}
-                      compact
-                      disabled={!props.isRuntimeReady || props.isRunning}
-                      triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
-                      onProviderModelChange={props.onProviderModelChange}
-                    />
-                  </div>
-
-                  <div data-chat-composer-actions="right" className="flex shrink-0 items-center gap-2">
-                    {activePendingProgress ? (
-                      <div className="flex items-center gap-2">
-                        {activePendingProgress.questionIndex > 0 ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full"
-                            type="button"
-                            onClick={handlePreviousPendingQuestion}
-                            disabled={activePendingIsResponding}
-                          >
-                            Previous
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="rounded-full px-4"
-                          onClick={() => {
-                            if (activePendingProgress.isLastQuestion) {
-                              handleSubmitPendingUserInput()
-                              return
-                            }
-                            handleAdvancePendingQuestion()
-                          }}
-                          disabled={
-                            activePendingIsResponding ||
-                            (activePendingProgress.isLastQuestion
-                              ? !activePendingResolvedAnswers
-                              : !activePendingProgress.canAdvance)
-                          }
-                        >
-                          {activePendingIsResponding
-                            ? "Submitting..."
-                            : activePendingProgress.isLastQuestion
-                              ? "Submit answers"
-                              : "Next question"}
-                        </Button>
-                      </div>
-                    ) : props.isRunning ? (
-                      <button
-                        type="button"
-                        className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => {
-                          void props.onInterrupt()
-                        }}
-                        aria-label="Stop generation"
-                        disabled={!props.isRuntimeReady || props.isInterrupting}
-                      >
-                        {props.isInterrupting ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                            <rect x="2" y="2" width="8" height="8" rx="1.5" />
-                          </svg>
-                        )}
-                      </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
-                        disabled={
-                          !props.isRuntimeReady ||
-                          !props.thread ||
-                          !props.composer.trim() ||
-                          props.isSending ||
-                          props.isBinding
-                        }
-                        aria-label={
-                          !props.isRuntimeReady
-                            ? "Local runtime unavailable"
-                            : props.isBinding
-                              ? "Binding agent"
-                              : props.isSending
-                                ? "Sending"
-                                : "Send message"
-                        }
-                      >
-                        {renderSendIcon(props.isSending)}
-                      </button>
-                    )}
-                  </div>
-                </div>
+        {dockComposerOnHover ? (
+          <div
+            className={cn(
+              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 flex flex-col items-center justify-end px-3 sm:right-4 sm:px-5",
+              showComposerDockChrome && "pt-1.5 pb-4 sm:pt-2 sm:pb-5",
+            )}
+          >
+            <div
+              className={cn(
+                "pointer-events-none h-40 w-full max-w-2xl shrink-0 bg-gradient-to-t from-background/92 via-background/55 to-transparent transition-opacity duration-300",
+                showComposerDockChrome ? "opacity-100" : "opacity-0",
               )}
-          </div>
-
-          {!activePendingApproval ? (
-            <div className="flex items-center justify-between gap-3 px-1 pt-2">
-              <div className="flex min-w-0 items-center gap-1">
-                <Button
-                  variant="ghost"
-                  className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                  size="sm"
-                  type="button"
-                  disabled={!props.isRuntimeReady || props.isRunning}
-                  onClick={() => {
-                    void props.onToggleInteractionMode()
-                  }}
-                  title={
-                    props.selectedInteractionMode === "plan"
-                      ? "Plan mode - click to return to normal chat mode"
-                      : "Default mode - click to enter plan mode"
-                  }
-                >
-                  {showPlanFollowUpPrompt ? <ListTodoIcon /> : <BotIcon />}
-                  <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                  size="sm"
-                  type="button"
-                  disabled={!props.isRuntimeReady || props.isRunning}
-                  onClick={() => {
-                    void props.onToggleRuntimeMode()
-                  }}
-                  title={
-                    props.selectedRuntimeMode === "full-access"
-                      ? "Full access - click to require approvals"
-                      : "Approval required - click for full access"
-                  }
-                >
-                  {props.selectedRuntimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                  <span>
-                    {props.selectedRuntimeMode === "full-access" ? "Full access" : "Supervised"}
-                  </span>
-                </Button>
-              </div>
-
-              {props.activeContextWindow ? (
-                <div className="shrink-0">
-                  <ContextWindowMeter usage={props.activeContextWindow} />
-                </div>
-              ) : null}
+              aria-hidden
+            />
+            <div
+              className={cn(
+                "relative z-[1] w-full max-w-2xl space-y-2 overflow-hidden transition-all duration-200 ease-out",
+                showComposerDockChrome
+                  ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
+                  : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
+              )}
+              onFocusCapture={() => {
+                setComposerDockFocused(true)
+              }}
+              onBlurCapture={handleComposerDockBlurCapture}
+            >
+              {composerForm}
             </div>
-          ) : null}
-        </form>
+          </div>
+        ) : null}
       </div>
+
+      {!dockComposerOnHover ? (
+        <div className="px-3 pt-1.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5">{composerForm}</div>
+      ) : null}
 
       {expandedImage && expandedImageItem ? (
         <div

@@ -305,7 +305,7 @@ function HeaderInboxButton() {
               size="icon"
               className="relative h-7 w-7 text-muted-foreground hover:text-foreground"
             >
-              <Inbox className="h-4 w-4" />
+              <Inbox className="h-2.5 w-2.5" />
               {pendingCount > 0 ? (
                 <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
               ) : null}
@@ -360,7 +360,7 @@ function HeaderInboxButton() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-                        <NotificationIcon className="h-4 w-4" />
+                        <NotificationIcon className="h-2.5 w-2.5" />
                       </div>
 
                       <div className="min-w-0 flex-1 space-y-1">
@@ -400,9 +400,9 @@ function HeaderInboxButton() {
                         aria-label="Dismiss task notification"
                       >
                         {isDismissing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
                         ) : (
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-2.5 w-2.5" />
                         )}
                       </Button>
                     </div>
@@ -1121,20 +1121,21 @@ function HeaderProjectShareButton({
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
-            <Button
-              variant="ghost"
-              className="h-6 gap-1 rounded-full border border-border/60 bg-secondary/70 px-2.5 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground shadow-none"
+        <Button
+          variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
               disabled={!projectId || roleCheckPending || shareStatePending}
+              aria-label="Share project"
               onMouseEnter={prewarmPersonalContacts}
               onFocus={prewarmPersonalContacts}
               onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="size-3 shrink-0 animate-spin" />
               ) : (
-                <Share2 className="h-3 w-3" />
+                <Share2 className="size-3 shrink-0" />
               )}
-              Share
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
@@ -1273,7 +1274,7 @@ function HeaderProjectShareButton({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                                    className="group h-8 gap-1 px-2 text-xs text-muted-foreground"
                                     disabled={
                                       isSubmitting ||
                                       !canManagePersonalProjectAccess ||
@@ -1283,7 +1284,7 @@ function HeaderProjectShareButton({
                                     {PROJECT_INVITE_ROLE_OPTIONS.find(
                                       (option) => option.value === existingMember.role,
                                     )?.label ?? "Role"}
-                                    <ChevronDown className="h-3.5 w-3.5" />
+                                    <ChevronDown className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -1304,7 +1305,7 @@ function HeaderProjectShareButton({
                                     >
                                       {teamActionKey === roleActionKey &&
                                       existingMember.role !== option.value ? (
-                                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                        <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
                                       ) : null}
                                       {option.label}
                                     </DropdownMenuItem>
@@ -1327,9 +1328,9 @@ function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 className="h-2.5 w-2.5" />
                                 )}
                                 <span className="sr-only">Remove member</span>
                               </Button>
@@ -1351,9 +1352,9 @@ function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                  <Loader2 className="mr-1.5 h-2.5 w-2.5 animate-spin" />
                                 ) : (
-                                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                                  <RefreshCw className="mr-1.5 h-2.5 w-2.5" />
                                 )}
                                 Resend
                               </Button>
@@ -1372,9 +1373,9 @@ function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 className="h-2.5 w-2.5" />
                                 )}
                                 <span className="sr-only">Cancel invite</span>
                               </Button>
@@ -1392,7 +1393,7 @@ function HeaderProjectShareButton({
                                 setEmailInput("");
                               }}
                             >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              <Plus className="mr-1.5 h-2.5 w-2.5" />
                               Add
                             </Button>
                           )}
@@ -1448,13 +1449,13 @@ function HeaderProjectShareButton({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                                    className="group h-8 gap-1 px-2 text-xs text-muted-foreground"
                                     disabled={isSubmitting}
                                   >
                                     {PROJECT_INVITE_ROLE_OPTIONS.find(
                                       (option) => option.value === member.role,
                                     )?.label ?? "Role"}
-                                    <ChevronDown className="h-3.5 w-3.5" />
+                                    <ChevronDown className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -1480,7 +1481,7 @@ function HeaderProjectShareButton({
                                 }}
                                 disabled={isSubmitting}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-2.5 w-2.5" />
                                 <span className="sr-only">Remove invite</span>
                               </Button>
                             </div>
@@ -1504,9 +1505,9 @@ function HeaderProjectShareButton({
                     disabled={inviteMembers.length === 0 || isSubmitting}
                   >
                     {isSubmitting ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
                     ) : (
-                      <Send className="mr-2 h-4 w-4" />
+                      <Send className="mr-2 h-2.5 w-2.5" />
                     )}
                     Send invites
                   </Button>
@@ -1515,7 +1516,7 @@ function HeaderProjectShareButton({
                 <div className="rounded-xl bg-background/60 p-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Link2 className="h-4 w-4" />
+                      <Link2 className="h-2.5 w-2.5" />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -1549,9 +1550,9 @@ function HeaderProjectShareButton({
                       title="Copy link"
                     >
                       {joinLinkAction === "copy" ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
                       ) : (
-                        <Copy className="h-3.5 w-3.5" />
+                        <Copy className="h-2.5 w-2.5" />
                       )}
                       <span className="sr-only">Copy link</span>
                     </Button>
@@ -1566,7 +1567,7 @@ function HeaderProjectShareButton({
                           disabled={joinLinkAction !== null || !canManageJoinLinks}
                           title="Link options"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <MoreVertical className="h-2.5 w-2.5" />
                           <span className="sr-only">Link options</span>
                         </Button>
                       </DropdownMenuTrigger>
@@ -1578,9 +1579,9 @@ function HeaderProjectShareButton({
                           }}
                         >
                           {joinLinkAction === "rotate" ? (
-                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
                           ) : (
-                            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                            <RefreshCw className="mr-2 h-2.5 w-2.5" />
                           )}
                           Rotate link
                         </DropdownMenuItem>
@@ -1594,9 +1595,9 @@ function HeaderProjectShareButton({
                           className="text-destructive focus:text-destructive"
                         >
                           {joinLinkAction === "disable" ? (
-                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
                           ) : (
-                            <ShieldOff className="mr-2 h-3.5 w-3.5" />
+                            <ShieldOff className="mr-2 h-2.5 w-2.5" />
                           )}
                           Disable link
                         </DropdownMenuItem>
@@ -1674,7 +1675,9 @@ function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> |
         <Button
           type="button"
           variant="ghost"
-          className="h-6 gap-1 rounded-full border border-border/60 bg-secondary/70 px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-secondary hover:text-foreground"
+          size="icon"
+          className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          aria-label="Open changes"
           onMouseEnter={prewarmChanges}
           onFocus={prewarmChanges}
           onPointerDown={prewarmChanges}
@@ -1701,8 +1704,7 @@ function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> |
             });
           }}
         >
-          <GitCompareArrows className="h-3 w-3" />
-          Changes
+          <GitCompareArrows className="size-3 shrink-0" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">Open changes</TooltipContent>
@@ -1869,8 +1871,9 @@ export function UnifiedHeader({
   const isTabsPrimaryLayout = breadcrumbs.length === 0 && !breadcrumbAddon && Boolean(header);
   const collaborationControl = personalScoped ? (
     projectInviteContext ? (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-0">
         <HeaderProjectChangesButton projectId={projectInviteContext.projectId} />
+        <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
         <HeaderProjectShareButton
           projectId={projectInviteContext.projectId}
           projectName={projectInviteContext.projectName}
@@ -1892,8 +1895,11 @@ export function UnifiedHeader({
         )}
       >
         {centerAddon && (
-          <div className="pointer-events-none absolute inset-x-0 flex justify-center">
-            <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center">
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center"
+            style={headerContentStyle}
+          >
+            <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center justify-center">
               {centerAddon}
             </div>
           </div>
@@ -1913,19 +1919,19 @@ export function UnifiedHeader({
           {preSearchAddon && (
             <div className="flex items-center titlebar-no-drag shrink-0">{preSearchAddon}</div>
           )}
-          {(header || preSearchAddon) && <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />}
+          {(header || preSearchAddon) && <div className="mx-0.5 h-4 w-px shrink-0 bg-border" />}
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <div className="flex items-center">{rightAddon}</div>
               </>
             )}
             {shouldShowWindowsCaptionSpacer && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <div
                   aria-hidden="true"
                   className="h-7 shrink-0 flex-none"
@@ -1949,8 +1955,11 @@ export function UnifiedHeader({
       )}
     >
       {centerAddon && (
-        <div className="pointer-events-none absolute inset-x-0 flex justify-center">
-          <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center">
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center"
+          style={headerContentStyle}
+        >
+          <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center justify-center">
             {centerAddon}
           </div>
         </div>
@@ -1968,7 +1977,7 @@ export function UnifiedHeader({
                     {hasCollapsedLeftBreadcrumbs && (
                       <>
                         <BreadcrumbItem className="shrink-0">
-                          <BreadcrumbEllipsis className="size-6" />
+                          <BreadcrumbEllipsis className="h-2.5 w-2.5" />
                         </BreadcrumbItem>
                         <BreadcrumbSeparator className="shrink-0" />
                       </>
@@ -2011,7 +2020,7 @@ export function UnifiedHeader({
                 <Breadcrumb>
                   <BreadcrumbList className="flex-nowrap">
                     <BreadcrumbItem className="shrink-0">
-                      <BreadcrumbEllipsis className="size-6" data-breadcrumb-measure-ellipsis />
+                      <BreadcrumbEllipsis className="h-2.5 w-2.5" data-breadcrumb-measure-ellipsis />
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="shrink-0" data-breadcrumb-measure-separator />
                     {breadcrumbs.map((crumb, index) => (
@@ -2044,19 +2053,19 @@ export function UnifiedHeader({
             header
           )}
           {preSearchAddon && <div className="flex items-center shrink-0">{preSearchAddon}</div>}
-          {(header || preSearchAddon) && <div className="mx-1.5 h-4 w-px shrink-0 bg-border/70" />}
+          {(header || preSearchAddon) && <div className="mx-1.5 h-4 w-px shrink-0 bg-border" />}
           <div className="flex items-center gap-0.5">
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <div className="flex items-center">{rightAddon}</div>
               </>
             )}
             {shouldShowWindowsCaptionSpacer && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <div
                   aria-hidden="true"
                   className="h-7 shrink-0 flex-none"

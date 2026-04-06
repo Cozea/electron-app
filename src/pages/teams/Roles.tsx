@@ -694,16 +694,16 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
                               <div className="flex items-center gap-3">
                                 <button
                                   type="button"
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
+                                  className="group flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
                                   onClick={(event) => {
                                     event.stopPropagation()
                                     toggleRoleGroup(group.key)
                                   }}
                                 >
                                   {expanded ? (
-                                    <ChevronDown className="h-4 w-4" />
+                                    <ChevronDown className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                                   ) : (
-                                    <ChevronRight className="h-4 w-4" />
+                                    <ChevronRight className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                                   )}
                                 </button>
                                 <div className="flex flex-wrap items-center gap-2">

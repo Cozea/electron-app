@@ -48,15 +48,13 @@ function PanelLeftFilledIcon({ className, ...props }: React.SVGAttributes<SVGSVG
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
+      className={cn("shrink-0", className)}
       {...props}
     >
       {/* Left half of rounded rect (same shape as PanelLeft left side), filled */}
@@ -414,7 +412,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      {open ? <PanelLeftFilledIcon /> : <PanelLeftIcon />}
+      {open ? <PanelLeftFilledIcon className="size-3" /> : <PanelLeftIcon className="size-3 shrink-0" />}
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )

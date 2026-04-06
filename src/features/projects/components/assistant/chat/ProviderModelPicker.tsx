@@ -101,7 +101,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             size="sm"
             variant={props.triggerVariant ?? "ghost"}
             className={cn(
-              "min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
+              "group min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
               props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
               props.triggerClassName,
             )}
@@ -124,7 +124,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             )}
           />
           <span className="min-w-0 flex-1 truncate">{selectedModelLabel}</span>
-          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
       </MenuTrigger>
       <MenuPopup align="start">

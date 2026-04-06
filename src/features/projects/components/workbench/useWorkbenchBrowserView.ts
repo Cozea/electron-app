@@ -35,6 +35,7 @@ interface UseWorkbenchBrowserViewOptions {
   tileId: string
   url: string
   visible?: boolean
+  overlaySelector?: string
   storageScope?: BrowserStorageScope
   workspaceId?: string
   persistModel?: boolean
@@ -48,6 +49,9 @@ interface UseWorkbenchBrowserViewResult {
   hostRef: React.RefObject<HTMLDivElement | null>
   state: WorkbenchBrowserViewState
   boundsReady: boolean
+  overlayPaused: boolean
+  overlayPauseReason: string | null
+  placeholderScreenshot: string | null
   actions: {
     goBack: () => Promise<void>
     goForward: () => Promise<void>
@@ -64,6 +68,19 @@ interface UseWorkbenchBrowserViewResult {
   }
 }
 
+function isElementRectVisible(rect: DOMRect): boolean {
+  return rect.width > 0 && rect.height > 0
+}
+
+function isRectOverlapping(a: DOMRect, b: DOMRect): boolean {
+  return !(
+    a.right <= b.left ||
+    b.right <= a.left ||
+    a.bottom <= b.top ||
+    b.bottom <= a.top
+  )
+}
+
 export function useWorkbenchBrowserView(
   options: UseWorkbenchBrowserViewOptions,
 ): UseWorkbenchBrowserViewResult {
@@ -71,6 +88,7 @@ export function useWorkbenchBrowserView(
     tileId,
     url,
     visible = true,
+    overlaySelector = '[data-workbench-browser-overlay="true"]',
     storageScope = "workspace",
     workspaceId,
     persistModel = false,
@@ -107,6 +125,10 @@ export function useWorkbenchBrowserView(
     loadError: null,
   })
   const [boundsReady, setBoundsReady] = useState(false)
+  const [hasOverlappingOverlay, setHasOverlappingOverlay] = useState(false)
+  const [overlayPauseReason, setOverlayPauseReason] = useState<string | null>(null)
+  const [overlayPaused, setOverlayPaused] = useState(false)
+  const [placeholderScreenshot, setPlaceholderScreenshot] = useState<string | null>(null)
   const lastSentBoundsRef = useRef<{ x: number; y: number; w: number; h: number; v: boolean } | null>(null)
   const lastRequestedUrlRef = useRef<string>(url)
 
@@ -210,6 +232,113 @@ export function useWorkbenchBrowserView(
   useEffect(() => {
     const element = hostRef.current
     if (!element) return
+
+    let frame = 0
+
+    const readOverlappingOverlay = () => {
+      const hostRect = element.getBoundingClientRect()
+      if (!isElementRectVisible(hostRect)) {
+        setHasOverlappingOverlay(false)
+        setOverlayPauseReason(null)
+        return
+      }
+
+      const overlays = Array.from(document.querySelectorAll<HTMLElement>(overlaySelector))
+      const match = overlays.find((candidate) => {
+        if (candidate === element || candidate.contains(element) || element.contains(candidate)) {
+          return false
+        }
+        const style = window.getComputedStyle(candidate)
+        if (style.display === "none" || style.visibility === "hidden" || style.pointerEvents === "none") {
+          return false
+        }
+        const overlayRect = candidate.getBoundingClientRect()
+        if (!isElementRectVisible(overlayRect)) {
+          return false
+        }
+        return isRectOverlapping(hostRect, overlayRect)
+      })
+
+      setHasOverlappingOverlay(Boolean(match))
+      setOverlayPauseReason(match?.dataset.workbenchBrowserOverlayReason?.trim() || null)
+    }
+
+    const schedule = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(readOverlappingOverlay)
+    }
+
+    const resizeObserver = new ResizeObserver(schedule)
+    resizeObserver.observe(element)
+    const mutationObserver = new MutationObserver(schedule)
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "hidden", "data-workbench-browser-overlay"],
+    })
+
+    window.addEventListener("resize", schedule)
+    window.addEventListener("scroll", schedule, true)
+    schedule()
+
+    return () => {
+      cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+      mutationObserver.disconnect()
+      window.removeEventListener("resize", schedule)
+      window.removeEventListener("scroll", schedule, true)
+    }
+  }, [overlaySelector])
+
+  useEffect(() => {
+    if (!url) {
+      setOverlayPaused(false)
+      setOverlayPauseReason(null)
+      setPlaceholderScreenshot(null)
+    }
+  }, [url])
+
+  useEffect(() => {
+    if (!overlayPaused && boundsReady) {
+      setPlaceholderScreenshot(null)
+    }
+  }, [boundsReady, overlayPaused])
+
+  useEffect(() => {
+    const model = modelRef.current
+    if (!model) return
+
+    let cancelled = false
+
+    if (!hasOverlappingOverlay || !url || state.loadError || !boundsReady || state.isLoading) {
+      setOverlayPaused(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const capturePauseScreenshot = async () => {
+      const screenshot = await model.captureScreenshot().catch(() => null)
+      if (cancelled) return
+      if (screenshot) {
+        setPlaceholderScreenshot(screenshot)
+        setOverlayPaused(true)
+        return
+      }
+      setOverlayPaused(false)
+    }
+
+    void capturePauseScreenshot()
+
+    return () => {
+      cancelled = true
+    }
+  }, [boundsReady, hasOverlappingOverlay, state.isLoading, state.loadError, url])
+
+  useEffect(() => {
+    const element = hostRef.current
+    if (!element) return
     const model = modelRef.current
     if (!model) return
 
@@ -225,7 +354,13 @@ export function useWorkbenchBrowserView(
       const height = Math.max(0, Math.floor(rect.bottom) - Math.ceil(rect.top) - inset * 2)
 
       const stateLoadError = state.loadError
-      const nextVisible = visible && Boolean(url) && !stateLoadError && width > 0 && height > 0
+      const nextVisible =
+        visible &&
+        !overlayPaused &&
+        Boolean(url) &&
+        !stateLoadError &&
+        width > 0 &&
+        height > 0
       const last = lastSentBoundsRef.current
       if (
         last &&
@@ -269,7 +404,7 @@ export function useWorkbenchBrowserView(
       void model.setVisible(false)
       setBoundsReady(false)
     }
-  }, [tileId, url, visible, state.loadError])
+  }, [overlayPaused, tileId, url, visible, state.loadError])
 
   useEffect(() => {
     return () => {
@@ -331,6 +466,9 @@ export function useWorkbenchBrowserView(
     hostRef,
     state,
     boundsReady,
+    overlayPaused,
+    overlayPauseReason,
+    placeholderScreenshot,
     actions,
   }
 }
