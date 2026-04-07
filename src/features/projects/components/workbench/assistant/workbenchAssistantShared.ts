@@ -1,0 +1,207 @@
+import type {
+  ModelSelection,
+  ProviderInteractionMode,
+  ProviderKind,
+  RuntimeMode,
+  ServerConfig,
+  ServerProvider,
+} from "@cozea/assistant-contracts"
+import {
+  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+} from "@cozea/assistant-contracts"
+import {
+  resolveModelSlugForProvider,
+  resolveSelectableModel,
+} from "@cozea/assistant-shared/model"
+
+import type { Project, Thread } from "@/stores/assistant-types"
+import {
+  buildWorkbenchScopeKey,
+  type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
+  useProjectWorkbenchStore,
+} from "@/stores/useProjectWorkbenchStore"
+
+export interface DiffDialogState {
+  title: string
+  diff: string
+  error: string | null
+  isLoading: boolean
+}
+
+const workspaceBindingQueue = new Map<string, Promise<void>>()
+
+export function basenameFromPath(value: string | null): string {
+  if (!value) {
+    return "Workspace"
+  }
+
+  const segments = value.split(/[\\/]/).filter(Boolean)
+  return segments.at(-1) ?? value
+}
+
+export function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error
+  }
+
+  return "Something went wrong while talking to the local assistant runtime."
+}
+
+export function truncateTitle(text: string, maxLength = 50): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= maxLength) {
+    return trimmed
+  }
+  return `${trimmed.slice(0, maxLength)}...`
+}
+
+export function getProviderSnapshot(
+  config: ServerConfig | null,
+  provider: ProviderKind,
+): ServerProvider | null {
+  return config?.providers.find((entry) => entry.provider === provider) ?? null
+}
+
+export function getProviderModelOptions(
+  config: ServerConfig | null,
+  provider: ProviderKind,
+): ReadonlyArray<{ slug: string; name: string }> {
+  return (
+    getProviderSnapshot(config, provider)?.models.map((model) => ({
+      slug: model.slug,
+      name: model.name,
+    })) ?? []
+  )
+}
+
+export async function withWorkspaceBindingLock<T>(
+  workspaceRoot: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const previous = workspaceBindingQueue.get(workspaceRoot) ?? Promise.resolve()
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const current = previous.finally(() => gate)
+
+  workspaceBindingQueue.set(workspaceRoot, current)
+  await previous
+
+  try {
+    return await task()
+  } finally {
+    release()
+    if (workspaceBindingQueue.get(workspaceRoot) === current) {
+      workspaceBindingQueue.delete(workspaceRoot)
+    }
+  }
+}
+
+export function getLiveAssistantTile(
+  projectId: string,
+  laneId: string,
+  tileId: string,
+): WorkbenchAssistantChatTileRecord | null {
+  const workbench =
+    useProjectWorkbenchStore.getState().workbenches[buildWorkbenchScopeKey(projectId, laneId)]
+  const tile = workbench?.tiles[tileId]
+  return tile?.type === "assistantChat" ? tile : null
+}
+
+export function resolvePreferredProvider(input: {
+  config: ServerConfig | null
+  tile: WorkbenchAssistantChatTileRecord
+  projectModelSelection: ModelSelection | null | undefined
+}): ProviderKind {
+  if (input.tile.provider) {
+    return input.tile.provider
+  }
+
+  if (input.projectModelSelection?.provider) {
+    return input.projectModelSelection.provider
+  }
+
+  if (input.config?.settings.textGenerationModelSelection.provider) {
+    return input.config.settings.textGenerationModelSelection.provider
+  }
+
+  return "codex"
+}
+
+export function resolvePreferredModelSelection(input: {
+  config: ServerConfig | null
+  tile: WorkbenchAssistantChatTileRecord
+  projectModelSelection: ModelSelection | null | undefined
+  provider?: ProviderKind
+}): ModelSelection {
+  const provider =
+    input.provider ??
+    resolvePreferredProvider({
+      config: input.config,
+      tile: input.tile,
+      projectModelSelection: input.projectModelSelection,
+    })
+  const providerModelOptions = getProviderModelOptions(input.config, provider)
+  const candidateModel =
+    (input.tile.provider === provider ? input.tile.model : null) ??
+    (input.projectModelSelection?.provider === provider
+      ? input.projectModelSelection.model
+      : null) ??
+    (input.config?.settings.textGenerationModelSelection.provider === provider
+      ? input.config.settings.textGenerationModelSelection.model
+      : null)
+  const resolvedModel =
+    resolveSelectableModel(provider, candidateModel, providerModelOptions) ??
+    providerModelOptions[0]?.slug ??
+    resolveModelSlugForProvider(provider, candidateModel) ??
+    DEFAULT_MODEL_BY_PROVIDER[provider]
+
+  return {
+    provider,
+    model: resolvedModel,
+  }
+}
+
+export function resolveRuntimeMode(tile: WorkbenchAssistantChatTileRecord): RuntimeMode {
+  return tile.runtimeMode ?? DEFAULT_RUNTIME_MODE
+}
+
+export function resolveInteractionMode(
+  tile: WorkbenchAssistantChatTileRecord,
+): ProviderInteractionMode {
+  return tile.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE
+}
+
+export function findAssistantProjectForTile(
+  projects: readonly Project[],
+  tile: WorkbenchAssistantChatTileRecord,
+  projectPath: string | null,
+): Project | null {
+  if (tile.assistantProjectId) {
+    return projects.find((project) => project.id === tile.assistantProjectId) ?? null
+  }
+
+  if (projectPath) {
+    return projects.find((project) => project.cwd === projectPath) ?? null
+  }
+
+  return null
+}
+
+export function findAssistantThreadById(
+  threads: readonly Thread[],
+  threadId: string | null | undefined,
+): Thread | null {
+  if (!threadId) {
+    return null
+  }
+
+  return threads.find((thread) => thread.id === threadId) ?? null
+}
