@@ -30,39 +30,8 @@ import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/li
 import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 
-function getProjectSubpageLabel(pathname: string, basePath: string | null): string | null {
-  if (!basePath) return null;
-  if (pathname === basePath || pathname === `${basePath}/`) return null;
-
-  if (!pathname.startsWith(basePath)) return null;
-  const rest = pathname.slice(basePath.length).replace(/^\/+/, "");
-  const segment = rest.split("/")[0] ?? "";
-
-  switch (segment) {
-    case "workbench":
-      return "Workbench";
-    case "pages":
-      // Legacy URL segment; route redirects to workbench
-      return "Workbench";
-    case "changes":
-      return "Workbench";
-    case "conflicts":
-      return "Conflicts";
-    case "settings":
-      return "Settings";
-    case "team":
-      return "Team";
-    case "tasks":
-      return "Workbench";
-    default:
-      return null;
-  }
-}
-
 interface ProjectLayoutHeaderProps {
-  breadcrumbs: { label: string; href?: string }[];
   header?: ReactNode;
-  breadcrumbAddon?: ReactNode;
   centerAddon?: ReactNode;
   preSearchAddon?: ReactNode;
   rightAddon?: ReactNode;
@@ -78,9 +47,7 @@ interface ProjectLayoutHeaderProps {
 }
 
 const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
-  breadcrumbs,
   header,
-  breadcrumbAddon,
   centerAddon,
   preSearchAddon,
   rightAddon,
@@ -93,9 +60,8 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
 }: ProjectLayoutHeaderProps) {
   return (
     <UnifiedHeader
-      breadcrumbs={breadcrumbs}
+      breadcrumbs={[]}
       header={header}
-      breadcrumbAddon={breadcrumbAddon}
       centerAddon={centerAddon}
       preSearchAddon={preSearchAddon}
       rightAddon={rightAddon}
@@ -112,7 +78,6 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
 
 interface ProjectLayoutProps {
   children?: ReactNode;
-  breadcrumbs?: { label: string; href?: string }[];
 }
 
 interface ProjectLayoutLocationState {
@@ -403,38 +368,19 @@ export function ProjectLayout({
 
   const {
     header: headerContent,
-    breadcrumbAddon,
     centerAddon,
-    hideBreadcrumbs,
     insetLeft,
     insetRight,
   } = useProjectHeaderStore(
     useShallow((state) => ({
       header: state.header,
-      breadcrumbAddon: state.breadcrumbAddon,
       centerAddon: state.centerAddon,
-      hideBreadcrumbs: state.hideBreadcrumbs,
       insetLeft: state.insetLeft,
       insetRight: state.insetRight,
     })),
   );
 
   // Main layout content
-  const subpageLabel = useMemo(
-    () => getProjectSubpageLabel(location.pathname, projectBasePath),
-    [location.pathname, projectBasePath],
-  );
-  const breadcrumbs = useMemo(
-    () =>
-      hideBreadcrumbs
-        ? []
-        : [
-            { label: "Projects", href: "/projects" },
-            ...(project?.name ? [{ label: project.name, href: projectBasePath ?? undefined }] : []),
-            ...(subpageLabel ? [{ label: subpageLabel }] : []),
-          ],
-    [hideBreadcrumbs, project?.name, projectBasePath, subpageLabel],
-  );
   const headerSlot = headerContent;
 
   const presenceHeaderAddon = useMemo(
@@ -464,9 +410,7 @@ export function ProjectLayout({
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
           >
             <ProjectLayoutHeader
-              breadcrumbs={breadcrumbs}
               header={headerSlot ?? undefined}
-              breadcrumbAddon={breadcrumbAddon ?? undefined}
               centerAddon={centerAddon ?? undefined}
               preSearchAddon={presenceHeaderAddon ?? undefined}
               className="border-b-0 bg-transparent"

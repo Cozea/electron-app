@@ -28,10 +28,11 @@ export function LayoutToggles() {
     const sidebar = useOptionalSidebar()
     const sidebarState = sidebar?.state ?? 'collapsed'
     const sidebarToggleInWorkbenchHeader = location.pathname.endsWith('/workbench')
+    const sidebarToggleInProjectSettingsHeader = /\/projects\/(?:p\/[^/]+|[^/]+)\/settings(?:\/|$)/.test(location.pathname)
 
     return (
         <div className="flex items-center gap-0.5">
-            {sidebar && !sidebarToggleInWorkbenchHeader ? (
+            {sidebar && !sidebarToggleInWorkbenchHeader && !sidebarToggleInProjectSettingsHeader ? (
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button

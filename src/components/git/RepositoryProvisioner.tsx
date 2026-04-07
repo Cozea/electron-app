@@ -8,14 +8,12 @@ import type {
   RepositoryOwnerDescriptor,
 } from '@shared/electronApiTypes'
 import {
-  createConnectedRepository,
   invalidateProviderRepositoryManagementCache,
   listConnectedRepositories,
   listConnectedRepositoryOwners,
 } from '@/lib/git/providerRepositoryManagement'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -27,7 +25,6 @@ import {
 import { Loader2, RefreshCw } from 'lucide-react'
 
 type RepositoryProvider = 'github'
-type RepositoryOwnerKind = 'user' | 'organization' | 'group'
 type RepositoryOwnerWithProvider = RepositoryOwnerDescriptor & { provider: RepositoryProvider }
 
 interface RepositoryProvisionerProps {
@@ -36,9 +33,8 @@ interface RepositoryProvisionerProps {
   integrationConnected: boolean
   setupMode: 'personal' | 'organization'
   selectedRepoUrl?: string
-  suggestedRepoName?: string
-  visibility?: string
   onRepositorySelected: (repository: RepositoryDescriptor) => void
+  compactTable?: boolean
 }
 
 function getPreferredOwner(
@@ -58,25 +54,17 @@ export function RepositoryProvisioner({
   integrationConnected,
   setupMode,
   selectedRepoUrl,
-  suggestedRepoName,
-  visibility,
   onRepositorySelected,
+  compactTable = false,
 }: RepositoryProvisionerProps) {
   const convex = useConvex()
   const { convexUserId } = useAuth()
   const [owners, setOwners] = useState<RepositoryOwnerWithProvider[]>([])
   const [selectedOwnerId, setSelectedOwnerId] = useState('')
   const [repositories, setRepositories] = useState<RepositoryDescriptor[]>([])
-  const [repositorySearch, setRepositorySearch] = useState('')
-  const [newRepositoryName, setNewRepositoryName] = useState(suggestedRepoName ?? '')
   const [isLoadingOwners, setIsLoadingOwners] = useState(false)
   const [isLoadingRepositories, setIsLoadingRepositories] = useState(false)
-  const [isCreatingRepository, setIsCreatingRepository] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setNewRepositoryName((current) => current || suggestedRepoName || '')
-  }, [suggestedRepoName])
 
   const selectedOwner = useMemo(
     () => owners.find((owner) => owner.id === selectedOwnerId) ?? null,
@@ -186,7 +174,7 @@ export function RepositoryProvisioner({
         ownerId: selectedOwner.id,
         ownerLogin: selectedOwner.login,
         ownerKind: selectedOwner.kind,
-        search: repositorySearch,
+        search: '',
         bypassCache,
       })
       setRepositories(nextRepositories)
@@ -206,7 +194,6 @@ export function RepositoryProvisioner({
     integrationConnected,
     organizationId,
     provider,
-    repositorySearch,
     selectedOwner,
   ])
 
@@ -217,51 +204,6 @@ export function RepositoryProvisioner({
   useEffect(() => {
     void loadRepositories()
   }, [loadRepositories])
-
-  const handleCreateRepository = useCallback(async () => {
-    if (!organizationId || !convexUserId || !selectedOwner || !newRepositoryName.trim()) {
-      return
-    }
-
-    setIsCreatingRepository(true)
-    setError(null)
-    try {
-      const createdRepository = await createConnectedRepository({
-        convex,
-        organizationId,
-        userId: convexUserId,
-        provider,
-        ownerId: selectedOwner.id,
-        ownerLogin: selectedOwner.login,
-        ownerKind: selectedOwner.kind as RepositoryOwnerKind,
-        name: newRepositoryName.trim(),
-        private: visibility !== 'public',
-      })
-
-      setRepositories((current) => {
-        const next = [createdRepository, ...current.filter((repo) => repo.id !== createdRepository.id)]
-        return next.sort((left, right) => left.fullName.localeCompare(right.fullName))
-      })
-      onRepositorySelected(createdRepository)
-    } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
-          : 'Failed to create repository.'
-      )
-    } finally {
-      setIsCreatingRepository(false)
-    }
-  }, [
-    convex,
-    convexUserId,
-    newRepositoryName,
-    onRepositorySelected,
-    organizationId,
-    provider,
-    selectedOwner,
-    visibility,
-  ])
 
   const handleOwnerChange = useCallback(async (ownerId: string) => {
     setSelectedOwnerId(ownerId)
@@ -315,16 +257,72 @@ export function RepositoryProvisioner({
     )
   }
 
+  if (compactTable) {
+    return (
+      <>
+        <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+          <div className="flex flex-col gap-0.5">
+            <Label className="text-xs font-medium text-foreground">Owner</Label>
+            <p className="text-[11px] text-muted-foreground">GitHub organization or user</p>
+          </div>
+          <select
+            value={selectedOwnerId}
+            onChange={(e) => {
+              void handleOwnerChange(e.target.value)
+            }}
+            disabled={isLoadingOwners || owners.length === 0}
+            className="h-7 w-[160px] max-w-full rounded-md border border-border/50 bg-transparent px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-ring/50"
+          >
+            <option value="" disabled>Select owner</option>
+            {owners.map((owner) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.displayName} ({owner.login})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+          <div className="flex flex-col gap-0.5">
+            <Label className="text-xs font-medium text-foreground">Repository</Label>
+            <p className="text-[11px] text-muted-foreground">The repository to connect</p>
+          </div>
+          <select
+            value={selectedRepoUrl ?? ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              const selectedRepository =
+                repositories.find((repository) => repository.url === value) ?? null
+              if (selectedRepository) {
+                onRepositorySelected(selectedRepository)
+              }
+            }}
+            disabled={isLoadingRepositories || repositories.length === 0}
+            className="h-7 w-[160px] max-w-full rounded-md border border-border/50 bg-transparent px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-ring/50"
+          >
+            <option value="" disabled>
+              {isLoadingRepositories
+                ? 'Loading...'
+                : repositories.length > 0
+                  ? 'Select repository'
+                  : 'No repositories found'}
+            </option>
+            {repositories.map((repository) => (
+              <option key={repository.id} value={repository.url}>
+                {repository.fullName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </>
+    )
+  }
+
   return (
-    <div className="space-y-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
+    <div className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium">
-            Connected GitHub repositories
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Pick an existing remote or create a new one for this project.
-          </p>
+          <p className="text-sm font-semibold">Connected GitHub repository</p>
         </div>
         <Button
           type="button"
@@ -347,9 +345,9 @@ export function RepositoryProvisioner({
         </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Owner</Label>
+      <div className="overflow-hidden rounded-lg border border-border/60">
+        <div className="grid grid-cols-[140px_minmax(0,1fr)] items-center border-b border-border/60 bg-background/80 px-3 py-2">
+          <Label className="text-xs text-muted-foreground">Owner</Label>
           <Select
             value={selectedOwnerId}
             onValueChange={(value) => {
@@ -370,81 +368,46 @@ export function RepositoryProvisioner({
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label>Search</Label>
-          <Input
-            value={repositorySearch}
-            onChange={(event) => {
-              setRepositorySearch(event.target.value)
-            }}
-            placeholder="Search repositories"
-            className="rounded-xl bg-background"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Repository</Label>
-        <Select
-          value={selectedRepoUrl ?? ''}
-          onValueChange={(value) => {
-            const selectedRepository =
-              repositories.find((repository) => repository.url === value) ?? null
-            if (selectedRepository) {
-              onRepositorySelected(selectedRepository)
-            }
-          }}
-          disabled={isLoadingRepositories || repositories.length === 0}
-        >
-          <SelectTrigger className="rounded-xl bg-background">
-            <SelectValue
-              placeholder={
-                isLoadingRepositories
-                  ? 'Loading repositories...'
-                  : repositories.length > 0
-                    ? 'Select repository'
-                    : 'No repositories found'
+        <div className="grid grid-cols-[140px_minmax(0,1fr)] items-center bg-background/80 px-3 py-2">
+          <Label className="text-xs text-muted-foreground">Repository</Label>
+          <Select
+            value={selectedRepoUrl ?? ''}
+            onValueChange={(value) => {
+              const selectedRepository =
+                repositories.find((repository) => repository.url === value) ?? null
+              if (selectedRepository) {
+                onRepositorySelected(selectedRepository)
               }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {repositories.map((repository) => (
-              <SelectItem key={repository.id} value={repository.url}>
-                {repository.fullName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            }}
+            disabled={isLoadingRepositories || repositories.length === 0}
+          >
+            <SelectTrigger className="rounded-xl bg-background">
+              <SelectValue
+                placeholder={
+                  isLoadingRepositories
+                    ? 'Loading repositories...'
+                    : repositories.length > 0
+                      ? 'Select repository'
+                      : 'No repositories found'
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {repositories.map((repository) => (
+                <SelectItem key={repository.id} value={repository.url}>
+                  {repository.fullName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="space-y-2">
-          <Label>Create New Repository</Label>
-          <Input
-            value={newRepositoryName}
-            onChange={(event) => {
-              setNewRepositoryName(event.target.value)
-            }}
-            placeholder="Repository name"
-            className="rounded-xl bg-background"
-          />
-        </div>
-        <div className="flex items-end">
-          <Button
-            type="button"
-            className="w-full rounded-xl md:w-auto"
-            onClick={() => {
-              void handleCreateRepository()
-            }}
-            disabled={!selectedOwner || !newRepositoryName.trim() || isCreatingRepository}
-          >
-            {isCreatingRepository ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : null}
-            Create Repo
-          </Button>
-        </div>
-      </div>
+      {selectedRepoUrl ? (
+        <p className="text-xs text-muted-foreground">
+          Connected to <span className="font-mono">{selectedRepoUrl}</span>
+        </p>
+      ) : null}
 
       {error ? (
         <p className="text-xs text-destructive">{error}</p>

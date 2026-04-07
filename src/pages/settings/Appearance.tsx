@@ -195,7 +195,6 @@ export function Appearance({ surface = 'page' }: AppearanceProps) {
     <AppShellLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Appearance' }]}
     >
       {content}
     </AppShellLayout>

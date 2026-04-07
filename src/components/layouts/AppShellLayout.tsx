@@ -19,8 +19,6 @@ import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControl
 interface AppShellLayoutProps {
   children: ReactNode
   header?: ReactNode
-  breadcrumbAddon?: ReactNode
-  breadcrumbs?: { label: string; href?: string }[]
   contentMode?: 'scroll' | 'fixed'
   headerContentInsetClassName?: string
   hideInbox?: boolean
@@ -34,7 +32,6 @@ interface AppShellLayoutProps {
   headerAbsolute?: boolean
 }
 
-const DEFAULT_BREADCRUMBS = [{ label: "Projects" }]
 const PERSONAL_ACCOUNT_ROUTE = getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
 const SETTINGS_WINDOW_ITEMS = listSettingsSurfaces({
   scopeKind: 'personal',
@@ -47,8 +44,6 @@ const SETTINGS_WINDOW_ITEMS = listSettingsSurfaces({
 interface AppShellLayoutContentProps {
   children: ReactNode
   header?: ReactNode
-  breadcrumbAddon?: ReactNode
-  breadcrumbs: { label: string; href?: string }[]
   contentMode: 'scroll' | 'fixed'
   headerContentInsetClassName?: string
   hideInbox?: boolean
@@ -65,8 +60,6 @@ interface AppShellLayoutContentProps {
 function AppShellLayoutContent({
   children,
   header,
-  breadcrumbAddon,
-  breadcrumbs,
   contentMode,
   headerContentInsetClassName,
   hideInbox,
@@ -82,8 +75,7 @@ function AppShellLayoutContent({
   const isSettingsWindow = windowChrome.windowContext === 'settings'
   const isMacClient = windowChrome.isMac
   const isWindowsClient = windowChrome.isWindows
-  const effectiveBreadcrumbAddon = breadcrumbAddon
-  const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
+  const showHeader = Boolean(header)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
 
   useEffect(() => {
@@ -156,9 +148,8 @@ function AppShellLayoutContent({
         <SidebarInset>
           <div className="flex flex-1 flex-col overflow-hidden relative">
             <UnifiedHeader
-              breadcrumbs={breadcrumbs}
+              breadcrumbs={[]}
               header={header}
-              breadcrumbAddon={effectiveBreadcrumbAddon}
               leftWindowControlsInset
               hideInbox={hideInbox}
               className={headerAbsolute ? 'absolute inset-x-0 top-0 z-40' : undefined}
@@ -197,8 +188,6 @@ function AppShellLayoutContent({
 export function AppShellLayout({
   children,
   header,
-  breadcrumbAddon,
-  breadcrumbs = DEFAULT_BREADCRUMBS,
   contentMode = 'scroll',
   headerContentInsetClassName,
   hideInbox,
@@ -211,8 +200,6 @@ export function AppShellLayout({
       <AppShellLayoutContent
         children={children}
         header={header}
-        breadcrumbAddon={breadcrumbAddon}
-        breadcrumbs={breadcrumbs}
         contentMode={contentMode}
         headerContentInsetClassName={headerContentInsetClassName}
         hideInbox={hideInbox}

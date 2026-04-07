@@ -553,7 +553,6 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
     <AppShellLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Tooling' }]}
       header={headerActions}
     >
       {content}

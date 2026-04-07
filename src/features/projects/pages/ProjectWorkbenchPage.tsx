@@ -57,6 +57,7 @@ import { WorkbenchHeaderEditorControl } from "@/features/projects/components/wor
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import { disposeBrowserTileModel } from "@/features/projects/browser/browserTileModel";
+import { ProjectSettingsPage } from "@/features/projects/pages/ProjectSettingsPage";
 import { getWorkspaceSelectionId } from "@shared/types";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 
@@ -474,6 +475,7 @@ export function ProjectWorkbenchPage() {
     locationState?.taskOverlay ? [locationState.taskOverlay] : [],
   );
   const [isChangesOpen, setIsChangesOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [edgeInsertionArmed, setEdgeInsertionArmed] = useState(false);
   const [seamZones, setSeamZones] = useState<SeamZone[]>([]);
   const [dockviewReadyScopeKey, setDockviewReadyScopeKey] = useState<string | null>(null);
@@ -580,7 +582,7 @@ export function ProjectWorkbenchPage() {
     [activeWorkbenchPath, sidebarChromeOpen],
   );
 
-  useProjectHeader(null, headerControls, headerCenter, true);
+  useProjectHeader(headerControls, headerCenter);
 
   useEffect(() => {
     dockviewApiRef.current = null;
@@ -596,6 +598,12 @@ export function ProjectWorkbenchPage() {
     nextParams.delete("changes");
     nextParams.delete("openTile");
     nextParams.delete("userId");
+    setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
+  };
+
+  const closeSettingsOverlay = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("settings");
     setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
   };
 
@@ -738,6 +746,7 @@ export function ProjectWorkbenchPage() {
 
   useEffect(() => {
     setIsChangesOpen(searchParams.get("changes") === "1");
+    setIsSettingsOpen(searchParams.get("settings") === "1");
   }, [searchParams]);
 
   useEffect(() => {
@@ -761,18 +770,19 @@ export function ProjectWorkbenchPage() {
   }, [projectId]);
 
   useEffect(() => {
-    if (!isChangesOpen) return;
+    if (!isChangesOpen && !isSettingsOpen) return;
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setIsChangesOpen(false);
+      if (isChangesOpen) setIsChangesOpen(false);
+      if (isSettingsOpen) setIsSettingsOpen(false);
     };
 
     window.addEventListener("keydown", handleEscape);
     return () => {
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [isChangesOpen]);
+  }, [isChangesOpen, isSettingsOpen]);
 
   const resolvedDockviewThemeClass =
     theme === "dark" || (theme === "system" && document.documentElement.classList.contains("dark"))
@@ -1326,6 +1336,29 @@ export function ProjectWorkbenchPage() {
                 >
                   <div className="min-h-0 flex-1 overflow-hidden">
                     <ChangesPage presentation="embedded" />
+                  </div>
+                </aside>
+              </>
+            ) : null}
+
+            {isSettingsOpen ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close settings"
+                  data-workbench-browser-overlay="true"
+                  data-workbench-browser-overlay-reason="Settings overlay"
+                  className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
+                  onClick={closeSettingsOverlay}
+                />
+
+                <aside
+                  data-workbench-browser-overlay="true"
+                  data-workbench-browser-overlay-reason="Settings overlay"
+                  className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
+                >
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <ProjectSettingsPage presentation="embedded" onRequestClose={closeSettingsOverlay} />
                   </div>
                 </aside>
               </>
