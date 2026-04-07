@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 
-export type GitRuntimeSource = "bundled" | "system" | "missing"
+export type GitRuntimeSource = "system" | "missing"
 
 export interface GitRuntimeHealth {
   available: boolean
@@ -85,9 +85,7 @@ export interface MergeTreePreviewOutput {
 let cachedHealth: GitRuntimeHealth | null = null
 let healthCacheAt = 0
 const HEALTH_CACHE_TTL_MS = 30_000
-const FORCE_BUNDLED_GIT_ENV = "COZEA_FORCE_BUNDLED_GIT"
 const EXPLICIT_GIT_EXECUTABLE_ENV = "COZEA_GIT_EXECUTABLE"
-const EXPLICIT_BUNDLED_GIT_ROOT_ENV = "COZEA_BUNDLED_GIT_ROOT"
 
 function ensureGitRuntimeConfigDirs(): string {
   const baseDir = path.join(app.getPath("userData"), "git-runtime")
@@ -100,67 +98,14 @@ function ensureGitRuntimeConfigDirs(): string {
   return baseDir
 }
 
-function getBundledGitRoots(): string[] {
-  const roots = new Set<string>()
-  const explicitRoot = process.env[EXPLICIT_BUNDLED_GIT_ROOT_ENV]?.trim()
-  if (explicitRoot) {
-    roots.add(path.resolve(explicitRoot))
-  }
-
-  if (app.isPackaged) {
-    roots.add(path.join(process.resourcesPath, "git"))
-    return Array.from(roots)
-  }
-
-  roots.add(path.join(app.getAppPath(), "build", "git"))
-  roots.add(path.join(process.cwd(), "build", "git"))
-  roots.add(path.join(process.resourcesPath, "git"))
-  return Array.from(roots)
-}
-
-function getBundledGitCandidates(): string[] {
-  const target = `${process.platform}-${process.arch}`
-  const roots = getBundledGitRoots()
-  const candidates: string[] = []
-
-  if (process.platform === "win32") {
-    for (const root of roots) {
-      candidates.push(
-        path.join(root, target, "cmd", "git.exe"),
-        path.join(root, target, "bin", "git.exe"),
-        path.join(root, target, "mingw64", "bin", "git.exe")
-      )
-    }
-    return candidates
-  }
-
-  for (const root of roots) {
-    candidates.push(
-      path.join(root, target, "bin", "git"),
-      path.join(root, target, "git", "bin", "git")
-    )
-  }
-  return candidates
-}
-
 export function resolveGitExecutablePath(): { path: string | null; source: GitRuntimeSource } {
   const explicitExecutable = process.env[EXPLICIT_GIT_EXECUTABLE_ENV]?.trim()
   if (explicitExecutable) {
     const absolutePath = path.resolve(explicitExecutable)
     if (fs.existsSync(absolutePath)) {
-      return { path: absolutePath, source: "bundled" }
+      return { path: absolutePath, source: "system" }
     }
     return { path: null, source: "missing" }
-  }
-
-  const forceBundled = process.env[FORCE_BUNDLED_GIT_ENV] === "1"
-
-  if (app.isPackaged || forceBundled) {
-    const bundled = getBundledGitCandidates().find((candidate) => fs.existsSync(candidate))
-    if (!bundled) {
-      return { path: null, source: "missing" }
-    }
-    return { path: bundled, source: "bundled" }
   }
 
   return { path: "git", source: "system" }
@@ -203,7 +148,7 @@ export async function runGitCommand(
       stderr: "",
       executablePath: "",
       source: resolved.source,
-      error: "Bundled Git runtime not found",
+      error: "Git executable not found",
     }
   }
 
@@ -532,7 +477,7 @@ export async function getGitRuntimeHealth(force = false): Promise<GitRuntimeHeal
       supportsMergeTreeWriteTree: false,
       preflightCheckedAt: startedAt,
       preflightOk: false,
-      error: "Bundled Git runtime not found",
+      error: "Git executable not found",
     }
     cachedHealth = health
     healthCacheAt = Date.now()
