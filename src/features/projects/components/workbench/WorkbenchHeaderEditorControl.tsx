@@ -219,8 +219,10 @@ export function WorkbenchHeaderEditorControl({
             onClick={handleOpenProjectInEditor}
             disabled={!projectPath || !selectedEditorOption}
           >
-            <SelectedEditorIcon className="size-3 shrink-0" />
-            <span className="text-[11px] leading-none">Open</span>
+            <SelectedEditorIcon className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+            <span className="text-[11px] leading-none text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground">
+              Open
+            </span>
           </Button>
 
           {orderedEditors.length > 1 ? (
@@ -238,7 +240,7 @@ export function WorkbenchHeaderEditorControl({
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
               >
-                <ChevronDown className="size-3 shrink-0" />
+                <ChevronDown className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
               </Button>
             </>
           ) : null}

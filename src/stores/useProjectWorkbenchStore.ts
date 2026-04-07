@@ -56,7 +56,7 @@ export type WorkbenchTileType =
   | "changes"
   | "assistantChat"
 
-export type WorkbenchSelectionTileMode = "emptyState" | "edgePreview"
+export type WorkbenchSelectionTileMode = "emptyState" | "edgePreview" | "seamPreview"
 export type WorkbenchSelectionTileEdge = "left" | "right" | "top" | "bottom"
 
 interface WorkbenchBaseTile {
@@ -86,6 +86,7 @@ export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
   type: "selection"
   mode: WorkbenchSelectionTileMode
   edge?: WorkbenchSelectionTileEdge | null
+  referenceTileId?: string | null
 }
 
 export interface WorkbenchTasksTile extends WorkbenchBaseTile {
@@ -135,6 +136,7 @@ interface CreateTileOptions {
   linkedDevServerTileId?: string | null
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
+  selectionReferenceTileId?: string | null
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
@@ -284,6 +286,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         createdAt,
         mode: options.selectionMode ?? "emptyState",
         edge: options.selectionEdge ?? null,
+        referenceTileId: options.selectionReferenceTileId ?? null,
       }
     case "tasks":
     case "changes":

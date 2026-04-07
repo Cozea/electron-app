@@ -11,12 +11,10 @@ import {
 } from "react";
 import { Link, useLocation } from "@/lib/router";
 import {
-  CheckCircle2,
   ChevronDown,
   Copy,
   GitCompareArrows,
   Inbox,
-  ListTodo,
   Link2,
   Loader2,
   MoreVertical,
@@ -182,36 +180,20 @@ function getInitials(value: string): string {
 
 function HeaderInboxButton() {
   const { convexUserId } = useAuth();
-  const { personalScoped, convexOrganizationId: currentWorkspaceOrgId } = useScopedAppContext();
+  const { personalScoped } = useScopedAppContext();
   const acceptInvite = useMutation(api.projectInvites.acceptInvite);
   const declineInvite = useMutation(api.projectInvites.declineInvite);
-  const dismissInboxItems = useMutation(api.projectTasks.dismissInboxItems);
   const incomingInvites = useQuery(
     api.projectInvites.listIncomingForUser,
     personalScoped && convexUserId ? { userId: convexUserId } : "skip",
-  );
-  const taskInboxItems = useQuery(
-    api.projectTasks.listInboxForUser,
-    convexUserId
-      ? {
-          userId: convexUserId,
-          organizationId: currentWorkspaceOrgId,
-        }
-      : "skip",
   );
   const [activeInviteAction, setActiveInviteAction] = useState<{
     inviteId: Id<"projectInvites">;
     action: "accept" | "decline";
   } | null>(null);
-  const [activeTaskDismissId, setActiveTaskDismissId] =
-    useState<Id<"projectTaskNotifications"> | null>(null);
   const [inviteActionError, setInviteActionError] = useState<string | null>(null);
   const inboxHeadingId = useId();
-  const taskHeadingId = useId();
-  const invitesHeadingId = useId();
-  const taskNotificationCount = taskInboxItems?.length ?? 0;
   const inviteCount = incomingInvites?.length ?? 0;
-  const pendingCount = taskNotificationCount + inviteCount;
 
   const formatRelativeTimestamp = useCallback((timestamp: number) => {
     const now = Date.now();
@@ -252,48 +234,10 @@ function HeaderInboxButton() {
     [acceptInvite, convexUserId, declineInvite],
   );
 
-  const handleDismissTaskItem = useCallback(
-    async (notificationId: Id<"projectTaskNotifications">) => {
-      if (!convexUserId) return;
-      setActiveTaskDismissId(notificationId);
-
-      try {
-        await dismissInboxItems({
-          userId: convexUserId,
-          notificationIds: [notificationId],
-        });
-      } finally {
-        setActiveTaskDismissId(null);
-      }
-    },
-    [convexUserId, dismissInboxItems],
-  );
-
   const getWorkspaceInitial = useCallback((workspaceName: string | undefined | null) => {
     const source = (workspaceName ?? "?").trim();
     return source.charAt(0).toUpperCase() || "?";
   }, []);
-
-  const formatActorName = useCallback(
-    (
-      actor:
-        | {
-            firstName?: string | null;
-            lastName?: string | null;
-            email?: string | null;
-          }
-        | null
-        | undefined,
-    ) => {
-      const first = actor?.firstName?.trim() ?? "";
-      const last = actor?.lastName?.trim() ?? "";
-      const fullName = `${first} ${last}`.trim();
-      if (fullName) return fullName;
-      if (actor?.email) return actor.email;
-      return "Someone";
-    },
-    [],
-  );
 
   return (
     <DropdownMenu>
@@ -303,10 +247,10 @@ function HeaderInboxButton() {
             <Button
               variant="ghost"
               size="icon"
-              className="relative h-7 w-7 text-muted-foreground hover:text-foreground"
+              className="relative h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             >
-              <Inbox className="h-2.5 w-2.5" />
-              {pendingCount > 0 ? (
+              <Inbox className="size-3 shrink-0" />
+              {inviteCount > 0 ? (
                 <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
               ) : null}
               <span className="sr-only">Inbox</span>
@@ -315,212 +259,91 @@ function HeaderInboxButton() {
         </TooltipTrigger>
         <TooltipContent side="bottom">Inbox</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-[24rem] p-0">
-        <DropdownMenuLabel id={inboxHeadingId} className="px-3 py-2.5">
+      <DropdownMenuContent align="end" className="w-80 rounded-lg p-0 shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_0_20px_rgba(0,0,0,0.06)]">
+        <DropdownMenuLabel id={inboxHeadingId} className="px-3 py-2">
           Inbox
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="max-h-[30rem] overflow-y-auto" aria-labelledby={inboxHeadingId}>
-          <div className="px-3 pb-2 pt-3">
-            <div className="flex items-center justify-between gap-2">
-              <p
-                id={taskHeadingId}
-                className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground"
-              >
-                Tasks
-              </p>
-              {taskNotificationCount > 0 ? (
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {taskNotificationCount}
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          {taskInboxItems === undefined ? (
-            <div className="px-3 pb-3 text-xs text-muted-foreground">Loading task activity...</div>
-          ) : taskNotificationCount === 0 ? (
-            <div className="px-3 pb-3 text-xs text-muted-foreground">No task activity yet.</div>
-          ) : (
-            <div className="space-y-2 px-2.5 pb-2.5" role="list" aria-labelledby={taskHeadingId}>
-              {taskInboxItems.map((notification, index, visibleNotifications) => {
-                const actorName = formatActorName(notification.actor);
-                const isAssigned = notification.kind === "assigned";
-                const isDismissing = activeTaskDismissId === notification._id;
-                const destination = buildProjectPath(String(notification.project.id), "tasks");
-                const NotificationIcon = isAssigned ? ListTodo : CheckCircle2;
+          {personalScoped && incomingInvites === undefined ? (
+            <div className="px-3 py-4 text-center text-xs text-muted-foreground">Loading...</div>
+          ) : personalScoped && inviteCount > 0 ? (
+            <div className="space-y-px p-1" role="list">
+              {incomingInvites!.slice(0, 8).map((invite) => {
+                const isAccepting =
+                  activeInviteAction?.inviteId === invite._id &&
+                  activeInviteAction.action === "accept";
+                const isDeclining =
+                  activeInviteAction?.inviteId === invite._id &&
+                  activeInviteAction.action === "decline";
+                const isBusy = isAccepting || isDeclining;
 
                 return (
                   <div
-                    key={String(notification._id)}
+                    key={String(invite._id)}
                     role="listitem"
-                    className={`px-1 py-2 ${
-                      index < visibleNotifications.length - 1 ? "border-b border-border/60" : ""
-                    }`}
+                    className="rounded px-2 py-2.5 transition-colors hover:bg-muted/50"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-                        <NotificationIcon className="h-2.5 w-2.5" />
-                      </div>
-
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex min-w-0 items-baseline gap-1">
-                          <p className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
-                            {notification.taskTitle}
-                          </p>
-                          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                            &middot; {formatRelativeTimestamp(notification.createdAt)}
-                          </span>
-                        </div>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {isAssigned
-                            ? `${notification.project.name} · assigned${notification.actor ? ` by ${actorName}` : ""}`
-                            : `${notification.project.name} · completed by ${actorName}`}
+                      <Avatar className="mt-0.5 h-8 w-8 shrink-0 rounded-full">
+                        <AvatarImage
+                          src={invite.ownerUser?.profileImageUrl ?? undefined}
+                          alt={invite.ownerWorkspace?.name ?? "Owner"}
+                        />
+                        <AvatarFallback className="text-xs font-semibold">
+                          {getWorkspaceInitial(invite.ownerWorkspace?.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium leading-5 text-foreground">
+                          {invite.project?.name ?? "Unknown Project"}
                         </p>
-                        <Link
-                          to={destination}
-                          className="inline-flex text-xs font-medium text-foreground/80 transition-colors hover:text-foreground"
-                          onClick={() => {
-                            void handleDismissTaskItem(notification._id);
-                          }}
-                        >
-                          Open task board
-                        </Link>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {invite.ownerWorkspace?.name ?? "Unknown owner"} &middot;{" "}
+                          {formatRelativeTimestamp(invite.invitedAt)}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 rounded px-2.5 text-[11px] transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                            disabled={isBusy || activeInviteAction !== null}
+                            onClick={() => {
+                              void handleInviteAction(invite._id, "decline");
+                            }}
+                          >
+                            {isDeclining ? "Declining..." : "Decline"}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-6 rounded px-2.5 text-[11px]"
+                            disabled={isBusy || activeInviteAction !== null}
+                            onClick={() => {
+                              void handleInviteAction(invite._id, "accept");
+                            }}
+                          >
+                            {isAccepting ? "Accepting..." : "Accept"}
+                          </Button>
+                        </div>
                       </div>
-
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="shrink-0 rounded-full"
-                        disabled={isDismissing}
-                        onClick={() => {
-                          void handleDismissTaskItem(notification._id);
-                        }}
-                        aria-label="Dismiss task notification"
-                      >
-                        {isDismissing ? (
-                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-2.5 w-2.5" />
-                        )}
-                      </Button>
                     </div>
                   </div>
                 );
               })}
+              {inviteActionError ? (
+                <p className="px-2 py-1.5 text-xs text-destructive" role="status">
+                  {inviteActionError}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1 px-3 py-8 text-center">
+              <Inbox className="h-5 w-5 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">All caught up</p>
             </div>
           )}
-
-          {personalScoped ? (
-            <>
-              <DropdownMenuSeparator />
-              <div className="px-3 pb-2 pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p
-                    id={invitesHeadingId}
-                    className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground"
-                  >
-                    Project Invites
-                  </p>
-                  {inviteCount > 0 ? (
-                    <span className="text-[11px] tabular-nums text-muted-foreground">
-                      {inviteCount}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              {incomingInvites === undefined ? (
-                <div className="px-3 pb-3 text-xs text-muted-foreground">Loading invites...</div>
-              ) : inviteCount === 0 ? (
-                <div className="px-3 pb-3 text-xs text-muted-foreground">
-                  No pending project invites.
-                </div>
-              ) : (
-                <div
-                  className="space-y-2 px-2.5 pb-2.5"
-                  role="list"
-                  aria-labelledby={invitesHeadingId}
-                >
-                  {incomingInvites.slice(0, 8).map((invite, index, visibleInvites) => {
-                    const isAccepting =
-                      activeInviteAction?.inviteId === invite._id &&
-                      activeInviteAction.action === "accept";
-                    const isDeclining =
-                      activeInviteAction?.inviteId === invite._id &&
-                      activeInviteAction.action === "decline";
-                    const isBusy = isAccepting || isDeclining;
-
-                    return (
-                      <div
-                        key={String(invite._id)}
-                        role="listitem"
-                        className={`px-1 py-2 ${
-                          index < visibleInvites.length - 1 ? "border-b border-border/60" : ""
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <Avatar className="mt-0.5 h-8 w-8 rounded-full bg-background">
-                            <AvatarImage
-                              src={invite.ownerUser?.profileImageUrl ?? undefined}
-                              alt={invite.ownerWorkspace?.name ?? "Owner"}
-                            />
-                            <AvatarFallback className="text-xs font-semibold">
-                              {getWorkspaceInitial(invite.ownerWorkspace?.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex min-w-0 items-baseline gap-1">
-                              <p className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
-                                {invite.project?.name ?? "Unknown Project"}
-                              </p>
-                              <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                                &middot; {formatRelativeTimestamp(invite.invitedAt)}
-                              </span>
-                            </div>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {invite.ownerWorkspace?.name ?? "Unknown owner"}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5 self-start">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 rounded-full px-3 text-xs transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-                              disabled={isBusy || activeInviteAction !== null}
-                              onClick={() => {
-                                void handleInviteAction(invite._id, "decline");
-                              }}
-                            >
-                              {isDeclining ? "Declining..." : "Decline"}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-7 rounded-full px-3 text-xs"
-                              disabled={isBusy || activeInviteAction !== null}
-                              onClick={() => {
-                                void handleInviteAction(invite._id, "accept");
-                              }}
-                            >
-                              {isAccepting ? "Accepting..." : "Accept"}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {inviteActionError ? (
-                    <p className="px-1 pt-1 text-xs text-destructive" role="status">
-                      {inviteActionError}
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </>
-          ) : null}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1878,6 +1701,12 @@ export function UnifiedHeader({
           projectId={projectInviteContext.projectId}
           projectName={projectInviteContext.projectName}
         />
+        {!hideInbox && (
+          <>
+            <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
+            <HeaderInboxButton />
+          </>
+        )}
       </div>
     ) : !hideInbox ? (
       <HeaderInboxButton />
@@ -1904,22 +1733,27 @@ export function UnifiedHeader({
             </div>
           </div>
         )}
-        <div className="flex items-center w-full gap-0.5" style={headerContentStyle}>
-          <div className="flex items-center min-w-0 flex-1">
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 right-0 z-[5] flex items-center justify-center"
+          style={headerContentStyle}
+        >
+          <div className="pointer-events-auto titlebar-no-drag flex min-w-0 items-center">
             {compactHeaderActions ? (
-              <div className="shared-header-action-pills titlebar-no-drag inline-flex min-w-0 items-center">
+              <div className="shared-header-action-pills inline-flex min-w-0 items-center">
                 {header}
               </div>
             ) : (
-              <div className="titlebar-no-drag flex w-full min-w-0 max-w-full items-center">
+              <div className="flex min-w-0 items-center">
                 {header}
               </div>
             )}
+            {preSearchAddon && (
+              <div className="flex items-center shrink-0 ml-1">{preSearchAddon}</div>
+            )}
           </div>
-          {preSearchAddon && (
-            <div className="flex items-center titlebar-no-drag shrink-0">{preSearchAddon}</div>
-          )}
-          {(header || preSearchAddon) && <div className="mx-0.5 h-4 w-px shrink-0 bg-border" />}
+        </div>
+        <div className="flex items-center w-full gap-0.5" style={headerContentStyle}>
+          <div className="min-w-0 flex-1" />
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
             {collaborationControl}
             <LayoutToggles />
@@ -1949,7 +1783,7 @@ export function UnifiedHeader({
     <div
       className={cn(
         headerLayoutClassName,
-        "h-10 flex items-center px-4 titlebar-drag-region transition-[padding] duration-200 ease-out",
+        "h-10 flex items-center pl-4 pr-2 titlebar-drag-region transition-[padding] duration-200 ease-out",
         headerSurfaceClassName,
         className,
       )}
