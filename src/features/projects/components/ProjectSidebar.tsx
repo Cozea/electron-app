@@ -680,17 +680,29 @@ const SidebarProjectTreeItem = React.memo(
             className={cn(
               "group flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left",
             )}
-            onClick={() => onToggleExpanded(project.id)}
+            onClick={() => {
+              void onOpenProject(project, localPath ?? project.localPath);
+            }}
           >
             <ProjectFavicon cwd={projectIconPath} />
             <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
               <span className="min-w-0 truncate text-xs font-normal">{project.name}</span>
-              <ChevronRight
-                className={cn(
-                  "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
-                  isExpanded && "rotate-90",
-                )}
-              />
+              <button
+                type="button"
+                className="ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleExpanded(project.id);
+                }}
+                aria-label={isExpanded ? "Collapse project lanes" : "Expand project lanes"}
+              >
+                <ChevronRight
+                  className={cn(
+                    "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
+                    isExpanded && "rotate-90",
+                  )}
+                />
+              </button>
             </div>
           </button>
           <Button

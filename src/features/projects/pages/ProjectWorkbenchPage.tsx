@@ -47,6 +47,10 @@ import {
   WorkbenchEdgeInsertion,
   type WorkbenchInsertionEdge,
 } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
+import {
+  WorkbenchSeamInsertion,
+  type SeamZone,
+} from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
 import { WorkbenchHeaderEditorControl } from "@/features/projects/components/workbench/WorkbenchHeaderEditorControl";
@@ -101,28 +105,154 @@ const EDGE_TO_DOCK_DIRECTION: Record<
   bottom: "below",
 };
 
-const EDGE_INSERTION_ARM_INSET = 28;
-const WORKBENCH_INSERTION_ANIMATION_MS = 180;
-type WorkbenchInsertionMotionDirection = "left" | "right" | "top" | "bottom" | "center";
+const SEAM_DIRECTION_TO_EDGE: Record<SeamZone["direction"], WorkbenchSelectionTileEdge> = {
+  left: "left",
+  right: "right",
+  above: "top",
+  below: "bottom",
+};
 
-function getInsertionMotionDirection(
-  options: AddPanelOptions<WorkbenchDockPanelParams>,
-): WorkbenchInsertionMotionDirection {
-  const direction = options.position?.direction;
+const SEAM_ZONE_THICKNESS = 24;
+const SEAM_INTERIOR_TOLERANCE = 4;
 
-  switch (direction) {
-    case "left":
-      return "left";
-    case "right":
-      return "right";
-    case "above":
-      return "top";
-    case "below":
-      return "bottom";
-    default:
-      return "center";
+function computeSeamZones(api: DockviewApi, containerEl: HTMLElement): SeamZone[] {
+  const containerRect = containerEl.getBoundingClientRect();
+  const halfThickness = SEAM_ZONE_THICKNESS / 2;
+  const zones: SeamZone[] = [];
+  const groups = api.groups
+    .map((group) => {
+      const activePanel = group.activePanel;
+      const groupEl =
+        "element" in group && group.element instanceof HTMLElement ? group.element : null;
+      if (!activePanel || !groupEl) return null;
+      const rect = groupEl.getBoundingClientRect();
+      return {
+        id: group.api.id,
+        referenceTileId: activePanel.id,
+        rect,
+        relLeft: rect.left - containerRect.left,
+        relTop: rect.top - containerRect.top,
+        relRight: rect.right - containerRect.left,
+        relBottom: rect.bottom - containerRect.top,
+      };
+    })
+    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+
+  const rangesOverlap = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+    Math.min(aEnd, bEnd) - Math.max(aStart, bStart) > SEAM_INTERIOR_TOLERANCE;
+
+  for (let i = 0; i < groups.length; i += 1) {
+    const a = groups[i];
+    for (let j = i + 1; j < groups.length; j += 1) {
+      const b = groups[j];
+      const touchesSelectionTile =
+        a.referenceTileId.startsWith("selection-") || b.referenceTileId.startsWith("selection-");
+      if (touchesSelectionTile) {
+        continue;
+      }
+
+      // Vertical seam between A (left) and B (right)
+      if (
+        Math.abs(a.rect.right - b.rect.left) <= SEAM_INTERIOR_TOLERANCE &&
+        rangesOverlap(a.rect.top, a.rect.bottom, b.rect.top, b.rect.bottom)
+      ) {
+        const seamTop = Math.max(a.relTop, b.relTop);
+        const seamBottom = Math.min(a.relBottom, b.relBottom);
+        const seamHeight = seamBottom - seamTop;
+        if (seamHeight > SEAM_INTERIOR_TOLERANCE) {
+          zones.push({
+            id: `seam-${a.id}-right-${b.id}`,
+            referenceTileId: a.referenceTileId,
+            direction: "right",
+            rect: { x: a.relRight - halfThickness, y: seamTop, width: halfThickness, height: seamHeight },
+          });
+          zones.push({
+            id: `seam-${b.id}-left-${a.id}`,
+            referenceTileId: b.referenceTileId,
+            direction: "left",
+            rect: { x: b.relLeft, y: seamTop, width: halfThickness, height: seamHeight },
+          });
+        }
+      }
+
+      // Vertical seam between B (left) and A (right)
+      if (
+        Math.abs(b.rect.right - a.rect.left) <= SEAM_INTERIOR_TOLERANCE &&
+        rangesOverlap(a.rect.top, a.rect.bottom, b.rect.top, b.rect.bottom)
+      ) {
+        const seamTop = Math.max(a.relTop, b.relTop);
+        const seamBottom = Math.min(a.relBottom, b.relBottom);
+        const seamHeight = seamBottom - seamTop;
+        if (seamHeight > SEAM_INTERIOR_TOLERANCE) {
+          zones.push({
+            id: `seam-${b.id}-right-${a.id}`,
+            referenceTileId: b.referenceTileId,
+            direction: "right",
+            rect: { x: b.relRight - halfThickness, y: seamTop, width: halfThickness, height: seamHeight },
+          });
+          zones.push({
+            id: `seam-${a.id}-left-${b.id}`,
+            referenceTileId: a.referenceTileId,
+            direction: "left",
+            rect: { x: a.relLeft, y: seamTop, width: halfThickness, height: seamHeight },
+          });
+        }
+      }
+
+      // Horizontal seam between A (top) and B (bottom)
+      if (
+        Math.abs(a.rect.bottom - b.rect.top) <= SEAM_INTERIOR_TOLERANCE &&
+        rangesOverlap(a.rect.left, a.rect.right, b.rect.left, b.rect.right)
+      ) {
+        const seamLeft = Math.max(a.relLeft, b.relLeft);
+        const seamRight = Math.min(a.relRight, b.relRight);
+        const seamWidth = seamRight - seamLeft;
+        if (seamWidth > SEAM_INTERIOR_TOLERANCE) {
+          zones.push({
+            id: `seam-${a.id}-below-${b.id}`,
+            referenceTileId: a.referenceTileId,
+            direction: "below",
+            rect: { x: seamLeft, y: a.relBottom - halfThickness, width: seamWidth, height: halfThickness },
+          });
+          zones.push({
+            id: `seam-${b.id}-above-${a.id}`,
+            referenceTileId: b.referenceTileId,
+            direction: "above",
+            rect: { x: seamLeft, y: b.relTop, width: seamWidth, height: halfThickness },
+          });
+        }
+      }
+
+      // Horizontal seam between B (top) and A (bottom)
+      if (
+        Math.abs(b.rect.bottom - a.rect.top) <= SEAM_INTERIOR_TOLERANCE &&
+        rangesOverlap(a.rect.left, a.rect.right, b.rect.left, b.rect.right)
+      ) {
+        const seamLeft = Math.max(a.relLeft, b.relLeft);
+        const seamRight = Math.min(a.relRight, b.relRight);
+        const seamWidth = seamRight - seamLeft;
+        if (seamWidth > SEAM_INTERIOR_TOLERANCE) {
+          zones.push({
+            id: `seam-${b.id}-below-${a.id}`,
+            referenceTileId: b.referenceTileId,
+            direction: "below",
+            rect: { x: seamLeft, y: b.relBottom - halfThickness, width: seamWidth, height: halfThickness },
+          });
+          zones.push({
+            id: `seam-${a.id}-above-${b.id}`,
+            referenceTileId: a.referenceTileId,
+            direction: "above",
+            rect: { x: seamLeft, y: a.relTop, width: seamWidth, height: halfThickness },
+          });
+        }
+      }
+    }
   }
+
+  return zones;
 }
+
+const EDGE_INSERTION_ARM_INSET = 28;
 
 function getPanelParams(
   projectId: string,
@@ -335,17 +465,17 @@ export function ProjectWorkbenchPage() {
   const layoutSnapshotDebouncerRef = useRef<Debouncer<(layout: SerializedDockview) => void> | null>(
     null,
   );
-  const insertionAnimationFrameRef = useRef<number | null>(null);
-  const insertionAnimationTimeoutRef = useRef<number | null>(null);
   const transientSelectionTileIdRef = useRef<string | null>(null);
   const lastReconciledOrderRef = useRef<string[] | null>(null);
   const lastReconciledTilesRef = useRef<Record<string, WorkbenchTile> | null>(null);
   const edgeInsertionArmedRef = useRef(false);
+  const seamZoneRafRef = useRef<number | null>(null);
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
     locationState?.taskOverlay ? [locationState.taskOverlay] : [],
   );
   const [isChangesOpen, setIsChangesOpen] = useState(false);
   const [edgeInsertionArmed, setEdgeInsertionArmed] = useState(false);
+  const [seamZones, setSeamZones] = useState<SeamZone[]>([]);
   const [dockviewReadyScopeKey, setDockviewReadyScopeKey] = useState<string | null>(null);
   const collabBranch =
     project?.sourceControl?.activeCollabBranch ??
@@ -430,8 +560,8 @@ export function ProjectWorkbenchPage() {
           className={cn(
             "h-7 w-7 shrink-0 rounded-md",
             sidebarChromeOpen
-              ? "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              ? "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground"
+              : "text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground",
           )}
         />
         <div
@@ -467,93 +597,6 @@ export function ProjectWorkbenchPage() {
     nextParams.delete("openTile");
     nextParams.delete("userId");
     setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
-  };
-
-  const clearInsertionAnimation = () => {
-    if (insertionAnimationFrameRef.current !== null) {
-      cancelAnimationFrame(insertionAnimationFrameRef.current);
-      insertionAnimationFrameRef.current = null;
-    }
-    if (insertionAnimationTimeoutRef.current !== null) {
-      window.clearTimeout(insertionAnimationTimeoutRef.current);
-      insertionAnimationTimeoutRef.current = null;
-    }
-
-    const dockRoot = dockviewHostRef.current?.querySelector<HTMLElement>(
-      ".cozea-workbench-dockview",
-    );
-    if (!dockRoot) return;
-
-    dockRoot.classList.remove("cozea-workbench-dockview--inserting");
-    dockRoot.querySelectorAll<HTMLElement>(".cozea-workbench-group-enter").forEach((element) => {
-      element.classList.remove(
-        "cozea-workbench-group-enter",
-        "cozea-workbench-group-enter-from-left",
-        "cozea-workbench-group-enter-from-right",
-        "cozea-workbench-group-enter-from-top",
-        "cozea-workbench-group-enter-from-bottom",
-        "cozea-workbench-group-enter-from-center",
-      );
-    });
-  };
-
-  const addPanelWithInsertionAnimation = (options: AddPanelOptions<WorkbenchDockPanelParams>) => {
-    const api = dockviewApiRef.current;
-    if (!api) return undefined;
-
-    const dockRoot = dockviewHostRef.current?.querySelector<HTMLElement>(
-      ".cozea-workbench-dockview",
-    );
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    const existingGroupIds = new Set(
-      api.groups
-        .map((group) => group.api.id)
-        .filter((groupId): groupId is string => Boolean(groupId)),
-    );
-
-    if (dockRoot && !prefersReducedMotion) {
-      clearInsertionAnimation();
-      dockRoot.classList.add("cozea-workbench-dockview--inserting");
-    }
-
-    const panel = api.addPanel(options);
-
-    if (!dockRoot || prefersReducedMotion) {
-      return panel;
-    }
-
-    const motionDirection = getInsertionMotionDirection(options);
-    const nextGroup =
-      api.groups.find((group) => !existingGroupIds.has(group.api.id)) ?? panel.group ?? null;
-    const nextGroupElement =
-      nextGroup && "element" in nextGroup && nextGroup.element instanceof HTMLElement
-        ? nextGroup.element
-        : null;
-
-    if (nextGroupElement) {
-      insertionAnimationFrameRef.current = requestAnimationFrame(() => {
-        nextGroupElement.classList.remove(
-          "cozea-workbench-group-enter",
-          "cozea-workbench-group-enter-from-left",
-          "cozea-workbench-group-enter-from-right",
-          "cozea-workbench-group-enter-from-top",
-          "cozea-workbench-group-enter-from-bottom",
-          "cozea-workbench-group-enter-from-center",
-        );
-        void nextGroupElement.getBoundingClientRect();
-        nextGroupElement.classList.add("cozea-workbench-group-enter");
-        nextGroupElement.classList.add(`cozea-workbench-group-enter-from-${motionDirection}`);
-      });
-    }
-
-    insertionAnimationTimeoutRef.current = window.setTimeout(() => {
-      clearInsertionAnimation();
-    }, WORKBENCH_INSERTION_ANIMATION_MS);
-
-    return panel;
   };
 
   useEffect(() => {
@@ -777,7 +820,7 @@ export function ProjectWorkbenchPage() {
       ]?.tiles[nextBrowserTileId];
     if (!nextTile || nextTile.type !== "browser") return;
 
-    addPanelWithInsertionAnimation({
+    api.addPanel({
       id: nextTile.id,
       title: nextTile.title,
       component: getDockComponentName(nextTile.type),
@@ -835,7 +878,7 @@ export function ProjectWorkbenchPage() {
     lastReconciledOrderRef.current = projectWorkbench.order;
     lastReconciledTilesRef.current = projectWorkbench.tiles;
 
-    reconcilePanels(api, projectWorkbench, projectId, activeLaneId, addPanelWithInsertionAnimation);
+    reconcilePanels(api, projectWorkbench, projectId, activeLaneId);
 
     if (projectWorkbench.activeTileId) {
       api.getPanel(projectWorkbench.activeTileId)?.api.setActive();
@@ -854,8 +897,10 @@ export function ProjectWorkbenchPage() {
       if (layoutSaveFrameRef.current !== null) {
         cancelAnimationFrame(layoutSaveFrameRef.current);
       }
+      if (seamZoneRafRef.current !== null) {
+        cancelAnimationFrame(seamZoneRafRef.current);
+      }
       layoutSnapshotDebouncerRef.current?.flush();
-      clearInsertionAnimation();
     };
   }, []);
 
@@ -891,7 +936,11 @@ export function ProjectWorkbenchPage() {
       ];
     const selectionTile = liveProject?.tiles[selectionTileId];
 
-    if (!isSelectionTile(selectionTile) || selectionTile.mode !== "edgePreview") return;
+    if (
+      !isSelectionTile(selectionTile) ||
+      (selectionTile.mode !== "edgePreview" && selectionTile.mode !== "seamPreview")
+    )
+      return;
 
     const survivingTileIds = (liveProject?.order ?? []).filter((tileId) => {
       const tile = liveProject?.tiles[tileId];
@@ -953,7 +1002,7 @@ export function ProjectWorkbenchPage() {
       ]?.tiles[tileId];
     if (!nextTile) return;
 
-    addPanelWithInsertionAnimation({
+    api.addPanel({
       id: nextTile.id,
       title: nextTile.title,
       component: getDockComponentName(nextTile.type),
@@ -997,7 +1046,7 @@ export function ProjectWorkbenchPage() {
       ]?.tiles[nextTileId];
     if (!nextTile || !api) return;
 
-    addPanelWithInsertionAnimation({
+    api.addPanel({
       id: nextTile.id,
       title: nextTile.title,
       component: getDockComponentName(nextTile.type),
@@ -1051,7 +1100,10 @@ export function ProjectWorkbenchPage() {
       return;
     }
 
-    if (isSelectionTile(existingSelectionTile) && existingSelectionTile.mode === "edgePreview") {
+    if (
+      isSelectionTile(existingSelectionTile) &&
+      (existingSelectionTile.mode === "edgePreview" || existingSelectionTile.mode === "seamPreview")
+    ) {
       retractSelectionTile(existingSelectionTile.id);
     }
 
@@ -1067,12 +1119,73 @@ export function ProjectWorkbenchPage() {
 
     if (!api || !nextTile) return;
 
-    addPanelWithInsertionAnimation({
+    api.addPanel({
       id: nextTile.id,
       title: nextTile.title,
       component: getDockComponentName(nextTile.type),
       params: getPanelParams(projectId, activeLaneId, nextTile.id),
       position: api.totalPanels > 0 ? { direction: EDGE_TO_DOCK_DIRECTION[edge] } : undefined,
+    });
+
+    transientSelectionTileIdRef.current = selectionTileId;
+    workbenchActions.setActiveTile(projectId, activeLaneId, selectionTileId);
+    api.getPanel(selectionTileId)?.api.setActive();
+  };
+
+  const handleSeamActivate = (referenceTileId: string, direction: SeamZone["direction"]) => {
+    if (!projectId) return;
+    if (!edgeInsertionArmedRef.current) return;
+
+    const liveProject =
+      useProjectWorkbenchStore.getState().workbenches[
+        buildWorkbenchScopeKey(projectId, activeLaneId)
+      ];
+    if (!liveProject) return;
+
+    const existingSelectionId = transientSelectionTileIdRef.current;
+    const existingSelectionTile = existingSelectionId
+      ? liveProject.tiles[existingSelectionId]
+      : null;
+
+    if (
+      isSelectionTile(existingSelectionTile) &&
+      existingSelectionTile.mode === "seamPreview" &&
+      existingSelectionTile.referenceTileId === referenceTileId &&
+      existingSelectionTile.edge === SEAM_DIRECTION_TO_EDGE[direction]
+    ) {
+      retractSelectionTile(existingSelectionTile.id);
+      return;
+    }
+
+    if (
+      isSelectionTile(existingSelectionTile) &&
+      (existingSelectionTile.mode === "edgePreview" || existingSelectionTile.mode === "seamPreview")
+    ) {
+      retractSelectionTile(existingSelectionTile.id);
+    }
+
+    const api = dockviewApiRef.current;
+    const selectionTileId = workbenchActions.addTile(projectId, activeLaneId, "selection", {
+      selectionMode: "seamPreview",
+      selectionEdge: SEAM_DIRECTION_TO_EDGE[direction],
+      selectionReferenceTileId: referenceTileId,
+    });
+    const nextTile =
+      useProjectWorkbenchStore.getState().workbenches[
+        buildWorkbenchScopeKey(projectId, activeLaneId)
+      ]?.tiles[selectionTileId];
+
+    if (!api || !nextTile) return;
+
+    api.addPanel({
+      id: nextTile.id,
+      title: nextTile.title,
+      component: getDockComponentName(nextTile.type),
+      params: getPanelParams(projectId, activeLaneId, nextTile.id),
+      position: {
+        referencePanel: referenceTileId,
+        direction,
+      },
     });
 
     transientSelectionTileIdRef.current = selectionTileId;
@@ -1106,6 +1219,11 @@ export function ProjectWorkbenchPage() {
                 armed={edgeInsertionArmed}
                 disabledEdges={isChangesOpen ? ["top", "right"] : ["top"]}
                 onEdgeActivate={handleEdgeActivate}
+              />
+              <WorkbenchSeamInsertion
+                armed={edgeInsertionArmed}
+                seamZones={seamZones}
+                onSeamActivate={handleSeamActivate}
               />
               <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">
                 <DockviewReact
@@ -1142,8 +1260,24 @@ export function ProjectWorkbenchPage() {
                       });
                     };
 
+                    const scheduleSeamZoneUpdate = () => {
+                      if (seamZoneRafRef.current !== null) {
+                        cancelAnimationFrame(seamZoneRafRef.current);
+                      }
+                      seamZoneRafRef.current = requestAnimationFrame(() => {
+                        seamZoneRafRef.current = null;
+                        const container = dockviewHostRef.current;
+                        if (!container) {
+                          setSeamZones([]);
+                          return;
+                        }
+                        setSeamZones(computeSeamZones(event.api, container));
+                      });
+                    };
+
                     event.api.onDidLayoutChange(() => {
                       saveLayout();
+                      scheduleSeamZoneUpdate();
                     });
 
                     event.api.onDidActivePanelChange((activePanel) => {
@@ -1152,6 +1286,7 @@ export function ProjectWorkbenchPage() {
                         activeLaneId,
                         activePanel?.id ?? null,
                       );
+                      scheduleSeamZoneUpdate();
                     });
 
                     event.api.onDidRemovePanel((panel) => {
@@ -1187,7 +1322,7 @@ export function ProjectWorkbenchPage() {
                 <aside
                   data-workbench-browser-overlay="true"
                   data-workbench-browser-overlay-reason="Changes overlay"
-                  className="absolute inset-y-0 right-0 z-30 flex w-[min(52rem,calc(100%-2rem))] max-w-full flex-col border-l border-border/60 bg-background shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
+                  className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
                 >
                   <div className="min-h-0 flex-1 overflow-hidden">
                     <ChangesPage presentation="embedded" />

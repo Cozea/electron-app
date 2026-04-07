@@ -50,6 +50,14 @@
   background: var(--content-surface);
 }
 
+/* Keep panel borders clipped to their own tile during split/open animations. */
+.cozea-workbench-dockview .dv-view,
+.cozea-workbench-dockview .dv-groupview-content,
+.cozea-workbench-dockview .dv-groupview-content-container,
+.cozea-workbench-dockview .dv-content-container {
+  overflow: hidden;
+}
+
 .cozea-workbench-dockview .dv-groupview {
   border: 0;
 }
@@ -74,55 +82,3 @@
   border-radius: 0;
 }
 
-.cozea-workbench-dockview.cozea-workbench-dockview--inserting .dv-split-view-container .dv-view,
-.cozea-workbench-dockview.cozea-workbench-dockview--inserting .dv-split-view-container .dv-sash {
-  transition:
-    left 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 180ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.cozea-workbench-dockview .cozea-workbench-group-enter {
-  --cozea-workbench-enter-x: 0px;
-  --cozea-workbench-enter-y: 0px;
-  animation: cozea-workbench-group-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  transform-origin: center;
-}
-
-.cozea-workbench-dockview .cozea-workbench-group-enter.cozea-workbench-group-enter-from-left {
-  --cozea-workbench-enter-x: -28px;
-}
-
-.cozea-workbench-dockview .cozea-workbench-group-enter.cozea-workbench-group-enter-from-right {
-  --cozea-workbench-enter-x: 28px;
-}
-
-.cozea-workbench-dockview .cozea-workbench-group-enter.cozea-workbench-group-enter-from-top {
-  --cozea-workbench-enter-y: -28px;
-}
-
-.cozea-workbench-dockview .cozea-workbench-group-enter.cozea-workbench-group-enter-from-bottom {
-  --cozea-workbench-enter-y: 28px;
-}
-
-@keyframes cozea-workbench-group-enter {
-  from {
-    opacity: 0;
-    transform: translate(var(--cozea-workbench-enter-x), var(--cozea-workbench-enter-y)) scale(0.99);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate(0px, 0px) scale(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cozea-workbench-dockview.cozea-workbench-dockview--inserting .dv-split-view-container .dv-view,
-  .cozea-workbench-dockview.cozea-workbench-dockview--inserting .dv-split-view-container .dv-sash,
-  .cozea-workbench-dockview .cozea-workbench-group-enter {
-    animation: none !important;
-    transition: none !important;
-  }
-}

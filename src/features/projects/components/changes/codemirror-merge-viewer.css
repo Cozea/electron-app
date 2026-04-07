@@ -36,6 +36,19 @@
 
 .changes-codemirror-merge .cm-collapsedLines {
   color: var(--muted-foreground);
+  background: var(--secondary);
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.changes-codemirror-merge .cm-collapsedLines::before,
+.changes-codemirror-merge .cm-collapsedLines::after {
+  content: none !important;
+}
+
+.changes-codemirror-merge .cm-collapsedLine {
+  background: transparent;
 }
 
 .changes-codemirror-merge .cm-deletedChunk {
