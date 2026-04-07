@@ -1,1 +1,0 @@
-export default function ProjectBuild() { return <div className="p-8 text-muted-foreground text-sm">AI Builder is disabled. Use the Terminal Sidebar to launch AI agents manually.</div>; }
