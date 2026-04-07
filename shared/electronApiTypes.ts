@@ -896,105 +896,6 @@ export interface IntegrationToolResult {
   error?: string
 }
 
-export type ProviderAuthProvider =
-  | 'openai'
-  | 'anthropic'
-  | 'google'
-  | 'xai'
-  | 'github-copilot'
-  | 'gitlab'
-  | (string & {})
-export type ProviderAuthMethod =
-  | 'oauth'
-  | 'api_key'
-  | 'cloud_credentials'
-  | 'device'
-  | 'manual_code'
-  | 'vertex'
-  | 'gemini'
-  | 'gemini_api_key'
-export type ProviderAuthGoogleMode = 'vertex' | 'gemini'
-export type ProviderAuthType = 'oauth' | 'local_token' | 'api_key' | 'cloud_credentials'
-
-export interface ProviderCloudCredentials {
-  kind?: string
-  region?: string
-  profile?: string
-  accessKeyId?: string
-  secretAccessKey?: string
-  sessionToken?: string
-  projectId?: string
-  location?: string
-  accountId?: string
-  gatewayId?: string
-  serviceKey?: string
-  audience?: string
-  apiVersion?: string
-  baseUrl?: string
-  apiKey?: string
-  apiToken?: string
-  token?: string
-  headers?: Record<string, string>
-  extras?: Record<string, unknown>
-}
-
-export interface ProviderAuthRequestEnvelope {
-  provider: ProviderAuthProvider
-  authType: ProviderAuthType
-  accessToken: string
-  organizationId?: string
-  expiresAt?: number
-  accountId?: string
-  google?: {
-    mode: ProviderAuthGoogleMode
-    projectId?: string
-    location?: string
-  }
-  headers?: Record<string, string>
-  baseUrl?: string
-  cloud?: ProviderCloudCredentials
-}
-
-export interface ProviderAuthStatus {
-  provider: ProviderAuthProvider
-  connected: boolean
-  authType?: ProviderAuthType
-  expiresAt?: number
-  accountId?: string
-  googleMode?: ProviderAuthGoogleMode
-  googleProjectId?: string
-  googleLocation?: string
-  cloudKind?: string
-  lastError?: string
-  updatedAt?: number
-}
-
-export interface ProviderAuthStatusChangedEvent {
-  provider?: ProviderAuthProvider
-  statuses: ProviderAuthStatus[]
-  updatedAt: number
-}
-
-export interface ProviderAuthConnectResult {
-  success: boolean
-  status?: ProviderAuthStatus
-  authorizationUrl?: string
-  requiresManualCode?: boolean
-  error?: string
-}
-
-export interface ProviderAuthDisconnectResult {
-  success: boolean
-  error?: string
-}
-
-export interface ProviderAuthRequestAuthResult {
-  success: boolean
-  envelope?: ProviderAuthRequestEnvelope
-  error?: string
-  code?: 'not_connected' | 'expired' | 'invalid' | 'refresh_failed'
-}
-
 export interface LocalAiRuntimeStatus {
   enabled: boolean
   running: boolean
@@ -1091,23 +992,6 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>
     onSuccess: (callback: (session: Session) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
-  }
-  providerAuth: {
-    listProviders: () => Promise<Array<{
-      provider: ProviderAuthProvider
-      methods: ProviderAuthMethod[]
-    }>>
-    getStatus: (provider?: ProviderAuthProvider) => Promise<ProviderAuthStatus[]>
-    connect: (options: {
-      provider: ProviderAuthProvider
-      method?: ProviderAuthMethod
-      authorizationCode?: string
-      credentialPath?: string
-      apiKey?: string
-      cloudCredentials?: ProviderCloudCredentials
-    }) => Promise<ProviderAuthConnectResult>
-    disconnect: (provider: ProviderAuthProvider) => Promise<ProviderAuthDisconnectResult>
-    onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => () => void
   }
   localAiRuntime: {
     getStatus: () => Promise<LocalAiRuntimeStatus>

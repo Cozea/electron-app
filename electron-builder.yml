@@ -6,17 +6,9 @@ directories:
 files:
   - out/**/*
   - package.json
-extraResources:
-  - from: build/git
-    to: git
-    filter:
-      - '**/*'
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
-  binaries:
-    - Contents/Resources/git/darwin-arm64/bin/git
-    - Contents/Resources/git/darwin-x64/bin/git
   target:
     - dmg
     - zip
