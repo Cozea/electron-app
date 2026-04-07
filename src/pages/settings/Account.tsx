@@ -251,7 +251,6 @@ export function Account({ surface = 'page' }: AccountProps) {
     <AppShellLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
     >
       {content}
     </AppShellLayout>

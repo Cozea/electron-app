@@ -417,10 +417,6 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
     <SettingsRouteShell
       surfaceId="members"
       route={route}
-      breadcrumbs={[
-        ...settingsPage.breadcrumbs,
-        { label: isLoading ? 'Loading...' : member ? memberName : 'Not Found' },
-      ]}
     >
       {content}
     </SettingsRouteShell>

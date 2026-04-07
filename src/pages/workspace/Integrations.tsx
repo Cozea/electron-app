@@ -8,7 +8,6 @@
 
 import { useMemo, useState } from 'react'
 import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
-import { BreadcrumbCountChip } from '@/components/layouts/BreadcrumbCountChip'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -22,7 +21,6 @@ import { IntegrationIcon } from '@/components/integrations/IntegrationIcon'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedIntegrationsData } from '@/hooks/useScopedIntegrationsData'
 import {
-  INTEGRATIONS,
   getIntegrationsGroupedByCategory,
   CATEGORY_INFO,
 } from '@/lib/integrations/registry'
@@ -139,18 +137,6 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
       default: return 'All'
     }
   }
-
-  const breadcrumbAddon = (
-    <>
-      {INTEGRATIONS.length > 0 && (
-        <BreadcrumbCountChip
-          current={connectedIntegrations.length}
-          limit={INTEGRATIONS.length}
-          title={`${connectedIntegrations.length} / ${INTEGRATIONS.length} integrations connected`}
-        />
-      )}
-    </>
-  )
 
   const headerContent = (
     <div className="flex items-center gap-2">
@@ -305,7 +291,6 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   return (
     <SettingsRouteShell
       surfaceId="cliTools"
-      breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
       {settingsPage.isWorkspaceAccessDenied ? (

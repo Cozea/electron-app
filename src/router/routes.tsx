@@ -19,7 +19,6 @@ import { ProjectInvitePage } from '@/features/projects/pages/ProjectInvitePage'
 import { LegacyProjectRedirectPage } from '@/features/projects/pages/LegacyProjectRedirectPage'
 import { ProjectWorkbenchPage } from '@/features/projects/pages/ProjectWorkbenchPage'
 import { TasksPage } from '@/features/projects/pages/TasksPage'
-import { ProjectSettingsPage } from '@/features/projects/pages/ProjectSettingsPage'
 import { ProjectConflictsPage } from '@/features/projects/pages/ProjectConflictsPage'
 import { ProjectTeamPage } from '@/features/projects/pages/ProjectTeamPage'
 import { General } from '@/pages/workspace/General'
@@ -328,10 +327,22 @@ const projectConflictsRoute = createRoute({
   component: ProjectConflictsPage,
 })
 
+function ProjectSettingsRedirect() {
+  const params = useParams({ strict: false }) as { projectId?: string }
+  return (
+    <Navigate
+      to="/projects/p/$projectId/workbench"
+      params={{ projectId: params.projectId ?? "" }}
+      search={{ settings: "1" } as never}
+      replace
+    />
+  )
+}
+
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: '/settings',
-  component: ProjectSettingsPage,
+  component: ProjectSettingsRedirect,
 })
 
 const projectSettingsTeamRoute = createRoute({
@@ -343,7 +354,7 @@ const projectSettingsTeamRoute = createRoute({
 const projectSettingsSectionRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: '/settings/$section',
-  component: ProjectSettingsPage,
+  component: ProjectSettingsRedirect,
 })
 
 const legacyProjectRoute = createRoute({

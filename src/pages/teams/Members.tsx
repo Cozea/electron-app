@@ -479,9 +479,6 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     return pages
   }
 
-  const seatCounts = seatManagement?.entitlement?.seatCounts
-  const paidSeatTotal = seatCounts?.total ?? 0
-  const paidSeatAssigned = seatCounts?.assigned ?? 0
   const seatManagedEntitlement = Boolean(
     seatManagement &&
       (
@@ -490,56 +487,6 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
         seatManagement.entitlement.plan === 'startup' ||
         seatManagement.entitlement.plan === 'enterprise'
       )
-  )
-
-  // Circular progress component for paid-seat usage
-  const seatPercentage = paidSeatTotal > 0
-    ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100)
-    : 0
-  const circumference = 2 * Math.PI * 8 // radius = 8
-  const strokeDashoffset = circumference - (seatPercentage / 100) * circumference
-
-  const breadcrumbAddon = (
-    <>
-      {seatManagement === undefined ? (
-        <Badge variant="secondary" className="text-xs font-normal">
-          --
-        </Badge>
-      ) : paidSeatTotal > 0 && (
-        <Badge
-          variant="secondary"
-          className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
-          title={`${paidSeatAssigned} / ${paidSeatTotal} paid seats assigned`}
-        >
-          <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
-            {/* Background circle */}
-            <circle
-              cx="10"
-              cy="10"
-              r="8"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              className="text-muted-foreground/30"
-            />
-            {/* Progress circle */}
-            <circle
-              cx="10"
-              cy="10"
-              r="8"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              className={paidSeatAssigned >= paidSeatTotal ? 'text-destructive' : paidSeatAssigned >= paidSeatTotal - 1 ? 'text-amber-500' : 'text-primary'}
-            />
-          </svg>
-          <span>{paidSeatAssigned}/{paidSeatTotal}</span>
-        </Badge>
-      )}
-    </>
   )
 
   const headerContent = (
@@ -974,7 +921,6 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     <SettingsRouteShell
       surfaceId="members"
       route={route}
-      breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
       {content}

@@ -49,8 +49,6 @@ interface SettingsRouteShellProps {
   surfaceId: SettingsSurfaceId
   route?: string
   header?: ReactNode
-  breadcrumbAddon?: ReactNode
-  breadcrumbs?: Array<{ label: string; href?: string }>
 }
 
 export function SettingsRouteShell({
@@ -58,14 +56,12 @@ export function SettingsRouteShell({
   surfaceId,
   route,
   header,
-  breadcrumbAddon,
-  breadcrumbs,
 }: SettingsRouteShellProps) {
   const location = useLocation()
   const navigate = useViewTransitionNavigate()
   const { user, logout } = useAuth()
   const resolvedRoute = route ?? location.pathname
-  const settingsPage = useScopedSettingsPage({
+  useScopedSettingsPage({
     route: resolvedRoute,
     surfaceId,
   })
@@ -112,9 +108,7 @@ export function SettingsRouteShell({
     <AppShellLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={breadcrumbs ?? settingsPage.breadcrumbs}
       header={header}
-      breadcrumbAddon={breadcrumbAddon}
       contentMode="fixed"
     >
       <div className="flex min-h-0 flex-1 p-4">

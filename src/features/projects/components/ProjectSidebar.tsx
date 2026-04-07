@@ -11,11 +11,15 @@ import type {
   ProjectLaneState,
 } from "@shared/electronApiTypes";
 import {
+  AlertTriangle,
+  ArrowLeft,
   AppWindow,
   ChevronRight,
   EllipsisVertical,
+  GitBranch,
   Loader2,
   MonitorCog,
+  SlidersHorizontal,
   SquarePen,
   SquareTerminal,
 } from "lucide-react";
@@ -134,6 +138,18 @@ interface SidebarProjectTreeItemProps {
   prefetchedLaneState?: ProjectLaneState | null;
   prefetchedActiveLane?: ProjectLaneDescriptor | null;
 }
+
+type ProjectSettingsSectionId = "general" | "source-control" | "danger";
+
+const PROJECT_SETTINGS_SECTIONS: Array<{
+  id: ProjectSettingsSectionId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "source-control", label: "Source Control", icon: GitBranch },
+  { id: "danger", label: "Danger", icon: AlertTriangle },
+];
 
 const PROJECT_SIDEBAR_STATE_STORAGE_KEY = "cozea.projectSidebar.state.v1";
 
@@ -1034,7 +1050,25 @@ export function ProjectSidebar({
   const currentWorkbenchPath = currentProjectId
     ? `${buildProjectPath(currentProjectId)}/workbench`
     : null;
+  const currentProjectSettingsBasePath = currentProjectId
+    ? `${buildProjectPath(currentProjectId)}/settings`
+    : null;
   const isOnCurrentProjectWorkbench = currentWorkbenchPath === location.pathname;
+  const isOnCurrentProjectSubMenu = Boolean(currentProjectId) && !isOnCurrentProjectWorkbench;
+  const isOnCurrentProjectSettings = Boolean(
+    currentProjectSettingsBasePath &&
+      (location.pathname === currentProjectSettingsBasePath ||
+        location.pathname.startsWith(`${currentProjectSettingsBasePath}/`)),
+  );
+  const currentProjectSettingsSection = React.useMemo<ProjectSettingsSectionId>(() => {
+    if (!isOnCurrentProjectSettings || !currentProjectSettingsBasePath) return "general";
+    const suffix = location.pathname
+      .slice(currentProjectSettingsBasePath.length)
+      .replace(/^\/+/, "");
+    if (suffix === "source-control") return "source-control";
+    if (suffix === "danger") return "danger";
+    return "general";
+  }, [currentProjectSettingsBasePath, isOnCurrentProjectSettings, location.pathname]);
   const currentSelectionLevel: "none" | "project" | "lane" | "tile" = !currentProjectId
     ? "none"
     : isOnCurrentProjectWorkbench
@@ -1045,7 +1079,7 @@ export function ProjectSidebar({
 
   const handleOpenProjectSettings = React.useCallback(
     (project: SidebarProjectItem) => {
-      navigate(`${buildProjectPath(project.id)}/settings`);
+      navigate(`${buildProjectPath(project.id)}/workbench?settings=1`);
     },
     [navigate],
   );
@@ -1325,25 +1359,48 @@ export function ProjectSidebar({
         {...props}
       >
         <SidebarContent className="gap-0 px-2 py-3">
-          <div className="mb-4 space-y-1 px-1">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
-              onClick={(event) => void openProjectCreationMenu(event)}
-            >
-              <SquarePen className="size-4 shrink-0 text-muted-foreground/75" />
-              <span className="truncate text-xs font-normal">New project</span>
-            </button>
-          </div>
+          {!isOnCurrentProjectSubMenu && (
+            <div className="mb-4 space-y-1 px-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+                onClick={(event) => void openProjectCreationMenu(event)}
+              >
+                <SquarePen className="size-4 shrink-0 text-muted-foreground/75" />
+                <span className="truncate text-xs font-normal">New project</span>
+              </button>
+            </div>
+          )}
 
           <div className="mb-3 px-2">
             <div className="text-[14px] font-medium tracking-[-0.01em] text-muted-foreground/70">
-              Projects
+              {isOnCurrentProjectSettings ? "Project Settings" : "Projects"}
             </div>
           </div>
 
           <div className="space-y-1">
-            {isProjectsLoading ? (
+            {isOnCurrentProjectSettings && currentProjectId ? (
+              PROJECT_SETTINGS_SECTIONS.map((section) => {
+                const isActive = currentProjectSettingsSection === section.id;
+                const Icon = section.icon;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={cn(
+                      "flex h-8 w-full items-center rounded-md px-2 text-left text-xs transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+                      isActive && "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
+                    )}
+                    onClick={() => {
+                      navigate(`${buildProjectPath(currentProjectId)}/settings/${section.id}`);
+                    }}
+                  >
+                    <Icon className="mr-2 size-3.5 shrink-0" />
+                    {section.label}
+                  </button>
+                );
+              })
+            ) : isProjectsLoading ? (
               <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
                 Loading projects…
@@ -1393,9 +1450,21 @@ export function ProjectSidebar({
         <SidebarSeparator />
 
         <SidebarFooter className="gap-3 p-3">
-          <div>
-            <NavUser user={user} onLogout={onLogout} />
-          </div>
+          {isOnCurrentProjectSubMenu && currentProjectId ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+              onClick={() => navigate(`${buildProjectPath(currentProjectId)}/workbench`)}
+            >
+              <ArrowLeft className="size-3.5 shrink-0 text-muted-foreground/80" />
+              Back to workbench
+            </Button>
+          ) : (
+            <div>
+              <NavUser user={user} onLogout={onLogout} />
+            </div>
+          )}
         </SidebarFooter>
 
         <SidebarRail />

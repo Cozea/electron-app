@@ -1000,7 +1000,6 @@ export function Storage({ surface = 'page' }: StorageProps) {
     <AppShellLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Storage' }]}
     >
       {content}
     </AppShellLayout>

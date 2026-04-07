@@ -49,7 +49,6 @@ import {
   TooltipTrigger,
 } from '../components/ui/tooltip'
 
-import { Badge } from '../components/ui/badge'
 import { featureFlags } from '@/lib/featureFlags'
 import { useProjectCreationMenu } from '@/features/projects/hooks/useProjectCreationMenu'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
@@ -275,12 +274,6 @@ export function Projects() {
     ? 'No active projects. Switch to Archived to view archived projects.'
     : 'No projects yet. Create your first project.'
 
-  const breadcrumbAddon = hasProjects ? (
-    <Badge variant="secondary" className="text-xs font-normal">
-      {totalProjects}
-    </Badge>
-  ) : null
-
   const headerContent = showProjectControls ? (
     <div className="flex items-center gap-2">
       {/* Status Filter */}
@@ -382,7 +375,7 @@ export function Projects() {
 
   const showPagination = totalProjects > ITEMS_PER_PAGE
 
-  useProjectHeader(headerContent, breadcrumbAddon)
+  useProjectHeader(headerContent)
 
   return (
     <TooltipProvider>
