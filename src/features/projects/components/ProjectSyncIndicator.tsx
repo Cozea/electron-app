@@ -8,6 +8,7 @@ import {
   MdCloudUpload,
   MdWarning,
 } from "react-icons/md"
+import { Loader2 } from "lucide-react"
 
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -243,6 +244,7 @@ export function ProjectSyncIndicator({
   )
 
   if (variant === "compact") {
+    const showCompactSpinner = displayState.motion === "spin" || displayState.motion === "pulse"
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -259,7 +261,11 @@ export function ProjectSyncIndicator({
                 isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
               )}
             >
-              <Icon className={iconClassName} />
+              {showCompactSpinner ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground group-hover:text-foreground" />
+              ) : (
+                <Icon className={iconClassName} />
+              )}
             </div>
           </div>
         </TooltipTrigger>

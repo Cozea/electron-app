@@ -13,12 +13,10 @@ import type {
 import {
   AppWindow,
   ChevronRight,
-  Clock3,
   EllipsisVertical,
   Loader2,
   MonitorCog,
   SquarePen,
-  SlidersHorizontal,
   SquareTerminal,
 } from "lucide-react";
 
@@ -469,14 +467,14 @@ function ActiveLaneTiles(props: {
   }
 
   return (
-    <div className="ml-4 mt-0.5 space-y-1 border-l border-border/60 pl-3">
+    <div className="mt-0.5 space-y-1">
       {agents.map((tile) => (
         <button
           key={tile.id}
           type="button"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-            resolvedActiveTileId === tile.id && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
+            "flex w-full items-center gap-2.5 rounded-md pr-2 pl-6 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+            resolvedActiveTileId === tile.id && "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
@@ -501,8 +499,8 @@ function ActiveLaneTiles(props: {
             key={tile.id}
             type="button"
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-              resolvedActiveTileId === tile.id && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
+              "flex w-full items-center gap-2.5 rounded-md pr-2 pl-6 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+              resolvedActiveTileId === tile.id && "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
             )}
             onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
           >
@@ -670,31 +668,48 @@ const SidebarProjectTreeItem = React.memo(
 
     return (
       <Collapsible open={isExpanded}>
-        <div className="group/project-item flex items-center gap-1">
+        <div
+          className={cn(
+            "group/project-item flex items-center gap-1 rounded-md px-2 py-0 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+            activeSelectionLevel === "project" &&
+              "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
+          )}
+        >
           <button
             type="button"
             className={cn(
-              "group flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-              activeSelectionLevel === "project" && "bg-[var(--sidebar-pill-active-bg)] text-[var(--sidebar-pill-active-fg)]",
+              "group flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left",
             )}
-            onClick={() => onToggleExpanded(project.id)}
+            onClick={() => {
+              void onOpenProject(project, localPath ?? project.localPath);
+            }}
           >
             <ProjectFavicon cwd={projectIconPath} />
             <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
               <span className="min-w-0 truncate text-xs font-normal">{project.name}</span>
-              <ChevronRight
-                className={cn(
-                  "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
-                  isExpanded && "rotate-90",
-                )}
-              />
+              <button
+                type="button"
+                className="ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleExpanded(project.id);
+                }}
+                aria-label={isExpanded ? "Collapse project lanes" : "Expand project lanes"}
+              >
+                <ChevronRight
+                  className={cn(
+                    "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
+                    isExpanded && "rotate-90",
+                  )}
+                />
+              </button>
             </div>
           </button>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0 rounded-md p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+            className="size-6 shrink-0 rounded-md p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-transparent hover:text-foreground"
             onClick={handleProjectMenuClick}
             aria-label={`${project.name} options`}
           >
@@ -1319,31 +1334,11 @@ export function ProjectSidebar({
               <SquarePen className="size-4 shrink-0 text-muted-foreground/75" />
               <span className="truncate text-xs font-normal">New project</span>
             </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
-              onClick={() => undefined}
-            >
-              <Clock3 className="size-4 shrink-0 text-muted-foreground/75" />
-              <span className="min-w-0 flex-1 truncate text-xs font-normal">Automations</span>
-            </button>
           </div>
 
-          <div className="mb-3 flex items-center justify-between px-2">
+          <div className="mb-3 px-2">
             <div className="text-[14px] font-medium tracking-[-0.01em] text-muted-foreground/70">
               Projects
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 rounded-lg p-0 text-muted-foreground/70 hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
-                aria-label="Project filters"
-                onClick={() => undefined}
-              >
-                <SlidersHorizontal className="size-4" />
-              </Button>
             </div>
           </div>
 

@@ -104,7 +104,7 @@ describe('normalizeComputedStyles', () => {
 })
 
 describe('STYLE_PROPERTIES', () => {
-  it('contains all expected ElementStyles properties', () => {
+  it('contains expected preview style property keys', () => {
     const expectedSubset = [
       'fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
       'color', 'backgroundColor',

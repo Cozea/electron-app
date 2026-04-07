@@ -1,12 +1,11 @@
 /**
  * Shared style-property utilities.
  *
- * Single source of truth for the CSS properties the visual-editor cares about
- * and for converting DevTools-flavoured kebab-case output into the camelCase
- * keys the sidebar + Zustand store (`ElementStyles`) expect.
+ * Used by preview / DevTools normalization to map kebab-case computed styles
+ * into camelCase keys for the property allowlist below.
  */
 
-/** Canonical camelCase property list – keep in sync with `ElementStyles`. */
+/** Canonical camelCase property list for preview style normalization. */
 export const STYLE_PROPERTIES = [
   // Layout
   'display', 'position', 'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',

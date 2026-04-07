@@ -1,16 +1,6 @@
 const fs = require("node:fs")
 const path = require("node:path")
 
-const macGitTargets = ["darwin-arm64", "darwin-x64"]
-const macGitBinaries = macGitTargets
-  .map((target) => {
-    const sourcePath = path.join(__dirname, "build", "git", target, "bin", "git")
-    const bundlePath = `Contents/Resources/git/${target}/bin/git`
-    return { sourcePath, bundlePath }
-  })
-  .filter(({ sourcePath }) => fs.existsSync(sourcePath))
-  .map(({ bundlePath }) => bundlePath)
-
 const macRuntimeTargets = ["darwin-arm64", "darwin-x64"]
 const runtimeExecutables = ["node", "npm", "corepack", "pnpm", "yarn", "bun"]
 const macRuntimeBinaries = macRuntimeTargets
@@ -39,11 +29,6 @@ module.exports = {
   files: ["out/**/*", "package.json"],
   extraResources: [
     {
-      from: "build/git",
-      to: "git",
-      filter: ["**/*"],
-    },
-    {
       from: "build/runtime",
       to: "runtime",
       // Keep bundled JS toolchain (node/npm/corepack/pnpm/yarn/bun) and metadata,
@@ -57,7 +42,7 @@ module.exports = {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
-    binaries: [...macGitBinaries, ...macRuntimeBinaries],
+    binaries: [...macRuntimeBinaries],
     target: ["dmg", "zip"],
   },
   dmg: {
