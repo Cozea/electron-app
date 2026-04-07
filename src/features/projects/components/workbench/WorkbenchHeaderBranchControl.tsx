@@ -1053,6 +1053,7 @@ export function WorkbenchHeaderBranchControl({
   }, [displayedBranch])
 
   const isBusy = isLoading || isSwitching || activeAction !== null
+  const showActionSpinner = isSwitching || activeAction !== null
 
   return (
     <Button
@@ -1068,7 +1069,7 @@ export function WorkbenchHeaderBranchControl({
       aria-haspopup="menu"
       onClick={handleOpenNativeBranchMenu}
     >
-      {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+      {showActionSpinner ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
       <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
       <ChevronDown className="hidden h-3 w-3 opacity-70 group-hover:block group-focus-visible:block" />
     </Button>

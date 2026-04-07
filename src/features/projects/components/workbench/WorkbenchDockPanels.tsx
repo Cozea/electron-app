@@ -171,29 +171,44 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
     const wb = state.workbenches[buildWorkbenchScopeKey(props.params.projectId, props.params.laneId)]
     if (!wb || wb.order.length !== 1) return false
     const sole = wb.tiles[wb.order[0]]
-    return sole?.type === "selection" && sole.mode === "emptyState"
+    return sole?.type === "selection"
   })
 
   useSyncPanelTitle(props.api, tile?.title)
 
   if (!tile || tile.type !== "selection") {
-    return <MissingTilePlaceholder />
+    return (
+      <WorkbenchTileChrome
+        title="Add Tile"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
   }
 
   const selectionTile = tile as WorkbenchSelectionTileRecord
 
   return (
-    <Suspense fallback={panelSuspenseFallback}>
-      <LazyWorkbenchSelectionTile
-        tile={selectionTile}
-        singletonEmptyWorkbench={singletonEmptyWorkbench}
-        projectName={runtime.projectName}
-        projectPath={runtime.projectPath}
-        onChoose={(type) => {
-          runtime.onResolveSelectionTile(selectionTile.id, type)
-        }}
-      />
-    </Suspense>
+    <WorkbenchTileChrome
+      title={selectionTile.title}
+      panelApi={props.api}
+      containerApi={props.containerApi}
+      contentClassName="h-full"
+    >
+      <Suspense fallback={panelSuspenseFallback}>
+        <LazyWorkbenchSelectionTile
+          tile={selectionTile}
+          singletonEmptyWorkbench={singletonEmptyWorkbench}
+          projectName={runtime.projectName}
+          projectPath={runtime.projectPath}
+          onChoose={(type) => {
+            runtime.onResolveSelectionTile(selectionTile.id, type)
+          }}
+        />
+      </Suspense>
+    </WorkbenchTileChrome>
   )
 })
 

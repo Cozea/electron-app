@@ -29,13 +29,13 @@ function getZoneClasses(edge: WorkbenchInsertionEdge): string {
 function getBandClasses(edge: WorkbenchInsertionEdge): string {
   switch (edge) {
     case "left":
-      return "inset-y-0 left-0 w-4"
+      return "left-0 top-1/2 h-11 w-5 -translate-y-1/2 rounded-r-full"
     case "right":
-      return "inset-y-0 right-0 w-4"
+      return "right-0 top-1/2 h-11 w-5 -translate-y-1/2 rounded-l-full"
     case "top":
-      return "inset-x-0 top-0 h-4"
+      return "left-1/2 top-0 h-5 w-11 -translate-x-1/2 rounded-b-full"
     case "bottom":
-      return "inset-x-0 bottom-0 h-4"
+      return "bottom-0 left-1/2 h-5 w-11 -translate-x-1/2 rounded-t-full"
   }
 }
 
@@ -86,7 +86,7 @@ export function WorkbenchEdgeInsertion({
                 data-workbench-browser-overlay="true"
                 data-workbench-browser-overlay-reason="Add Tile controls"
                 className={cn(
-                  "pointer-events-none absolute z-10 flex items-center justify-center bg-muted text-foreground",
+                  "pointer-events-none absolute z-10 flex items-center justify-center bg-border text-foreground",
                   getBandClasses(edge),
                 )}
               >

@@ -177,16 +177,6 @@ jobs:
           echo "Using codesigning identity (full): ${identity_full}"
           echo "Using electron-builder CSC_NAME: ${identity_common}"
 
-      - name: Prepare Bundled Git
-        run: bun run prepare:bundled-git
-
-      - name: Verify Bundled Git
-        run: bun run prepare:bundled-git:check
-
-      - name: Build Git Bundle Archives
-        if: steps.publish_mode.outputs.mode == 'always'
-        run: bun run build:git-bundle-archives
-
       - name: Prepare Bundled Runtimes
         run: bun run prepare:bundled-runtimes
 
@@ -226,11 +216,7 @@ jobs:
             log_file="$(mktemp)"
             echo "Build/package attempt ${attempt}/${max_attempts}"
 
-            if [[ "${{ steps.publish_mode.outputs.mode }}" == "always" ]]; then
-              dist_cmd=(bun run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }})
-            else
-              dist_cmd=(env COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1 bun run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }})
-            fi
+            dist_cmd=(bun run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }})
 
             if "${dist_cmd[@]}" 2>&1 | tee "${log_file}"; then
               success=1
@@ -383,10 +369,6 @@ jobs:
           while IFS= read -r file; do
             assets+=("$file")
           done < <(find build/runtime/packs -type f 2>/dev/null | sort)
-
-          while IFS= read -r file; do
-            assets+=("$file")
-          done < <(find build/git/packs -type f 2>/dev/null | sort)
 
           if [[ ${#assets[@]} -gt 0 ]]; then
             gh release upload "${tag}" "${assets[@]}" --repo "${repo}" --clobber

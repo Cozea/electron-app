@@ -8,7 +8,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Switch } from '../../components/ui/switch'
 import { cn } from '../../lib/utils'
-import type { RuntimeHealth, RuntimeKind } from '../../types/electron'
+import type { GitRuntimeHealth, RuntimeHealth, RuntimeKind } from '../../types/electron'
 import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/useRuntimeInstallStore'
 
 interface ToolingProps {
@@ -29,6 +29,7 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
 }
 
 let cachedRuntimeStatus: { target: string; runtimes: RuntimeHealth[] } | null = null
+let cachedGitRuntimeHealth: GitRuntimeHealth | null = null
 let runtimeStatusPrewarmPromise: Promise<void> | null = null
 
 export async function prewarmToolingSettings(): Promise<void> {
@@ -206,6 +207,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
   const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(
     cachedRuntimeStatus
   )
+  const [gitRuntimeHealth, setGitRuntimeHealth] = useState<GitRuntimeHealth | null>(cachedGitRuntimeHealth)
   const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(true)
   const [previewHeaderCompatibilityError, setPreviewHeaderCompatibilityError] = useState<string | null>(null)
   const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
@@ -228,10 +230,16 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
       const status = await window.electronAPI.runtime.getRuntimeStatus()
       cachedRuntimeStatus = status
       setRuntimeStatus(status)
+      if (window.electronAPI?.sync?.getGitRuntimeHealth) {
+        const gitHealth = await window.electronAPI.sync.getGitRuntimeHealth()
+        cachedGitRuntimeHealth = gitHealth
+        setGitRuntimeHealth(gitHealth)
+      }
     } catch (runtimeError) {
       const message = runtimeError instanceof Error ? runtimeError.message : 'Failed to load tooling status.'
       setError(message)
       setRuntimeStatus((current) => current ?? cachedRuntimeStatus)
+      setGitRuntimeHealth((current) => current ?? cachedGitRuntimeHealth)
     } finally {
       if (!options?.silent) {
         setIsLoading(false)
@@ -364,6 +372,52 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
             {error}
           </div>
         )}
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium">Git Runtime</h3>
+          </div>
+          <div className="rounded-2xl bg-secondary/60 px-5 py-4">
+            {gitRuntimeHealth ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={gitRuntimeHealth.available ? 'secondary' : 'destructive'}
+                    className="gap-1.5"
+                  >
+                    {gitRuntimeHealth.available ? (
+                      <Check className="h-3 w-3" />
+                    ) : (
+                      <AlertTriangle className="h-3 w-3" />
+                    )}
+                    {gitRuntimeHealth.available ? 'Available' : 'Not available'}
+                  </Badge>
+                  <Badge variant="outline" className="capitalize">
+                    source: {gitRuntimeHealth.source}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground break-all">
+                  Executable: {gitRuntimeHealth.executablePath || 'git (PATH lookup)'}
+                </p>
+                {gitRuntimeHealth.gitVersion ? (
+                  <p className="text-xs text-muted-foreground">Version: {gitRuntimeHealth.gitVersion}</p>
+                ) : null}
+                {!gitRuntimeHealth.available && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                    Git is required for project sync and source control. Install Git and restart Cozea, or set
+                    `COZEA_GIT_EXECUTABLE` to an absolute git binary path.
+                    {gitRuntimeHealth.error ? ` (${gitRuntimeHealth.error})` : ''}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {isLoading ? 'Checking git runtime...' : 'Git runtime status unavailable.'}
+              </p>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-3">
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
