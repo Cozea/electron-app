@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, Download, Loader2, Package, Plus, RefreshCw, Terminal } from 'lucide-react'
+import { AlertTriangle, Check, Download, Loader2, Package, RefreshCw, Terminal } from 'lucide-react'
 import { FaApple, FaLinux, FaWindows } from 'react-icons/fa6'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { toolingSettingsClient } from '@/lib/settings/toolingSettingsClient'
 import { Badge } from '../../components/ui/badge'
@@ -201,7 +200,7 @@ function RuntimeProgressRing({ progress }: { progress: number }) {
   )
 }
 
-export function Tooling({ surface = 'page', route }: ToolingProps) {
+export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const [isLoading, setIsLoading] = useState(!cachedRuntimeStatus)
   const [error, setError] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(
@@ -316,13 +315,6 @@ export function Tooling({ surface = 'page', route }: ToolingProps) {
       }
     },
     [previewHeaderCompatibilityEnabled]
-  )
-
-  const headerActions = (
-    <Button disabled size="sm" variant="secondary" className="rounded-full opacity-60">
-      <Plus className="h-4 w-4" />
-      Add Framework Tooling
-    </Button>
   )
 
   const content = (
@@ -549,9 +541,5 @@ export function Tooling({ surface = 'page', route }: ToolingProps) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="tooling" route={route} header={headerActions}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

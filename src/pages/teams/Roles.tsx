@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation } from 'convex/react'
 
 import { api } from '../../../convex/_generated/api'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
@@ -240,13 +239,6 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
   const updateInvitationPermissionOverridesMutation = useMutation(
     api.invitations.updatePermissionOverrides,
   )
-
-  const headerContent = canManageRoles ? (
-    <Button className="gap-2 h-7 px-2 text-xs rounded-full" onClick={openCreateRoleSheet}>
-      <Plus className="h-3.5 w-3.5" />
-      New role
-    </Button>
-  ) : null
 
   const resolvedRoles = useMemo<OrganizationWorkspaceResolvedRole[]>(
     () => ((persistedRoles as OrganizationWorkspaceResolvedRole[] | undefined) ?? []),
@@ -653,6 +645,14 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
         />
       ) : (
       <div className="space-y-4">
+        {canManageRoles ? (
+          <div className="flex items-center justify-end">
+            <Button className="gap-2 h-7 px-2 text-xs rounded-full" onClick={openCreateRoleSheet}>
+              <Plus className="h-3.5 w-3.5" />
+              New role
+            </Button>
+          </div>
+        ) : null}
         {isLoading ? (
           <div className="rounded-2xl bg-secondary/80 px-5 py-10 text-sm text-muted-foreground dark:bg-secondary/40">
             Loading workspace permissions…
@@ -1106,13 +1106,5 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
     return content
   }
 
-  return (
-    <SettingsRouteShell
-      surfaceId="permissions"
-      route={route}
-      header={headerContent}
-    >
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

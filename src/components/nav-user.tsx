@@ -14,7 +14,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
 import { useTheme } from "@/contexts/ThemeContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useResolvedScope } from "@/hooks/useResolvedScope"
@@ -76,8 +75,6 @@ export function NavUser({
 }) {
   const { theme, setTheme } = useTheme()
   const userData = formatUserData(user)
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.open)
-  const openSettingsDrawerFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
   const openCreateWorkspaceDialog = useCreateWorkspaceDialogStore((state) => state.open)
   const navigate = useViewTransitionNavigate()
   const { organizationWorkspaces, personalWorkspace } = useAuth()
@@ -91,8 +88,8 @@ export function NavUser({
     ? getOrganizationPlanLabel(seatManagement?.entitlement?.plan)
     : getPersonalPlanLabel(seatManagement?.entitlement?.plan)
   const workspaceSettingsHref = React.useMemo(
-    () => resolveScopedSettingsHref("/settings/general", workspaceScoped),
-    [workspaceScoped],
+    () => resolveScopedSettingsHref("/settings/general", hasWorkspaceSettings),
+    [hasWorkspaceSettings],
   )
   const menuSummarySublabel = workspaceScoped
     ? [currentWorkspace?.organizationName, activePlanLabel]
@@ -176,7 +173,7 @@ export function NavUser({
 
       switch (action) {
         case "workspace-settings":
-          openSettingsDrawerFromRoute(workspaceSettingsHref)
+          navigate(`/projects${workspaceSettingsHref}`)
           break
         case "switch-workspace":
           navigate("/workspaces/select")
@@ -185,7 +182,7 @@ export function NavUser({
           openCreateWorkspaceDialog()
           break
         case "account-settings":
-          openSettingsDrawer("account")
+          navigate("/projects/settings/account")
           break
         case "theme-light":
           setTheme("light")
@@ -210,8 +207,6 @@ export function NavUser({
       navigate,
       onLogout,
       openCreateWorkspaceDialog,
-      openSettingsDrawer,
-      openSettingsDrawerFromRoute,
       setTheme,
       theme,
       userData.email,

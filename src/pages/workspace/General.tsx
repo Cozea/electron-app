@@ -4,7 +4,6 @@ import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { WorkspaceIdentityPicker } from '@/components/workspaces/WorkspaceIdentityPicker'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { useScopedGeneralData } from '@/hooks/useScopedGeneralData'
 import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
@@ -357,9 +356,5 @@ export function General({ surface = 'page', route }: GeneralProps = {}) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="general" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

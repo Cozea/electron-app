@@ -13,6 +13,7 @@ import { SidebarLaneTiles } from "@/features/projects/components/sidebar/Sidebar
 import {
   resolveProjectCollabBranch,
   areSidebarProjectItemsEqual,
+  SIDEBAR_PILL_ACTIVE_CLASS,
   type SidebarProjectTreeItemProps,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import {
@@ -184,8 +185,7 @@ export const ProjectSidebarTreeItem = React.memo(
         <div
           className={cn(
             "group/project-item flex items-center gap-1 rounded-md px-2 py-0 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-            selection.activeSelectionLevel === "project" &&
-              "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
+            selection.activeSelectionLevel === "project" && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
         >
           <div

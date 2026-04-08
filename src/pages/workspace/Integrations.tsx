@@ -7,7 +7,6 @@
  */
 
 import { useMemo, useState } from 'react'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -138,7 +137,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
     }
   }
 
-  const headerContent = (
+  const integrationControls = (
     <div className="flex items-center gap-2">
       {/* Filter Dropdown */}
       <DropdownMenu>
@@ -170,6 +169,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
           : 'max-w-6xl space-y-8 px-6 pt-6 pb-8'
       }
     >
+      {integrationControls}
         {!hasFilteredIntegrations ? (
           <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
             {filter === 'connected'
@@ -288,19 +288,12 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
       : content
   }
 
-  return (
-    <SettingsRouteShell
-      surfaceId="cliTools"
-      header={headerContent}
-    >
-      {settingsPage.isWorkspaceAccessDenied ? (
-        <WorkspaceAccessNotice
-          title="CLI tools access required"
-          description="You do not have permission to view workspace CLI tools and integrations."
-        />
-      ) : (
-        content
-      )}
-    </SettingsRouteShell>
+  return settingsPage.isWorkspaceAccessDenied ? (
+    <WorkspaceAccessNotice
+      title="CLI tools access required"
+      description="You do not have permission to view workspace CLI tools and integrations."
+    />
+  ) : (
+    content
   )
 }

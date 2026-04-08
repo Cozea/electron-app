@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useParams } from '@/lib/router'
 import { formatOrganizationWorkspaceRole } from '@/lib/workspaces/organizationRoles'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedMemberDetailsData } from '@/hooks/useScopedMemberDetailsData'
 import { Badge } from '../../components/ui/badge'
@@ -413,12 +412,5 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
     return content
   }
 
-  return (
-    <SettingsRouteShell
-      surfaceId="members"
-      route={route}
-    >
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

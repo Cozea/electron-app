@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import {
@@ -413,9 +412,5 @@ export function Sync({ surface = 'page', route }: SyncProps = {}) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="cloudStorage" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

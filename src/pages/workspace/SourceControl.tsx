@@ -17,7 +17,6 @@ import {
   getVersionControlSetupDescription,
   getVersionControlSetupLabel,
 } from '@shared/versionControl'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -809,16 +808,12 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
     )
   }
 
-  return (
-    <SettingsRouteShell surfaceId="sourceControl" route={route}>
-      {settingsPage.isWorkspaceAccessDenied ? (
-        <WorkspaceAccessNotice
-          title="Source control access required"
-          description="You do not have permission to view project source control for this workspace."
-        />
-      ) : (
-        content
-      )}
-    </SettingsRouteShell>
+  return settingsPage.isWorkspaceAccessDenied ? (
+    <WorkspaceAccessNotice
+      title="Source control access required"
+      description="You do not have permission to view project source control for this workspace."
+    />
+  ) : (
+    content
   )
 }

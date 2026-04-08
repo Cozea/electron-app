@@ -526,8 +526,8 @@ const legacyProjectRoute = createRoute({
   component: LegacyProjectRedirectPage,
 });
 
-const teamsMembersRoute = createRoute({
-  getParentRoute: () => rootRoute,
+const projectsTeamsMembersRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
   path: toRoutePath(WORKSPACE_MEMBERS_ROUTE),
   component: () => (
     <OrganizationWorkspacePermissionOnly surfaceId="members">
@@ -536,8 +536,8 @@ const teamsMembersRoute = createRoute({
   ),
 });
 
-const teamMemberDetailsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+const projectsTeamMemberDetailsRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
   path: "/teams/members/$memberId",
   component: () => (
     <OrganizationWorkspacePermissionOnly surfaceId="members">
@@ -546,8 +546,8 @@ const teamMemberDetailsRoute = createRoute({
   ),
 });
 
-const teamsRolesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+const projectsTeamsRolesRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
   path: toRoutePath(WORKSPACE_PERMISSIONS_ROUTE),
   component: () => (
     <OrganizationWorkspacePermissionOnly surfaceId="permissions">
@@ -556,14 +556,159 @@ const teamsRolesRoute = createRoute({
   ),
 });
 
-const workspacePoliciesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+const projectsWorkspacePoliciesRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
   path: toRoutePath(WORKSPACE_POLICIES_ROUTE),
   component: () => (
     <OrganizationWorkspacePermissionOnly surfaceId="policies">
       <Policies />
     </OrganizationWorkspacePermissionOnly>
   ),
+});
+
+const projectsPersonalGeneralRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_GENERAL_ROUTE),
+  component: General,
+});
+
+const projectsWorkspaceGeneralRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(WORKSPACE_GENERAL_ROUTE),
+  component: () => (
+    <OrganizationWorkspacePermissionOnly surfaceId="general">
+      <General />
+    </OrganizationWorkspacePermissionOnly>
+  ),
+});
+
+const projectsWorkspaceBillingRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(WORKSPACE_BILLING_ROUTE),
+  component: () => (
+    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_BILLING_ROUTE}>
+      <OrganizationWorkspacePermissionOnly surfaceId="billing" fallback="/projects">
+        <Billing />
+      </OrganizationWorkspacePermissionOnly>
+    </WorkspaceScopedSettingRoute>
+  ),
+});
+
+const projectsWorkspaceIntegrationsRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
+  component: () => (
+    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_INTEGRATIONS_ROUTE}>
+      <OrganizationWorkspacePermissionOnly surfaceId="cliTools">
+        <Integrations />
+      </OrganizationWorkspacePermissionOnly>
+    </WorkspaceScopedSettingRoute>
+  ),
+});
+
+const projectsPersonalIntegrationsRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE),
+  component: Integrations,
+});
+
+const projectsWorkspaceSourceControlRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(WORKSPACE_SOURCE_CONTROL_ROUTE),
+  component: () => (
+    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_SOURCE_CONTROL_ROUTE}>
+      <OrganizationWorkspacePermissionOnly surfaceId="sourceControl">
+        <SourceControl />
+      </OrganizationWorkspacePermissionOnly>
+    </WorkspaceScopedSettingRoute>
+  ),
+});
+
+const projectsPersonalSourceControlRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
+  component: SourceControl,
+});
+
+const projectsWorkspaceCloudStorageRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(WORKSPACE_CLOUD_STORAGE_ROUTE),
+  component: () => (
+    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_CLOUD_STORAGE_ROUTE}>
+      <OrganizationWorkspacePermissionOnly surfaceId="cloudStorage">
+        <Sync />
+      </OrganizationWorkspacePermissionOnly>
+    </WorkspaceScopedSettingRoute>
+  ),
+});
+
+const projectsPersonalCloudStorageRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_CLOUD_STORAGE_ROUTE),
+  component: Sync,
+});
+
+const projectsPersonalAccountRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
+  component: Account,
+});
+
+const projectsPersonalBillingRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_BILLING_ROUTE),
+  component: Billing,
+});
+
+const projectsPersonalAppearanceRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_APPEARANCE_ROUTE),
+  component: Appearance,
+});
+
+const projectsPersonalToolingRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_TOOLING_ROUTE),
+  component: Tooling,
+});
+
+const projectsPersonalStorageRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_STORAGE_ROUTE),
+  component: Storage,
+});
+
+const teamsMembersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: toRoutePath(WORKSPACE_MEMBERS_ROUTE),
+  component: () => <Navigate to={"/projects/teams" as never} replace />,
+});
+
+const teamMemberDetailsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/teams/members/$memberId",
+  component: () => {
+    const params = useParams({ strict: false }) as { memberId?: string };
+    return (
+      <Navigate
+        to="/projects/teams/members/$memberId"
+        params={{ memberId: params.memberId ?? "" }}
+        replace
+      />
+    );
+  },
+});
+
+const teamsRolesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: toRoutePath(WORKSPACE_PERMISSIONS_ROUTE),
+  component: () => <Navigate to={"/projects/teams/roles" as never} replace />,
+});
+
+const workspacePoliciesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: toRoutePath(WORKSPACE_POLICIES_ROUTE),
+  component: () => <Navigate to={"/projects/workspace/policies" as never} replace />,
 });
 
 const workspaceSelectRoute = createRoute({
@@ -581,113 +726,85 @@ const workspaceCreateRoute = createRoute({
 const personalGeneralRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_GENERAL_ROUTE),
-  component: General,
+  component: () => <Navigate to={"/projects/settings/general" as never} replace />,
 });
 
 const workspaceGeneralRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_GENERAL_ROUTE),
-  component: () => (
-    <OrganizationWorkspacePermissionOnly surfaceId="general">
-      <General />
-    </OrganizationWorkspacePermissionOnly>
-  ),
+  component: () => <Navigate to={"/projects/workspace/general" as never} replace />,
 });
 
 const workspaceBillingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_BILLING_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_BILLING_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="billing" fallback="/projects">
-        <Billing />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
+  component: () => <Navigate to={"/projects/workspace/billing" as never} replace />,
 });
 
 const workspaceIntegrationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_INTEGRATIONS_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="cliTools">
-        <Integrations />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
+  component: () => <Navigate to={"/projects/workspace/integrations" as never} replace />,
 });
 
 const personalIntegrationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE),
-  component: Integrations,
+  component: () => <Navigate to={"/projects/settings/cli-tools" as never} replace />,
 });
 
 const workspaceSourceControlRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_SOURCE_CONTROL_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_SOURCE_CONTROL_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="sourceControl">
-        <SourceControl />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
+  component: () => <Navigate to={"/projects/workspace/source-control" as never} replace />,
 });
 
 const personalSourceControlRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
-  component: SourceControl,
+  component: () => <Navigate to={"/projects/settings/source-control" as never} replace />,
 });
 
 const workspaceCloudStorageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_CLOUD_STORAGE_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_CLOUD_STORAGE_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="cloudStorage">
-        <Sync />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
+  component: () => <Navigate to={"/projects/workspace/sync" as never} replace />,
 });
 
 const personalCloudStorageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_CLOUD_STORAGE_ROUTE),
-  component: Sync,
+  component: () => <Navigate to={"/projects/settings/cloud-storage" as never} replace />,
 });
 
 const personalAccountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
-  component: Account,
+  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
 });
 
 const personalBillingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_BILLING_ROUTE),
-  component: Billing,
+  component: () => <Navigate to={"/projects/settings/billing" as never} replace />,
 });
 
 const personalAppearanceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_APPEARANCE_ROUTE),
-  component: Appearance,
+  component: () => <Navigate to={"/projects/settings/appearance" as never} replace />,
 });
 
 const personalToolingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_TOOLING_ROUTE),
-  component: Tooling,
+  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
 });
 
 const personalStorageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_STORAGE_ROUTE),
-  component: Storage,
+  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
 });
 
 const inviteRoute = createRoute({
@@ -721,6 +838,24 @@ export const routeTree = rootRoute.addChildren([
       projectSettingsTeamRoute,
       projectSettingsSectionRoute,
     ]),
+    projectsTeamsMembersRoute,
+    projectsTeamMemberDetailsRoute,
+    projectsTeamsRolesRoute,
+    projectsWorkspacePoliciesRoute,
+    projectsPersonalGeneralRoute,
+    projectsWorkspaceGeneralRoute,
+    projectsWorkspaceBillingRoute,
+    projectsWorkspaceIntegrationsRoute,
+    projectsPersonalIntegrationsRoute,
+    projectsWorkspaceSourceControlRoute,
+    projectsPersonalSourceControlRoute,
+    projectsWorkspaceCloudStorageRoute,
+    projectsPersonalCloudStorageRoute,
+    projectsPersonalAccountRoute,
+    projectsPersonalBillingRoute,
+    projectsPersonalAppearanceRoute,
+    projectsPersonalToolingRoute,
+    projectsPersonalStorageRoute,
   ]),
   legacyProjectRoute,
   teamsMembersRoute,
