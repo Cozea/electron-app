@@ -131,13 +131,6 @@ const SourceControl = createLazyRouteComponent(
     })),
   "Loading source control…",
 );
-const Sync = createLazyRouteComponent(
-  () =>
-    import("@/pages/workspace/Sync").then((module) => ({
-      default: module.Sync,
-    })),
-  "Loading cloud storage…",
-);
 const Account = createLazyRouteComponent(
   () =>
     import("@/pages/settings/Account").then((module) => ({
@@ -233,10 +226,6 @@ const PERSONAL_INTEGRATIONS_ROUTE =
 const LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE = "/workspace/source-control";
 const PERSONAL_SOURCE_CONTROL_ROUTE =
   getSettingsSurfaceRoute("sourceControl", "personal") ?? "/settings/source-control";
-const WORKSPACE_CLOUD_STORAGE_ROUTE =
-  getSettingsSurfaceRoute("cloudStorage", "workspace") ?? "/workspace/sync";
-const PERSONAL_CLOUD_STORAGE_ROUTE =
-  getSettingsSurfaceRoute("cloudStorage", "personal") ?? "/settings/cloud-storage";
 const PERSONAL_ACCOUNT_ROUTE =
   getSettingsSurfaceRoute("account", "personal") ?? "/settings/account";
 const PERSONAL_APPEARANCE_ROUTE =
@@ -624,22 +613,17 @@ const projectsPersonalSourceControlRoute = createRoute({
   component: SourceControl,
 });
 
-const projectsWorkspaceCloudStorageRoute = createRoute({
+/** Legacy cloud storage settings (removed); send users to workspace / personal general settings. */
+const projectsLegacyWorkspaceSyncRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_CLOUD_STORAGE_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_CLOUD_STORAGE_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="cloudStorage">
-        <Sync />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
+  path: "workspace/sync",
+  component: () => <Navigate to={"/projects/workspace/general" as never} replace />,
 });
 
-const projectsPersonalCloudStorageRoute = createRoute({
+const projectsLegacyPersonalCloudStorageRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(PERSONAL_CLOUD_STORAGE_ROUTE),
-  component: Sync,
+  path: "settings/cloud-storage",
+  component: () => <Navigate to={"/projects/settings/general" as never} replace />,
 });
 
 const projectsPersonalAccountRoute = createRoute({
@@ -759,16 +743,16 @@ const personalSourceControlRoute = createRoute({
   component: () => <Navigate to={"/projects/settings/source-control" as never} replace />,
 });
 
-const workspaceCloudStorageRoute = createRoute({
+const workspaceSyncLegacyRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_CLOUD_STORAGE_ROUTE),
-  component: () => <Navigate to={"/projects/workspace/sync" as never} replace />,
+  path: "workspace/sync",
+  component: () => <Navigate to={"/projects/workspace/general" as never} replace />,
 });
 
-const personalCloudStorageRoute = createRoute({
+const personalCloudStorageLegacyRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_CLOUD_STORAGE_ROUTE),
-  component: () => <Navigate to={"/projects/settings/cloud-storage" as never} replace />,
+  path: "settings/cloud-storage",
+  component: () => <Navigate to={"/projects/settings/general" as never} replace />,
 });
 
 const personalAccountRoute = createRoute({
@@ -843,8 +827,8 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalIntegrationsRoute,
     projectsWorkspaceSourceControlRoute,
     projectsPersonalSourceControlRoute,
-    projectsWorkspaceCloudStorageRoute,
-    projectsPersonalCloudStorageRoute,
+    projectsLegacyWorkspaceSyncRoute,
+    projectsLegacyPersonalCloudStorageRoute,
     projectsPersonalAccountRoute,
     projectsPersonalBillingRoute,
     projectsPersonalAppearanceRoute,
@@ -865,8 +849,8 @@ export const routeTree = rootRoute.addChildren([
   personalIntegrationsRoute,
   workspaceSourceControlRoute,
   personalSourceControlRoute,
-  workspaceCloudStorageRoute,
-  personalCloudStorageRoute,
+  workspaceSyncLegacyRoute,
+  personalCloudStorageLegacyRoute,
   personalAccountRoute,
   personalBillingRoute,
   personalAppearanceRoute,

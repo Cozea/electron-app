@@ -16,7 +16,6 @@ import type { NavMainItem } from "@/components/nav-main"
 import { useLocation } from "@/lib/router"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { resolveSettingsNavChrome } from "@/lib/workspaces/settingsRoutes"
-import { prewarmCloudStorageData } from "@/hooks/useScopedCloudStorageData"
 import {
   canAccessWorkspaceSurface,
   comparePersonalContextUnifiedSettingsSidebar,
@@ -39,7 +38,6 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
   const location = useLocation()
   const {
     workspaceScoped: organizationWorkspaceSelected,
-    convexOrganizationId,
     surfaceAccess,
   } = useScopedAppContext()
   const settingsNavChrome = resolveSettingsNavChrome(location.pathname, organizationWorkspaceSelected)
@@ -53,24 +51,6 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
       },
     ],
     []
-  )
-
-  const getSurfacePreload = React.useCallback(
-    (
-      surface: ReturnType<typeof listSettingsSurfaces>[number]
-    ): (() => Promise<unknown>) | undefined => {
-      if (surface.id === 'cloudStorage') {
-        return async () => {
-          await Promise.all([
-            surface.preload?.(),
-            prewarmCloudStorageData(convexOrganizationId ?? null),
-          ])
-        }
-      }
-
-      return surface.preload
-    },
-    [convexOrganizationId]
   )
 
   const teamItems = organizationWorkspaceSelected
@@ -89,7 +69,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
               url: surface.routes.workspace!,
               icon: surface.icon,
               alpha: surface.alpha,
-              preload: getSurfacePreload(surface),
+              preload: surface.preload,
             }) satisfies NavMainItem
         )
     : []
@@ -109,10 +89,10 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
             url: surface.routes.workspace!,
             icon: surface.icon,
             alpha: surface.alpha,
-            preload: getSurfacePreload(surface),
+            preload: surface.preload,
           }) satisfies NavMainItem,
       )
-  }, [getSurfacePreload, organizationWorkspaceSelected, surfaceAccess])
+  }, [organizationWorkspaceSelected, surfaceAccess])
 
   const orgPersonalDeviceItems = React.useMemo(() => {
     if (!organizationWorkspaceSelected) return []
@@ -129,10 +109,10 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
             url: surface.routes.personal!,
             icon: surface.icon,
             alpha: surface.alpha,
-            preload: getSurfacePreload(surface),
+            preload: surface.preload,
           }) satisfies NavMainItem,
       )
-  }, [getSurfacePreload, organizationWorkspaceSelected])
+  }, [organizationWorkspaceSelected])
 
   /** Personal workspace: one list — everything is user settings from the product perspective */
   const personalWorkspaceAllSettingsItems = React.useMemo(() => {
@@ -162,10 +142,10 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
           url: surface.routes.personal!,
           icon: surface.icon,
           alpha: surface.alpha,
-          preload: getSurfacePreload(surface),
+          preload: surface.preload,
         }) satisfies NavMainItem,
     )
-  }, [getSurfacePreload, organizationWorkspaceSelected])
+  }, [organizationWorkspaceSelected])
 
   return (
     <Sidebar

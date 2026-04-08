@@ -25,7 +25,6 @@ import {
   buildEffectiveOrganizationPermissions,
   ensureAdministrativeWorkspaceAccessAfterMembershipChange,
   ensureAdministrativeWorkspaceAccessAfterRoleUpdate,
-  estimateSnapshotBytes,
   getCanonicalOrgMembership,
   getCompatibleRoleIdForBaseRole,
   normalizeEmail,
@@ -42,17 +41,9 @@ import {
   sanitizePermissionOverrides,
 } from "./lib/organizationAccess"
 import { checkSeatLimit } from "./lib/seatLimits"
-import { getOrganizationPlanLabel } from "./lib/planNames"
 import {
-  applyProjectStorageDeltas,
-  checkProjectLimit,
-  checkStorageUsage,
   calculateStorageTotal,
   emptyBreakdown,
-  estimateAiConversationBytes,
-  estimateBuilderRunBytes,
-  getPlanStorageLimitGB,
-  formatBytes,
   rebuildOrganizationStorageUsageFromProjectAggregates,
   syncProjectStorageUsage,
   syncProjectStorageUsageFromSource,
@@ -1563,69 +1554,6 @@ export const getSeatStatus = query({
   },
 })
 
-// Get usage limits and current usage for an organization
-// Used by Settings and Sync pages to display usage information
-export const getUsageLimits = query({
-  args: { orgId: v.id("organizations") },
-  handler: async (ctx, args) => {
-    const org = await ctx.db.get(args.orgId)
-    if (!org) return null
-
-    const billingSnapshot = await resolveOrganizationBillingSnapshot(ctx, {
-      organization: org,
-    })
-    const plan = billingSnapshot.plan
-    const planDisplayName = getOrganizationPlanLabel(plan)
-
-    // Get all limits
-    const projectStatus = await checkProjectLimit(ctx, args.orgId)
-    const storageStatus = await checkStorageUsage(ctx, args.orgId)
-    const seatStatus = await checkSeatLimit(ctx, args.orgId)
-
-    return {
-      plan,
-      planDisplayName,
-
-      // Project limits
-      projects: {
-        current: projectStatus.current,
-        limit: projectStatus.limit,
-        isUnlimited: projectStatus.isUnlimited,
-        allowed: projectStatus.allowed,
-        message: projectStatus.message,
-      },
-
-      // Storage limits
-      storage: {
-        currentBytes: storageStatus.currentBytes,
-        limitBytes: storageStatus.limitBytes,
-        currentFormatted: formatBytes(storageStatus.currentBytes),
-        limitFormatted: storageStatus.isUnlimited
-          ? "Unlimited"
-          : formatBytes(storageStatus.limitBytes),
-        limitGB: getPlanStorageLimitGB(plan),
-        usagePercent: storageStatus.usagePercent,
-        isUnlimited: storageStatus.isUnlimited,
-        allowed: storageStatus.allowed,
-        breakdown: storageStatus.breakdown,
-        message: storageStatus.message,
-      },
-
-      // Seat limits (existing)
-      seats: {
-        current: seatStatus.current,
-        limit: seatStatus.limit,
-        isUnlimited: seatStatus.limit === -1,
-        allowed: seatStatus.allowed,
-        message: seatStatus.message,
-      },
-
-      // When storage was last calculated
-      storageLastCalculated: org.storageUsage?.lastCalculatedAt,
-    }
-  },
-})
-
 // Recalculate storage usage for an organization
 // Called by cron job or after significant storage operations
 export const recalculateStorageUsage = internalMutation({
@@ -1736,125 +1664,5 @@ export const recalculateStorageUsageAll = internalMutation({
       isDone: page.isDone,
       continueCursor: page.isDone ? null : page.continueCursor,
     }
-  },
-})
-
-// Clear a specific storage category for an organization
-// Deletes all data in that category across all projects
-export const clearStorageCategory = mutation({
-  args: {
-    orgId: v.id("organizations"),
-    userId: v.id("users"),
-    category: v.union(
-      v.literal("collaborationData"),
-      v.literal("aiHistory"),
-      v.literal("buildCache"),
-      v.literal("snapshots"),
-      v.literal("databaseBackups")
-    ),
-  },
-  handler: async (ctx, args) => {
-    const { allowed } = await requireOrganizationPermission(
-      ctx,
-      args.orgId,
-      args.userId,
-      "settings:update"
-    )
-
-    if (!allowed) {
-      throw new Error("Unauthorized to clear storage")
-    }
-
-    // Get all projects for this organization
-    const projects = await ctx.db
-      .query("projects")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
-      .collect()
-
-    const projectIds = projects.map((p) => p._id)
-    let deletedCount = 0
-
-    for (const projectId of projectIds) {
-      let deletedBytes = 0
-      switch (args.category) {
-        case "collaborationData": {
-          // Clear yjsUpdates
-          const updates = await ctx.db
-            .query("yjsUpdates")
-            .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
-            .collect()
-          for (const update of updates) {
-            deletedBytes += update.update?.byteLength ?? 0
-            await ctx.db.delete(update._id)
-            deletedCount++
-          }
-          break
-        }
-        case "aiHistory": {
-          // Clear aiConversations
-          const conversations = await ctx.db
-            .query("aiConversations")
-            .withIndex("by_project", (q) => q.eq("projectId", projectId))
-            .collect()
-          for (const conv of conversations) {
-            deletedBytes += estimateAiConversationBytes({
-              title: conv.title,
-              messages: conv.messages,
-            })
-            await ctx.db.delete(conv._id)
-            deletedCount++
-          }
-          break
-        }
-        case "buildCache": {
-          // Clear builderRuns
-          const runs = await ctx.db
-            .query("builderRuns")
-            .withIndex("by_project", (q) => q.eq("projectId", projectId))
-            .collect()
-          for (const run of runs) {
-            deletedBytes += estimateBuilderRunBytes(run)
-            await ctx.db.delete(run._id)
-            deletedCount++
-          }
-          break
-        }
-        case "snapshots": {
-          // Clear yjsDocuments
-          const snapshots = await ctx.db
-            .query("yjsDocuments")
-            .withIndex("by_project", (q) => q.eq("projectId", projectId))
-            .collect()
-          for (const snapshot of snapshots) {
-            deletedBytes += estimateSnapshotBytes(snapshot)
-            await ctx.db.delete(snapshot._id)
-            deletedCount++
-          }
-          break
-        }
-        case "databaseBackups": {
-          // Reserved - no action yet
-          break
-        }
-      }
-      if (deletedBytes > 0) {
-        await applyProjectStorageDeltas(ctx, args.orgId, projectId, {
-          [args.category]: -deletedBytes,
-        })
-      }
-    }
-
-    // Audit log
-    await ctx.db.insert("auditLogs", {
-      organizationId: args.orgId,
-      userId: args.userId,
-      action: "storage.cleared",
-      resourceType: "organization",
-      resourceId: args.orgId,
-      metadata: { category: args.category, deletedCount },
-      timestamp: Date.now(),
-    })
-
-    return { success: true, deletedCount }
   },
 })

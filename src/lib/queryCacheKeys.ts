@@ -26,12 +26,6 @@ export function getUsageSummaryCacheKey(
   return `usage-summary-${organizationId ?? 'none'}-${period}`
 }
 
-export function getUsageLimitsCacheKey(
-  organizationId?: string | null
-): string {
-  return `usage-limits-${organizationId ?? 'none'}`
-}
-
 export function getAiUsageHistoryCacheKey(
   kind: 'daily' | 'detailed',
   organizationId?: string | null,
