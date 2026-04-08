@@ -12,7 +12,6 @@ export type WorkspaceSurfaceAccessKey =
   | "billing"
   | "settings"
   | "integrations"
-  | "usage"
 
 export type SettingsSurfaceId =
   | "account"
@@ -26,7 +25,6 @@ export type SettingsSurfaceId =
   | "policies"
   | "members"
   | "permissions"
-  | "cloudStorage"
 
 export interface SettingsSurfaceDefinition {
   id: SettingsSurfaceId

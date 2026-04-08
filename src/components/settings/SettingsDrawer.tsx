@@ -11,7 +11,6 @@ import { Tooling } from '@/pages/settings/Tooling'
 import { General } from '@/pages/workspace/General'
 import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
-import { Sync } from '@/pages/workspace/Sync'
 import { Policies } from '@/pages/workspace/Policies'
 import { Members } from '@/pages/teams/Members'
 import { MemberDetailsContent } from '@/pages/teams/MemberDetails'
@@ -19,7 +18,6 @@ import { Roles } from '@/pages/teams/Roles'
 import { Billing } from '@/pages/workspace/Billing'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 
-import { prewarmCloudStorageData } from '@/hooks/useScopedCloudStorageData'
 import {
   canAccessWorkspaceSurface,
   comparePersonalContextUnifiedSettingsSidebar,
@@ -66,10 +64,6 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 
   if (section === 'sourceControl') {
     return <SourceControl surface="drawer" route={route} />
-  }
-
-  if (section === 'cloudStorage') {
-    return <Sync surface="drawer" route={route} />
   }
 
   if (section === 'policies') {
@@ -121,7 +115,6 @@ export function SettingsDrawer() {
   const {
     workspaceScoped,
     personalScoped,
-    convexOrganizationId,
     surfaceAccess,
   } = useScopedAppContext({
     route: routePath || '/settings/account',
@@ -188,24 +181,6 @@ export function SettingsDrawer() {
       preloadedRoutesRef.current.delete(route)
     })
   }, [])
-
-  const getSurfacePreload = useCallback(
-    (
-      surface: ReturnType<typeof listSettingsSurfaces>[number]
-    ): (() => Promise<unknown>) | undefined => {
-      if (surface.id === 'cloudStorage') {
-        return async () => {
-          await Promise.all([
-            surface.preload?.(),
-            prewarmCloudStorageData(convexOrganizationId ?? null),
-          ])
-        }
-      }
-
-      return surface.preload
-    },
-    [convexOrganizationId]
-  )
 
   useEffect(() => {
     const updateFades = (
@@ -312,9 +287,9 @@ export function SettingsDrawer() {
                             key={itemRoute}
                             type="button"
                             onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
+                            onFocus={() => preloadSurface(itemRoute, item.preload)}
+                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
                             className={cn(
                               SETTINGS_DRAWER_NAV_ROW_CLASS,
                               isActive && SIDEBAR_PILL_ACTIVE_CLASS,
@@ -348,9 +323,9 @@ export function SettingsDrawer() {
                             key={itemRoute}
                             type="button"
                             onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
+                            onFocus={() => preloadSurface(itemRoute, item.preload)}
+                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
                             className={cn(
                               SETTINGS_DRAWER_NAV_ROW_CLASS,
                               isActive && SIDEBAR_PILL_ACTIVE_CLASS,
@@ -384,9 +359,9 @@ export function SettingsDrawer() {
                             key={itemRoute}
                             type="button"
                             onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
+                            onFocus={() => preloadSurface(itemRoute, item.preload)}
+                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
                             className={cn(
                               SETTINGS_DRAWER_NAV_ROW_CLASS,
                               isActive && SIDEBAR_PILL_ACTIVE_CLASS,
@@ -420,9 +395,9 @@ export function SettingsDrawer() {
                             key={itemRoute}
                             type="button"
                             onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                            onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
+                            onFocus={() => preloadSurface(itemRoute, item.preload)}
+                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
                             className={cn(
                               SETTINGS_DRAWER_NAV_ROW_CLASS,
                               isActive && SIDEBAR_PILL_ACTIVE_CLASS,
@@ -454,9 +429,9 @@ export function SettingsDrawer() {
                                 key={itemRoute}
                                 type="button"
                                 onClick={() => openFromRoute(itemRoute)}
-                                onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                                onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                                onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                                onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
+                                onFocus={() => preloadSurface(itemRoute, item.preload)}
+                                onPointerDown={() => preloadSurface(itemRoute, item.preload)}
                                 className={cn(
                                   SETTINGS_DRAWER_NAV_ROW_CLASS,
                                   isActive && SIDEBAR_PILL_ACTIVE_CLASS,

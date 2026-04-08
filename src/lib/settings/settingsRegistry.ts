@@ -1,5 +1,4 @@
 import {
-  Cloud,
   CreditCard,
   FileText,
   FolderGit2,
@@ -28,7 +27,6 @@ const WORKSPACE_SCOPED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>>
   general: 0,
   billing: 1,
   cliTools: 2,
-  cloudStorage: 3,
 }
 
 /** User + this device (personal routes; shown under “Personal” when org workspace is active) */
@@ -47,9 +45,8 @@ const PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, 
   sourceControl: 2,
   appearance: 3,
   cliTools: 4,
-  cloudStorage: 5,
-  storage: 6,
-  tooling: 7,
+  storage: 5,
+  tooling: 6,
 }
 
 export function compareWorkspaceScopedSidebarSurfaces(
@@ -98,7 +95,6 @@ const preloadToolingPage = async () => {
 }
 const preloadPoliciesPage = () => import("@/pages/workspace/Policies")
 const preloadMembersPage = () => import("@/pages/teams/Members")
-const preloadCloudStoragePage = () => import("@/pages/workspace/Sync")
 const preloadPermissionsPage = () => import("@/pages/teams/Roles")
 
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
@@ -232,19 +228,6 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     alpha: true,
     preload: preloadPermissionsPage,
     commandKeywords: ["permissions", "roles", "iam", "access"],
-  },
-  {
-    id: "cloudStorage",
-    label: "Cloud Storage",
-    icon: Cloud,
-    routes: { personal: "/settings/cloud-storage", workspace: "/workspace/sync" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "usage",
-    alpha: true,
-    preload: preloadCloudStoragePage,
-    commandKeywords: ["cloud storage", "sync", "usage", "storage"],
   },
 ] as const
 
@@ -380,8 +363,6 @@ export function canAccessWorkspaceSurface(
       return access.canViewWorkspaceSettings
     case "integrations":
       return access.canViewWorkspaceIntegrations
-    case "usage":
-      return access.canViewWorkspaceUsage || access.canManageWorkspaceBilling
     default:
       return true
   }

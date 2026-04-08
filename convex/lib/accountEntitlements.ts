@@ -71,7 +71,6 @@ export interface AccountEntitlement {
   trialActive: boolean
   hasPaidSeat: boolean
   canUseAi: boolean
-  canUseSync: boolean
   seatCounts: {
     total: number
     assigned: number
@@ -350,7 +349,6 @@ function buildSeatEntitlement(args: {
     trialActive: args.trialActive,
     hasPaidSeat,
     canUseAi: hasPaidSeat,
-    canUseSync: hasPaidSeat,
     seatCounts: {
       total: args.totalSeats,
       assigned: effectiveAssigned,
@@ -394,7 +392,6 @@ function buildIndividualEntitlement(args: {
     trialActive: args.trialActive,
     hasPaidSeat: false,
     canUseAi: args.allowAccess,
-    canUseSync: args.allowAccess,
     seatCounts: {
       total: 0,
       assigned: 0,
@@ -618,7 +615,6 @@ export async function resolveAccountEntitlementForOrganization(
           trialActive: false,
           hasPaidSeat: false,
           canUseAi: false,
-          canUseSync: false,
           seatCounts: {
             total: 0,
             assigned: 0,
@@ -671,7 +667,6 @@ export async function resolveAccountEntitlementForOrganization(
       trialActive: false,
       hasPaidSeat: false,
       canUseAi: false,
-      canUseSync: false,
       seatCounts: {
         total: 0,
         assigned: assignments.length,
@@ -737,7 +732,6 @@ export async function resolveAccountEntitlementForOrganization(
         trialActive: organization.subscription.status === "trialing",
         hasPaidSeat: legacyEntitled,
         canUseAi: legacyEntitled,
-        canUseSync: legacyEntitled,
         seatCounts: {
           total: legacySeatCount,
           assigned: memberCount,
@@ -766,7 +760,6 @@ export async function resolveAccountEntitlementForOrganization(
         trialActive: organization.subscription.status === "trialing",
         hasPaidSeat: false,
         canUseAi: legacyEntitled,
-        canUseSync: legacyEntitled,
         seatCounts: {
           total: 0,
           assigned: 0,
@@ -794,7 +787,6 @@ export async function resolveAccountEntitlementForOrganization(
     trialActive: false,
     hasPaidSeat: false,
     canUseAi: false,
-    canUseSync: false,
     seatCounts: {
       total: 0,
       assigned: 0,

@@ -910,20 +910,6 @@ export default defineSchema({
       })
     ),
 
-    // Cloud storage for org-wide access
-    cloudStorage: v.optional(
-      v.object({
-        provider: v.string(), // "crozcode" | "s3" | "gcs" | "azure"
-        bucket: v.optional(v.string()),
-        key: v.string(), // path/key within storage
-        uploadedAt: v.optional(v.number()),
-        uploadedBy: v.optional(v.id("users")),
-        version: v.number(), // for diff checking
-        checksum: v.optional(v.string()), // for integrity verification
-        sizeBytes: v.optional(v.number()),
-      })
-    ),
-
     // Sync status between local and cloud
     syncStatus: v.optional(
       v.union(
