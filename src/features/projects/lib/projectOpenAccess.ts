@@ -33,10 +33,7 @@ async function promptForMissingProjectSourceControl(args: {
     return "later";
   }
 
-  const settingsRoute =
-    args.settingsScope === "workspace"
-      ? "/workspace/source-control"
-      : "/settings/source-control";
+  const settingsRoute = "/settings/source-control";
   const openResult = await projectOpenDesktopClient.openSettings(settingsRoute);
   if (!openResult?.success) {
     throw new Error(openResult?.error || "Failed to open Source Control settings");

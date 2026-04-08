@@ -245,7 +245,7 @@ export function ProjectTeamPage() {
       : 'skip'
   )
   const { getConnection } = useWorkspaceSourceControl({
-    route: isPersonalWorkspace ? '/settings/source-control' : '/workspace/source-control',
+    route: '/settings/source-control',
     enabled: Boolean(project?.organizationId && convexUserId),
   })
   const repoIntegrationProvider = resolveProjectIntegrationProvider(project ?? null)
@@ -710,7 +710,7 @@ export function ProjectTeamPage() {
                 variant="secondary"
                 className="rounded-xl"
                 onClick={() => {
-                  navigate(isPersonalWorkspace ? '/settings/source-control' : '/workspace/source-control')
+                  navigate('/settings/source-control')
                 }}
               >
                 {repoAccessStatus.state === 'integration_mismatch' ? 'Fix Source Control' : 'Connect Source Control'}

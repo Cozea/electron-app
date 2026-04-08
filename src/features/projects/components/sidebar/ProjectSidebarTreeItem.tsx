@@ -14,6 +14,7 @@ import {
   resolveProjectCollabBranch,
   areSidebarProjectItemsEqual,
   SIDEBAR_PILL_ACTIVE_CLASS,
+  SIDEBAR_PILL_HOVER_CLASS,
   type SidebarProjectTreeItemProps,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import {
@@ -184,7 +185,8 @@ export const ProjectSidebarTreeItem = React.memo(
       <Collapsible open={selection.isExpanded}>
         <div
           className={cn(
-            "group/project-item flex items-center gap-1 rounded-md px-2 py-0 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
+            "group/project-item flex min-h-8 items-center gap-2 rounded-md px-2 text-sidebar-foreground/70",
+            SIDEBAR_PILL_HOVER_CLASS,
             selection.activeSelectionLevel === "project" && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
         >
@@ -192,7 +194,7 @@ export const ProjectSidebarTreeItem = React.memo(
             role="button"
             tabIndex={0}
             className={cn(
-              "group flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md",
+              "group flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             )}
             onClick={() => {
               void actions.openProject(project, localPath ?? project.localPath)
@@ -205,8 +207,8 @@ export const ProjectSidebarTreeItem = React.memo(
             }}
           >
             <ProjectFavicon cwd={projectIconPath} />
-            <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
-              <span className="min-w-0 truncate text-xs font-normal">{project.name}</span>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+              <span className="min-w-0 truncate">{project.name}</span>
               <button
                 type="button"
                 className="ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm"

@@ -229,8 +229,8 @@ const WORKSPACE_INTEGRATIONS_ROUTE =
   getSettingsSurfaceRoute("cliTools", "workspace") ?? "/workspace/integrations";
 const PERSONAL_INTEGRATIONS_ROUTE =
   getSettingsSurfaceRoute("cliTools", "personal") ?? "/settings/cli-tools";
-const WORKSPACE_SOURCE_CONTROL_ROUTE =
-  getSettingsSurfaceRoute("sourceControl", "workspace") ?? "/workspace/source-control";
+/** Legacy URL only; source control is user-scoped and lives under `/settings/source-control`. */
+const LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE = "/workspace/source-control";
 const PERSONAL_SOURCE_CONTROL_ROUTE =
   getSettingsSurfaceRoute("sourceControl", "personal") ?? "/settings/source-control";
 const WORKSPACE_CLOUD_STORAGE_ROUTE =
@@ -614,14 +614,8 @@ const projectsPersonalIntegrationsRoute = createRoute({
 
 const projectsWorkspaceSourceControlRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_SOURCE_CONTROL_ROUTE),
-  component: () => (
-    <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_SOURCE_CONTROL_ROUTE}>
-      <OrganizationWorkspacePermissionOnly surfaceId="sourceControl">
-        <SourceControl />
-      </OrganizationWorkspacePermissionOnly>
-    </WorkspaceScopedSettingRoute>
-  ),
+  path: toRoutePath(LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE),
+  component: () => <Navigate to={"/projects/settings/source-control" as never} replace />,
 });
 
 const projectsPersonalSourceControlRoute = createRoute({
@@ -755,8 +749,8 @@ const personalIntegrationsRoute = createRoute({
 
 const workspaceSourceControlRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to={"/projects/workspace/source-control" as never} replace />,
+  path: toRoutePath(LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE),
+  component: () => <Navigate to={"/projects/settings/source-control" as never} replace />,
 });
 
 const personalSourceControlRoute = createRoute({

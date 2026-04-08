@@ -48,8 +48,7 @@ export function formatProjectCloudAccessError(
     getSettingsSurfaceRoute('billing', options.workspaceScoped ? 'workspace' : 'personal') ??
     '/settings/billing'
   const sourceControlHref =
-    getSettingsSurfaceRoute('sourceControl', options.workspaceScoped ? 'workspace' : 'personal') ??
-    (options.workspaceScoped ? '/workspace/source-control' : '/settings/source-control')
+    getSettingsSurfaceRoute('sourceControl', 'personal') ?? '/settings/source-control'
 
   if (lower.includes('not a member of this project')) {
     return {

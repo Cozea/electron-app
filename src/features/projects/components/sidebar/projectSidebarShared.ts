@@ -5,11 +5,47 @@ import type {
 } from "@shared/electronApiTypes"
 
 import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenGitSync"
+import { cn } from "@/lib/utils"
+
+/** Use on `<button>`/rows; pair with `SIDEBAR_PILL_ACTIVE_CLASS` when selected */
+export const SIDEBAR_PILL_HOVER_CLASS =
+  "transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
 
 export const SIDEBAR_PILL_BASE_CLASS =
-  "rounded-md px-2 text-xs transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+  `${SIDEBAR_PILL_HOVER_CLASS} rounded-md px-2 text-xs font-normal`
+
 export const SIDEBAR_PILL_ACTIVE_CLASS =
   "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]"
+
+/** Section titles (Projects, Workspace, …) — one style everywhere */
+export const SIDEBAR_GROUP_LABEL_CLASS =
+  "px-2 text-[14px] font-medium tracking-[-0.01em] text-muted-foreground/70"
+
+/**
+ * Primary nav row: same height, gap, label + icon color rules as `SidebarMenuButton variant="pill"`.
+ * Inactive: label `text-sidebar-foreground/70`, icons `muted-foreground/75`. Active: pill fg via `SIDEBAR_PILL_ACTIVE_CLASS`.
+ */
+export const SIDEBAR_NAV_ROW_LAYOUT_CLASS = "flex h-8 min-h-8 w-full items-center gap-2 text-left"
+export const SIDEBAR_NAV_ROW_TEXT_CLASS =
+  "text-xs font-normal text-sidebar-foreground/70 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground/75"
+
+export const SIDEBAR_NAV_ROW_BUTTON_CLASS = cn(
+  SIDEBAR_PILL_BASE_CLASS,
+  SIDEBAR_NAV_ROW_LAYOUT_CLASS,
+  SIDEBAR_NAV_ROW_TEXT_CLASS,
+)
+
+/** Settings sheet drawer: same pill hover/active as project list + focus ring + label truncation */
+export const SETTINGS_DRAWER_NAV_ROW_CLASS = cn(
+  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+  "overflow-hidden outline-hidden ring-sidebar-ring focus-visible:ring-2 [&>span:last-child]:truncate",
+)
+
+/** Nested rows (lane / tile under a project): same h-8 + typography as primary nav */
+export const SIDEBAR_PILL_NESTED_ROW_CLASS = cn(
+  SIDEBAR_PILL_HOVER_CLASS,
+  "flex h-8 min-h-8 w-full items-center rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground/70 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground/75",
+)
 
 export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   id: string

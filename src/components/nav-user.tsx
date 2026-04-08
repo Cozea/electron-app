@@ -147,7 +147,7 @@ export function NavUser({
       items.push({ id: "separator-middle", label: "", type: "separator" })
       items.push({
         id: "account-settings",
-        label: "Settings",
+        label: "User settings",
       })
       items.push({
         id: "theme-group",

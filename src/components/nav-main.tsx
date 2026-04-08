@@ -8,6 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { SIDEBAR_GROUP_LABEL_CLASS } from "@/features/projects/components/sidebar/projectSidebarShared"
 import { Badge } from "@/components/ui/badge"
 import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
 
@@ -76,13 +77,15 @@ export const NavMain = memo(function NavMain({
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>{label}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.title}>
             <SidebarMenuButton
+              variant="pill"
               tooltip={item.title}
               isActive={isItemActive(item)}
+              className="h-8 min-h-8 justify-start"
               asChild
             >
               <Link
@@ -92,8 +95,8 @@ export const NavMain = memo(function NavMain({
                 onFocus={() => preloadItem(item)}
                 onPointerDown={() => preloadItem(item)}
               >
-                {item.icon && <item.icon className="transition-opacity group-data-[active=true]:opacity-100 opacity-70 shrink-0" />}
-                <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                {item.icon && <item.icon className="shrink-0" />}
+                <span className="group-data-[collapsible=icon]:hidden truncate">{item.title}</span>
                 {item.alpha && (
                   <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal group-data-[collapsible=icon]:hidden">
                     alpha

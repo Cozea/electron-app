@@ -1,15 +1,29 @@
-import { useState, useEffect } from 'react'
-import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useMutation } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
-import { WorkspaceIdentityPicker } from '@/components/workspaces/WorkspaceIdentityPicker'
-import { useScopedGeneralData } from '@/hooks/useScopedGeneralData'
-import { useAuth } from '@/contexts/AuthContext'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
-import { Button } from '../../components/ui/button'
-import { Input } from '../../components/ui/input'
-import { Label } from '../../components/ui/label'
+import { useState, useEffect } from "react";
+import { useViewTransitionNavigate } from "@/lib/navigation";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { WorkspaceAccessNotice } from "@/components/workspaces/WorkspaceAccessNotice";
+import { WorkspaceIdentityPicker } from "@/components/workspaces/WorkspaceIdentityPicker";
+import {
+  SettingsDangerGroup,
+  SettingsFooterActions,
+  SettingsGroup,
+  SettingsGroupError,
+  SettingsGroupSuccess,
+  SettingsPageBody,
+  SettingsRow,
+  SettingsRowControl,
+  SettingsRowLabel,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+  settingsInlineInputClass,
+  settingsInlineInputWidth,
+} from "@/components/settings/SettingsChrome";
+import { useScopedGeneralData } from "@/hooks/useScopedGeneralData";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -18,21 +32,19 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '../../components/ui/dialog'
-import { AlertTriangle, Trash2, Loader2, Check, X } from 'lucide-react'
-import {
-  sanitizeWorkspaceIdentityInput,
-  type WorkspaceIdentityInput,
-} from '@shared/workspaceIdentity.ts'
+} from "../../components/ui/dialog";
+import { AlertTriangle, Trash2, Loader2, Check, X } from "lucide-react";
+import { sanitizeWorkspaceIdentityInput, type WorkspaceIdentityInput } from "@shared/workspaceIdentity.ts";
+import { cn } from "@/lib/utils";
 
 interface GeneralProps {
-  surface?: 'page' | 'drawer'
-  route?: string
+  surface?: "page" | "drawer";
+  route?: string;
 }
 
-export function General({ surface = 'page', route }: GeneralProps = {}) {
-  const navigate = useViewTransitionNavigate()
-  const { logout } = useAuth()
+export function General({ surface = "page", route }: GeneralProps = {}) {
+  const navigate = useViewTransitionNavigate();
+  const { logout } = useAuth();
   const {
     settingsPage,
     convexUserId,
@@ -42,136 +54,117 @@ export function General({ surface = 'page', route }: GeneralProps = {}) {
     updateWorkosOrganization,
     deleteWorkosOrganization,
     isLoading,
-  } = useScopedGeneralData({ route })
+  } = useScopedGeneralData({ route });
 
-  // Form state
-  const [workspaceName, setWorkspaceName] = useState('')
-  const [workspaceSlug, setWorkspaceSlug] = useState('')
-  const [workspaceIdentity, setWorkspaceIdentity] = useState<WorkspaceIdentityInput>({})
-  const [deleteConfirmName, setDeleteConfirmName] = useState('')
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [workspaceSlug, setWorkspaceSlug] = useState("");
+  const [workspaceIdentity, setWorkspaceIdentity] = useState<WorkspaceIdentityInput>({});
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // UI state
-  const [isSaving, setIsSaving] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Mutations
-  const updateOrganization = useMutation(api.organizations.updateOrganization)
-  const deleteOrganization = useMutation(api.organizations.deleteOrganization)
+  const updateOrganization = useMutation(api.organizations.updateOrganization);
+  const deleteOrganization = useMutation(api.organizations.deleteOrganization);
 
-  // Initialize form with org data
-  const [isFormInitialized, setIsFormInitialized] = useState(false)
+  const [isFormInitialized, setIsFormInitialized] = useState(false);
 
-  // Initialize form with org data - only once to prevent overwriting user edits and flashing
   useEffect(() => {
     if (convexOrg && !isFormInitialized) {
-      setWorkspaceName(convexOrg.name)
-      setWorkspaceSlug(convexOrg.slug)
+      setWorkspaceName(convexOrg.name);
+      setWorkspaceSlug(convexOrg.slug);
       setWorkspaceIdentity(
         sanitizeWorkspaceIdentityInput({
           iconKey: convexOrg.iconKey,
           iconColor: convexOrg.iconColor,
-        })
-      )
-      setIsFormInitialized(true)
+        }),
+      );
+      setIsFormInitialized(true);
     }
-  }, [convexOrg, isFormInitialized])
+  }, [convexOrg, isFormInitialized]);
 
-  // Clear success message after 3 seconds
   useEffect(() => {
     if (saveSuccess) {
-      const timer = setTimeout(() => setSaveSuccess(false), 3000)
-      return () => clearTimeout(timer)
+      const timer = setTimeout(() => setSaveSuccess(false), 3000);
+      return () => clearTimeout(timer);
     }
-  }, [saveSuccess])
+  }, [saveSuccess]);
 
   const handleSave = async () => {
-    if (!convexOrg || !convexUserId || !canManageGeneral) return
+    if (!convexOrg || !convexUserId || !canManageGeneral) return;
 
-    setIsSaving(true)
-    setSaveError(null)
-    setSaveSuccess(false)
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
 
     try {
-      const isWorkspaceScoped = settingsPage.workspaceScoped
+      const isWorkspaceScoped = settingsPage.workspaceScoped;
 
-      // Update WorkOS first if name changed (WorkOS is source of truth for shared workspace names)
       if (isWorkspaceScoped && workspaceOrganizationId && workspaceName !== convexOrg.name) {
-        const workosResult = await updateWorkosOrganization(
-          workspaceOrganizationId,
-          workspaceName
-        )
+        const workosResult = await updateWorkosOrganization(workspaceOrganizationId, workspaceName);
         if (!workosResult) {
-          throw new Error('Failed to update organization in WorkOS')
+          throw new Error("Failed to update organization in WorkOS");
         }
       }
 
-      // Then update Convex for name, slug, and identity.
       await updateOrganization({
         orgId: convexOrg._id,
         userId: convexUserId,
         name: workspaceName,
         slug: isWorkspaceScoped ? workspaceSlug : undefined,
         iconKey: workspaceIdentity.iconKey ?? null,
-        iconColor: workspaceIdentity.iconKey
-          ? workspaceIdentity.iconColor ?? null
-          : null,
-      })
-      setSaveSuccess(true)
+        iconColor: workspaceIdentity.iconKey ? (workspaceIdentity.iconColor ?? null) : null,
+      });
+      setSaveSuccess(true);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Failed to save changes')
+      setSaveError(error instanceof Error ? error.message : "Failed to save changes");
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
 
   const handleDelete = async () => {
-    if (!convexOrg || !convexUserId || !workspaceOrganizationId || !canManageGeneral) return
+    if (!convexOrg || !convexUserId || !workspaceOrganizationId || !canManageGeneral) return;
 
-    setIsDeleting(true)
-    setDeleteError(null)
+    setIsDeleting(true);
+    setDeleteError(null);
 
     try {
-      // Verify name matches before proceeding
       if (deleteConfirmName !== convexOrg.name) {
-        throw new Error('Workspace name does not match')
+        throw new Error("Workspace name does not match");
       }
 
-      // Delete from WorkOS first (source of truth)
-      const workosResult = await deleteWorkosOrganization(workspaceOrganizationId)
+      const workosResult = await deleteWorkosOrganization(workspaceOrganizationId);
       if (!workosResult) {
-        throw new Error('Failed to delete organization from WorkOS')
+        throw new Error("Failed to delete organization from WorkOS");
       }
 
-      // Then delete from Convex
       await deleteOrganization({
         orgId: convexOrg._id,
         userId: convexUserId,
         confirmName: deleteConfirmName,
-      })
+      });
 
-      // Redirect to login after successful deletion
-      await logout()
-      navigate('/')
+      await logout();
+      navigate("/");
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : 'Failed to delete workspace')
-      setIsDeleting(false)
+      setDeleteError(error instanceof Error ? error.message : "Failed to delete workspace");
+      setIsDeleting(false);
     }
-  }
+  };
 
-  const hasChanges = isFormInitialized && (
-    workspaceName !== convexOrg?.name ||
-    (settingsPage.workspaceScoped && workspaceSlug !== convexOrg?.slug) ||
-    (workspaceIdentity.iconKey ?? null) !== (convexOrg?.iconKey ?? null) ||
-    (workspaceIdentity.iconColor ?? null) !== (convexOrg?.iconColor ?? null)
-  )
+  const hasChanges =
+    isFormInitialized &&
+    (workspaceName !== convexOrg?.name ||
+      (settingsPage.workspaceScoped && workspaceSlug !== convexOrg?.slug) ||
+      (workspaceIdentity.iconKey ?? null) !== (convexOrg?.iconKey ?? null) ||
+      (workspaceIdentity.iconColor ?? null) !== (convexOrg?.iconColor ?? null));
 
-  const isWorkspaceScoped = settingsPage.workspaceScoped
-
-
+  const isWorkspaceScoped = settingsPage.workspaceScoped;
 
   const content = (
     <>
@@ -181,180 +174,212 @@ export function General({ surface = 'page', route }: GeneralProps = {}) {
           description="You do not have permission to view this workspace."
         />
       ) : (
-      <div className="flex min-h-[calc(100vh-8rem)] gap-0">
-        <div className="w-full max-w-2xl space-y-6 pr-0 xl:pr-10">
-          {isLoading && (
-            <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
-              Loading workspace settings...
-            </div>
-          )}
+        <SettingsPageBody surface={surface}>
+          {isLoading ? (
+            <p className="mb-1 px-1 text-[11px] text-muted-foreground">Loading workspace settings…</p>
+          ) : null}
           {!isLoading && !canManageGeneral ? (
-            <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
-              You can view workspace details, but only owners or admins with organization update access can edit them.
-            </div>
+            <p className="mb-3 px-1 text-[11px] text-muted-foreground">
+              You can view workspace details, but only owners or admins with organization update access can
+              edit them.
+            </p>
           ) : null}
 
-          {/* Workspace Details */}
-          <Card className="border-none shadow-none bg-transparent">
-            <CardContent className="space-y-4 pt-0">
-              <div className="space-y-2">
-                <Label htmlFor="name">Workspace Name</Label>
-                <Input
-                  id="name"
-                  value={workspaceName}
-                  onChange={(e) => setWorkspaceName(e.target.value)}
+          <section>
+            <SettingsSectionTitle>{isWorkspaceScoped ? "Workspace" : "Personal workspace"}</SettingsSectionTitle>
+            <SettingsSectionDescription>
+              {isWorkspaceScoped
+                ? "Name, URL, and how this workspace appears in the app."
+                : "How your personal workspace appears in the app."}
+            </SettingsSectionDescription>
+
+            <SettingsGroup>
+              <SettingsRow isFirst>
+                <SettingsRowLabel title="Workspace name" htmlFor="ws-name" />
+                <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                  <Input
+                    id="ws-name"
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
+                    disabled={isLoading || !canManageGeneral}
+                    className={cn(settingsInlineInputClass, "w-full")}
+                  />
+                </SettingsRowControl>
+              </SettingsRow>
+
+              {isWorkspaceScoped ? (
+                <SettingsRow>
+                  <SettingsRowLabel
+                    title="Workspace URL"
+                    htmlFor="ws-slug"
+                    description="Used in links: app.cozea.io/…"
+                  />
+                  <SettingsRowControl className={cn("min-w-0 max-w-full flex-1 sm:max-w-[320px]")}>
+                    <div
+                      className={cn(
+                        "flex w-full min-w-0 items-baseline justify-end gap-1",
+                        settingsInlineInputWidth,
+                      )}
+                    >
+                      <span className="shrink-0 text-[11px] text-muted-foreground">app.cozea.io/</span>
+                      <Input
+                        id="ws-slug"
+                        value={workspaceSlug}
+                        onChange={(e) =>
+                          setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
+                        }
+                        className={cn(settingsInlineInputClass, "min-w-0 flex-1")}
+                        disabled={isLoading || !canManageGeneral}
+                      />
+                    </div>
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
+
+              <div className="border-t border-border/40 px-4 py-3">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Icon & appearance</p>
+                <WorkspaceIdentityPicker
+                  workspaceType={isWorkspaceScoped ? "organization" : "personal"}
+                  workspaceName={workspaceName || "Workspace"}
+                  value={workspaceIdentity}
+                  onChange={setWorkspaceIdentity}
                   disabled={isLoading || !canManageGeneral}
                 />
               </div>
-              {isWorkspaceScoped ? (
-                <div className="space-y-2">
-                  <Label htmlFor="slug">Workspace URL</Label>
-                  <div className="flex items-stretch">
-                    <span className="flex items-center text-sm text-muted-foreground bg-secondary/80 dark:bg-secondary/40 px-3 rounded-l-2xl">
-                      app.cozea.io/
-                    </span>
-                    <Input
-                      id="slug"
-                      value={workspaceSlug}
-                      onChange={(e) => setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                      className="rounded-l-none"
-                      disabled={isLoading || !canManageGeneral}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    This is your workspace&apos;s unique identifier
-                  </p>
-                </div>
+
+              {saveError ? (
+                <SettingsGroupError>
+                  <span className="inline-flex items-center gap-2">
+                    <X className="size-3.5 shrink-0" />
+                    {saveError}
+                  </span>
+                </SettingsGroupError>
               ) : null}
-              <WorkspaceIdentityPicker
-                workspaceType={isWorkspaceScoped ? 'organization' : 'personal'}
-                workspaceName={workspaceName || 'Workspace'}
-                value={workspaceIdentity}
-                onChange={setWorkspaceIdentity}
-                disabled={isLoading || !canManageGeneral}
-              />
+              {saveSuccess ? (
+                <SettingsGroupSuccess>
+                  <span className="inline-flex items-center gap-2">
+                    <Check className="size-3.5 shrink-0" />
+                    Changes saved successfully
+                  </span>
+                </SettingsGroupSuccess>
+              ) : null}
+            </SettingsGroup>
 
-              {saveError && (
-                <div className="flex items-center gap-2 text-sm text-destructive">
-                  <X className="h-4 w-4" />
-                  {saveError}
-                </div>
-              )}
-
-              {saveSuccess && (
-                <div className="flex items-center gap-2 text-sm text-emerald-600">
-                  <Check className="h-4 w-4" />
-                  Changes saved successfully
-                </div>
-              )}
-
-              <Button onClick={handleSave} disabled={isLoading || isSaving || !hasChanges || !canManageGeneral}>
+            <SettingsFooterActions>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+                onClick={() => void handleSave()}
+                disabled={isLoading || isSaving || !hasChanges || !canManageGeneral}
+              >
                 {isSaving ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Saving…
                   </>
                 ) : (
-                  'Save Changes'
+                  "Save changes"
                 )}
               </Button>
-            </CardContent>
-          </Card>
+            </SettingsFooterActions>
+          </section>
 
-          {/* Danger Zone */}
           {isWorkspaceScoped ? (
-          <Card className="border-none shadow-none bg-transparent">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5" />
-                Danger Zone
-              </CardTitle>
-              <CardDescription>
+            <section>
+              <SettingsSectionTitle variant="danger">
+                <AlertTriangle className="size-3.5" aria-hidden />
+                Danger zone
+              </SettingsSectionTitle>
+              <SettingsSectionDescription className="text-destructive/80">
                 Irreversible and destructive actions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-5 rounded-2xl bg-destructive/5">
-                <div>
-                  <h4 className="font-medium">Delete Workspace</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Permanently delete this workspace and all its data
-                  </p>
-                </div>
-                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive" className="gap-2" disabled={!canManageGeneral}>
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Delete Workspace</DialogTitle>
-                      <DialogDescription>
-                        This action cannot be undone. All projects, data, and members will be permanently removed.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>
-                          Type <span className="font-semibold">{convexOrg?.name}</span> to confirm
-                        </Label>
-                        <Input
-                          placeholder={convexOrg?.name}
-                          value={deleteConfirmName}
-                          onChange={(e) => setDeleteConfirmName(e.target.value)}
-                        />
-                      </div>
-                      {deleteError && (
-                        <div className="flex items-center gap-2 text-sm text-destructive">
-                          <X className="h-4 w-4" />
-                          {deleteError}
+              </SettingsSectionDescription>
+              <SettingsDangerGroup>
+                <SettingsRow isFirst borderClassName="border-destructive/20">
+                  <SettingsRowLabel
+                    title="Delete workspace"
+                    description="Permanently delete this workspace and all its data"
+                  />
+                  <SettingsRowControl>
+                    <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-7 gap-1.5 text-[11px]"
+                          disabled={!canManageGeneral}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Delete workspace</DialogTitle>
+                          <DialogDescription>
+                            This action cannot be undone. All projects, data, and members will be permanently
+                            removed.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>
+                              Type <span className="font-semibold">{convexOrg?.name}</span> to confirm
+                            </Label>
+                            <Input
+                              placeholder={convexOrg?.name}
+                              value={deleteConfirmName}
+                              onChange={(e) => setDeleteConfirmName(e.target.value)}
+                            />
+                          </div>
+                          {deleteError ? (
+                            <div className="flex items-center gap-2 text-sm text-destructive">
+                              <X className="h-4 w-4" />
+                              {deleteError}
+                            </div>
+                          ) : null}
                         </div>
-                      )}
-                    </div>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setDeleteDialogOpen(false)
-                          setDeleteConfirmName('')
-                          setDeleteError(null)
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={handleDelete}
-                        disabled={isDeleting || deleteConfirmName !== convexOrg?.name}
-                      >
-                        {isDeleting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Deleting...
-                          </>
-                        ) : (
-                          'Delete Workspace'
-                        )}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardContent>
-          </Card>
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setDeleteDialogOpen(false);
+                              setDeleteConfirmName("");
+                              setDeleteError(null);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() => void handleDelete()}
+                            disabled={isDeleting || deleteConfirmName !== convexOrg?.name}
+                          >
+                            {isDeleting ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Deleting…
+                              </>
+                            ) : (
+                              "Delete workspace"
+                            )}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </SettingsRowControl>
+                </SettingsRow>
+              </SettingsDangerGroup>
+            </section>
           ) : null}
-        </div>
-
-      </div>
+        </SettingsPageBody>
       )}
     </>
-  )
+  );
 
-  if (surface === 'drawer') {
-    return content
+  if (surface === "drawer") {
+    return content;
   }
 
-  return content
+  return content;
 }

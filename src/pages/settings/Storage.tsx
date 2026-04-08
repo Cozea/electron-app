@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { storageSettingsClient } from '@/lib/settings/storageSettingsClient'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import {
+  SettingsDangerGroup,
+  SettingsGroup,
+  SettingsPageBody,
+  SettingsRow,
+  SettingsRowControl,
+  SettingsRowLabel,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+} from '@/components/settings/SettingsChrome'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
 import { getDefaultFolderIcon } from '../../lib/fileExplorer'
@@ -24,6 +33,7 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import {
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -609,34 +619,29 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
       : 0
 
   const content = (
-    <div
-      className={
-        surface === 'drawer'
-          ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
-          : 'space-y-6'
-      }
+    <SettingsPageBody
+      surface={surface}
+      className={surface === 'drawer' ? '!max-w-6xl' : undefined}
     >
-        {/* Storage Usage */}
-          <Card className="border-none shadow-none bg-transparent">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <span>Local Storage</span>
-                {isLoadingStorage ? (
-                  <Loader2
-                    className="h-4 w-4 animate-spin text-muted-foreground"
-                    aria-label="Refreshing storage usage"
-                  />
-                ) : null}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-            {actionError && (
-              <div className="mb-4 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {actionError}
-              </div>
-            )}
-
-            <p className="text-sm text-muted-foreground">
+      <section>
+        <SettingsSectionTitle>
+          <span>Local storage</span>
+          {isLoadingStorage ? (
+            <Loader2
+              className="h-3.5 w-3.5 animate-spin text-muted-foreground"
+              aria-label="Refreshing storage usage"
+            />
+          ) : null}
+        </SettingsSectionTitle>
+        <SettingsSectionDescription>
+          Disk usage from projects, dependencies, build cache, and logs on this device.
+        </SettingsSectionDescription>
+        <SettingsGroup>
+          {actionError ? (
+            <div className="border-b border-border/40 px-4 py-3 text-xs text-destructive">{actionError}</div>
+          ) : null}
+          <div className="space-y-4 px-4 py-3">
+            <p className="text-[11px] text-muted-foreground">
               Cozea is using{' '}
               <span className="font-semibold tabular-nums text-foreground">
                 {storageUsage ? formatBytes(storageUsage.total) : '0 B'}
@@ -646,7 +651,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               )}
             </p>
 
-            <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-muted/50">
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/50">
               {barSegments.map((segment) => {
                 const percentage = total > 0 ? (segment.bytes / total) * 100 : 0
                 const percentLabel = formatPercentage(percentage)
@@ -676,22 +681,22 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               })}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               {segments.map((segment) => (
                 <div className="flex items-center gap-2" key={segment.label}>
                   <span
                     aria-hidden="true"
                     className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', segment.colorClassName)}
                   />
-                  <span className="text-sm text-muted-foreground">{segment.label}</span>
-                  <span className="text-sm tabular-nums text-foreground">
+                  <span className="text-[11px] text-muted-foreground">{segment.label}</span>
+                  <span className="text-[11px] tabular-nums text-foreground">
                     {formatBytes(segment.bytes)}
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               <Dialog open={isClearCacheDialogOpen} onOpenChange={setIsClearCacheDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage || Boolean(pendingAction)}>
@@ -772,64 +777,57 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                 View Folder
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsGroup>
+      </section>
 
-        {/* Projects Directory */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle>Projects Directory</CardTitle>
-            <CardDescription>
-              Where new projects are created on your computer
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4 rounded-3xl bg-secondary/80 p-4 dark:bg-secondary/40">
-              {getDefaultFolderIcon(true, { width: 32, height: 32 })}
-              <div className="flex-1 min-w-0">
-                <p className="font-mono text-sm truncate">{projectsDirectory}</p>
-                <p className="text-xs text-muted-foreground">
-                  New projects will be created in this directory
-                </p>
-              </div>
-              <Button variant="outline" onClick={() => void handleChangeDirectory()} disabled={Boolean(pendingAction)}>
-                {pendingAction === 'change-directory' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Change
+      <section>
+        <SettingsSectionTitle>Projects directory</SettingsSectionTitle>
+        <SettingsSectionDescription>Where new projects are created on your computer.</SettingsSectionDescription>
+        <SettingsGroup>
+          <div className="flex items-center gap-4 px-4 py-3">
+            {getDefaultFolderIcon(true, { width: 32, height: 32 })}
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-mono text-[11px] text-foreground">{projectsDirectory}</p>
+              <p className="text-[11px] text-muted-foreground">New projects will be created in this directory</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 text-xs"
+              onClick={() => void handleChangeDirectory()}
+              disabled={Boolean(pendingAction)}
+            >
+              {pendingAction === 'change-directory' ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+              Change
+            </Button>
+          </div>
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>Local projects</SettingsSectionTitle>
+        <SettingsSectionDescription>Projects stored on this device.</SettingsSectionDescription>
+        <SettingsGroup>
+          {selectedProjectPaths.length > 0 ? (
+            <div className="flex justify-end border-b border-border/40 px-4 py-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-7 gap-1.5 rounded-full text-[11px]"
+                onClick={() => void handleBulkDeleteProjects()}
+                disabled={pendingAction === 'delete:selected'}
+              >
+                {pendingAction === 'delete:selected' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                Delete ({selectedProjectPaths.length})
               </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Local Projects */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Local Projects</CardTitle>
-                <CardDescription>
-                  Projects stored on this device
-                </CardDescription>
-              </div>
-              {selectedProjectPaths.length > 0 ? (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-8 rounded-full"
-                  onClick={() => void handleBulkDeleteProjects()}
-                  disabled={pendingAction === 'delete:selected'}
-                >
-                  {pendingAction === 'delete:selected' ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="mr-2 h-4 w-4" />
-                  )}
-                  Delete ({selectedProjectPaths.length})
-                </Button>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
+          ) : null}
+          <div className="overflow-hidden">
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
@@ -895,9 +893,9 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                 </TableBody>
               </Table>
             </div>
-            {projectsPage && projectsPage.total > projectsPage.pageSize && (
-              <div className="mt-4 flex items-center justify-between px-4 py-3">
-                <p className="text-sm text-muted-foreground">
+            {projectsPage && projectsPage.total > projectsPage.pageSize ? (
+              <div className="flex items-center justify-between border-t border-border/40 px-4 py-3">
+                <p className="text-[11px] text-muted-foreground">
                   Showing <span className="font-medium">{showingStart}-{showingEnd}</span> of <span className="font-medium">{projectsPage.total}</span> entries
                 </p>
                 <div className="flex items-center gap-1">
@@ -939,36 +937,43 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                   </Button>
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            ) : null}
+        </SettingsGroup>
+      </section>
 
-        {/* Danger Zone */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between rounded-2xl bg-destructive/5 p-5">
-              <div>
-                <h4 className="font-medium">Clear All Local Data</h4>
-                <p className="text-sm text-muted-foreground">
-                  Remove all local projects, cache, and settings from this device
-                </p>
-              </div>
+      <section>
+        <SettingsSectionTitle variant="danger">
+          <AlertTriangle className="size-3.5" aria-hidden />
+          Danger zone
+        </SettingsSectionTitle>
+        <SettingsSectionDescription className="text-destructive/80">
+          Irreversible actions that remove data from this device only.
+        </SettingsSectionDescription>
+        <SettingsDangerGroup>
+          <SettingsRow isFirst borderClassName="border-destructive/20">
+            <SettingsRowLabel
+              title="Clear all local data"
+              description="Remove all local projects, cache, and settings from this device"
+            />
+            <SettingsRowControl>
               <Dialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="destructive" className="gap-2" disabled={Boolean(pendingAction)}>
-                    <Trash2 className="h-4 w-4" />
-                    Clear All
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px]"
+                    disabled={Boolean(pendingAction)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Clear all
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Clear All Local Data</DialogTitle>
+                    <DialogTitle>Clear all local data</DialogTitle>
                     <DialogDescription>
-                      This will remove all local projects, build cache, logs, and settings.
-                      Cloud-synced data will not be affected. This action cannot be undone.
+                      This will remove all local projects, build cache, logs, and settings. Cloud-synced data will
+                      not be affected. This action cannot be undone.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -981,15 +986,16 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                       disabled={pendingAction === 'clear-all'}
                     >
                       {pendingAction === 'clear-all' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Clear Everything
+                      Clear everything
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </SettingsRowControl>
+          </SettingsRow>
+        </SettingsDangerGroup>
+      </section>
+    </SettingsPageBody>
   )
 
   if (surface === 'drawer') {

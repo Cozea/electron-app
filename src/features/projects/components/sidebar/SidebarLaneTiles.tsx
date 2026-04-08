@@ -14,6 +14,10 @@ import {
   isLatestTurnSettled,
 } from "@/features/projects/components/assistant/chat/session-logic"
 import { cn } from "@/lib/utils"
+import {
+  SIDEBAR_PILL_ACTIVE_CLASS,
+  SIDEBAR_PILL_NESTED_ROW_CLASS,
+} from "@/features/projects/components/sidebar/projectSidebarShared"
 import { useStore } from "@/stores/assistant-store"
 import type { WorkbenchLaneSidebarSummary } from "@/stores/useProjectWorkbenchStore"
 
@@ -196,17 +200,20 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           key={tile.id}
           type="button"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-md pr-2 pl-6 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-            resolvedActiveTileId === tile.id &&
-              "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
+            "w-full gap-2 pr-2 pl-6",
+            SIDEBAR_PILL_NESTED_ROW_CLASS,
+            resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
           <ProviderGlyph
             provider={tile.provider}
-            className="size-4 shrink-0 text-muted-foreground/75"
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground/75",
+              resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
+            )}
           />
-          <span className="min-w-0 flex-1 truncate text-xs">{tile.title}</span>
+          <span className="min-w-0 flex-1 truncate">{tile.title}</span>
           <AgentStatusPill threadId={tile.threadId} />
         </button>
       ))}
@@ -215,14 +222,19 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           key={tile.id}
           type="button"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-md pr-2 pl-6 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-            resolvedActiveTileId === tile.id &&
-              "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
+            "w-full gap-2 pr-2 pl-6",
+            SIDEBAR_PILL_NESTED_ROW_CLASS,
+            resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
-          <SquareTerminal className="size-4 shrink-0 text-muted-foreground/75" />
-          <span className="min-w-0 flex-1 truncate text-xs">{tile.title}</span>
+          <SquareTerminal
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground/75",
+              resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate">{tile.title}</span>
         </button>
       ))}
     </div>
