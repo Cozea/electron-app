@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ExternalLink,
   FolderGit2,
-  Github,
   Loader2,
 } from "lucide-react"
 
@@ -869,10 +868,15 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
         return
       }
 
+      const repository = selectedRepository
+      if (!repository) {
+        throw new Error("Choose a repository to import.")
+      }
+
       const cloneResult = await window.electronAPI.project.cloneRepository({
-        slug: buildFilesystemSlug(trimmedName || selectedRepository.name),
-        repoUrl: selectedRepository.url,
-        provider: selectedRepository.provider,
+        slug: buildFilesystemSlug(trimmedName || repository.name),
+        repoUrl: repository.url,
+        provider: repository.provider,
         branch: resolvedBranch || undefined,
         baseDirectory: trimmedParentDirectory,
       })
@@ -890,20 +894,20 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
         template: "blank",
         creationPath: "repo",
         sourceControl: {
-          provider: selectedRepository.provider,
-          repoUrl: selectedRepository.url,
+          provider: repository.provider,
+          repoUrl: repository.url,
           activeCollabBranch: branch,
           defaultBranch: branch,
           visibility: formatRemoteVisibility(
-            selectedRepository.visibility,
-            selectedRepository.private,
+            repository.visibility,
+            repository.private,
           ),
           workingCopyMode: "managed",
           setupMode,
         },
         repoSource: {
-          provider: selectedRepository.provider,
-          repoUrl: selectedRepository.url,
+          provider: repository.provider,
+          repoUrl: repository.url,
           branch,
         },
       })
@@ -916,7 +920,7 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
       await persistProjectPath(result.projectId, createdProjectPath)
       await persistBindingDetails({
         projectId: result.projectId,
-        repository: selectedRepository,
+        repository,
         branch,
         workingCopyMode: "managed",
       })
@@ -991,7 +995,7 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
       <div className="space-y-4 rounded-2xl border border-border/60 bg-secondary/25 p-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Github className="h-4 w-4 text-muted-foreground" />
+            <FolderGit2 className="h-4 w-4 text-muted-foreground" />
             <p className="text-sm font-medium">Remote repository</p>
           </div>
           <p className="text-sm text-muted-foreground">

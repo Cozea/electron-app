@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Download, Loader2, Package, Plus, RefreshCw, Terminal } from 'lucide-react'
 import { FaApple, FaLinux, FaWindows } from 'react-icons/fa6'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
-import { useAuth } from '../../contexts/AuthContext'
-import { AppShellLayout } from '../../components/layouts/AppShellLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
+import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
+import { toolingSettingsClient } from '@/lib/settings/toolingSettingsClient'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Switch } from '../../components/ui/switch'
@@ -33,14 +34,14 @@ let cachedGitRuntimeHealth: GitRuntimeHealth | null = null
 let runtimeStatusPrewarmPromise: Promise<void> | null = null
 
 export async function prewarmToolingSettings(): Promise<void> {
-  if (!window.electronAPI?.runtime?.getRuntimeStatus) return
+  if (!toolingSettingsClient.isAvailable()) return
   if (cachedRuntimeStatus) return
   if (runtimeStatusPrewarmPromise) {
     await runtimeStatusPrewarmPromise
     return
   }
 
-  runtimeStatusPrewarmPromise = window.electronAPI.runtime
+  runtimeStatusPrewarmPromise = toolingSettingsClient
     .getRuntimeStatus()
     .then((status) => {
       cachedRuntimeStatus = status
@@ -200,8 +201,7 @@ function RuntimeProgressRing({ progress }: { progress: number }) {
   )
 }
 
-export function Tooling({ surface = 'page' }: ToolingProps) {
-  const { user, logout } = useAuth()
+export function Tooling({ surface = 'page', route }: ToolingProps) {
   const [isLoading, setIsLoading] = useState(!cachedRuntimeStatus)
   const [error, setError] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(
@@ -224,14 +224,14 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
     }
     setError(null)
     try {
-      if (!window.electronAPI?.runtime?.getRuntimeStatus) {
+      if (!toolingSettingsClient.isAvailable()) {
         throw new Error('Runtime API is unavailable in this environment.')
       }
-      const status = await window.electronAPI.runtime.getRuntimeStatus()
+      const status = await toolingSettingsClient.getRuntimeStatus()
       cachedRuntimeStatus = status
       setRuntimeStatus(status)
-      if (window.electronAPI?.sync?.getGitRuntimeHealth) {
-        const gitHealth = await window.electronAPI.sync.getGitRuntimeHealth()
+      const gitHealth = await toolingSettingsClient.getGitRuntimeHealth()
+      if (gitHealth) {
         cachedGitRuntimeHealth = gitHealth
         setGitRuntimeHealth(gitHealth)
       }
@@ -253,10 +253,10 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
 
   useEffect(() => {
     const loadPreviewHeaderCompatibilitySetting = async () => {
-      if (!window.electronAPI?.settings) return
+      if (!settingsDesktopClient.hasSettings()) return
 
       try {
-        const settings = await window.electronAPI.settings.get()
+        const settings = await settingsDesktopClient.get()
         setPreviewHeaderCompatibilityEnabled(settings.previewHeaderCompatibilityEnabled)
       } catch (settingsError) {
         const message =
@@ -293,7 +293,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
 
   const handlePreviewHeaderCompatibilityChange = useCallback(
     async (checked: boolean) => {
-      if (!window.electronAPI?.settings) return
+      if (!settingsDesktopClient.hasSettings()) return
 
       const previousValue = previewHeaderCompatibilityEnabled
       setPreviewHeaderCompatibilityEnabled(checked)
@@ -301,7 +301,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
       setIsSavingPreviewHeaderCompatibility(true)
 
       try {
-        await window.electronAPI.settings.set({
+        await settingsDesktopClient.set({
           previewHeaderCompatibilityEnabled: checked,
         })
       } catch (settingsError) {
@@ -550,12 +550,8 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
   }
 
   return (
-    <AppShellLayout
-      user={user}
-      onLogout={logout}
-      header={headerActions}
-    >
+    <SettingsRouteShell surfaceId="tooling" route={route} header={headerActions}>
       {content}
-    </AppShellLayout>
+    </SettingsRouteShell>
   )
 }

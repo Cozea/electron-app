@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { type TurnId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { type TurnDiffFileChange } from "./types";
+import { type TurnDiffFileChange } from "@/stores/types";
 import { buildTurnDiffTree, type TurnDiffTreeNode } from "./turnDiffTree";
 import { ChevronRightIcon, FolderIcon, FolderClosedIcon } from "lucide-react";
 import { cn } from "@/lib/utils";

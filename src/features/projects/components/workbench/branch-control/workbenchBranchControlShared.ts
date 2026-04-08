@@ -4,6 +4,7 @@ import type {
   GitStatusResult,
 } from "@cozea/assistant-contracts"
 
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import type { ProjectLaneDescriptor } from "@shared/electronApiTypes"
 
@@ -55,15 +56,7 @@ export async function showWorkbenchBranchNativeMenu(
   position: { x: number; y: number },
   items: readonly ContextMenuItem<string>[],
 ): Promise<string | null> {
-  if (items.length === 0) return null
-
-  if (window.desktopBridge?.showContextMenu) {
-    return window.desktopBridge.showContextMenu(items, position)
-  }
-  if (window.nativeApi?.contextMenu?.show) {
-    return window.nativeApi.contextMenu.show(items, position)
-  }
-  return null
+  return showDesktopContextMenu(items, position)
 }
 
 export function buildWorkbenchBranchMenuItems(input: {

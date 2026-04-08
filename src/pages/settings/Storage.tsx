@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
-import { AppShellLayout } from '../../components/layouts/AppShellLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
+import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
+import { storageSettingsClient } from '@/lib/settings/storageSettingsClient'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
@@ -37,6 +38,7 @@ import type { LocalProject, StorageProjectsPage, StorageSnapshot, StorageUsage }
 
 interface StorageProps {
   surface?: 'page' | 'drawer'
+  route?: string
 }
 
 const PROJECTS_PAGE_SIZE = 10
@@ -136,14 +138,14 @@ function getPageNumbers(currentPage: number, totalPages: number): Array<number |
 }
 
 export async function prewarmStorageSettings(): Promise<void> {
-  if (!window.electronAPI?.storage?.getSnapshot) return
+  if (!storageSettingsClient.isAvailable()) return
   if (cachedStorageSnapshot) return
   if (storageSnapshotPrewarmPromise) {
     await storageSnapshotPrewarmPromise
     return
   }
 
-  storageSnapshotPrewarmPromise = window.electronAPI.storage
+  storageSnapshotPrewarmPromise = storageSettingsClient
     .getSnapshot({
       page: 1,
       pageSize: PROJECTS_PAGE_SIZE,
@@ -159,8 +161,7 @@ export async function prewarmStorageSettings(): Promise<void> {
   await storageSnapshotPrewarmPromise
 }
 
-export function Storage({ surface = 'page' }: StorageProps) {
-  const { user, logout } = useAuth()
+export function Storage({ surface = 'page', route }: StorageProps) {
   const [projectsDirectory, setProjectsDirectory] = useState<string>(
     cachedStorageSnapshot?.projectsDirectory ?? '~/Developer/Cozea'
   )
@@ -182,7 +183,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
       silent?: boolean
       mode?: 'all' | 'projects'
     }) => {
-      if (!window.electronAPI?.storage?.getSnapshot) return
+      if (!storageSettingsClient.isAvailable()) return
 
       const mode = options?.mode ?? 'all'
       if (!options?.silent) {
@@ -193,7 +194,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
       }
 
       try {
-        const snapshot = await window.electronAPI.storage.getSnapshot({
+        const snapshot = await storageSettingsClient.getSnapshot({
           page: options?.page ?? 1,
           pageSize: PROJECTS_PAGE_SIZE,
           forceRefresh: options?.forceRefresh,
@@ -230,8 +231,8 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }, [loadStorageSnapshot])
 
   const showErrorDialog = useCallback(async (title: string, detail: string) => {
-    if (!window.electronAPI?.dialog) return
-    await window.electronAPI.dialog.showMessageBox({
+    if (!settingsDesktopClient.hasDialog()) return
+    await settingsDesktopClient.showMessageBox({
       type: 'error',
       title,
       message: title,
@@ -247,14 +248,14 @@ export function Storage({ surface = 'page' }: StorageProps) {
   )
 
   const handleChangeDirectory = useCallback(async () => {
-    if (!window.electronAPI?.dialog || !window.electronAPI?.settings) return
+    if (!settingsDesktopClient.hasDialog() || !settingsDesktopClient.hasSettings()) return
 
-    const result = await window.electronAPI.dialog.selectDirectory()
+    const result = await settingsDesktopClient.selectDirectory()
     if (!result.success || !result.path) return
 
     setPendingAction('change-directory')
     try {
-      await window.electronAPI.settings.set({ projectsDirectory: result.path })
+      await settingsDesktopClient.set({ projectsDirectory: result.path })
       cachedStorageSnapshot = null
       await loadStorageSnapshot({ page: 1, forceRefresh: true, mode: 'all' })
     } catch (error) {
@@ -268,11 +269,11 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }, [loadStorageSnapshot, showErrorDialog])
 
   const handleOpenProjectsDirectory = useCallback(async () => {
-    if (!window.electronAPI?.storage?.openProjectsDirectory) return
+    if (!storageSettingsClient.isAvailable()) return
 
     setPendingAction('open-folder')
     try {
-      const result = await window.electronAPI.storage.openProjectsDirectory()
+      const result = await storageSettingsClient.openProjectsDirectory()
       if (!result.success) {
         throw new Error(result.error || 'Failed to open the projects directory.')
       }
@@ -287,11 +288,11 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }, [showErrorDialog])
 
   const handleClearCache = useCallback(async () => {
-    if (!window.electronAPI?.storage?.clearCache) return
+    if (!storageSettingsClient.isAvailable()) return
 
     setPendingAction('clear-cache')
     try {
-      const result = await window.electronAPI.storage.clearCache()
+      const result = await storageSettingsClient.clearCache()
       if (!result.success) {
         throw new Error(result.error || 'Failed to clear build cache.')
       }
@@ -309,11 +310,11 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }, [currentPage, refreshSnapshot, showErrorDialog])
 
   const handleClearLogs = useCallback(async () => {
-    if (!window.electronAPI?.storage?.clearLogs) return
+    if (!storageSettingsClient.isAvailable()) return
 
     setPendingAction('clear-logs')
     try {
-      const result = await window.electronAPI.storage.clearLogs()
+      const result = await storageSettingsClient.clearLogs()
       if (!result.success) {
         throw new Error(result.error || 'Failed to clear logs.')
       }
@@ -340,9 +341,9 @@ export function Storage({ surface = 'page' }: StorageProps) {
 
   const handleDeleteProject = useCallback(
     async (project: LocalProject) => {
-      if (!window.electronAPI?.dialog || !window.electronAPI?.storage?.deleteProject) return
+      if (!settingsDesktopClient.hasDialog() || !storageSettingsClient.isAvailable()) return
 
-      const confirmation = await window.electronAPI.dialog.showMessageBox({
+      const confirmation = await settingsDesktopClient.showMessageBox({
         type: 'warning',
         buttons: ['Cancel', 'Delete Project'],
         defaultId: 0,
@@ -359,7 +360,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
       setPendingAction(actionKey)
 
       try {
-        const result = await window.electronAPI.storage.deleteProject({
+        const result = await storageSettingsClient.deleteProject({
           projectPath: project.path,
         })
         if (!result.success) {
@@ -399,8 +400,8 @@ export function Storage({ surface = 'page' }: StorageProps) {
 
   const handleBulkDeleteProjects = useCallback(async () => {
     if (
-      !window.electronAPI?.dialog ||
-      !window.electronAPI?.storage?.deleteProject ||
+      !settingsDesktopClient.hasDialog() ||
+      !storageSettingsClient.isAvailable() ||
       selectedProjectPaths.length === 0
     ) {
       return
@@ -413,7 +414,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
       return
     }
 
-    const confirmation = await window.electronAPI.dialog.showMessageBox({
+    const confirmation = await settingsDesktopClient.showMessageBox({
       type: 'warning',
       buttons: ['Cancel', 'Delete Projects'],
       defaultId: 0,
@@ -433,7 +434,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
 
     try {
       for (const project of selectedProjects) {
-        const result = await window.electronAPI.storage.deleteProject({
+        const result = await storageSettingsClient.deleteProject({
           projectPath: project.path,
         })
 
@@ -484,11 +485,11 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }, [currentPage, loadStorageSnapshot, selectedProjectPaths, showErrorDialog, storageSnapshot])
 
   const handleClearAll = useCallback(async () => {
-    if (!window.electronAPI?.storage?.clearAll) return
+    if (!storageSettingsClient.isAvailable()) return
 
     setPendingAction('clear-all')
     try {
-      const result = await window.electronAPI.storage.clearAll()
+      const result = await storageSettingsClient.clearAll()
       if (!result.success) {
         throw new Error(result.error || 'Failed to clear local data.')
       }
@@ -997,11 +998,8 @@ export function Storage({ surface = 'page' }: StorageProps) {
   }
 
   return (
-    <AppShellLayout
-      user={user}
-      onLogout={logout}
-    >
+    <SettingsRouteShell surfaceId="storage" route={route}>
       {content}
-    </AppShellLayout>
+    </SettingsRouteShell>
   )
 }

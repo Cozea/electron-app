@@ -21,7 +21,7 @@ import {
   IDLE_SYNC_PROGRESS,
   ProjectSyncContext,
   type ProjectSyncProviderProps,
-} from "@/features/projects/contexts/ProjectSyncContext"
+} from "@/features/projects/contexts/projectSyncShared"
 import type { SyncProgress } from "@/lib/sync/types"
 
 function AgentFileSyncBridge({

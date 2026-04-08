@@ -1,186 +1,338 @@
-import { lazy, type ReactNode } from 'react'
+import { Suspense, lazy, type ComponentType, type ReactNode } from "react";
 import {
   createRootRoute,
   createRoute,
   createRouter,
   Navigate,
   useParams,
-} from '@tanstack/react-router'
+} from "@tanstack/react-router";
 
-import { AppRoot } from '@/App'
-import { Outlet } from '@/lib/router'
-import { useAuth } from '@/contexts/AuthContext'
-import { useResolvedScope } from '@/hooks/useResolvedScope'
-import { useScopedAppContext } from '@/hooks/useScopedAppContext'
-import { ProjectsLaunchPage } from '@/features/projects/pages/ProjectsLaunchPage'
-import { ProjectLayout } from '@/features/projects/layouts/ProjectLayout'
-import { ProjectJoinPage } from '@/features/projects/pages/ProjectJoinPage'
-import { ProjectInvitePage } from '@/features/projects/pages/ProjectInvitePage'
-import { LegacyProjectRedirectPage } from '@/features/projects/pages/LegacyProjectRedirectPage'
-import { ProjectWorkbenchPage } from '@/features/projects/pages/ProjectWorkbenchPage'
-import { TasksPage } from '@/features/projects/pages/TasksPage'
-import { ProjectConflictsPage } from '@/features/projects/pages/ProjectConflictsPage'
-import { ProjectTeamPage } from '@/features/projects/pages/ProjectTeamPage'
-import { General } from '@/pages/workspace/General'
-import { Billing } from '@/pages/workspace/Billing'
-import { Integrations } from '@/pages/workspace/Integrations'
-import { SourceControl } from '@/pages/workspace/SourceControl'
-import { Sync } from '@/pages/workspace/Sync'
-import { Account } from '@/pages/settings/Account'
-import { Appearance } from '@/pages/settings/Appearance'
-import { Storage } from '@/pages/settings/Storage'
-import { Tooling } from '@/pages/settings/Tooling'
+import { AppRoot } from "@/App";
+import { RouteLoading } from "@/router/RouteLoading";
+import { Outlet } from "@/lib/router";
+import { useAuth } from "@/contexts/AuthContext";
+import { useResolvedScope } from "@/hooks/useResolvedScope";
+import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import {
   canAccessWorkspaceSurface,
   getSettingsSurface,
   getSettingsSurfaceRoute,
-} from '@/lib/settings/settingsRegistry'
+} from "@/lib/settings/settingsRegistry";
 import type {
   SettingsSurfaceId,
   WorkspaceSurfaceAccessState,
-} from '@/lib/settings/settingsSurfaceTypes'
-const NewProject = lazy(() =>
-  import('@/pages/NewProject').then((module) => ({ default: module.default }))
-)
-const Members = lazy(() =>
-  import('@/pages/teams/Members').then((module) => ({ default: module.Members }))
-)
-const MemberDetails = lazy(() =>
-  import('@/pages/teams/MemberDetails').then((module) => ({
-    default: module.MemberDetails,
-  }))
-)
-const Roles = lazy(() =>
-  import('@/pages/teams/Roles').then((module) => ({ default: module.Roles }))
-)
-const Policies = lazy(() =>
-  import('@/pages/workspace/Policies').then((module) => ({ default: module.Policies }))
-)
-const AcceptInvitation = lazy(() =>
-  import('@/pages/AcceptInvitation').then((module) => ({
-    default: module.AcceptInvitation,
-  }))
-)
-const WorkspaceSelect = lazy(() =>
-  import('@/pages/WorkspaceSelect').then((module) => ({
-    default: module.WorkspaceSelect,
-  }))
-)
-const WorkspaceCreate = lazy(() =>
-  import('@/pages/WorkspaceCreate').then((module) => ({
-    default: module.WorkspaceCreate,
-  }))
-)
+} from "@/lib/settings/settingsSurfaceTypes";
 
-const WORKSPACE_MEMBERS_ROUTE = getSettingsSurfaceRoute('members', 'workspace') ?? '/teams'
+function createLazyRouteComponent(
+  loader: () => Promise<{ default: ComponentType }>,
+  label: string,
+) {
+  const LazyComponent = lazy(loader);
+
+  function LazyRouteComponent() {
+    return (
+      <Suspense fallback={<RouteLoading label={label} />}>
+        <LazyComponent />
+      </Suspense>
+    );
+  }
+
+  return LazyRouteComponent;
+}
+
+const ProjectsLaunchPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectsLaunchPage").then((module) => ({
+      default: module.ProjectsLaunchPage,
+    })),
+  "Loading projects…",
+);
+const ProjectLayout = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/layouts/ProjectLayout").then((module) => ({
+      default: module.ProjectLayout,
+    })),
+  "Loading project…",
+);
+const ProjectJoinPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectJoinPage").then((module) => ({
+      default: module.ProjectJoinPage,
+    })),
+  "Loading project invite…",
+);
+const ProjectInvitePage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectInvitePage").then((module) => ({
+      default: module.ProjectInvitePage,
+    })),
+  "Loading project invite…",
+);
+const LegacyProjectRedirectPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/LegacyProjectRedirectPage").then((module) => ({
+      default: module.LegacyProjectRedirectPage,
+    })),
+  "Loading project…",
+);
+const ProjectWorkbenchPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectWorkbenchPage").then((module) => ({
+      default: module.ProjectWorkbenchPage,
+    })),
+  "Loading workbench…",
+);
+const TasksPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/TasksPage").then((module) => ({
+      default: module.TasksPage,
+    })),
+  "Loading tasks…",
+);
+const ProjectConflictsPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectConflictsPage").then((module) => ({
+      default: module.ProjectConflictsPage,
+    })),
+  "Loading conflicts…",
+);
+const ProjectTeamPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectTeamPage").then((module) => ({
+      default: module.ProjectTeamPage,
+    })),
+  "Loading project team…",
+);
+const General = createLazyRouteComponent(
+  () =>
+    import("@/pages/workspace/General").then((module) => ({
+      default: module.General,
+    })),
+  "Loading settings…",
+);
+const Billing = createLazyRouteComponent(
+  () =>
+    import("@/pages/workspace/Billing").then((module) => ({
+      default: module.Billing,
+    })),
+  "Loading billing…",
+);
+const Integrations = createLazyRouteComponent(
+  () =>
+    import("@/pages/workspace/Integrations").then((module) => ({
+      default: module.Integrations,
+    })),
+  "Loading integrations…",
+);
+const SourceControl = createLazyRouteComponent(
+  () =>
+    import("@/pages/workspace/SourceControl").then((module) => ({
+      default: module.SourceControl,
+    })),
+  "Loading source control…",
+);
+const Sync = createLazyRouteComponent(
+  () =>
+    import("@/pages/workspace/Sync").then((module) => ({
+      default: module.Sync,
+    })),
+  "Loading cloud storage…",
+);
+const Account = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Account").then((module) => ({
+      default: module.Account,
+    })),
+  "Loading account settings…",
+);
+const Appearance = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Appearance").then((module) => ({
+      default: module.Appearance,
+    })),
+  "Loading appearance settings…",
+);
+const Storage = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Storage").then((module) => ({
+      default: module.Storage,
+    })),
+  "Loading storage settings…",
+);
+const Tooling = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Tooling").then((module) => ({
+      default: module.Tooling,
+    })),
+  "Loading tooling settings…",
+);
+const NewProject = createLazyRouteComponent(
+  () => import("@/pages/NewProject").then((module) => ({ default: module.default })),
+  "Loading project setup…",
+);
+const Members = createLazyRouteComponent(
+  () => import("@/pages/teams/Members").then((module) => ({ default: module.Members })),
+  "Loading team members…",
+);
+const MemberDetails = createLazyRouteComponent(
+  () =>
+    import("@/pages/teams/MemberDetails").then((module) => ({
+      default: module.MemberDetails,
+    })),
+  "Loading member details…",
+);
+const Roles = createLazyRouteComponent(
+  () => import("@/pages/teams/Roles").then((module) => ({ default: module.Roles })),
+  "Loading roles…",
+);
+const Policies = createLazyRouteComponent(
+  () =>
+    import("@/pages/workspace/Policies").then((module) => ({ default: module.Policies })),
+  "Loading policies…",
+);
+const AcceptInvitation = createLazyRouteComponent(
+  () =>
+    import("@/pages/AcceptInvitation").then((module) => ({
+      default: module.AcceptInvitation,
+    })),
+  "Loading invitation…",
+);
+const WorkspaceSelect = createLazyRouteComponent(
+  () =>
+    import("@/pages/WorkspaceSelect").then((module) => ({
+      default: module.WorkspaceSelect,
+    })),
+  "Loading workspaces…",
+);
+const WorkspaceCreate = createLazyRouteComponent(
+  () =>
+    import("@/pages/WorkspaceCreate").then((module) => ({
+      default: module.WorkspaceCreate,
+    })),
+  "Loading workspace setup…",
+);
+
+const WORKSPACE_MEMBERS_ROUTE = getSettingsSurfaceRoute("members", "workspace") ?? "/teams";
 const WORKSPACE_PERMISSIONS_ROUTE =
-  getSettingsSurfaceRoute('permissions', 'workspace') ?? '/teams/roles'
+  getSettingsSurfaceRoute("permissions", "workspace") ?? "/teams/roles";
 const WORKSPACE_GENERAL_ROUTE =
-  getSettingsSurfaceRoute('general', 'workspace') ?? '/workspace/general'
+  getSettingsSurfaceRoute("general", "workspace") ?? "/workspace/general";
 const PERSONAL_GENERAL_ROUTE =
-  getSettingsSurfaceRoute('general', 'personal') ?? '/settings/general'
+  getSettingsSurfaceRoute("general", "personal") ?? "/settings/general";
 const WORKSPACE_POLICIES_ROUTE =
-  getSettingsSurfaceRoute('policies', 'workspace') ?? '/workspace/policies'
+  getSettingsSurfaceRoute("policies", "workspace") ?? "/workspace/policies";
 const WORKSPACE_BILLING_ROUTE =
-  getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
+  getSettingsSurfaceRoute("billing", "workspace") ?? "/workspace/billing";
 const PERSONAL_BILLING_ROUTE =
-  getSettingsSurfaceRoute('billing', 'personal') ?? '/settings/billing'
+  getSettingsSurfaceRoute("billing", "personal") ?? "/settings/billing";
 const WORKSPACE_INTEGRATIONS_ROUTE =
-  getSettingsSurfaceRoute('cliTools', 'workspace') ?? '/workspace/integrations'
+  getSettingsSurfaceRoute("cliTools", "workspace") ?? "/workspace/integrations";
 const PERSONAL_INTEGRATIONS_ROUTE =
-  getSettingsSurfaceRoute('cliTools', 'personal') ?? '/settings/cli-tools'
+  getSettingsSurfaceRoute("cliTools", "personal") ?? "/settings/cli-tools";
 const WORKSPACE_SOURCE_CONTROL_ROUTE =
-  getSettingsSurfaceRoute('sourceControl', 'workspace') ?? '/workspace/source-control'
+  getSettingsSurfaceRoute("sourceControl", "workspace") ?? "/workspace/source-control";
 const PERSONAL_SOURCE_CONTROL_ROUTE =
-  getSettingsSurfaceRoute('sourceControl', 'personal') ?? '/settings/source-control'
+  getSettingsSurfaceRoute("sourceControl", "personal") ?? "/settings/source-control";
 const WORKSPACE_CLOUD_STORAGE_ROUTE =
-  getSettingsSurfaceRoute('cloudStorage', 'workspace') ?? '/workspace/sync'
+  getSettingsSurfaceRoute("cloudStorage", "workspace") ?? "/workspace/sync";
 const PERSONAL_CLOUD_STORAGE_ROUTE =
-  getSettingsSurfaceRoute('cloudStorage', 'personal') ?? '/settings/cloud-storage'
+  getSettingsSurfaceRoute("cloudStorage", "personal") ?? "/settings/cloud-storage";
 const PERSONAL_ACCOUNT_ROUTE =
-  getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
+  getSettingsSurfaceRoute("account", "personal") ?? "/settings/account";
 const PERSONAL_APPEARANCE_ROUTE =
-  getSettingsSurfaceRoute('appearance', 'personal') ?? '/settings/appearance'
+  getSettingsSurfaceRoute("appearance", "personal") ?? "/settings/appearance";
 const PERSONAL_TOOLING_ROUTE =
-  getSettingsSurfaceRoute('tooling', 'personal') ?? '/settings/tooling'
+  getSettingsSurfaceRoute("tooling", "personal") ?? "/settings/tooling";
 const PERSONAL_STORAGE_ROUTE =
-  getSettingsSurfaceRoute('storage', 'personal') ?? '/settings/storage'
+  getSettingsSurfaceRoute("storage", "personal") ?? "/settings/storage";
 
 function toRoutePath(route: string): string {
-  return route.replace(/^\//, '')
+  return route.replace(/^\//, "");
 }
 
 function OrganizationWorkspacePermissionOnly({
   children,
   surfaceId,
-  fallback = '/projects',
+  fallback = "/projects",
 }: {
-  children: ReactNode
-  surfaceId: SettingsSurfaceId
-  fallback?: string
+  children: ReactNode;
+  surfaceId: SettingsSurfaceId;
+  fallback?: string;
 }) {
-  const { isLoading } = useAuth()
-  const { workspaceScoped, surfaceAccess } = useScopedAppContext({ route: '/workspace/general' })
+  const { isLoading } = useAuth();
+  const { workspaceScoped, surfaceAccess } = useScopedAppContext({ route: "/workspace/general" });
 
   if (isLoading) {
-    return null
+    return <RouteLoading label="Loading workspace…" />;
   }
 
   if (!workspaceScoped) {
-    return <Navigate to="/projects" replace />
+    return <Navigate to="/projects" replace />;
   }
 
-  const surface = getSettingsSurface(surfaceId)
+  const surface = getSettingsSurface(surfaceId);
   const allowed = surface
     ? canAccessWorkspaceSurface(surface, surfaceAccess satisfies WorkspaceSurfaceAccessState)
-    : false
+    : false;
 
   if (!allowed) {
-    return <Navigate to={fallback} replace />
+    return <Navigate to={fallback} replace />;
   }
 
-  return <>{children}</>
+  return <>{children}</>;
 }
 
 function WorkspaceScopedSettingRoute({
   personalRedirect,
   children,
 }: {
-  personalRedirect: string
-  children: ReactNode
+  personalRedirect: string;
+  children: ReactNode;
 }) {
-  const { isLoading } = useAuth()
+  const { isLoading } = useAuth();
   const { currentOrganizationWorkspace, currentPersonalWorkspace } = useResolvedScope({
     ignoreLocation: true,
-  })
+  });
 
   if (isLoading) {
-    return null
+    return <RouteLoading label="Resolving workspace…" />;
   }
 
   if (!currentOrganizationWorkspace && !currentPersonalWorkspace) {
-    return <Navigate to="/projects" replace />
+    return <Navigate to="/projects" replace />;
   }
 
   if (currentPersonalWorkspace && !currentOrganizationWorkspace) {
-    return <Navigate to={personalRedirect} replace />
+    return <Navigate to={personalRedirect} replace />;
   }
 
-  return <>{children}</>
+  return <>{children}</>;
 }
 
 function ProjectIndexRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/workbench" params={{ projectId: params.projectId ?? '' }} replace />
+  const params = useParams({ strict: false }) as { projectId?: string };
+  return (
+    <Navigate
+      to="/projects/p/$projectId/workbench"
+      params={{ projectId: params.projectId ?? "" }}
+      replace
+    />
+  );
 }
 
 function ProjectFilesRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/workbench" params={{ projectId: params.projectId ?? '' }} replace />
+  const params = useParams({ strict: false }) as { projectId?: string };
+  return (
+    <Navigate
+      to="/projects/p/$projectId/workbench"
+      params={{ projectId: params.projectId ?? "" }}
+      replace
+    />
+  );
 }
 
 function ProjectChangesRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string }
+  const params = useParams({ strict: false }) as { projectId?: string };
   return (
     <Navigate
       to="/projects/p/$projectId/workbench"
@@ -188,147 +340,33 @@ function ProjectChangesRedirect() {
       search={{ changes: "1" } as never}
       replace
     />
-  )
+  );
 }
 
 function ProjectWorkbenchRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/workbench" params={{ projectId: params.projectId ?? '' }} replace />
+  const params = useParams({ strict: false }) as { projectId?: string };
+  return (
+    <Navigate
+      to="/projects/p/$projectId/workbench"
+      params={{ projectId: params.projectId ?? "" }}
+      replace
+    />
+  );
 }
 
 function ProjectSettingsTeamRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string }
-  return <Navigate to="/projects/p/$projectId/team" params={{ projectId: params.projectId ?? '' }} replace />
+  const params = useParams({ strict: false }) as { projectId?: string };
+  return (
+    <Navigate
+      to="/projects/p/$projectId/team"
+      params={{ projectId: params.projectId ?? "" }}
+      replace
+    />
+  );
 }
 
-export const rootRoute = createRootRoute({
-  component: AppRoot,
-  notFoundComponent: () => <Navigate to="/projects" replace />,
-})
-
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  component: () => <Navigate to="/projects" replace />,
-})
-
-const projectsShellRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/projects',
-  component: ProjectLayout,
-})
-
-const projectsIndexRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: '/',
-  component: ProjectsLaunchPage,
-})
-
-const projectNewRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: '/new',
-  component: NewProject,
-})
-
-const projectJoinRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: '/join/$token',
-  component: ProjectJoinPage,
-})
-
-const projectInviteRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: '/invite/$inviteId',
-  component: ProjectInvitePage,
-})
-
-const joinProjectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/join/project/$token',
-  component: ProjectJoinPage,
-})
-
-const projectBuildRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: '/$projectId/build',
-  component: ProjectWorkbenchRedirect,
-})
-
-const projectRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: '/p/$projectId',
-  component: Outlet,
-})
-
-const projectIndexRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/',
-  component: ProjectIndexRedirect,
-})
-
-const projectFilesRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/files',
-  component: ProjectFilesRedirect,
-})
-
-// Legacy bookmark URL; in-app navigation uses /workbench directly.
-const projectPagesRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/pages',
-  component: ProjectWorkbenchRedirect,
-})
-
-const projectWorkbenchRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/workbench',
-  component: ProjectWorkbenchPage,
-})
-
-const projectChangesRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/changes',
-  component: ProjectChangesRedirect,
-})
-
-const projectFeedRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/feed',
-  component: ProjectChangesRedirect,
-})
-
-const projectMergeQueueRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/merge-queue',
-  component: ProjectChangesRedirect,
-})
-
-const projectVersionControlRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/version-control',
-  component: ProjectChangesRedirect,
-})
-
-const projectTasksRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/tasks',
-  component: TasksPage,
-})
-
-const projectTeamRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/team',
-  component: ProjectTeamPage,
-})
-
-const projectConflictsRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: '/conflicts',
-  component: ProjectConflictsPage,
-})
-
 function ProjectSettingsRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string }
+  const params = useParams({ strict: false }) as { projectId?: string };
   return (
     <Navigate
       to="/projects/p/$projectId/workbench"
@@ -336,32 +374,157 @@ function ProjectSettingsRedirect() {
       search={{ settings: "1" } as never}
       replace
     />
-  )
+  );
 }
+
+export const rootRoute = createRootRoute({
+  component: AppRoot,
+  notFoundComponent: () => <Navigate to="/projects" replace />,
+});
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: () => <Navigate to="/projects" replace />,
+});
+
+const projectsShellRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects",
+  component: ProjectLayout,
+});
+
+const projectsIndexRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/",
+  component: ProjectsLaunchPage,
+});
+
+const projectNewRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/new",
+  component: NewProject,
+});
+
+const projectJoinRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/join/$token",
+  component: ProjectJoinPage,
+});
+
+const projectInviteRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/invite/$inviteId",
+  component: ProjectInvitePage,
+});
+
+const joinProjectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/join/project/$token",
+  component: ProjectJoinPage,
+});
+
+const projectBuildRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/$projectId/build",
+  component: ProjectWorkbenchRedirect,
+});
+
+const projectRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/p/$projectId",
+  component: Outlet,
+});
+
+const projectIndexRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/",
+  component: ProjectIndexRedirect,
+});
+
+const projectFilesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/files",
+  component: ProjectFilesRedirect,
+});
+
+const projectPagesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/pages",
+  component: ProjectWorkbenchRedirect,
+});
+
+const projectWorkbenchRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/workbench",
+  component: ProjectWorkbenchPage,
+});
+
+const projectChangesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/changes",
+  component: ProjectChangesRedirect,
+});
+
+const projectFeedRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/feed",
+  component: ProjectChangesRedirect,
+});
+
+const projectMergeQueueRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/merge-queue",
+  component: ProjectChangesRedirect,
+});
+
+const projectVersionControlRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/version-control",
+  component: ProjectChangesRedirect,
+});
+
+const projectTasksRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/tasks",
+  component: TasksPage,
+});
+
+const projectTeamRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/team",
+  component: ProjectTeamPage,
+});
+
+const projectConflictsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "/conflicts",
+  component: ProjectConflictsPage,
+});
 
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectRoute,
-  path: '/settings',
+  path: "/settings",
   component: ProjectSettingsRedirect,
-})
+});
 
 const projectSettingsTeamRoute = createRoute({
   getParentRoute: () => projectRoute,
-  path: '/settings/team',
+  path: "/settings/team",
   component: ProjectSettingsTeamRedirect,
-})
+});
 
 const projectSettingsSectionRoute = createRoute({
   getParentRoute: () => projectRoute,
-  path: '/settings/$section',
+  path: "/settings/$section",
   component: ProjectSettingsRedirect,
-})
+});
 
 const legacyProjectRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/projects/$slug',
+  path: "/projects/$slug",
   component: LegacyProjectRedirectPage,
-})
+});
 
 const teamsMembersRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -371,17 +534,17 @@ const teamsMembersRoute = createRoute({
       <Members />
     </OrganizationWorkspacePermissionOnly>
   ),
-})
+});
 
 const teamMemberDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/teams/members/$memberId',
+  path: "/teams/members/$memberId",
   component: () => (
     <OrganizationWorkspacePermissionOnly surfaceId="members">
       <MemberDetails />
     </OrganizationWorkspacePermissionOnly>
   ),
-})
+});
 
 const teamsRolesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -391,7 +554,7 @@ const teamsRolesRoute = createRoute({
       <Roles />
     </OrganizationWorkspacePermissionOnly>
   ),
-})
+});
 
 const workspacePoliciesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -401,25 +564,25 @@ const workspacePoliciesRoute = createRoute({
       <Policies />
     </OrganizationWorkspacePermissionOnly>
   ),
-})
+});
 
 const workspaceSelectRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/workspaces/select',
+  path: "/workspaces/select",
   component: WorkspaceSelect,
-})
+});
 
 const workspaceCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/workspaces/new',
+  path: "/workspaces/new",
   component: WorkspaceCreate,
-})
+});
 
 const personalGeneralRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_GENERAL_ROUTE),
   component: General,
-})
+});
 
 const workspaceGeneralRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -429,7 +592,7 @@ const workspaceGeneralRoute = createRoute({
       <General />
     </OrganizationWorkspacePermissionOnly>
   ),
-})
+});
 
 const workspaceBillingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -441,7 +604,7 @@ const workspaceBillingRoute = createRoute({
       </OrganizationWorkspacePermissionOnly>
     </WorkspaceScopedSettingRoute>
   ),
-})
+});
 
 const workspaceIntegrationsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -453,13 +616,13 @@ const workspaceIntegrationsRoute = createRoute({
       </OrganizationWorkspacePermissionOnly>
     </WorkspaceScopedSettingRoute>
   ),
-})
+});
 
 const personalIntegrationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE),
   component: Integrations,
-})
+});
 
 const workspaceSourceControlRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -471,13 +634,13 @@ const workspaceSourceControlRoute = createRoute({
       </OrganizationWorkspacePermissionOnly>
     </WorkspaceScopedSettingRoute>
   ),
-})
+});
 
 const personalSourceControlRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
   component: SourceControl,
-})
+});
 
 const workspaceCloudStorageRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -489,49 +652,49 @@ const workspaceCloudStorageRoute = createRoute({
       </OrganizationWorkspacePermissionOnly>
     </WorkspaceScopedSettingRoute>
   ),
-})
+});
 
 const personalCloudStorageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_CLOUD_STORAGE_ROUTE),
   component: Sync,
-})
+});
 
 const personalAccountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
   component: Account,
-})
+});
 
 const personalBillingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_BILLING_ROUTE),
   component: Billing,
-})
+});
 
 const personalAppearanceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_APPEARANCE_ROUTE),
   component: Appearance,
-})
+});
 
 const personalToolingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_TOOLING_ROUTE),
   component: Tooling,
-})
+});
 
 const personalStorageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_STORAGE_ROUTE),
   component: Storage,
-})
+});
 
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/invite/$token',
+  path: "/invite/$token",
   component: AcceptInvitation,
-})
+});
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -581,12 +744,12 @@ export const routeTree = rootRoute.addChildren([
   personalToolingRoute,
   personalStorageRoute,
   inviteRoute,
-])
+]);
 
-export const appRouter = createRouter({ routeTree })
+export const appRouter = createRouter({ routeTree });
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface Register {
-    router: typeof appRouter
+    router: typeof appRouter;
   }
 }

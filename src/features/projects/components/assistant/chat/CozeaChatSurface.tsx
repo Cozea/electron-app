@@ -66,7 +66,7 @@ import {
   findFirstUnansweredPendingUserInputQuestionIndex,
   type PendingUserInputDraftAnswer,
 } from "@/features/projects/components/assistant/pendingUserInput"
-import { type Thread } from "@/stores/assistant-types"
+import { type Thread } from "@/stores/types"
 import { cn } from "@/lib/utils"
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>

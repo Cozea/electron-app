@@ -2,6 +2,11 @@ import { useSyncExternalStore } from "react"
 
 import type { ServerConfig } from "@cozea/assistant-contracts"
 
+import {
+  createFallbackAssistantRuntimeStatus,
+  readAssistantRuntimeBridgeStatus,
+  subscribeToAssistantRuntimeBridgeStatus,
+} from "@/lib/desktopBridgeClient"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import {
   onServerConfigUpdated,
@@ -36,15 +41,7 @@ let activeConfigLoad: Promise<void> | null = null
 let hasLoadedConfig = false
 
 function createFallbackStatus(): AssistantRuntimeStatus {
-  const wsUrl =
-    typeof window !== "undefined" ? window.desktopBridge?.getWsUrl?.() ?? null : null
-
-  return {
-    phase: wsUrl ? "starting" : "idle",
-    wsUrl,
-    lastError: null,
-    updatedAt: Date.now(),
-  }
+  return createFallbackAssistantRuntimeStatus()
 }
 
 function createInitialSnapshot(): AssistantRuntimeMetadataSnapshot {
@@ -179,8 +176,11 @@ function ensureSharedSubscriptions() {
     return
   }
 
-  const bridge = typeof window !== "undefined" ? window.desktopBridge : null
-  if (!bridge) {
+  runtimeStatusUnsubscribe = subscribeToAssistantRuntimeBridgeStatus((nextStatus) => {
+    applyRuntimeStatus(nextStatus)
+  })
+
+  if (!runtimeStatusUnsubscribe) {
     applyRuntimeStatus({
       phase: "ready",
       wsUrl: null,
@@ -188,17 +188,11 @@ function ensureSharedSubscriptions() {
       updatedAt: Date.now(),
     })
   } else {
-    void bridge
-      .getAssistantRuntimeStatus()
+    void readAssistantRuntimeBridgeStatus()
       .then((status) => {
         applyRuntimeStatus(status)
       })
       .catch(() => undefined)
-
-    runtimeStatusUnsubscribe =
-      bridge.onAssistantRuntimeStatus?.((nextStatus) => {
-        applyRuntimeStatus(nextStatus)
-      }) ?? null
   }
 
   serverConfigUnsubscribe = onServerConfigUpdated((payload) => {

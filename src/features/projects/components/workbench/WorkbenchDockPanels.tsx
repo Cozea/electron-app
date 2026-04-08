@@ -32,6 +32,7 @@ interface WorkbenchDockRuntimeValue {
   laneId: string
   projectPath: string | null
   projectName: string | null
+  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
   onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -165,8 +166,12 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
 })
 
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const storedTile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
+  const tile =
+    storedTile?.type === "selection"
+      ? storedTile
+      : runtime.getSelectionPreviewTile(props.params.tileId)
   const singletonEmptyWorkbench = useProjectWorkbenchStore((state) => {
     const wb = state.workbenches[buildWorkbenchScopeKey(props.params.projectId, props.params.laneId)]
     if (!wb || wb.order.length !== 1) return false
@@ -328,6 +333,7 @@ export function WorkbenchDockRuntimeProvider(props: {
   laneId: string
   projectPath: string | null
   projectName: string | null
+  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
   onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -343,6 +349,7 @@ export function WorkbenchDockRuntimeProvider(props: {
       laneId: props.laneId,
       projectPath: props.projectPath,
       projectName: props.projectName,
+      getSelectionPreviewTile: props.getSelectionPreviewTile,
       onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
       onOpenBrowserFromBrowser: props.onOpenBrowserFromBrowser,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
@@ -353,6 +360,7 @@ export function WorkbenchDockRuntimeProvider(props: {
       props.laneId,
       props.projectPath,
       props.projectName,
+      props.getSelectionPreviewTile,
       props.onOpenBrowserFromDevServer,
       props.onOpenBrowserFromBrowser,
       props.onDuplicateAssistantTile,

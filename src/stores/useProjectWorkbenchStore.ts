@@ -128,6 +128,27 @@ export interface WorkbenchProjectState {
   layoutResetKey: number
 }
 
+export interface WorkbenchSidebarAssistantTileSummary {
+  id: string
+  type: "assistantChat"
+  title: string
+  provider?: ProviderKind
+  threadId?: string | null
+}
+
+export interface WorkbenchSidebarSurfaceTileSummary {
+  id: string
+  type: Exclude<WorkbenchTileType, "assistantChat" | "selection" | "tasks" | "changes">
+  title: string
+}
+
+export interface WorkbenchLaneSidebarSummary {
+  laneId: string
+  activeTileId: string | null
+  agents: WorkbenchSidebarAssistantTileSummary[]
+  surfaces: WorkbenchSidebarSurfaceTileSummary[]
+}
+
 interface CreateTileOptions {
   title?: string
   url?: string
@@ -542,6 +563,64 @@ export function selectProjectLaneWorkbenches(projectId: string | null | undefine
         .filter((workbench) => workbench.projectId === projectId)
         .map((workbench) => [workbench.laneId, workbench] as const),
     )
+  }
+}
+
+export function buildWorkbenchLaneSidebarSummary(
+  workbench: WorkbenchProjectState,
+): WorkbenchLaneSidebarSummary {
+  const agents: WorkbenchSidebarAssistantTileSummary[] = []
+  const surfaces: WorkbenchSidebarSurfaceTileSummary[] = []
+
+  for (const tileId of workbench.order) {
+    const tile = workbench.tiles[tileId]
+    if (!tile || tile.type === "selection" || tile.type === "tasks" || tile.type === "changes") {
+      continue
+    }
+
+    if (tile.type === "assistantChat") {
+      agents.push({
+        id: tile.id,
+        type: tile.type,
+        title: tile.title,
+        provider: tile.provider,
+        threadId: tile.threadId ?? null,
+      })
+      continue
+    }
+
+    surfaces.push({
+      id: tile.id,
+      type: tile.type,
+      title: tile.title,
+    })
+  }
+
+  return {
+    laneId: workbench.laneId,
+    activeTileId: workbench.activeTileId,
+    agents,
+    surfaces,
+  }
+}
+
+export function selectVisibleActiveWorkbenchTileId(
+  projectId: string | null | undefined,
+  laneId?: string | null,
+) {
+  return (state: ProjectWorkbenchState): string | null => {
+    if (!projectId) return null
+
+    const scopeKey = buildWorkbenchScopeKey(projectId, laneId)
+    const workbench = state.workbenches[scopeKey] ?? null
+    if (!workbench?.activeTileId) return null
+
+    const activeTile = workbench.tiles[workbench.activeTileId]
+    if (!activeTile || activeTile.type === "selection" || activeTile.type === "tasks" || activeTile.type === "changes") {
+      return null
+    }
+
+    return activeTile.id
   }
 }
 

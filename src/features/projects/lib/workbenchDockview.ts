@@ -6,8 +6,8 @@ import type {
 
 import type {
   WorkbenchProjectState,
-  WorkbenchSelectionTile,
   WorkbenchSelectionTileEdge,
+  WorkbenchSelectionTile,
   WorkbenchTile,
   WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
@@ -212,10 +212,12 @@ export function computeSeamZones(api: DockviewApi, containerEl: HTMLElement): Se
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-): "selection" | "terminal" | "assistantChat" {
+): "selection" | "browser" | "terminal" | "devServer" | "assistantChat" {
   switch (type) {
     case "selection":
+    case "browser":
     case "terminal":
+    case "devServer":
     case "assistantChat":
       return type
     default:
@@ -241,8 +243,26 @@ export function isSelectionTile(
   return Boolean(tile && tile.type === "selection")
 }
 
+function findPanelByType(
+  api: DockviewApi,
+  project: WorkbenchProjectState,
+  type: WorkbenchTileType,
+  excludeTileId?: string,
+): IDockviewPanel | undefined {
+  for (const tileId of project.order) {
+    if (tileId === excludeTileId) continue
+    const tile = project.tiles[tileId]
+    if (!tile || tile.type !== type) continue
+    const panel = api.getPanel(tileId)
+    if (panel) return panel
+  }
+
+  return undefined
+}
+
 export function buildAddPanelOptions(
   api: DockviewApi,
+  project: WorkbenchProjectState,
   tile: WorkbenchTile,
   projectId: string,
   laneId: string,
@@ -259,6 +279,60 @@ export function buildAddPanelOptions(
   }
 
   const activePanel = api.activePanel
+  const browserPanel = findPanelByType(api, project, "browser", tile.id)
+
+  switch (tile.type) {
+    case "browser":
+      if (browserPanel) {
+        return {
+          ...base,
+          floating: false,
+          position: {
+            referencePanel: browserPanel.id,
+            direction: "within",
+          },
+        }
+      }
+      if (activePanel) {
+        return {
+          ...base,
+          floating: false,
+          position: {
+            referencePanel: activePanel.id,
+            direction: "right",
+          },
+        }
+      }
+      return base
+    case "terminal":
+    case "devServer":
+      if (browserPanel) {
+        return {
+          ...base,
+          floating: false,
+          position: {
+            referencePanel: browserPanel.id,
+            direction: "below",
+          },
+        }
+      }
+      break
+    case "assistantChat":
+      if (activePanel) {
+        return {
+          ...base,
+          floating: false,
+          position: {
+            referencePanel: activePanel.id,
+            direction: "right",
+          },
+        }
+      }
+      break
+    default:
+      break
+  }
+
   if (activePanel) {
     return {
       ...base,
@@ -284,7 +358,7 @@ export function buildDefaultDockview(
   for (const tileId of project.order) {
     const tile = project.tiles[tileId]
     if (isObsoleteWorkbenchTile(tile)) continue
-    api.addPanel(buildAddPanelOptions(api, tile, projectId, laneId))
+    api.addPanel(buildAddPanelOptions(api, project, tile, projectId, laneId))
   }
 }
 
@@ -327,7 +401,7 @@ export function reconcilePanels(
       }
       continue
     }
-    addPanel(buildAddPanelOptions(api, tile, projectId, laneId))
+    addPanel(buildAddPanelOptions(api, project, tile, projectId, laneId))
   }
 
   syncPanelTitles(api, project)

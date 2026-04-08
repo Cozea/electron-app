@@ -4,6 +4,7 @@ import { ChevronRight, EllipsisVertical } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
@@ -37,15 +38,7 @@ async function showNativeSidebarMenu<T extends string>(
     y: Math.round(rect.bottom),
   }
 
-  if (window.desktopBridge?.showContextMenu) {
-    return window.desktopBridge.showContextMenu(items, position)
-  }
-
-  if (window.nativeApi?.contextMenu?.show) {
-    return window.nativeApi.contextMenu.show(items, position)
-  }
-
-  return null
+  return showDesktopContextMenu(items, position)
 }
 
 export const ProjectSidebarTreeItem = React.memo(

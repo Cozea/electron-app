@@ -13,6 +13,7 @@ import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChange
 import { HeaderProjectShareButton } from "./unified-header/HeaderProjectShareButton";
 
 interface UnifiedHeaderProps {
+  breadcrumbs?: Array<{ label: string; href?: string }>
   header?: ReactNode;
   centerAddon?: ReactNode;
   preSearchAddon?: ReactNode;

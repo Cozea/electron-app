@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge";
-import { ensureVscodeServicesInitialized } from "@/lib/editor/vscodeServices";
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge";
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore";
 import { useShallow } from "zustand/react/shallow";
@@ -290,17 +289,19 @@ export function ProjectLayout({
     updateMemberLocalPath,
   ]);
 
-  useDiagnosticsBridge(effectiveLocalPath);
+  const isWorkbenchView = location.pathname.endsWith("/workbench");
+  const isChangesView = location.pathname.endsWith("/changes");
+  const shouldEnableProjectRuntime = Boolean(effectiveLocalPath && (isWorkbenchView || isChangesView));
+  const runtimeProjectPath = shouldEnableProjectRuntime ? effectiveLocalPath : null;
+
+  useDiagnosticsBridge(runtimeProjectPath);
 
   useEffect(() => {
-    setVscodeWorkspaceProjectPath(effectiveLocalPath);
-    if (effectiveLocalPath) {
-      void ensureVscodeServicesInitialized();
-    }
+    setVscodeWorkspaceProjectPath(runtimeProjectPath);
     return () => {
       setVscodeWorkspaceProjectPath(null);
     };
-  }, [effectiveLocalPath]);
+  }, [runtimeProjectPath]);
 
   // Ensure project-scoped runtime processes don't leak across navigation.
   // - Stops any dev server PTY (devServer API)
@@ -337,17 +338,16 @@ export function ProjectLayout({
   }, [effectiveLocalPath]);
 
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
-  const isWorkbenchView = location.pathname.endsWith("/workbench");
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
   const presenceActiveRoute = isWorkbenchView ? (currentPreviewPage?.route ?? null) : null;
 
   // Real-time presence tracking
   const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId: project?._id,
-    userId: convexUserId,
-    userName: user?.firstName || user?.email || null,
-    userEmail: user?.email || null,
-    userAvatarUrl: user?.profileImageUrl || null,
+    projectId: shouldEnableProjectRuntime ? project?._id : null,
+    userId: shouldEnableProjectRuntime ? convexUserId : null,
+    userName: shouldEnableProjectRuntime ? user?.firstName || user?.email || null : null,
+    userEmail: shouldEnableProjectRuntime ? user?.email || null : null,
+    userAvatarUrl: shouldEnableProjectRuntime ? user?.profileImageUrl || null : null,
     activeFile: presenceActiveFile,
     activeRoute: presenceActiveRoute,
   });
@@ -363,7 +363,6 @@ export function ProjectLayout({
   );
 
   // Check if we are on views that need full-bleed content (no padding)
-  const isChangesView = location.pathname.endsWith("/changes");
   const shouldRemovePadding = isWorkbenchView || isChangesView;
 
   const {
@@ -449,11 +448,11 @@ export function ProjectLayout({
 
   return (
     <ProjectSyncProvider
-      projectId={project?._id ?? null}
-      userId={convexUserId ?? null}
+      projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+      userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
       userName={user?.firstName || user?.email || "User"}
       projectSlug={projectSlug}
-      localPath={effectiveLocalPath}
+      localPath={runtimeProjectPath}
       lastSyncAt={project?.lastSyncAt}
       skipInitialSyncCheck={shouldSkipInitialSyncCheck}
     >

@@ -16,7 +16,7 @@ import {
   resolveSelectableModel,
 } from "@cozea/assistant-shared/model"
 
-import type { Project, Thread } from "@/stores/assistant-types"
+import type { Project, Thread } from "@/stores/types"
 import {
   buildWorkbenchScopeKey,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,

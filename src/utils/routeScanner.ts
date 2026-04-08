@@ -5,6 +5,7 @@
  * Uses stored frameworkInfo when available, falls back to detection.
  */
 
+import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
 import { getFrameworkInfo, type Framework } from './projectDetector'
 
 export interface ScannedRoute {
@@ -195,7 +196,7 @@ async function scanNextjsRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     // App Router: app/**/page.tsx
@@ -279,7 +280,7 @@ async function scanRemixRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -327,7 +328,7 @@ async function scanSvelteKitRoutes(projectPath: string): Promise<ScannedRoute[]>
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -371,7 +372,7 @@ async function scanNuxtRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -413,7 +414,7 @@ async function scanAstroRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -457,7 +458,7 @@ async function scanGatsbyRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -501,7 +502,7 @@ async function scanSolidStartRoutes(projectPath: string): Promise<ScannedRoute[]
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -546,7 +547,7 @@ async function scanQwikRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -593,7 +594,7 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     let hasExplicitRootRoute = false
@@ -672,7 +673,7 @@ async function parseReactRouterRoutes(
   const routes: ScannedRoute[] = []
 
   try {
-    const content = await window.electronAPI.project.readFile({
+    const content = await projectAnalysisDesktopClient.readFile({
       projectPath,
       filePath: appFilePath,
     })
@@ -791,7 +792,7 @@ async function detectExplicitRootRouteInReactApp(
   appFilePath: string
 ): Promise<boolean> {
   try {
-    const content = await window.electronAPI.project.readFile({
+    const content = await projectAnalysisDesktopClient.readFile({
       projectPath,
       filePath: appFilePath,
     })
@@ -817,7 +818,7 @@ async function scanVueRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await window.electronAPI.project.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
     // Check for src/pages or src/views directory

@@ -1,30 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import { FolderIcon } from "lucide-react"
 
+import { resolveWsHttpOrigin } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 
 const loadedProjectFaviconSrcs = new Set<string>()
-
-function resolveWsHttpOrigin(): string {
-  if (typeof window === "undefined") return ""
-  const bridgeWsUrl = window.desktopBridge?.getWsUrl?.()
-  const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined
-  const wsCandidate =
-    typeof bridgeWsUrl === "string" && bridgeWsUrl.length > 0
-      ? bridgeWsUrl
-      : typeof envWsUrl === "string" && envWsUrl.length > 0
-        ? envWsUrl
-        : null
-  if (!wsCandidate) return window.location.origin
-  try {
-    const wsUrl = new URL(wsCandidate)
-    const protocol =
-      wsUrl.protocol === "wss:" ? "https:" : wsUrl.protocol === "ws:" ? "http:" : wsUrl.protocol
-    return `${protocol}//${wsUrl.host}`
-  } catch {
-    return window.location.origin
-  }
-}
 
 const PROJECT_FAVICON_HTTP_ORIGIN = resolveWsHttpOrigin()
 
