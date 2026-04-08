@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -37,7 +36,7 @@ interface AccountProps {
   route?: string
 }
 
-export function Account({ surface = 'page', route }: AccountProps) {
+export function Account({ surface = 'page', route: _route }: AccountProps) {
   const { user, convexUserId } = useAuth()
 
   // Fetch extended profile from Convex
@@ -248,9 +247,5 @@ export function Account({ surface = 'page', route }: AccountProps) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="account" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

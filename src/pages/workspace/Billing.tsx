@@ -1,4 +1,3 @@
-import { SettingsRouteShell } from "@/components/settings/SettingsRouteShell"
 import { WorkspaceAccessNotice } from "@/components/workspaces/WorkspaceAccessNotice"
 import { BillingContent } from "@/pages/workspace/billing/BillingContent"
 import { useBillingController } from "@/pages/workspace/billing/useBillingController"
@@ -24,9 +23,5 @@ export function Billing({ surface = "page", route }: BillingProps) {
     return <div className="mx-auto w-full max-w-6xl">{content}</div>
   }
 
-  return (
-    <SettingsRouteShell surfaceId="billing" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

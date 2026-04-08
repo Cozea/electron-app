@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { featureFlags } from '@/lib/featureFlags'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -489,67 +488,15 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
       )
   )
 
-  const headerContent = (
-    <div className="flex items-center gap-2">
-      {selected.length > 0 && (
-        <Button variant="destructive" size="sm" className="h-7 rounded-full" onClick={handleBulkDelete}>
-          <Trash className="mr-2 h-4 w-4" />
-          Delete ({selected.length})
+  const inviteButton = (
+    <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+      <DialogTrigger asChild>
+        <Button className="gap-2 h-7 px-2 text-xs rounded-full" disabled={!canInvite}>
+          <UserPlus className="h-3.5 w-3.5" />
+          Invite
         </Button>
-      )}
-      {/* Role Filter */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-            <IconFilter className="h-3.5 w-3.5" />
-            {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
-          {roleOptions.map((role) => (
-            <DropdownMenuItem key={role.value} onClick={() => { setRoleFilter(role.baseRole); setCurrentPage(1) }}>
-              {role.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Sort By */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-            <ArrowUpDown className="h-3.5 w-3.5" />
-            {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date Joined</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Sort Direction */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-            {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogTrigger asChild>
-          <Button className="gap-2 h-7 px-2 text-xs rounded-full" disabled={!canInvite}>
-            <UserPlus className="h-3.5 w-3.5" />
-            Invite
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-lg">
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Invite members</DialogTitle>
             <DialogDescription>
@@ -642,9 +589,8 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
               Send invites
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 
   const content = (
@@ -699,6 +645,56 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
             </AlertDescription>
           </Alert>
         )}
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {selected.length > 0 && (
+            <Button variant="destructive" size="sm" className="h-7 rounded-full" onClick={handleBulkDelete}>
+              <Trash className="mr-2 h-4 w-4" />
+              Delete ({selected.length})
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+                <IconFilter className="h-3.5 w-3.5" />
+                {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
+              {roleOptions.map((role) => (
+                <DropdownMenuItem key={role.value} onClick={() => { setRoleFilter(role.baseRole); setCurrentPage(1) }}>
+                  {role.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date Joined</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+                {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {inviteButton}
+        </div>
 
         {/* Table */}
         <div
@@ -917,13 +913,5 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     return content
   }
 
-  return (
-    <SettingsRouteShell
-      surfaceId="members"
-      route={route}
-      header={headerContent}
-    >
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

@@ -1,6 +1,5 @@
 import { Lock, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Badge } from '@/components/ui/badge'
 import { CardTitle } from '@/components/ui/card'
@@ -105,9 +104,5 @@ export function Policies({ surface = 'page', route }: PoliciesProps = {}) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="policies" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

@@ -63,16 +63,19 @@ function mapWorkspaceTypeToScopeKind(
 
 export function getRouteScopeKind(routePath?: string | null): RouteScopeKind {
   const normalizedRoute = normalizeRoutePath(routePath)
+  const unprefixedRoute = normalizedRoute.startsWith("/projects/")
+    ? `/${normalizedRoute.slice("/projects/".length)}`
+    : normalizedRoute
 
-  if (normalizedRoute.startsWith("/settings/")) {
+  if (unprefixedRoute.startsWith("/settings/")) {
     return "personal-settings"
   }
 
-  if (normalizedRoute.startsWith("/workspace/")) {
+  if (unprefixedRoute.startsWith("/workspace/")) {
     return "workspace-settings"
   }
 
-  if (normalizedRoute === "/teams" || normalizedRoute.startsWith("/teams/")) {
+  if (unprefixedRoute === "/teams" || unprefixedRoute.startsWith("/teams/")) {
     return "workspace-team"
   }
 

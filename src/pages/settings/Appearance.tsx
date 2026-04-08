@@ -1,6 +1,5 @@
 import { Check } from 'lucide-react'
 
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -56,7 +55,7 @@ const themes: { value: Theme; label: string; colors: { bg: string; card: string;
   },
 ]
 
-export function Appearance({ surface = 'page', route }: AppearanceProps) {
+export function Appearance({ surface = 'page', route: _route }: AppearanceProps) {
   const { theme, setTheme } = useTheme()
 
   const content = (
@@ -190,9 +189,5 @@ export function Appearance({ surface = 'page', route }: AppearanceProps) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="appearance" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

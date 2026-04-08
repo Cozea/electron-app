@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
-import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { prewarmCloudStorageData } from "@/hooks/useScopedCloudStorageData"
 import {
@@ -32,23 +31,11 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 }
 
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
-  const { convexUserId } = useAuth()
   const {
     workspaceScoped: organizationWorkspaceSelected,
     convexOrganizationId,
-    permissions,
     surfaceAccess,
   } = useScopedAppContext()
-
-  const preloadProjectsPage = React.useCallback(async () => {
-    const module = await import("@/pages/Projects")
-    await module.prewarmProjectsPageData({
-      personalScoped: !organizationWorkspaceSelected,
-      organizationId: convexOrganizationId ?? null,
-      userId: convexUserId ?? null,
-      canViewWorkspaceMembers: permissions.includes('members:view'),
-    })
-  }, [convexOrganizationId, convexUserId, organizationWorkspaceSelected, permissions])
 
   const platformItems = React.useMemo<NavMainItem[]>(
     () => [
@@ -56,10 +43,9 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         title: "Projects",
         url: "/projects",
         icon: IconFolderCode,
-        preload: preloadProjectsPage,
       },
     ],
-    [preloadProjectsPage]
+    []
   )
 
   const getSurfacePreload = React.useCallback(

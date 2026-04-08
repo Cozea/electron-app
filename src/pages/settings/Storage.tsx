@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { storageSettingsClient } from '@/lib/settings/storageSettingsClient'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
@@ -161,7 +160,7 @@ export async function prewarmStorageSettings(): Promise<void> {
   await storageSnapshotPrewarmPromise
 }
 
-export function Storage({ surface = 'page', route }: StorageProps) {
+export function Storage({ surface = 'page', route: _route }: StorageProps) {
   const [projectsDirectory, setProjectsDirectory] = useState<string>(
     cachedStorageSnapshot?.projectsDirectory ?? '~/Developer/Cozea'
   )
@@ -997,9 +996,5 @@ export function Storage({ surface = 'page', route }: StorageProps) {
     return content
   }
 
-  return (
-    <SettingsRouteShell surfaceId="storage" route={route}>
-      {content}
-    </SettingsRouteShell>
-  )
+  return content
 }

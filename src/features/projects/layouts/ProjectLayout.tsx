@@ -8,6 +8,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
+import { SettingsSidebar } from "../components/SettingsSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
@@ -95,7 +96,7 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { convexUserId, user, logout } = useAuth();
-  const { preferredConvexOrganizationId } = useScopedAppContext();
+  const { preferredConvexOrganizationId, workspaceScoped } = useScopedAppContext();
   const location = useLocation();
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
@@ -291,6 +292,10 @@ export function ProjectLayout({
 
   const isWorkbenchView = location.pathname.endsWith("/workbench");
   const isChangesView = location.pathname.endsWith("/changes");
+  const isSettingsModeRoute =
+    location.pathname.startsWith("/projects/settings/") ||
+    location.pathname.startsWith("/projects/workspace/") ||
+    location.pathname.startsWith("/projects/teams");
   const shouldEnableProjectRuntime = Boolean(effectiveLocalPath && (isWorkbenchView || isChangesView));
   const runtimeProjectPath = shouldEnableProjectRuntime ? effectiveLocalPath : null;
 
@@ -381,6 +386,9 @@ export function ProjectLayout({
 
   // Main layout content
   const headerSlot = headerContent;
+  const defaultSettingsHeader = isSettingsModeRoute ? (
+    <div className="truncate text-sm font-medium">{workspaceScoped ? "Workspace Settings" : "Settings"}</div>
+  ) : null;
 
   const presenceHeaderAddon = useMemo(
     () =>
@@ -398,18 +406,22 @@ export function ProjectLayout({
       <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
-          <ProjectSidebar
-            color="currentColor"
-            user={user}
-            onLogout={logout}
-            projectId={project?._id ?? null}
-          />
+          {isSettingsModeRoute ? (
+            <SettingsSidebar color="currentColor" user={user} onLogout={logout} />
+          ) : (
+            <ProjectSidebar
+              color="currentColor"
+              user={user}
+              onLogout={logout}
+              projectId={project?._id ?? null}
+            />
+          )}
           <SidebarInset
             color="currentColor"
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
           >
             <ProjectLayoutHeader
-              header={headerSlot ?? undefined}
+              header={(headerSlot ?? defaultSettingsHeader) ?? undefined}
               centerAddon={centerAddon ?? undefined}
               preSearchAddon={presenceHeaderAddon ?? undefined}
               className="border-b-0 bg-transparent"

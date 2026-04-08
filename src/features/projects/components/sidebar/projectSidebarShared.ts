@@ -6,6 +6,11 @@ import type {
 
 import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenGitSync"
 
+export const SIDEBAR_PILL_BASE_CLASS =
+  "rounded-md px-2 text-xs transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+export const SIDEBAR_PILL_ACTIVE_CLASS =
+  "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]"
+
 export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   id: string
   name: string
