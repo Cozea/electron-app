@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, memo, useRef, useCallback, useEffect, useMemo } from "react";
+import { type ReactNode, useRef, useCallback, useEffect, useMemo } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -20,61 +20,16 @@ import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge";
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge";
-import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore";
-import { useShallow } from "zustand/react/shallow";
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync";
 import { logGitOpenDebug } from "@/lib/git/gitOpenDebug";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
+import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import { useScopedAppContext } from "@/hooks/useScopedAppContext";
+import { getWorkspaceSelectionId } from "@shared/types";
 import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
-
-interface ProjectLayoutHeaderProps {
-  header?: ReactNode;
-  centerAddon?: ReactNode;
-  preSearchAddon?: ReactNode;
-  rightAddon?: ReactNode;
-  className?: string;
-  layoutMode?: "fixed" | "inset";
-  insetLeft?: number;
-  insetRight?: number;
-  compactHeaderActions?: boolean;
-  projectInviteContext?: {
-    projectId: Id<"projects"> | null;
-    projectName?: string | null;
-  } | null;
-}
-
-const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
-  header,
-  centerAddon,
-  preSearchAddon,
-  rightAddon,
-  className,
-  layoutMode = "fixed",
-  insetLeft = 0,
-  insetRight = 0,
-  compactHeaderActions = true,
-  projectInviteContext = null,
-}: ProjectLayoutHeaderProps) {
-  return (
-    <UnifiedHeader
-      breadcrumbs={[]}
-      header={header}
-      centerAddon={centerAddon}
-      preSearchAddon={preSearchAddon}
-      rightAddon={rightAddon}
-      className={className}
-      layoutMode={layoutMode}
-      leftWindowControlsInset={layoutMode === "fixed"}
-      contentInsetLeft={insetLeft}
-      contentInsetRight={insetRight}
-      compactHeaderActions={compactHeaderActions}
-      projectInviteContext={projectInviteContext}
-    />
-  );
-});
+import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
 
 interface ProjectLayoutProps {
   children?: ReactNode;
@@ -96,7 +51,7 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { convexUserId, user, logout } = useAuth();
-  const { preferredConvexOrganizationId, workspaceScoped } = useScopedAppContext();
+  const { preferredConvexOrganizationId, workspaceScoped, resolvedScope } = useScopedAppContext();
   const location = useLocation();
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
@@ -370,26 +325,6 @@ export function ProjectLayout({
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding = isWorkbenchView || isChangesView;
 
-  const {
-    header: headerContent,
-    centerAddon,
-    insetLeft,
-    insetRight,
-  } = useProjectHeaderStore(
-    useShallow((state) => ({
-      header: state.header,
-      centerAddon: state.centerAddon,
-      insetLeft: state.insetLeft,
-      insetRight: state.insetRight,
-    })),
-  );
-
-  // Main layout content
-  const headerSlot = headerContent;
-  const defaultSettingsHeader = isSettingsModeRoute ? (
-    <div className="truncate text-sm font-medium">{workspaceScoped ? "Workspace Settings" : "Settings"}</div>
-  ) : null;
-
   const presenceHeaderAddon = useMemo(
     () =>
       presenceUsers.length > 0 ? (
@@ -401,6 +336,29 @@ export function ProjectLayout({
       ) : null,
     [handlePresenceUserClick, presenceUsers],
   );
+
+  const workspaceSelectionId = useMemo(
+    () => getWorkspaceSelectionId(resolvedScope.activeWorkspace),
+    [resolvedScope.activeWorkspace],
+  );
+
+  const collaborationProjectId = useMemo((): Id<"projects"> | null => {
+    if (project?._id) return project._id;
+    const entry = readLastWorkbenchRoute(workspaceSelectionId);
+    if (!entry?.projectId) return null;
+    return entry.projectId as Id<"projects">;
+  }, [project?._id, workspaceSelectionId]);
+
+  const chromeHeader = useProjectChromeHeader({
+    isSettingsModeRoute,
+    pathname: location.pathname,
+    workspaceScoped,
+    presencePreSearchAddon: presenceHeaderAddon,
+    projectId: collaborationProjectId,
+    projectName: project?.name ?? null,
+    editorProjectPath: effectiveLocalPath ?? null,
+  });
+
   const layoutContent = (
     <SidebarProvider>
       <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
@@ -420,19 +378,13 @@ export function ProjectLayout({
             color="currentColor"
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
           >
-            <ProjectLayoutHeader
-              header={(headerSlot ?? defaultSettingsHeader) ?? undefined}
-              centerAddon={centerAddon ?? undefined}
-              preSearchAddon={presenceHeaderAddon ?? undefined}
+            <UnifiedHeader
+              breadcrumbs={[]}
               className="border-b-0 bg-transparent"
               layoutMode="fixed"
-              insetLeft={insetLeft}
-              insetRight={insetRight}
+              leftWindowControlsInset
               compactHeaderActions
-              projectInviteContext={{
-                projectId: project?._id ?? null,
-                projectName: project?.name ?? null,
-              }}
+              {...chromeHeader}
             />
             <div
               className="h-10 shrink-0 border-b border-border/60 bg-background"

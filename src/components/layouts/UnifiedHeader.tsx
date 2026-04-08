@@ -3,11 +3,10 @@ import {
 } from "react";
 
 import type { Id } from "../../../convex/_generated/dataModel";
-import { LayoutToggles } from "@/components/layouts/LayoutToggles";
+import { LayoutToggles, SidebarInsetToggle } from "@/components/layouts/LayoutToggles";
 import { cn } from "@/lib/utils";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
-import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
 import { HeaderProjectShareButton } from "./unified-header/HeaderProjectShareButton";
@@ -45,7 +44,6 @@ export function UnifiedHeader({
   hideInbox = false,
   projectInviteContext = null,
 }: UnifiedHeaderProps) {
-  const { personalScoped } = useScopedAppContext();
   const windowChrome = useWindowChrome();
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows;
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth();
@@ -65,25 +63,23 @@ export function UnifiedHeader({
   };
 
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
-  const collaborationControl = personalScoped ? (
-    projectInviteContext ? (
-      <div className="flex items-center gap-0">
-        <HeaderProjectChangesButton projectId={projectInviteContext.projectId} />
-        <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
-        <HeaderProjectShareButton
-          projectId={projectInviteContext.projectId}
-          projectName={projectInviteContext.projectName}
-        />
-        {!hideInbox && (
-          <>
-            <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
-            <HeaderInboxButton />
-          </>
-        )}
-      </div>
-    ) : !hideInbox ? (
-      <HeaderInboxButton />
-    ) : null
+  const collaborationControl = projectInviteContext ? (
+    <div className="flex items-center gap-0">
+      <HeaderProjectChangesButton projectId={projectInviteContext.projectId} />
+      <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
+      <HeaderProjectShareButton
+        projectId={projectInviteContext.projectId}
+        projectName={projectInviteContext.projectName}
+      />
+      {!hideInbox && (
+        <>
+          <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
+          <HeaderInboxButton />
+        </>
+      )}
+    </div>
+  ) : !hideInbox ? (
+    <HeaderInboxButton />
   ) : null;
 
   if (isTabsPrimaryLayout) {
@@ -124,7 +120,9 @@ export function UnifiedHeader({
           </div>
         </div>
         <div className="flex items-center w-full gap-0.5" style={headerContentStyle}>
-          <div className="min-w-0 flex-1" />
+          <div className="flex min-w-0 flex-1 items-center gap-0.5 titlebar-no-drag">
+            <SidebarInsetToggle />
+          </div>
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
             {collaborationControl}
             <LayoutToggles />
@@ -171,6 +169,7 @@ export function UnifiedHeader({
       )}
       <div className="flex items-center w-full gap-3" style={headerContentStyle}>
         <div className="flex min-w-0 flex-1 items-center gap-0.5 titlebar-no-drag">
+          <SidebarInsetToggle />
           {compactHeaderActions ? (
             <div className="shared-header-action-pills flex min-w-0 items-center">{header}</div>
           ) : (
@@ -179,7 +178,9 @@ export function UnifiedHeader({
           {preSearchAddon && <div className="flex items-center shrink-0">{preSearchAddon}</div>}
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-          {(header || preSearchAddon) && <div className="mx-1 h-4 w-px shrink-0 bg-border" />}
+          {(header || preSearchAddon || centerAddon) && (
+            <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+          )}
           <div className="flex items-center gap-0.5">
             {collaborationControl}
             <LayoutToggles />
