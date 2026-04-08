@@ -3,7 +3,8 @@ import type { LucideIcon } from "lucide-react"
 export type SettingsScopeKind = "personal" | "workspace"
 export type SettingsStorageMode = "local" | "cloud"
 export type SettingsPlacement = "drawer" | "sidebar" | "command" | "settingsWindow"
-export type SettingsSidebarGroup = "team" | "workspace" | "personalWorkspace"
+/** `personalDevice` = account, appearance, local storage, runtimes — not org/workspace scoped */
+export type SettingsSidebarGroup = "team" | "workspace" | "personalWorkspace" | "personalDevice"
 export type WorkspaceSurfaceAccessKey =
   | "general"
   | "members"

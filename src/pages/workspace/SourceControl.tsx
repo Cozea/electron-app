@@ -541,7 +541,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
     disconnect,
     updateSelection,
   } = useWorkspaceSourceControl({
-    route: route ?? (workspaceScoped ? '/workspace/source-control' : '/settings/source-control'),
+    route: route ?? '/settings/source-control',
     enabled: Boolean(convexOrganizationId),
   })
   const profile = useQuery(

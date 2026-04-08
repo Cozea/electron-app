@@ -63,20 +63,39 @@ export function UnifiedHeader({
   };
 
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
+
   const collaborationControl = projectInviteContext ? (
     <div className="flex items-center gap-0">
-      <HeaderProjectChangesButton projectId={projectInviteContext.projectId} />
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
-      <HeaderProjectShareButton
-        projectId={projectInviteContext.projectId}
-        projectName={projectInviteContext.projectName}
-      />
-      {!hideInbox && (
-        <>
-          <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
-          <HeaderInboxButton />
-        </>
-      )}
+      {(() => {
+        const parts: ReactNode[] = [];
+        if (projectInviteContext.projectId) {
+          parts.push(
+            <HeaderProjectChangesButton key="changes" projectId={projectInviteContext.projectId} />,
+          );
+        }
+        parts.push(
+          <HeaderProjectShareButton
+            key="share"
+            projectId={projectInviteContext.projectId}
+            projectName={projectInviteContext.projectName}
+          />,
+        );
+        if (!hideInbox) {
+          parts.push(<HeaderInboxButton key="inbox" />);
+        }
+        return parts.flatMap((node, index) =>
+          index === 0
+            ? [node]
+            : [
+                <div
+                  key={`collab-sep-${index}`}
+                  className="mx-0.5 h-4 w-px shrink-0 bg-border"
+                  aria-hidden
+                />,
+                node,
+              ],
+        );
+      })()}
     </div>
   ) : !hideInbox ? (
     <HeaderInboxButton />
@@ -119,22 +138,28 @@ export function UnifiedHeader({
             )}
           </div>
         </div>
-        <div className="flex items-center w-full gap-0.5" style={headerContentStyle}>
-          <div className="flex min-w-0 flex-1 items-center gap-0.5 titlebar-no-drag">
+        <div className="flex h-10 w-full items-stretch gap-0.5" style={headerContentStyle}>
+          <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
             <SidebarInsetToggle />
           </div>
-          <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
+          {/* Explicit drag strip: avoid wrapping flex-1 in titlebar-no-drag (was ~full-width no-drag). */}
+          <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
+          <div className="flex shrink-0 items-center gap-0 titlebar-no-drag">
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                {collaborationControl ? (
+                  <div className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
+                ) : null}
                 <div className="flex items-center">{rightAddon}</div>
               </>
             )}
             {shouldShowWindowsCaptionSpacer && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                {(collaborationControl || rightAddon) ? (
+                  <div className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
+                ) : null}
                 <div
                   aria-hidden="true"
                   className="h-7 shrink-0 flex-none"
@@ -167,32 +192,34 @@ export function UnifiedHeader({
           </div>
         </div>
       )}
-      <div className="flex items-center w-full gap-3" style={headerContentStyle}>
-        <div className="flex min-w-0 flex-1 items-center gap-0.5 titlebar-no-drag">
+      <div className="flex h-10 w-full items-stretch gap-3" style={headerContentStyle}>
+        <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
           <SidebarInsetToggle />
           {compactHeaderActions ? (
             <div className="shared-header-action-pills flex min-w-0 items-center">{header}</div>
           ) : (
             header
           )}
-          {preSearchAddon && <div className="flex items-center shrink-0">{preSearchAddon}</div>}
+          {preSearchAddon && <div className="flex shrink-0 items-center">{preSearchAddon}</div>}
         </div>
+        <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-          {(header || preSearchAddon || centerAddon) && (
-            <div className="mx-1 h-4 w-px shrink-0 bg-border" />
-          )}
           <div className="flex items-center gap-0.5">
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                {collaborationControl ? (
+                  <div className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
+                ) : null}
                 <div className="flex items-center">{rightAddon}</div>
               </>
             )}
             {shouldShowWindowsCaptionSpacer && (
               <>
-                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                {(collaborationControl || rightAddon) ? (
+                  <div className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
+                ) : null}
                 <div
                   aria-hidden="true"
                   className="h-7 shrink-0 flex-none"

@@ -348,9 +348,7 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
       }),
     [githubConnection, setupMode],
   )
-  const sourceControlSettingsHref = personalScoped
-    ? "/settings/source-control"
-    : "/workspace/source-control"
+  const sourceControlSettingsHref = "/settings/source-control"
 
   const ownerOptions = useMemo(() => {
     const compatibleOwners = owners.filter((owner) =>

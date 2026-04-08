@@ -89,9 +89,7 @@ export function ProjectSettingsPage({
   const [isSaving, setIsSaving] = useState(false)
 
   const { getConnection } = useWorkspaceSourceControl({
-    route: projectWorkspace.isPersonalWorkspace
-      ? '/settings/source-control'
-      : '/workspace/source-control',
+    route: '/settings/source-control',
     enabled: Boolean(project?.organizationId && convexUserId),
   })
   const repoIntegration =
@@ -423,11 +421,7 @@ export function ProjectSettingsPage({
                   normalizedRepoUrl={normalizedRepoUrl}
                   saveError={saveError}
                   onOpenWorkspaceSourceControlSettings={() => {
-                    navigate(
-                      projectWorkspace.isPersonalWorkspace
-                        ? '/settings/source-control'
-                        : '/workspace/source-control',
-                    )
+                    navigate('/settings/source-control')
                   }}
                 />
                 </div>

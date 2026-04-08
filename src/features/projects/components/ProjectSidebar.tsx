@@ -38,6 +38,9 @@ import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/P
 import {
   areSidebarProjectItemsEqual,
   resolveProjectCollabBranch,
+  SIDEBAR_GROUP_LABEL_CLASS,
+  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+  SIDEBAR_PILL_ACTIVE_CLASS,
   type SidebarProjectItem,
 } from "@/features/projects/components/sidebar/projectSidebarShared";
 import {
@@ -666,17 +669,17 @@ export function ProjectSidebar({
             <div className="mb-4 space-y-1 px-1">
               <button
                 type="button"
-                className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+                className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
                 onClick={(event) => void openProjectCreationMenu(event)}
               >
-                <SquarePen className="size-4 shrink-0 text-muted-foreground/75" />
-                <span className="truncate text-xs font-normal">New project</span>
+                <SquarePen />
+                <span className="truncate">New project</span>
               </button>
             </div>
           )}
 
-          <div className="mb-3 px-2">
-            <div className="text-[14px] font-medium tracking-[-0.01em] text-muted-foreground/70">
+          <div className="mb-3">
+            <div className={SIDEBAR_GROUP_LABEL_CLASS}>
               {isOnCurrentProjectSettings ? "Project Settings" : "Projects"}
             </div>
           </div>
@@ -690,16 +693,13 @@ export function ProjectSidebar({
                   <button
                     key={section.id}
                     type="button"
-                    className={cn(
-                      "flex h-8 w-full items-center rounded-md px-2 text-left text-xs transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]",
-                      isActive && "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]",
-                    )}
+                    className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, isActive && SIDEBAR_PILL_ACTIVE_CLASS)}
                     onClick={() => {
                       navigate(`${buildProjectPath(currentProjectId)}/settings/${section.id}`);
                     }}
                   >
-                    <Icon className="mr-2 size-3.5 shrink-0" />
-                    {section.label}
+                    <Icon />
+                    <span className="truncate">{section.label}</span>
                   </button>
                 );
               })

@@ -23,6 +23,65 @@ import type {
   WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
 
+/** Org workspace sidebar only (no user-only surfaces) */
+const WORKSPACE_SCOPED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
+  general: 0,
+  billing: 1,
+  cliTools: 2,
+  cloudStorage: 3,
+}
+
+/** User + this device (personal routes; shown under “Personal” when org workspace is active) */
+const PERSONAL_DEVICE_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
+  account: 0,
+  sourceControl: 1,
+  appearance: 2,
+  storage: 3,
+  tooling: 4,
+}
+
+/** Single “Settings” list when the active workspace is personal (everything is user settings UX) */
+const PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
+  general: 0,
+  account: 1,
+  sourceControl: 2,
+  appearance: 3,
+  cliTools: 4,
+  cloudStorage: 5,
+  storage: 6,
+  tooling: 7,
+}
+
+export function compareWorkspaceScopedSidebarSurfaces(
+  a: SettingsSurfaceDefinition,
+  b: SettingsSurfaceDefinition,
+): number {
+  const na = WORKSPACE_SCOPED_SIDEBAR_ORDER[a.id] ?? 100
+  const nb = WORKSPACE_SCOPED_SIDEBAR_ORDER[b.id] ?? 100
+  if (na !== nb) return na - nb
+  return a.label.localeCompare(b.label)
+}
+
+export function comparePersonalDeviceSidebarSurfaces(
+  a: SettingsSurfaceDefinition,
+  b: SettingsSurfaceDefinition,
+): number {
+  const na = PERSONAL_DEVICE_SIDEBAR_ORDER[a.id] ?? 100
+  const nb = PERSONAL_DEVICE_SIDEBAR_ORDER[b.id] ?? 100
+  if (na !== nb) return na - nb
+  return a.label.localeCompare(b.label)
+}
+
+export function comparePersonalContextUnifiedSettingsSidebar(
+  a: SettingsSurfaceDefinition,
+  b: SettingsSurfaceDefinition,
+): number {
+  const na = PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER[a.id] ?? 100
+  const nb = PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER[b.id] ?? 100
+  if (na !== nb) return na - nb
+  return a.label.localeCompare(b.label)
+}
+
 const preloadAccountPage = () => import("@/pages/settings/Account")
 const preloadBillingPage = () => import("@/pages/workspace/Billing")
 const preloadAppearancePage = () => import("@/pages/settings/Appearance")
@@ -49,7 +108,8 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: UserCircle2,
     routes: { personal: "/settings/account" },
     storageMode: { personal: "cloud" },
-    placements: ["drawer", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadAccountPage,
     commandKeywords: ["account", "profile", "settings"],
   },
@@ -71,7 +131,8 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: Palette,
     routes: { personal: "/settings/appearance" },
     storageMode: { personal: "local" },
-    placements: ["drawer", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
   },
@@ -81,7 +142,8 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: HardDrive,
     routes: { personal: "/settings/storage" },
     storageMode: { personal: "local" },
-    placements: ["drawer", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadStoragePage,
     commandKeywords: ["storage", "disk", "local files"],
   },
@@ -89,14 +151,10 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     id: "sourceControl",
     label: "Source Control",
     icon: FolderGit2,
-    routes: {
-      personal: "/settings/source-control",
-      workspace: "/workspace/source-control",
-    },
-    storageMode: { personal: "cloud", workspace: "cloud" },
+    routes: { personal: "/settings/source-control" },
+    storageMode: { personal: "cloud" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "settings",
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadSourceControlPage,
     commandKeywords: ["source control", "git", "github", "gitlab", "repository", "repos"],
   },
@@ -121,7 +179,8 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     icon: Terminal,
     routes: { personal: "/settings/tooling" },
     storageMode: { personal: "local" },
-    placements: ["drawer", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadToolingPage,
     commandKeywords: ["tooling", "runtime", "framework", "local machine"],
   },
