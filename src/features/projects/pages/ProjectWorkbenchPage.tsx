@@ -31,9 +31,8 @@ import { useResolvedScope } from "@/hooks/useResolvedScope";
 import { ChangesPage } from "@/features/projects/pages/ChangesPage";
 import { WorkbenchEdgeInsertion } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
 import { WorkbenchSeamInsertion } from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
-import { WorkbenchHeaderEditorControl } from "@/features/projects/components/workbench/WorkbenchHeaderEditorControl";
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime";
 import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
@@ -43,7 +42,6 @@ import {
 } from "@/features/projects/lib/workbenchLayoutPersistence";
 import { ProjectSettingsPage } from "@/features/projects/pages/ProjectSettingsPage";
 import { getWorkspaceSelectionId } from "@shared/types";
-import { useOptionalSidebar } from "@/components/ui/sidebar";
 
 function normalizeOpenTargetParam(
   value: string | null,
@@ -76,10 +74,6 @@ export function ProjectWorkbenchPage() {
   const projectId = project?._id ? String(project._id) : null;
   const locationState = (location.state as TaskOverlayLocationState | null) ?? null;
   const { theme } = useTheme();
-  const sidebar = useOptionalSidebar();
-  const sidebarChromeOpen = Boolean(
-    sidebar && (sidebar.isMobile ? sidebar.openMobile : sidebar.open),
-  );
   const { convexUserId } = useAuth();
   const resolvedScope = useResolvedScope({ ignoreLocation: true });
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
@@ -200,30 +194,8 @@ export function ProjectWorkbenchPage() {
     ],
   );
   const headerControls = useMemo(
-    () => (
-      <div className="workbench-header-toolbar flex min-w-0 items-center gap-0">
-        <SidebarTrigger
-          className={cn(
-            "h-7 w-7 shrink-0 rounded-md",
-            sidebarChromeOpen
-              ? "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground"
-              : "text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground",
-          )}
-        />
-        <div
-          className={cn(
-            "mx-0.5 h-4 w-px shrink-0",
-            sidebarChromeOpen ? "bg-sidebar-border" : "bg-border",
-          )}
-          aria-hidden
-        />
-        <WorkbenchHeaderEditorControl
-          projectPath={activeWorkbenchPath}
-          adjacentOpenSidebar={sidebarChromeOpen}
-        />
-      </div>
-    ),
-    [activeWorkbenchPath, sidebarChromeOpen],
+    () => <ProjectShellTitleBarLeft projectPath={activeWorkbenchPath} />,
+    [activeWorkbenchPath],
   );
 
   useProjectHeader(headerControls, headerCenter);
