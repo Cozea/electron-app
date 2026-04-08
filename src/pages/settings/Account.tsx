@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
-import { AppShellLayout } from '../../components/layouts/AppShellLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -34,10 +34,11 @@ interface UserPrefs {
 
 interface AccountProps {
   surface?: 'page' | 'drawer'
+  route?: string
 }
 
-export function Account({ surface = 'page' }: AccountProps) {
-  const { user, convexUserId, logout } = useAuth()
+export function Account({ surface = 'page', route }: AccountProps) {
+  const { user, convexUserId } = useAuth()
 
   // Fetch extended profile from Convex
   const profile = useQuery(
@@ -248,11 +249,8 @@ export function Account({ surface = 'page' }: AccountProps) {
   }
 
   return (
-    <AppShellLayout
-      user={user}
-      onLogout={logout}
-    >
+    <SettingsRouteShell surfaceId="account" route={route}>
       {content}
-    </AppShellLayout>
+    </SettingsRouteShell>
   )
 }

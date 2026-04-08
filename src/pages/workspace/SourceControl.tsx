@@ -810,7 +810,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
   }
 
   return (
-    <SettingsRouteShell surfaceId="sourceControl">
+    <SettingsRouteShell surfaceId="sourceControl" route={route}>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
           title="Source control access required"

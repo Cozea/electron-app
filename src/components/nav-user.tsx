@@ -19,6 +19,7 @@ import { useTheme } from "@/contexts/ThemeContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { useCreateWorkspaceDialogStore } from "@/stores/useCreateWorkspaceDialogStore"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useScopedBillingData } from "@/hooks/useScopedBillingData"
 import {
@@ -171,11 +172,7 @@ export function NavUser({
         y: Math.round(rect.top),
       }
 
-      const action = window.desktopBridge?.showContextMenu
-        ? await window.desktopBridge.showContextMenu(items, position)
-        : window.nativeApi?.contextMenu?.show
-          ? await window.nativeApi.contextMenu.show(items, position)
-          : null
+      const action = await showDesktopContextMenu(items, position)
 
       switch (action) {
         case "workspace-settings":

@@ -6,6 +6,7 @@ import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNo
 import { WorkspaceIdentityPicker } from '@/components/workspaces/WorkspaceIdentityPicker'
 import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { useScopedGeneralData } from '@/hooks/useScopedGeneralData'
+import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -32,6 +33,7 @@ interface GeneralProps {
 
 export function General({ surface = 'page', route }: GeneralProps = {}) {
   const navigate = useViewTransitionNavigate()
+  const { logout } = useAuth()
   const {
     settingsPage,
     convexUserId,

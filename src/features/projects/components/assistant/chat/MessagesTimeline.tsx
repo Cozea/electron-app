@@ -15,9 +15,9 @@ import {
   type VirtualItem,
   useVirtualizer,
 } from "@tanstack/react-virtual";
-import { deriveTimelineEntries, formatElapsed } from "./session-logic";
+import { deriveTimelineEntries } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
-import { type TurnDiffSummary } from "./types";
+import { type TurnDiffSummary } from "@/stores/types";
 import { summarizeTurnDiffStats } from "./turnDiffTree";
 import ChatMarkdown from "./ChatMarkdown";
 import {

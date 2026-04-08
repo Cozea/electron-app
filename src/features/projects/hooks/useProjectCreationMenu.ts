@@ -1,5 +1,9 @@
 import { useCallback, type MouseEvent } from "react"
 
+import {
+  canShowDesktopContextMenu,
+  showDesktopContextMenu,
+} from "@/lib/desktopBridgeClient"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 
 type ProjectCreationMenuAction = "empty" | "local" | "repo"
@@ -40,14 +44,12 @@ export function useProjectCreationMenu() {
 
   const openMenu = useCallback(
     async (event?: MouseEvent<HTMLElement>) => {
-      const desktopBridge = window.desktopBridge
-
-      if (!desktopBridge?.showContextMenu) {
+      if (!canShowDesktopContextMenu()) {
         openCreateProjectDialog({ mode: "empty" })
         return
       }
 
-      const selection = await desktopBridge.showContextMenu<ProjectCreationMenuAction>(
+      const selection = await showDesktopContextMenu<ProjectCreationMenuAction>(
         [
           { id: "empty", label: "Empty project" },
           { id: "local", label: "Import local folder" },

@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils'
 import { TaskFocusOverlay } from '@/features/projects/components/TaskFocusOverlay'
 import type { TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
-import type { PageRoute } from '@/stores/useProjectPagesStore'
+import type { PageRoute } from '@/features/projects/lib/previewRuntimeTypes'
 import type {
   NativePreviewIosSimulatorDevice,
   NativePreviewRotation,

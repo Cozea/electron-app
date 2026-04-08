@@ -33,7 +33,7 @@ import {
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
   if (section === 'account') {
-    return <Account surface="drawer" />
+    return <Account surface="drawer" route={route} />
   }
 
   if (section === 'billing') {
@@ -45,11 +45,11 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
   }
 
   if (section === 'appearance') {
-    return <Appearance surface="drawer" />
+    return <Appearance surface="drawer" route={route} />
   }
 
   if (section === 'storage') {
-    return <Storage surface="drawer" />
+    return <Storage surface="drawer" route={route} />
   }
 
   if (section === 'cliTools') {

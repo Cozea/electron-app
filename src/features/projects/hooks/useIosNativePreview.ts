@@ -5,7 +5,7 @@ import type {
   NativePreviewSessionLocator,
 } from '@shared/nativePreviewTypes'
 
-import type { ServerStatus } from '@/stores/useProjectPagesStore'
+import type { ServerStatus } from '@/features/projects/lib/previewRuntimeTypes'
 import { useNativePreviewStore } from '@/stores/useNativePreviewStore'
 
 interface UseIosNativePreviewOptions {

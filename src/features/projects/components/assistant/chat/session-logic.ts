@@ -19,7 +19,7 @@ import type {
   Thread,
   ThreadSession,
   TurnDiffSummary,
-} from "./types";
+} from "@/stores/types";
 
 export type ProviderPickerKind = ProviderKind | "cursor";
 

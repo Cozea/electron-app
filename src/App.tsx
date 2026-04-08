@@ -85,9 +85,7 @@ function AppWithOrganization() {
       accessToken={accessToken}
       onTokenExpired={async () => (await refreshToken()) === 'refreshed'}
     >
-      <Suspense fallback={<FullscreenLoading />}>
-        <AppContent />
-      </Suspense>
+      <AppContent />
     </OrganizationProvider>
   )
 }
@@ -282,13 +280,19 @@ function AppContent() {
     if (isPublicProjectAccessRoute) {
       return <Outlet />
     }
-    return <Login />
+    return (
+      <Suspense fallback={<FullscreenLoading />}>
+        <Login />
+      </Suspense>
+    )
   }
 
   if (needsOnboarding) {
     return (
       <>
-        <Onboarding />
+        <Suspense fallback={<FullscreenLoading />}>
+          <Onboarding />
+        </Suspense>
         <CreateWorkspaceDialogHost />
         <CreateProjectDialogHost />
       </>

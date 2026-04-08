@@ -9,6 +9,7 @@ import type {
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectWorkbenchStore";
 import {
   buildWorkbenchScopeKey,
+  isWorkbenchSingletonTile,
   type WorkbenchProjectState,
   type WorkbenchTileType,
   useProjectWorkbenchStore,
@@ -27,6 +28,7 @@ import {
 } from "@/features/projects/lib/workbenchDockview";
 import type { WorkbenchInsertionEdge } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
 import type { SeamZone } from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
+import { disposeBrowserTileModel } from "@/features/projects/browser/browserTileModel";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
 
 const EDGE_INSERTION_ARM_INSET = 28;
@@ -44,12 +46,12 @@ interface UseWorkbenchDockviewRuntimeResult {
   dockviewHostRef: React.RefObject<HTMLDivElement | null>;
   edgeInsertionArmed: boolean;
   seamZones: SeamZone[];
-  selectionPreviewTiles: Record<string, WorkbenchSelectionTile>;
+  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTile | null;
   handleWorkbenchPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
   handleWorkbenchPointerLeave: () => void;
   handleResolveSelectionTile: (
     selectionTileId: string,
-    type: Extract<WorkbenchTileType, "assistantChat" | "terminal">,
+    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "terminal" | "devServer">,
   ) => void;
   handleDuplicateAssistantTile: (sourceTileId: string) => void;
   handleEdgeActivate: (edge: WorkbenchInsertionEdge) => void;
@@ -132,6 +134,10 @@ export function useWorkbenchDockviewRuntime(
       ] ?? null
     );
   }, [input.activeLaneId, input.projectId]);
+
+  const getSelectionPreviewTile = useCallback((tileId: string): WorkbenchSelectionTile | null => {
+    return selectionPreviewTilesRef.current[tileId] ?? null;
+  }, []);
 
   const scheduleSeamZoneUpdate = useCallback(() => {
     if (seamZoneRafRef.current !== null) {
@@ -390,7 +396,7 @@ export function useWorkbenchDockviewRuntime(
   const handleResolveSelectionTile = useCallback(
     (
       selectionTileId: string,
-      type: Extract<WorkbenchTileType, "assistantChat" | "terminal">,
+      type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "terminal" | "devServer">,
     ) => {
       if (!input.projectId) return;
 
@@ -402,7 +408,22 @@ export function useWorkbenchDockviewRuntime(
         null;
       if (!api || !isSelectionTile(selectionTile)) return;
 
-      const tileId = workbenchActions.addTile(input.projectId, input.activeLaneId, type);
+      if (isWorkbenchSingletonTile(type)) {
+        const existingSingletonId = liveProject?.order.find(
+          (tileId) => liveProject.tiles[tileId]?.type === type,
+        );
+        if (existingSingletonId) {
+          workbenchActions.setActiveTile(input.projectId, input.activeLaneId, existingSingletonId);
+          api.getPanel(existingSingletonId)?.api.setActive();
+          api.getPanel(selectionTileId)?.api.close();
+          transientSelectionTileIdRef.current = null;
+          return;
+        }
+      }
+
+      const tileId = isWorkbenchSingletonTile(type)
+        ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, type)
+        : workbenchActions.addTile(input.projectId, input.activeLaneId, type);
       const nextTile =
         useProjectWorkbenchStore.getState().workbenches[
           buildWorkbenchScopeKey(input.projectId, input.activeLaneId)
@@ -670,19 +691,34 @@ export function useWorkbenchDockviewRuntime(
           return;
         }
 
+        const liveProject = getLiveWorkbench();
+        const removedTile = liveProject?.tiles[panel.id];
+        if (removedTile?.type === "browser") {
+          void disposeBrowserTileModel(removedTile.id);
+        }
+
         workbenchActions.removeTile(input.projectId, input.activeLaneId, panel.id);
         saveLayout();
         scheduleSeamZoneUpdate();
       });
     },
-    [input.activeLaneId, input.projectId, input.workbenchScopeKey, saveLayout, scheduleSeamZoneUpdate, updateSelectionPreviewTiles, workbenchActions],
+    [
+      getLiveWorkbench,
+      input.activeLaneId,
+      input.projectId,
+      input.workbenchScopeKey,
+      saveLayout,
+      scheduleSeamZoneUpdate,
+      updateSelectionPreviewTiles,
+      workbenchActions,
+    ],
   );
 
   return {
     dockviewHostRef,
     edgeInsertionArmed,
     seamZones,
-    selectionPreviewTiles,
+    getSelectionPreviewTile,
     handleWorkbenchPointerMove,
     handleWorkbenchPointerLeave: () => {
       edgeInsertionArmedRef.current = false;

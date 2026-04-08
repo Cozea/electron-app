@@ -88,13 +88,15 @@ const stateChangeRouter = (() => {
 })()
 
 export class BrowserTileModel {
+  readonly id: string
   private stateValue: BrowserState
   private listeners = new Set<BrowserStateListener>()
   private initializePromise: Promise<void> | null = null
   private initialized = false
   private lastRequestedUrl = ""
 
-  constructor(readonly id: string) {
+  constructor(id: string) {
+    this.id = id
     this.stateValue = DEFAULT_BROWSER_STATE(id)
     stateChangeRouter.register(id, this)
   }

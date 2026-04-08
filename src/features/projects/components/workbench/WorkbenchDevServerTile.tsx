@@ -44,7 +44,7 @@ import {
 import { useDevServerManager, type DevServerStatus } from "@/hooks/useDevServerManager"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
-import type { PageRoute, ServerStatus } from "@/stores/useProjectPagesStore"
+import type { PageRoute, ServerStatus } from "@/features/projects/lib/previewRuntimeTypes"
 import type { WorkbenchDevServerTile } from "@/stores/useProjectWorkbenchStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 

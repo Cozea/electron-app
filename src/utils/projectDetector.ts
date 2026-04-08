@@ -6,6 +6,7 @@
  */
 
 import type { DevCommandSuggestion } from '@shared/electronApiTypes'
+import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
 
 export type Framework =
   | 'expo'
@@ -75,7 +76,7 @@ function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager)
 
 async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
   try {
-    const entries = await window.electronAPI.fs.readDir(projectPath)
+    const entries = await projectAnalysisDesktopClient.readDir(projectPath)
     const names = new Set(entries.map((entry) => entry.name))
     if (names.has('bun.lockb')) return 'bun'
     if (names.has('pnpm-lock.yaml')) return 'pnpm'
@@ -281,7 +282,7 @@ function extractNpmScriptName(command: string | null | undefined): string | null
 
 async function readPackageJson(projectPath: string): Promise<PackageJson | null> {
   try {
-    const result = await window.electronAPI.project.readFile({
+    const result = await projectAnalysisDesktopClient.readFile({
       projectPath,
       filePath: 'package.json',
     })
@@ -524,7 +525,7 @@ export async function getProjectPreviewExperience(
 }
 
 /**
- * Get just the dev server config (for ServerControl)
+ * Get just the dev server config for preview/runtime launch flows.
  */
 function getPersistedDevCommand(projectPath: string): string | null {
   if (typeof localStorage === 'undefined') return null
@@ -549,7 +550,7 @@ export async function getDevServerConfig(
   let requiresUserSelection = false
 
   try {
-    const profile = await window.electronAPI.runtime.getProjectCapabilities({ projectPath })
+    const profile = await projectAnalysisDesktopClient.getProjectCapabilities({ projectPath })
     suggestions = profile?.devServer?.suggestions ?? []
     requiresUserSelection = Boolean(profile?.devServer?.requiresUserSelection)
   } catch {
@@ -687,7 +688,7 @@ export async function checkDependenciesInstalled(
   packageManager?: PackageManager
 ): Promise<boolean> {
   try {
-    const rootEntries = await window.electronAPI.fs.readDir(projectPath)
+    const rootEntries = await projectAnalysisDesktopClient.readDir(projectPath)
     const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )
@@ -716,7 +717,7 @@ export async function checkDependenciesInstalled(
  */
 export async function hasPackageJson(projectPath: string): Promise<boolean> {
   try {
-    const result = await window.electronAPI.project.readFile({ projectPath, filePath: 'package.json' })
+    const result = await projectAnalysisDesktopClient.readFile({ projectPath, filePath: 'package.json' })
     return result.success && !!result.content
   } catch {
     return false

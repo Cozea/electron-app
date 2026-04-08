@@ -1,68 +1,32 @@
-import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
 import { isGitOpenDebugEnabled, logGitOpenDebug } from '@/lib/git/gitOpenDebug'
 import { recordGitOpenTelemetry, type GitOpenTelemetryEvent } from '@/lib/git/gitOpenTelemetry'
-import { syncProjectRepositoryAccess } from '@/lib/git/projectRepoAutomation'
-import {
-  resolveProjectIntegrationProvider,
-  resolveProjectRepoAccessStatus,
-} from '@/lib/git/projectRepoAccess'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 import {
   resolveProjectGitRemoteConfig,
   resolveProjectGitSyncPolicy,
   resolveProjectWorkingCopyMode,
-  type ProjectGitRuntimeSourceControlLike,
 } from '@/lib/git/projectGitRuntime'
+import { ensureProjectRepositoryAccessForOpen, ensureProjectSourceControlReadyForOpen } from './projectOpenAccess'
+import { projectOpenDesktopClient } from './projectOpenDesktopClient'
+import type {
+  PrepareGitProjectForOpenOptions,
+  PrepareGitProjectForOpenResult,
+  ProjectOpenGitProjectLike,
+} from './projectOpenTypes'
 
-export interface GitRepositoryMetadataLike {
-  provider?: string
-  url?: string
-  defaultBranch?: string | null
-}
-
-export interface ProjectOpenGitProjectLike {
-  _id: Id<'projects'>
-  name?: string | null
-  slug: string
-  organizationId: Id<'organizations'>
-  createdBy?: Id<'users'> | string | null
-  syncMode?: 'git'
-  localPath?: string | null
-  gitRepository?: GitRepositoryMetadataLike | null
-  sourceControl?: ProjectGitRuntimeSourceControlLike | null
-}
-
-export interface PrepareGitProjectForOpenOptions {
-  convex: ConvexReactClient
-  project: ProjectOpenGitProjectLike
-  localPath: string | null
-  userId: Id<'users'> | null | undefined
-  onProgress?: (message: string) => void
-  updateMemberLocalPath?: (args: {
-    projectId: Id<'projects'>
-    userId: Id<'users'>
-    localPath: string
-  }) => Promise<unknown>
-}
-
-export interface PrepareGitProjectForOpenResult {
-  localPath: string
-  skipInitialSyncCheck: boolean
-  changed: boolean
-  currentBranch?: string
-  cancelled?: boolean
-  needsConflictResolution?: boolean
-  conflictedPaths?: string[]
-}
+export type {
+  GitRepositoryMetadataLike,
+  PrepareGitProjectForOpenOptions,
+  PrepareGitProjectForOpenResult,
+  ProjectOpenGitProjectLike,
+} from './projectOpenTypes'
 
 function shouldAdoptWorkspaceForMissingRemote(project: ProjectOpenGitProjectLike): boolean {
   return resolveProjectWorkingCopyMode(project.sourceControl) === 'attached'
 }
 
 async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike, '_id' | 'slug'>): Promise<string> {
-  const resolvedExistingPath = await window.electronAPI.project.getLocalPath({
+  const resolvedExistingPath = await projectOpenDesktopClient.getLocalPath({
     slug: project.slug,
     projectId: String(project._id),
   })
@@ -70,12 +34,12 @@ async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike,
     return resolvedExistingPath
   }
 
-  const settings = await window.electronAPI.settings.get()
+  const settings = await projectOpenDesktopClient.getSettings()
   return `${settings.projectsDirectory.replace(/\/+$/, '')}/${project.slug}`
 }
 
 async function rememberProjectOpenPath(projectId: string, localPath: string): Promise<void> {
-  const result = await window.electronAPI.project.rememberLocalPath({
+  const result = await projectOpenDesktopClient.rememberLocalPath({
     projectId,
     projectPath: localPath,
   })
@@ -86,7 +50,7 @@ async function rememberProjectOpenPath(projectId: string, localPath: string): Pr
 }
 
 async function isEffectivelyEmptyLocalWorkspace(projectPath: string): Promise<boolean> {
-  const listResult = await window.electronAPI.project.listFiles({ projectPath })
+  const listResult = await projectOpenDesktopClient.listFiles({ projectPath })
   logGitOpenDebug('empty_check:list_result', {
     projectPath,
     success: listResult.success,
@@ -155,7 +119,7 @@ async function promptForGitConflicts(args: {
   projectPath: string
   conflictedPaths?: string[]
 }): Promise<'later' | 'open-folder' | 'resolve-now'> {
-  const result = await window.electronAPI.dialog.showMessageBox({
+  const result = await projectOpenDesktopClient.showMessageBox({
     type: 'warning',
     buttons: ['Later', 'Open Folder', 'Resolve Now'],
     defaultId: 2,
@@ -174,7 +138,7 @@ async function promptForGitConflicts(args: {
     return 'later'
   }
 
-  const openFolderResult = await window.electronAPI.project.openFolder({
+  const openFolderResult = await projectOpenDesktopClient.openFolder({
     projectPath: args.projectPath,
   })
   if (!openFolderResult.success) {
@@ -182,203 +146,6 @@ async function promptForGitConflicts(args: {
   }
 
   return 'open-folder'
-}
-
-async function promptForMissingProjectSourceControl(args: {
-  provider: 'github' | 'gitlab'
-  projectName: string
-  settingsScope: 'user' | 'workspace'
-  detail: string
-}): Promise<'later' | 'open-settings'> {
-  const providerLabel = args.provider === 'github' ? 'GitHub' : 'GitLab'
-  const result = await window.electronAPI.dialog.showMessageBox({
-    type: 'warning',
-    buttons: ['Later', 'Open Source Control'],
-    defaultId: 1,
-    cancelId: 0,
-    title: `${providerLabel} setup needed`,
-    message: `Set up ${providerLabel} before opening ${args.projectName}.`,
-    detail: args.detail,
-    noLink: true,
-  })
-
-  if (result.response !== 1) {
-    return 'later'
-  }
-
-  const settingsRoute =
-    args.settingsScope === 'workspace'
-      ? '/workspace/source-control'
-      : '/settings/source-control'
-  const openResult = await window.electronAPI.window.openSettings(settingsRoute)
-  if (!openResult?.success) {
-    throw new Error(openResult?.error || 'Failed to open Source Control settings')
-  }
-
-  return 'open-settings'
-}
-
-async function ensureProjectSourceControlReadyForOpen(args: {
-  convex: ConvexReactClient
-  project: ProjectOpenGitProjectLike
-  userId: Id<'users'>
-}): Promise<boolean> {
-  const provider = resolveProjectIntegrationProvider(args.project)
-  const workingCopyMode = resolveProjectWorkingCopyMode(args.project.sourceControl)
-  const repoUrl =
-    args.project.gitRepository?.url?.trim() ||
-    args.project.sourceControl?.repoUrl?.trim() ||
-    ''
-
-  if (!provider || workingCopyMode === 'attached' || !repoUrl) {
-    return true
-  }
-
-  const providerContext = await args.convex.query(
-    api.sourceControl.getProjectProviderContext,
-    {
-      projectId: args.project._id,
-      userId: args.userId,
-    }
-  )
-
-  const repoAccessStatus = resolveProjectRepoAccessStatus({
-    project: args.project,
-    sourceControlConnection: providerContext?.connection ?? null,
-    isPersonalWorkspace: providerContext?.isPersonalWorkspace,
-  })
-
-  if (
-    repoAccessStatus.state !== 'integration_missing' &&
-    repoAccessStatus.state !== 'integration_mismatch'
-  ) {
-    return true
-  }
-
-  const projectName = args.project.name?.trim() || args.project.slug
-  await promptForMissingProjectSourceControl({
-    provider,
-    projectName,
-    settingsScope: providerContext?.settingsScope === 'workspace' ? 'workspace' : 'user',
-    detail: repoAccessStatus.description,
-  })
-
-  return false
-}
-
-async function ensureProjectRepositoryAccessForOpen(args: {
-  convex: ConvexReactClient
-  project: ProjectOpenGitProjectLike
-  userId: Id<'users'>
-}): Promise<boolean> {
-  const provider =
-    args.project.gitRepository?.provider?.trim().toLowerCase() ??
-    args.project.sourceControl?.provider?.trim().toLowerCase()
-  const workingCopyMode = resolveProjectWorkingCopyMode(args.project.sourceControl)
-  const repoUrl =
-    args.project.gitRepository?.url?.trim() ||
-    args.project.sourceControl?.repoUrl?.trim() ||
-    ''
-
-  if (
-    workingCopyMode === 'attached' ||
-    !repoUrl ||
-    (provider !== 'github' && provider !== 'gitlab')
-  ) {
-    return true
-  }
-
-  if (args.project.createdBy === args.userId) {
-    return true
-  }
-
-  const [user, memberRole, repoAccessRows] = await Promise.all([
-    args.convex.query(api.users.getById, {
-      userId: args.userId,
-    }),
-    args.convex.query(api.projectMembers.getMemberRole, {
-      projectId: args.project._id,
-      userId: args.userId,
-    }),
-    args.convex.query(api.projectRepoAccess.listForProject, {
-      projectId: args.project._id,
-      viewerUserId: args.userId,
-    }),
-  ])
-
-  const normalizedEmail = user?.email?.trim().toLowerCase() || undefined
-  const currentRole =
-    memberRole === 'project_manager' ||
-    memberRole === 'developer' ||
-    memberRole === 'designer' ||
-    memberRole === 'viewer'
-      ? memberRole
-      : 'viewer'
-  const existingRepoAccess =
-    repoAccessRows.find((entry) => entry.memberUserId === args.userId) ??
-    (normalizedEmail
-      ? repoAccessRows.find((entry) => entry.inviteEmail === normalizedEmail)
-      : undefined)
-
-  if (
-    existingRepoAccess?.accessState === 'granted' &&
-    existingRepoAccess.role === currentRole
-  ) {
-    return true
-  }
-
-  let providerAccountHandle = existingRepoAccess?.providerAccountHandle
-
-  if (provider === 'github' && !providerAccountHandle) {
-    const providedHandle = window.prompt(
-      'Enter your GitHub username to grant repository access for this project.'
-    )
-    if (!providedHandle?.trim()) {
-      return false
-    }
-    providerAccountHandle = providedHandle.trim()
-  }
-
-  if (provider === 'gitlab' && !normalizedEmail) {
-    throw new Error(
-      'Repository access requires an email address on your account before this project can open.'
-    )
-  }
-
-  const outcome = await syncProjectRepositoryAccess({
-    convex: args.convex,
-    project: args.project,
-    actorUserId: args.userId,
-    subjectType: 'member',
-    memberUserId: args.userId,
-    inviteEmail: normalizedEmail,
-    providerAccountHandle,
-    role: currentRole,
-    action: 'grant',
-    isPersonalWorkspace: args.project.sourceControl?.setupMode !== 'organization',
-  })
-
-  if (outcome.accessState === 'granted') {
-    return true
-  }
-
-  if (outcome.accessState === 'pending') {
-    throw new Error(
-      outcome.error ||
-        'Repository access is pending. Accept the provider invitation, then reopen this project.'
-    )
-  }
-
-  if (outcome.accessState === 'needs_identity') {
-    throw new Error(
-      outcome.error ||
-        'Repository access requires your provider identity before this project can open.'
-    )
-  }
-
-  throw new Error(
-    outcome.error || 'Repository access must be resolved before this project can open.'
-  )
 }
 
 export async function prepareGitProjectForOpen({
@@ -463,7 +230,7 @@ export async function prepareGitProjectForOpen({
 
   try {
     if (hasRemote && localPath) {
-      const collabLane = await window.electronAPI.project.ensureCollabLane({
+      const collabLane = await projectOpenDesktopClient.ensureCollabLane({
         projectId: String(project._id),
         projectPath: effectiveLocalPath,
         branch: configuredBranch,
@@ -514,7 +281,7 @@ export async function prepareGitProjectForOpen({
         throw new Error('This project has no configured remote repository yet.')
       }
       onProgress?.('Cloning repository...')
-      const cloneResult = await window.electronAPI.sync.gitCloneIfMissing({
+      const cloneResult = await projectOpenDesktopClient.sync.gitCloneIfMissing({
         projectPath: effectiveLocalPath,
         repoUrl,
         branch,
@@ -535,7 +302,7 @@ export async function prepareGitProjectForOpen({
 
     } else {
       onProgress?.('Checking git repository...')
-      const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
+      const ensureResult = await projectOpenDesktopClient.sync.gitEnsureRepo({
         projectPath: effectiveLocalPath,
         branch,
         repoUrl,
@@ -553,7 +320,7 @@ export async function prepareGitProjectForOpen({
     }
 
     if (!hasRemote) {
-      const localStatus = await window.electronAPI.sync.gitStatus({
+      const localStatus = await projectOpenDesktopClient.sync.gitStatus({
         projectPath: effectiveLocalPath,
         branch,
         debug,
@@ -573,7 +340,7 @@ export async function prepareGitProjectForOpen({
     }
 
     if (resolveProjectGitSyncPolicy(project.sourceControl) === 'manual') {
-      const localStatus = await window.electronAPI.sync.gitStatus({
+      const localStatus = await projectOpenDesktopClient.sync.gitStatus({
         projectPath: effectiveLocalPath,
         branch,
         debug,
@@ -593,7 +360,7 @@ export async function prepareGitProjectForOpen({
     }
 
     onProgress?.('Fetching latest changes...')
-    const fetchResult = await window.electronAPI.sync.gitFetchMain({
+    const fetchResult = await projectOpenDesktopClient.sync.gitFetchMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
@@ -611,7 +378,7 @@ export async function prepareGitProjectForOpen({
   }
   let remoteHeadCommit = fetchResult.headCommit ?? null
 
-  let status = await window.electronAPI.sync.gitStatus({
+  let status = await projectOpenDesktopClient.sync.gitStatus({
     projectPath: effectiveLocalPath,
     branch,
     debug,
@@ -658,7 +425,7 @@ export async function prepareGitProjectForOpen({
     }
 
     onProgress?.('Recovering local project...')
-    const salvageResult = await window.electronAPI.sync.gitSalvageReclone({
+    const salvageResult = await projectOpenDesktopClient.sync.gitSalvageReclone({
       projectPath: effectiveLocalPath,
       repoUrl,
       branch,
@@ -694,7 +461,7 @@ export async function prepareGitProjectForOpen({
       kind: 'restored',
     })
 
-    status = await window.electronAPI.sync.gitStatus({
+    status = await projectOpenDesktopClient.sync.gitStatus({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -709,7 +476,7 @@ export async function prepareGitProjectForOpen({
       throw new Error(status.error || 'Failed to verify git status after automatic recovery')
     }
 
-    const recoveredRepoHealth = await window.electronAPI.sync.gitClassifyRepoHealth({
+    const recoveredRepoHealth = await projectOpenDesktopClient.sync.gitClassifyRepoHealth({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -734,7 +501,7 @@ export async function prepareGitProjectForOpen({
     return true
   }
 
-    const repoHealth = await window.electronAPI.sync.gitClassifyRepoHealth({
+    const repoHealth = await projectOpenDesktopClient.sync.gitClassifyRepoHealth({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -783,7 +550,7 @@ export async function prepareGitProjectForOpen({
       throw new Error('Automatic recovery requires a configured remote repository URL.')
     }
     onProgress?.('Recovering local project...')
-    const salvageResult = await window.electronAPI.sync.gitSalvageReclone({
+    const salvageResult = await projectOpenDesktopClient.sync.gitSalvageReclone({
       projectPath: effectiveLocalPath,
       repoUrl,
       branch,
@@ -803,7 +570,7 @@ export async function prepareGitProjectForOpen({
     effectiveLocalPath = salvageResult.localPath
     remoteHeadCommit = salvageResult.headCommit ?? remoteHeadCommit
     changed = true
-    status = await window.electronAPI.sync.gitStatus({
+    status = await projectOpenDesktopClient.sync.gitStatus({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -826,7 +593,7 @@ export async function prepareGitProjectForOpen({
     !effectivelyEmptyWorkspace
   ) {
     onProgress?.('Preparing imported project history...')
-    const adoptResult = await window.electronAPI.sync.gitAdoptWorkspace({
+    const adoptResult = await projectOpenDesktopClient.sync.gitAdoptWorkspace({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
@@ -841,7 +608,7 @@ export async function prepareGitProjectForOpen({
       throw new Error(adoptResult.error || 'Failed to prepare imported project for remote git')
     }
     changed = changed || Boolean(adoptResult.commitCreated)
-    status = await window.electronAPI.sync.gitStatus({
+    status = await projectOpenDesktopClient.sync.gitStatus({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -859,7 +626,7 @@ export async function prepareGitProjectForOpen({
   if (!remoteHeadCommit && status.headCommit) {
     strategy = 'bootstrap-publish'
     onProgress?.('Publishing missing remote history...')
-    const bootstrapPushResult = await window.electronAPI.sync.gitPushMain({
+    const bootstrapPushResult = await projectOpenDesktopClient.sync.gitPushMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
@@ -882,7 +649,7 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       kind: 'published',
     })
-    status = await window.electronAPI.sync.gitStatus({
+    status = await projectOpenDesktopClient.sync.gitStatus({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -902,7 +669,7 @@ export async function prepareGitProjectForOpen({
   if (!remoteHeadCommit && !status.headCommit && !effectivelyEmptyWorkspace) {
     strategy = 'bootstrap-publish'
     onProgress?.('Publishing local project to remote...')
-    const bootstrapCommitResult = await window.electronAPI.sync.gitCommitAll({
+    const bootstrapCommitResult = await projectOpenDesktopClient.sync.gitCommitAll({
       projectPath: effectiveLocalPath,
       message: 'bootstrap remote history',
     })
@@ -915,7 +682,7 @@ export async function prepareGitProjectForOpen({
       throw new Error(bootstrapCommitResult.error || 'Failed to create initial project commit')
     }
 
-    const bootstrapPushResult = await window.electronAPI.sync.gitPushMain({
+    const bootstrapPushResult = await projectOpenDesktopClient.sync.gitPushMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
@@ -939,7 +706,7 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       kind: 'published',
     })
-    status = await window.electronAPI.sync.gitStatus({
+    status = await projectOpenDesktopClient.sync.gitStatus({
       projectPath: effectiveLocalPath,
       branch,
       debug,
@@ -987,7 +754,7 @@ export async function prepareGitProjectForOpen({
   if (shouldRestoreWorkspace) {
     strategy = 'restore'
     onProgress?.('Restoring project files...')
-    const restoreResult = await window.electronAPI.sync.gitRestoreMain({
+    const restoreResult = await projectOpenDesktopClient.sync.gitRestoreMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
@@ -1013,7 +780,7 @@ export async function prepareGitProjectForOpen({
         projectPath: effectiveLocalPath,
         kind: 'restored',
       })
-      status = await window.electronAPI.sync.gitStatus({
+      status = await projectOpenDesktopClient.sync.gitStatus({
         projectPath: effectiveLocalPath,
         branch,
         debug,
@@ -1069,7 +836,7 @@ export async function prepareGitProjectForOpen({
     if (hadMeaningfulLocalState) {
       strategy = 'replay'
       onProgress?.('Replaying local changes...')
-      const replayResult = await window.electronAPI.sync.gitReplayLocalCommits({
+      const replayResult = await projectOpenDesktopClient.sync.gitReplayLocalCommits({
         projectPath: effectiveLocalPath,
         branch,
         repoUrl,
@@ -1120,7 +887,7 @@ export async function prepareGitProjectForOpen({
     } else {
       strategy = 'restore'
       onProgress?.('Refreshing local project...')
-      const restoreResult = await window.electronAPI.sync.gitRestoreMain({
+      const restoreResult = await projectOpenDesktopClient.sync.gitRestoreMain({
         projectPath: effectiveLocalPath,
         branch,
         repoUrl,
@@ -1154,7 +921,7 @@ export async function prepareGitProjectForOpen({
     }
   }
 
-  status = await window.electronAPI.sync.gitStatus({
+  status = await projectOpenDesktopClient.sync.gitStatus({
     projectPath: effectiveLocalPath,
     branch,
     debug,
@@ -1192,7 +959,7 @@ export async function prepareGitProjectForOpen({
 
   if (status.ahead && status.ahead > 0) {
     onProgress?.('Publishing latest changes...')
-    const pushResult = await window.electronAPI.sync.gitPushMain({
+    const pushResult = await projectOpenDesktopClient.sync.gitPushMain({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
@@ -1210,7 +977,7 @@ export async function prepareGitProjectForOpen({
     })
   }
 
-  const finalStatus = await window.electronAPI.sync.gitStatus({
+  const finalStatus = await projectOpenDesktopClient.sync.gitStatus({
     projectPath: effectiveLocalPath,
     branch,
     debug,

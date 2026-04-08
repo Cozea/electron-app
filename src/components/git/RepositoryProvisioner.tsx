@@ -33,6 +33,8 @@ interface RepositoryProvisionerProps {
   integrationConnected: boolean
   setupMode: 'personal' | 'organization'
   selectedRepoUrl?: string
+  suggestedRepoName?: string
+  visibility?: string
   onRepositorySelected: (repository: RepositoryDescriptor) => void
   compactTable?: boolean
 }
@@ -54,6 +56,8 @@ export function RepositoryProvisioner({
   integrationConnected,
   setupMode,
   selectedRepoUrl,
+  suggestedRepoName: _suggestedRepoName,
+  visibility: _visibility,
   onRepositorySelected,
   compactTable = false,
 }: RepositoryProvisionerProps) {

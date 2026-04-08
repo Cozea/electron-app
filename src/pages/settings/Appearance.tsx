@@ -1,15 +1,15 @@
 import { Check } from 'lucide-react'
 
-import { AppShellLayout } from '../../components/layouts/AppShellLayout'
+import { SettingsRouteShell } from '@/components/settings/SettingsRouteShell'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
-import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import type { Theme } from '@/lib/theme'
 import { cn } from '../../lib/utils'
 
 interface AppearanceProps {
   surface?: 'page' | 'drawer'
+  route?: string
 }
 
 // Theme preview colors (matching index.css)
@@ -56,8 +56,7 @@ const themes: { value: Theme; label: string; colors: { bg: string; card: string;
   },
 ]
 
-export function Appearance({ surface = 'page' }: AppearanceProps) {
-  const { user, logout } = useAuth()
+export function Appearance({ surface = 'page', route }: AppearanceProps) {
   const { theme, setTheme } = useTheme()
 
   const content = (
@@ -192,11 +191,8 @@ export function Appearance({ surface = 'page' }: AppearanceProps) {
   }
 
   return (
-    <AppShellLayout
-      user={user}
-      onLogout={logout}
-    >
+    <SettingsRouteShell surfaceId="appearance" route={route}>
       {content}
-    </AppShellLayout>
+    </SettingsRouteShell>
   )
 }
