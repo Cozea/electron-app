@@ -28,7 +28,7 @@ function renderDevSourceControlCallbackPage(options: {
         min-height: 100vh;
         display: grid;
         place-items: center;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #f8fafc;
         color: #0f172a;
       }

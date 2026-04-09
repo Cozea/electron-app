@@ -131,7 +131,7 @@ export const BRIDGE_SCRIPT = `
       box-sizing: border-box;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
       max-width: 340px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     \`;
 
     const title = document.createElement('div');

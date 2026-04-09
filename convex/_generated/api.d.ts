@@ -11,10 +11,8 @@
 import type * as activity from "../activity.js";
 import type * as billing from "../billing.js";
 import type * as crons from "../crons.js";
-import type * as debug from "../debug.js";
 import type * as deployments from "../deployments.js";
 import type * as fileTombstones from "../fileTombstones.js";
-import type * as identityRepair from "../identityRepair.js";
 import type * as integrations from "../integrations.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_accountEntitlements from "../lib/accountEntitlements.js";
@@ -42,7 +40,6 @@ import type * as projectMembers from "../projectMembers.js";
 import type * as projectPresence from "../projectPresence.js";
 import type * as projectRepoAccess from "../projectRepoAccess.js";
 import type * as projectTasks from "../projectTasks.js";
-import type * as projectTemplates from "../projectTemplates.js";
 import type * as projects from "../projects.js";
 import type * as sourceControl from "../sourceControl.js";
 import type * as users from "../users.js";
@@ -60,10 +57,8 @@ declare const fullApi: ApiFromModules<{
   activity: typeof activity;
   billing: typeof billing;
   crons: typeof crons;
-  debug: typeof debug;
   deployments: typeof deployments;
   fileTombstones: typeof fileTombstones;
-  identityRepair: typeof identityRepair;
   integrations: typeof integrations;
   invitations: typeof invitations;
   "lib/accountEntitlements": typeof lib_accountEntitlements;
@@ -91,7 +86,6 @@ declare const fullApi: ApiFromModules<{
   projectPresence: typeof projectPresence;
   projectRepoAccess: typeof projectRepoAccess;
   projectTasks: typeof projectTasks;
-  projectTemplates: typeof projectTemplates;
   projects: typeof projects;
   sourceControl: typeof sourceControl;
   users: typeof users;
