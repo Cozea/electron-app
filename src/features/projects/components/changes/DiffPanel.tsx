@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
-import { X, Bold, Italic, Underline, Link2, Smile, Minus, Plus, Asterisk } from 'lucide-react'
+import { Bars3BottomLeftIcon as Bold, Bars3BottomLeftIcon as Italic, Bars3BottomLeftIcon as Underline, FaceSmileIcon as Smile, LinkIcon as Link2, MinusIcon as Minus, PlusIcon as Plus, SparklesIcon as Asterisk, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { CodeMirrorMergeViewer } from './CodeMirrorMergeViewer'
 
 interface DiffPanelProps {

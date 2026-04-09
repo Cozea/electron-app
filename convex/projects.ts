@@ -200,7 +200,7 @@ export const create = mutation({
     organizationId: v.id("organizations"),
     userId: v.id("users"),
     name: v.string(),
-    creationPath: v.union(v.literal("fresh"), v.literal("repo"), v.literal("prompt")),
+    creationPath: v.union(v.literal("fresh"), v.literal("repo")),
 
     // Intent
     description: v.optional(v.string()),
@@ -268,42 +268,6 @@ export const create = mutation({
       })
     ),
 
-    // Prompt-specific
-    originalPrompt: v.optional(v.string()),
-    promptSettings: v.optional(
-      v.object({
-        model: v.string(),
-        agentId: v.union(
-          v.literal("plan"),
-          v.literal("build"),
-          v.literal("assistant_general"),
-          v.literal("assistant_project"),
-          v.literal("explore"),
-          v.literal("review")
-        ),
-        surface: v.union(
-          v.literal("wizard"),
-          v.literal("builder"),
-          v.literal("assistant_panel"),
-          v.literal("assistant_project")
-        ),
-        variantId: v.optional(
-          v.union(
-            v.literal("none"),
-            v.literal("minimal"),
-            v.literal("low"),
-            v.literal("medium"),
-            v.literal("high"),
-            v.literal("xhigh"),
-            v.literal("max")
-          )
-        ),
-        toolsEnabled: v.boolean(),
-        webSearchEnabled: v.boolean(),
-        providerOptions: v.optional(v.any()),
-      })
-    ),
-
     // Repo-specific
     repoSource: v.optional(
       v.object({
@@ -354,7 +318,7 @@ export const create = mutation({
     const slug = await ensureUniqueSlug(ctx, args.organizationId, baseSlug)
 
     // For repo imports, code already exists - set to active
-    // For prompt/fresh, start as draft until AI generates/builds
+    // For fresh projects, start as draft until the workspace is ready
     const initialStatus = args.creationPath === 'repo' ? 'active' : 'draft'
 
     const organization = await ctx.db.get(args.organizationId)
@@ -418,9 +382,6 @@ export const create = mutation({
       visuals: args.visuals,
       creationPath: args.creationPath,
       status: initialStatus,
-      wizardStep: 0,
-      originalPrompt: args.originalPrompt,
-      promptSettings: args.promptSettings,
       importedFrom: args.repoSource ? {
         provider: args.repoSource.provider,
         repoFullName: args.repoSource.repoUrl,
@@ -1118,40 +1079,6 @@ export const update = mutation({
         logoUrl: v.optional(v.string()),
       })
     ),
-    originalPrompt: v.optional(v.string()),
-    promptSettings: v.optional(
-      v.object({
-        model: v.string(),
-        agentId: v.union(
-          v.literal("plan"),
-          v.literal("build"),
-          v.literal("assistant_general"),
-          v.literal("assistant_project"),
-          v.literal("explore"),
-          v.literal("review")
-        ),
-        surface: v.union(
-          v.literal("wizard"),
-          v.literal("builder"),
-          v.literal("assistant_panel"),
-          v.literal("assistant_project")
-        ),
-        variantId: v.optional(
-          v.union(
-            v.literal("none"),
-            v.literal("minimal"),
-            v.literal("low"),
-            v.literal("medium"),
-            v.literal("high"),
-            v.literal("xhigh"),
-            v.literal("max")
-          )
-        ),
-        toolsEnabled: v.boolean(),
-        webSearchEnabled: v.boolean(),
-        providerOptions: v.optional(v.any()),
-      })
-    ),
     localPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -1259,8 +1186,6 @@ export const update = mutation({
       })
     }
     if (args.visuals !== undefined) updates.visuals = { ...project.visuals, ...args.visuals }
-    if (args.originalPrompt !== undefined) updates.originalPrompt = args.originalPrompt
-    if (args.promptSettings !== undefined) updates.promptSettings = args.promptSettings
     if (args.localPath !== undefined) updates.localPath = args.localPath
 
     await ctx.db.patch(args.projectId, updates)
@@ -1337,33 +1262,6 @@ export const updateStatus = mutation({
 
     await ctx.db.patch(args.projectId, {
       status: args.status,
-      updatedAt: Date.now(),
-    })
-  },
-})
-
-// Update wizard step
-export const updateWizardStep = mutation({
-  args: {
-    projectId: v.id("projects"),
-    userId: v.id("users"),
-    step: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
-
-    const canEdit = await canEditProjectByWorkspaceOrMembership(
-      ctx,
-      args.projectId,
-      args.userId
-    )
-    if (!canEdit) {
-      throw new Error("Unauthorized to update wizard progress")
-    }
-
-    await ctx.db.patch(args.projectId, {
-      wizardStep: args.step,
       updatedAt: Date.now(),
     })
   },
@@ -1513,84 +1411,6 @@ export const deleteProject = mutation({
     })
 
     return { success: true }
-  },
-})
-
-// ============================================
-// PLAN GENERATION & MANAGEMENT
-// ============================================
-
-// Save AI-generated plan
-export const saveGeneratedPlan = mutation({
-  args: {
-    projectId: v.id("projects"),
-    userId: v.id("users"),
-    plan: v.object({
-      pages: v.array(
-        v.object({
-          id: v.string(),
-          name: v.string(),
-          route: v.string(),
-          type: v.string(),
-          purpose: v.optional(v.string()),
-          actions: v.optional(v.array(v.string())),
-        })
-      ),
-      entities: v.array(
-        v.object({
-          id: v.string(),
-          name: v.string(),
-          fields: v.optional(v.array(v.string())),
-        })
-      ),
-    }),
-    selectedPlanTier: v.optional(
-      v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
-    ),
-    targetPlatform: v.optional(v.union(v.literal("web"))),
-    buildContract: v.optional(
-      v.object({
-        previewMode: v.union(v.literal("web")),
-        frameworkClass: v.union(v.literal("web-framework")),
-        toolchain: v.optional(v.any()),
-        commands: v.optional(v.any()),
-        constraints: v.optional(v.any()),
-        fallbackPolicy: v.optional(v.any()),
-        successCriteria: v.optional(v.any()),
-        telemetryHints: v.optional(v.any()),
-      })
-    ),
-  },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
-
-    const canEdit = await canEditProjectByWorkspaceOrMembership(
-      ctx,
-      args.projectId,
-      args.userId
-    )
-    if (!canEdit) {
-      throw new Error("Unauthorized to save generated plan")
-    }
-
-    const updates: Record<string, unknown> = {
-      generatedPlan: args.plan,
-      status: "draft", // Return to draft after plan generation
-      updatedAt: Date.now(),
-    }
-
-    if (args.selectedPlanTier !== undefined) {
-      updates.selectedPlanTier = args.selectedPlanTier
-    }
-    if (args.targetPlatform !== undefined) {
-      updates.targetPlatform = args.targetPlatform
-    }
-    if (args.buildContract !== undefined) {
-      updates.buildContract = args.buildContract
-    }
-
-    await ctx.db.patch(args.projectId, updates)
   },
 })
 

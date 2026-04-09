@@ -32,16 +32,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../components/ui/dialog'
-import {
-  AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
-  Trash2,
-  FileText,
-  Package,
-  RefreshCw,
-  Loader2,
-} from 'lucide-react'
+import { ArchiveBoxIcon as Package, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, DocumentTextIcon as FileText, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
 import type { LocalProject, StorageProjectsPage, StorageSnapshot, StorageUsage } from '../../types/electron'
 

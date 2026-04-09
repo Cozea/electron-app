@@ -1,21 +1,7 @@
 import type { CSSProperties } from 'react'
-import {
-  Bell,
-  Briefcase,
-  Building2,
-  Camera,
-  DollarSign,
-  Heart,
-  Map,
-  MessageSquare,
-  Package,
-  Rocket,
-  Shield,
-  Sparkles,
-  Star,
-  User,
-  type LucideIcon,
-} from 'lucide-react'
+import { ArchiveBoxIcon as Package, BellIcon as Bell, BriefcaseIcon as Briefcase, BuildingOffice2Icon as Building2, CameraIcon as Camera, ChatBubbleLeftRightIcon as MessageSquare, CurrencyDollarIcon as DollarSign, HeartIcon as Heart, MapIcon as Map, RocketLaunchIcon as Rocket, ShieldCheckIcon as Shield, SparklesIcon as Sparkles, StarIcon as Star, UserIcon as User } from "@heroicons/react/24/outline"
+import type { ComponentType, SVGProps } from "react"
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 
 import {
   WORKSPACE_ICON_COLOR_KEYS,

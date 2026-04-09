@@ -19,7 +19,7 @@ import { IntegrationIcon } from './IntegrationIcon'
 import { ApiKeyForm } from './ApiKeyForm'
 import { ServiceAccountForm } from './ServiceAccountForm'
 import { Logo } from '@/components/Logo'
-import { ExternalLink, Loader2, AlertCircle } from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 import type { IntegrationDefinition, IntegrationCredentials } from '@/lib/integrations/types'
 
 interface IntegrationConnectDialogProps {

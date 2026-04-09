@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2 } from "lucide-react"
+import { ArrowPathIcon as Loader2, ChevronDownIcon as ChevronDown } from "@heroicons/react/24/outline"
 import type { Id } from "../../../../../convex/_generated/dataModel"
 
 import { Button } from "@/components/ui/button"

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Loader2, X } from 'lucide-react'
+import { ArrowPathIcon as Loader2, CheckIcon as Check, XMarkIcon as X } from "@heroicons/react/24/outline"
 
 import { Button } from '@/components/ui/button'
 import {

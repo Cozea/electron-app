@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Dialog as BaseDialog } from "@base-ui/react"
-import { XIcon } from "lucide-react"
+import { XMarkIcon as XIcon } from "@heroicons/react/24/outline"
 
 import { cn } from "@/lib/utils"
 

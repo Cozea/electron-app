@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Select as BaseSelect } from "@base-ui/react"
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline"
 
 import { cn } from "@/lib/utils"
 

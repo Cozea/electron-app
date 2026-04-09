@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEventHandler, type ComponentProps } from "react"
-import { AlertCircle } from "lucide-react"
+import { ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import {
   ApprovalRequestId,

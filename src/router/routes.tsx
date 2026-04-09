@@ -13,6 +13,13 @@ import { Outlet } from "@/lib/router";
 import { useAuth } from "@/contexts/AuthContext";
 import { useResolvedScope } from "@/hooks/useResolvedScope";
 import { useScopedAppContext } from "@/hooks/useScopedAppContext";
+import { ProjectsLaunchPage } from "@/features/projects/pages/ProjectsLaunchPage";
+import { ProjectLayout } from "@/features/projects/layouts/ProjectLayout";
+import { ProjectWorkbenchPage } from "@/features/projects/pages/ProjectWorkbenchPage";
+import { TasksPage } from "@/features/projects/pages/TasksPage";
+import { ProjectConflictsPage } from "@/features/projects/pages/ProjectConflictsPage";
+import { ProjectTeamPage } from "@/features/projects/pages/ProjectTeamPage";
+import NewProject from "@/pages/NewProject";
 import {
   canAccessWorkspaceSurface,
   getSettingsSurface,
@@ -40,20 +47,6 @@ function createLazyRouteComponent(
   return LazyRouteComponent;
 }
 
-const ProjectsLaunchPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/ProjectsLaunchPage").then((module) => ({
-      default: module.ProjectsLaunchPage,
-    })),
-  "Loading projects…",
-);
-const ProjectLayout = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/layouts/ProjectLayout").then((module) => ({
-      default: module.ProjectLayout,
-    })),
-  "Loading project…",
-);
 const ProjectJoinPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectJoinPage").then((module) => ({
@@ -74,34 +67,6 @@ const LegacyProjectRedirectPage = createLazyRouteComponent(
       default: module.LegacyProjectRedirectPage,
     })),
   "Loading project…",
-);
-const ProjectWorkbenchPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/ProjectWorkbenchPage").then((module) => ({
-      default: module.ProjectWorkbenchPage,
-    })),
-  "Loading workbench…",
-);
-const TasksPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/TasksPage").then((module) => ({
-      default: module.TasksPage,
-    })),
-  "Loading tasks…",
-);
-const ProjectConflictsPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/ProjectConflictsPage").then((module) => ({
-      default: module.ProjectConflictsPage,
-    })),
-  "Loading conflicts…",
-);
-const ProjectTeamPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/ProjectTeamPage").then((module) => ({
-      default: module.ProjectTeamPage,
-    })),
-  "Loading project team…",
 );
 const General = createLazyRouteComponent(
   () =>
@@ -158,10 +123,6 @@ const Tooling = createLazyRouteComponent(
       default: module.Tooling,
     })),
   "Loading tooling settings…",
-);
-const NewProject = createLazyRouteComponent(
-  () => import("@/pages/NewProject").then((module) => ({ default: module.default })),
-  "Loading project setup…",
 );
 const Members = createLazyRouteComponent(
   () => import("@/pages/teams/Members").then((module) => ({ default: module.Members })),
@@ -343,6 +304,17 @@ function ProjectWorkbenchRedirect() {
   );
 }
 
+function LegacyProjectJoinRedirect() {
+  const params = useParams({ strict: false }) as { token?: string };
+  return (
+    <Navigate
+      to="/projects/join/$token"
+      params={{ token: params.token ?? "" }}
+      replace
+    />
+  );
+}
+
 function ProjectSettingsTeamRedirect() {
   const params = useParams({ strict: false }) as { projectId?: string };
   return (
@@ -410,7 +382,7 @@ const projectInviteRoute = createRoute({
 const joinProjectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/join/project/$token",
-  component: ProjectJoinPage,
+  component: LegacyProjectJoinRedirect,
 });
 
 const projectBuildRoute = createRoute({

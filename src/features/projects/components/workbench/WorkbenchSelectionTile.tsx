@@ -1,13 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
-import {
-  AppWindow,
-  Bot,
-  MonitorCog,
-  PackageOpen,
-  Search,
-  Store,
-  SquareTerminal,
-} from "lucide-react"
+import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, ComputerDesktopIcon as MonitorCog, CpuChipIcon as Bot, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
 
 import type {
   WorkbenchSelectionTile,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { Loader2, TerminalSquare } from "lucide-react"
+import { ArrowPathIcon as Loader2, CommandLineIcon as TerminalSquare } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"

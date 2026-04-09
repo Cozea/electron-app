@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import {
-  Check,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  Loader2,
-  Minus,
-  Plus,
-  XCircle,
-} from "lucide-react";
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle2, CheckIcon as Check, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, MinusIcon as Minus, PlusIcon as Plus, XCircleIcon as XCircle } from "@heroicons/react/24/outline"
 
 import { featureFlags } from "@/lib/featureFlags";
 import { cn } from "@/lib/utils";

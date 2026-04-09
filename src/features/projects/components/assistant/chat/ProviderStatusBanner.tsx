@@ -2,7 +2,7 @@
 import { PROVIDER_DISPLAY_NAMES, type ServerProvider } from "@cozea/assistant-contracts";
 import { memo } from "react";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { CircleAlertIcon } from "lucide-react";
+import { ExclamationCircleIcon as CircleAlertIcon } from "@heroicons/react/24/outline"
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,

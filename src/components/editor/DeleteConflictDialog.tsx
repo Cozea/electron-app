@@ -1,5 +1,5 @@
 import { useYjsProject } from '@/contexts/YjsProjectContext'
-import { AlertTriangle, FileX, FileCheck } from 'lucide-react'
+import { DocumentCheckIcon as FileCheck, DocumentMinusIcon as FileX, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
 import {
   Dialog,
   DialogContent,

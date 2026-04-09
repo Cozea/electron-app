@@ -7,7 +7,7 @@ import {
   type VersionControlSetupMode,
 } from '@shared/versionControl'
 import type { Doc } from '../../../../../convex/_generated/dataModel'
-import { AlertCircle } from 'lucide-react'
+import { ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import { Switch } from '@/components/ui/switch'
 

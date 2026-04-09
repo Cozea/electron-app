@@ -7,7 +7,7 @@ import type {
   ExternalBrowserId,
 } from "@shared/electronApiTypes"
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
-import { AppWindow, ChevronDown, Eye, Play, RefreshCcw, Square, SquareTerminal } from "lucide-react"
+import { ArrowPathIcon as RefreshCcw, ChevronDownIcon as ChevronDown, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, EyeIcon as Eye, PlayIcon as Play, StopIcon as Square } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"

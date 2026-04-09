@@ -1,6 +1,6 @@
 import * as React from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-import { ChevronRight, EllipsisVertical } from "lucide-react"
+import { ChevronRightIcon as ChevronRight, EllipsisVerticalIcon as EllipsisVertical } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"

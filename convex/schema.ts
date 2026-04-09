@@ -708,6 +708,7 @@ export default defineSchema({
     creationPath: v.union(
       v.literal("fresh"),
       v.literal("repo"),
+      // Legacy compatibility for historical projects created before the wizard flow was retired.
       v.literal("prompt")
     ),
 
@@ -809,7 +810,7 @@ export default defineSchema({
     // Preview image (captured from live preview)
     previewImageId: v.optional(v.id("_storage")),
 
-    // Generated plan (from Step 8)
+    // Generated project structure used by builder/tasks surfaces
     generatedPlan: v.optional(
       v.object({
         pages: v.array(
@@ -834,13 +835,14 @@ export default defineSchema({
 
     // Status
     status: v.union(
-      v.literal("draft"), // Still in wizard
+      v.literal("draft"), // Created but not yet active
       v.literal("generating"), // AI generating plan
       v.literal("building"), // AI building files
       v.literal("active"), // Ready to use
       v.literal("archived"),
       v.literal("deleted")
     ),
+    // Legacy compatibility for historical wizard-created projects.
     wizardStep: v.optional(v.number()),
 
     // Repo import specific
@@ -853,7 +855,7 @@ export default defineSchema({
       })
     ),
 
-    // One-shot specific
+    // Legacy compatibility for historical prompt-planned projects.
     originalPrompt: v.optional(v.string()),
     promptSettings: v.optional(
       v.object({
@@ -885,11 +887,9 @@ export default defineSchema({
         ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        providerOptions: v.optional(v.any()), // Provider-specific tool options
+        providerOptions: v.optional(v.any()),
       })
     ),
-
-    // Selected plan tier (from AI-generated plans)
     selectedPlanTier: v.optional(
       v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
     ),
@@ -1104,7 +1104,7 @@ export default defineSchema({
     syncPolicy: v.union(v.literal("auto"), v.literal("manual")),
     workingCopyMode: v.union(v.literal("managed"), v.literal("attached")),
     repoUrl: v.optional(v.string()),
-    activeCollabBranch: v.string(),
+    activeCollabBranch: v.optional(v.string()),
     defaultBranch: v.string(),
     ownerId: v.optional(v.string()),
     ownerLogin: v.optional(v.string()),
@@ -1330,13 +1330,11 @@ export default defineSchema({
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_expires_at", ["expiresAt"]),
 
-  // Project conversation messages (for AI planning phase)
+  // Legacy compatibility for historical project-planning conversations.
   projectMessages: defineTable({
     projectId: v.id("projects"),
     role: v.union(v.literal("user"), v.literal("assistant")),
     content: v.string(),
-
-    // For plan cards rendered in the conversation
     planOptions: v.optional(
       v.array(
         v.object({
@@ -1345,7 +1343,6 @@ export default defineSchema({
           description: v.string(),
           features: v.array(v.string()),
           estimatedScope: v.optional(v.string()),
-          // Full project config for this plan tier
           config: v.object({
             name: v.optional(v.string()),
             description: v.optional(v.string()),
@@ -1417,9 +1414,8 @@ export default defineSchema({
         })
       )
     ),
-
     createdAt: v.number(),
-    })
+  })
     .index("by_project", ["projectId"])
     .index("by_project_and_created", ["projectId", "createdAt"]),
 

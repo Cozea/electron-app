@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
@@ -32,5 +33,10 @@ export default function NewProject() {
     navigate("/projects", { replace: true })
   }, [navigate, openCreateProjectDialog])
 
-  return null
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Opening project setup…
+    </div>
+  )
 }

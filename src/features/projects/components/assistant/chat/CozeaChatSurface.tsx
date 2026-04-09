@@ -9,16 +9,7 @@ import {
   type ServerProvider,
   type TurnId,
 } from "@cozea/assistant-contracts"
-import {
-  BotIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ListTodoIcon,
-  LockIcon,
-  LockOpenIcon,
-  Loader2,
-  XIcon,
-} from "lucide-react"
+import { ArrowPathIcon as Loader2, ChevronLeftIcon, ChevronRightIcon, CpuChipIcon as BotIcon, ListBulletIcon as ListTodoIcon, LockClosedIcon as LockIcon, LockOpenIcon, XMarkIcon as XIcon } from "@heroicons/react/24/outline"
 import {
   type ClipboardEventHandler,
   memo,

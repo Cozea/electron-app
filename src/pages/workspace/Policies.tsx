@@ -1,4 +1,4 @@
-import { Lock, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import { AdjustmentsHorizontalIcon as SlidersHorizontal, LockClosedIcon as Lock, ShieldCheckIcon as ShieldCheck } from "@heroicons/react/24/outline"
 
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Badge } from '@/components/ui/badge'

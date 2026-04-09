@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { DockviewReact } from "dockview";
 
 import "dockview/dist/styles/dockview.css";
@@ -35,6 +35,7 @@ import { ProjectShellTitleBarLeft } from "@/features/projects/components/Project
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime";
+import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
 import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import {
   ensureWorkbenchLayoutPersistenceReady,
@@ -43,35 +44,17 @@ import {
 import { ProjectSettingsPage } from "@/features/projects/pages/ProjectSettingsPage";
 import { getWorkspaceSelectionId } from "@shared/types";
 
-function normalizeOpenTargetParam(
-  value: string | null,
-):
-  | "changes"
-  | Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">
-  | null {
-  if (
-    value === "changes" ||
-    value === "browser" ||
-    value === "terminal" ||
-    value === "devServer" ||
-    value === "assistantChat"
-  ) {
-    return value;
-  }
-  return null;
-}
-
 function getTaskOverlayKey(task: TaskOverlayPayload): string {
   return `${task.projectId}:${task.source}:${task.storageId}`;
 }
 
 export function ProjectWorkbenchPage() {
-  const { project } = useAccessibleProject();
+  const { project, projectIdParam } = useAccessibleProject();
   const syncContext = useOptionalProjectSyncContext();
   const projectPath = syncContext?.projectPath ?? null;
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const projectId = project?._id ? String(project._id) : null;
+  const projectId = project?._id ? String(project._id) : projectIdParam ?? null;
   const locationState = (location.state as TaskOverlayLocationState | null) ?? null;
   const { theme } = useTheme();
   const { convexUserId } = useAuth();
@@ -90,7 +73,6 @@ export function ProjectWorkbenchPage() {
   const {
     laneState,
     activeLane,
-    isLoading: isLaneStateLoading,
     refreshLaneState,
   } = useProjectLaneState({
     projectId,
@@ -200,21 +182,54 @@ export function ProjectWorkbenchPage() {
 
   useProjectHeader(headerControls, headerCenter);
 
-  const closeChangesOverlay = () => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("changes");
-    nextParams.delete("openTile");
-    nextParams.delete("userId");
-    setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
-  };
+  const replaceSearchParams = useCallback(
+    (nextParams: URLSearchParams) => {
+      setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
+    },
+    [setSearchParams],
+  );
+
+  const openWorkbenchTarget = useCallback(
+    (
+      target: Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">,
+    ) => {
+      if (!projectId) return;
+
+      if (target === "assistantChat" || target === "browser" || target === "terminal") {
+        workbenchActions.addTile(projectId, activeLaneId, target);
+        return;
+      }
+
+      workbenchActions.openSingletonTile(projectId, activeLaneId, target);
+    },
+    [activeLaneId, projectId, workbenchActions],
+  );
+
+  const focusWorkbenchTile = useCallback(
+    (tileId: string) => {
+      if (!projectId) return;
+      workbenchActions.setActiveTile(projectId, activeLaneId, tileId);
+    },
+    [activeLaneId, projectId, workbenchActions],
+  );
+
+  const { closeChangesOverlay } = useProjectWorkbenchSearchParamSync({
+    projectId,
+    activeLaneId,
+    searchParams,
+    replaceSearchParams,
+    refreshLaneState,
+    openWorkbenchTarget,
+    focusWorkbenchTile,
+  });
 
   const closeSettingsOverlay = () => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("settings");
-    setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
+    replaceSearchParams(nextParams);
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!projectId) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId);
   }, [activeLaneId, projectId, workbenchActions]);
@@ -232,99 +247,6 @@ export function ProjectWorkbenchPage() {
       updatedAt: Date.now(),
     });
   }, [activeLaneId, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-
-    const requestedLaneId = searchParams.get("lane");
-    if (!requestedLaneId || requestedLaneId === activeLaneId) {
-      return;
-    }
-
-    let isCancelled = false;
-
-    void (async () => {
-      try {
-        await window.electronAPI.project.setActiveLane({
-          projectId,
-          laneId: requestedLaneId,
-        });
-
-        if (!isCancelled) {
-          await refreshLaneState();
-        }
-      } catch (error) {
-        console.warn("[ProjectWorkbenchPage] Failed to activate requested lane", error);
-      }
-    })();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [activeLaneId, projectId, refreshLaneState, searchParams]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    const requestedLaneId = searchParams.get("lane");
-    if (requestedLaneId && requestedLaneId !== activeLaneId) return;
-    const requestedOpenTarget = normalizeOpenTargetParam(searchParams.get("openTile"));
-    if (!requestedOpenTarget) return;
-    if (requestedOpenTarget === "changes") {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete("lane");
-      nextParams.delete("openTile");
-      nextParams.set("changes", "1");
-      setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
-    } else {
-      if (
-        requestedOpenTarget === "assistantChat" ||
-        requestedOpenTarget === "browser" ||
-        requestedOpenTarget === "terminal"
-      ) {
-        workbenchActions.addTile(projectId, activeLaneId, requestedOpenTarget);
-      } else {
-        workbenchActions.openSingletonTile(projectId, activeLaneId, requestedOpenTarget);
-      }
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete("lane");
-      nextParams.delete("openTile");
-      setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
-    }
-  }, [activeLaneId, projectId, searchParams, setSearchParams, workbenchActions]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    const requestedLaneId = searchParams.get("lane");
-    if (requestedLaneId && requestedLaneId !== activeLaneId) return;
-    const requestedTileId = searchParams.get("focusTile");
-    if (!requestedTileId) return;
-
-    const liveWorkbench =
-      useProjectWorkbenchStore.getState().workbenches[
-        buildWorkbenchScopeKey(projectId, activeLaneId)
-      ];
-
-    if (liveWorkbench?.tiles[requestedTileId]) {
-      workbenchActions.setActiveTile(projectId, activeLaneId, requestedTileId);
-    }
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("lane");
-    nextParams.delete("focusTile");
-    setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
-  }, [activeLaneId, projectId, searchParams, setSearchParams, workbenchActions]);
-
-  useEffect(() => {
-    if (!projectId) return;
-
-    const requestedLaneId = searchParams.get("lane");
-    if (!requestedLaneId || requestedLaneId !== activeLaneId) return;
-    if (searchParams.get("openTile") || searchParams.get("focusTile")) return;
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("lane");
-    setSearchParams(Object.fromEntries(nextParams.entries()) as never, { replace: true });
-  }, [activeLaneId, projectId, searchParams, setSearchParams]);
 
   useEffect(() => {
     setIsChangesOpen(searchParams.get("changes") === "1");
@@ -407,7 +329,7 @@ export function ProjectWorkbenchPage() {
     });
   };
 
-  if (!projectId || !projectWorkbench || (isLaneStateLoading && !laneState)) {
+  if (!projectId || !projectWorkbench) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Loading workbench…

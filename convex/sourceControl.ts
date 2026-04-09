@@ -361,6 +361,9 @@ function summarizeConnection(
 }
 
 function summarizeProjectBinding(binding: Doc<"projectRepositoryBindings">) {
+  const activeCollabBranch =
+    binding.activeCollabBranch?.trim() || binding.defaultBranch?.trim() || "main"
+
   return {
     _id: binding._id,
     projectId: binding.projectId,
@@ -371,7 +374,7 @@ function summarizeProjectBinding(binding: Doc<"projectRepositoryBindings">) {
     syncPolicy: binding.syncPolicy,
     workingCopyMode: binding.workingCopyMode,
     repoUrl: binding.repoUrl,
-    activeCollabBranch: binding.activeCollabBranch,
+    activeCollabBranch,
     defaultBranch: binding.defaultBranch,
     ownerId: binding.ownerId,
     ownerLogin: binding.ownerLogin,
@@ -1054,24 +1057,26 @@ async function loadProjectGitCredentialContext(
     .withIndex("by_project", (q) => q.eq("projectId", projectId))
     .first()
 
-  const derivedBinding =
-    existingBinding ??
-    buildProjectRepositoryBindingRecord({
-      projectId: project._id,
-      organizationId: project.organizationId,
-      sourceControl: project.sourceControl ?? undefined,
-      gitRepository: project.gitRepository ?? undefined,
-      defaultSetupMode,
-      now: Date.now(),
-    })
+  const synthesizedBinding = buildProjectRepositoryBindingRecord({
+    projectId: project._id,
+    organizationId: project.organizationId,
+    sourceControl: project.sourceControl ?? undefined,
+    gitRepository: project.gitRepository ?? undefined,
+    defaultSetupMode,
+    now: Date.now(),
+  })
 
-  if (!derivedBinding) {
+  if (!existingBinding && !synthesizedBinding) {
     return null
   }
 
   const binding = existingBinding
     ? summarizeProjectBinding(existingBinding)
-    : derivedBinding
+    : synthesizedBinding
+
+  if (!binding) {
+    return null
+  }
 
   const automatedProvider = normalizeAutomatedProvider(binding.provider)
   if (!automatedProvider) {

@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react"
+import { PlusIcon as Plus } from "@heroicons/react/24/outline"
 import { useEffect, useState } from "react"
 
 import { cn } from "@/lib/utils"

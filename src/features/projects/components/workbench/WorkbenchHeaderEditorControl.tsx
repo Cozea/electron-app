@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ChevronDown, Code2 } from "lucide-react"
+import { ChevronDownIcon as ChevronDown, CodeBracketIcon as Code2 } from "@heroicons/react/24/outline"
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm } from "react-icons/si"
 import { VscVscodeInsiders } from "react-icons/vsc"
 import type { ComponentType, MouseEvent, SVGProps } from "react"

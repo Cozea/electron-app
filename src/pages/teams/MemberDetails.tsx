@@ -5,14 +5,7 @@ import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNo
 import { useScopedMemberDetailsData } from '@/hooks/useScopedMemberDetailsData'
 import { Badge } from '../../components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
-import {
-  Mail,
-  Calendar,
-  Activity,
-  Zap,
-  FolderKanban,
-  Users,
-} from 'lucide-react'
+import { BoltIcon as Zap, CalendarDaysIcon as Calendar, ChartBarIcon as Activity, EnvelopeIcon as Mail, FolderIcon as FolderKanban, UsersIcon as Users } from "@heroicons/react/24/outline"
 
 // Contribution graph component (GitHub-style)
 function ContributionGraph({ data }: { data: number[][] }) {

@@ -1,5 +1,5 @@
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { Loader2 } from "lucide-react"
+import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { CozeaChatSurface } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
 import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog"

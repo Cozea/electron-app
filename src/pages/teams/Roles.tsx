@@ -44,16 +44,7 @@ import { cn } from '@/lib/utils'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedWorkspacePeopleData } from '@/hooks/useScopedWorkspacePeopleData'
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Lock,
-  Pencil,
-  Plus,
-  Trash2,
-  User,
-} from 'lucide-react'
+import { ArrowPathIcon as Loader2, ChevronDownIcon as ChevronDown, ChevronRightIcon as ChevronRight, LockClosedIcon as Lock, PencilSquareIcon as Pencil, PlusIcon as Plus, TrashIcon as Trash2, UserIcon as User } from "@heroicons/react/24/outline"
 
 interface RoleDraft {
   name: string

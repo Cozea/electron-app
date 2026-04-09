@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react"
+import type { ComponentType, SVGProps } from "react"
 
 export type SettingsScopeKind = "personal" | "workspace"
 export type SettingsStorageMode = "local" | "cloud"
@@ -29,7 +29,7 @@ export type SettingsSurfaceId =
 export interface SettingsSurfaceDefinition {
   id: SettingsSurfaceId
   label: string
-  icon: LucideIcon
+  icon: ComponentType<SVGProps<SVGSVGElement>>
   routes: Partial<Record<SettingsScopeKind, string>>
   storageMode: Partial<Record<SettingsScopeKind, SettingsStorageMode>>
   placements: SettingsPlacement[]

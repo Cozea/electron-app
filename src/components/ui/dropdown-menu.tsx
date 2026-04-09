@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { Menu as BaseMenu } from '@base-ui/react'
-import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react'
+import { CheckIcon, ChevronRightIcon, MinusIcon as CircleIcon } from "@heroicons/react/24/outline"
 
 import { cn } from '@/lib/utils'
 

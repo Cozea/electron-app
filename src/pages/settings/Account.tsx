@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { Monitor, Mail, Bell, AlertTriangle, Trash2, Upload } from "lucide-react";
+import { ArrowUpTrayIcon as Upload, BellIcon as Bell, ComputerDesktopIcon as Monitor, EnvelopeIcon as Mail, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 
 interface UserPrefs {
   emailNotifications: boolean;

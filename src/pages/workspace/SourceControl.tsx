@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
-import {
-  AlertCircle,
-  CheckCircle2,
-  ExternalLink,
-  FolderGit2,
-  Loader2,
-  RefreshCw,
-  Unplug,
-} from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle2, ExclamationCircleIcon as AlertCircle, FolderIcon as FolderGit2, NoSymbolIcon as Unplug } from "@heroicons/react/24/outline"
 
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { RepositoryOwnerDescriptor } from '@shared/electronApiTypes'
@@ -686,8 +678,8 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
               </CardTitle>
               <CardDescription>
                 {workspaceScoped
-                  ? 'The chat-based project wizard will prefer this provider when it generates plan cards for this workspace.'
-                  : 'The chat-based project wizard will prefer this provider when it generates plan cards for projects in your personal project collection.'}
+                  ? 'New workspace projects will default to this provider when source control is preconfigured.'
+                  : 'New personal projects will default to this provider when source control is preconfigured.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -715,7 +707,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
               <p className="text-xs text-muted-foreground">
                 {defaultProvider ? (
                   <>
-                    New AI-generated plans will default to{' '}
+                    New projects will default to{' '}
                     <span className="font-medium text-foreground">
                       {getSourceControlProviderLabel(defaultProvider)}
                     </span>{' '}
@@ -723,10 +715,10 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
                   </>
                 ) : sourceControlPreference.shouldAskUser ? (
                   <>
-                    When no default is set, the planner will ask before using project source control.
+                    When no default is set, Cozea will ask before configuring project source control.
                   </>
                 ) : (
-                  <>Set a default here if you want new plans to consistently prefer one provider.</>
+                  <>Set a default here if you want new projects to consistently prefer one provider.</>
                 )}
               </p>
             </CardContent>

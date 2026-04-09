@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { PanelLeftIcon } from "lucide-react"
+import { Squares2X2Icon as PanelLeftIcon } from "@heroicons/react/24/outline"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useWindowChrome } from "@/hooks/useWindowChrome"

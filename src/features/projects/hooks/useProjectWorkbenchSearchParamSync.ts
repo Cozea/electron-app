@@ -8,8 +8,17 @@ import {
 
 function normalizeOpenTargetParam(
   value: string | null,
-): "changes" | Extract<WorkbenchTileType, "terminal" | "assistantChat"> | null {
-  if (value === "changes" || value === "terminal" || value === "assistantChat") {
+):
+  | "changes"
+  | Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">
+  | null {
+  if (
+    value === "changes" ||
+    value === "browser" ||
+    value === "terminal" ||
+    value === "devServer" ||
+    value === "assistantChat"
+  ) {
     return value
   }
 
@@ -18,7 +27,10 @@ function normalizeOpenTargetParam(
 
 export interface WorkbenchSearchParamIntent {
   requestedLaneId: string | null
-  requestedOpenTarget: "changes" | Extract<WorkbenchTileType, "terminal" | "assistantChat"> | null
+  requestedOpenTarget:
+    | "changes"
+    | Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">
+    | null
   requestedFocusTileId: string | null
   shouldWaitForLaneNavigation: boolean
   shouldClearResolvedLane: boolean
@@ -60,7 +72,9 @@ interface UseProjectWorkbenchSearchParamSyncProps {
   searchParams: URLSearchParams
   replaceSearchParams: (nextParams: URLSearchParams) => void
   refreshLaneState: () => Promise<unknown>
-  addWorkbenchTile: (type: Extract<WorkbenchTileType, "terminal" | "assistantChat">) => void
+  openWorkbenchTarget: (
+    target: Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">,
+  ) => void
   focusWorkbenchTile: (tileId: string) => void
 }
 
@@ -73,7 +87,7 @@ export function useProjectWorkbenchSearchParamSync(
     searchParams,
     replaceSearchParams,
     refreshLaneState,
-    addWorkbenchTile,
+    openWorkbenchTarget,
     focusWorkbenchTile,
   } = props
 
@@ -126,13 +140,13 @@ export function useProjectWorkbenchSearchParamSync(
       return
     }
 
-    addWorkbenchTile(intent.requestedOpenTarget)
+    openWorkbenchTarget(intent.requestedOpenTarget)
 
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete("lane")
     nextParams.delete("openTile")
     replaceSearchParams(nextParams)
-  }, [activeLaneId, addWorkbenchTile, projectId, replaceSearchParams, searchParams])
+  }, [activeLaneId, openWorkbenchTarget, projectId, replaceSearchParams, searchParams])
 
   useEffect(() => {
     if (!projectId) return

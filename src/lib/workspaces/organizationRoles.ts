@@ -1,4 +1,4 @@
-import { Eye, Shield, Users } from 'lucide-react'
+import { EyeIcon as Eye, ShieldCheckIcon as Shield, UsersIcon as Users } from "@heroicons/react/24/outline"
 
 export type OrganizationWorkspaceRole = 'admin' | 'member' | 'viewer'
 

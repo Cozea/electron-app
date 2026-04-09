@@ -28,7 +28,7 @@ import type {
   IntegrationCategory,
   IntegrationCredentials,
 } from '@/lib/integrations/types'
-import { Plus, Plug } from 'lucide-react'
+import { PlusIcon as Plus, PuzzlePieceIcon as Plug } from "@heroicons/react/24/outline"
 
 type FilterType = 'all' | 'connected' | 'disconnected'
 

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { memo, useMemo, useState } from "react";
 import { getVscodeIconUrlForEntry } from "../vscode-icons";
-import { FileIcon, FolderIcon } from "lucide-react";
+import { DocumentIcon as FileIcon, FolderIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils";
 
 export const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {

@@ -33,7 +33,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { AlertTriangle, Trash2, Loader2, Check, X } from "lucide-react";
+import { ArrowPathIcon as Loader2, CheckIcon as Check, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { sanitizeWorkspaceIdentityInput, type WorkspaceIdentityInput } from "@shared/workspaceIdentity.ts";
 import { cn } from "@/lib/utils";
 

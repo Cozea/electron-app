@@ -30,13 +30,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  AlertTriangle,
-  Loader2,
-  Save,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { ArrowPathIcon as Loader2, BookmarkIcon as Save, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { cn } from '@/lib/utils'
 import type { ProjectGitRuntimeProjectLike } from '@/lib/git/projectGitRuntime'
 
@@ -311,8 +305,9 @@ export function ProjectSettingsPage({
 
   if (project === undefined) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Loading project settings…
       </div>
     )
   }

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, AlertCircle, FileUp } from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowUpTrayIcon as FileUp, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 import type { IntegrationCredentials, IntegrationDefinition } from '@/lib/integrations/types'
 
 interface ServiceAccountFormProps {

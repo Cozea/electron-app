@@ -1,5 +1,7 @@
 # App Refactor and Legacy Cleanup Plan
 
+> Historical note: this document reflects an earlier cleanup/refactor framing that drifted too far toward architecture replacement. For the current cleanup direction, use [current-architecture-cleanup-plan.md](/Users/admin/Downloads/electron-app-main/docs/current-architecture-cleanup-plan.md) as the authoritative plan.
+
 ## Objective
 
 Create a single execution plan to finish the half-landed refactors, remove architecture drift from older product eras, and leave the app in a state where:

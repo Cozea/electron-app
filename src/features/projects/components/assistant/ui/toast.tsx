@@ -2,15 +2,7 @@
 
 import { Toast } from "@base-ui/react/toast";
 import { useEffect, type CSSProperties } from "react";
-import {
-  CheckIcon,
-  CircleAlertIcon,
-  CircleCheckIcon,
-  CopyIcon,
-  InfoIcon,
-  LoaderCircleIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { ArrowPathIcon as LoaderCircleIcon, CheckCircleIcon as CircleCheckIcon, CheckIcon, DocumentDuplicateIcon as CopyIcon, ExclamationCircleIcon as CircleAlertIcon, ExclamationTriangleIcon as TriangleAlertIcon, InformationCircleIcon as InfoIcon } from "@heroicons/react/24/outline"
 
 import { cn } from "@/lib/utils";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";

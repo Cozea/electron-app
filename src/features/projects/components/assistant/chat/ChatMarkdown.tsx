@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { getSharedHighlighter } from "@pierre/diffs";
 import type { DiffsHighlighter, SupportedLanguages } from "@pierre/diffs";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, DocumentDuplicateIcon as CopyIcon } from "@heroicons/react/24/outline"
 import React, {
   Children,
   Suspense,

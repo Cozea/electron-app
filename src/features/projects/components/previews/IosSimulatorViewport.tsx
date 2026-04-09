@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
-import { ExternalLink, RefreshCw, Smartphone } from 'lucide-react'
+import { ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink, DevicePhoneMobileIcon as Smartphone } from "@heroicons/react/24/outline"
 
 import { Button } from '@/components/ui/button'
 import {

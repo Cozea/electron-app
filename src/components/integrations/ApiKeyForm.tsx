@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Eye, EyeOff, ExternalLink, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle, ExclamationCircleIcon as AlertCircle, EyeIcon as Eye, EyeSlashIcon as EyeOff } from "@heroicons/react/24/outline"
 import type { IntegrationDefinition, IntegrationCredentials } from '@/lib/integrations/types'
 
 interface ApiKeyFormProps {
