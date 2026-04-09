@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
 import { getWorkspaceSelectionId } from "@shared/types"
-import { FolderOpen, Plus } from "lucide-react"
+import { ArrowPathIcon as Loader2, FolderOpenIcon as FolderOpen, PlusIcon as Plus } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -24,6 +24,32 @@ import {
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/projects/lib/lastWorkbenchRoute"
+
+interface ProjectsLaunchLoadingStateProps {
+  title: string
+  description: string
+}
+
+function ProjectsLaunchLoadingState({
+  title,
+  description,
+}: ProjectsLaunchLoadingStateProps) {
+  return (
+    <div className="flex min-h-full flex-1 items-center justify-center">
+      <div className="w-full p-6 md:p-10">
+        <Empty className="py-6">
+          <EmptyHeader>
+            <EmptyMedia>
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </EmptyMedia>
+            <EmptyTitle>{title}</EmptyTitle>
+            <EmptyDescription>{description}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    </div>
+  )
+}
 
 export function ProjectsLaunchPage() {
   const { convexUserId, isLoading } = useAuth()
@@ -89,12 +115,22 @@ export function ProjectsLaunchPage() {
   }, [lastWorkbenchRoute, restoredProject, workspaceSelectionId])
 
   if (isLoading) {
-    return null
+    return (
+      <ProjectsLaunchLoadingState
+        title="Loading workspace"
+        description="Preparing your recent work and available projects."
+      />
+    )
   }
 
   if (lastWorkbenchRoute) {
     if (restoredProject === undefined) {
-      return null
+      return (
+        <ProjectsLaunchLoadingState
+          title="Opening recent workbench"
+          description="Restoring the last project you were working in."
+        />
+      )
     }
 
     if (restoredProject) {
@@ -117,7 +153,12 @@ export function ProjectsLaunchPage() {
     (!personalScoped && workspaceScoped && convexOrg?._id && workspaceProjectsPage === undefined) ||
     (personalScoped && convexUserId && personalProjectsPage === undefined)
   ) {
-    return null
+    return (
+      <ProjectsLaunchLoadingState
+        title="Loading projects"
+        description="Checking which projects are available in this workspace."
+      />
+    )
   }
 
   const hasProjects = Boolean(fallbackProject?._id)
@@ -135,7 +176,7 @@ export function ProjectsLaunchPage() {
             <EmptyTitle>{hasProjects ? "Select a project" : "No projects yet"}</EmptyTitle>
             <EmptyDescription>
               {hasProjects
-                ? "Choose a project from the sidebar to open its workbench."
+                ? "Choose a project from the sidebar to continue in its workbench."
                 : canStartProjectFlow
                   ? canCreateProjects
                     ? "Create a project to start working in this workspace."

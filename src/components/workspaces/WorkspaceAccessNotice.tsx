@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react'
+import { LockClosedIcon as Lock } from "@heroicons/react/24/outline"
 
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card'
 

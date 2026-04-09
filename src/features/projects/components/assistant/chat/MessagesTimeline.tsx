@@ -27,21 +27,9 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  BotIcon,
-  ChevronsUpDown,
-  CheckIcon,
-  CircleAlertIcon,
-  EyeIcon,
-  GlobeIcon,
-  HammerIcon,
-  type LucideIcon,
-  SquarePenIcon,
-  TerminalIcon,
-  Undo2Icon,
-  WrenchIcon,
-  ZapIcon,
-} from "lucide-react";
+import { ArrowUturnLeftIcon as Undo2Icon, ArrowsUpDownIcon as ChevronsUpDown, BoltIcon as ZapIcon, CheckIcon, CommandLineIcon as TerminalIcon, CpuChipIcon as BotIcon, ExclamationCircleIcon as CircleAlertIcon, EyeIcon, GlobeAltIcon as GlobeIcon, PencilSquareIcon as SquarePenIcon, WrenchScrewdriverIcon as HammerIcon, WrenchScrewdriverIcon as WrenchIcon } from "@heroicons/react/24/outline"
+import type { ComponentType, SVGProps } from "react"
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
 import { clamp } from "effect/Number";
 import { estimateTimelineMessageHeight } from "./timelineHeight";

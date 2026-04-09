@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { Navigate } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { Check, Plus } from 'lucide-react'
+import { CheckIcon as Check, PlusIcon as Plus } from "@heroicons/react/24/outline"
 import { useAuth } from '@/contexts/AuthContext'
 import { useResolvedScope } from '@/hooks/useResolvedScope'
 import { getWorkspaceSelectionId, workspaceMatchesSelectionId } from '@shared/types'

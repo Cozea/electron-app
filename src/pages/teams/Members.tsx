@@ -37,21 +37,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../components/ui/dialog'
-import {
-  UserPlus,
-  MoreVertical,
-  User,
-  Loader2,
-  XCircle,
-  Trash,
-  Shield,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Send,
-  Trash2,
-  ArrowUpDown,
-} from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowsUpDownIcon as ArrowUpDown, ChevronDownIcon as ChevronDown, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, EllipsisVerticalIcon as MoreVertical, PaperAirplaneIcon as Send, ShieldCheckIcon as Shield, TrashIcon as Trash, TrashIcon as Trash2, UserIcon as User, UserPlusIcon as UserPlus, XCircleIcon as XCircle } from "@heroicons/react/24/outline"
+import { FunnelIcon } from '@heroicons/react/24/outline'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 import {
   formatOrganizationWorkspaceRole,
@@ -60,8 +47,6 @@ import {
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedWorkspacePeopleData } from '@/hooks/useScopedWorkspacePeopleData'
 import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
-
-import { IconFilter } from '@tabler/icons-react'
 
 const WORKSPACE_BILLING_ROUTE =
   getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
@@ -656,7 +641,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-                <IconFilter className="h-3.5 w-3.5" />
+                <FunnelIcon className="h-3.5 w-3.5" />
                 {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
               </Button>
             </DropdownMenuTrigger>

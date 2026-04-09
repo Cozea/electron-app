@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDownToLine, Download, RefreshCw, X } from 'lucide-react'
+import { ArrowDownTrayIcon as ArrowDownToLine, ArrowDownTrayIcon as Download, ArrowPathIcon as RefreshCw, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useAutoUpdater } from '@/hooks/useAutoUpdater'

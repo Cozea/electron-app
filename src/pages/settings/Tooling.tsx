@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, Download, Loader2, Package, RefreshCw, Terminal } from 'lucide-react'
+import { ArchiveBoxIcon as Package, ArrowDownTrayIcon as Download, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, CheckIcon as Check, CommandLineIcon as Terminal, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
 import { FaApple, FaLinux, FaWindows } from 'react-icons/fa6'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, FolderOpen, GitMerge, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeftIcon as ArrowLeft, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ArrowsRightLeftIcon as GitMerge, CheckIcon as Check, FolderOpenIcon as FolderOpen } from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useLocation } from '@/lib/router'
@@ -202,7 +202,7 @@ export function ProjectConflictsPage() {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading project…
+        Loading conflicts…
       </div>
     )
   }

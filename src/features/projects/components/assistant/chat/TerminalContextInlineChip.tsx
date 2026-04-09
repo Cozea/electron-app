@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { TerminalIcon } from "lucide-react";
+import { CommandLineIcon as TerminalIcon } from "@heroicons/react/24/outline"
 
 import { cn } from "@/lib/utils";
 import {

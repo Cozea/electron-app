@@ -1,6 +1,6 @@
 import path from "node:path"
 
-import { BrowserWindow, WebContents } from "electron"
+import { BrowserWindow, webContents } from "electron"
 
 export interface ExternalFileChangePayload {
   filePath: string
@@ -72,7 +72,7 @@ function fileMatchesAnyRoot(filePath: string, roots: string[]): boolean {
 }
 
 function pruneStaleInterestEntry(webContentsId: number): void {
-  const wc = WebContents.fromId(webContentsId)
+  const wc = webContents.fromId(webContentsId)
   if (!wc || wc.isDestroyed()) {
     interestRootsByWebContentsId.delete(webContentsId)
   }
@@ -101,7 +101,7 @@ function forEachInterestedWindowForPath(filePath: string, fn: (window: BrowserWi
     pruneStaleInterestEntry(wcId)
     if (!interestRootsByWebContentsId.has(wcId)) continue
 
-    const wc = WebContents.fromId(wcId)
+    const wc = webContents.fromId(wcId)
     if (!wc || wc.isDestroyed()) {
       interestRootsByWebContentsId.delete(wcId)
       continue

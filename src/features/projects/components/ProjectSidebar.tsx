@@ -4,14 +4,7 @@ import * as React from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  GitBranch,
-  Loader2,
-  SlidersHorizontal,
-  SquarePen,
-} from "lucide-react";
+import { ArrowLeftIcon as ArrowLeft, ArrowPathIcon as Loader2, PencilSquareIcon as SquarePen } from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
@@ -44,6 +37,10 @@ import {
   type SidebarProjectItem,
 } from "@/features/projects/components/sidebar/projectSidebarShared";
 import {
+  getProjectSidebarRouteState,
+  PROJECT_SETTINGS_SECTIONS,
+} from "@/features/projects/components/sidebar/projectSidebarRoutes";
+import {
   areStringArraysEqual,
   buildOrderedProjects,
   readPersistedProjectSidebarState,
@@ -75,18 +72,6 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   presenceUsers?: unknown[];
   presenceCount?: number;
 }
-
-type ProjectSettingsSectionId = "general" | "source-control" | "danger";
-
-const PROJECT_SETTINGS_SECTIONS: Array<{
-  id: ProjectSettingsSectionId;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "source-control", label: "Source Control", icon: GitBranch },
-  { id: "danger", label: "Danger", icon: AlertTriangle },
-];
 
 export function ProjectSidebar({
   user,
@@ -359,29 +344,28 @@ export function ProjectSidebar({
   const currentProjectSettingsBasePath = currentProjectId
     ? `${buildProjectPath(currentProjectId)}/settings`
     : null;
-  const isOnCurrentProjectWorkbench = currentWorkbenchPath === location.pathname;
-  const isOnCurrentProjectSubMenu = Boolean(currentProjectId) && !isOnCurrentProjectWorkbench;
-  const isOnCurrentProjectSettings = Boolean(
-    currentProjectSettingsBasePath &&
-      (location.pathname === currentProjectSettingsBasePath ||
-        location.pathname.startsWith(`${currentProjectSettingsBasePath}/`)),
+  const {
+    isOnCurrentProjectSubMenu,
+    isOnCurrentProjectSettings,
+    currentProjectSettingsSection,
+    currentSelectionLevel,
+  } = React.useMemo(
+    () =>
+      getProjectSidebarRouteState({
+        pathname: location.pathname,
+        currentProjectId,
+        currentWorkbenchPath,
+        currentProjectSettingsBasePath,
+        currentVisibleActiveTileId,
+      }),
+    [
+      currentProjectId,
+      currentProjectSettingsBasePath,
+      currentVisibleActiveTileId,
+      currentWorkbenchPath,
+      location.pathname,
+    ],
   );
-  const currentProjectSettingsSection = React.useMemo<ProjectSettingsSectionId>(() => {
-    if (!isOnCurrentProjectSettings || !currentProjectSettingsBasePath) return "general";
-    const suffix = location.pathname
-      .slice(currentProjectSettingsBasePath.length)
-      .replace(/^\/+/, "");
-    if (suffix === "source-control") return "source-control";
-    if (suffix === "danger") return "danger";
-    return "general";
-  }, [currentProjectSettingsBasePath, isOnCurrentProjectSettings, location.pathname]);
-  const currentSelectionLevel: "none" | "project" | "lane" | "tile" = !currentProjectId
-    ? "none"
-    : isOnCurrentProjectWorkbench
-      ? currentVisibleActiveTileId
-        ? "tile"
-        : "lane"
-      : "project";
 
   const handleOpenProjectSettings = React.useCallback(
     (project: SidebarProjectItem) => {

@@ -1,16 +1,16 @@
 import {
-  CreditCard,
-  FileText,
-  FolderGit2,
-  HardDrive,
-  Lock,
-  Palette,
-  Shield,
-  Terminal,
-  UserCircle2,
-  Users,
-  Wrench,
-} from "lucide-react"
+  CircleStackIcon,
+  CommandLineIcon,
+  CreditCardIcon,
+  DocumentTextIcon,
+  FolderIcon,
+  LockClosedIcon,
+  ShieldCheckIcon,
+  SwatchIcon,
+  UserCircleIcon,
+  UsersIcon,
+  WrenchScrewdriverIcon,
+} from "@heroicons/react/24/outline"
 
 import type {
   ResolvedSettingsSurfaceRoute,
@@ -101,7 +101,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "account",
     label: "Account",
-    icon: UserCircle2,
+    icon: UserCircleIcon,
     routes: { personal: "/settings/account" },
     storageMode: { personal: "cloud" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -112,7 +112,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "billing",
     label: "Billing",
-    icon: CreditCard,
+    icon: CreditCardIcon,
     routes: { personal: "/settings/billing", workspace: "/workspace/billing" },
     storageMode: { personal: "cloud", workspace: "cloud" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -124,7 +124,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "appearance",
     label: "Appearance",
-    icon: Palette,
+    icon: SwatchIcon,
     routes: { personal: "/settings/appearance" },
     storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -135,7 +135,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "storage",
     label: "Storage",
-    icon: HardDrive,
+    icon: CircleStackIcon,
     routes: { personal: "/settings/storage" },
     storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -146,7 +146,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "sourceControl",
     label: "Source Control",
-    icon: FolderGit2,
+    icon: FolderIcon,
     routes: { personal: "/settings/source-control" },
     storageMode: { personal: "cloud" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -157,7 +157,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "cliTools",
     label: "CLI Tools",
-    icon: Wrench,
+    icon: WrenchScrewdriverIcon,
     routes: {
       personal: "/settings/cli-tools",
       workspace: "/workspace/integrations",
@@ -172,7 +172,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "tooling",
     label: "Tooling",
-    icon: Terminal,
+    icon: CommandLineIcon,
     routes: { personal: "/settings/tooling" },
     storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -183,7 +183,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "general",
     label: "General",
-    icon: FileText,
+    icon: DocumentTextIcon,
     routes: { personal: "/settings/general", workspace: "/workspace/general" },
     storageMode: { personal: "cloud", workspace: "cloud" },
     placements: ["drawer", "sidebar", "command"],
@@ -195,7 +195,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "policies",
     label: "Policies",
-    icon: Lock,
+    icon: LockClosedIcon,
     routes: { workspace: "/workspace/policies" },
     storageMode: { workspace: "cloud" },
     placements: ["drawer", "sidebar", "command"],
@@ -207,7 +207,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "members",
     label: "Members",
-    icon: Users,
+    icon: UsersIcon,
     routes: { workspace: "/teams" },
     storageMode: { workspace: "cloud" },
     placements: ["drawer", "sidebar", "command"],
@@ -219,7 +219,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "permissions",
     label: "Permissions",
-    icon: Shield,
+    icon: ShieldCheckIcon,
     routes: { workspace: "/teams/roles" },
     storageMode: { workspace: "cloud" },
     placements: ["drawer", "sidebar", "command"],

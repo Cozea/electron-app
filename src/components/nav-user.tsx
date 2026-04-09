@@ -1,7 +1,5 @@
 import * as React from "react"
-import {
-  ChevronsUpDown,
-} from "lucide-react"
+import { ArrowsUpDownIcon as ChevronsUpDown } from "@heroicons/react/24/outline"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { FolderIcon } from "lucide-react"
+import { FolderIcon } from "@heroicons/react/24/outline"
 
 import { resolveWsHttpOrigin } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react"
 import { useParams } from '@/lib/router'
 import { useMutation, useQuery } from "convex/react"
-import { AlertCircle, Link2, Loader2, LogIn } from "lucide-react"
+import { ArrowLeftStartOnRectangleIcon as LogIn, ArrowPathIcon as Loader2, ExclamationCircleIcon as AlertCircle, LinkIcon as Link2 } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"

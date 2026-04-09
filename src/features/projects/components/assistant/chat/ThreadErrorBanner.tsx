@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
-import { CircleAlertIcon, XIcon } from "lucide-react";
+import { ExclamationCircleIcon as CircleAlertIcon, XMarkIcon as XIcon } from "@heroicons/react/24/outline"
 
 export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,

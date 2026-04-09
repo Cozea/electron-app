@@ -1,4 +1,4 @@
-import { ArrowRight, Building2, Sparkles } from 'lucide-react'
+import { ArrowRightIcon as ArrowRight, BuildingOffice2Icon as Building2, SparklesIcon as Sparkles } from "@heroicons/react/24/outline"
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'

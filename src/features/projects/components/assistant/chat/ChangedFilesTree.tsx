@@ -3,7 +3,7 @@ import { type TurnId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { type TurnDiffFileChange } from "@/stores/types";
 import { buildTurnDiffTree, type TurnDiffTreeNode } from "./turnDiffTree";
-import { ChevronRightIcon, FolderIcon, FolderClosedIcon } from "lucide-react";
+import { ChevronRightIcon, FolderIcon, FolderIcon as FolderClosedIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";

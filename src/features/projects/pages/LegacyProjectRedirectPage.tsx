@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react"
 import { useLocation, useParams } from '@/lib/router'
-import { Loader2 } from "lucide-react"
+import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"

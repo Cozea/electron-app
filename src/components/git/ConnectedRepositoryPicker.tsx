@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/table'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { IntegrationIcon } from '@/components/integrations/IntegrationIcon'
-import { Lock, Star } from 'lucide-react'
+import { LockClosedIcon as Lock, StarIcon as Star } from "@heroicons/react/24/outline"
 
 type RepositoryProvider = 'github'
 

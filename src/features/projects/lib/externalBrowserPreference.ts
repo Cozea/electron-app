@@ -1,6 +1,6 @@
 import type { ComponentType } from "react"
 
-import { Globe } from "lucide-react"
+import { GlobeAltIcon as Globe } from "@heroicons/react/24/outline"
 import { FaBrave, FaChrome, FaEdge, FaFirefoxBrowser, FaSafari } from "react-icons/fa6"
 import { TbBrandArc } from "react-icons/tb"
 

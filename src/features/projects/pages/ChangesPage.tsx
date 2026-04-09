@@ -19,16 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-import {
-  Activity,
-  Asterisk,
-  Bot,
-  MessageSquare,
-  Minus,
-  Plus,
-  Smile,
-  X,
-} from 'lucide-react'
+import { ChartBarIcon as Activity, ChatBubbleLeftRightIcon as MessageSquare, CpuChipIcon as Bot, FaceSmileIcon as Smile, MinusIcon as Minus, PlusIcon as Plus, SparklesIcon as Asterisk, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { DiffPanel, type ChangeWithContent } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'

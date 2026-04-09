@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { Check, Palette, RotateCcw } from 'lucide-react'
+import { ArrowPathIcon as RotateCcw, CheckIcon as Check, SwatchIcon as Palette } from "@heroicons/react/24/outline"
 
 import type {
   WorkspaceIdentityInput,

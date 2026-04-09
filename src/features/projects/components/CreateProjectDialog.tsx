@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useConvex, useMutation } from "convex/react"
-import {
-  AlertCircle,
-  CheckCircle2,
-  ExternalLink,
-  FolderGit2,
-  Loader2,
-} from "lucide-react"
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle2, ExclamationCircleIcon as AlertCircle, FolderIcon as FolderGit2 } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"

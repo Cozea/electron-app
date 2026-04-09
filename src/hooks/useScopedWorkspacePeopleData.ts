@@ -162,8 +162,10 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     !memberAccessResolved ||
     (canReadMembers && membersQuery === undefined) ||
     (canReadRoles && organizationRolesQuery === undefined) ||
-    (canViewInvitations && pendingInvitesQuery === undefined) ||
-    (options.includeSeatManagement === true && seatManagement === undefined)
+    (canViewInvitations && pendingInvitesQuery === undefined)
+
+  const isSeatManagementLoading =
+    options.includeSeatManagement === true && seatManagement === undefined
 
   return {
     settingsPage,
@@ -188,5 +190,6 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     rolesLoaded,
     seatManagement,
     isLoading,
+    isSeatManagementLoading,
   }
 }

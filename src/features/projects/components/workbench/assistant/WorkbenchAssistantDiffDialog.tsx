@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react"
+import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import {
   Dialog,

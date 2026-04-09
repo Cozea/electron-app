@@ -5,7 +5,7 @@
  */
 
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { CheckCircleIcon as CheckCircle, ExclamationCircleIcon as AlertCircle, XCircleIcon as XCircle } from "@heroicons/react/24/outline"
 import type { IntegrationStatus } from '@/lib/integrations/types'
 
 interface IntegrationStatusBadgeProps {

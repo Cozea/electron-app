@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { Maximize2, Minimize2, X } from "lucide-react"
+import { ArrowsPointingInIcon as Minimize2, ArrowsPointingOutIcon as Maximize2, XMarkIcon as X } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"

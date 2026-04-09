@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDownIcon as ChevronDown, XMarkIcon as X } from "@heroicons/react/24/outline"
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
 

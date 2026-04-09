@@ -1,21 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import {
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Globe,
-  Lock,
-  Minus,
-  Plus,
-  RefreshCcw,
-  Search,
-  SquareTerminal,
-  X,
-} from "lucide-react"
+import { ArrowLeftIcon as ArrowLeft, ArrowPathIcon as RefreshCcw, ArrowRightIcon as ArrowRight, ArrowTopRightOnSquareIcon as ExternalLink, ArrowUpIcon as ArrowUp, ChevronDownIcon as ChevronDown, ChevronUpIcon as ChevronUp, CommandLineIcon as SquareTerminal, GlobeAltIcon as Globe, LockClosedIcon as Lock, MagnifyingGlassIcon as Search, MinusIcon as Minus, PlusIcon as Plus, XMarkIcon as X } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import {

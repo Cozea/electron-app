@@ -1,18 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import {
-  AppWindow,
-  ArrowUpRight,
-  ChevronDown,
-  CheckCircle2,
-  Clock3,
-  FileText,
-  ListTodo,
-  Loader2,
-  Plus,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ArrowUpRight, CheckCircleIcon as CheckCircle2, ChevronDownIcon as ChevronDown, ClockIcon as Clock3, ComputerDesktopIcon as AppWindow, DocumentTextIcon as FileText, ListBulletIcon as ListTodo, PlusIcon as Plus, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import type { Id } from '../../../../convex/_generated/dataModel'
 
 import { api } from '../../../../convex/_generated/api'
@@ -1415,18 +1403,10 @@ export function TasksPage({
   }
 
   if (project === undefined) {
-    if (isEmbedded) {
-      return (
-        <div className="flex h-full items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      )
-    }
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
-        <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-border/60 bg-background/95 shadow-xl">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Loading tasks…
       </div>
     )
   }

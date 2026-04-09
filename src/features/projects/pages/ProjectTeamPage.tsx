@@ -35,17 +35,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  ArrowUpDown,
-  Filter,
-  Loader2,
-  MoreVertical,
-  RotateCcw,
-  Shield,
-  Trash2,
-  UserMinus,
-  UserPlus,
-} from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowPathIcon as RotateCcw, ArrowsUpDownIcon as ArrowUpDown, EllipsisVerticalIcon as MoreVertical, FunnelIcon as Filter, ShieldCheckIcon as Shield, TrashIcon as Trash2, UserMinusIcon as UserMinus, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
 
 type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
 type SortField = 'name' | 'role' | 'date'
@@ -678,7 +668,12 @@ export function ProjectTeamPage() {
   useProjectHeader(headerActions)
 
   if (project === undefined) {
-    return null
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Loading project team…
+      </div>
+    )
   }
 
   if (project === null) {

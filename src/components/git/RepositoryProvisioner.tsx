@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw } from "@heroicons/react/24/outline"
 
 type RepositoryProvider = 'github'
 type RepositoryOwnerWithProvider = RepositoryOwnerDescriptor & { provider: RepositoryProvider }

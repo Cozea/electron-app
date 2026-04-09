@@ -379,7 +379,6 @@ export function ProjectLayout({
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
           >
             <UnifiedHeader
-              breadcrumbs={[]}
               className="border-b-0 bg-transparent"
               layoutMode="fixed"
               leftWindowControlsInset

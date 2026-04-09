@@ -13,7 +13,7 @@ import {
   IntegrationComingSoonBadge,
   IntegrationBetaBadge,
 } from './IntegrationStatusBadge'
-import { Settings, ExternalLink, Trash2, RefreshCw } from 'lucide-react'
+import { ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink, Cog6ToothIcon as Settings, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 import { cn } from '@/lib/utils'
 import type { IntegrationDefinition, ConnectedIntegration } from '@/lib/integrations/types'
 

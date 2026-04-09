@@ -16,19 +16,13 @@ export function useProjectHeader(
   const setCenterAddon = useProjectHeaderStore((state) => state.setCenterAddon)
   const setInsetLeft = useProjectHeaderStore((state) => state.setInsetLeft)
   const setInsetRight = useProjectHeaderStore((state) => state.setInsetRight)
+  const reset = useProjectHeaderStore((state) => state.reset)
 
   useEffect(() => {
     setHeader(header ?? null)
     setCenterAddon(centerAddon ?? null)
     setInsetLeft(options?.insetLeft ?? 0)
     setInsetRight(options?.insetRight ?? 0)
-
-    return () => {
-      setHeader(null)
-      setCenterAddon(null)
-      setInsetLeft(0)
-      setInsetRight(0)
-    }
   }, [
     header,
     centerAddon,
@@ -39,4 +33,6 @@ export function useProjectHeader(
     setInsetLeft,
     setInsetRight,
   ])
+
+  useEffect(() => reset, [reset])
 }

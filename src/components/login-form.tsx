@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Logo } from "@/components/Logo"
-import { Loader2 } from "lucide-react"
+import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 interface LoginFormProps extends React.ComponentProps<"div"> {
   onLogin: () => void

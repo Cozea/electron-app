@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useParams } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { AlertCircle } from 'lucide-react'
+import { ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 import { Button } from '../components/ui/button'
 import {
   Card,

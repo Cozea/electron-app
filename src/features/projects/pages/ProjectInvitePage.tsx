@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react"
-import { AlertCircle, Loader2, LogOut, Mail, UserPlus } from "lucide-react"
+import { ArrowPathIcon as Loader2, ArrowRightStartOnRectangleIcon as LogOut, EnvelopeIcon as Mail, ExclamationCircleIcon as AlertCircle, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
 import { useMutation, useQuery } from "convex/react"
 import { useParams } from '@/lib/router'
 

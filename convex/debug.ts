@@ -186,13 +186,6 @@ async function deleteSingleProjectAndRelatedData(
   deletedRows += await deleteRows(
     ctx,
     await ctx.db
-      .query("projectMessages")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .collect(),
-  );
-  deletedRows += await deleteRows(
-    ctx,
-    await ctx.db
       .query("builderRuns")
       .withIndex("by_project", (q) => q.eq("projectId", project._id))
       .collect(),

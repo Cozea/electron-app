@@ -1,18 +1,6 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import {
-  ChevronDown,
-  Copy,
-  Link2,
-  Loader2,
-  MoreVertical,
-  Plus,
-  RefreshCw,
-  Send,
-  Share2,
-  ShieldOff,
-  Trash2,
-} from "lucide-react";
+import { ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ChevronDownIcon as ChevronDown, DocumentDuplicateIcon as Copy, EllipsisVerticalIcon as MoreVertical, LinkIcon as Link2, PaperAirplaneIcon as Send, PlusIcon as Plus, ShareIcon as Share2, ShieldExclamationIcon as ShieldOff, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";

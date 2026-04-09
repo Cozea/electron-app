@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { memo } from "react";
-import { CopyIcon, CheckIcon } from "lucide-react";
+import { CheckIcon, DocumentDuplicateIcon as CopyIcon } from "@heroicons/react/24/outline"
 import { Button } from "../ui/button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useConvex } from "convex/react";
-import { GitCompareArrows } from "lucide-react";
+import { ArrowsRightLeftIcon as GitCompareArrows } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
