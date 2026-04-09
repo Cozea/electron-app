@@ -154,6 +154,6 @@ export function SettingsFooterActions({ children, className }: { children: React
 
 /** Inputs aligned like project settings (right, compact) */
 export const settingsInlineInputClass =
-  "h-7 max-w-full border-none bg-transparent px-0 !text-[11px] shadow-none focus-visible:ring-0 text-right";
+  "h-7 max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right";
 
 export const settingsInlineInputWidth = "w-[240px] max-w-full";

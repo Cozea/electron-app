@@ -361,7 +361,7 @@ export function ProjectSettingsPage({
                             setName(event.target.value)
                           }}
                           placeholder="My Project"
-                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 !text-[11px] shadow-none focus-visible:ring-0 text-right"
+                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
                         />
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
@@ -373,7 +373,7 @@ export function ProjectSettingsPage({
                             setDescription(event.target.value)
                           }}
                           placeholder="Short description..."
-                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 !text-[11px] shadow-none focus-visible:ring-0 text-right"
+                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
                         />
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
@@ -383,7 +383,7 @@ export function ProjectSettingsPage({
                             Retained for compatibility links
                           </p>
                         </div>
-                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-none bg-transparent px-0 !text-[11px] shadow-none opacity-50 cursor-not-allowed text-right" />
+                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-none bg-transparent px-0 text-sm shadow-none opacity-50 cursor-not-allowed text-right" />
                       </div>
                       {saveError ? (
                         <div className="border-t border-border/40 px-4 py-3">

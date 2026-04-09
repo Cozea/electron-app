@@ -588,19 +588,6 @@ export default defineSchema({
     .index("by_organization_and_timestamp", ["organizationId", "timestamp"])
     .index("by_user", ["userId"]),
 
-  // Identity repair and duplication reconciliation audit.
-  identityRepairRuns: defineTable({
-    scope: v.union(v.literal("scan"), v.literal("repair")),
-    dryRun: v.boolean(),
-    startedAt: v.number(),
-    finishedAt: v.optional(v.number()),
-    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
-    summary: v.optional(v.any()),
-    error: v.optional(v.string()),
-  })
-    .index("by_started_at", ["startedAt"])
-    .index("by_status", ["status"]),
-
   // Stripe catalog metadata (products/prices) for workspace-wide use
   stripeCatalog: defineTable({
     catalogVersion: v.string(),
@@ -705,12 +692,7 @@ export default defineSchema({
     targetLaunchDate: v.optional(v.number()),
 
     // Creation path
-    creationPath: v.union(
-      v.literal("fresh"),
-      v.literal("repo"),
-      // Legacy compatibility for historical projects created before the wizard flow was retired.
-      v.literal("prompt")
-    ),
+    creationPath: v.union(v.literal("fresh"), v.literal("repo")),
 
     // Template & Stack
     template: v.optional(v.string()),
@@ -842,9 +824,6 @@ export default defineSchema({
       v.literal("archived"),
       v.literal("deleted")
     ),
-    // Legacy compatibility for historical wizard-created projects.
-    wizardStep: v.optional(v.number()),
-
     // Repo import specific
     importedFrom: v.optional(
       v.object({
@@ -853,45 +832,6 @@ export default defineSchema({
         branch: v.string(),
         detectedStack: v.optional(v.any()),
       })
-    ),
-
-    // Legacy compatibility for historical prompt-planned projects.
-    originalPrompt: v.optional(v.string()),
-    promptSettings: v.optional(
-      v.object({
-        model: v.string(),
-        agentId: v.union(
-          v.literal("plan"),
-          v.literal("build"),
-          v.literal("assistant_general"),
-          v.literal("assistant_project"),
-          v.literal("explore"),
-          v.literal("review")
-        ),
-        surface: v.union(
-          v.literal("wizard"),
-          v.literal("builder"),
-          v.literal("assistant_panel"),
-          v.literal("assistant_project")
-        ),
-        variantId: v.optional(
-          v.union(
-            v.literal("none"),
-            v.literal("minimal"),
-            v.literal("low"),
-            v.literal("medium"),
-            v.literal("high"),
-            v.literal("xhigh"),
-            v.literal("max")
-          )
-        ),
-        toolsEnabled: v.boolean(),
-        webSearchEnabled: v.boolean(),
-        providerOptions: v.optional(v.any()),
-      })
-    ),
-    selectedPlanTier: v.optional(
-      v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
     ),
 
     // Local path where project files are stored (on creator's machine)
@@ -1329,126 +1269,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_expires_at", ["expiresAt"]),
-
-  // Legacy compatibility for historical project-planning conversations.
-  projectMessages: defineTable({
-    projectId: v.id("projects"),
-    role: v.union(v.literal("user"), v.literal("assistant")),
-    content: v.string(),
-    planOptions: v.optional(
-      v.array(
-        v.object({
-          tier: v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp")),
-          name: v.string(),
-          description: v.string(),
-          features: v.array(v.string()),
-          estimatedScope: v.optional(v.string()),
-          config: v.object({
-            name: v.optional(v.string()),
-            description: v.optional(v.string()),
-            audience: v.optional(v.string()),
-            targetPlatform: v.optional(v.union(v.literal("web"))),
-            buildContract: v.optional(
-              v.object({
-                previewMode: v.union(v.literal("web")),
-                frameworkClass: v.union(v.literal("web-framework")),
-                toolchain: v.optional(v.any()),
-                commands: v.optional(v.any()),
-                constraints: v.optional(v.any()),
-                fallbackPolicy: v.optional(v.any()),
-                successCriteria: v.optional(v.any()),
-                telemetryHints: v.optional(v.any()),
-              })
-            ),
-            template: v.optional(v.string()),
-            stack: v.optional(
-              v.object({
-                backend: v.string(),
-                hosting: v.string(),
-                aiProvider: v.string(),
-              })
-            ),
-            sourceControl: v.optional(
-              v.object({
-                provider: v.string(),
-                repoUrl: v.optional(v.string()),
-                activeCollabBranch: v.optional(v.string()),
-                defaultBranch: v.optional(v.string()),
-                visibility: v.string(),
-                mergeStrategy: v.string(),
-              })
-            ),
-            visuals: v.optional(
-              v.object({
-                uiLibrary: v.string(),
-                vibeDescription: v.optional(v.string()),
-                colorPreset: v.optional(v.string()),
-                primaryColor: v.string(),
-                secondaryColor: v.string(),
-                accentColor: v.string(),
-                logoUrl: v.optional(v.string()),
-              })
-            ),
-            generatedPlan: v.optional(
-              v.object({
-                pages: v.array(
-                  v.object({
-                    id: v.string(),
-                    name: v.string(),
-                    route: v.string(),
-                    type: v.string(),
-                    purpose: v.optional(v.string()),
-                    actions: v.optional(v.array(v.string())),
-                  })
-                ),
-                entities: v.array(
-                  v.object({
-                    id: v.string(),
-                    name: v.string(),
-                    fields: v.optional(v.array(v.string())),
-                  })
-                ),
-              })
-            ),
-          }),
-        })
-      )
-    ),
-    createdAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_created", ["projectId", "createdAt"]),
-
-  // Project templates (system-defined)
-  projectTemplates: defineTable({
-    slug: v.string(),
-    name: v.string(),
-    description: v.string(),
-    icon: v.string(),
-    pageCount: v.number(),
-    category: v.string(),
-    defaultPages: v.array(
-      v.object({
-        name: v.string(),
-        route: v.string(),
-        type: v.string(),
-      })
-    ),
-    defaultEntities: v.array(
-      v.object({
-        name: v.string(),
-        fields: v.array(v.string()),
-      })
-    ),
-    scaffoldPrompt: v.string(),
-    isActive: v.boolean(),
-    sortOrder: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_slug", ["slug"])
-    .index("by_category", ["category"])
-    .index("by_active_and_sort", ["isActive", "sortOrder"]),
 
   // Project files stored in Convex File Storage
   projectFiles: defineTable({

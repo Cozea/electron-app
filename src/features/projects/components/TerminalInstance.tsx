@@ -154,7 +154,7 @@ export function TerminalInstance({
       return () => clearTimeout(timeoutId)
     }
 
-    const fontSize = 12
+    const fontSize = 13
     const charWidth = fontSize * 0.6
     const charHeight = fontSize * 1.0
     const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))
@@ -164,7 +164,7 @@ export function TerminalInstance({
       cols,
       rows,
       theme: buildProjectTerminalTheme(container),
-      fontSize: 12,
+      fontSize: 13,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       fontWeight: '400',
       fontWeightBold: '700',

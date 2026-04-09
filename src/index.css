@@ -68,12 +68,38 @@
   --app-scrollbar-thumb: color-mix(in oklch, var(--foreground) 20%, transparent);
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
+  /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
+  --app-copy-font-size: 13px;
+  --app-copy-line-height: 20px;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+}
+
+/* Typography normalization:
+ * keep headings (`text-lg` and above) distinct, but collapse body/subtitle
+ * variants (including `text-base`) to one app-wide copy size.
+ */
+:where(
+  .text-xs,
+  .text-sm,
+  .text-base,
+  .text-\[8px\],
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\],
+  .text-\[12px\],
+  .text-\[13px\],
+  .text-\[14px\],
+  .text-\[15px\],
+  .text-\[0\.65rem\],
+  .text-\[\.625rem\]
+) {
+  font-size: var(--app-copy-font-size) !important;
+  line-height: var(--app-copy-line-height) !important;
 }
 
 @keyframes cozea-wave-dot {
@@ -574,8 +600,8 @@ body {
   height: 1.5rem !important;
   min-height: 1.5rem !important;
   border-radius: 9999px !important;
-  font-size: 0.75rem;
-  line-height: 1rem;
+  font-size: var(--app-copy-font-size);
+  line-height: var(--app-copy-line-height);
   padding-left: 0.5rem !important;
   padding-right: 0.5rem !important;
 }
@@ -1240,7 +1266,8 @@ body {
   content: attr(data-name);
   top: -1.2em;
   left: -2px;
-  font-size: 10px;
+  font-size: var(--app-copy-font-size);
+  line-height: var(--app-copy-line-height);
   font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   padding: 1px 4px;
   background-color: var(--yjs-cursor-color, orange);
