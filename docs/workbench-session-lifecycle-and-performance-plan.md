@@ -1771,6 +1771,45 @@ That diagnostic contract is intentionally lightweight:
 
 This is meant for runtime policy and debugging, not for user-facing settings copy.
 
+## 16. Renderer Asset Stability And Terminal CSS Preload Fix
+
+### Problem
+
+After the terminal and dev-server tiles were rebuilt around lazy workbench chunks, the renderer could surface preload errors like:
+
+- `Unable to preload CSS for file:///.../out/renderer/assets/WorkbenchTerminalTile-*.css`
+
+The actual failure mode was subtler than “the file is missing.” The terminal UI was importing `@xterm/xterm/css/xterm.css` from inside the lazily loaded `TerminalInstance` component. That allowed the xterm stylesheet to be emitted as a split CSS asset owned by whichever lazy chunk graph happened to pull `TerminalInstance` in during a given build.
+
+At the same time, renderer output cleanup was not explicit. That meant `out/renderer/assets` could accumulate multiple generations of hashed chunks and CSS files across rebuilds. In a `file://` Electron app, that is a brittle setup:
+
+- `index.html` can point at a new entry chunk
+- an older cached or already-loaded lazy module graph can still refer to previous hashed CSS assets
+- stale output files stay on disk long enough to mask the real mismatch
+- once the owning lazy chunk graph changes, CSS preload can target a filename that no longer exists in the current build
+
+### Fix
+
+Two changes make this robust:
+
+1. The xterm base stylesheet is now imported from the top-level renderer entry in `src/main.tsx`.
+2. The renderer build now sets `emptyOutDir: true` in `electron.vite.config.ts`.
+
+That gives us two guarantees:
+
+- terminal CSS is part of the stable main renderer stylesheet path instead of a lazily split workbench chunk
+- each renderer build starts from a clean `out/renderer` directory instead of mixing old and new hashed assets
+
+### Why This Is The Right Tradeoff
+
+Loading xterm’s base CSS globally is a good trade here. The terminal surface is a core workbench primitive, and the stylesheet is small compared to the instability cost of lazy CSS chunk ownership. We still keep the terminal JavaScript itself lazy where it matters, but we stop making the app’s boot correctness depend on a split CSS asset whose hashed filename can drift between builds.
+
+This also improves the dev-server tile indirectly, because the web-preview dev-server code path reuses the same terminal surface for its terminal tab.
+
+### Result
+
+The workbench no longer depends on a hashed `WorkbenchTerminalTile-*.css` lazy asset existing at runtime, and rebuilds have a canonical renderer asset set instead of an ever-growing pile of stale chunk versions.
+
 ## Open Questions
 
 These are real implementation questions, but none of them change the main direction.

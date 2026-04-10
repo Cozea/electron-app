@@ -216,6 +216,7 @@ export default defineConfig({
       format: 'es',
     },
     build: {
+      emptyOutDir: true,
       rollupOptions: {
         input: 'index.html',
       },
