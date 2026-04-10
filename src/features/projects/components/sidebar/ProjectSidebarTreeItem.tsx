@@ -8,7 +8,7 @@ import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
-import { ProjectFavicon } from "@/features/projects/components/ProjectFavicon"
+import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
 import {
   resolveProjectCollabBranch,
@@ -63,10 +63,6 @@ export const ProjectSidebarTreeItem = React.memo(
       projectId: project.id,
       projectSlug: project.slug,
     })
-    const projectIconPath = React.useMemo(
-      () => project.localPath ?? localPath,
-      [localPath, project.localPath],
-    )
     const fetchedLaneState = useProjectLaneState({
       projectId: context.prefetchedLaneState ? null : shouldLoadLanes ? project.id : null,
       projectPath: context.prefetchedLaneState ? null : shouldLoadLanes ? localPath : null,
@@ -185,7 +181,7 @@ export const ProjectSidebarTreeItem = React.memo(
       <Collapsible open={selection.isExpanded}>
         <div
           className={cn(
-            "group/project-item flex min-h-8 items-center gap-2 rounded-md px-2 text-sidebar-foreground/70",
+            "group/project-item flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-sidebar-foreground/70",
             SIDEBAR_PILL_HOVER_CLASS,
             selection.activeSelectionLevel === "project" && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
@@ -206,7 +202,7 @@ export const ProjectSidebarTreeItem = React.memo(
               }
             }}
           >
-            <ProjectFavicon cwd={projectIconPath} />
+            <NativeProjectFolderIcon folderPath={project.localPath ?? localPath} />
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <span className="min-w-0 truncate font-normal text-muted-foreground">
                 {project.name}

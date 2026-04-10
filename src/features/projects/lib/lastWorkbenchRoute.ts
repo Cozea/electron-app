@@ -60,7 +60,7 @@ function writePersistedState(state: PersistedLastWorkbenchRouteState) {
 export function buildWorkbenchHref(
   projectId: string,
   laneId?: string | null,
-  options?: { openTile?: "assistantChat" | "browser" | "terminal" | "devServer"; focusTileId?: string | null },
+  options?: { openTile?: "assistantChat" | "terminal"; focusTileId?: string | null },
 ): string {
   const params = new URLSearchParams()
   if (laneId) {

@@ -1060,6 +1060,17 @@ body {
     background: transparent;
   }
 
+  /* t3-like terminal scrollbar parity, scoped to workbench terminal tiles only. */
+  :root:not([data-platform="darwin"]) .workbench-terminal-instance .xterm .xterm-viewport::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  :root:not([data-platform="darwin"]) .workbench-terminal-instance .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    border-width: 1px;
+  }
+
   .xterm,
   .xterm .xterm-screen,
   .xterm .xterm-helper-textarea {

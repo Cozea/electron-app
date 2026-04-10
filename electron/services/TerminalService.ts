@@ -1,10 +1,11 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type WebContents } from 'electron'
 import * as pty from '@cozea/pty'
 import * as fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
+import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 
 function shellBasename(shellPath: string): string {
     const name = shellPath.split('/').pop()
@@ -277,6 +278,36 @@ export class TerminalService {
         this.pruneHistory()
     }
 
+    private startActivityPolling(terminal: ManagedTerminal, sender: WebContents): void {
+        if (terminal.activityPollTimer) {
+            clearInterval(terminal.activityPollTimer)
+        }
+
+        terminal.hasRunningSubprocess = false
+        terminal.activityPollTimer = setInterval(() => {
+            try {
+                const ptyPid = terminal.ptyProcess.getPid()
+                if (!ptyPid) return
+
+                const hasActivity = pty.checkSubprocessActivity(ptyPid)
+                if (hasActivity === terminal.hasRunningSubprocess) {
+                    return
+                }
+
+                terminal.hasRunningSubprocess = hasActivity
+                if (!sender.isDestroyed()) {
+                    sender.send('terminal:activity', {
+                        terminalId: terminal.id,
+                        hasRunningSubprocess: hasActivity,
+                        runId: terminal.runId,
+                    })
+                }
+            } catch {
+                // Ignore errors during activity check (for example when the process already exited).
+            }
+        }, 1000)
+    }
+
     getTerminalSnapshot(terminalId: string): TerminalSnapshot | null {
         const trimmedId = terminalId.trim()
         if (!trimmedId) return null
@@ -312,7 +343,52 @@ export class TerminalService {
         }
     }
 
+    hasTerminal(terminalId: string): boolean {
+        return this.terminals.has(terminalId)
+    }
+
+    listTerminalIds(projectPath: string): string[] {
+        return this.projectTerminals.get(projectPath) || []
+    }
+
+    killTerminal(terminalId: string): boolean {
+        const term = this.terminals.get(terminalId)
+        if (!term) {
+            return false
+        }
+
+        term.cancelled = true
+        term.endedAt = Date.now()
+        term.exitCode = term.exitCode ?? -1
+        this.persistTerminalSnapshot(term)
+        try {
+            term.ptyProcess.kill()
+        } catch {
+            // Ignore kill errors if process already exited
+        }
+        if (term.activityPollTimer) {
+            clearInterval(term.activityPollTimer)
+        }
+        this.terminals.delete(terminalId)
+        this.removeProjectTerminal(term.projectPath, terminalId)
+        return true
+    }
+
     registerIpcHandlers(): void {
+        const outputBatcher = createIpcOutputBatcher<{
+            terminalId: string
+            data: string
+            runId?: string
+        }>({
+            channel: 'terminal:output',
+            keyOf: (payload) => payload.terminalId,
+            merge: (current, next) => ({
+                ...current,
+                data: current.data + next.data,
+                runId: next.runId ?? current.runId,
+            }),
+        })
+
         ipcMain.handle('terminal:create', async (event, options: {
             projectPath: string
             profileId?: string
@@ -383,7 +459,7 @@ export class TerminalService {
                                 
                                 terminal.output = appendTerminalOutput(terminal.output || '', cleanData)
                                 if (!event.sender.isDestroyed()) {
-                                    event.sender.send('terminal:output', { terminalId, data: cleanData, runId: terminal.runId })
+                                    outputBatcher.enqueue(event.sender, { terminalId, data: cleanData, runId: terminal.runId })
                                 }
                             },
                             (exitCode) => {
@@ -399,31 +475,8 @@ export class TerminalService {
                                 }
 
                                 if (!event.sender.isDestroyed()) {
+                                    outputBatcher.flush(event.sender)
                                     event.sender.send('terminal:exit', { terminalId, exitCode, runId: terminal.runId })
-                        // Start subprocess activity polling
-                        if (ptyProcess) {
-                            terminal.hasRunningSubprocess = false
-                            terminal.activityPollTimer = setInterval(() => {
-                                try {
-                                    const ptyPid = ptyProcess.getPid()
-                                    if (!ptyPid) return
-                                    
-                                    const hasActivity = pty.checkSubprocessActivity(ptyPid)
-                                    if (hasActivity !== terminal.hasRunningSubprocess) {
-                                        terminal.hasRunningSubprocess = hasActivity
-                                        if (!event.sender.isDestroyed()) {
-                                            event.sender.send('terminal:activity', { 
-                                                terminalId, 
-                                                hasRunningSubprocess: hasActivity,
-                                                runId: terminal.runId 
-                                            })
-                                        }
-                                    }
-                                } catch (_e) {
-                                    // Ignore errors during activity check (e.g. process died)
-                                }
-                            }, 1000)
-                        }
                                 }
                             },
                         )
@@ -445,6 +498,7 @@ export class TerminalService {
                 terminal.title = selectedProfile.name
                 
                 this.terminals.set(terminalId, terminal as ManagedTerminal)
+                this.startActivityPolling(terminal as ManagedTerminal, event.sender)
 
 
                 // Track per project
@@ -474,22 +528,7 @@ export class TerminalService {
         })
 
         ipcMain.handle('terminal:kill', async (_event, options: { terminalId: string }) => {
-            const term = this.terminals.get(options.terminalId)
-            if (term) {
-                term.cancelled = true
-                term.endedAt = Date.now()
-                term.exitCode = term.exitCode ?? -1
-                this.persistTerminalSnapshot(term)
-                try {
-                    term.ptyProcess.kill()
-                } catch {
-                    // Ignore kill errors if process already exited
-                }
-                this.terminals.delete(options.terminalId)
-                this.removeProjectTerminal(term.projectPath, options.terminalId)
-                return { success: true }
-            }
-            return { success: false }
+            return { success: this.killTerminal(options.terminalId) }
         })
 
         ipcMain.handle('terminal:getProfiles', () => {
@@ -497,27 +536,23 @@ export class TerminalService {
         })
 
         ipcMain.handle('terminal:list', (_event, options: { projectPath: string }) => {
-            return this.projectTerminals.get(options.projectPath) || []
+            return this.listTerminalIds(options.projectPath)
         })
 
         ipcMain.handle('terminal:getInfo', (_event, options: { terminalId: string }) => {
             return this.getInfo(options.terminalId)
         })
+
+        ipcMain.handle('terminal:getSnapshot', (_event, options: { terminalId: string }) => {
+            return this.getTerminalSnapshot(options.terminalId)
+        })
     }
 
     // Cleanup all terminals for a project (used by ProjectLayout cleanup)
     killAllForProject(projectPath: string) {
-        const ids = this.projectTerminals.get(projectPath) || []
+        const ids = this.listTerminalIds(projectPath)
         ids.forEach(id => {
-            const term = this.terminals.get(id)
-            if (term) {
-                term.cancelled = true
-                term.endedAt = Date.now()
-                term.exitCode = term.exitCode ?? -1
-                this.persistTerminalSnapshot(term)
-                term.ptyProcess.kill()
-                this.terminals.delete(id)
-            }
+            this.killTerminal(id)
         })
         this.projectTerminals.delete(projectPath)
     }

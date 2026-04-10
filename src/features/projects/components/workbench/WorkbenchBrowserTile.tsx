@@ -1,6 +1,29 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { ArrowLeftIcon as ArrowLeft, ArrowPathIcon as RefreshCcw, ArrowRightIcon as ArrowRight, ArrowTopRightOnSquareIcon as ExternalLink, ArrowUpIcon as ArrowUp, ChevronDownIcon as ChevronDown, ChevronUpIcon as ChevronUp, CommandLineIcon as SquareTerminal, GlobeAltIcon as Globe, LockClosedIcon as Lock, MagnifyingGlassIcon as Search, MinusIcon as Minus, PlusIcon as Plus, XMarkIcon as X } from "@heroicons/react/24/outline"
+import {
+  ArrowLeftIcon as ArrowLeft,
+  ArrowPathIcon as RefreshCcw,
+  ArrowRightIcon as ArrowRight,
+  ArrowTopRightOnSquareIcon as ExternalLink,
+  ArrowUpIcon as ArrowUp,
+  ChevronDownIcon as ChevronDown,
+  ChevronUpIcon as ChevronUp,
+  CommandLineIcon as SquareTerminal,
+  GlobeAltIcon as Globe,
+  LockClosedIcon as Lock,
+  MagnifyingGlassIcon as Search,
+  MinusIcon as Minus,
+  PlusIcon as Plus,
+  XMarkIcon as X,
+} from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -13,20 +36,21 @@ import {
 import { Input } from "@/components/ui/input"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
+import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { cn } from "@/lib/utils"
-import type { BrowserStorageScope } from "@shared/browserHostTypes"
+import {
+  type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
+  useProjectWorkbenchStore,
+} from "@/stores/useProjectWorkbenchStore"
 
 interface WorkbenchBrowserTileProps {
-  tileId: string
-  url: string
-  storageScope?: BrowserStorageScope
-  workspaceId?: string
-  linkedDevServerTileId?: string | null
+  projectId: string
+  laneId: string
+  tile: WorkbenchBrowserTileRecord
+  projectPath: string | null
+  workspaceId: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
-  onUrlCommitted: (url: string) => void
-  onTitleObserved: (title: string) => void
-  onNewPageRequest?: (url: string) => void
 }
 
 function normalizeUrlInput(value: string): string {
@@ -41,19 +65,18 @@ function normalizeUrlInput(value: string): string {
 }
 
 export function WorkbenchBrowserTile({
-  tileId,
-  url,
-  storageScope = "workspace",
+  projectId,
+  laneId,
+  tile,
+  projectPath,
   workspaceId,
-  linkedDevServerTileId: _linkedDevServerTileId,
   panelApi,
   containerApi,
-  onUrlCommitted,
-  onTitleObserved,
-  onNewPageRequest,
 }: WorkbenchBrowserTileProps) {
+  const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
+  const activityMode = useWorkbenchPanelActivityMode(panelApi)
   const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
-  const [draftUrl, setDraftUrl] = useState(url)
+  const [draftUrl, setDraftUrl] = useState(tile.url)
   const [isFindVisible, setIsFindVisible] = useState(false)
   const [findQuery, setFindQuery] = useState("")
   const [findMatchCase, setFindMatchCase] = useState(false)
@@ -70,19 +93,27 @@ export function WorkbenchBrowserTile({
     placeholderScreenshot,
     actions,
   } = useWorkbenchBrowserView({
-    tileId,
-    url,
-    storageScope,
-    workspaceId,
+    tileId: tile.id,
+    url: tile.url,
+    projectId,
+    laneId,
+    projectPath,
+    visible: activityMode === "visible",
+    storageScope: tile.storageScope ?? "workspace",
+    workspaceId: workspaceId ?? undefined,
     persistModel: true,
     onUrlObserved: (nextUrl) => {
-      onUrlCommitted(nextUrl)
+      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { url: nextUrl })
     },
     onTitleObserved: (title) => {
-      onTitleObserved(title)
+      workbenchActions.updateTileTitle(projectId, laneId, tile.id, title)
     },
     onNewPageRequest: (request) => {
-      onNewPageRequest?.(request.url)
+      const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
+        url: request.url,
+        storageScope: tile.storageScope ?? "workspace",
+      })
+      workbenchActions.setActiveTile(projectId, laneId, nextTileId)
     },
     onCommand: (command) => {
       if (command.type === "focus-url") {
@@ -99,22 +130,22 @@ export function WorkbenchBrowserTile({
   })
 
   useEffect(() => {
-    setDraftUrl(url)
-  }, [url])
+    setDraftUrl(tile.url)
+  }, [tile.url])
 
   useEffect(() => {
-    if (url) return
+    if (tile.url) return
     setIsFindVisible(false)
     setFindQuery("")
-  }, [url])
+  }, [tile.url])
 
-  const handleOmnibarBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+  const handleOmnibarBlurCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
     const next = event.relatedTarget as Node | null
     if (next && event.currentTarget.contains(next)) return
     setOmniFocused(false)
   }, [])
 
-  const canInteract = useMemo(() => Boolean(url), [url])
+  const canInteract = useMemo(() => Boolean(tile.url), [tile.url])
   const showOmniChrome = omniHover || omniFocused || isFindVisible
   const hasFindQuery = useMemo(() => findQuery.trim().length > 0, [findQuery])
   const findResultLabel = useMemo(() => {
@@ -128,7 +159,10 @@ export function WorkbenchBrowserTile({
   const submitDraftUrl = () => {
     const normalized = normalizeUrlInput(draftUrl)
     if (!normalized) return
-    onUrlCommitted(normalized)
+    workbenchActions.updateBrowserTile(projectId, laneId, tile.id, {
+      url: normalized,
+      title: "Browser",
+    })
   }
 
   const focusUrlInput = useCallback(() => {
@@ -204,7 +238,7 @@ export function WorkbenchBrowserTile({
   }, [actions, findMatchCase, findQuery, isFindVisible])
 
   const handleKeyDownCapture = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
+    (event: KeyboardEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement | null
       const isEditableTarget =
         target instanceof HTMLInputElement ||
@@ -287,16 +321,7 @@ export function WorkbenchBrowserTile({
         closeFind(true)
       }
     },
-    [
-      actions,
-      closeFind,
-      findNext,
-      findPrevious,
-      focusUrlInput,
-      isFindVisible,
-      isMac,
-      openFind,
-    ],
+    [actions, closeFind, findNext, findPrevious, focusUrlInput, isFindVisible, isMac, openFind],
   )
 
   const navChipClass =
@@ -499,89 +524,89 @@ export function WorkbenchBrowserTile({
       </div>
 
       <div className="flex flex-wrap items-center gap-1 px-1 pt-1 sm:gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(trayGhostClass, isFindVisible && "bg-accent text-foreground")}
-            disabled={!canInteract}
-            onClick={() => {
-              openFind()
-            }}
-            title={`Find in page (${isMac ? "Cmd" : "Ctrl"}+F)`}
-          >
-            <Search className="size-3.5 shrink-0" />
-            <span>Find</span>
-          </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={cn(trayGhostClass, isFindVisible && "bg-accent text-foreground")}
+          disabled={!canInteract}
+          onClick={() => {
+            openFind()
+          }}
+          title={`Find in page (${isMac ? "Cmd" : "Ctrl"}+F)`}
+        >
+          <Search className="size-3.5 shrink-0" />
+          <span>Find</span>
+        </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-            disabled={!state.canZoomOut}
-            onClick={() => {
-              void actions.zoomOut()
-            }}
-            aria-label="Zoom out"
-          >
-            <Minus className="size-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={trayGhostClass}
-            onClick={() => {
-              void actions.resetZoom()
-            }}
-            aria-label="Reset zoom"
-            title="Reset zoom"
-          >
-            <span className="tabular-nums">{Math.round(state.zoomFactor * 100)}%</span>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-            disabled={!state.canZoomIn}
-            onClick={() => {
-              void actions.zoomIn()
-            }}
-            aria-label="Zoom in"
-          >
-            <Plus className="size-3.5" />
-          </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+          disabled={!state.canZoomOut}
+          onClick={() => {
+            void actions.zoomOut()
+          }}
+          aria-label="Zoom out"
+        >
+          <Minus className="size-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={trayGhostClass}
+          onClick={() => {
+            void actions.resetZoom()
+          }}
+          aria-label="Reset zoom"
+          title="Reset zoom"
+        >
+          <span className="tabular-nums">{Math.round(state.zoomFactor * 100)}%</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+          disabled={!state.canZoomIn}
+          onClick={() => {
+            void actions.zoomIn()
+          }}
+          aria-label="Zoom in"
+        >
+          <Plus className="size-3.5" />
+        </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(trayGhostClass, state.isDevToolsOpen && "bg-accent text-foreground")}
-            onClick={() => {
-              void actions.toggleDevTools()
-            }}
-            title="Toggle developer tools"
-          >
-            <SquareTerminal className="size-3.5 shrink-0" />
-            <span>Devtools</span>
-          </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={cn(trayGhostClass, state.isDevToolsOpen && "bg-accent text-foreground")}
+          onClick={() => {
+            void actions.toggleDevTools()
+          }}
+          title="Toggle developer tools"
+        >
+          <SquareTerminal className="size-3.5 shrink-0" />
+          <span>Devtools</span>
+        </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={trayGhostClass}
-            disabled={!canInteract}
-            onClick={() => {
-              void actions.openExternal()
-            }}
-            title="Open in external browser"
-          >
-            <ExternalLink className="size-3.5 shrink-0" />
-            <span>Open</span>
-          </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={trayGhostClass}
+          disabled={!canInteract}
+          onClick={() => {
+            void actions.openExternal()
+          }}
+          title="Open in external browser"
+        >
+          <ExternalLink className="size-3.5 shrink-0" />
+          <span>Open</span>
+        </Button>
       </div>
     </div>
   )
@@ -628,7 +653,7 @@ export function WorkbenchBrowserTile({
           </div>
 
           <div className="relative min-h-0 flex-1 overflow-hidden bg-content-surface">
-            {!url ? (
+            {!tile.url ? (
               <div className="flex h-full w-full items-center justify-center p-6">
                 <Empty className="w-full max-w-md py-8">
                   <EmptyHeader>
@@ -637,14 +662,13 @@ export function WorkbenchBrowserTile({
                     </EmptyMedia>
                     <EmptyTitle className="text-base font-medium">No page loaded yet</EmptyTitle>
                     <EmptyDescription>
-                      Hover this browser panel (or press {isMac ? "⌘L" : "Ctrl+L"}) to show the address bar, or open a
-                      linked dev server in this tile.
+                      Hover this browser panel or press {isMac ? "⌘L" : "Ctrl+L"} to show the address bar.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               </div>
             ) : null}
-            {url && state.loadError ? (
+            {tile.url && state.loadError ? (
               <div className="absolute inset-px z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
                 <div className="max-w-md space-y-2">
                   <div className="text-sm font-medium text-foreground">
@@ -654,7 +678,7 @@ export function WorkbenchBrowserTile({
                 </div>
               </div>
             ) : null}
-            {url && overlayPaused && !state.loadError ? (
+            {tile.url && overlayPaused && !state.loadError ? (
               <div className="absolute inset-px z-[90] overflow-hidden rounded-[inherit] border border-border/40 bg-content-surface">
                 {placeholderScreenshot ? (
                   <div
@@ -676,7 +700,7 @@ export function WorkbenchBrowserTile({
                 </div>
               </div>
             ) : null}
-            {url ? (
+            {tile.url ? (
               <div
                 ref={hostRef}
                 className={cn(

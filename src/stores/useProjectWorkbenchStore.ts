@@ -70,7 +70,6 @@ export interface WorkbenchBrowserTile extends WorkbenchBaseTile {
   type: "browser"
   url: string
   storageScope?: BrowserStorageScope
-  linkedDevServerTileId?: string | null
 }
 
 export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
@@ -79,7 +78,6 @@ export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
 
 export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   type: "devServer"
-  linkedBrowserTileId?: string | null
 }
 
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
@@ -153,8 +151,6 @@ interface CreateTileOptions {
   title?: string
   url?: string
   storageScope?: BrowserStorageScope
-  linkedBrowserTileId?: string | null
-  linkedDevServerTileId?: string | null
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
   selectionReferenceTileId?: string | null
@@ -199,23 +195,11 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
       laneId: string,
       layout: SerializedDockview | null,
     ) => void
-    updateBrowserTile: (
-      projectId: string,
-      laneId: string,
-      tileId: string,
-      patch: Partial<Pick<WorkbenchBrowserTile, "url" | "title" | "storageScope" | "linkedDevServerTileId">>,
-    ) => void
-    updateDevServerTile: (
-      projectId: string,
-      laneId: string,
-      tileId: string,
-      patch: Partial<Pick<WorkbenchDevServerTile, "title" | "linkedBrowserTileId">>,
-    ) => void
     updateAssistantTile: (
       projectId: string,
       laneId: string,
       tileId: string,
-      patch: Partial<
+        patch: Partial<
         Pick<
           WorkbenchAssistantChatTile,
           | "title"
@@ -229,6 +213,12 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
           | "laneBinding"
         >
       >,
+    ) => void
+    updateBrowserTile: (
+      projectId: string,
+      laneId: string,
+      tileId: string,
+      patch: Partial<Pick<WorkbenchBrowserTile, "url" | "title" | "storageScope">>,
     ) => void
     updateTileTitle: (projectId: string, laneId: string, tileId: string, title: string) => void
   }
@@ -245,8 +235,6 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   changes: "Changes",
   assistantChat: "AI Agent",
 }
-
-const SINGLETON_TILE_TYPES = new Set<WorkbenchTileType>(["devServer"])
 
 function normalizeLaneId(laneId: string | null | undefined): string {
   const normalized = laneId?.trim()
@@ -285,20 +273,13 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         type,
         title,
         createdAt,
-        url: options.url?.trim() ?? "",
+        url: options.url?.trim() || "",
         storageScope: options.storageScope ?? "workspace",
-        linkedDevServerTileId: options.linkedDevServerTileId ?? null,
       }
     case "terminal":
       return { id, type, title, createdAt }
     case "devServer":
-      return {
-        id,
-        type,
-        title,
-        createdAt,
-        linkedBrowserTileId: options.linkedBrowserTileId ?? null,
-      }
+      return { id, type, title, createdAt }
     case "selection":
       return {
         id,
@@ -372,8 +353,22 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
   let removedObsoleteTile = false
 
   for (const [tileId, tile] of Object.entries(workbench.tiles ?? {})) {
-    if (!tile || tile.type === "tasks" || tile.type === "changes") {
+    const tileType = (tile as { type?: string } | null)?.type
+    if (
+      !tile ||
+      tileType === "tasks" ||
+      tileType === "changes"
+    ) {
       removedObsoleteTile = true
+      continue
+    }
+
+    if (tile.type === "browser") {
+      sanitizedTiles[tileId] = {
+        ...tile,
+        url: tile.url ?? "",
+        storageScope: tile.storageScope ?? "workspace",
+      }
       continue
     }
 
@@ -434,25 +429,6 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
     workbench.activeTileId && sanitizedTiles[workbench.activeTileId]
       ? workbench.activeTileId
       : (sanitizedOrder[0] ?? null)
-
-  for (const tileId of sanitizedOrder) {
-    const tile = sanitizedTiles[tileId]
-    if (!tile) continue
-
-    if (tile.type === "browser" && tile.linkedDevServerTileId && !sanitizedTiles[tile.linkedDevServerTileId]) {
-      sanitizedTiles[tileId] = {
-        ...tile,
-        linkedDevServerTileId: null,
-      }
-    }
-
-    if (tile.type === "devServer" && tile.linkedBrowserTileId && !sanitizedTiles[tile.linkedBrowserTileId]) {
-      sanitizedTiles[tileId] = {
-        ...tile,
-        linkedBrowserTileId: null,
-      }
-    }
-  }
 
   // Transient selection tiles can appear while the user is adding/splitting panels.
   // We strip them from persisted metadata, but they should not invalidate the
@@ -531,16 +507,6 @@ function migratePersistedWorkbenchState(
   return {
     workbenches: migratedWorkbenches,
   }
-}
-
-function withWorkbench(
-  state: ProjectWorkbenchState,
-  projectId: string,
-  laneId: string,
-): WorkbenchProjectState {
-  const normalizedLaneId = normalizeLaneId(laneId)
-  const scopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId)
-  return state.workbenches[scopeKey] ?? createDefaultWorkbenchState(projectId, normalizedLaneId)
 }
 
 export function selectProjectWorkbench(
@@ -626,7 +592,7 @@ export function selectVisibleActiveWorkbenchTileId(
 
 export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
   persist(
-    immer((set, get) => ({
+    immer((set) => ({
       workbenches: {},
       actions: {
         ensureWorkbench: (projectId, laneId) => {
@@ -673,13 +639,32 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           return createdTileId
         },
         openSingletonTile: (projectId, laneId, type, options = {}) => {
-          const workbench = withWorkbench(get(), projectId, laneId)
-          const existing = workbench.order.find((tileId) => workbench.tiles[tileId]?.type === type)
-          if (existing) {
-            get().actions.setActiveTile(projectId, laneId, existing)
-            return existing
-          }
-          return get().actions.addTile(projectId, laneId, type, options)
+          let resolvedTileId = ""
+          const normalizedLaneId = normalizeLaneId(laneId)
+          const scopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId)
+
+          set((state) => {
+            const workbench = state.workbenches[scopeKey] ?? createDefaultWorkbenchState(projectId, normalizedLaneId)
+            const existingTile = workbench.order
+              .map((tileId) => workbench.tiles[tileId])
+              .find((tile): tile is WorkbenchDevServerTile => tile?.type === type)
+
+            if (existingTile) {
+              resolvedTileId = existingTile.id
+              workbench.activeTileId = existingTile.id
+              state.workbenches[scopeKey] = workbench
+              return
+            }
+
+            const tile = createTile(type, options)
+            resolvedTileId = tile.id
+            workbench.activeTileId = tile.id
+            workbench.order.push(tile.id)
+            workbench.tiles[tile.id] = tile
+            state.workbenches[scopeKey] = workbench
+          })
+
+          return resolvedTileId
         },
         removeTile: (projectId, laneId, tileId) => {
           const normalizedLaneId = normalizeLaneId(laneId)
@@ -723,56 +708,6 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             workbench.layout = layout
           })
         },
-        updateBrowserTile: (projectId, laneId, tileId, patch) => {
-          const normalizedLaneId = normalizeLaneId(laneId)
-          const scopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId)
-
-          set((state) => {
-            const workbench = state.workbenches[scopeKey]
-            const tile = workbench?.tiles[tileId]
-            if (!workbench || !tile || tile.type !== "browser") return
-
-            let changed = false
-            if (patch.title !== undefined && patch.title !== tile.title) {
-              tile.title = patch.title
-              changed = true
-            }
-            if (patch.url !== undefined && patch.url !== tile.url) {
-              tile.url = patch.url
-              changed = true
-            }
-            if (patch.storageScope !== undefined && patch.storageScope !== tile.storageScope) {
-              tile.storageScope = patch.storageScope
-              changed = true
-            }
-            if (patch.linkedDevServerTileId !== undefined && patch.linkedDevServerTileId !== tile.linkedDevServerTileId) {
-              tile.linkedDevServerTileId = patch.linkedDevServerTileId
-              changed = true
-            }
-            if (!changed) return
-          })
-        },
-        updateDevServerTile: (projectId, laneId, tileId, patch) => {
-          const normalizedLaneId = normalizeLaneId(laneId)
-          const scopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId)
-
-          set((state) => {
-            const workbench = state.workbenches[scopeKey]
-            const tile = workbench?.tiles[tileId]
-            if (!workbench || !tile || tile.type !== "devServer") return
-
-            let changed = false
-            if (patch.title !== undefined && patch.title !== tile.title) {
-              tile.title = patch.title
-              changed = true
-            }
-            if (patch.linkedBrowserTileId !== undefined && patch.linkedBrowserTileId !== tile.linkedBrowserTileId) {
-              tile.linkedBrowserTileId = patch.linkedBrowserTileId
-              changed = true
-            }
-            if (!changed) return
-          })
-        },
         updateAssistantTile: (projectId, laneId, tileId, patch) => {
           const normalizedLaneId = normalizeLaneId(laneId)
           const scopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId)
@@ -793,6 +728,28 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               }
             }
             if (!changed) return
+          })
+        },
+        updateBrowserTile: (projectId, laneId, tileId, patch) => {
+          const normalizedLaneId = normalizeLaneId(laneId)
+          const scopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId)
+
+          set((state) => {
+            const workbench = state.workbenches[scopeKey]
+            const tile = workbench?.tiles[tileId]
+            if (!workbench || !tile || tile.type !== "browser") return
+
+            if (patch.title !== undefined && patch.title !== tile.title) {
+              tile.title = patch.title
+            }
+
+            if (patch.url !== undefined && patch.url !== tile.url) {
+              tile.url = patch.url
+            }
+
+            if (patch.storageScope !== undefined && patch.storageScope !== tile.storageScope) {
+              tile.storageScope = patch.storageScope
+            }
           })
         },
         updateTileTitle: (projectId, laneId, tileId, title) => {
@@ -823,9 +780,3 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     },
   ),
 )
-
-export function isWorkbenchSingletonTile(
-  type: WorkbenchTileType,
-): type is Extract<WorkbenchTileType, "devServer"> {
-  return SINGLETON_TILE_TYPES.has(type)
-}

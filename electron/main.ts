@@ -8,7 +8,7 @@ import net from 'node:net'
 
 import { autoUpdater } from 'electron-updater'
 import { Cause, Effect, Exit, Fiber } from 'effect'
-import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
+import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
 
@@ -32,6 +32,7 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
 import { startAssistantRuntime } from './assistant-runtime/boot'
@@ -257,6 +258,41 @@ function isRendererDevServerUrl(rawUrl: string): boolean {
 
 let previewHeaderPolicyInstalled = false
 let previewHeaderCompatDisabledLogged = false
+let gpuDiagnostics: GpuAccelerationDiagnostics = {
+  hardwareAccelerationEnabled: true,
+  featureStatus: {},
+  gpuCompositing: null,
+  webgl: null,
+  webgl2: null,
+  rasterization: null,
+  videoDecode: null,
+  updatedAt: 0,
+}
+
+function readGpuFeatureStatus(): Record<string, string> {
+  try {
+    const rawStatus = app.getGPUFeatureStatus() as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(rawStatus).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    )
+  } catch {
+    return {}
+  }
+}
+
+function refreshGpuDiagnostics(): void {
+  const featureStatus = readGpuFeatureStatus()
+  gpuDiagnostics = {
+    hardwareAccelerationEnabled: app.isHardwareAccelerationEnabled(),
+    featureStatus,
+    gpuCompositing: featureStatus.gpu_compositing ?? null,
+    webgl: featureStatus.webgl ?? null,
+    webgl2: featureStatus.webgl2 ?? null,
+    rasterization: featureStatus.rasterization ?? null,
+    videoDecode: featureStatus.video_decode ?? null,
+    updatedAt: Date.now(),
+  }
+}
 const previewHeaderDiagnostics = new Map<string, PreviewHeaderDiagnostic>()
 const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
 const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
@@ -1119,6 +1155,7 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: true,
       devTools: !isReleaseBuild,
       additionalArguments: ['--cozea-window=main', ASSISTANT_RUNTIME_WS_URL_ARG],
     },
@@ -1278,6 +1315,7 @@ registerCoreHandlers(ipcMain, {
     }
     return openFileInExternalEditor({ editorId, filePath, line, column })
   },
+  getGpuDiagnostics: () => gpuDiagnostics,
   isWindowFullScreen: () => win?.isFullScreen() ?? false,
   openSettingsWindow,
 })
@@ -1310,6 +1348,11 @@ registerYjsHandlers(ipcMain)
 
 registerWorkbenchBrowserHandlers(ipcMain, {
   service: workbenchBrowserService,
+})
+
+registerWorkbenchSessionHandlers(ipcMain, {
+  getMainWindow: () => win,
+  browserService: workbenchBrowserService,
 })
 
 registerDevServerHandlers(ipcMain, {
@@ -1359,8 +1402,10 @@ if (process.platform === 'darwin') {
 }
 
 registerAssistantRuntimeBridgeHandlers()
+app.on('gpu-info-update', refreshGpuDiagnostics)
 
 app.whenReady().then(() => {
+  refreshGpuDiagnostics()
   loadSyncState()
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()

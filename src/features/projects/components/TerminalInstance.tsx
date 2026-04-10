@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { GpuAccelerationDiagnostics } from '@shared/electronApiTypes'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { extractTerminalLinks, isTerminalLinkActivation, resolvePathLinkTarget } from '@/lib/terminalLinks'
@@ -17,6 +18,8 @@ import {
   relativeLuminance,
   resolveThemeColor,
   syncTerminalTheme,
+  XTERM_FONT_FAMILY,
+  XTERM_LINE_HEIGHT,
 } from '@/lib/xtermTheme'
 
 interface TerminalInstanceProps {
@@ -25,6 +28,23 @@ interface TerminalInstanceProps {
   onFocus?: () => void
   shouldAutoFocus?: boolean
   readOnly?: boolean
+  gpuActive?: boolean
+}
+
+function canUseGpuTerminalRenderer(diagnostics: GpuAccelerationDiagnostics | null): boolean {
+  if (!diagnostics) {
+    return true
+  }
+
+  if (!diagnostics.hardwareAccelerationEnabled) {
+    return false
+  }
+
+  const gpuCompositingReady =
+    !diagnostics.gpuCompositing || diagnostics.gpuCompositing.startsWith('enabled')
+  const webglReady = !diagnostics.webgl || diagnostics.webgl.startsWith('enabled')
+
+  return gpuCompositingReady && webglReady
 }
 
 
@@ -79,19 +99,39 @@ export function TerminalInstance({
   onFocus,
   shouldAutoFocus = true,
   readOnly = false,
+  gpuActive = true,
 }: TerminalInstanceProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const webglAddonRef = useRef<ReturnType<typeof loadXtermWebglAddon>>(null)
+  const webglLoadFailedRef = useRef(false)
+  const webglRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const syncWebglRendererRef = useRef<() => void>(() => {})
+  const wantsGpuRendererRef = useRef(gpuActive)
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const renderedOutputCountRef = useRef(0)
   const hasInputErrorRef = useRef(false)
   const [initRetry, setInitRetry] = useState(0)
+  const [gpuDiagnostics, setGpuDiagnostics] = useState<GpuAccelerationDiagnostics | null>(null)
   const eventClientPosRef = useRef({ x: 0, y: 0 })
   
 
   // Bypass React renders for output streaming
   const { appendTerminalOutput, updateTerminalStatus } = useTerminalActions()
+  const shouldUseGpuRenderer = gpuActive && canUseGpuTerminalRenderer(gpuDiagnostics)
+
+  const disposeWebglRenderer = useCallback(() => {
+    if (webglRetryTimeoutRef.current) {
+      clearTimeout(webglRetryTimeoutRef.current)
+      webglRetryTimeoutRef.current = null
+    }
+
+    const addon = webglAddonRef.current
+    if (!addon) return
+    webglAddonRef.current = null
+    addon.dispose()
+  }, [])
 
   
   const handleSelectionAction = useCallback(async () => {
@@ -137,6 +177,72 @@ export function TerminalInstance({
     }
   }, [terminalId])
 
+  useEffect(() => {
+    wantsGpuRendererRef.current = shouldUseGpuRenderer
+  }, [shouldUseGpuRenderer])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void window.electronAPI.app
+      .getGpuDiagnostics()
+      .then((nextDiagnostics) => {
+        if (cancelled) return
+        setGpuDiagnostics(nextDiagnostics)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setGpuDiagnostics(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const syncWebglRenderer = useCallback(() => {
+    if (!wantsGpuRendererRef.current) {
+      disposeWebglRenderer()
+      return
+    }
+
+    const terminal = xtermRef.current
+    if (!terminal || webglAddonRef.current || webglLoadFailedRef.current) {
+      return
+    }
+
+    const addon = loadXtermWebglAddon(terminal)
+    if (!addon) {
+      webglLoadFailedRef.current = true
+      return
+    }
+
+    webglAddonRef.current = addon
+    addon.onContextLoss(() => {
+      if (webglAddonRef.current === addon) {
+        webglAddonRef.current = null
+      }
+      addon.dispose()
+
+      if (!wantsGpuRendererRef.current) {
+        return
+      }
+
+      webglLoadFailedRef.current = false
+      if (webglRetryTimeoutRef.current) {
+        clearTimeout(webglRetryTimeoutRef.current)
+      }
+      webglRetryTimeoutRef.current = setTimeout(() => {
+        webglRetryTimeoutRef.current = null
+        syncWebglRendererRef.current()
+      }, 250)
+    })
+  }, [disposeWebglRenderer])
+
+  useEffect(() => {
+    syncWebglRendererRef.current = syncWebglRenderer
+  }, [syncWebglRenderer])
+
 
 
   
@@ -156,7 +262,7 @@ export function TerminalInstance({
 
     const fontSize = 13
     const charWidth = fontSize * 0.6
-    const charHeight = fontSize * 1.0
+    const charHeight = fontSize * XTERM_LINE_HEIGHT
     const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))
     const rows = Math.max(10, Math.floor((rect.height - 8) / charHeight))
 
@@ -164,12 +270,12 @@ export function TerminalInstance({
       cols,
       rows,
       theme: buildProjectTerminalTheme(container),
-      fontSize: 13,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      fontSize,
+      fontFamily: XTERM_FONT_FAMILY,
       fontWeight: '400',
       fontWeightBold: '700',
       letterSpacing: 0,
-      lineHeight: 1,
+      lineHeight: XTERM_LINE_HEIGHT,
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 10000,
@@ -181,7 +287,6 @@ export function TerminalInstance({
 
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
-    loadXtermWebglAddon(term)
     const projectPath = useTerminalStore.getState().terminals[terminalId]?.projectPath || ''
     
     const terminalLinksDisposable = term.registerLinkProvider({
@@ -350,13 +455,14 @@ export function TerminalInstance({
       terminalLinksDisposable.dispose()
       textareaElement?.removeEventListener('focus', handleFocusEvent)
       term.dispose()
+      disposeWebglRenderer()
       xtermRef.current = null
       fitAddonRef.current = null
       hasInputErrorRef.current = false
       renderedOutputCountRef.current = 0
       
     }
-  }, [appendTerminalOutput, initRetry, onFocus, readOnly, shouldAutoFocus, terminalId, updateTerminalStatus])
+  }, [appendTerminalOutput, disposeWebglRenderer, initRetry, onFocus, readOnly, shouldAutoFocus, terminalId, updateTerminalStatus])
 
   useEffect(() => {
     const term = xtermRef.current
@@ -376,6 +482,23 @@ export function TerminalInstance({
     if (!shouldAutoFocus || readOnly) return
     xtermRef.current?.focus()
   }, [readOnly, shouldAutoFocus])
+
+  useEffect(() => {
+    if (!xtermRef.current) return
+
+    if (!shouldUseGpuRenderer) {
+      disposeWebglRenderer()
+      return
+    }
+
+    const enableGpuTimeout = window.setTimeout(() => {
+      syncWebglRendererRef.current()
+    }, 96)
+
+    return () => {
+      window.clearTimeout(enableGpuTimeout)
+    }
+  }, [disposeWebglRenderer, shouldUseGpuRenderer])
 
 
 
@@ -424,15 +547,23 @@ export function TerminalInstance({
 
   return (
     <div
-      className={cn('relative h-full w-full overflow-hidden', className)}
+      className={cn(
+        'relative h-full w-full overflow-hidden rounded-[4px]',
+        className,
+      )}
       style={{ backgroundColor: 'var(--terminal-panel-bg, var(--content-surface))' }}
-      onMouseUp={(e) => { eventClientPosRef.current = { x: e.clientX, y: e.clientY }; void handleSelectionAction() }}
-      onContextMenu={(e) => { eventClientPosRef.current = { x: e.clientX, y: e.clientY }; void handleSelectionAction() }}
+      onMouseUp={(e) => {
+        eventClientPosRef.current = { x: e.clientX, y: e.clientY }
+        void handleSelectionAction()
+      }}
+      onContextMenu={(e) => {
+        eventClientPosRef.current = { x: e.clientX, y: e.clientY }
+        void handleSelectionAction()
+      }}
     >
-      
       <div
         ref={containerRef}
-        className="h-full w-full pl-3 pt-1"
+        className="h-full min-h-0 w-full"
         onClick={focus}
         onMouseDown={focus}
       />

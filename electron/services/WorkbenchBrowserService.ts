@@ -469,6 +469,7 @@ export class WorkbenchBrowserService {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: true,
         session: this.resolveSession(tileId, storageScope, workspaceId ?? null),
       },
     })

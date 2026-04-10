@@ -3,6 +3,7 @@ import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
 import type { DevServerStartResult } from '../../shared/electronApiTypes'
 import { DevServerService } from '../services/DevServerService'
+import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 
 interface RegisterDevServerHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -21,6 +22,20 @@ export function registerDevServerHandlers(
   deps: RegisterDevServerHandlersDeps
 ): void {
   const service = DevServerService.getInstance()
+  const outputBatcher = createIpcOutputBatcher<{
+    projectPath: string
+    output: string
+    stream: 'stdout' | 'stderr'
+    runId?: string
+  }>({
+    channel: 'devServer:output',
+    keyOf: (payload) => `${payload.projectPath}:${payload.stream}:${payload.runId ?? ''}`,
+    merge: (current, next) => ({
+      ...current,
+      output: current.output + next.output,
+      runId: next.runId ?? current.runId,
+    }),
+  })
 
   ipcMain.handle(
     'devServer:start',
@@ -72,7 +87,12 @@ export function registerDevServerHandlers(
         preferredPort: port,
         runId: resolvedRunId,
         onOutput: (output, stream) => {
-          deps.getMainWindow()?.webContents.send('devServer:output', {
+          const mainWindow = deps.getMainWindow()
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            return
+          }
+
+          outputBatcher.enqueue(mainWindow.webContents, {
             projectPath,
             output,
             stream,
@@ -80,7 +100,13 @@ export function registerDevServerHandlers(
           })
         },
         onExit: (code) => {
-          deps.getMainWindow()?.webContents.send('devServer:exit', {
+          const mainWindow = deps.getMainWindow()
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            return
+          }
+
+          outputBatcher.flush(mainWindow.webContents)
+          mainWindow.webContents.send('devServer:exit', {
             projectPath,
             code,
             runId: resolvedRunId,
@@ -115,4 +141,3 @@ export function registerDevServerHandlers(
     }
   )
 }
-

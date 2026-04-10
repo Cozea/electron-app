@@ -4,6 +4,7 @@ import type {
   AppSettings,
   ElectronAPI,
   ElectronWindowContext,
+  GpuAccelerationDiagnostics,
   OrganizationMembership,
   RuntimeKind,
   Session,
@@ -19,6 +20,7 @@ const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
 const DEFAULT_ASSISTANT_WS_URL = 'ws://127.0.0.1:3773'
 const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
 const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
+const WORKBENCH_SESSION_STATE_CHANGED_CHANNEL = 'workbenchSession:stateChanged'
 
 type AssistantRuntimeBridgeStatus = {
   phase: 'idle' | 'starting' | 'ready' | 'error'
@@ -324,6 +326,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('settings:open', handler)
       return () => ipcRenderer.removeListener('settings:open', handler)
     },
+    getGpuDiagnostics: () => ipcRenderer.invoke('app:getGpuDiagnostics') as Promise<GpuAccelerationDiagnostics>,
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -431,6 +434,68 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ) => callback(command)
       ipcRenderer.on('workbenchBrowser:command', handler)
       return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
+    },
+  },
+  workbenchSession: {
+    ensureSession: (options: { projectId: string; laneId: string; projectPath?: string | null }) =>
+      ipcRenderer.invoke('workbenchSession:ensureSession', options),
+    activateSession: (options: { projectId: string; laneId: string; projectPath?: string | null }) =>
+      ipcRenderer.invoke('workbenchSession:activateSession', options),
+    backgroundSession: (options: {
+      projectId: string
+      laneId: string
+      mode?: 'backgroundWarm' | 'backgroundFrozen'
+    }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
+    closeSession: (options: { projectId: string; laneId: string }) =>
+      ipcRenderer.invoke('workbenchSession:closeSession', options),
+    getSession: (options: { projectId: string; laneId: string }) =>
+      ipcRenderer.invoke('workbenchSession:getSession', options),
+    listSessions: () => ipcRenderer.invoke('workbenchSession:listSessions'),
+    setPinned: (options: { projectId: string; laneId: string; pinned: boolean }) =>
+      ipcRenderer.invoke('workbenchSession:setPinned', options),
+    getTerminalBinding: (options: { projectId: string; laneId: string; tileId: string }) =>
+      ipcRenderer.invoke('workbenchSession:getTerminalBinding', options),
+    bindTerminal: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      terminalId: string
+      projectPath?: string | null
+    }) => ipcRenderer.invoke('workbenchSession:bindTerminal', options),
+    releaseTerminal: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      close?: boolean
+    }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
+    getBrowserBinding: (options: { projectId: string; laneId: string; tileId: string }) =>
+      ipcRenderer.invoke('workbenchSession:getBrowserBinding', options),
+    bindBrowser: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      browserTileId: string
+      projectPath?: string | null
+    }) => ipcRenderer.invoke('workbenchSession:bindBrowser', options),
+    releaseBrowser: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      destroy?: boolean
+    }) => ipcRenderer.invoke('workbenchSession:releaseBrowser', options),
+    setNativePreviewSession: (options: {
+      projectId: string
+      laneId: string
+      locator: import('../shared/nativePreviewTypes').NativePreviewSessionLocator | null
+      stopPrevious?: boolean
+    }) => ipcRenderer.invoke('workbenchSession:setNativePreviewSession', options),
+    onStateChanged: (callback: (session: import('../shared/electronApiTypes').WorkbenchSessionSnapshot) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        session: import('../shared/electronApiTypes').WorkbenchSessionSnapshot,
+      ) => callback(session)
+      ipcRenderer.on(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
+      return () => ipcRenderer.removeListener(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
     },
   },
   preview: {
@@ -578,6 +643,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:preflightImportSource', options),
     watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
+    getPathNativeIcon: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('project:getPathNativeIcon', options),
   },
   runtime: {
     getProjectCapabilities: (options: { projectPath: string }) =>
@@ -862,6 +929,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('terminal:list', options),
     getInfo: (options: { terminalId: string }) =>
       ipcRenderer.invoke('terminal:getInfo', options),
+    getSnapshot: (options: { terminalId: string }) =>
+      ipcRenderer.invoke('terminal:getSnapshot', options),
     onOutput: (callback: (data: { terminalId: string; data: string; runId?: string }) => void) =>
       terminalOutputBridge.onOutput(callback),
     onOutputForTerminal: (

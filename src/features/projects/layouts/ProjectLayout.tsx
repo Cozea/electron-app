@@ -13,7 +13,6 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
 import { usePageContextStore } from "@/stores/usePageContextStore";
-import { useTerminalStore } from "@/stores/useTerminalStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
@@ -262,40 +261,6 @@ export function ProjectLayout({
       setVscodeWorkspaceProjectPath(null);
     };
   }, [runtimeProjectPath]);
-
-  // Ensure project-scoped runtime processes don't leak across navigation.
-  // - Stops any dev server PTY (devServer API)
-  // - Kills any terminals started for this projectPath (terminal API)
-  useEffect(() => {
-    if (!effectiveLocalPath) return;
-
-    return () => {
-      const projectPath = effectiveLocalPath;
-
-      // Stop dev server if running (ok if already stopped)
-      void window.electronAPI.devServer.stop({ projectPath }).catch(() => {
-        // ignore
-      });
-
-      // Kill all terminals for this project (ok if none)
-      void window.electronAPI.terminal
-        .list({ projectPath })
-        .then((terminalIds) =>
-          Promise.all(
-            terminalIds.map((terminalId) =>
-              window.electronAPI.terminal.kill({ terminalId }).catch(() => null),
-            ),
-          ),
-        )
-        .catch(() => {
-          // ignore
-        });
-
-      // Clear any stale terminal tabs in renderer state so we don't
-      // keep dead terminal IDs after project path changes.
-      useTerminalStore.getState().actions.resetProject(projectPath);
-    };
-  }, [effectiveLocalPath]);
 
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
