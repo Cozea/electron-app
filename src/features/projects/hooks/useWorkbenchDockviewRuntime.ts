@@ -817,11 +817,21 @@ export function useWorkbenchDockviewRuntime(
             .catch((error) => {
               console.warn("[WorkbenchSession] Failed to stop native preview for removed panel", error);
             });
-          if (input.projectPath) {
-            void window.electronAPI.devServer.stop({ projectPath: input.projectPath }).catch((error) => {
-              console.warn("[DevServer] Failed to stop dev server for removed panel", error);
+          void window.electronAPI.workbenchSession
+            .releaseTerminal({
+              projectId: input.projectId,
+              laneId: input.activeLaneId,
+              tileId: panel.id,
+              close: true,
+            })
+            .then((result) => {
+              if (result.terminalId) {
+                useTerminalStore.getState().actions.removeTerminal(result.terminalId);
+              }
+            })
+            .catch((error) => {
+              console.warn("[WorkbenchSession] Failed to release dev-server terminal for removed panel", error);
             });
-          }
         }
 
         workbenchActions.removeTile(input.projectId, input.activeLaneId, panel.id);

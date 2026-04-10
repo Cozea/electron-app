@@ -1,4 +1,4 @@
-import { Activity, createElement, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { Activity, createElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 import type {
   AvailableExternalBrowser,
@@ -18,6 +18,7 @@ import {
 } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
+import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +53,7 @@ import { type DevServerStatus, useDevServerManager } from "@/hooks/useDevServerM
 import { cn } from "@/lib/utils"
 import type { PageRoute, ServerStatus } from "@/features/projects/lib/previewRuntimeTypes"
 import { type WorkbenchDevServerTile as WorkbenchDevServerTileRecord, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
@@ -115,6 +117,10 @@ export function WorkbenchDevServerTile({
   containerApi,
 }: WorkbenchDevServerTileProps) {
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
+  const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
+  const replaceTerminalOutput = useTerminalStore((state) => state.actions.replaceTerminalOutput)
+  const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
+  const updateTerminalDisplay = useTerminalStore((state) => state.actions.updateTerminalDisplay)
   const activityMode = useWorkbenchPanelActivityMode(panelApi)
   const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
     storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
@@ -153,14 +159,18 @@ export function WorkbenchDevServerTile({
 
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview")
   const [previewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop")
+  const [terminalId, setTerminalId] = useState<string | null>(null)
+  const [terminalError, setTerminalError] = useState<string | null>(null)
   const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
     { id: "system", name: "System Default" },
   ])
   const [defaultBrowserId, setDefaultBrowserId] = useState<ExternalBrowserId>("system")
   const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
   const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() => readStoredPreviewDestinationPreference())
+  const terminalIdRef = useRef<string | null>(null)
   const devServer = useDevServerManager({
     projectPath,
+    terminalId,
     autoStart: false,
     storedDevCommand,
     storedDevPort,
@@ -185,7 +195,6 @@ export function WorkbenchDevServerTile({
 
   const showEmbeddedPreview = viewMode === "preview" && previewDestination === "cozea"
   const showWebEmbeddedPreview = showEmbeddedPreview && !isIosNativePreview
-  const logsOutput = useDeferredValue(devServer.output)
   const {
     hostRef,
     state: previewState,
@@ -209,6 +218,157 @@ export function WorkbenchDevServerTile({
     },
   })
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!projectPath) {
+      setTerminalId(null)
+      setTerminalError(null)
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      setTerminalError(null)
+
+      await window.electronAPI.workbenchSession.ensureSession({
+        projectId,
+        laneId,
+        projectPath,
+      })
+      if (cancelled) return
+
+      let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
+        projectId,
+        laneId,
+        tileId: tile.id,
+      })
+
+      let snapshot =
+        nextTerminalId
+          ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
+          : null
+
+      if (!snapshot || !nextTerminalId) {
+        const result = await window.electronAPI.terminal.create({
+          projectPath,
+          cwd: projectPath,
+        })
+
+        if (cancelled) return
+
+        if (!result.success || !result.terminalId) {
+          setTerminalError(result.error ?? "Failed to prepare the dev server terminal")
+          return
+        }
+
+        nextTerminalId = result.terminalId
+        await window.electronAPI.workbenchSession.bindTerminal({
+          projectId,
+          laneId,
+          tileId: tile.id,
+          terminalId: result.terminalId,
+          projectPath,
+        })
+        snapshot = await window.electronAPI.terminal.getSnapshot({
+          terminalId: result.terminalId,
+        })
+      }
+
+      if (!nextTerminalId || cancelled) {
+        return
+      }
+
+      const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
+      if (cancelled) return
+
+      terminalIdRef.current = nextTerminalId
+      setTerminalId(nextTerminalId)
+      registerTerminal({
+        id: nextTerminalId,
+        profileId: info?.profileId ?? "default",
+        profileName: info?.profileName ?? "Shell",
+        title: tile.title,
+        projectPath,
+        kind: "dev-server",
+        surface: "panel",
+        status: snapshot?.running === false ? "exited" : "running",
+        exitCode: snapshot?.exitCode ?? null,
+        hasOutput: Boolean(snapshot?.stdout?.length),
+        uiAttached: true,
+      })
+      updateTerminalDisplay(nextTerminalId, {
+        title: tile.title,
+        label: storedDevCommand ?? "Dev server",
+        command: storedDevCommand ?? undefined,
+        kind: "dev-server",
+        surface: "panel",
+        projectPath,
+      })
+      replaceTerminalOutput(nextTerminalId, snapshot?.stdout ?? "")
+      setTerminalUiAttached(nextTerminalId, true)
+    })()
+
+    return () => {
+      cancelled = true
+      const activeTerminalId = terminalIdRef.current
+      if (!activeTerminalId) return
+      setTerminalUiAttached(activeTerminalId, false)
+      terminalIdRef.current = null
+    }
+  }, [
+    laneId,
+    projectId,
+    projectPath,
+    registerTerminal,
+    replaceTerminalOutput,
+    setTerminalUiAttached,
+    storedDevCommand,
+    tile.id,
+    tile.title,
+    updateTerminalDisplay,
+  ])
+
+  useEffect(() => {
+    if (!terminalId) {
+      return
+    }
+    setTerminalUiAttached(terminalId, activityMode === "visible")
+  }, [activityMode, setTerminalUiAttached, terminalId])
+
+  useEffect(() => {
+    if (!terminalId) {
+      return
+    }
+
+    updateTerminalDisplay(terminalId, {
+      title: tile.title,
+      label: storedDevCommand ?? "Dev server",
+      command: storedDevCommand ?? undefined,
+      kind: "dev-server",
+      surface: "panel",
+      projectPath: projectPath ?? undefined,
+      port: devServer.port ?? undefined,
+    })
+  }, [devServer.port, projectPath, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
+
+  useEffect(() => {
+    if (!terminalId || activityMode !== "visible") {
+      return
+    }
+
+    let cancelled = false
+    void window.electronAPI.terminal.getSnapshot({ terminalId }).then((snapshot) => {
+      if (cancelled) return
+      replaceTerminalOutput(terminalId, snapshot?.stdout ?? "")
+    }).catch(() => {
+      // Ignore snapshot refresh failures when a session is being torn down.
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activityMode, replaceTerminalOutput, terminalId, viewMode])
 
   useEffect(() => {
     let cancelled = false
@@ -534,6 +694,7 @@ export function WorkbenchDevServerTile({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
+          disabled={!terminalId}
           onClick={() => {
             void devServer.start()
           }}
@@ -545,25 +706,25 @@ export function WorkbenchDevServerTile({
     </>
   ) : null
 
-  const logsBody =
-    logsOutput.length > 0 ? (
-      <div className="app-scrollbar h-full overflow-auto p-3">
-        <pre className="min-h-full whitespace-pre-wrap font-mono text-[11px] leading-5 text-foreground">
-          {logsOutput}
-        </pre>
-      </div>
-    ) : (
-      <div className="flex h-full items-center justify-center p-6">
-        <Empty className="w-full max-w-md py-8">
-          <EmptyHeader>
-            <EmptyTitle className="text-base font-medium">No output yet</EmptyTitle>
-            <EmptyDescription>
-              Start the dev server to stream logs here.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
-    )
+  const codeBody = terminalError ? (
+    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+      {terminalError}
+    </div>
+  ) : !terminalId ? (
+    <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+      <RefreshCcw className="h-4 w-4 animate-spin" />
+      Preparing terminal…
+    </div>
+  ) : (
+    <div className="h-full min-h-0 p-1">
+      <TerminalInstance
+        terminalId={terminalId}
+        className="h-full workbench-terminal-instance"
+        shouldAutoFocus={viewMode === "code" && activityMode === "visible"}
+        gpuActive={viewMode === "code" && activityMode === "visible"}
+      />
+    </div>
+  )
 
   const externalPreviewBody = (
     <div className="flex h-full items-center justify-center p-6">
@@ -675,7 +836,7 @@ export function WorkbenchDevServerTile({
         name={`workbench-devserver-logs-${tile.id}`}
       >
         <div className={cn("h-full min-h-0", viewMode === "code" ? "block" : "hidden")}>
-          {logsBody}
+          {codeBody}
         </div>
       </Activity>
     </div>

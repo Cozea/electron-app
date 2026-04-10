@@ -1,11 +1,13 @@
-import execa, { type ExecaChildProcess } from 'execa'
 import net from 'node:net'
+
+import { TerminalService } from './TerminalService'
 
 export interface DevServerStartOptions {
   projectPath: string
   command: string
   preferredPort: number
   runId: string
+  terminalId: string
   onOutput: (output: string, stream: 'stdout' | 'stderr') => void
   onExit: (code: number | null) => void
 }
@@ -15,6 +17,21 @@ export interface DevServerStartResult {
   port?: number
   runId?: string
   error?: string
+}
+
+interface ManagedDevServerRun {
+  projectPath: string
+  terminalId: string
+  runId: string
+  activePort: number | null
+  candidatePorts: Set<number>
+  command: string
+  ready: boolean
+  stopping: boolean
+  disposed: boolean
+  unsubscribeTerminal: (() => void) | null
+  onOutput: (output: string, stream: 'stdout' | 'stderr') => void
+  onExit: (code: number | null) => void
 }
 
 function extractCandidatePorts(output: string): number[] {
@@ -33,14 +50,8 @@ function extractCandidatePorts(output: string): number[] {
 
 export class DevServerService {
   private static instance: DevServerService
-  private processes = new Map<
-    string,
-    {
-      process: ExecaChildProcess
-      runId: string
-      activePort: number | null
-    }
-  >()
+  private readonly terminalService = TerminalService.getInstance()
+  private processes = new Map<string, ManagedDevServerRun>()
 
   public static getInstance(): DevServerService {
     if (!DevServerService.instance) {
@@ -49,13 +60,9 @@ export class DevServerService {
     return DevServerService.instance
   }
 
-  /**
-   * Starts a dev server process, finds an open port, and waits for it to be ready.
-   */
   public async start(options: DevServerStartOptions): Promise<DevServerStartResult> {
-    const { projectPath, command, preferredPort, runId, onOutput, onExit } = options
+    const { projectPath, command, preferredPort, runId, terminalId, onOutput, onExit } = options
 
-    // 1. Ensure any existing server for this project is stopped
     const stopResult = await this.stop(projectPath)
     if (!stopResult.success) {
       return {
@@ -65,10 +72,16 @@ export class DevServerService {
       }
     }
 
+    if (!this.terminalService.hasTerminal(terminalId)) {
+      return {
+        success: false,
+        runId,
+        error: 'Dev server terminal is not available.',
+      }
+    }
+
     try {
-      // 2. Explicitly scan for a free port starting from the preferred one.
       const actualPort = await this.findAvailablePort(preferredPort)
-      const candidatePorts = new Set<number>([actualPort])
       const startupTimeoutMs = /\binstall\b/i.test(command) ? 120000 : 30000
       if (actualPort !== preferredPort) {
         onOutput(
@@ -76,68 +89,67 @@ export class DevServerService {
           'stdout',
         )
       }
-      console.log(`[DevServerService] Starting ${command} in ${projectPath} on port ${actualPort}`)
 
-      // 3. Spawn robustly with cross-platform support
-      // We pass PORT in the environment. Most frameworks (Vite, Next.js, CRA) respect this.
-      // If the command itself specifies a port (e.g., `--port 3000`), we might need more complex parsing,
-      // but for now, we rely on the PORT env var as the standard fallback.
-      const subprocess = execa(command, {
-        cwd: projectPath,
-        env: {
-          ...process.env,
-          PORT: actualPort.toString(),
-          // Force some frameworks to not open browser
-          BROWSER: 'none',
-        },
-        shell: true, // Needed to resolve `npm`, `yarn`, etc. in PATH
-        detached: process.platform !== 'win32',
-        all: true,   // Combine stdout and stderr if needed, though we listen separately
-      })
-
-      this.processes.set(projectPath, {
-        process: subprocess,
+      const run: ManagedDevServerRun = {
+        projectPath,
+        terminalId,
         runId,
-        activePort: actualPort,
+        activePort: null,
+        candidatePorts: new Set<number>([actualPort]),
+        command,
+        ready: false,
+        stopping: false,
+        disposed: false,
+        unsubscribeTerminal: null,
+        onOutput,
+        onExit,
+      }
+
+      run.unsubscribeTerminal = this.terminalService.subscribe(terminalId, {
+        onOutput: ({ data }) => {
+          for (const port of extractCandidatePorts(data)) {
+            run.candidatePorts.add(port)
+          }
+          if (!run.disposed) {
+            run.onOutput(data, 'stdout')
+          }
+        },
+        onExit: ({ exitCode }) => {
+          if (run.disposed) return
+          this.disposeRun(projectPath, exitCode)
+        },
+        onActivity: ({ hasRunningSubprocess }) => {
+          if (run.disposed || run.stopping || !run.ready || hasRunningSubprocess) {
+            return
+          }
+          void this.handleUnexpectedStop(projectPath)
+        },
       })
 
-      // 4. Stream logs reliably
-      if (subprocess.stdout) {
-        subprocess.stdout.on('data', (data: Buffer) => {
-          const output = data.toString('utf-8')
-          for (const port of extractCandidatePorts(output)) {
-            candidatePorts.add(port)
-          }
-          onOutput(output, 'stdout')
-        })
-      }
-      
-      if (subprocess.stderr) {
-        subprocess.stderr.on('data', (data: Buffer) => {
-          const output = data.toString('utf-8')
-          for (const port of extractCandidatePorts(output)) {
-            candidatePorts.add(port)
-          }
-          onOutput(output, 'stderr')
-        })
-      }
+      this.processes.set(projectPath, run)
 
-      // 5. Handle Exit
-      subprocess.on('exit', (code: number | null) => {
-        console.log(`[DevServerService] Process exited with code ${code}`)
-        const active = this.processes.get(projectPath)
-        if (active?.runId === runId) {
-          this.processes.delete(projectPath)
+      const terminalInfo = this.terminalService.getInfo(terminalId)
+      const launchCommand = buildTerminalLaunchCommand({
+        command,
+        port: actualPort,
+        profileId: terminalInfo?.profileId ?? null,
+      })
+
+      onOutput(`[DevServer] Starting ${command} on port ${actualPort}\n`, 'stdout')
+      const accepted = await this.terminalService.sendInput(terminalId, `${launchCommand}\r`)
+      if (!accepted) {
+        this.disposeRun(projectPath, null)
+        return {
+          success: false,
+          runId,
+          error: 'Failed to send the dev server command to the terminal.',
         }
-        onExit(code)
-      })
+      }
 
-      // 6. Deterministic Health Check
-      // Wait until any candidate port is reachable so frameworks that ignore PORT still work.
-      const reachablePort = await this.waitForReachablePort(
-        candidatePorts,
+      const reachablePort = await this.waitForReadyPort(
+        run.candidatePorts,
         startupTimeoutMs,
-        () => this.processes.get(projectPath)?.runId === runId
+        () => this.processes.get(projectPath)?.runId === runId,
       )
 
       if (!reachablePort) {
@@ -145,20 +157,20 @@ export class DevServerService {
         return {
           success: false,
           runId,
-          error: 'Dev server failed to bind to a reachable port within timeout.',
+          error: 'Dev server failed to expose a ready preview URL within timeout.',
         }
       }
 
       const active = this.processes.get(projectPath)
       if (active?.runId === runId) {
         active.activePort = reachablePort
+        active.ready = true
       }
 
-      console.log(`[DevServerService] Ready on port ${reachablePort}`)
+      onOutput(`[DevServer] Ready on port ${reachablePort}\n`, 'stdout')
       return { success: true, port: reachablePort, runId }
-
     } catch (error) {
-      console.error('[DevServerService] Failed to start:', error)
+      this.disposeRun(projectPath, null)
       return {
         success: false,
         runId,
@@ -167,47 +179,37 @@ export class DevServerService {
     }
   }
 
-  /**
-   * Graceful shutdown that kills the whole process tree.
-   */
   public async stop(projectPath: string): Promise<{ success: boolean; error?: string }> {
     const entry = this.processes.get(projectPath)
     if (!entry) {
       return { success: true }
     }
 
+    entry.stopping = true
+
     try {
-      console.log(`[DevServerService] Stopping server for ${projectPath}`)
-
-      this.terminateProcessTree(entry.process, 'SIGTERM')
-      let exited = await this.waitForProcessExit(entry.process, 1500)
-
-      if (!exited) {
-        console.log(`[DevServerService] Force killing server for ${projectPath}`)
-        this.terminateProcessTree(entry.process, 'SIGKILL')
-        exited = await this.waitForProcessExit(entry.process, 1500)
-      }
-
-      if (!exited) {
-        return {
-          success: false,
-          error: 'Dev server process did not exit cleanly.',
-        }
-      }
-
-      if (typeof entry.activePort === 'number') {
-        const released = await this.waitForPortState(entry.activePort, false, 3000)
+      await this.terminalService.sendInput(entry.terminalId, '\u0003')
+      if (entry.activePort !== null) {
+        const released = await this.waitForPortState(entry.activePort, false, 5000)
         if (!released) {
-          console.warn(
-            `[DevServerService] Port ${entry.activePort} still appears in use after stopping ${projectPath}`,
-          )
+          await this.terminalService.sendInput(entry.terminalId, '\u0003')
+          const releasedAfterRetry = await this.waitForPortState(entry.activePort, false, 2500)
+          if (!releasedAfterRetry) {
+            entry.stopping = false
+            return {
+              success: false,
+              error: 'Dev server did not stop after sending Ctrl+C to the terminal.',
+            }
+          }
         }
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 300))
       }
 
-      this.processes.delete(projectPath)
+      this.disposeRun(projectPath, 0)
       return { success: true }
     } catch (error) {
-      console.error('[DevServerService] Error stopping process:', error)
+      entry.stopping = false
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
@@ -231,13 +233,37 @@ export class DevServerService {
     }
   }
 
-  /**
-   * Pings candidate ports continuously until one accepts a TCP socket connection.
-   */
-  private async waitForReachablePort(
+  private async handleUnexpectedStop(projectPath: string): Promise<void> {
+    const entry = this.processes.get(projectPath)
+    if (!entry || entry.activePort === null) {
+      return
+    }
+
+    const stillReachable = await this.waitForPortState(entry.activePort, true, 250)
+    if (stillReachable) {
+      return
+    }
+
+    this.disposeRun(projectPath, null)
+  }
+
+  private disposeRun(projectPath: string, exitCode: number | null): void {
+    const entry = this.processes.get(projectPath)
+    if (!entry) {
+      return
+    }
+
+    entry.disposed = true
+    entry.unsubscribeTerminal?.()
+    entry.unsubscribeTerminal = null
+    this.processes.delete(projectPath)
+    entry.onExit(exitCode)
+  }
+
+  private async waitForReadyPort(
     candidatePorts: Set<number>,
     timeoutMs: number,
-    isRunActive: () => boolean
+    isRunActive: () => boolean,
   ): Promise<number | null> {
     const startTime = Date.now()
 
@@ -245,8 +271,8 @@ export class DevServerService {
       if (!isRunActive()) return null
 
       for (const port of candidatePorts) {
-        const reachable = await this.checkPort(port)
-        if (reachable) {
+        const ready = await this.checkReadyPort(port)
+        if (ready) {
           return port
         }
         if (!isRunActive()) return null
@@ -256,6 +282,26 @@ export class DevServerService {
     }
 
     return null
+  }
+
+  private async checkReadyPort(port: number): Promise<boolean> {
+    const url = `http://127.0.0.1:${port}/`
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 1500)
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+      return response.ok || response.status >= 100
+    } catch {
+      return this.checkPort(port)
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   private async findAvailablePort(preferredPort: number, maxAttempts = 20): Promise<number> {
@@ -270,37 +316,6 @@ export class DevServerService {
     }
 
     throw new Error(`No available port found starting from ${preferredPort}`)
-  }
-
-  private terminateProcessTree(child: ExecaChildProcess, signal: NodeJS.Signals): void {
-    const childPid = child.pid
-    if (typeof childPid === 'number' && process.platform !== 'win32') {
-      try {
-        process.kill(-childPid, signal)
-        return
-      } catch {
-        // Fall through to direct child kill when the process group is already gone.
-      }
-    }
-
-    try {
-      child.kill(signal)
-    } catch {
-      // Ignore shutdown races.
-    }
-  }
-
-  private async waitForProcessExit(child: ExecaChildProcess, timeoutMs: number): Promise<boolean> {
-    const start = Date.now()
-
-    while (Date.now() - start <= timeoutMs) {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        return true
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    return child.exitCode !== null || child.signalCode !== null
   }
 
   private async waitForPortState(
@@ -341,4 +356,21 @@ export class DevServerService {
       socket.connect(port, '127.0.0.1')
     })
   }
+}
+
+function buildTerminalLaunchCommand(input: {
+  command: string
+  port: number
+  profileId: string | null
+}): string {
+  const { command, port, profileId } = input
+
+  if (process.platform === 'win32') {
+    if (profileId === 'powershell' || profileId === 'pwsh') {
+      return `$env:PORT='${port}'; $env:BROWSER='none'; ${command}`
+    }
+    return `set PORT=${port}&& set BROWSER=none&& ${command}`
+  }
+
+  return `env PORT=${port} BROWSER=none ${command}`
 }

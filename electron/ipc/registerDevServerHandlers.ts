@@ -45,11 +45,13 @@ export function registerDevServerHandlers(
         projectPath,
         command,
         port,
+        terminalId,
         runId,
       }: {
         projectPath: string
         command: string
         port: number
+        terminalId: string
         cols?: number
         rows?: number
         runId?: string
@@ -85,6 +87,7 @@ export function registerDevServerHandlers(
         projectPath,
         command: finalCommand,
         preferredPort: port,
+        terminalId,
         runId: resolvedRunId,
         onOutput: (output, stream) => {
           const mainWindow = deps.getMainWindow()

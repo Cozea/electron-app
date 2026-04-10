@@ -865,6 +865,7 @@ export interface DevServerStartOptions {
   projectPath: string
   command: string
   port: number
+  terminalId: string
   cols?: number
   rows?: number
   runId?: string
