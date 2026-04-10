@@ -326,6 +326,46 @@ What we intentionally did not copy:
 
 We translated the pattern into Cozea's workbench/tile architecture instead.
 
+#### 11a. Browser URL Submission Blank-Page Regression Fixed
+
+Updated:
+
+- `src/features/projects/browser/browserTileModel.ts`
+
+What was happening:
+
+- typing a URL into the browser omnibar could update persisted workbench tile state without actually navigating the live `WebContentsView`
+- the visible result was a blank browser surface until a later refresh or full reopen
+- this was especially confusing because the workbench tile would already show the new URL and sometimes even the new title after persistence/hydration, while the backing browser service still reported the old or empty page state
+
+Root cause:
+
+- `BrowserTileModel.initialize(...)` was treating `options.initialUrl` as if it had already been requested whenever the model was already initialized
+- that advanced `lastRequestedUrl` before `loadURL(...)` had a chance to call `workbenchBrowser:navigate`
+- once `loadURL(...)` saw the same `lastRequestedUrl`, it incorrectly skipped the real navigation call
+
+What changed:
+
+- the model now rehydrates `lastRequestedUrl` from the actual browser service state when reattaching to an existing tile
+- `loadURL(...)` now only skips navigation when both of these are already true:
+  - the last requested URL matches
+  - the current browser state URL matches and there is no load error
+
+Why this matters:
+
+- persisted tile state can no longer get ahead of the actual `WebContentsView`
+- changing the URL on an already-open browser tile now navigates immediately
+- browser reattachment remains cheap, but it no longer suppresses required first navigations after session reuse or renderer reload
+
+Live verification after the fix:
+
+- changing an already-open browser tile from `https://www.google.com/` to `example.com` updated:
+  - persisted workbench tile URL
+  - browser service state URL
+  - browser title
+  - visible browser content
+- no manual refresh was required
+
 #### 12. Dev-Server Tile Is Now A Browser-Or-Native Surface
 
 Added or restored:
@@ -351,6 +391,71 @@ This gives the dev-server tile the right shape:
 - it is derived from the browser surface for web previews
 - it is allowed to switch to native simulator presentation when the project/framework requires it
 - it keeps dev-server runtime alive across workbench switching
+
+#### 12a. Dev-Server Runtime Now Uses The Same PTY Terminal Stack
+
+Updated:
+
+- `electron/services/DevServerService.ts`
+- `electron/services/TerminalService.ts`
+- `src/hooks/useDevServerManager.ts`
+- `src/features/projects/components/workbench/WorkbenchDevServerTile.tsx`
+- `src/features/projects/hooks/useWorkbenchDockviewRuntime.ts`
+- `electron/ipc/registerDevServerHandlers.ts`
+- `shared/electronApiTypes.ts`
+
+What changed:
+
+- the dev-server runner no longer spawns a separate `execa` process path with a plain-text log buffer as its primary UI
+- each dev-server tile now binds to a real session-owned PTY terminal using the same workbench terminal infrastructure as the standalone terminal tile
+- the dev-server tile `Code` tab now renders `TerminalInstance` instead of a `<pre>` log view
+- stopping the dev server now sends `Ctrl+C` into that PTY-backed shell instead of treating the dev server as a separate detached process
+- explicitly removing the dev-server tile now releases:
+  - its browser surface
+  - its native preview session
+  - its bound PTY terminal
+
+Why this matters:
+
+- there is no longer a second-class dev-server terminal implementation
+- the user sees exactly the real shell session that started the dev server
+- terminal history, PTY behavior, key handling, link detection, GPU-backed xterm rendering, and session reattachment now all come from the same terminal stack
+- the dev-server tile no longer has to maintain a fake "logs" surface that diverges from the real terminal
+
+#### 12b. Dev-Server Readiness Is Now Main-Process-Owned
+
+Updated:
+
+- `electron/services/DevServerService.ts`
+- `src/hooks/useDevServerManager.ts`
+
+What changed:
+
+- the main process now owns dev-server readiness detection
+- the renderer no longer starts a second URL probe loop after `devServer:start` resolves
+- successful `devServer:start` now means:
+  - the command was sent to the PTY shell
+  - candidate localhost ports were observed
+  - the chosen preview port responded as ready
+
+Root problem before this change:
+
+- the main process considered the dev server "started" based on one set of checks
+- the renderer then ran a second readiness/probe pipeline
+- session snapshots could also seed a third "already ready" interpretation
+
+That split responsibility created status drift and odd cycles:
+
+- starting but not really ready
+- ready in one layer and unhealthy in another
+- preview state lagging behind the actual shell session
+
+The new contract is simpler:
+
+- main process owns start, stop, port discovery, and readiness
+- renderer reflects that state and renders the PTY + preview surfaces
+
+This is a much better fit for a local Electron app because the runtime authority stays close to the actual process and socket state.
 
 #### 13. Native Preview Is Now Session-Aware Instead Of Globally Ephemeral
 

@@ -125,13 +125,11 @@ export class BrowserTileModel {
         this.initialized = false
       } else {
         this.stateValue = toBrowserState(existingState)
+        this.lastRequestedUrl = existingState.url
         this.emit()
       }
 
       if (this.initialized) {
-        if (options.initialUrl) {
-          this.lastRequestedUrl = options.initialUrl
-        }
         return
       }
     }
@@ -176,7 +174,15 @@ export class BrowserTileModel {
   async loadURL(url: string): Promise<BrowserState> {
     await this.initialize({ initialUrl: url })
 
-    if (!url || this.lastRequestedUrl === url) {
+    if (!url) {
+      return this.stateValue
+    }
+
+    if (
+      this.lastRequestedUrl === url &&
+      this.stateValue.url === url &&
+      !this.stateValue.loadError
+    ) {
       return this.stateValue
     }
 
