@@ -230,8 +230,8 @@ export function NavUser({
             </AvatarFallback>
           </Avatar>
           <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate font-medium">{userData.name}</span>
-            <span className="truncate text-muted-foreground">{activePlanLabel}</span>
+            <span className="truncate font-normal text-sidebar-foreground">{userData.name}</span>
+            <span className="truncate font-normal text-muted-foreground">{activePlanLabel}</span>
           </div>
           <ChevronsUpDown className="ml-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>

@@ -187,7 +187,7 @@ function MenuGroupLabel({
   return (
     <MenuPrimitive.GroupLabel
       className={cn(
-        "px-2 py-1.5 font-medium text-muted-foreground text-xs data-inset:ps-8",
+        "px-2 py-1.5 font-normal text-muted-foreground text-xs data-inset:ps-8",
         className,
       )}
       data-inset={inset}
@@ -211,7 +211,7 @@ function MenuShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
     <kbd
       className={cn(
-        "ms-auto font-medium font-sans text-muted-foreground/72 text-xs tracking-widest",
+        "ms-auto font-normal font-sans text-muted-foreground/72 text-xs tracking-widest",
         className,
       )}
       data-slot="menu-shortcut"

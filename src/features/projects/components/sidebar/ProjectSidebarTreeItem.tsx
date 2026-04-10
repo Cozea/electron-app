@@ -208,7 +208,9 @@ export const ProjectSidebarTreeItem = React.memo(
           >
             <ProjectFavicon cwd={projectIconPath} />
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-              <span className="min-w-0 truncate">{project.name}</span>
+              <span className="min-w-0 truncate font-normal text-muted-foreground">
+                {project.name}
+              </span>
               <button
                 type="button"
                 className="ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm"

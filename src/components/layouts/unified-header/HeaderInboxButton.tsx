@@ -129,12 +129,12 @@ export function HeaderInboxButton() {
                           src={invite.ownerUser?.profileImageUrl ?? undefined}
                           alt={invite.ownerWorkspace?.name ?? "Owner"}
                         />
-                        <AvatarFallback className="text-xs font-semibold">
+                        <AvatarFallback className="text-xs font-normal">
                           {getWorkspaceInitial(invite.ownerWorkspace?.name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium leading-5 text-foreground">
+                        <p className="truncate text-sm font-normal leading-5 text-foreground">
                           {invite.project?.name ?? "Unknown Project"}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
