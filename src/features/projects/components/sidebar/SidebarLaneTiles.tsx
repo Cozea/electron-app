@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import {
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_NESTED_ROW_CLASS,
+  SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import { useStore } from "@/stores/assistant-store"
 import type { WorkbenchLaneSidebarSummary } from "@/stores/useProjectWorkbenchStore"
@@ -194,26 +195,28 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
   }
 
   return (
-    <div className="mt-0.5 space-y-1">
+    <div className="w-full space-y-0.5 pt-0.5">
       {agents.map((tile) => (
         <button
           key={tile.id}
           type="button"
           className={cn(
-            "w-full gap-2 pr-2 pl-6",
+            "w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
             resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
-          <ProviderGlyph
-            provider={tile.provider}
-            className={cn(
-              "size-3.5 shrink-0 text-muted-foreground/75",
-              resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
-            )}
-          />
-          <span className="min-w-0 flex-1 truncate">{tile.title}</span>
+          <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
+            <ProviderGlyph
+              provider={tile.provider}
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground/75",
+                resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate">{tile.title}</span>
+          </div>
           <AgentStatusPill threadId={tile.threadId} />
         </button>
       ))}
@@ -222,19 +225,21 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           key={tile.id}
           type="button"
           className={cn(
-            "w-full gap-2 pr-2 pl-6",
+            "w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
             resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
-          <SquareTerminal
-            className={cn(
-              "size-3.5 shrink-0 text-muted-foreground/75",
-              resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
-            )}
-          />
-          <span className="min-w-0 flex-1 truncate">{tile.title}</span>
+          <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
+            <SquareTerminal
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground/75",
+                resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate">{tile.title}</span>
+          </div>
         </button>
       ))}
     </div>

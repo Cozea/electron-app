@@ -4,7 +4,11 @@ import * as React from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
-import { ArrowLeftIcon as ArrowLeft, ArrowPathIcon as Loader2, PencilSquareIcon as SquarePen } from "@heroicons/react/24/outline"
+import {
+  ArrowLeftIcon as ArrowLeft,
+  ArrowPathIcon as Loader2,
+  PlusIcon,
+} from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
@@ -656,7 +660,7 @@ export function ProjectSidebar({
                 className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
                 onClick={(event) => void openProjectCreationMenu(event)}
               >
-                <SquarePen />
+                <PlusIcon />
                 <span className="truncate">New project</span>
               </button>
             </div>

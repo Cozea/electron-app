@@ -668,7 +668,7 @@ export function HeaderProjectShareButton({
           <DialogTitle>Share project</DialogTitle>
           <DialogDescription>
             Invite collaborators to{" "}
-            <span className="font-medium text-foreground">{projectName ?? "this project"}</span>.
+            <span className="font-normal text-foreground">{projectName ?? "this project"}</span>.
           </DialogDescription>
         </DialogHeader>
 
@@ -769,7 +769,7 @@ export function HeaderProjectShareButton({
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <span className="block truncate text-sm font-medium">
+                              <span className="block truncate text-sm font-normal text-foreground">
                                 {contactName}
                               </span>
                               <div className="flex items-center gap-2">
@@ -777,12 +777,12 @@ export function HeaderProjectShareButton({
                                   {contact.email}
                                 </span>
                                 {isExistingMember ? (
-                                  <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                  <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-normal text-primary">
                                     In project
                                   </span>
                                 ) : null}
                                 {isExistingInvite ? (
-                                  <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                  <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-normal text-amber-600 dark:text-amber-400">
                                     Pending
                                   </span>
                                 ) : null}
@@ -950,7 +950,7 @@ export function HeaderProjectShareButton({
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="min-w-0">
-                                  <span className="block max-w-[220px] truncate font-medium">
+                                  <span className="block max-w-[220px] truncate font-normal text-foreground">
                                     {inviteeName}
                                   </span>
                                   <span className="block max-w-[220px] truncate text-xs text-muted-foreground">
@@ -1010,7 +1010,7 @@ export function HeaderProjectShareButton({
 
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">{inviteMembers.length}</span>{" "}
+                    <span className="font-normal tabular-nums text-foreground">{inviteMembers.length}</span>{" "}
                     members added
                   </span>
                   <Button

@@ -100,6 +100,21 @@ function toPtyEnv(env: NodeJS.ProcessEnv, extra?: Record<string, string>): Recor
     return normalized
 }
 
+/** GUI / packaged apps often inherit no `TERM` or `TERM=dumb`, which breaks ncurses, colors, and prompts. */
+function isCapableTerm(term: string | undefined): boolean {
+    if (!term) return false
+    const t = term.toLowerCase()
+    return t !== 'dumb' && t !== 'unknown'
+}
+
+function defaultTermEnvForPty(resolvedTerm: string | undefined): Record<string, string> {
+    if (isCapableTerm(resolvedTerm)) return {}
+    return {
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+    }
+}
+
 function isWindowsExecutableAvailable(executable: string): boolean {
     if (process.platform !== 'win32') return false
     const cached = windowsExecutableCache.get(executable)
@@ -343,6 +358,8 @@ export class TerminalService {
 
                 for (const candidate of profileCandidates) {
                     try {
+                        const profileEnv = { ...(candidate.env ?? {}), ...(options.env ?? {}) }
+                        const effectiveTerm = profileEnv.TERM ?? runtimeEnv.TERM
                         ptyProcess = pty.spawn(
                             {
                                 executable: candidate.path,
@@ -351,8 +368,8 @@ export class TerminalService {
                                 cols,
                                 rows,
                                 env: toPtyEnv(runtimeEnv, {
-                                    ...(candidate.env ?? {}),
-                                    ...(options.env ?? {}),
+                                    ...defaultTermEnvForPty(effectiveTerm),
+                                    ...profileEnv,
                                 }),
                             },
                             (data) => {

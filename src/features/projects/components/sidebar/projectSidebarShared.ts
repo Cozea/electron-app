@@ -19,7 +19,7 @@ export const SIDEBAR_PILL_ACTIVE_CLASS =
 
 /** Section titles (Projects, Workspace, …) — one style everywhere */
 export const SIDEBAR_GROUP_LABEL_CLASS =
-  "px-2 text-[14px] font-medium tracking-[-0.01em] text-muted-foreground/70"
+  "px-2 text-[14px] font-normal tracking-[-0.01em] text-muted-foreground/70"
 
 /**
  * Primary nav row: same height, gap, label + icon color rules as `SidebarMenuButton variant="pill"`.
@@ -41,11 +41,17 @@ export const SETTINGS_DRAWER_NAV_ROW_CLASS = cn(
   "overflow-hidden outline-hidden ring-sidebar-ring focus-visible:ring-2 [&>span:last-child]:truncate",
 )
 
-/** Nested rows (lane / tile under a project): same h-8 + typography as primary nav */
+/**
+ * Workbench tile row: full-width hover/active pill (`px-2` matches project row).
+ * Indent labels/icons with `SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS` inside the button.
+ */
 export const SIDEBAR_PILL_NESTED_ROW_CLASS = cn(
   SIDEBAR_PILL_HOVER_CLASS,
-  "flex h-8 min-h-8 w-full items-center rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground/70 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground/75",
+  "flex h-8 min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground/70",
 )
+
+/** Indented block inside a nested row (icon + primary label) — pill stays full width */
+export const SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS = "flex min-w-0 flex-1 items-center gap-2 ps-3"
 
 export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   id: string

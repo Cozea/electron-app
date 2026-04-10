@@ -53,7 +53,7 @@ export function WorkspaceIdentityPicker({
             size="lg"
           />
           <div className="min-w-0">
-            <div className="text-sm font-medium">{workspaceName || 'Workspace'}</div>
+            <div className="text-sm font-normal text-foreground">{workspaceName || 'Workspace'}</div>
             <div className="text-xs text-muted-foreground">
               {isDefaultIdentity ? 'Default workspace style' : 'Custom workspace style'}
             </div>
