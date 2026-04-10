@@ -5,8 +5,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import { extractTerminalLinks, isTerminalLinkActivation, resolvePathLinkTarget } from '@/lib/terminalLinks'
 
 import { SearchAddon } from '@xterm/addon-search'
-
-import '@xterm/xterm/css/xterm.css'
 import { cn } from '@/lib/utils'
 
 import { useTerminalActions, useTerminalStore } from '@/stores/useTerminalStore'
