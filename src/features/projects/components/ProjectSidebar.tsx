@@ -63,6 +63,11 @@ import {
 import { primeLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectRenameDialog } from "./ProjectRenameDialog";
+import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
+import {
+  hasRecentProjectOpenSync,
+  markRecentProjectOpenSync,
+} from "@/features/projects/lib/recentProjectOpenSync";
 
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -92,6 +97,7 @@ export function ProjectSidebar({
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { convexUserId } = useAuth();
   const { personalScoped, convexOrganizationId, workspaceScoped } = useScopedAppContext();
+  const projectRouteContext = useOptionalProjectRouteContext();
   const { project: currentProject, projectIdParam } = useAccessibleProject();
   const projectSyncContext = useOptionalProjectSyncContext();
   const currentProjectId = providedProjectId
@@ -99,7 +105,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentProjectPath = projectSyncContext?.projectPath ?? null;
+  const currentProjectPath = projectSyncContext?.projectPath ?? projectRouteContext?.localPath ?? null;
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
@@ -312,15 +318,6 @@ export function ProjectSidebar({
         }
       }
 
-      try {
-        await window.electronAPI.project.setActiveLane({
-          projectId: project.id,
-          laneId,
-        });
-      } catch (error) {
-        console.warn("[ProjectSidebar] Failed to switch lane", error);
-      }
-
       navigate(buildWorkbenchHref(project.id, laneId, nextOptions));
     },
     [navigate],
@@ -380,11 +377,35 @@ export function ProjectSidebar({
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, localPath: string | null) => {
+      const candidateLocalPath =
+        localPath?.trim() || project.localPath?.trim() || null;
+
       try {
+        if (candidateLocalPath) {
+          const pathExists = await window.electronAPI.project.pathExists(candidateLocalPath);
+          if (pathExists) {
+            primeLocalProjectPath(project.id, candidateLocalPath, project.slug);
+            markRecentProjectOpenSync(project.id);
+            navigate(buildProjectPath(project.id, "workbench"), {
+              state: {
+                projectId: project.id,
+                projectSlug: project.slug,
+                projectName: project.name,
+                projectTemplate: project.template ?? undefined,
+                localPath: candidateLocalPath,
+                syncMode: project.syncMode === "git" || hasRecentProjectOpenSync(project.id)
+                  ? "git"
+                  : undefined,
+              },
+            });
+            return;
+          }
+        }
+
         const gitOpenResult = await prepareGitProjectForOpen({
           convex,
           project,
-          localPath,
+          localPath: candidateLocalPath,
           userId: convexUserId,
           updateMemberLocalPath: convexUserId ? updateMemberLocalPath : undefined,
         });
@@ -392,6 +413,7 @@ export function ProjectSidebar({
         if (gitOpenResult.cancelled) {
           if (gitOpenResult.needsConflictResolution) {
             primeLocalProjectPath(project.id, gitOpenResult.localPath, project.slug);
+            markRecentProjectOpenSync(project.id);
             navigate(buildProjectPath(project.id, "conflicts"), {
               state: {
                 projectId: project.id,
@@ -407,6 +429,7 @@ export function ProjectSidebar({
         }
 
         primeLocalProjectPath(project.id, gitOpenResult.localPath, project.slug);
+        markRecentProjectOpenSync(project.id);
         navigate(buildProjectPath(project.id, "workbench"), {
           state: {
             projectId: project.id,

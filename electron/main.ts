@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import net from 'node:net'
@@ -68,6 +68,7 @@ const DEFAULT_PROTOCOL = VITE_DEV_SERVER_URL ? 'cozea-dev' : 'cozea'
 const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
 const LEGACY_PROTOCOL = 'cozea'
 const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
+const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const ASSISTANT_RUNTIME_WS_URL =
   process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || 'ws://127.0.0.1:3773'
 const ASSISTANT_RUNTIME_WS_URL_ARG = `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
@@ -139,6 +140,14 @@ function sendNavigateEvent(path: string): void {
   const emitNavigate = () => {
     if (targetWindow.isDestroyed()) return
     targetWindow.webContents.send('navigate', path)
+    setTimeout(() => {
+      if (!isBrowserWindowAlive(targetWindow)) return
+      targetWindow.webContents.send('navigate', path)
+    }, 120)
+    setTimeout(() => {
+      if (!isBrowserWindowAlive(targetWindow)) return
+      targetWindow.webContents.send('navigate', path)
+    }, 360)
   }
 
   if (targetWindow.webContents.isLoadingMainFrame()) {
@@ -146,6 +155,85 @@ function sendNavigateEvent(path: string): void {
   } else {
     emitNavigate()
   }
+}
+
+function extractNavigationPathFromFileUrl(rawUrl: string): string | null {
+  try {
+    const parsedUrl = new URL(rawUrl)
+    if (parsedUrl.protocol !== 'file:') {
+      return null
+    }
+
+    const filePath = fileURLToPath(parsedUrl)
+    const resolvedFilePath = path.resolve(filePath)
+    const rendererIndexPath = path.resolve(path.join(RENDERER_DIST, 'index.html'))
+
+    if (resolvedFilePath === rendererIndexPath) {
+      const bootstrapRoute = parsedUrl.searchParams.get(RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY)
+      if (bootstrapRoute && bootstrapRoute.startsWith('/')) {
+        return bootstrapRoute
+      }
+      if (parsedUrl.hash.startsWith('#/')) {
+        return `${parsedUrl.hash.slice(1)}${parsedUrl.search}`
+      }
+      return null
+    }
+
+    if (fs.existsSync(resolvedFilePath)) {
+      return null
+    }
+
+    return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+  } catch {
+    return null
+  }
+}
+
+function extractRendererRoutePath(rawUrl: string): string | null {
+  if (!rawUrl) return null
+
+  const protocolPath = extractNavigationPath(rawUrl)
+  if (protocolPath) {
+    return protocolPath
+  }
+
+  if (VITE_DEV_SERVER_URL) {
+    try {
+      const parsedUrl = new URL(rawUrl)
+      if (DEV_SERVER_ORIGIN && parsedUrl.origin === DEV_SERVER_ORIGIN) {
+        return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+      }
+    } catch {
+      // fall through to file-url handling
+    }
+  }
+
+  return extractNavigationPathFromFileUrl(rawUrl)
+}
+
+async function loadRendererAtRoute(
+  targetWindow: AppBrowserWindow,
+  routePath: string | null,
+): Promise<void> {
+  if (VITE_DEV_SERVER_URL) {
+    if (routePath) {
+      const targetUrl = new URL(routePath, VITE_DEV_SERVER_URL)
+      await targetWindow.loadURL(targetUrl.toString())
+      return
+    }
+
+    await targetWindow.loadURL(VITE_DEV_SERVER_URL)
+    return
+  }
+
+  if (routePath && routePath !== '/') {
+    const rendererBootstrapUrl = pathToFileURL(path.join(RENDERER_DIST, 'index.html'))
+    rendererBootstrapUrl.searchParams.set(RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY, routePath)
+    await targetWindow.loadURL(rendererBootstrapUrl.toString())
+    return
+  }
+
+  await targetWindow.loadFile(path.join(RENDERER_DIST, 'index.html'))
 }
 
 // Lazy-loaded paths (app.getPath not available at module load time in ESM)
@@ -1138,6 +1226,7 @@ function createWindow() {
   const isWindows = process.platform === 'win32'
   const isReleaseBuild = app.isPackaged
   const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
+  let routeRecoveryInFlight = false
 
   // Load window state
   const mainWindowState = windowStateKeeper({
@@ -1179,6 +1268,44 @@ function createWindow() {
   })
 
   attachPreviewDebugLogging(win, 'main')
+
+  const reloadCurrentRendererRoute = () => {
+    const targetWindow = win
+    if (!isBrowserWindowAlive(targetWindow)) return
+
+    const routePath = extractRendererRoutePath(targetWindow.webContents.getURL())
+    void loadRendererAtRoute(targetWindow, routePath).catch((error) => {
+      console.error('[Renderer:main] Failed to reload current route', error)
+    })
+  }
+
+  win.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, _errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame || routeRecoveryInFlight) {
+        return
+      }
+
+      const routePath = extractRendererRoutePath(validatedURL)
+      if (!routePath) {
+        return
+      }
+
+      const targetWindow = win
+      if (!isBrowserWindowAlive(targetWindow)) {
+        return
+      }
+
+      routeRecoveryInFlight = true
+      void loadRendererAtRoute(targetWindow, routePath)
+        .catch((error) => {
+          console.error('[Renderer:main] Failed to recover renderer route load', error)
+        })
+        .finally(() => {
+          routeRecoveryInFlight = false
+        })
+    }
+  )
 
   // Set application menu
   createApplicationMenu({
@@ -1230,6 +1357,9 @@ function createWindow() {
         ((input.control || input.meta) && input.shift && key === 'i')
       if (isReloadShortcut || isDevToolsShortcut) {
         event.preventDefault()
+        if (isReloadShortcut) {
+          reloadCurrentRendererRoute()
+        }
       }
     })
   } else {
@@ -1237,10 +1367,17 @@ function createWindow() {
     // even when focus is inside embedded terminals.
     win.webContents.on('before-input-event', (event, input) => {
       const key = input.key.toLowerCase()
+      const isReloadShortcut = input.key === 'F5' || (input.control || input.meta) && key === 'r'
       const isDevToolsShortcut =
         input.key === 'F12' ||
         ((input.control || input.meta) && input.alt && key === 'i') ||
         ((input.control || input.meta) && input.shift && key === 'i')
+
+      if (isReloadShortcut) {
+        event.preventDefault()
+        reloadCurrentRendererRoute()
+        return
+      }
 
       if (isDevToolsShortcut) {
         event.preventDefault()

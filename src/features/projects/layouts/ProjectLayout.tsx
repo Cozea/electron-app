@@ -29,6 +29,10 @@ import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { getWorkspaceSelectionId } from "@shared/types";
 import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
+import {
+  ProjectRouteContext,
+  type ProjectRouteSlugResolutionResult,
+} from "@/features/projects/contexts/ProjectRouteContext";
 
 interface ProjectLayoutProps {
   children?: ReactNode;
@@ -37,6 +41,7 @@ interface ProjectLayoutProps {
 interface ProjectLayoutLocationState {
   syncMode?: "git";
   localPath?: string | null;
+  projectName?: string | null;
   pendingTeamSetup?: Array<{
     email: string;
     name?: string;
@@ -109,6 +114,7 @@ export function ProjectLayout({
     shouldSkipInitialSyncCheck,
   ]);
   const projectSlug = project?.slug ?? routeSlug ?? null;
+  const effectiveProjectName = project?.name ?? locationState?.projectName ?? null;
   const projectBasePath = routeProjectId
     ? buildProjectPath(routeProjectId)
     : project?._id
@@ -320,7 +326,7 @@ export function ProjectLayout({
     workspaceScoped,
     presencePreSearchAddon: presenceHeaderAddon,
     projectId: collaborationProjectId,
-    projectName: project?.name ?? null,
+    projectName: effectiveProjectName,
     editorProjectPath: effectiveLocalPath ?? null,
   });
 
@@ -374,17 +380,42 @@ export function ProjectLayout({
     </SidebarProvider>
   );
 
+  const projectRouteContextValue = useMemo(
+    () => ({
+      project,
+      projectIdParam: routeProjectId ?? null,
+      slugParam: routeSlug ?? null,
+      slugResolution: (!routeProjectId ? freshProjectBySlug : undefined) as
+        | ProjectRouteSlugResolutionResult
+        | undefined,
+      localPath: effectiveLocalPath ?? null,
+      projectBasePath,
+      projectName: effectiveProjectName,
+    }),
+    [
+      effectiveProjectName,
+      effectiveLocalPath,
+      freshProjectBySlug,
+      project,
+      projectBasePath,
+      routeProjectId,
+      routeSlug,
+    ],
+  );
+
   return (
-    <ProjectSyncProvider
-      projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-      userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-      userName={user?.firstName || user?.email || "User"}
-      projectSlug={projectSlug}
-      localPath={runtimeProjectPath}
-      lastSyncAt={project?.lastSyncAt}
-      skipInitialSyncCheck={shouldSkipInitialSyncCheck}
-    >
-      {layoutContent}
-    </ProjectSyncProvider>
+    <ProjectRouteContext.Provider value={projectRouteContextValue}>
+      <ProjectSyncProvider
+        projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+        userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
+        userName={user?.firstName || user?.email || "User"}
+        projectSlug={projectSlug}
+        localPath={runtimeProjectPath}
+        lastSyncAt={project?.lastSyncAt}
+        skipInitialSyncCheck={shouldSkipInitialSyncCheck}
+      >
+        {layoutContent}
+      </ProjectSyncProvider>
+    </ProjectRouteContext.Provider>
   );
 }

@@ -1,5 +1,13 @@
 import { Debouncer } from "@tanstack/react-pacer";
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import type {
   DockviewApi,
   DockviewReadyEvent,
@@ -157,6 +165,43 @@ export function useWorkbenchDockviewRuntime(
     });
   }, []);
 
+  const hydrateDockviewPanels = useCallback(
+    (api: DockviewApi) => {
+      if (!input.projectId || !input.projectWorkbench) {
+        return;
+      }
+
+      api.clear();
+
+      if (input.persistedLayout) {
+        try {
+          api.fromJSON(input.persistedLayout, { reuseExistingPanels: false });
+          syncPanelTitles(api, input.projectWorkbench);
+        } catch (error) {
+          console.warn("[WorkbenchDockview] Failed to restore persisted layout", error);
+        }
+      }
+
+      if (api.totalPanels === 0) {
+        buildDefaultDockview(api, input.projectWorkbench, input.projectId, input.activeLaneId);
+      }
+
+      if (input.projectWorkbench.activeTileId) {
+        api.getPanel(input.projectWorkbench.activeTileId)?.api.setActive();
+      }
+
+      syncPanelTitles(api, input.projectWorkbench);
+      scheduleSeamZoneUpdate();
+    },
+    [
+      input.activeLaneId,
+      input.persistedLayout,
+      input.projectId,
+      input.projectWorkbench,
+      scheduleSeamZoneUpdate,
+    ],
+  );
+
   const saveLayout = useCallback(() => {
     if (!input.projectId) return;
     if (Object.keys(selectionPreviewTilesRef.current).length > 0) {
@@ -233,18 +278,22 @@ export function useWorkbenchDockviewRuntime(
     };
   }, [input.workbenchScopeKey]);
 
-  useEffect(() => {
-    dockviewApiRef.current = null;
-    hydratedProjectKeyRef.current = null;
-    lastReconciledOrderRef.current = null;
-    lastReconciledTilesRef.current = null;
-    transientSelectionTileIdRef.current = null;
-    selectionPreviewTilesRef.current = {};
-    setSelectionPreviewTiles({});
-    setSeamZones([]);
-    edgeInsertionArmedRef.current = false;
-    setEdgeInsertionArmed(false);
-    setDockviewReadyScopeKey(null);
+  useLayoutEffect(() => {
+    return () => {
+      // Reset runtime refs during the previous scope's cleanup so a newly-mounted
+      // Dockview instance can't be clobbered by a late passive effect from the old one.
+      dockviewApiRef.current = null;
+      hydratedProjectKeyRef.current = null;
+      lastReconciledOrderRef.current = null;
+      lastReconciledTilesRef.current = null;
+      transientSelectionTileIdRef.current = null;
+      selectionPreviewTilesRef.current = {};
+      edgeInsertionArmedRef.current = false;
+      setSelectionPreviewTiles({});
+      setSeamZones([]);
+      setEdgeInsertionArmed(false);
+      setDockviewReadyScopeKey(null);
+    };
   }, [input.workbenchScopeKey]);
 
   useEffect(() => {
@@ -264,18 +313,7 @@ export function useWorkbenchDockviewRuntime(
 
     hydratedProjectKeyRef.current = hydrationKey;
 
-    if (input.persistedLayout) {
-      api.clear();
-      api.fromJSON(input.persistedLayout, { reuseExistingPanels: false });
-      syncPanelTitles(api, input.projectWorkbench);
-    } else {
-      buildDefaultDockview(api, input.projectWorkbench, input.projectId, input.activeLaneId);
-    }
-
-    if (input.projectWorkbench.activeTileId) {
-      api.getPanel(input.projectWorkbench.activeTileId)?.api.setActive();
-    }
-    scheduleSeamZoneUpdate();
+    hydrateDockviewPanels(api);
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
@@ -284,6 +322,7 @@ export function useWorkbenchDockviewRuntime(
     input.projectId,
     input.projectWorkbench,
     input.workbenchScopeKey,
+    hydrateDockviewPanels,
     scheduleSeamZoneUpdate,
   ]);
 
@@ -335,6 +374,36 @@ export function useWorkbenchDockviewRuntime(
     input.workbenchScopeKey,
     previewTileIds,
     scheduleSeamZoneUpdate,
+  ]);
+
+  useEffect(() => {
+    const api = dockviewApiRef.current;
+    if (
+      !api ||
+      !input.projectId ||
+      !input.projectWorkbench ||
+      dockviewReadyScopeKey !== input.workbenchScopeKey
+    ) {
+      return;
+    }
+
+    const hasRenderableTiles = input.projectWorkbench.order.some((tileId) => {
+      const tile = input.projectWorkbench?.tiles[tileId];
+      return tile && !isObsoleteWorkbenchTile(tile) && !previewTileIds.has(tileId);
+    });
+
+    if (!hasRenderableTiles || api.totalPanels > 0) {
+      return;
+    }
+
+    hydrateDockviewPanels(api);
+  }, [
+    dockviewReadyScopeKey,
+    hydrateDockviewPanels,
+    input.projectId,
+    input.projectWorkbench,
+    input.workbenchScopeKey,
+    previewTileIds,
   ]);
 
   useEffect(() => {

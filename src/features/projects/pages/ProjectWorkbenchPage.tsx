@@ -44,15 +44,18 @@ import {
 import { useWorkbenchSessionLifecycle } from "@/features/projects/hooks/useWorkbenchSessionLifecycle";
 import { ProjectSettingsPage } from "@/features/projects/pages/ProjectSettingsPage";
 import { getWorkspaceSelectionId } from "@shared/types";
+import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 
 function getTaskOverlayKey(task: TaskOverlayPayload): string {
   return `${task.projectId}:${task.source}:${task.storageId}`;
 }
 
 export function ProjectWorkbenchPage() {
+  const projectRouteContext = useOptionalProjectRouteContext();
   const { project, projectIdParam } = useAccessibleProject();
   const syncContext = useOptionalProjectSyncContext();
-  const projectPath = syncContext?.projectPath ?? null;
+  const projectPath = syncContext?.projectPath ?? projectRouteContext?.localPath ?? null;
+  const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = project?._id ? String(project._id) : projectIdParam ?? null;
@@ -143,9 +146,9 @@ export function ProjectWorkbenchPage() {
         <div className="flex h-6 min-w-0 max-w-full items-center">
           <div
             className="flex h-6 min-w-0 max-w-[320px] items-center px-2.5 text-xs font-medium text-foreground"
-            title={project?.name ?? "Project"}
+            title={projectName}
           >
-            <span className="block truncate">{project?.name ?? "Project"}</span>
+            <span className="block truncate">{projectName}</span>
           </div>
           <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
           <WorkbenchHeaderBranchControl
@@ -177,7 +180,7 @@ export function ProjectWorkbenchPage() {
       laneState,
       project,
       project?._id,
-      project?.name,
+      projectName,
       projectId,
       projectPath,
       refreshLaneState,
@@ -312,7 +315,7 @@ export function ProjectWorkbenchPage() {
       projectId={projectId}
       laneId={activeLaneId}
       projectPath={activeWorkbenchPath}
-      projectName={project?.name ?? null}
+      projectName={projectName}
       workspaceId={workspaceSelectionId}
       framework={project?.frameworkInfo?.framework ?? null}
       storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
