@@ -12,6 +12,7 @@ import type {
   ImportSourcePreflightIssue,
   ImportSourcePreflightResult,
   ListFilesResult,
+  ProjectPathNativeIconResult,
   ReadFileBase64Result,
   ReadFileResult,
   WatchProjectResult,
@@ -654,6 +655,14 @@ npm-debug.log*
         }
       }
     },
+  )
+
+  ipcMain.handle(
+    'project:getPathNativeIcon',
+    async (): Promise<ProjectPathNativeIconResult> => ({
+      success: false,
+      error: 'Native project icons are temporarily disabled.',
+    }),
   )
 
   ipcMain.handle(

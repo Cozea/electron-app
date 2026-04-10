@@ -10,13 +10,11 @@ function normalizeOpenTargetParam(
   value: string | null,
 ):
   | "changes"
-  | Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">
+  | Extract<WorkbenchTileType, "terminal" | "assistantChat">
   | null {
   if (
     value === "changes" ||
-    value === "browser" ||
     value === "terminal" ||
-    value === "devServer" ||
     value === "assistantChat"
   ) {
     return value
@@ -29,7 +27,7 @@ export interface WorkbenchSearchParamIntent {
   requestedLaneId: string | null
   requestedOpenTarget:
     | "changes"
-    | Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">
+    | Extract<WorkbenchTileType, "terminal" | "assistantChat">
     | null
   requestedFocusTileId: string | null
   shouldWaitForLaneNavigation: boolean
@@ -73,7 +71,7 @@ interface UseProjectWorkbenchSearchParamSyncProps {
   replaceSearchParams: (nextParams: URLSearchParams) => void
   refreshLaneState: () => Promise<unknown>
   openWorkbenchTarget: (
-    target: Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">,
+    target: Extract<WorkbenchTileType, "terminal" | "assistantChat">,
   ) => void
   focusWorkbenchTile: (tileId: string) => void
 }

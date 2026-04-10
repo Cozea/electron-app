@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type {
   BrowserFindInPageOptions,
   BrowserFindState,
@@ -34,6 +34,9 @@ export interface WorkbenchBrowserViewState {
 interface UseWorkbenchBrowserViewOptions {
   tileId: string
   url: string
+  projectId: string
+  laneId: string
+  projectPath?: string | null
   visible?: boolean
   overlaySelector?: string
   storageScope?: BrowserStorageScope
@@ -46,7 +49,7 @@ interface UseWorkbenchBrowserViewOptions {
 }
 
 interface UseWorkbenchBrowserViewResult {
-  hostRef: React.RefObject<HTMLDivElement | null>
+  hostRef: RefObject<HTMLDivElement | null>
   state: WorkbenchBrowserViewState
   boundsReady: boolean
   overlayPaused: boolean
@@ -87,6 +90,9 @@ export function useWorkbenchBrowserView(
   const {
     tileId,
     url,
+    projectId,
+    laneId,
+    projectPath,
     visible = true,
     overlaySelector = '[data-workbench-browser-overlay="true"]',
     storageScope = "workspace",
@@ -133,6 +139,27 @@ export function useWorkbenchBrowserView(
   const lastRequestedUrlRef = useRef<string>(url)
 
   useEffect(() => {
+    void window.electronAPI.workbenchSession
+      .ensureSession({
+        projectId,
+        laneId,
+        projectPath,
+      })
+      .then(() =>
+        window.electronAPI.workbenchSession.bindBrowser({
+          projectId,
+          laneId,
+          tileId,
+          browserTileId: tileId,
+          projectPath,
+        }),
+      )
+      .catch((error) => {
+        console.warn("[WorkbenchBrowser] Failed to bind browser tile to session", error)
+      })
+  }, [laneId, projectId, projectPath, tileId])
+
+  useEffect(() => {
     setState((current) => {
       if (current.tileId === tileId) return current
       return {
@@ -170,8 +197,6 @@ export function useWorkbenchBrowserView(
     const unsubscribe = model.subscribe((nextState) => {
       setState(nextState)
       if (nextState.url && nextState.url !== url) {
-        // Treat browser-observed URL changes as already-synced so the follow-up
-        // store update does not trigger a redundant navigate() and reload cycle.
         lastRequestedUrlRef.current = nextState.url
         onUrlObserved?.(nextState.url)
       }
@@ -230,6 +255,12 @@ export function useWorkbenchBrowserView(
   }, [storageScope, tileId, url, workspaceId])
 
   useEffect(() => {
+    if (!visible || !url) {
+      setHasOverlappingOverlay(false)
+      setOverlayPauseReason(null)
+      return
+    }
+
     const element = hostRef.current
     if (!element) return
 
@@ -338,15 +369,23 @@ export function useWorkbenchBrowserView(
 
   useEffect(() => {
     const element = hostRef.current
-    if (!element) return
     const model = modelRef.current
     if (!model) return
+
+    if (!visible || !url) {
+      lastSentBoundsRef.current = null
+      void model.setVisible(false)
+      setBoundsReady(false)
+      return
+    }
+
+    if (!element) return
 
     let frame = 0
 
     const syncBounds = () => {
       const rect = element.getBoundingClientRect()
-      
+
       const inset = 1
       const x = Math.ceil(rect.left) + inset
       const y = Math.ceil(rect.top) + inset

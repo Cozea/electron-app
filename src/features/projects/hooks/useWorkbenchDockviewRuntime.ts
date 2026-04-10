@@ -9,11 +9,12 @@ import type {
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectWorkbenchStore";
 import {
   buildWorkbenchScopeKey,
-  isWorkbenchSingletonTile,
   type WorkbenchProjectState,
   type WorkbenchTileType,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
+import { useTerminalStore } from "@/stores/useTerminalStore";
+import { disposeBrowserTileModel } from "@/features/projects/browser/browserTileModel";
 import {
   EDGE_TO_DOCK_DIRECTION,
   SEAM_DIRECTION_TO_EDGE,
@@ -28,7 +29,6 @@ import {
 } from "@/features/projects/lib/workbenchDockview";
 import type { WorkbenchInsertionEdge } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
 import type { SeamZone } from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
-import { disposeBrowserTileModel } from "@/features/projects/browser/browserTileModel";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
 
 const EDGE_INSERTION_ARM_INSET = 28;
@@ -36,6 +36,7 @@ const EDGE_INSERTION_ARM_INSET = 28;
 interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
   activeLaneId: string;
+  projectPath: string | null;
   projectWorkbench: WorkbenchProjectState | null;
   workbenchScopeKey: string | null;
   isLayoutPersistenceReady: boolean;
@@ -51,7 +52,7 @@ interface UseWorkbenchDockviewRuntimeResult {
   handleWorkbenchPointerLeave: () => void;
   handleResolveSelectionTile: (
     selectionTileId: string,
-    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "terminal" | "devServer">,
+    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">,
   ) => void;
   handleDuplicateAssistantTile: (sourceTileId: string) => void;
   handleEdgeActivate: (edge: WorkbenchInsertionEdge) => void;
@@ -95,6 +96,7 @@ export function useWorkbenchDockviewRuntime(
   const lastReconciledTilesRef = useRef<Record<string, WorkbenchTile> | null>(null);
   const edgeInsertionArmedRef = useRef(false);
   const seamZoneRafRef = useRef<number | null>(null);
+  const isDestroyingRef = useRef(false);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
   const selectionPreviewTilesRef = useRef<Record<string, WorkbenchSelectionTile>>({});
@@ -223,6 +225,13 @@ export function useWorkbenchDockviewRuntime(
     layoutResetKeyRef.current = input.projectWorkbench?.layoutResetKey ?? 0;
     workbenchScopeKeyRef.current = input.workbenchScopeKey;
   }, [input.projectWorkbench?.layoutResetKey, input.workbenchScopeKey]);
+
+  useEffect(() => {
+    isDestroyingRef.current = false;
+    return () => {
+      isDestroyingRef.current = true;
+    };
+  }, [input.workbenchScopeKey]);
 
   useEffect(() => {
     dockviewApiRef.current = null;
@@ -396,7 +405,7 @@ export function useWorkbenchDockviewRuntime(
   const handleResolveSelectionTile = useCallback(
     (
       selectionTileId: string,
-      type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "terminal" | "devServer">,
+      type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">,
     ) => {
       if (!input.projectId) return;
 
@@ -408,22 +417,10 @@ export function useWorkbenchDockviewRuntime(
         null;
       if (!api || !isSelectionTile(selectionTile)) return;
 
-      if (isWorkbenchSingletonTile(type)) {
-        const existingSingletonId = liveProject?.order.find(
-          (tileId) => liveProject.tiles[tileId]?.type === type,
-        );
-        if (existingSingletonId) {
-          workbenchActions.setActiveTile(input.projectId, input.activeLaneId, existingSingletonId);
-          api.getPanel(existingSingletonId)?.api.setActive();
-          api.getPanel(selectionTileId)?.api.close();
-          transientSelectionTileIdRef.current = null;
-          return;
-        }
-      }
-
-      const tileId = isWorkbenchSingletonTile(type)
-        ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, type)
-        : workbenchActions.addTile(input.projectId, input.activeLaneId, type);
+      const tileId =
+        type === "devServer"
+          ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, "devServer")
+          : workbenchActions.addTile(input.projectId, input.activeLaneId, type);
       const nextTile =
         useProjectWorkbenchStore.getState().workbenches[
           buildWorkbenchScopeKey(input.projectId, input.activeLaneId)
@@ -669,6 +666,10 @@ export function useWorkbenchDockviewRuntime(
       });
 
       event.api.onDidRemovePanel((panel) => {
+        if (isDestroyingRef.current) {
+          return;
+        }
+
         if (!input.projectId) {
           return;
         }
@@ -692,9 +693,66 @@ export function useWorkbenchDockviewRuntime(
         }
 
         const liveProject = getLiveWorkbench();
-        const removedTile = liveProject?.tiles[panel.id];
+        const removedTile = liveProject?.tiles[panel.id] ?? null;
         if (removedTile?.type === "browser") {
-          void disposeBrowserTileModel(removedTile.id);
+          void window.electronAPI.workbenchSession
+            .releaseBrowser({
+              projectId: input.projectId,
+              laneId: input.activeLaneId,
+              tileId: panel.id,
+            })
+            .catch((error) => {
+              console.warn("[WorkbenchSession] Failed to release browser for removed panel", error);
+            });
+          void disposeBrowserTileModel(panel.id).catch((error) => {
+            console.warn("[WorkbenchBrowser] Failed to dispose browser model", error);
+          });
+        }
+        if (removedTile?.type === "terminal") {
+          void window.electronAPI.workbenchSession
+            .releaseTerminal({
+              projectId: input.projectId,
+              laneId: input.activeLaneId,
+              tileId: panel.id,
+              close: true,
+            })
+            .then((result) => {
+              if (result.terminalId) {
+                useTerminalStore.getState().actions.removeTerminal(result.terminalId);
+              }
+            })
+            .catch((error) => {
+              console.warn("[WorkbenchSession] Failed to release terminal for removed panel", error);
+            });
+        }
+        if (removedTile?.type === "devServer") {
+          void window.electronAPI.workbenchSession
+            .releaseBrowser({
+              projectId: input.projectId,
+              laneId: input.activeLaneId,
+              tileId: panel.id,
+            })
+            .catch((error) => {
+              console.warn("[WorkbenchSession] Failed to release dev-server browser surface", error);
+            });
+          void disposeBrowserTileModel(panel.id).catch((error) => {
+            console.warn("[WorkbenchBrowser] Failed to dispose dev-server browser model", error);
+          });
+          void window.electronAPI.workbenchSession
+            .setNativePreviewSession({
+              projectId: input.projectId,
+              laneId: input.activeLaneId,
+              locator: null,
+              stopPrevious: true,
+            })
+            .catch((error) => {
+              console.warn("[WorkbenchSession] Failed to stop native preview for removed panel", error);
+            });
+          if (input.projectPath) {
+            void window.electronAPI.devServer.stop({ projectPath: input.projectPath }).catch((error) => {
+              console.warn("[DevServer] Failed to stop dev server for removed panel", error);
+            });
+          }
         }
 
         workbenchActions.removeTile(input.projectId, input.activeLaneId, panel.id);

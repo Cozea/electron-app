@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, ComputerDesktopIcon as MonitorCog, CpuChipIcon as Bot, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
+import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, CpuChipIcon as Bot, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
 
 import type {
   WorkbenchSelectionTile,
   WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
-import { ProjectFavicon } from "@/features/projects/components/ProjectFavicon"
+import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
 
@@ -29,9 +29,7 @@ interface WorkbenchSelectionTileProps {
   singletonEmptyWorkbench?: boolean
   projectName?: string | null
   projectPath?: string | null
-  onChoose: (
-    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "terminal" | "devServer">,
-  ) => void
+  onChoose: (type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">) => void
 }
 
 interface SelectionOption {
@@ -41,7 +39,7 @@ interface SelectionOption {
   iconBgClass: string
   iconColorClass: string
   category: "Development" | "Assistant" | "Explore marketplace"
-  type?: Extract<WorkbenchTileType, "assistantChat" | "browser" | "terminal" | "devServer">
+  type?: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">
   icon: typeof AppWindow
 }
 
@@ -49,12 +47,22 @@ const CORE_SELECTION_OPTIONS: SelectionOption[] = [
   {
     id: "browser",
     label: "Browser",
-    description: "web preview",
-    iconBgClass: "bg-[#3BB4FF]",
+    description: "persistent web surface",
+    iconBgClass: "bg-sky-500/90",
     iconColorClass: "text-white",
     category: "Development",
     type: "browser",
     icon: AppWindow,
+  },
+  {
+    id: "devServer",
+    label: "Dev Server",
+    description: "preview and runtime",
+    iconBgClass: "bg-emerald-500/90",
+    iconColorClass: "text-white",
+    category: "Development",
+    type: "devServer",
+    icon: PackageOpen,
   },
   {
     id: "terminal",
@@ -65,16 +73,6 @@ const CORE_SELECTION_OPTIONS: SelectionOption[] = [
     category: "Development",
     type: "terminal",
     icon: SquareTerminal,
-  },
-  {
-    id: "devServer",
-    label: "Dev Server",
-    description: "localhost",
-    iconBgClass: "bg-[#FFBE3B]",
-    iconColorClass: "text-black",
-    category: "Development",
-    type: "devServer",
-    icon: MonitorCog,
   },
   {
     id: "assistantChat",
@@ -106,10 +104,10 @@ function WelcomeHero({
           Let&apos;s work on
         </span>
         <span className="inline-flex items-center gap-3 text-center text-2xl font-bold tracking-tight text-foreground md:text-4xl">
-          <ProjectFavicon
-            cwd={projectPath ?? null}
-            className="size-7 md:size-9"
-            imageClassName="h-7 w-auto max-w-12 md:h-9 md:max-w-14"
+          <NativeProjectFolderIcon
+            folderPath={projectPath}
+            fallbackClassName="h-7 w-7 text-muted-foreground md:h-9 md:w-9"
+            imgClassName="h-7 w-7 md:h-9 md:w-9"
           />
           {normalizedProjectName}
         </span>

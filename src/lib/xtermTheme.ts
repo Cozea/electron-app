@@ -3,6 +3,13 @@ import type { ITheme, Terminal } from '@xterm/xterm'
 
 const ROOT_THEME_SELECTOR = '.dark, .navy, .wine, .clay, .forest'
 
+/** Primary SF Mono stack (parity with t3-style embedded terminals; falls back cross-platform). */
+export const XTERM_FONT_FAMILY =
+  '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace'
+
+/** Slightly relaxed line height for readability (matches common desktop terminal drawers). */
+export const XTERM_LINE_HEIGHT = 1.2
+
 export function colorToHex(cssColor: string): string {
   const canvas = document.createElement('canvas')
   canvas.width = 1

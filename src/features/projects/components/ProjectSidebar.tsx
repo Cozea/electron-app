@@ -281,7 +281,7 @@ export function ProjectSidebar({
       project: SidebarProjectItem,
       laneId: string,
       options?: {
-        openTile?: "assistantChat" | "browser" | "terminal" | "devServer";
+        openTile?: "assistantChat" | "terminal";
         focusTileId?: string;
       },
     ) => {

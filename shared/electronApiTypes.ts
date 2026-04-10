@@ -63,6 +63,17 @@ export interface UpdateState {
   error?: string
 }
 
+export interface GpuAccelerationDiagnostics {
+  hardwareAccelerationEnabled: boolean
+  featureStatus: Record<string, string>
+  gpuCompositing: string | null
+  webgl: string | null
+  webgl2: string | null
+  rasterization: string | null
+  videoDecode: string | null
+  updatedAt: number
+}
+
 export interface StorageUsage {
   projects: number
   dependencies: number
@@ -71,6 +82,12 @@ export interface StorageUsage {
   total: number
   diskTotal: number
   diskFree: number
+}
+
+export interface ProjectPathNativeIconResult {
+  success: boolean
+  dataUrl?: string
+  error?: string
 }
 
 export interface LocalProject {
@@ -780,6 +797,21 @@ export interface TerminalInfo {
   title: string
 }
 
+export interface TerminalSnapshot {
+  id: string
+  projectPath: string
+  runId?: string
+  command?: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  running: boolean
+  startedAt: number
+  endedAt: number | null
+  timedOut: boolean
+  cancelled: boolean
+}
+
 export interface TerminalCreateOptions {
   projectPath: string
   profileId?: string
@@ -979,6 +1011,34 @@ export interface WorkbenchBrowserViewState {
   loadError?: string | null
 }
 
+export type WorkbenchSessionLifecycle =
+  | 'active'
+  | 'backgroundWarm'
+  | 'backgroundFrozen'
+  | 'closed'
+
+export interface WorkbenchSessionDevServerState {
+  running: boolean
+  port: number | null
+  runId: string | null
+}
+
+export interface WorkbenchSessionSnapshot {
+  sessionKey: string
+  projectId: string
+  laneId: string
+  projectPath: string | null
+  lifecycle: WorkbenchSessionLifecycle
+  pinned: boolean
+  openedAt: number
+  lastFocusedAt: number
+  lastBackgroundedAt: number | null
+  terminalBindings: Record<string, string>
+  devServer: WorkbenchSessionDevServerState
+  hasBrowserSurface: boolean
+  hasNativePreviewSession: boolean
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
@@ -1149,6 +1209,7 @@ export interface ElectronAPI {
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
     onOpenSettings: (callback: (route: string) => void) => () => void
+    getGpuDiagnostics: () => Promise<GpuAccelerationDiagnostics>
   }
   settings: {
     get: () => Promise<AppSettings>
@@ -1216,6 +1277,74 @@ export interface ElectronAPI {
     onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
     onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
+  }
+  workbenchSession: {
+    ensureSession: (options: {
+      projectId: string
+      laneId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    activateSession: (options: {
+      projectId: string
+      laneId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    backgroundSession: (options: {
+      projectId: string
+      laneId: string
+      mode?: Exclude<WorkbenchSessionLifecycle, 'active' | 'closed'>
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    closeSession: (options: { projectId: string; laneId: string }) => Promise<{ success: boolean }>
+    getSession: (options: { projectId: string; laneId: string }) => Promise<WorkbenchSessionSnapshot | null>
+    listSessions: () => Promise<WorkbenchSessionSnapshot[]>
+    setPinned: (options: {
+      projectId: string
+      laneId: string
+      pinned: boolean
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    getTerminalBinding: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+    }) => Promise<string | null>
+    bindTerminal: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      terminalId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    releaseTerminal: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      close?: boolean
+    }) => Promise<{ success: boolean; terminalId?: string }>
+    getBrowserBinding: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+    }) => Promise<string | null>
+    bindBrowser: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      browserTileId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    releaseBrowser: (options: {
+      projectId: string
+      laneId: string
+      tileId: string
+      destroy?: boolean
+    }) => Promise<{ success: boolean; browserTileId?: string }>
+    setNativePreviewSession: (options: {
+      projectId: string
+      laneId: string
+      locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null
+      stopPrevious?: boolean
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
@@ -1314,6 +1443,7 @@ export interface ElectronAPI {
     preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
+    getPathNativeIcon: (options: { projectPath: string }) => Promise<ProjectPathNativeIconResult>
   }
   runtime: {
     getProjectCapabilities: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
@@ -1540,6 +1670,7 @@ export interface ElectronAPI {
     getProfiles: () => Promise<TerminalProfile[]>
     list: (options: { projectPath: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
+    getSnapshot: (options: { terminalId: string }) => Promise<TerminalSnapshot | null>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
     onOutputForTerminal: (terminalId: string, callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void

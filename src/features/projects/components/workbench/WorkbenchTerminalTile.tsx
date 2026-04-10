@@ -1,28 +1,45 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { Activity, useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 import { ArrowPathIcon as Loader2, CommandLineIcon as TerminalSquare } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 
 interface WorkbenchTerminalTileProps {
+  projectId: string
+  laneId: string
+  tileId: string
   projectPath: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
 }
 
 export function WorkbenchTerminalTile({
+  projectId,
+  laneId,
+  tileId,
   projectPath,
   panelApi,
   containerApi,
 }: WorkbenchTerminalTileProps) {
+  const activityMode = useWorkbenchPanelActivityMode(panelApi)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const addTerminal = useTerminalStore((state) => state.actions.addTerminal)
-  const removeTerminal = useTerminalStore((state) => state.actions.removeTerminal)
+  const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
+  const replaceTerminalOutput = useTerminalStore((state) => state.actions.replaceTerminalOutput)
+  const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const terminalIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!terminalId) {
+      return
+    }
+
+    setTerminalUiAttached(terminalId, activityMode === "visible")
+  }, [activityMode, setTerminalUiAttached, terminalId])
 
   useEffect(() => {
     if (!projectPath) {
@@ -33,47 +50,96 @@ export function WorkbenchTerminalTile({
     let cancelled = false
 
     void (async () => {
-      const result = await window.electronAPI.terminal.create({
+      setError(null)
+
+      await window.electronAPI.workbenchSession.ensureSession({
+        projectId,
+        laneId,
         projectPath,
-        cwd: projectPath,
+      })
+      if (cancelled) return
+
+      let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
+        projectId,
+        laneId,
+        tileId,
       })
 
-      if (cancelled) {
-        if (result.success && result.terminalId) {
-          void window.electronAPI.terminal.kill({ terminalId: result.terminalId })
+      let snapshot =
+        nextTerminalId
+          ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
+          : null
+
+      if (!snapshot || !nextTerminalId) {
+        const result = await window.electronAPI.terminal.create({
+          projectPath,
+          cwd: projectPath,
+        })
+
+        if (cancelled) {
+          return
         }
+
+        if (!result.success || !result.terminalId) {
+          setError(result.error ?? "Failed to create a terminal")
+          return
+        }
+
+        nextTerminalId = result.terminalId
+        await window.electronAPI.workbenchSession.bindTerminal({
+          projectId,
+          laneId,
+          tileId,
+          terminalId: result.terminalId,
+          projectPath,
+        })
+        snapshot = await window.electronAPI.terminal.getSnapshot({
+          terminalId: result.terminalId,
+        })
+      }
+
+      if (!nextTerminalId || cancelled) {
         return
       }
 
-      if (!result.success || !result.terminalId) {
-        setError(result.error ?? "Failed to create a terminal")
-        return
-      }
+      const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
+      if (cancelled) return
 
-      terminalIdRef.current = result.terminalId
-      setTerminalId(result.terminalId)
-      addTerminal({
-        id: result.terminalId,
-        profileId: "default",
-        profileName: "Shell",
-        title: "Shell",
+      terminalIdRef.current = nextTerminalId
+      setTerminalId(nextTerminalId)
+      registerTerminal({
+        id: nextTerminalId,
+        profileId: info?.profileId ?? "default",
+        profileName: info?.profileName ?? "Shell",
+        title: info?.title ?? "Shell",
         projectPath,
         kind: "shell",
         surface: "panel",
-        status: "starting",
-        hasOutput: false,
+        status: snapshot?.running === false ? "exited" : "running",
+        exitCode: snapshot?.exitCode ?? null,
+        hasOutput: Boolean(snapshot?.stdout?.length),
+        uiAttached: true,
       })
+      replaceTerminalOutput(nextTerminalId, snapshot?.stdout ?? "")
+      setTerminalUiAttached(nextTerminalId, true)
     })()
 
     return () => {
       cancelled = true
       const activeTerminalId = terminalIdRef.current
       if (!activeTerminalId) return
-      removeTerminal(activeTerminalId)
-      void window.electronAPI.terminal.kill({ terminalId: activeTerminalId })
+      setTerminalUiAttached(activeTerminalId, false)
       terminalIdRef.current = null
     }
-  }, [addTerminal, projectPath, removeTerminal])
+  }, [
+    laneId,
+    projectId,
+    projectPath,
+    registerTerminal,
+    replaceTerminalOutput,
+    setTerminalUiAttached,
+    tileId,
+  ])
 
   let body: ReactNode
 
@@ -111,9 +177,15 @@ export function WorkbenchTerminalTile({
     )
   } else {
     body = (
-      <div className="h-full min-h-0 p-3">
-        <TerminalInstance terminalId={terminalId} className="h-full" />
-      </div>
+      <Activity mode={activityMode} name={`workbench-terminal-${tileId}`}>
+        <div className="h-full min-h-0 p-1">
+          <TerminalInstance
+            terminalId={terminalId}
+            className="h-full workbench-terminal-instance"
+            gpuActive={activityMode === "visible"}
+          />
+        </div>
+      </Activity>
     )
   }
 

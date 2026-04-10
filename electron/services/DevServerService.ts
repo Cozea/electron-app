@@ -216,6 +216,15 @@ export class DevServerService {
     return this.processes.has(projectPath)
   }
 
+  public getState(projectPath: string): { running: boolean; port: number | null; runId: string | null } {
+    const entry = this.processes.get(projectPath)
+    return {
+      running: Boolean(entry),
+      port: entry?.activePort ?? null,
+      runId: entry?.runId ?? null,
+    }
+  }
+
   public killAll() {
     for (const [projectPath] of this.processes) {
       this.stop(projectPath).catch(console.error)

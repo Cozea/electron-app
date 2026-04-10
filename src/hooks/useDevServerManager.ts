@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { startTransition, useState, useEffect, useCallback, useRef } from 'react'
 import {
   checkDependenciesInstalled,
   detectPackageManager,
@@ -18,6 +18,19 @@ import type { PreviewFailureReason } from '@shared/electronApiTypes'
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
 
 const RESTART_DELAY_MS = 500
+const MAX_DEV_SERVER_OUTPUT_LENGTH = 80_000
+const DEV_SERVER_OUTPUT_TRUNCATION_MESSAGE = '\n...dev server output truncated...\n'
+const OUTPUT_TIMELINE_INTERVAL_MS = 1500
+
+function appendDevServerOutput(current: string, chunk: string): string {
+  const next = current + chunk
+  if (next.length <= MAX_DEV_SERVER_OUTPUT_LENGTH) {
+    return next
+  }
+
+  const tailLength = Math.max(0, MAX_DEV_SERVER_OUTPUT_LENGTH - DEV_SERVER_OUTPUT_TRUNCATION_MESSAGE.length)
+  return `${DEV_SERVER_OUTPUT_TRUNCATION_MESSAGE}${next.slice(-tailLength)}`
+}
 
 interface UseDevServerManagerOptions {
   projectPath: string | null
@@ -26,6 +39,12 @@ interface UseDevServerManagerOptions {
   storedDevPort?: number | null
   previewMode?: DevServerLaunchContext['previewMode']
   nativePlatform?: DevServerLaunchContext['nativePlatform']
+  keepAliveOnUnmount?: boolean
+  initialSnapshot?: {
+    running: boolean
+    port: number | null
+    runId: string | null
+  } | null
   onReady?: (url: string) => void
   onError?: (error: string) => void
   onOutput?: (output: string) => void
@@ -40,7 +59,7 @@ interface DevServerState {
   failureReason: PreviewFailureReason | null
   lastOutputAt: number | null
   error: string | null
-  output: string[]
+  output: string
   timeline: DevServerTimelineEvent[]
   latestDomSnapshot: string | null
 }
@@ -72,28 +91,31 @@ export function useDevServerManager({
   storedDevPort = null,
   previewMode = 'web',
   nativePlatform = null,
+  keepAliveOnUnmount = false,
+  initialSnapshot = null,
   onReady,
   onError,
   onOutput,
 }: UseDevServerManagerOptions) {
   const [state, setState] = useState<DevServerState>({
-    status: 'idle',
-    runId: null,
-    url: null,
-    port: null,
-    reachable: false,
+    status: initialSnapshot?.running ? 'ready' : 'idle',
+    runId: initialSnapshot?.runId ?? null,
+    url: initialSnapshot?.port ? `http://localhost:${initialSnapshot.port}` : null,
+    port: initialSnapshot?.port ?? null,
+    reachable: Boolean(initialSnapshot?.running && initialSnapshot?.port),
     failureReason: null,
     lastOutputAt: null,
     error: null,
-    output: [],
+    output: '',
     timeline: [],
     latestDomSnapshot: null,
   })
 
   const lifecycleRef = useRef(initialDevServerLifecycle())
-  const activeRunIdRef = useRef<string | null>(null)
+  const activeRunIdRef = useRef<string | null>(initialSnapshot?.runId ?? null)
   const cleanupRef = useRef<(() => void) | null>(null)
   const restartSchedulerRef = useRef(createDevServerRestartScheduler(RESTART_DELAY_MS))
+  const lastOutputTimelineAtRef = useRef(0)
 
   const transitionLifecycle = useCallback((event: Parameters<typeof transitionDevServerLifecycle>[1]) => {
     const result = transitionDevServerLifecycle(lifecycleRef.current, event)
@@ -125,6 +147,35 @@ export function useDevServerManager({
       }
     })
   }, [])
+
+  useEffect(() => {
+    if (!initialSnapshot?.running || !initialSnapshot.port) {
+      return
+    }
+
+    activeRunIdRef.current = initialSnapshot.runId ?? activeRunIdRef.current
+    setState((prev) => {
+      const nextUrl = `http://localhost:${initialSnapshot.port}`
+      if (
+        prev.status === 'ready' &&
+        prev.port === initialSnapshot.port &&
+        prev.runId === (initialSnapshot.runId ?? prev.runId)
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        status: 'ready',
+        runId: initialSnapshot.runId ?? prev.runId,
+        url: nextUrl,
+        port: initialSnapshot.port,
+        reachable: true,
+        failureReason: null,
+        error: null,
+      }
+    })
+  }, [initialSnapshot?.port, initialSnapshot?.runId, initialSnapshot?.running])
 
   const markUnhealthy = useCallback((reason: string, failureReason: PreviewFailureReason = 'server_unreachable') => {
     const runId = activeRunIdRef.current
@@ -254,7 +305,7 @@ export function useDevServerManager({
       reachable: false,
       failureReason: null,
       error: null,
-      output: [],
+      output: '',
       lastOutputAt: null,
     }))
 
@@ -407,17 +458,23 @@ export function useDevServerManager({
       }
       const outputAt = Date.now()
 
-      // Append to output log
-      setState((prev) => ({
-        ...prev,
-        output: [...prev.output.slice(-100), output], // Keep last 100 lines
-        lastOutputAt: outputAt,
-      }))
-      appendTimeline({
-        runId: resolvedRunId ?? null,
-        type: 'output',
-        message: 'Received dev server output',
+      startTransition(() => {
+        setState((prev) => ({
+          ...prev,
+          output: appendDevServerOutput(prev.output, output),
+          lastOutputAt: outputAt,
+        }))
       })
+
+      if (outputAt - lastOutputTimelineAtRef.current >= OUTPUT_TIMELINE_INTERVAL_MS) {
+        lastOutputTimelineAtRef.current = outputAt
+        appendTimeline({
+          runId: resolvedRunId ?? null,
+          type: 'output',
+          message: 'Received dev server output',
+          details: { bytes: output.length },
+        })
+      }
 
       onOutput?.(output)
     })
@@ -501,12 +558,12 @@ export function useDevServerManager({
     const scheduler = restartSchedulerRef.current
     return () => {
       scheduler.cancel()
-      if (activeRunIdRef.current && projectPath) {
+      if (!keepAliveOnUnmount && activeRunIdRef.current && projectPath) {
         console.log('[DevServer] Cleaning up on unmount')
         window.electronAPI.devServer.stop({ projectPath }).catch(console.error)
       }
     }
-  }, [projectPath])
+  }, [keepAliveOnUnmount, projectPath])
 
   const setLatestDomSnapshot = useCallback((snapshot: string | null) => {
     setState((prev) => ({ ...prev, latestDomSnapshot: snapshot }))

@@ -120,10 +120,20 @@ export class BrowserTileModel {
 
   async initialize(options: BrowserCreateOptions = {}): Promise<void> {
     if (this.initialized) {
-      if (options.initialUrl) {
-        this.lastRequestedUrl = options.initialUrl
+      const existingState = await window.electronAPI.workbenchBrowser.getState({ tileId: this.id })
+      if (!existingState) {
+        this.initialized = false
+      } else {
+        this.stateValue = toBrowserState(existingState)
+        this.emit()
       }
-      return
+
+      if (this.initialized) {
+        if (options.initialUrl) {
+          this.lastRequestedUrl = options.initialUrl
+        }
+        return
+      }
     }
 
     if (!this.initializePromise) {

@@ -1,16 +1,22 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Activity, createElement, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { useQuery } from "convex/react"
 import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
   ExternalBrowserId,
+  WorkbenchSessionSnapshot,
 } from "@shared/electronApiTypes"
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
-import { ArrowPathIcon as RefreshCcw, ChevronDownIcon as ChevronDown, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, EyeIcon as Eye, PlayIcon as Play, StopIcon as Square } from "@heroicons/react/24/outline"
+import {
+  ArrowPathIcon as RefreshCcw,
+  ChevronDownIcon as ChevronDown,
+  CommandLineIcon as SquareTerminal,
+  ComputerDesktopIcon as AppWindow,
+  EyeIcon as Eye,
+  PlayIcon as Play,
+  StopIcon as Square,
+} from "@heroicons/react/24/outline"
 
-import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -29,6 +35,7 @@ import {
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
+import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import {
   getEffectiveExternalBrowserId,
@@ -41,11 +48,10 @@ import {
   type PreviewDestination,
   resolvePreferredExternalBrowserId,
 } from "@/features/projects/lib/externalBrowserPreference"
-import { useDevServerManager, type DevServerStatus } from "@/hooks/useDevServerManager"
-import { useAuth } from "@/contexts/AuthContext"
+import { type DevServerStatus, useDevServerManager } from "@/hooks/useDevServerManager"
 import { cn } from "@/lib/utils"
 import type { PageRoute, ServerStatus } from "@/features/projects/lib/previewRuntimeTypes"
-import type { WorkbenchDevServerTile } from "@/stores/useProjectWorkbenchStore"
+import { type WorkbenchDevServerTile as WorkbenchDevServerTileRecord, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
@@ -66,12 +72,10 @@ function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   }
 }
 
-/** Same gate as legacy ProjectPagesPage: native preview for Expo / React Native dev servers. */
 function useNativeMobilePreviewMode(framework: string | undefined): "ios" | "android" | null {
   if (framework === "expo" || framework === "react-native") {
     return "ios"
   }
-  // Future: e.g. `framework === 'react-native'` + platform metadata → 'android'
   return null
 }
 
@@ -84,37 +88,41 @@ const NATIVE_PREVIEW_ROUTE: PageRoute = {
 }
 
 interface WorkbenchDevServerTileProps {
-  tile: WorkbenchDevServerTile
   projectId: string
+  laneId: string
+  tile: WorkbenchDevServerTileRecord
   projectPath: string | null
+  workspaceId: string | null
+  framework: string | null
+  storedDevCommand: string | null
+  storedDevPort: number | null
+  workbenchSession: WorkbenchSessionSnapshot | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
-  onLinkedBrowserReady: (url: string) => void
 }
 
 export function WorkbenchDevServerTile({
-  tile,
   projectId,
+  laneId,
+  tile,
   projectPath,
+  workspaceId,
+  framework: storedFramework,
+  storedDevCommand,
+  storedDevPort,
+  workbenchSession,
   panelApi,
   containerApi,
-  onLinkedBrowserReady,
 }: WorkbenchDevServerTileProps) {
-  const { convexUserId } = useAuth()
-  const projectDoc = useQuery(
-    api.projects.getAccessibleById,
-    convexUserId ? { projectId: projectId as Id<"projects">, userId: convexUserId } : "skip",
-  )
-  const storedFramework = projectDoc?.frameworkInfo?.framework as Framework | null | undefined
-  const storedDevCommand = projectDoc?.frameworkInfo?.devCommand ?? null
-  const storedDevPort = projectDoc?.frameworkInfo?.devPort ?? null
+  const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
+  const activityMode = useWorkbenchPanelActivityMode(panelApi)
   const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
-    storedFramework && storedFramework !== "unknown" ? storedFramework : null,
+    storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
   )
 
   useEffect(() => {
     if (storedFramework && storedFramework !== "unknown") {
-      setResolvedFramework(storedFramework)
+      setResolvedFramework(storedFramework as Framework)
       return
     }
     if (!projectPath) {
@@ -124,14 +132,14 @@ export function WorkbenchDevServerTile({
 
     let cancelled = false
 
-    void getFrameworkInfo(projectPath, storedFramework ?? null, storedDevCommand, storedDevPort)
+    void getFrameworkInfo(projectPath, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
       .then((frameworkInfo) => {
         if (cancelled) return
         setResolvedFramework(frameworkInfo.framework)
       })
       .catch(() => {
         if (cancelled) return
-        setResolvedFramework(storedFramework && storedFramework !== "unknown" ? storedFramework : null)
+        setResolvedFramework(storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null)
       })
 
     return () => {
@@ -139,7 +147,7 @@ export function WorkbenchDevServerTile({
     }
   }, [projectPath, storedDevCommand, storedDevPort, storedFramework])
 
-  const framework = resolvedFramework ?? storedFramework ?? undefined
+  const framework = resolvedFramework ?? (storedFramework as Framework | null) ?? undefined
   const nativePreviewPlatform = useNativeMobilePreviewMode(framework)
   const isIosNativePreview = nativePreviewPlatform === "ios"
 
@@ -158,14 +166,18 @@ export function WorkbenchDevServerTile({
     storedDevPort,
     previewMode: isIosNativePreview ? "native" : "web",
     nativePlatform: nativePreviewPlatform,
+    keepAliveOnUnmount: true,
+    initialSnapshot: workbenchSession?.devServer ?? null,
   })
   const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
-  const previewTileId = useMemo(() => `${tile.id}::preview`, [tile.id])
+  const nativePreviewScopeKey = workbenchSession?.sessionKey ?? `${projectId}::${laneId}`
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
+    scopeKey: nativePreviewScopeKey,
     enabled: isIosNativePreview,
     projectPath,
     serverStatus: serverStatusForNative,
+    keepAliveOnUnmount: true,
   })
   const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
   const previewServerActive =
@@ -173,12 +185,28 @@ export function WorkbenchDevServerTile({
 
   const showEmbeddedPreview = viewMode === "preview" && previewDestination === "cozea"
   const showWebEmbeddedPreview = showEmbeddedPreview && !isIosNativePreview
-  const { hostRef, state: previewState, boundsReady } = useWorkbenchBrowserView({
-    tileId: previewTileId,
+  const logsOutput = useDeferredValue(devServer.output)
+  const {
+    hostRef,
+    state: previewState,
+    boundsReady,
+  } = useWorkbenchBrowserView({
+    tileId: tile.id,
     url: showWebEmbeddedPreview ? previewUrl : "",
-    visible: showWebEmbeddedPreview,
+    projectId,
+    laneId,
+    projectPath,
+    visible: showWebEmbeddedPreview && activityMode === "visible",
     storageScope: "ephemeral",
-    persistModel: false,
+    workspaceId: workspaceId ?? undefined,
+    persistModel: true,
+    onNewPageRequest: (request) => {
+      const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
+        url: request.url,
+        storageScope: "workspace",
+      })
+      workbenchActions.setActiveTile(projectId, laneId, nextTileId)
+    },
   })
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
@@ -213,7 +241,7 @@ export function WorkbenchDevServerTile({
     try {
       window.localStorage.setItem(PREVIEW_BROWSER_PREFERENCE_KEY, selectedBrowserId)
     } catch {
-      // Ignore local storage failures in desktop state.
+      // Ignore desktop local storage failures.
     }
   }, [selectedBrowserId])
 
@@ -221,14 +249,30 @@ export function WorkbenchDevServerTile({
     try {
       window.localStorage.setItem(PREVIEW_DESTINATION_PREFERENCE_KEY, previewDestination)
     } catch {
-      // Ignore local storage failures in desktop state.
+      // Ignore desktop local storage failures.
     }
   }, [previewDestination])
 
   useEffect(() => {
-    if (!previewUrl || !tile.linkedBrowserTileId || isIosNativePreview) return
-    onLinkedBrowserReady(previewUrl)
-  }, [isIosNativePreview, onLinkedBrowserReady, previewUrl, tile.linkedBrowserTileId])
+    const locator =
+      isIosNativePreview && projectPath && nativePreview.selectedSimulator
+        ? {
+            projectPath,
+            deviceId: nativePreview.selectedSimulator.udid,
+            platform: "ios" as const,
+          }
+        : null
+
+    void window.electronAPI.workbenchSession
+      .setNativePreviewSession({
+        projectId,
+        laneId,
+        locator,
+      })
+      .catch((error) => {
+        console.warn("[WorkbenchDevServerTile] Failed to sync native preview session", error)
+      })
+  }, [isIosNativePreview, laneId, nativePreview.selectedSimulator, projectId, projectPath])
 
   const visibleBrowsers = useMemo(() => {
     return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
@@ -465,7 +509,7 @@ export function WorkbenchDevServerTile({
                 return
               }
               if (!previewUrl) return
-              void window.electronAPI.workbenchBrowser.reload({ tileId: previewTileId })
+              void window.electronAPI.workbenchBrowser.reload({ tileId: tile.id })
             }}
             aria-label={previewDestination === "external" ? `Open preview in ${effectiveSelectedBrowser.name} again` : "Reload preview"}
           >
@@ -498,15 +542,14 @@ export function WorkbenchDevServerTile({
           <Play className="h-3.5 w-3.5 fill-current" />
         </Button>
       )}
-
     </>
   ) : null
 
   const logsBody =
-    devServer.output.length > 0 ? (
+    logsOutput.length > 0 ? (
       <div className="app-scrollbar h-full overflow-auto p-3">
         <pre className="min-h-full whitespace-pre-wrap font-mono text-[11px] leading-5 text-foreground">
-          {devServer.output.join("")}
+          {logsOutput}
         </pre>
       </div>
     ) : (
@@ -617,11 +660,26 @@ export function WorkbenchDevServerTile({
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
       Open or relink a local project folder to manage a dev server here.
     </div>
-  ) : viewMode === "preview"
-    ? previewDestination === "cozea"
-      ? cozeaEmbeddedPreviewBody
-      : externalPreviewBody
-    : logsBody
+  ) : (
+    <div className="h-full min-h-0 bg-content-surface">
+      <Activity
+        mode={viewMode === "preview" && activityMode === "visible" ? "visible" : "hidden"}
+        name={`workbench-devserver-preview-${tile.id}`}
+      >
+        <div className={cn("h-full min-h-0", viewMode === "preview" ? "block" : "hidden")}>
+          {previewDestination === "cozea" ? cozeaEmbeddedPreviewBody : externalPreviewBody}
+        </div>
+      </Activity>
+      <Activity
+        mode={viewMode === "code" && activityMode === "visible" ? "visible" : "hidden"}
+        name={`workbench-devserver-logs-${tile.id}`}
+      >
+        <div className={cn("h-full min-h-0", viewMode === "code" ? "block" : "hidden")}>
+          {logsBody}
+        </div>
+      </Activity>
+    </div>
+  )
 
   return (
     <WorkbenchTileChrome

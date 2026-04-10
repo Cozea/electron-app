@@ -41,6 +41,7 @@ import {
   ensureWorkbenchLayoutPersistenceReady,
   peekPersistedWorkbenchLayout,
 } from "@/features/projects/lib/workbenchLayoutPersistence";
+import { useWorkbenchSessionLifecycle } from "@/features/projects/hooks/useWorkbenchSessionLifecycle";
 import { ProjectSettingsPage } from "@/features/projects/pages/ProjectSettingsPage";
 import { getWorkspaceSelectionId } from "@shared/types";
 
@@ -90,6 +91,12 @@ export function ProjectWorkbenchPage() {
   );
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
   const activeWorkbenchPath = activeLane?.projectPath ?? projectPath;
+  const workbenchSession = useWorkbenchSessionLifecycle({
+    projectId,
+    laneId: activeLaneId,
+    projectPath: activeWorkbenchPath,
+    enabled: Boolean(projectId),
+  });
   const workspaceSelectionId =
     getWorkspaceSelectionId(resolvedScope.activeWorkspace) ??
     resolvedScope.activeWorkspace?.organizationId ??
@@ -119,6 +126,7 @@ export function ProjectWorkbenchPage() {
   } = useWorkbenchDockviewRuntime({
     projectId,
     activeLaneId,
+    projectPath: activeWorkbenchPath,
     projectWorkbench,
     workbenchScopeKey,
     isLayoutPersistenceReady,
@@ -191,16 +199,14 @@ export function ProjectWorkbenchPage() {
 
   const openWorkbenchTarget = useCallback(
     (
-      target: Extract<WorkbenchTileType, "browser" | "terminal" | "devServer" | "assistantChat">,
+      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">,
     ) => {
       if (!projectId) return;
-
-      if (target === "assistantChat" || target === "browser" || target === "terminal") {
-        workbenchActions.addTile(projectId, activeLaneId, target);
+      if (target === "devServer") {
+        workbenchActions.openSingletonTile(projectId, activeLaneId, "devServer");
         return;
       }
-
-      workbenchActions.openSingletonTile(projectId, activeLaneId, target);
+      workbenchActions.addTile(projectId, activeLaneId, target);
     },
     [activeLaneId, projectId, workbenchActions],
   );
@@ -293,42 +299,6 @@ export function ProjectWorkbenchPage() {
       ? "dockview-theme-dark"
       : "dockview-theme-light";
 
-  const handleOpenBrowser = (sourceTileId: string, url: string) => {
-    if (!projectId || !projectWorkbench) return;
-    const sourceTile = projectWorkbench.tiles[sourceTileId];
-    if (sourceTile?.type !== "devServer") return;
-    const linkedBrowserTileId = sourceTile.linkedBrowserTileId;
-    if (linkedBrowserTileId && projectWorkbench.tiles[linkedBrowserTileId]?.type === "browser") {
-      workbenchActions.updateBrowserTile(projectId, activeLaneId, linkedBrowserTileId, {
-        url,
-        linkedDevServerTileId: sourceTileId,
-      });
-      workbenchActions.setActiveTile(projectId, activeLaneId, linkedBrowserTileId);
-      return;
-    }
-
-    const nextBrowserTileId = workbenchActions.addTile(projectId, activeLaneId, "browser", {
-      url,
-      linkedDevServerTileId: sourceTileId,
-    });
-    workbenchActions.updateDevServerTile(projectId, activeLaneId, sourceTileId, {
-      linkedBrowserTileId: nextBrowserTileId,
-    });
-    workbenchActions.setActiveTile(projectId, activeLaneId, nextBrowserTileId);
-  };
-
-  const handleOpenBrowserFromBrowser = (sourceTileId: string, url: string) => {
-    if (!projectId || !projectWorkbench) return;
-
-    const sourceTile = projectWorkbench.tiles[sourceTileId];
-    if (sourceTile?.type !== "browser") return;
-
-    workbenchActions.addTile(projectId, activeLaneId, "browser", {
-      url,
-      storageScope: sourceTile.storageScope ?? "workspace",
-    });
-  };
-
   if (!projectId || !projectWorkbench) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -343,13 +313,20 @@ export function ProjectWorkbenchPage() {
       laneId={activeLaneId}
       projectPath={activeWorkbenchPath}
       projectName={project?.name ?? null}
+      workspaceId={workspaceSelectionId}
+      framework={project?.frameworkInfo?.framework ?? null}
+      storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
+      storedDevPort={project?.frameworkInfo?.devPort ?? null}
+      workbenchSession={workbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
-      onOpenBrowserFromDevServer={handleOpenBrowser}
-      onOpenBrowserFromBrowser={handleOpenBrowserFromBrowser}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
       onResolveSelectionTile={handleResolveSelectionTile}
     >
-      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+      <div
+        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+        data-workbench-session-key={workbenchSession?.sessionKey ?? ""}
+        data-workbench-lifecycle={workbenchSession?.lifecycle ?? "loading"}
+      >
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <div className="relative flex h-full min-h-0 min-w-0">
             <div
