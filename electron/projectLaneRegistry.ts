@@ -88,6 +88,60 @@ function writeRegistryState(state: ProjectLaneRegistryState): void {
   fs.writeFileSync(registryPath, JSON.stringify(state, null, 2))
 }
 
+function dedupeProjectLanePaths(state: ProjectLaneRegistryState): boolean {
+  const latestOwnerByPath = new Map<string, { projectId: string; updatedAt: number }>()
+  let changed = false
+
+  for (const [projectId, projectState] of Object.entries(state.projects)) {
+    for (const lane of Object.values(projectState.lanes)) {
+      if (!lane?.projectPath) {
+        continue
+      }
+
+      const resolvedPath = path.resolve(lane.projectPath)
+      const existingOwner = latestOwnerByPath.get(resolvedPath)
+      if (!existingOwner || lane.updatedAt >= existingOwner.updatedAt) {
+        latestOwnerByPath.set(resolvedPath, { projectId, updatedAt: lane.updatedAt })
+      }
+    }
+  }
+
+  for (const [projectId, projectState] of Object.entries(state.projects)) {
+    const nextLanes = Object.fromEntries(
+      Object.entries(projectState.lanes).filter(([, lane]) => {
+        if (!lane?.projectPath) {
+          return false
+        }
+
+        const resolvedPath = path.resolve(lane.projectPath)
+        const owner = latestOwnerByPath.get(resolvedPath)
+        return owner?.projectId === projectId
+      }),
+    )
+
+    if (Object.keys(nextLanes).length === Object.keys(projectState.lanes).length) {
+      continue
+    }
+
+    changed = true
+    if (Object.keys(nextLanes).length === 0) {
+      delete state.projects[projectId]
+      continue
+    }
+
+    state.projects[projectId] = {
+      ...projectState,
+      lanes: nextLanes,
+      activeLaneId: nextLanes[projectState.activeLaneId ?? ''] ? projectState.activeLaneId : null,
+      collabLaneId: nextLanes[projectState.collabLaneId]
+        ? projectState.collabLaneId
+        : Object.keys(nextLanes)[0]!,
+    }
+  }
+
+  return changed
+}
+
 function serializeProjectState(
   projectState: ProjectLaneRegistryProjectState | undefined,
 ): ProjectLaneState | null {
@@ -142,10 +196,14 @@ export function readProjectLaneState(projectId: string): ProjectLaneState | null
   const normalizedProjectId = normalizeProjectId(projectId)
   if (!normalizedProjectId) return null
 
-  const { state, projectState } = readProjectState(normalizedProjectId)
-  const serialized = serializeProjectState(projectState)
+  const { state } = readProjectState(normalizedProjectId)
+  if (dedupeProjectLanePaths(state)) {
+    writeRegistryState(state)
+  }
+  const nextProjectState = state.projects[normalizedProjectId]
+  const serialized = serializeProjectState(nextProjectState)
 
-  if (!serialized && projectState) {
+  if (!serialized && nextProjectState) {
     delete state.projects[normalizedProjectId]
     writeRegistryState(state)
   }
@@ -189,9 +247,10 @@ export function ensureProjectCollabLane(args: {
   }
 
   state.projects[normalizedProjectId] = nextProjectState
+  dedupeProjectLanePaths(state)
   writeRegistryState(state)
 
-  return serializeProjectState(nextProjectState) as ProjectLaneState
+  return serializeProjectState(state.projects[normalizedProjectId]) as ProjectLaneState
 }
 
 export function upsertProjectLane(args: {
@@ -241,9 +300,10 @@ export function upsertProjectLane(args: {
   }
 
   state.projects[normalizedProjectId] = nextProjectState
+  dedupeProjectLanePaths(state)
   writeRegistryState(state)
 
-  return serializeProjectState(nextProjectState) as ProjectLaneState
+  return serializeProjectState(state.projects[normalizedProjectId]) as ProjectLaneState
 }
 
 export function setActiveProjectLane(args: {

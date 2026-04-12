@@ -55,7 +55,6 @@ export function WorkbenchTerminalTile({
       await window.electronAPI.workbenchSession.ensureSession({
         projectId,
         laneId,
-        projectPath,
       })
       if (cancelled) return
 
@@ -91,7 +90,6 @@ export function WorkbenchTerminalTile({
           laneId,
           tileId,
           terminalId: result.terminalId,
-          projectPath,
         })
         snapshot = await window.electronAPI.terminal.getSnapshot({
           terminalId: result.terminalId,
@@ -178,7 +176,7 @@ export function WorkbenchTerminalTile({
   } else {
     body = (
       <Activity mode={activityMode} name={`workbench-terminal-${tileId}`}>
-        <div className="h-full min-h-0 p-1">
+        <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
           <TerminalInstance
             terminalId={terminalId}
             className="h-full workbench-terminal-instance"
@@ -190,7 +188,13 @@ export function WorkbenchTerminalTile({
   }
 
   return (
-    <WorkbenchTileChrome title="Terminal" panelApi={panelApi} containerApi={containerApi}>
+    <WorkbenchTileChrome
+      title="Terminal"
+      panelApi={panelApi}
+      containerApi={containerApi}
+      chromeVariant="pill"
+      tileType="terminal"
+    >
       <div className="h-full min-h-0">{body}</div>
     </WorkbenchTileChrome>
   )

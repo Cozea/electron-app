@@ -10,6 +10,7 @@ import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPa
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
+import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints"
 import {
   resolveProjectCollabBranch,
   areSidebarProjectItemsEqual,
@@ -54,14 +55,18 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
+    const attachedPathHint = React.useMemo(
+      () => resolveAttachedLocalProjectPathHint(project),
+      [project],
+    )
     const { localPath } = useLocalProjectPath({
-      initialPath: context.isCurrentProject
-        ? (context.currentProjectPath ?? project.localPath)
-        : project.localPath,
-      preferInitialPath: context.isCurrentProject && Boolean(context.currentProjectPath),
+      initialPath: context.isCurrentProject ? context.currentProjectPath : null,
+      preferInitialPath: Boolean(context.isCurrentProject && context.currentProjectPath),
       lookupOnMount: shouldLoadLanes,
       projectId: project.id,
       projectSlug: project.slug,
+      cloudPathHint: project.localPath,
+      attachedPathHint,
     })
     const fetchedLaneState = useProjectLaneState({
       projectId: context.prefetchedLaneState ? null : shouldLoadLanes ? project.id : null,
@@ -132,10 +137,10 @@ export const ProjectSidebarTreeItem = React.memo(
 
         switch (action) {
           case "open-project":
-            void actions.openProject(project, localPath ?? project.localPath)
+            void actions.openProject(project, localPath)
             break
           case "open-folder":
-            void actions.openProjectFolder(project, localPath ?? project.localPath)
+            void actions.openProjectFolder(project, localPath)
             break
           case "settings":
             actions.openProjectSettings(project)
@@ -193,16 +198,16 @@ export const ProjectSidebarTreeItem = React.memo(
               "group flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             )}
             onClick={() => {
-              void actions.openProject(project, localPath ?? project.localPath)
+              void actions.openProject(project, localPath)
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault()
-                void actions.openProject(project, localPath ?? project.localPath)
+                void actions.openProject(project, localPath)
               }
             }}
           >
-            <NativeProjectFolderIcon folderPath={project.localPath ?? localPath} />
+            <NativeProjectFolderIcon folderPath={localPath} />
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <span className="min-w-0 truncate font-normal text-muted-foreground">
                 {project.name}

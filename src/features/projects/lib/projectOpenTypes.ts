@@ -9,6 +9,13 @@ export interface GitRepositoryMetadataLike {
   defaultBranch?: string | null;
 }
 
+export interface ProjectImportedFromLike {
+  provider: string;
+  repoFullName: string;
+  branch?: string | null;
+  detectedStack?: unknown;
+}
+
 export interface ProjectOpenGitProjectLike {
   _id: Id<"projects">;
   name?: string | null;
@@ -19,6 +26,7 @@ export interface ProjectOpenGitProjectLike {
   localPath?: string | null;
   gitRepository?: GitRepositoryMetadataLike | null;
   sourceControl?: ProjectGitRuntimeSourceControlLike | null;
+  importedFrom?: ProjectImportedFromLike | null;
 }
 
 export interface PrepareGitProjectForOpenOptions {

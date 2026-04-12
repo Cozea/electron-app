@@ -883,30 +883,35 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         {dockComposerOnHover ? (
           <div
             className={cn(
-              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 flex flex-col items-center justify-end px-3 sm:right-4 sm:px-5",
-              showComposerDockChrome && "pt-1.5 pb-4 sm:pt-2 sm:pb-5",
+              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 px-3 pb-4 sm:right-4 sm:px-5 sm:pb-5",
             )}
           >
             <div
               className={cn(
-                "pointer-events-none h-40 w-full max-w-2xl shrink-0 bg-gradient-to-t from-background/92 via-background/55 to-transparent transition-opacity duration-300",
-                showComposerDockChrome ? "opacity-100" : "opacity-0",
+                "relative mx-auto w-full max-w-2xl",
               )}
-              aria-hidden
-            />
-            <div
-              className={cn(
-                "relative z-[1] w-full max-w-2xl space-y-2 overflow-hidden transition-all duration-200 ease-out",
-                showComposerDockChrome
-                  ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
-                  : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
-              )}
-              onFocusCapture={() => {
-                setComposerDockFocused(true)
-              }}
-              onBlurCapture={handleComposerDockBlurCapture}
             >
-              {composerForm}
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-[-0.75rem] bottom-[-1rem] top-[-4.5rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:inset-x-[-1rem] sm:bottom-[-1.25rem] sm:top-[-5rem]",
+                  showComposerDockChrome ? "opacity-100" : "opacity-0",
+                )}
+                aria-hidden
+              />
+              <div
+                className={cn(
+                  "relative z-[1] w-full space-y-2 overflow-hidden transition-all duration-200 ease-out",
+                  showComposerDockChrome
+                    ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
+                    : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
+                )}
+                onFocusCapture={() => {
+                  setComposerDockFocused(true)
+                }}
+                onBlurCapture={handleComposerDockBlurCapture}
+              >
+                {composerForm}
+              </div>
             </div>
           </div>
         ) : null}

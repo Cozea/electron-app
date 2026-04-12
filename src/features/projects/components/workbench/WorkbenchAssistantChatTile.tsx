@@ -1,5 +1,4 @@
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { CozeaChatSurface } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
 import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog"
@@ -18,7 +17,7 @@ interface WorkbenchAssistantChatTileProps {
 }
 
 export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProps) {
-  const { chatTitle, showTitleSpinner, diffDialog, closeDiffDialog, surfaceProps } =
+  const { chatTitle, diffDialog, closeDiffDialog, surfaceProps } =
     useWorkbenchAssistantTileController({
       projectId: props.projectId,
       laneId: props.laneId,
@@ -32,16 +31,9 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
         title={chatTitle}
         panelApi={props.panelApi}
         containerApi={props.containerApi}
-        controls={
-          <div className="flex min-w-0 items-center gap-2">
-            {showTitleSpinner ? (
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-            ) : null}
-            <span className="truncate text-xs text-foreground" title={chatTitle}>
-              {chatTitle}
-            </span>
-          </div>
-        }
+        chromeVariant="pill"
+        tileType="assistantChat"
+        assistantProvider={props.tile.provider}
       >
         <CozeaChatSurface {...surfaceProps} />
       </WorkbenchTileChrome>

@@ -52,6 +52,8 @@ export interface DevServerLaunchContext {
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
+const MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH = 4
+
 function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager): string {
   if (pm === 'npm') return command
   const trimmed = command.trim()
@@ -74,17 +76,143 @@ function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager)
   return command
 }
 
-async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
-  try {
-    const entries = await projectAnalysisDesktopClient.readDir(projectPath)
-    const names = new Set(entries.map((entry) => entry.name))
-    if (names.has('bun.lockb')) return 'bun'
-    if (names.has('pnpm-lock.yaml')) return 'pnpm'
-    if (names.has('yarn.lock')) return 'yarn'
-    if (names.has('package-lock.json')) return 'npm'
-  } catch {
-    // Fall through to npm.
+function trimTrailingSeparators(pathValue: string): string {
+  if (/^[A-Za-z]:[\\/]*$/.test(pathValue)) {
+    return pathValue.endsWith('\\') || pathValue.endsWith('/') ? pathValue : `${pathValue}\\`
   }
+
+  return pathValue.replace(/[\\/]+$/, '') || pathValue
+}
+
+function inferPathSeparator(pathValue: string): '/' | '\\' {
+  return pathValue.includes('\\') ? '\\' : '/'
+}
+
+function joinAbsolutePath(basePath: string, ...segments: string[]): string {
+  const separator = inferPathSeparator(basePath)
+  const normalizedBase = trimTrailingSeparators(basePath)
+  const cleanedSegments = segments
+    .map((segment) => segment.replace(/^[/\\]+|[/\\]+$/g, ''))
+    .filter(Boolean)
+
+  if (cleanedSegments.length === 0) {
+    return normalizedBase
+  }
+
+  const baseWithSeparator =
+    normalizedBase.endsWith('/') || normalizedBase.endsWith('\\')
+      ? normalizedBase
+      : `${normalizedBase}${separator}`
+
+  return `${baseWithSeparator}${cleanedSegments.join(separator)}`
+}
+
+function getParentDirectory(pathValue: string): string | null {
+  const normalized = trimTrailingSeparators(pathValue)
+  const lastSlashIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+
+  if (lastSlashIndex < 0) {
+    return null
+  }
+
+  if (lastSlashIndex === 0) {
+    return normalized[0]
+  }
+
+  if (lastSlashIndex === 2 && /^[A-Za-z]:/.test(normalized.slice(0, 2))) {
+    return normalized.slice(0, 3)
+  }
+
+  const parent = normalized.slice(0, lastSlashIndex)
+  return parent.length > 0 ? parent : null
+}
+
+function buildPackageManagerSearchRoots(projectPath: string): string[] {
+  const roots: string[] = []
+  let current: string | null = projectPath.trim()
+
+  for (let depth = 0; depth <= MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH && current; depth += 1) {
+    const normalized = trimTrailingSeparators(current)
+    if (normalized && !roots.includes(normalized)) {
+      roots.push(normalized)
+    }
+
+    const parent = getParentDirectory(normalized)
+    if (!parent || parent === normalized) {
+      break
+    }
+    current = parent
+  }
+
+  return roots
+}
+
+function parsePackageManagerField(
+  packageManagerField: unknown,
+): PackageManager | null {
+  if (typeof packageManagerField !== 'string') {
+    return null
+  }
+
+  const normalized = packageManagerField.trim().toLowerCase()
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized === 'bun' || normalized.startsWith('bun@')) return 'bun'
+  if (normalized === 'pnpm' || normalized.startsWith('pnpm@')) return 'pnpm'
+  if (normalized === 'yarn' || normalized.startsWith('yarn@')) return 'yarn'
+  if (normalized === 'npm' || normalized.startsWith('npm@')) return 'npm'
+
+  return null
+}
+
+function detectPackageManagerFromEntryNames(entryNames: Set<string>): PackageManager | null {
+  if (entryNames.has('bun.lock') || entryNames.has('bun.lockb')) return 'bun'
+  if (entryNames.has('pnpm-lock.yaml')) return 'pnpm'
+  if (entryNames.has('yarn.lock')) return 'yarn'
+  if (entryNames.has('package-lock.json')) return 'npm'
+  return null
+}
+
+async function readPackageManagerFromAbsolutePackageJson(
+  absoluteDirectoryPath: string,
+): Promise<PackageManager | null> {
+  try {
+    const raw = await projectAnalysisDesktopClient.readAbsoluteFile(
+      joinAbsolutePath(absoluteDirectoryPath, 'package.json'),
+    )
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw) as { packageManager?: unknown }
+    return parsePackageManagerField(parsed.packageManager)
+  } catch {
+    return null
+  }
+}
+
+async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
+  for (const candidateRoot of buildPackageManagerSearchRoots(projectPath)) {
+    const packageManagerFromPackageJson =
+      await readPackageManagerFromAbsolutePackageJson(candidateRoot)
+    if (packageManagerFromPackageJson) {
+      return packageManagerFromPackageJson
+    }
+
+    try {
+      const entries = await projectAnalysisDesktopClient.readDir(candidateRoot)
+      const entryNames = new Set(entries.map((entry) => entry.name))
+      const packageManagerFromLockfile = detectPackageManagerFromEntryNames(entryNames)
+      if (packageManagerFromLockfile) {
+        return packageManagerFromLockfile
+      }
+    } catch {
+      // Fall through to the next ancestor candidate.
+    }
+  }
+
   return 'npm'
 }
 
@@ -262,6 +390,7 @@ const FRAMEWORK_CONFIGS: Record<Framework, Omit<FrameworkInfo, 'framework'>> = {
 
 interface PackageJson {
   name?: string
+  packageManager?: string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   scripts?: Record<string, string>

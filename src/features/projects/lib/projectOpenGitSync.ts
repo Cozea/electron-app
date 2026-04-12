@@ -8,6 +8,7 @@ import {
 } from '@/lib/git/projectGitRuntime'
 import { ensureProjectRepositoryAccessForOpen, ensureProjectSourceControlReadyForOpen } from './projectOpenAccess'
 import { projectOpenDesktopClient } from './projectOpenDesktopClient'
+import { buildProjectLocalPathLookupOptions } from './projectLocalRootHints'
 import type {
   PrepareGitProjectForOpenOptions,
   PrepareGitProjectForOpenResult,
@@ -25,11 +26,14 @@ function shouldAdoptWorkspaceForMissingRemote(project: ProjectOpenGitProjectLike
   return resolveProjectWorkingCopyMode(project.sourceControl) === 'attached'
 }
 
-async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike, '_id' | 'slug'>): Promise<string> {
-  const resolvedExistingPath = await projectOpenDesktopClient.getLocalPath({
-    slug: project.slug,
-    projectId: String(project._id),
-  })
+async function resolveTargetProjectPath(
+  project: Pick<ProjectOpenGitProjectLike, '_id' | 'slug' | 'localPath' | 'importedFrom'>,
+): Promise<string> {
+  const resolvedExistingPath = await projectOpenDesktopClient.getLocalPath(
+    buildProjectLocalPathLookupOptions({
+      project,
+    }),
+  )
   if (resolvedExistingPath) {
     return resolvedExistingPath
   }

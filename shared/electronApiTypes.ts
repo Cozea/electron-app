@@ -97,6 +97,13 @@ export interface LocalProject {
   lastModified: number
 }
 
+export interface ProjectLocalPathLookupOptions {
+  slug: string
+  projectId?: string
+  localPathHint?: string | null
+  attachedPathHint?: string | null
+}
+
 export interface StorageProjectsPage {
   items: LocalProject[]
   page: number
@@ -864,7 +871,10 @@ export interface AgentToolPrepareResult extends AgentToolStatus {
 export interface DevServerStartOptions {
   projectPath: string
   command: string
+  bootstrapCommand?: string | null
   port: number
+  sessionKey?: string | null
+  framework?: string | null
   terminalId: string
   cols?: number
   rows?: number
@@ -1388,7 +1398,7 @@ export interface ElectronAPI {
       projectId?: string
       baseDirectory?: string
     }) => Promise<CloneRepositoryResult>
-    getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
+    getLocalPath: (options: string | ProjectLocalPathLookupOptions) => Promise<string | null>
     rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
     clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
     getLaneState: (options: { projectId: string }) => Promise<ProjectLaneState | null>

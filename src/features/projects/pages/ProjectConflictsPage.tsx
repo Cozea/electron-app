@@ -14,6 +14,7 @@ import { useAccessibleProject } from '@/features/projects/hooks/useAccessiblePro
 import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/CodeMirrorMergeViewer'
+import { resolveAttachedLocalProjectPathHint } from '@/features/projects/lib/projectLocalRootHints'
 
 interface ConflictFileState {
   baseContent: string | null
@@ -40,6 +41,15 @@ export function ProjectConflictsPage() {
     preferInitialPath: Boolean(navigationLocalPath),
     projectId,
     projectSlug: project?.slug ?? null,
+    cloudPathHint:
+      project && 'localPath' in project && typeof project.localPath === 'string'
+        ? project.localPath
+        : null,
+    attachedPathHint: resolveAttachedLocalProjectPathHint(
+      project as {
+        importedFrom?: { provider: string; repoFullName: string; branch?: string | null } | null
+      } | null,
+    ),
   })
   const projectPath = syncContext?.projectPath ?? resolvedLocalPath
   const projectName = project?.name ?? project?.slug ?? 'Project'
