@@ -5,6 +5,8 @@ import {
   showDesktopContextMenu,
 } from "@/lib/desktopBridgeClient"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
+import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
 type ProjectCreationMenuAction = "empty" | "local" | "repo"
 
@@ -34,12 +36,17 @@ function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: n
 
 export function useProjectCreationMenu() {
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
+  const { importLocalFolder, importPickedLocalFolder } = useLocalProjectImport()
 
   const openDirect = useCallback(
     (mode: CreateProjectDialogMode = "empty") => {
+      if (mode === "local") {
+        void importLocalFolder()
+        return
+      }
       openCreateProjectDialog({ mode })
     },
-    [openCreateProjectDialog],
+    [importLocalFolder, openCreateProjectDialog],
   )
 
   const openMenu = useCallback(
@@ -62,9 +69,18 @@ export function useProjectCreationMenu() {
         return
       }
 
+      if (selection === "local") {
+        const selectedPath = await browseForDirectory("Select local project folder")
+        if (!selectedPath?.trim()) {
+          return
+        }
+        void importPickedLocalFolder(selectedPath)
+        return
+      }
+
       openCreateProjectDialog({ mode: selection })
     },
-    [openCreateProjectDialog],
+    [importLocalFolder, importPickedLocalFolder, openCreateProjectDialog],
   )
 
   return {

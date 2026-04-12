@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ArrowsUpDownIcon as ChevronsUpDown } from "@heroicons/react/24/outline"
+import { Cog6ToothIcon as Settings } from "@heroicons/react/24/outline"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import {
@@ -233,7 +233,7 @@ export function NavUser({
             <span className="truncate font-normal text-sidebar-foreground">{userData.name}</span>
             <span className="truncate font-normal text-muted-foreground">{activePlanLabel}</span>
           </div>
-          <ChevronsUpDown className="ml-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
+          <Settings className="ml-auto size-5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
