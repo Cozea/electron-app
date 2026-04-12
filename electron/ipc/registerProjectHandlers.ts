@@ -24,8 +24,8 @@ import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import {
   clearRegisteredProjectPath,
-  readRegisteredProjectPath,
   rememberProjectPath,
+  resolveCanonicalProjectPath,
 } from '../projectPathRegistry'
 import {
   ensureProjectCollabLane,
@@ -214,7 +214,7 @@ function runGitCommand(
 
 function normalizeProjectLookup(
   value: unknown,
-): { slug: string; projectId?: string } {
+): { slug: string; projectId?: string; localPathHint?: string; attachedPathHint?: string } {
   if (typeof value === 'string') {
     return { slug: value }
   }
@@ -226,6 +226,8 @@ function normalizeProjectLookup(
   const rawValue = value as {
     slug?: unknown
     projectId?: unknown
+    localPathHint?: unknown
+    attachedPathHint?: unknown
   }
 
   let slug = ''
@@ -241,7 +243,11 @@ function normalizeProjectLookup(
   }
 
   const projectId = typeof rawValue.projectId === 'string' ? rawValue.projectId : undefined
-  return { slug, projectId }
+  const localPathHint =
+    typeof rawValue.localPathHint === 'string' ? rawValue.localPathHint : undefined
+  const attachedPathHint =
+    typeof rawValue.attachedPathHint === 'string' ? rawValue.attachedPathHint : undefined
+  return { slug, projectId, localPathHint, attachedPathHint }
 }
 
 export function registerProjectHandlers(
@@ -429,30 +435,37 @@ npm-debug.log*
 
   ipcMain.handle(
     'project:getLocalPath',
-    async (_event, value: string | { slug: string; projectId?: string }): Promise<string | null> => {
-      const { slug, projectId } = normalizeProjectLookup(value)
+    async (
+      _event,
+      value: string | { slug: string; projectId?: string; localPathHint?: string; attachedPathHint?: string },
+    ): Promise<string | null> => {
+      const { slug, projectId, localPathHint, attachedPathHint } = normalizeProjectLookup(value)
       const settings = deps.loadSettings()
-      if (projectId) {
-        const registeredPath = readRegisteredProjectPath(projectId)
-        if (registeredPath) {
-          return registeredPath
-        }
-      }
-      if (!slug || typeof settings.projectsDirectory !== 'string') {
+      if (
+        !projectId &&
+        !localPathHint &&
+        !attachedPathHint &&
+        (!slug || typeof settings.projectsDirectory !== 'string')
+      ) {
         console.warn('[ProjectPath] Invalid getLocalPath lookup payload', {
           value,
           normalizedSlug: slug,
           projectId: projectId ?? null,
+          localPathHint: localPathHint ?? null,
+          attachedPathHint: attachedPathHint ?? null,
           projectsDirectoryType: typeof settings.projectsDirectory,
           projectsDirectory: settings.projectsDirectory,
         })
         return null
       }
-      const resolvedPath = resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
-      if (resolvedPath && projectId) {
-        rememberProjectPath(projectId, resolvedPath)
-      }
-      return resolvedPath
+
+      return resolveCanonicalProjectPath({
+        projectId,
+        slug,
+        projectsDirectory: settings.projectsDirectory,
+        localPathHint,
+        attachedPathHint,
+      })
     },
   )
 
@@ -466,7 +479,7 @@ npm-debug.log*
       }: { projectId: string; projectPath: string }
     ): Promise<{ success: boolean; localPath?: string; error?: string }> => {
       try {
-        const localPath = rememberProjectPath(projectId, projectPath)
+        const localPath = rememberProjectPath(projectId, projectPath, { source: 'manual' })
         return {
           success: true,
           localPath,

@@ -33,6 +33,8 @@ function appendDevServerOutput(current: string, chunk: string): string {
 
 interface UseDevServerManagerOptions {
   projectPath: string | null
+  sessionKey?: string | null
+  framework?: string | null
   terminalId?: string | null
   autoStart?: boolean
   storedDevCommand?: string | null
@@ -86,6 +88,8 @@ const MAX_TIMELINE_EVENTS = 80
 
 export function useDevServerManager({
   projectPath,
+  sessionKey = null,
+  framework = null,
   terminalId = null,
   autoStart = false,
   storedDevCommand = null,
@@ -224,25 +228,30 @@ export function useDevServerManager({
       }
 
       let command = config.command
+      let bootstrapCommand: string | null = null
       const packageJsonExists = await hasPackageJson(projectPath)
       if (packageJsonExists) {
         const packageManager = await detectPackageManager(projectPath)
         const dependenciesInstalled = await checkDependenciesInstalled(projectPath, packageManager)
         if (!dependenciesInstalled) {
-          command = `${getInstallCommand(packageManager)} && ${config.command}`
+          bootstrapCommand = getInstallCommand(packageManager)
         }
       }
 
       console.log('[DevServer] Starting with config:', {
         ...config,
         command,
+        bootstrapCommand,
       })
 
       // Start the dev server
       const result = await window.electronAPI.devServer.start({
         projectPath,
         command,
+        bootstrapCommand,
         port: config.port,
+        sessionKey,
+        framework,
         terminalId,
         runId: requestedRunId,
       })
@@ -319,11 +328,13 @@ export function useDevServerManager({
     onReady,
     previewMode,
     projectPath,
+    sessionKey,
     state.status,
     storedDevCommand,
     storedDevPort,
     terminalId,
     transitionLifecycle,
+    framework,
   ])
 
   // Stop the dev server

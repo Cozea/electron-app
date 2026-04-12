@@ -258,7 +258,7 @@ export function TerminalInstance({
       return () => clearTimeout(timeoutId)
     }
 
-    const fontSize = 13
+    const fontSize = 12
     const charWidth = fontSize * 0.6
     const charHeight = fontSize * XTERM_LINE_HEIGHT
     const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))

@@ -39,8 +39,6 @@ import type { WorkbenchInsertionEdge } from "@/features/projects/components/work
 import type { SeamZone } from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
 
-const EDGE_INSERTION_ARM_INSET = 28;
-
 interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
   activeLaneId: string;
@@ -456,19 +454,8 @@ export function useWorkbenchDockviewRuntime(
       return;
     }
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const localX = event.clientX - rect.left;
-    const localY = event.clientY - rect.top;
-    const withinInterior =
-      localX > EDGE_INSERTION_ARM_INSET &&
-      localX < rect.width - EDGE_INSERTION_ARM_INSET &&
-      localY > EDGE_INSERTION_ARM_INSET &&
-      localY < rect.height - EDGE_INSERTION_ARM_INSET;
-
-    if (withinInterior) {
-      edgeInsertionArmedRef.current = true;
-      setEdgeInsertionArmed(true);
-    }
+    edgeInsertionArmedRef.current = true;
+    setEdgeInsertionArmed(true);
   }, []);
 
   const handleResolveSelectionTile = useCallback(

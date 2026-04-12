@@ -55,6 +55,89 @@ The session foundation and the first rebuilt browser/dev-server surfaces now exi
 - the target lifecycle model
 - the code that now implements that model
 
+## Canonical Local Root Implementation Checklist
+
+This is the concrete refactor required to stop project switching from rediscovering or borrowing
+the wrong cwd.
+
+### Objectives
+
+- every project on this device has one canonical local root
+- route/layout code reads that canonical root instead of re-deriving it
+- workbench session activation is the only place allowed to set `projectPath`
+- tiles attach to session-owned runtime only and never mutate cwd ownership
+- local-attached projects outside the default projects directory work on cold open and refresh
+
+### Implementation Todo
+
+- [x] Extend local project-path persistence so it stores verified canonical roots rather than just a loose path string
+- [x] Add a fast main-process canonical root resolver that checks:
+  - in-memory cache
+  - persisted registry
+  - verified cloud/member local-path hint
+  - verified attached-import local-path hint
+  - slug-based default projects directory fallback
+- [x] Preserve the resolver behind the existing `project:getLocalPath` bridge so the renderer hot path stays simple
+- [x] Feed local-attached import metadata into the open flow instead of forcing slug fallback
+- [x] Update the sidebar fast-open path to resolve the canonical root first, then navigate
+- [x] Update folder-open actions to use the same canonical root resolution path
+- [x] Extend `useLocalProjectPath` so cloud/member paths and attached local-import roots are lookup hints, not immediately trusted render state
+- [x] Update the project layout so it consumes canonical local-root resolution and stops doing its own duplicate verification fetch
+- [x] Return per-user `localPath` on accessible project queries so cold-open / refresh can recover local-attached roots like desktop imports
+- [x] Keep tile-level browser and terminal binding logic pathless so session activation remains the only place that owns `projectPath`
+- [x] Keep lane state stable across path resolution, but allow it to refresh once a canonical root appears
+- [x] Verify the refactor with `typecheck`, `lint`, and `build`
+
+### Landed Files
+
+- `electron/projectPathRegistry.ts`
+- `electron/ipc/registerProjectHandlers.ts`
+- `shared/electronApiTypes.ts`
+- `electron/preload.ts`
+- `convex/projects.ts`
+- `src/features/projects/lib/projectOpenTypes.ts`
+- `src/features/projects/lib/projectLocalRootHints.ts`
+- `src/features/projects/lib/projectOpenDesktopClient.ts`
+- `src/features/projects/lib/projectOpenGitSync.ts`
+- `src/features/projects/hooks/useLocalProjectPath.ts`
+- `src/features/projects/layouts/ProjectLayout.tsx`
+- `src/features/projects/components/ProjectSidebar.tsx`
+- `src/features/projects/components/sidebar/ProjectSidebarTreeItem.tsx`
+- `src/features/projects/pages/ProjectConflictsPage.tsx`
+
+### Resulting Ownership Model
+
+- Electron canonical root resolver:
+  - verifies and persists local roots for each `projectId`
+  - treats cloud/member `localPath` as a hint
+  - treats local-attached `importedFrom.provider === "local"` path as a hint
+  - falls back to `projectsDirectory/slug` resolution only when necessary
+- Sidebar / route / layout:
+  - ask for the canonical local root
+  - pass it into navigation state when they have it
+  - never overwrite session ownership from tile-level effects
+- Workbench session manager:
+  - still owns `projectPath`
+  - invalidates terminals, dev server, browser, and native preview when that path actually changes
+
+### Why This Matches The `t3code` Pattern
+
+The core lesson from the local `t3code` study is unchanged:
+
+- store the canonical workspace root once
+- key session/runtime state off a stable identity
+- invalidate runtime only when the actual workspace root changes
+
+That app does this with `threadId` + `workspaceRoot` / `cwd`:
+
+- `apps/web/src/store.ts`
+- `apps/web/src/terminalStateStore.ts`
+- `apps/server/src/terminal/Layers/Manager.ts`
+- `apps/web/src/routes/_chat.$threadId.tsx`
+
+This refactor moves Cozea closer to the same model, just with `projectId + laneId` and a
+device-local canonical root registry.
+
 ## Implemented Sweep
 
 This section records the concrete implementation delivered in this sweep so the document reflects the actual codebase rather than only the target design.
@@ -1810,6 +1893,96 @@ This also improves the dev-server tile indirectly, because the web-preview dev-s
 
 The workbench no longer depends on a hashed `WorkbenchTerminalTile-*.css` lazy asset existing at runtime, and rebuilds have a canonical renderer asset set instead of an ever-growing pile of stale chunk versions.
 
+## 17. Dev-Server Bootstrap No Longer Self-Interrupts `npm install`
+
+### Problem
+
+The first PTY-backed dev-server implementation still treated dependency installation and preview readiness as one combined phase.
+
+When a project was missing dependencies, the renderer built a combined command like:
+
+- `npm install && npm run dev`
+
+The main process would send that whole command to the terminal and then immediately start the preview readiness timeout. If `npm install` took too long, Cozea would decide the preview had not come up in time and send `Ctrl+C` to the bound terminal. From the user’s point of view that looked exactly like npm randomly dying with:
+
+- `npm error process terminated`
+- `npm error signal SIGINT`
+
+That was not npm being flaky. We were interrupting our own terminal session.
+
+### Fix
+
+The dev-server launch contract now separates bootstrap from launch:
+
+1. The renderer passes an optional `bootstrapCommand` when dependencies are missing.
+2. The main process runs that bootstrap command first in the same bound PTY.
+3. It waits for the bootstrap command to settle before sending the actual dev command.
+4. Only after the real dev command is sent do we start the preview-port readiness timeout.
+
+That means install time is no longer counted as “preview should already be ready by now.”
+
+### Why This Matters
+
+This preserves the UX goal we wanted from the shared terminal:
+
+- users still see the real install output in the same terminal tab
+- the dev server still launches in the same PTY/session
+- Cozea no longer kills `npm install` just because dependency bootstrap is taking a while
+
+### Behavioral Change
+
+If dependencies are missing, the terminal now behaves like this:
+
+1. `npm install` / `pnpm install` / `bun install`
+2. wait for that phase to settle
+3. launch `npm run dev` / equivalent
+4. wait for the preview URL
+
+This is the correct lifecycle for a local-first IDE-style workbench.
+
+## 18. Workbench Sessions Must Invalidate Path-Bound Terminals On `projectPath` Change
+
+### Problem
+
+The session model keys workbenches by `projectId + laneId`, but terminals are path-bound resources because their PTYs are created with a real cwd.
+
+Before this fix, an existing workbench session could update its `projectPath` while keeping the old `terminalBindings` map intact. That meant the next renderer mount could do this:
+
+1. activate or ensure the session with a new `projectPath`
+2. ask for the existing terminal binding for the tile
+3. receive a terminal id that was created under the previous cwd
+4. reattach the terminal UI and label it with the new project path even though the PTY still belonged to the old one
+
+This is exactly how one project workbench could show a terminal from another project or worktree.
+
+### Root Cause
+
+The session record treated `projectPath` as mutable metadata, but did not treat a path change as a lifecycle boundary for:
+
+- bound terminals
+- running dev servers
+- native preview sessions
+
+That assumption was wrong. These are not generic session resources. They are path-scoped runtime resources.
+
+### Fix
+
+`WorkbenchSessionManager` now reconciles `projectPath` changes explicitly:
+
+1. detect when an existing session’s normalized `projectPath` changes
+2. kill and clear all bound terminals for that session
+3. stop any running dev server for the old path
+4. stop any native preview session tied to the old path
+5. only then allow the session to continue with the new path
+
+There is also a defensive validation on `getTerminalBinding(...)`: if the bound terminal snapshot’s `projectPath` does not match the session’s current `projectPath`, the binding is discarded instead of reused.
+
+### Rule Going Forward
+
+For workbench architecture, a `projectPath` change is not a cosmetic field update. It is a hard invalidation boundary for all cwd-bound runtime resources.
+
+If a session changes path, it may keep layout and high-level session identity, but it must not keep terminals or dev-server runtime from the old cwd.
+
 ## Open Questions
 
 These are real implementation questions, but none of them change the main direction.
@@ -1859,6 +2032,401 @@ If we implement this correctly:
 - multi-project use will feel dramatically lighter
 - terminals will stop getting destroyed just because the user navigated
 - the app will have a real performance policy instead of accidental lifecycle behavior
+
+## Latest Live Verification
+
+The latest live Electron/CDP verification produced a clearer picture of the remaining project-path bug.
+
+### What is now working
+
+- cold-opening `RadonPreviewSmokeTest` no longer auto-attaches `crossand-plans`
+- `RadonPreviewSmokeTest -> crossand-plans` now behaves correctly
+- after that forward switch:
+  - active `crossand-plans` session path becomes `/Users/admin/Developer/Cozea/crossand-plans`
+  - `RadonPreviewSmokeTest` stays backgrounded with `projectPath: null`
+  - local `project-path-registry.json` and `project-lane-registry.json` only claim `crossand-plans`
+
+### What is still broken
+
+- `crossand-plans -> RadonPreviewSmokeTest` still comes back wrong
+- the route changes to the Radon project ID, but the active runtime/session path reattaches to `/Users/admin/Developer/Cozea/crossand-plans`
+- the active terminal snapshot also reports `/Users/admin/Developer/Cozea/crossand-plans`
+
+### What this means
+
+The original “trust stale mirrored local paths” bug has been reduced, but one transition bug still survives:
+
+- session path mutation is no longer primarily coming from duplicate persisted path registries
+- the remaining bad write happens during or immediately after the return switch into a project that does not currently have a verified local-path resolution
+- in live tests, this shows up as:
+  - clean baseline: Radon active with `projectPath: null`
+  - forward switch: crossand active with correct path
+  - return switch: Radon route active, but runtime/session path rebounds to crossand
+
+## Update: Canonical Root Poisoning Fix
+
+The remaining Radon/Crossand bug turned out to be a **canonical-root poisoning** issue rather than a pure session-manager bug.
+
+### What was happening
+
+- `RadonPreviewSmokeTest` is a local-attached project whose real device root is:
+  - `/Users/admin/Desktop/RadonPreviewSmokeTest`
+- a stale borrowed runtime path from another project (`/Users/admin/Developer/Cozea/crossand-plans`) was able to get written back into:
+  - the local canonical path registry
+  - the workbench session snapshot
+  - the per-user mirrored cloud `localPath`
+- after that poisoning happened once, later opens looked “valid” because the app kept reusing the poisoned local root as if it had been user-confirmed
+
+### Root cause
+
+Two ownership mistakes were working together:
+
+1. `electron/projectPathRegistry.ts`
+   - canonical path resolution preferred the previously-registered path before considering the local-attached import hint
+   - that meant a poisoned manual entry could outrank the real attached local root
+
+2. `src/features/projects/layouts/ProjectLayout.tsx`
+   - the active layout mirrored any `effectiveLocalPath` back into canonical storage through `project.rememberLocalPath(...)`
+   - that let a derived runtime path get promoted into a “manual” canonical root even when the user had not explicitly chosen that folder
+
+### Fixes landed
+
+#### 1. Attached local roots now outrank stale registry entries
+
+In `electron/projectPathRegistry.ts`:
+
+- `resolveCanonicalProjectPath(...)` now checks `attachedPathHint` first
+- when the attached path exists on disk, it:
+  - returns that path immediately
+  - rewrites the local canonical registry entry with source `attached-import`
+- only after that does the resolver fall back to an existing registered path
+
+This makes local-attached projects self-heal even if the registry was previously poisoned.
+
+#### 2. Project layout no longer promotes arbitrary runtime paths into canonical storage
+
+In `src/features/projects/layouts/ProjectLayout.tsx`:
+
+- the layout still primes the in-renderer cache so the UI stays responsive
+- but it no longer calls `project.rememberLocalPath(...)` for every resolved `effectiveLocalPath`
+- cloud `localPath` mirroring now happens only for **trusted** paths:
+  - an explicit navigation/open path passed in route state
+  - or an `effectiveLocalPath` that exactly matches the verified local-attached import root
+
+This closes the hole where borrowed session/runtime state could become a new canonical source of truth.
+
+### Live verification after the fix
+
+The validation was done against the real Electron app with the local path registry intentionally left in a poisoned state first.
+
+Initial poisoned state:
+
+- `project-path-registry.json` still had:
+  - `m579wb0cefgwx3v4ct2f7pbebx83hsav -> /Users/admin/Developer/Cozea/crossand-plans`
+  - source `manual`
+
+After calling canonical local-root resolution for Radon with the attached local import hint:
+
+- Electron returned:
+  - `/Users/admin/Desktop/RadonPreviewSmokeTest`
+- the local registry rewrote itself to:
+  - `m579wb0cefgwx3v4ct2f7pbebx83hsav -> /Users/admin/Desktop/RadonPreviewSmokeTest`
+  - source `attached-import`
+
+After reopening the Radon workbench:
+
+- the active session snapshot changed to:
+  - `projectId: m579wb0cefgwx3v4ct2f7pbebx83hsav`
+  - `projectPath: /Users/admin/Desktop/RadonPreviewSmokeTest`
+- the old borrowed `crossand-plans` cwd no longer remained attached to the Radon workbench session
+
+### Rule going forward
+
+Canonical local roots must only come from:
+
+- explicit user/open/import flows
+- or a stronger verified device-local identity such as a local-attached import path
+
+Canonical local roots must **not** come from:
+
+- incidental runtime/session state
+- tile attachment state
+- layout fallback resolution alone
+- whatever cwd happened to be active most recently
+
+## Update: Background Dev Server Retention Fix
+
+The next live multi-project test exposed a narrower problem: ordinary PTY terminals behaved correctly across project switches, but dev-server previews did not.
+
+### What the live test showed before the fix
+
+Using the real Electron app with two website projects:
+
+- `crossand-plans`
+- `RadonPreviewSmokeTest`
+
+the observed behavior was:
+
+- a normal terminal running `codex` in each project stayed alive across `A -> B -> A` switches
+- the PTY itself stayed bound to the correct session and cwd
+- but the dev-server runtime did **not** stay alive across the same switches
+- the dev-server tile terminal survived, but its output showed `^C`
+- the background session snapshot reported `devServer.running: false`
+- the background browser surface was also trimmed quickly
+
+That proved the base terminal/session model was fine. The regression was specifically in the background preview policy.
+
+### Root cause
+
+The main-process workbench session sweep in `electron/services/WorkbenchSessionManager.ts` was too aggressive for background preview sessions:
+
+- unpinned `backgroundWarm` sessions could be forced into `backgroundFrozen` immediately under memory pressure
+- once frozen, the same sweep could stop a running dev server
+- `DevServerService.stop(...)` sends `Ctrl+C` into the bound PTY shell, so the dev server exited even though the terminal itself stayed alive
+
+This meant the app was preserving the terminal shell but discarding the actual preview runtime, which is the opposite of the intended model.
+
+### Fixes landed
+
+#### 1. Running preview sessions are now treated as warm-priority sessions
+
+In `electron/services/WorkbenchSessionManager.ts`:
+
+- background-session rebalancing now prioritizes sessions with:
+  - a running dev server
+  - or a running native preview session
+- this means active preview work is less likely to be demoted behind colder background sessions
+
+#### 2. Background preview sessions get a longer warm grace window
+
+Also in `electron/services/WorkbenchSessionManager.ts`:
+
+- ordinary background sessions still use the short `backgroundWarm` idle window
+- sessions with a running dev server or native preview now use a longer warm retention window before they are allowed to freeze
+
+This keeps recent preview work “warm” long enough for normal project switching instead of behaving like disposable idle state.
+
+#### 3. Policy sweep no longer auto-stops running dev servers
+
+Most importantly:
+
+- the periodic policy sweep no longer calls `DevServerService.stop(...)` just because a session became frozen or the machine reported memory pressure
+- browser surfaces may still be hidden or trimmed first
+- but the terminal-backed preview runtime is preserved
+
+This aligns the dev-server policy with the terminal policy:
+
+- switching projects backgrounds the session
+- it does **not** imply “stop the process”
+- explicit close, app quit, or real project-path change still remain teardown boundaries
+
+### Resulting policy after this fix
+
+For a session with an active web preview:
+
+- terminal PTY stays alive
+- dev server process stays alive
+- browser surface is hidden first
+- ephemeral browser surfaces may still be trimmed later
+- reopening the project should reattach to the already-running preview runtime instead of cold-starting it
+
+For a plain terminal-only session:
+
+- behavior is unchanged
+- terminals still remain alive across project switches
+
+### Why this is the right model
+
+The successful `codex` CLI test across two project terminals showed that the session-backed PTY architecture is already good enough for multi-project work. The missing piece was simply making dev servers follow that same ownership model instead of treating them as background-disposable.
+
+In short:
+
+- terminals proved the session model works
+- dev servers were violating that model
+- the session policy now preserves them the same way
+
+### Live verification after restarting the Electron main process
+
+Because the retention fix lives in the Electron main process, the first validation run after the code change was misleading: the dev app had not yet restarted the main process, so the renderer was still talking to the old session-policy code.
+
+After a full `bun run dev -- --remote-debugging-port=9224` restart, the same two-project retention test was rerun against the fresh process using:
+
+- `crossand-plans` on `npm run dev -- --port 9043`
+- `RadonPreviewSmokeTest` on `npm run dev -- --port 9044`
+
+Observed result:
+
+- `crossand-plans`
+  - `lifecycle: backgroundWarm`
+  - `devServer.running: true`
+  - terminal still running
+  - terminal tail still showed the live Next.js server, with no injected `^C`
+- `RadonPreviewSmokeTest`
+  - `lifecycle: backgroundFrozen`
+  - `devServer.running: true`
+  - terminal still running
+  - terminal tail still showed the live Next.js server, with no injected `^C`
+- after waiting through a full session-policy sweep interval, both sessions still reported:
+  - their dev server running
+  - their PTY alive
+  - no forced stop signal
+
+That confirms the intended behavior is now real:
+
+- background previews survive project switching
+- `backgroundFrozen` no longer implies “stop the preview runtime”
+- browser/view cooling can happen independently from terminal/dev-server lifetime
+
+## Update: Automated Dev Server Port Brokerage
+
+The next issue after retention was port management. The old behavior relied too much on whatever the project script happened to do.
+
+### What was wrong before
+
+Two separate problems were colliding:
+
+1. the app treated the stored framework/default port as a suggestion, but did not own port allocation strongly enough
+2. real project scripts could still hardcode a port internally
+
+In the live tests:
+
+- both sample Next.js projects defaulted to `9003`
+- plain `npm run dev` in both projects caused them to fight over the same port
+- even though the app wanted independent background preview sessions, the script-level hardcoded port created cross-project contention
+
+### Fixes landed
+
+#### 1. A main-process port broker now owns port allocation
+
+Added:
+
+- `electron/services/DevServerPortBroker.ts`
+
+This broker:
+
+- persists stable per-session dev-server ports locally
+- leases ports by workbench session identity
+- scans for the next free port when the preferred one is unavailable
+- releases leases when the run exits or is stopped
+
+That means port choice is no longer “best effort in the renderer”; it is now an Electron-side resource allocation concern.
+
+#### 2. Dev-server start now carries session identity and framework hint
+
+The dev-server bridge now includes:
+
+- `sessionKey`
+- `framework`
+
+through:
+
+- `shared/electronApiTypes.ts`
+- `electron/preload.ts`
+- `electron/ipc/registerDevServerHandlers.ts`
+- `src/hooks/useDevServerManager.ts`
+- `src/features/projects/components/workbench/WorkbenchDevServerTile.tsx`
+
+This gives the main process enough context to make stable allocation decisions and adapt the command safely.
+
+#### 3. Framework-aware port overrides are now applied before launch
+
+Added:
+
+- `electron/services/devServerCommandPortOverride.ts`
+
+This is important for package-manager script commands like:
+
+- `npm run dev`
+- `pnpm run dev`
+- `bun run dev`
+- `yarn run dev`
+
+For frameworks such as Next.js and Vite-family apps, the app now appends a real port override in command-native form instead of trusting only `PORT=...` to win.
+
+For example:
+
+- base command: `npm run dev`
+- effective launch command inside the terminal shell:
+  - `env PORT=9043 BROWSER=none npm run dev -- --port 9043`
+
+That matters because many real project scripts already contain a hardcoded inner port, and appending a later explicit `--port` is what actually wins for frameworks like Next.js.
+
+#### 4. The broker and adapter are now part of the real start lifecycle
+
+In `electron/services/DevServerService.ts`:
+
+- the service now acquires a leased port from the broker before launch
+- computes an effective command using the framework-aware override helper
+- starts the process with that effective command
+- releases the leased port on stop and on unexpected exit
+
+### Resulting policy
+
+For web previews:
+
+- each background workbench session gets a stable preferred dev-server port
+- if that port is free, it is reused
+- if it is busy, the next free port is leased
+- the actual allocated port is returned to the renderer
+- the command is adapted so script-level hardcoded ports do not silently override the app’s choice
+
+### Live verification
+
+After a fresh Electron restart, two separate website projects were launched with:
+
+- `crossand-plans` -> `npm run dev -- --port 9043`
+- `RadonPreviewSmokeTest` -> `npm run dev -- --port 9044`
+
+Observed result:
+
+- both starts succeeded
+- both sessions kept their own active dev server
+- each terminal showed the correct localhost port
+- both previews remained alive through the background session sweep
+
+So the app now has both pieces it previously lacked:
+
+- background preview retention
+- collision-resistant port allocation
+
+## Update: Package Manager Detection Now Uses Real Project Signals
+
+The preview/bootstrap path used to infer package manager almost entirely from root lockfiles:
+
+- `bun.lockb`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+- `package-lock.json`
+- otherwise `npm`
+
+That was too weak for modern and nested projects:
+
+- modern Bun repos often use `bun.lock`, not only `bun.lockb`
+- many monorepos declare the canonical package manager in `package.json.packageManager`
+- nested app folders can inherit package manager from an ancestor workspace root even when the app folder itself does not contain its own lockfile
+
+The resolver in `src/utils/projectDetector.ts` now uses this precedence:
+
+1. nearest `package.json.packageManager`
+2. nearest recognized lockfile
+3. walk up a shallow ancestor chain
+4. fallback to `npm`
+
+The shallow ancestor walk is intentionally bounded so preview launch stays fast:
+
+- current project directory
+- then up to four ancestor directories
+
+This improves the commands used for both:
+
+- dependency bootstrap installs
+- inferred `run dev` / `run build` / `run preview` command rewriting
+
+Practical effect:
+
+- Bun projects using `bun.lock` are now detected correctly
+- nested apps inside a workspace can inherit `pnpm`, `yarn`, or `bun` from the real workspace root
+- the dev-server tile is less likely to install with one package manager and start with another
 
 ## References
 

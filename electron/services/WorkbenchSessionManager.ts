@@ -54,8 +54,8 @@ const REGISTRY_FILE_NAME = 'workbench-session-registry.json'
 const MAX_BACKGROUND_WARM_SESSIONS = 2
 const SESSION_POLICY_SWEEP_INTERVAL_MS = 30_000
 const BACKGROUND_WARM_IDLE_MS = 2 * 60 * 1000
+const BACKGROUND_WARM_ACTIVE_PREVIEW_IDLE_MS = 10 * 60 * 1000
 const FROZEN_EPHEMERAL_BROWSER_IDLE_MS = 60 * 1000
-const FROZEN_DEV_SERVER_IDLE_MS = 10 * 60 * 1000
 const LOW_MEMORY_FREE_THRESHOLD_KB = 1_500_000
 const LOW_MEMORY_FREE_RATIO = 0.12
 
@@ -95,6 +95,48 @@ function writeRegistryState(state: PersistedWorkbenchSessionState): void {
   const registryPath = getRegistryPath()
   fs.mkdirSync(path.dirname(registryPath), { recursive: true })
   fs.writeFileSync(registryPath, JSON.stringify(state, null, 2))
+}
+
+function dedupePersistedSessionPaths(state: PersistedWorkbenchSessionState): boolean {
+  const latestOwnerByPath = new Map<string, { sessionKey: string; score: number; projectId: string }>()
+  let changed = false
+
+  for (const [sessionKey, record] of Object.entries(state.sessions)) {
+    const normalizedPath = record.projectPath?.trim()
+    if (!normalizedPath) {
+      continue
+    }
+
+    const score = Math.max(record.lastFocusedAt, record.openedAt)
+    const existingOwner = latestOwnerByPath.get(normalizedPath)
+    if (!existingOwner || score >= existingOwner.score) {
+      latestOwnerByPath.set(normalizedPath, {
+        sessionKey,
+        score,
+        projectId: record.projectId,
+      })
+    }
+  }
+
+  for (const [sessionKey, record] of Object.entries(state.sessions)) {
+    const normalizedPath = record.projectPath?.trim()
+    if (!normalizedPath) {
+      continue
+    }
+
+    const owner = latestOwnerByPath.get(normalizedPath)
+    if (!owner || owner.sessionKey === sessionKey || owner.projectId === record.projectId) {
+      continue
+    }
+
+    state.sessions[sessionKey] = {
+      ...record,
+      projectPath: null,
+    }
+    changed = true
+  }
+
+  return changed
 }
 
 function toPersistedRecord(record: LiveWorkbenchSessionRecord): PersistedWorkbenchSessionRecord {
@@ -144,6 +186,9 @@ export class WorkbenchSessionManager extends EventEmitter<{
     this.nativePreviewManager = services.nativePreviewManager
 
     const persisted = readRegistryState()
+    if (dedupePersistedSessionPaths(persisted)) {
+      writeRegistryState(persisted)
+    }
     for (const [sessionKey, record] of Object.entries(persisted.sessions)) {
       this.sessions.set(sessionKey, {
         ...record,
@@ -172,10 +217,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
         .map(([sessionKey, record]) => [sessionKey, toPersistedRecord(record)]),
     )
 
-    writeRegistryState({
+    const state = {
       version: 1,
       sessions,
-    })
+    } satisfies PersistedWorkbenchSessionState
+
+    dedupePersistedSessionPaths(state)
+    writeRegistryState(state)
   }
 
   private createRecord(input: {
@@ -199,9 +247,67 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
   }
 
+  private normalizeProjectPath(projectPath?: string | null): string | null {
+    return projectPath?.trim() || null
+  }
+
+  private async reconcileSessionProjectPath(
+    sessionKey: string,
+    record: LiveWorkbenchSessionRecord,
+    nextProjectPath?: string | null,
+  ): Promise<void> {
+    if (nextProjectPath === undefined) {
+      return
+    }
+
+    const normalizedNextProjectPath = this.normalizeProjectPath(nextProjectPath)
+    if (record.projectPath === normalizedNextProjectPath) {
+      return
+    }
+
+    const previousProjectPath = record.projectPath
+
+    for (const terminalId of Object.values(record.terminalBindings)) {
+      this.terminalService.killTerminal(terminalId)
+    }
+    record.terminalBindings = {}
+
+    if (previousProjectPath) {
+      await this.devServerService.stop(previousProjectPath).catch(() => ({ success: false }))
+    }
+
+    if (record.nativePreviewLocator) {
+      await this.nativePreviewManager.stopSession(record.nativePreviewLocator).catch(() => ({ success: false }))
+      record.nativePreviewLocator = null
+    }
+
+    record.projectPath = normalizedNextProjectPath
+    this.emitState(sessionKey, record)
+  }
+
   private getBackgroundAge(record: LiveWorkbenchSessionRecord, now = Date.now()): number {
     const baseline = record.lastBackgroundedAt ?? record.lastFocusedAt ?? record.openedAt
     return Math.max(0, now - baseline)
+  }
+
+  private hasRunningDevServer(record: LiveWorkbenchSessionRecord): boolean {
+    if (!record.projectPath) {
+      return false
+    }
+
+    return this.devServerService.getState(record.projectPath).running
+  }
+
+  private hasRunningNativePreview(record: LiveWorkbenchSessionRecord): boolean {
+    if (!record.nativePreviewLocator) {
+      return false
+    }
+
+    return Boolean(this.nativePreviewManager.getSessionState(record.nativePreviewLocator))
+  }
+
+  private hasRetainedPreviewRuntime(record: LiveWorkbenchSessionRecord): boolean {
+    return this.hasRunningDevServer(record) || this.hasRunningNativePreview(record)
   }
 
   private isUnderMemoryPressure(): boolean {
@@ -235,11 +341,15 @@ export class WorkbenchSessionManager extends EventEmitter<{
         }
 
         const backgroundAge = this.getBackgroundAge(record, now)
+        const hasRetainedPreviewRuntime = this.hasRetainedPreviewRuntime(record)
+        const warmIdleLimit = hasRetainedPreviewRuntime
+          ? BACKGROUND_WARM_ACTIVE_PREVIEW_IDLE_MS
+          : BACKGROUND_WARM_IDLE_MS
 
         if (
           record.lifecycle === 'backgroundWarm' &&
           !record.pinned &&
-          (backgroundAge >= BACKGROUND_WARM_IDLE_MS || underMemoryPressure)
+          (backgroundAge >= warmIdleLimit || (underMemoryPressure && !hasRetainedPreviewRuntime))
         ) {
           record.lifecycle = 'backgroundFrozen'
           record.lastBackgroundedAt = record.lastBackgroundedAt ?? now
@@ -268,20 +378,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
           }
         }
 
-        const shouldStopFrozenDevServer =
-          Boolean(record.projectPath) &&
-          !record.pinned &&
-          !record.nativePreviewLocator &&
-          (backgroundAge >= FROZEN_DEV_SERVER_IDLE_MS || underMemoryPressure)
-
-        if (shouldStopFrozenDevServer && record.projectPath) {
-          const devServerState = this.devServerService.getState(record.projectPath)
-          if (devServerState.running) {
-            await this.devServerService.stop(record.projectPath).catch(() => ({ success: false }))
-            sessionChanged = true
-          }
-        }
-
         if (sessionChanged) {
           this.emitState(sessionKey, record)
           mutated = true
@@ -304,9 +400,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     const sessionKey = buildSessionKey(input.projectId, input.laneId)
     const existing = this.sessions.get(sessionKey)
     if (existing) {
-      if (input.projectPath !== undefined) {
-        existing.projectPath = input.projectPath?.trim() || null
-      }
       return { sessionKey, record: existing }
     }
 
@@ -359,6 +452,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
         if (leftRecord.pinned !== rightRecord.pinned) {
           return leftRecord.pinned ? -1 : 1
         }
+        const leftHasRetainedPreviewRuntime = this.hasRetainedPreviewRuntime(leftRecord)
+        const rightHasRetainedPreviewRuntime = this.hasRetainedPreviewRuntime(rightRecord)
+        if (leftHasRetainedPreviewRuntime !== rightHasRetainedPreviewRuntime) {
+          return leftHasRetainedPreviewRuntime ? -1 : 1
+        }
         return rightRecord.lastFocusedAt - leftRecord.lastFocusedAt
       })
 
@@ -376,30 +474,29 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
   }
 
-  ensureSession(input: {
+  async ensureSession(input: {
     projectId: string
     laneId: string
     projectPath?: string | null
-  }): WorkbenchSessionSnapshot {
+  }): Promise<WorkbenchSessionSnapshot> {
     const { sessionKey, record } = this.getOrCreateSession(input)
+    await this.reconcileSessionProjectPath(sessionKey, record, input.projectPath)
     this.persist()
     const snapshot = this.emitState(sessionKey, record)
     void this.runPolicySweep()
     return snapshot
   }
 
-  activateSession(input: {
+  async activateSession(input: {
     projectId: string
     laneId: string
     projectPath?: string | null
-  }): WorkbenchSessionSnapshot {
+  }): Promise<WorkbenchSessionSnapshot> {
     const now = Date.now()
     const { sessionKey, record } = this.getOrCreateSession(input)
+    await this.reconcileSessionProjectPath(sessionKey, record, input.projectPath)
     record.lifecycle = 'active'
     record.lastFocusedAt = now
-    if (input.projectPath !== undefined) {
-      record.projectPath = input.projectPath?.trim() || null
-    }
 
     const snapshot = this.emitState(sessionKey, record)
     this.rebalanceBackgroundSessions(sessionKey)
@@ -507,7 +604,15 @@ export class WorkbenchSessionManager extends EventEmitter<{
       return null
     }
 
-    if (!this.terminalService.hasTerminal(terminalId)) {
+    const snapshot = this.terminalService.getTerminalSnapshot(terminalId)
+    if (!snapshot || !this.terminalService.hasTerminal(terminalId) && snapshot.running) {
+      delete record.terminalBindings[input.tileId]
+      this.persist()
+      this.emitState(sessionKey, record)
+      return null
+    }
+
+    if (record.projectPath && snapshot.projectPath !== record.projectPath) {
       delete record.terminalBindings[input.tileId]
       this.persist()
       this.emitState(sessionKey, record)
@@ -517,18 +622,16 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return terminalId
   }
 
-  bindTerminal(input: {
+  async bindTerminal(input: {
     projectId: string
     laneId: string
     tileId: string
     terminalId: string
     projectPath?: string | null
-  }): WorkbenchSessionSnapshot {
+  }): Promise<WorkbenchSessionSnapshot> {
     const { sessionKey, record } = this.getOrCreateSession(input)
+    await this.reconcileSessionProjectPath(sessionKey, record, input.projectPath)
     record.terminalBindings[input.tileId] = input.terminalId
-    if (input.projectPath !== undefined) {
-      record.projectPath = input.projectPath?.trim() || null
-    }
     this.persist()
     return this.emitState(sessionKey, record)
   }
@@ -594,9 +697,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }): WorkbenchSessionSnapshot {
     const { sessionKey, record } = this.getOrCreateSession(input)
     record.browserBindings[input.tileId] = input.browserTileId
-    if (input.projectPath !== undefined) {
-      record.projectPath = input.projectPath?.trim() || null
-    }
     this.persist()
     return this.emitState(sessionKey, record)
   }

@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server"
-import type { DatabaseWriter } from "./_generated/server"
+import type { DatabaseWriter, MutationCtx, QueryCtx } from "./_generated/server"
 import { ConvexError, v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
 import {
@@ -46,6 +46,19 @@ function assertGatewaySecret(secret: string | undefined) {
   if (secret !== AI_GATEWAY_SECRET) {
     throw new Error("Unauthorized")
   }
+}
+
+async function getMemberProjectLocalPath(
+  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  projectId: Id<"projects">,
+  userId: Id<"users">,
+): Promise<string | null> {
+  const membership = await ctx.db
+    .query("projectMembers")
+    .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId).eq("userId", userId))
+    .unique()
+
+  return membership?.localPath ?? null
 }
 
 
@@ -847,7 +860,11 @@ export const getAccessibleById = query({
 
     const project = await ctx.db.get(args.projectId)
     if (!project || project.status === "deleted") return null
-    return project
+    const localPath = await getMemberProjectLocalPath(ctx, args.projectId, args.userId)
+    return {
+      ...project,
+      localPath: localPath ?? undefined,
+    }
   },
 })
 
@@ -874,9 +891,17 @@ export const getAccessibleBySlug = query({
           .first()
 
         if (scopedProject && scopedProject.status !== "deleted") {
+          const localPath = await getMemberProjectLocalPath(
+            ctx,
+            scopedProject._id,
+            args.userId,
+          )
           return {
             status: "ok" as const,
-            project: scopedProject,
+            project: {
+              ...scopedProject,
+              localPath: localPath ?? undefined,
+            },
             role: null,
           }
         }
@@ -889,18 +914,21 @@ export const getAccessibleBySlug = query({
       .collect()
 
     type Candidate = {
-      project: Doc<"projects">
+      project: Doc<"projects"> & { localPath?: string }
       role: Doc<"projectMembers">["role"]
     }
 
-    const candidateRows = await Promise.all(
+    const candidateRows: Array<Candidate | null> = await Promise.all(
       memberships.map(async (membership) => {
         const project = await ctx.db.get(membership.projectId)
         if (!project || project.status === "deleted") return null
         if (project.slug !== args.slug) return null
 
         return {
-          project,
+          project: {
+            ...project,
+            localPath: membership.localPath ?? undefined,
+          },
           role: membership.role,
         } satisfies Candidate
       })

@@ -1,4 +1,8 @@
-import { CommandLineIcon as SquareTerminal } from "@heroicons/react/24/outline"
+import {
+  CommandLineIcon as SquareTerminal,
+  ComputerDesktopIcon as ComputerScreen,
+  GlobeAltIcon as Globe,
+} from "@heroicons/react/24/outline"
 
 import {
   ClaudeAI,
@@ -20,9 +24,28 @@ import {
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import { useStore } from "@/stores/assistant-store"
-import type { WorkbenchLaneSidebarSummary } from "@/stores/useProjectWorkbenchStore"
+import type {
+  WorkbenchLaneSidebarSummary,
+  WorkbenchSidebarSurfaceTileSummary,
+} from "@/stores/useProjectWorkbenchStore"
 
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
+
+function SurfaceTileGlyph(props: {
+  type: WorkbenchSidebarSurfaceTileSummary["type"]
+  className?: string
+}) {
+  const className = props.className ?? "size-3.5 shrink-0 text-muted-foreground/75"
+  switch (props.type) {
+    case "browser":
+      return <Globe className={className} aria-hidden />
+    case "devServer":
+      return <ComputerScreen className={className} aria-hidden />
+    case "terminal":
+    default:
+      return <SquareTerminal className={className} aria-hidden />
+  }
+}
 
 interface SidebarAgentStatusPill {
   label:
@@ -232,7 +255,8 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
-            <SquareTerminal
+            <SurfaceTileGlyph
+              type={tile.type}
               className={cn(
                 "size-3.5 shrink-0 text-muted-foreground/75",
                 resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",

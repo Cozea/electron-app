@@ -92,7 +92,6 @@ export function useWorkbenchBrowserView(
     url,
     projectId,
     laneId,
-    projectPath,
     visible = true,
     overlaySelector = '[data-workbench-browser-overlay="true"]',
     storageScope = "workspace",
@@ -143,7 +142,6 @@ export function useWorkbenchBrowserView(
       .ensureSession({
         projectId,
         laneId,
-        projectPath,
       })
       .then(() =>
         window.electronAPI.workbenchSession.bindBrowser({
@@ -151,13 +149,12 @@ export function useWorkbenchBrowserView(
           laneId,
           tileId,
           browserTileId: tileId,
-          projectPath,
         }),
       )
       .catch((error) => {
         console.warn("[WorkbenchBrowser] Failed to bind browser tile to session", error)
       })
-  }, [laneId, projectId, projectPath, tileId])
+  }, [laneId, projectId, tileId])
 
   useEffect(() => {
     setState((current) => {

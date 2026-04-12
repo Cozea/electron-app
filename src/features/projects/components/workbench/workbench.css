@@ -1,8 +1,8 @@
 .cozea-workbench-dockview {
   --dv-border-radius: 0px;
   --dv-floating-box-shadow: none;
-  --dv-sash-color: transparent;
-  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  --dv-sash-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 24%, transparent);
   --dv-active-sash-transition-duration: 0.08s;
   --dv-active-sash-transition-delay: 0s;
   --dv-tabs-and-actions-container-height: 0px;
@@ -81,4 +81,3 @@
 .cozea-workbench-dockview .dv-tab-close {
   border-radius: 0;
 }
-

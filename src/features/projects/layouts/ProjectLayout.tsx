@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useRef, useCallback, useEffect, useMemo } from "react";
+import { type ReactNode, useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -27,12 +27,21 @@ import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/li
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { getWorkspaceSelectionId } from "@shared/types";
-import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
+import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
+import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
 import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
 } from "@/features/projects/contexts/ProjectRouteContext";
+
+function normalizeProjectPath(projectPath: string | null | undefined): string | null {
+  if (!projectPath?.trim()) {
+    return null;
+  }
+
+  return projectPath.replace(/\\/g, "/").replace(/\/+$/, "");
+}
 
 interface ProjectLayoutProps {
   children?: ReactNode;
@@ -49,6 +58,15 @@ interface ProjectLayoutLocationState {
     isCurrentUser?: boolean;
     profileImageUrl?: string | null;
   }>;
+}
+
+function extractProjectCloudLocalPath(project: unknown): string | null {
+  if (!project || typeof project !== "object" || !("localPath" in project)) {
+    return null;
+  }
+
+  const localPath = (project as { localPath?: unknown }).localPath;
+  return typeof localPath === "string" && localPath.trim().length > 0 ? localPath : null;
 }
 
 export function ProjectLayout({
@@ -128,12 +146,44 @@ export function ProjectLayout({
   const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
   const mirroredLocalPathRef = useRef<string | null>(null);
   const navigationLocalPath = locationState?.localPath ?? null;
-  const { localPath: effectiveLocalPath } = useLocalProjectPath({
+  const trustedNavigationPath = useMemo(
+    () => normalizeProjectPath(navigationLocalPath),
+    [navigationLocalPath],
+  );
+  const projectCloudLocalPath = useMemo(() => extractProjectCloudLocalPath(project), [project]);
+  const attachedPathHint = useMemo(
+    () =>
+      resolveAttachedLocalProjectPathHint(
+        project as {
+          importedFrom?: { provider: string; repoFullName: string; branch?: string | null } | null;
+        } | null,
+      ),
+    [project],
+  );
+  const normalizedAttachedPathHint = useMemo(
+    () => normalizeProjectPath(attachedPathHint),
+    [attachedPathHint],
+  );
+  const { localPath: candidateLocalPath } = useLocalProjectPath({
     initialPath: navigationLocalPath,
     preferInitialPath: Boolean(navigationLocalPath),
     projectId: project?._id ? String(project._id) : routeProjectId,
     projectSlug,
+    cloudPathHint: projectCloudLocalPath,
+    attachedPathHint,
   });
+  const [effectiveLocalPath, setEffectiveLocalPath] = useState<string | null>(
+    normalizeProjectPath(navigationLocalPath),
+  );
+
+  useEffect(() => {
+    if (trustedNavigationPath) {
+      setEffectiveLocalPath(trustedNavigationPath);
+      return;
+    }
+
+    setEffectiveLocalPath(normalizeProjectPath(candidateLocalPath));
+  }, [candidateLocalPath, trustedNavigationPath]);
 
   const pendingTeamSetup = useMemo(
     () => locationState?.pendingTeamSetup ?? [],
@@ -204,40 +254,43 @@ export function ProjectLayout({
     project?._id,
   ]);
 
-  const rememberResolvedProjectPath = useCallback(
-    async (projectPath: string) => {
-      if (!project?._id) {
-        return;
-      }
+  const trustedCloudMirrorPath = useMemo(() => {
+    if (!effectiveLocalPath) {
+      return null;
+    }
 
-      const result = await window.electronAPI.project.rememberLocalPath({
-        projectId: String(project._id),
-        projectPath,
-      });
+    if (trustedNavigationPath && effectiveLocalPath === trustedNavigationPath) {
+      return trustedNavigationPath;
+    }
 
-      if (!result.success) {
-        console.warn("[ProjectLayout] Failed to persist local project path:", result.error);
-      }
-    },
-    [project?._id],
-  );
+    if (normalizedAttachedPathHint && effectiveLocalPath === normalizedAttachedPathHint) {
+      return normalizedAttachedPathHint;
+    }
+
+    return null;
+  }, [effectiveLocalPath, normalizedAttachedPathHint, trustedNavigationPath]);
 
   useEffect(() => {
-    if (!effectiveLocalPath || !project?._id || !convexUserId) {
+    if (!effectiveLocalPath || !project?._id) {
       return;
     }
 
-    const mirrorKey = `${String(project._id)}:${convexUserId}:${effectiveLocalPath}`;
+    primeLocalProjectPath(String(project._id), effectiveLocalPath, projectSlug);
+
+    if (!convexUserId || !trustedCloudMirrorPath) {
+      return;
+    }
+
+    const mirrorKey = `${String(project._id)}:${convexUserId}:${trustedCloudMirrorPath}`;
     if (mirroredLocalPathRef.current === mirrorKey) {
       return;
     }
     mirroredLocalPathRef.current = mirrorKey;
 
-    void rememberResolvedProjectPath(effectiveLocalPath);
     void updateMemberLocalPath({
       projectId: project._id,
       userId: convexUserId,
-      localPath: effectiveLocalPath,
+      localPath: trustedCloudMirrorPath,
     }).catch((error) => {
       mirroredLocalPathRef.current = null;
       console.warn("[ProjectLayout] Failed to mirror local project path to cloud metadata:", error);
@@ -246,7 +299,8 @@ export function ProjectLayout({
     convexUserId,
     effectiveLocalPath,
     project?._id,
-    rememberResolvedProjectPath,
+    projectSlug,
+    trustedCloudMirrorPath,
     updateMemberLocalPath,
   ]);
 

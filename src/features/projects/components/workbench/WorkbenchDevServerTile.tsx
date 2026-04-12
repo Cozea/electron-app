@@ -170,6 +170,8 @@ export function WorkbenchDevServerTile({
   const terminalIdRef = useRef<string | null>(null)
   const devServer = useDevServerManager({
     projectPath,
+    sessionKey: workbenchSession?.sessionKey ?? null,
+    framework,
     terminalId,
     autoStart: false,
     storedDevCommand,
@@ -234,7 +236,6 @@ export function WorkbenchDevServerTile({
       await window.electronAPI.workbenchSession.ensureSession({
         projectId,
         laneId,
-        projectPath,
       })
       if (cancelled) return
 
@@ -268,7 +269,6 @@ export function WorkbenchDevServerTile({
           laneId,
           tileId: tile.id,
           terminalId: result.terminalId,
-          projectPath,
         })
         snapshot = await window.electronAPI.terminal.getSnapshot({
           terminalId: result.terminalId,
@@ -716,7 +716,7 @@ export function WorkbenchDevServerTile({
       Preparing terminal…
     </div>
   ) : (
-    <div className="h-full min-h-0 p-1">
+    <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
       <TerminalInstance
         terminalId={terminalId}
         className="h-full workbench-terminal-instance"
@@ -847,6 +847,7 @@ export function WorkbenchDevServerTile({
       title={tile.title}
       panelApi={panelApi}
       containerApi={containerApi}
+      tileType="devServer"
       controls={chromeControls}
       actions={chromeActions}
     >

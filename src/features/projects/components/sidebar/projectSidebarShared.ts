@@ -136,6 +136,9 @@ export function areSidebarProjectItemsEqual(
     left.createdBy === right.createdBy &&
     left.syncMode === right.syncMode &&
     left.localPath === right.localPath &&
+    left.importedFrom?.provider === right.importedFrom?.provider &&
+    left.importedFrom?.repoFullName === right.importedFrom?.repoFullName &&
+    left.importedFrom?.branch === right.importedFrom?.branch &&
     left.sourceControl === right.sourceControl &&
     left.gitRepository === right.gitRepository
   )

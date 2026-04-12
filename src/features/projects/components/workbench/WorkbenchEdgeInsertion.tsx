@@ -16,13 +16,13 @@ const EDGE_ORDER: WorkbenchInsertionEdge[] = ["left", "right", "top", "bottom"]
 function getZoneClasses(edge: WorkbenchInsertionEdge): string {
   switch (edge) {
     case "left":
-      return "inset-y-0 left-0 w-8"
+      return "left-0 top-0 h-full w-12"
     case "right":
-      return "inset-y-0 right-0 w-8"
+      return "right-0 top-0 h-full w-12"
     case "top":
-      return "inset-x-0 top-0 h-8"
+      return "left-1/2 top-0 h-4 w-16 -translate-x-1/2"
     case "bottom":
-      return "inset-x-0 bottom-0 h-8"
+      return "bottom-0 left-1/2 h-4 w-16 -translate-x-1/2"
   }
 }
 
@@ -51,6 +51,10 @@ export function WorkbenchEdgeInsertion({
     setHoveredEdge(null)
   }, [armed])
 
+  if (!armed) {
+    return null
+  }
+
   return (
     <>
       {EDGE_ORDER.map((edge) => {
@@ -60,14 +64,10 @@ export function WorkbenchEdgeInsertion({
           <div
             key={edge}
             className={cn(
-              "absolute z-20",
+              "absolute z-20 cursor-pointer",
               getZoneClasses(edge),
-              // When disarmed these strips must not steal clicks from controls
-              // (tabs, close buttons, etc.) along the window edge.
-              !armed && "pointer-events-none",
             )}
             onPointerEnter={() => {
-              if (!armed) return
               setHoveredEdge(edge)
             }}
             onPointerLeave={() => {
@@ -76,11 +76,10 @@ export function WorkbenchEdgeInsertion({
               }
             }}
             onClick={() => {
-              if (!armed) return
               onEdgeActivate(edge)
             }}
           >
-            {armed && hoveredEdge === edge ? (
+            {hoveredEdge === edge ? (
               <div
                 aria-hidden="true"
                 data-workbench-browser-overlay="true"

@@ -1,5 +1,10 @@
 export const projectOpenDesktopClient = {
-  getLocalPath: (options: { slug: string; projectId: string }) =>
+  getLocalPath: (options: {
+    slug: string
+    projectId: string
+    localPathHint?: string | null
+    attachedPathHint?: string | null
+  }) =>
     window.electronAPI.project.getLocalPath(options),
   rememberLocalPath: (options: { projectId: string; projectPath: string }) =>
     window.electronAPI.project.rememberLocalPath(options),

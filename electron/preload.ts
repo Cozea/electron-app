@@ -575,7 +575,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       baseDirectory?: string
     }) =>
       ipcRenderer.invoke('project:cloneRepository', options),
-    getLocalPath: (options: string | { slug: string; projectId?: string }) =>
+    getLocalPath: (options: string | { slug: string; projectId?: string; localPathHint?: string | null; attachedPathHint?: string | null }) =>
       ipcRenderer.invoke('project:getLocalPath', options),
     rememberLocalPath: (options: { projectId: string; projectPath: string }) =>
       ipcRenderer.invoke('project:rememberLocalPath', options),
@@ -890,7 +890,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   devServer: {
-    start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number; runId?: string }) =>
+    start: (options: {
+      projectPath: string
+      command: string
+      bootstrapCommand?: string | null
+      port: number
+      sessionKey?: string | null
+      framework?: string | null
+      terminalId: string
+      cols?: number
+      rows?: number
+      runId?: string
+    }) =>
       ipcRenderer.invoke('devServer:start', options),
     stop: (options: { projectPath: string }) =>
       ipcRenderer.invoke('devServer:stop', options),

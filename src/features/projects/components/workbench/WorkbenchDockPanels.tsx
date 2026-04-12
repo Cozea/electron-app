@@ -144,6 +144,8 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
         title="Add Tile"
         panelApi={props.api}
         containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="selection"
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -157,6 +159,8 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
       title={selectionTile.title}
       panelApi={props.api}
       containerApi={props.containerApi}
+      chromeVariant="pill"
+      tileType="selection"
       contentClassName="h-full"
     >
       <Suspense fallback={panelSuspenseFallback}>
@@ -219,6 +223,8 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         title="Terminal"
         panelApi={props.api}
         containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="terminal"
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -288,6 +294,8 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
         title="AI Agent"
         panelApi={props.api}
         containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="assistantChat"
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>

@@ -27,7 +27,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { ArrowUturnLeftIcon as Undo2Icon, ArrowsUpDownIcon as ChevronsUpDown, BoltIcon as ZapIcon, CheckIcon, CommandLineIcon as TerminalIcon, CpuChipIcon as BotIcon, ExclamationCircleIcon as CircleAlertIcon, EyeIcon, GlobeAltIcon as GlobeIcon, PencilSquareIcon as SquarePenIcon, WrenchScrewdriverIcon as HammerIcon, WrenchScrewdriverIcon as WrenchIcon } from "@heroicons/react/24/outline"
+import { ArrowUturnLeftIcon as Undo2Icon, ArrowsUpDownIcon as ChevronsUpDown, BoltIcon as ZapIcon, CheckIcon, ChevronRightIcon, CommandLineIcon as TerminalIcon, CpuChipIcon as BotIcon, ExclamationCircleIcon as CircleAlertIcon, EyeIcon, GlobeAltIcon as GlobeIcon, PencilSquareIcon as SquarePenIcon, WrenchScrewdriverIcon as HammerIcon, WrenchScrewdriverIcon as WrenchIcon } from "@heroicons/react/24/outline"
 import type { ComponentType, SVGProps } from "react"
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
@@ -436,12 +436,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <>
               {row.showCompletionDivider && (
-                <div className="my-3 flex items-center gap-3">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
-                    {completionSummary ? `Response • ${completionSummary}` : "Response"}
-                  </span>
-                  <span className="h-px flex-1 bg-border" />
+                <div className="my-4 px-1">
+                  <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground/88">
+                    <span className="font-medium">
+                      {completionSummary ?? "Response ready"}
+                    </span>
+                    <ChevronRightIcon className="size-3.5 shrink-0 stroke-[2.2] text-muted-foreground/65" />
+                  </div>
+                  <div className="mt-2 h-px bg-border/70" />
                 </div>
               )}
               <div className="min-w-0 px-1 py-0.5">

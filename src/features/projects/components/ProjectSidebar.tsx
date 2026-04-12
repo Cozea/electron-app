@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { buildProjectPath } from "../lib/projectRoutes";
 import { buildWorkbenchHref } from "../lib/lastWorkbenchRoute";
 import { prepareGitProjectForOpen } from "../lib/projectOpenGitSync";
+import { buildProjectLocalPathLookupOptions } from "@/features/projects/lib/projectLocalRootHints";
 import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
 import {
   areSidebarProjectItemsEqual,
@@ -175,6 +176,7 @@ export function ProjectSidebar({
           localPath: project.localPath ?? null,
           sourceControl: project.sourceControl,
           gitRepository: project.gitRepository,
+          importedFrom: project.importedFrom ?? null,
         };
 
         const previousProjectItem = stableProjectItemsRef.current.get(nextProjectItem.id);
@@ -377,29 +379,30 @@ export function ProjectSidebar({
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, localPath: string | null) => {
-      const candidateLocalPath =
-        localPath?.trim() || project.localPath?.trim() || null;
-
       try {
+        const candidateLocalPath = await window.electronAPI.project.getLocalPath(
+          buildProjectLocalPathLookupOptions({
+            project,
+            localPathHint: localPath,
+          }),
+        );
+
         if (candidateLocalPath) {
-          const pathExists = await window.electronAPI.project.pathExists(candidateLocalPath);
-          if (pathExists) {
-            primeLocalProjectPath(project.id, candidateLocalPath, project.slug);
-            markRecentProjectOpenSync(project.id);
-            navigate(buildProjectPath(project.id, "workbench"), {
-              state: {
-                projectId: project.id,
-                projectSlug: project.slug,
-                projectName: project.name,
-                projectTemplate: project.template ?? undefined,
-                localPath: candidateLocalPath,
-                syncMode: project.syncMode === "git" || hasRecentProjectOpenSync(project.id)
-                  ? "git"
-                  : undefined,
-              },
-            });
-            return;
-          }
+          primeLocalProjectPath(project.id, candidateLocalPath, project.slug);
+          markRecentProjectOpenSync(project.id);
+          navigate(buildProjectPath(project.id, "workbench"), {
+            state: {
+              projectId: project.id,
+              projectSlug: project.slug,
+              projectName: project.name,
+              projectTemplate: project.template ?? undefined,
+              localPath: candidateLocalPath,
+              syncMode: project.syncMode === "git" || hasRecentProjectOpenSync(project.id)
+                ? "git"
+                : undefined,
+            },
+          });
+          return;
         }
 
         const gitOpenResult = await prepareGitProjectForOpen({
@@ -468,12 +471,12 @@ export function ProjectSidebar({
   const handleOpenProjectFolder = React.useCallback(
     async (project: SidebarProjectItem, localPath: string | null) => {
       try {
-        const resolvedLocalPath =
-          localPath ??
-          (await window.electronAPI.project.getLocalPath({
-            slug: project.slug,
-            projectId: project.id,
-          }));
+        const resolvedLocalPath = await window.electronAPI.project.getLocalPath(
+          buildProjectLocalPathLookupOptions({
+            project,
+            localPathHint: localPath,
+          }),
+        );
 
         if (!resolvedLocalPath) {
           throw new Error("Project folder is not available on this device.");

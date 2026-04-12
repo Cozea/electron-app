@@ -1,7 +1,7 @@
 import type { BrowserWindow, IpcMain } from 'electron'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
-import type { DevServerStartResult } from '../../shared/electronApiTypes'
+import type { DevServerStartOptions as SharedDevServerStartOptions, DevServerStartResult } from '../../shared/electronApiTypes'
 import { DevServerService } from '../services/DevServerService'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 
@@ -44,20 +44,54 @@ export function registerDevServerHandlers(
       {
         projectPath,
         command,
+        bootstrapCommand,
         port,
+        sessionKey,
+        framework,
         terminalId,
         runId,
-      }: {
-        projectPath: string
-        command: string
-        port: number
-        terminalId: string
-        cols?: number
-        rows?: number
-        runId?: string
-      }
+      }: SharedDevServerStartOptions
     ): Promise<DevServerStartResult> => {
-      // 1. Resolve command with runtime wrapper if necessary (e.g., node versions)
+      // 1. Resolve bootstrap/install command first when present.
+      const trimmedBootstrapCommand =
+        typeof bootstrapCommand === 'string' && bootstrapCommand.trim().length > 0
+          ? bootstrapCommand.trim()
+          : null
+      let finalBootstrapCommand: string | null = null
+
+      if (trimmedBootstrapCommand) {
+        const resolvedBootstrap = resolveCommandWithRuntime(trimmedBootstrapCommand)
+        if (resolvedBootstrap.status === 'failed') {
+          return {
+            success: false,
+            error: resolvedBootstrap.error || 'Bootstrap command is not supported in this release.',
+          }
+        }
+        if (resolvedBootstrap.status === 'needs_user_approval') {
+          return {
+            success: false,
+            error:
+              resolvedBootstrap.approvalPayload?.reason ||
+              resolvedBootstrap.error ||
+              'Bootstrap command requires user approval before execution.',
+          }
+        }
+        if (resolvedBootstrap.runtime) {
+          const ensuredBootstrapRuntime = await ensureRuntimeInstalled(resolvedBootstrap.runtime)
+          if (!ensuredBootstrapRuntime.success) {
+            return {
+              success: false,
+              error: ensuredBootstrapRuntime.error || 'Failed to install required bootstrap runtime.',
+            }
+          }
+        }
+        finalBootstrapCommand =
+          resolvedBootstrap.status === 'completed' && resolvedBootstrap.command
+            ? resolvedBootstrap.command
+            : trimmedBootstrapCommand
+      }
+
+      // 2. Resolve dev server command with runtime wrapper if necessary (e.g., node versions)
       const resolved = resolveCommandWithRuntime(command)
       if (resolved.status === 'failed') {
         return { success: false, error: resolved.error || 'Command is not supported in this release.' }
@@ -86,7 +120,10 @@ export function registerDevServerHandlers(
       return await service.start({
         projectPath,
         command: finalCommand,
+        bootstrapCommand: finalBootstrapCommand,
         preferredPort: port,
+        sessionKey,
+        framework,
         terminalId,
         runId: resolvedRunId,
         onOutput: (output, stream) => {
