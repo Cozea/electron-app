@@ -2428,6 +2428,117 @@ Practical effect:
 - nested apps inside a workspace can inherit `pnpm`, `yarn`, or `bun` from the real workspace root
 - the dev-server tile is less likely to install with one package manager and start with another
 
+## Update: Workbench Insertion Targets Now Resolve Through One Geometry Contract
+
+The post-junction workbench insertion work is now consolidated around a single target-and-intent model instead of spreading geometry, preview state, and insertion direction across the overlay components and the Dockview runtime separately.
+
+What changed:
+
+- `src/features/projects/lib/workbenchDockview.ts` now exposes pure geometry helpers:
+  - `computeWorkbenchEdgeTargetsFromGeometry(...)`
+  - `computeWorkbenchSeamTargetsFromGeometry(...)`
+- the Dockview-facing wrappers still exist, but they now just gather live panel geometry and delegate into those pure helpers
+- `resolveWorkbenchInsertionIntent(...)` is now the single place that decides:
+  - preview mode (`edgePreview` vs `seamPreview`)
+  - reference tile
+  - adjacent tile when applicable
+  - scope (`local` vs `full-span`)
+  - Dockview insertion direction
+
+That means the runtime no longer has to duplicate edge/seam logic when a user activates a target.
+
+### Preview Tiles Now Understand Their Scope
+
+Transient selection previews now carry their source metadata:
+
+- `previewTargetKind`
+- `previewTargetId`
+- `previewScope`
+- `adjacentTileId`
+
+This metadata is only used for the transient insertion flow; it does not change the durable meaning of normal workbench tiles.
+
+The preview surface in `src/features/projects/components/workbench/WorkbenchSelectionTile.tsx` now shows whether the user is previewing:
+
+- an edge split vs seam split
+- a local split vs full-span split
+
+That makes the add-tile preview less generic and helps confirm that the hovered geometry was interpreted correctly before the user commits to the new tile.
+
+### Geometry Fixtures Are Now Tested Explicitly
+
+The layout rules that used to regress during the insertion refactor are now covered in `tests/workbenchInsertionTargets.test.ts`.
+
+Covered fixtures:
+
+- single full-screen tile
+- two equal full-height columns
+- left full-height column with right stacked tiles
+- top full-width tile with split bottom row
+
+The tests assert:
+
+- outer-edge targets are generated per exposed tile edge segment
+- stacked tiles sharing the same screen edge do not collapse into one global edge target
+- seams only become `full-span` when they truly span the full shared axis
+- insertion intent resolution produces the expected preview mode and Dockview direction
+
+### What Is Still Intentionally Deferred
+
+Explicit junction-target affordances are still the next layer, not part of this pass.
+
+The geometry foundation is now in place for them:
+
+- targets are explicit
+- scope is explicit
+- preview metadata is explicit
+- fixtures exist for the non-junction cases
+
+So if we add junction interaction next, it can plug into the same intent contract instead of reopening the current edge/seam logic again.
+
+## Update: Junction Targets Are Now Implemented For Real Structural Branches
+
+Junction targets are now part of the workbench insertion system.
+
+They are derived from seam geometry, but with an important rule:
+
+- a junction only becomes an insertion target when a full-span structural branch can actually be represented by the current Dockview model
+
+In practice, that means:
+
+- `T`-style junctions now work when one side of the junction is owned by a coherent full-span branch
+- the junction affordance is rendered as a higher-priority directional target above seam overlays
+- the resulting insertion preview uses the same transient selection tile flow as edges and seams
+
+Implementation details:
+
+- `src/features/projects/lib/workbenchDockview.ts`
+  - seam targets now carry span metadata
+  - structural seam branches are merged by axis, edge, position, and owning group
+  - `computeWorkbenchJunctionTargetsFromSeamTargets(...)` derives junction targets from those structural branches
+  - `resolveWorkbenchInsertionIntent(...)` now supports `junction` targets and can route them through `referenceGroup`
+- `src/features/projects/hooks/useWorkbenchDockviewRuntime.ts`
+  - workbench runtime now tracks `junctionTargets`
+  - activation is routed through the same shared insertion-intent flow as edge/seam previews
+- `src/features/projects/components/workbench/WorkbenchJunctionInsertion.tsx`
+  - renders directional half-circle junction affordances above seam controls
+
+### Important Current Boundary
+
+Not every visual seam intersection becomes a junction target yet.
+
+Specifically:
+
+- full cross-intersections like a pure `2x2` grid do not currently expose four-way structural junction insertion
+- that is intentional for now, because Dockview can target a `referencePanel` or `referenceGroup`, but not an arbitrary higher-level merged branch that does not exist as a real group
+
+So the current rule is:
+
+- if the structural branch is backed by a coherent owning group, we show a junction target
+- if the crossing is only visually structural but not representable through the current insertion API, we do not fake it
+
+This keeps the affordance truthful and avoids showing a control that would silently degrade into a local split.
+
 ## References
 
 Internal code references:

@@ -11,7 +11,6 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 import {
   ArrowLeftIcon as ArrowLeft,
-  ArrowPathIcon as RefreshCcw,
   ArrowRightIcon as ArrowRight,
   ChevronDownIcon as ChevronDown,
   ChevronUpIcon as ChevronUp,
@@ -151,7 +150,6 @@ export function WorkbenchBrowserTile({
     setFindQuery("")
   }, [tile.url])
 
-  const canInteract = useMemo(() => Boolean(tile.url), [tile.url])
   const hasFindQuery = useMemo(() => findQuery.trim().length > 0, [findQuery])
   const findResultLabel = useMemo(() => {
     if (!hasFindQuery) return ""
@@ -358,20 +356,6 @@ export function WorkbenchBrowserTile({
       >
         <ArrowRight className="h-3.5 w-3.5" />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={navChipClass}
-        disabled={!canInteract}
-        onClick={(event) => {
-          void actions.reload(event.altKey || event.shiftKey)
-        }}
-        aria-label="Reload"
-        title="Reload page. Hold Alt or Shift for hard reload."
-      >
-        <RefreshCcw className={cn("h-3.5 w-3.5", state.isLoading && "animate-spin")} />
-      </Button>
       <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-secondary px-2">
         {state.favicon ? (
           <img
@@ -474,6 +458,8 @@ export function WorkbenchBrowserTile({
         aria-label="Browser options"
         onClick={async (event) => {
           const items: ContextMenuItem<
+            | "reload"
+            | "hard-reload"
             | "find"
             | "open-external"
             | "devtools"
@@ -483,6 +469,9 @@ export function WorkbenchBrowserTile({
             | "divider-1"
             | "divider-2"
           >[] = [
+            { id: "reload", label: "Reload page" },
+            { id: "hard-reload", label: "Hard reload" },
+            { id: "divider-2", label: "", type: "separator" },
             { id: "find", label: `Find in page (${isMac ? "Cmd" : "Ctrl"}+F)` },
             { id: "open-external", label: "Open in external browser" },
             { id: "devtools", label: state.isDevToolsOpen ? "Hide Devtools" : "Show Devtools" },
@@ -496,6 +485,12 @@ export function WorkbenchBrowserTile({
           if (!action) return
 
           switch (action) {
+            case "reload":
+              void actions.reload(false)
+              break
+            case "hard-reload":
+              void actions.reload(true)
+              break
             case "find":
               openFind()
               break
@@ -528,6 +523,7 @@ export function WorkbenchBrowserTile({
         title={state.title || "Browser"}
         panelApi={panelApi}
         containerApi={containerApi}
+        hideTitlePill
         tileType="browser"
         controls={browserHeaderControls}
         actions={browserHeaderActions}
