@@ -119,6 +119,9 @@ export function WorkbenchBrowserTile({
     onTitleObserved: (title) => {
       workbenchActions.updateTileTitle(projectId, laneId, tile.id, title)
     },
+    onFaviconObserved: (favicon) => {
+      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { favicon })
+    },
     onNewPageRequest: (request) => {
       const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
         url: request.url,

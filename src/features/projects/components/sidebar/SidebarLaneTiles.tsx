@@ -32,12 +32,23 @@ import type {
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
 function SurfaceTileGlyph(props: {
+  favicon?: string | null
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
 }) {
   const className = props.className ?? "size-3.5 shrink-0 text-muted-foreground/75"
   switch (props.type) {
     case "browser":
+      if (props.favicon) {
+        return (
+          <img
+            src={props.favicon}
+            alt=""
+            className={cn("size-3.5 shrink-0 rounded-sm object-contain", className)}
+            aria-hidden
+          />
+        )
+      }
       return <Globe className={className} aria-hidden />
     case "devServer":
       return <ComputerScreen className={className} aria-hidden />
@@ -256,6 +267,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
         >
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
             <SurfaceTileGlyph
+              favicon={tile.favicon}
               type={tile.type}
               className={cn(
                 "size-3.5 shrink-0 text-muted-foreground/75",
