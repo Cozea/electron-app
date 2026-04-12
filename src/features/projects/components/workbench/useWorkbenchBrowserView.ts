@@ -44,6 +44,7 @@ interface UseWorkbenchBrowserViewOptions {
   persistModel?: boolean
   onUrlObserved?: (url: string) => void
   onTitleObserved?: (title: string) => void
+  onFaviconObserved?: (favicon: string | null) => void
   onNewPageRequest?: (request: BrowserNewPageRequest) => void
   onCommand?: (command: BrowserUiCommand) => void
 }
@@ -99,6 +100,7 @@ export function useWorkbenchBrowserView(
     persistModel = false,
     onUrlObserved,
     onTitleObserved,
+    onFaviconObserved,
     onNewPageRequest,
     onCommand,
   } = options
@@ -200,6 +202,7 @@ export function useWorkbenchBrowserView(
       if (nextState.title && nextState.title !== "Browser") {
         onTitleObserved?.(nextState.title)
       }
+      onFaviconObserved?.(nextState.favicon ?? null)
     })
 
     void model.initialize({
@@ -209,7 +212,7 @@ export function useWorkbenchBrowserView(
     })
 
     return unsubscribe
-  }, [onTitleObserved, onUrlObserved, persistModel, storageScope, tileId, url, workspaceId])
+  }, [onFaviconObserved, onTitleObserved, onUrlObserved, persistModel, storageScope, tileId, url, workspaceId])
 
   useEffect(() => {
     if (!onNewPageRequest) return

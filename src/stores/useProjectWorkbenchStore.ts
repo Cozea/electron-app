@@ -75,6 +75,7 @@ interface WorkbenchBaseTile {
 export interface WorkbenchBrowserTile extends WorkbenchBaseTile {
   type: "browser"
   url: string
+  favicon?: string | null
   storageScope?: BrowserStorageScope
 }
 
@@ -148,6 +149,7 @@ export interface WorkbenchSidebarSurfaceTileSummary {
   id: string
   type: Exclude<WorkbenchTileType, "assistantChat" | "selection" | "tasks" | "changes">
   title: string
+  favicon?: string | null
 }
 
 export interface WorkbenchLaneSidebarSummary {
@@ -232,7 +234,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
       projectId: string,
       laneId: string,
       tileId: string,
-      patch: Partial<Pick<WorkbenchBrowserTile, "url" | "title" | "storageScope">>,
+      patch: Partial<Pick<WorkbenchBrowserTile, "url" | "title" | "favicon" | "storageScope">>,
     ) => void
     updateTileTitle: (projectId: string, laneId: string, tileId: string, title: string) => void
   }
@@ -288,6 +290,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         title,
         createdAt,
         url: options.url?.trim() || "",
+        favicon: null,
         storageScope: options.storageScope ?? "workspace",
       }
     case "terminal":
@@ -385,6 +388,7 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
       sanitizedTiles[tileId] = {
         ...tile,
         url: tile.url ?? "",
+        favicon: tile.favicon ?? null,
         storageScope: tile.storageScope ?? "workspace",
       }
       continue
@@ -595,6 +599,7 @@ export function buildWorkbenchLaneSidebarSummary(
       id: tile.id,
       type: tile.type,
       title: tile.title,
+      favicon: tile.type === "browser" ? (tile.favicon ?? null) : null,
     })
   }
 
@@ -781,6 +786,10 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
 
             if (patch.url !== undefined && patch.url !== tile.url) {
               tile.url = patch.url
+            }
+
+            if (patch.favicon !== undefined && patch.favicon !== tile.favicon) {
+              tile.favicon = patch.favicon
             }
 
             if (patch.storageScope !== undefined && patch.storageScope !== tile.storageScope) {
