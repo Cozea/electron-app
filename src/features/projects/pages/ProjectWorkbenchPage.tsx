@@ -30,6 +30,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useResolvedScope } from "@/hooks/useResolvedScope";
 import { ChangesPage } from "@/features/projects/pages/ChangesPage";
 import { WorkbenchEdgeInsertion } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
+import { WorkbenchJunctionInsertion } from "@/features/projects/components/workbench/WorkbenchJunctionInsertion";
 import { WorkbenchSeamInsertion } from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
 import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
@@ -117,13 +118,16 @@ export function ProjectWorkbenchPage() {
   const {
     dockviewHostRef,
     edgeInsertionArmed,
-    seamZones,
+    edgeTargets,
+    junctionTargets,
+    seamTargets,
     getSelectionPreviewTile,
     handleWorkbenchPointerMove,
     handleWorkbenchPointerLeave,
     handleResolveSelectionTile,
     handleDuplicateAssistantTile,
     handleEdgeActivate,
+    handleJunctionActivate,
     handleSeamActivate,
     handleDockviewReady,
   } = useWorkbenchDockviewRuntime({
@@ -339,12 +343,18 @@ export function ProjectWorkbenchPage() {
             >
               <WorkbenchEdgeInsertion
                 armed={edgeInsertionArmed}
+                targets={edgeTargets}
                 disabledEdges={isChangesOpen ? ["top", "right"] : ["top"]}
                 onEdgeActivate={handleEdgeActivate}
               />
+              <WorkbenchJunctionInsertion
+                armed={edgeInsertionArmed}
+                targets={junctionTargets}
+                onJunctionActivate={handleJunctionActivate}
+              />
               <WorkbenchSeamInsertion
                 armed={edgeInsertionArmed}
-                seamZones={seamZones}
+                targets={seamTargets}
                 onSeamActivate={handleSeamActivate}
               />
               <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">

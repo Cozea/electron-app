@@ -22,6 +22,7 @@ interface WorkbenchTileChromeProps {
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
   chromeVariant?: "bar" | "pill"
+  hideTitlePill?: boolean
   tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer"
   assistantProvider?: string | null
   controls?: ReactNode
@@ -70,6 +71,7 @@ export function WorkbenchTileChrome({
   panelApi,
   containerApi,
   chromeVariant = "bar",
+  hideTitlePill = false,
   tileType,
   assistantProvider,
   controls,
@@ -80,6 +82,8 @@ export function WorkbenchTileChrome({
 }: WorkbenchTileChromeProps) {
   const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
   const TileIcon = resolveTileIcon(tileType, assistantProvider)
+  const pillControlHoverClasses =
+    "text-muted-foreground hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
 
   useEffect(() => {
     setIsMaximized(panelApi.isMaximized())
@@ -110,15 +114,17 @@ export function WorkbenchTileChrome({
         )}
         data-workbench-chrome="true"
       >
-        <div
-          className={cn(
-            "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5",
-            chromeVariant === "pill" ? "max-w-fit" : "max-w-[11rem]",
-          )}
-        >
-          {TileIcon ? <TileIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-          <span className="truncate text-xs text-foreground">{title}</span>
-        </div>
+        {!hideTitlePill ? (
+          <div
+            className={cn(
+              "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5",
+              chromeVariant === "pill" ? "max-w-fit" : "max-w-[11rem]",
+            )}
+          >
+            {TileIcon ? <TileIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+            <span className="truncate text-xs text-foreground">{title}</span>
+          </div>
+        ) : null}
 
         {controls ? (
           <div className="min-w-0 flex-1">
@@ -130,8 +136,9 @@ export function WorkbenchTileChrome({
 
         <div
           className={cn(
-            "flex shrink-0 items-center gap-1",
-            chromeVariant === "pill" && "rounded-full bg-secondary px-1",
+            "flex shrink-0 items-center gap-1 transition-colors",
+            chromeVariant === "pill" &&
+              "rounded-full bg-secondary px-1 shadow-none ring-0",
           )}
         >
           {actions}
@@ -139,7 +146,12 @@ export function WorkbenchTileChrome({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 hover:bg-accent hover:text-foreground"
+            className={cn(
+              "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
+              chromeVariant === "pill"
+                ? pillControlHoverClasses
+                : "hover:bg-accent",
+            )}
             onClick={() => {
               if (panelApi.isMaximized()) {
                 panelApi.exitMaximized()
@@ -158,7 +170,12 @@ export function WorkbenchTileChrome({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 hover:bg-accent hover:text-foreground"
+            className={cn(
+              "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
+              chromeVariant === "pill"
+                ? pillControlHoverClasses
+                : "hover:bg-accent",
+            )}
             onClick={() => panelApi.close()}
             aria-label={`Close ${title}`}
           >

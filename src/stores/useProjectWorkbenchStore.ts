@@ -56,8 +56,14 @@ export type WorkbenchTileType =
   | "changes"
   | "assistantChat"
 
-export type WorkbenchSelectionTileMode = "emptyState" | "edgePreview" | "seamPreview"
+export type WorkbenchSelectionTileMode =
+  | "emptyState"
+  | "edgePreview"
+  | "seamPreview"
+  | "junctionPreview"
 export type WorkbenchSelectionTileEdge = "left" | "right" | "top" | "bottom"
+export type WorkbenchSelectionPreviewScope = "local" | "full-span"
+export type WorkbenchSelectionPreviewTargetKind = "edge" | "seam" | "junction"
 
 interface WorkbenchBaseTile {
   id: string
@@ -85,6 +91,10 @@ export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
   mode: WorkbenchSelectionTileMode
   edge?: WorkbenchSelectionTileEdge | null
   referenceTileId?: string | null
+  adjacentTileId?: string | null
+  previewScope?: WorkbenchSelectionPreviewScope | null
+  previewTargetKind?: WorkbenchSelectionPreviewTargetKind | null
+  previewTargetId?: string | null
 }
 
 export interface WorkbenchTasksTile extends WorkbenchBaseTile {
@@ -154,6 +164,10 @@ interface CreateTileOptions {
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
   selectionReferenceTileId?: string | null
+  selectionAdjacentTileId?: string | null
+  selectionPreviewScope?: WorkbenchSelectionPreviewScope | null
+  selectionPreviewTargetKind?: WorkbenchSelectionPreviewTargetKind | null
+  selectionPreviewTargetId?: string | null
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
@@ -289,6 +303,10 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         mode: options.selectionMode ?? "emptyState",
         edge: options.selectionEdge ?? null,
         referenceTileId: options.selectionReferenceTileId ?? null,
+        adjacentTileId: options.selectionAdjacentTileId ?? null,
+        previewScope: options.selectionPreviewScope ?? null,
+        previewTargetKind: options.selectionPreviewTargetKind ?? null,
+        previewTargetId: options.selectionPreviewTargetId ?? null,
       }
     case "tasks":
     case "changes":
@@ -386,6 +404,19 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
       continue
     }
 
+    if (tile.type === "selection") {
+      sanitizedTiles[tileId] = {
+        ...tile,
+        edge: tile.edge ?? null,
+        referenceTileId: tile.referenceTileId ?? null,
+        adjacentTileId: tile.adjacentTileId ?? null,
+        previewScope: tile.previewScope ?? null,
+        previewTargetKind: tile.previewTargetKind ?? null,
+        previewTargetId: tile.previewTargetId ?? null,
+      }
+      continue
+    }
+
     sanitizedTiles[tileId] = tile
   }
 
@@ -415,6 +446,11 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
         ...primaryTile,
         mode: "emptyState",
         edge: null,
+        referenceTileId: null,
+        adjacentTileId: null,
+        previewScope: null,
+        previewTargetKind: null,
+        previewTargetId: null,
       }
     }
 
