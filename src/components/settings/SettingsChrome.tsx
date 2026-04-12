@@ -106,11 +106,13 @@ export function SettingsRowLabel({
   description,
   htmlFor,
   className,
+  descriptionClassName,
 }: {
   title: ReactNode;
   description?: ReactNode;
   htmlFor?: string;
   className?: string;
+  descriptionClassName?: string;
 }) {
   return (
     <div className={cn("min-w-0 pr-4", description ? "flex flex-col gap-0.5" : "", className)}>
@@ -122,7 +124,7 @@ export function SettingsRowLabel({
         <span className="text-xs font-medium text-foreground">{title}</span>
       )}
       {description ? (
-        <p className="text-[11px] text-muted-foreground">{description}</p>
+        <p className={cn("text-[11px] text-muted-foreground", descriptionClassName)}>{description}</p>
       ) : null}
     </div>
   );

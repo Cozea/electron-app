@@ -32,7 +32,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../components/ui/dialog'
-import { ArchiveBoxIcon as Package, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, DocumentTextIcon as FileText, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
+import { ArchiveBoxIcon as Package, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, DocumentTextIcon as FileText, ExclamationTriangleIcon as AlertTriangle, FolderIcon, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
 import type { LocalProject, StorageProjectsPage, StorageSnapshot, StorageUsage } from '../../types/electron'
 
@@ -586,15 +586,6 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               } satisfies StorageUsageSegment,
             ]
           : []),
-        ...(diskTotal > 0
-          ? [
-              {
-                label: 'Free',
-                bytes: diskFree,
-                colorClassName: 'bg-muted',
-              } satisfies StorageUsageSegment,
-            ]
-          : []),
       ]
     : []
   const total = diskTotal > 0 ? diskTotal : Math.max(cozeaTotal, 1)
@@ -627,11 +618,11 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
         <SettingsSectionDescription>
           Disk usage from projects, dependencies, build cache, and logs on this device.
         </SettingsSectionDescription>
-        <SettingsGroup>
+        <div className="space-y-4 px-1 pt-1">
           {actionError ? (
-            <div className="border-b border-border/40 px-4 py-3 text-xs text-destructive">{actionError}</div>
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{actionError}</div>
           ) : null}
-          <div className="space-y-4 px-4 py-3">
+          <div className="space-y-4">
             <p className="text-[11px] text-muted-foreground">
               Cozea is using{' '}
               <span className="font-semibold tabular-nums text-foreground">
@@ -680,9 +671,6 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                     className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', segment.colorClassName)}
                   />
                   <span className="text-[11px] text-muted-foreground">{segment.label}</span>
-                  <span className="text-[11px] tabular-nums text-foreground">
-                    {formatBytes(segment.bytes)}
-                  </span>
                 </div>
               ))}
             </div>
@@ -769,7 +757,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               </Button>
             </div>
           </div>
-        </SettingsGroup>
+        </div>
       </section>
 
       <section>
@@ -777,10 +765,9 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
         <SettingsSectionDescription>Where new projects are created on your computer.</SettingsSectionDescription>
         <SettingsGroup>
           <div className="flex items-center gap-4 px-4 py-3">
-            {getDefaultFolderIcon(true, { width: 32, height: 32 })}
+            <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground/75" />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-mono text-[11px] text-foreground">{projectsDirectory}</p>
-              <p className="text-[11px] text-muted-foreground">New projects will be created in this directory</p>
+              <p className="truncate text-[11px] text-foreground">{projectsDirectory}</p>
             </div>
             <Button
               variant="outline"
@@ -944,7 +931,8 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
           <SettingsRow isFirst borderClassName="border-destructive/20">
             <SettingsRowLabel
               title="Clear all local data"
-              description="Remove all local projects, cache, and settings from this device"
+              description="Remove local projects, cache, and settings from this device."
+              descriptionClassName="truncate"
             />
             <SettingsRowControl>
               <Dialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>

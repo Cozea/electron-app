@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { ArrowUpTrayIcon as Upload, BellIcon as Bell, ComputerDesktopIcon as Monitor, EnvelopeIcon as Mail, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
+import { ArrowUpTrayIcon as Upload, BellIcon as Bell, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 
 interface UserPrefs {
   emailNotifications: boolean;
@@ -124,17 +124,14 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
         <SettingsSectionDescription>Devices currently signed in to your account</SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst className="items-center">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <Monitor className="size-3.5 shrink-0 text-muted-foreground/75" />
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">Current device</span>
-                  <Badge variant="secondary" className="text-[10px]">
-                    Current
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground">Active now</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-foreground">Current device</span>
+                <Badge variant="secondary" className="text-[10px]">
+                  Current
+                </Badge>
               </div>
+              <p className="text-[11px] text-muted-foreground">Active now</p>
             </div>
           </SettingsRow>
         </SettingsGroup>
@@ -147,13 +144,10 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
         </SettingsSectionTitle>
         <SettingsGroup>
           <SettingsRow isFirst>
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-              <Mail className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/75" />
-              <SettingsRowLabel
-                title="Email notifications"
-                description="Receive updates via email"
-              />
-            </div>
+            <SettingsRowLabel
+              title="Email notifications"
+              description="Receive updates via email"
+            />
             <SettingsRowControl>
               <Switch
                 checked={userPrefs.emailNotifications}
@@ -163,13 +157,10 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
             </SettingsRowControl>
           </SettingsRow>
           <SettingsRow>
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-              <Bell className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/75" />
-              <SettingsRowLabel
-                title="Push notifications"
-                description="Receive in-app notifications"
-              />
-            </div>
+            <SettingsRowLabel
+              title="Push notifications"
+              description="Receive in-app notifications"
+            />
             <SettingsRowControl>
               <Switch
                 checked={userPrefs.pushNotifications}

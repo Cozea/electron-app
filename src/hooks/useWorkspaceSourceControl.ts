@@ -53,6 +53,19 @@ interface UseWorkspaceSourceControlOptions {
   enabled?: boolean
 }
 
+const connectionListCache = new Map<string, WorkspaceSourceControlConnection[]>()
+
+function buildConnectionListCacheKey(args: {
+  organizationId?: Id<'organizations'>
+  userId?: Id<'users'> | null
+}): string | null {
+  if (!args.organizationId || !args.userId) {
+    return null
+  }
+
+  return `${args.organizationId}:${args.userId}`
+}
+
 export function useWorkspaceSourceControl(
   options: UseWorkspaceSourceControlOptions = {}
 ) {
@@ -80,6 +93,10 @@ export function useWorkspaceSourceControl(
 
   const organizationIdRef = useRef(organizationId)
   const convexUserIdRef = useRef(convexUserId)
+  const connectionCacheKey = useMemo(
+    () => buildConnectionListCacheKey({ organizationId, userId: convexUserId }),
+    [convexUserId, organizationId]
+  )
 
   useEffect(() => {
     organizationIdRef.current = organizationId
@@ -89,8 +106,27 @@ export function useWorkspaceSourceControl(
     convexUserIdRef.current = convexUserId
   }, [convexUserId])
 
-  const connections = useMemo(() => listQuery ?? [], [listQuery])
-  const isLoading = enabled && Boolean(organizationId && convexUserId) && listQuery === undefined
+  useEffect(() => {
+    if (!connectionCacheKey || listQuery === undefined) {
+      return
+    }
+
+    connectionListCache.set(connectionCacheKey, listQuery)
+  }, [connectionCacheKey, listQuery])
+
+  const cachedConnections = useMemo(
+    () => (connectionCacheKey ? connectionListCache.get(connectionCacheKey) ?? null : null),
+    [connectionCacheKey]
+  )
+  const connections = useMemo(
+    () => listQuery ?? cachedConnections ?? [],
+    [cachedConnections, listQuery]
+  )
+  const isLoading =
+    enabled &&
+    Boolean(organizationId && convexUserId) &&
+    listQuery === undefined &&
+    !cachedConnections
 
   const getConnection = useCallback(
     (provider: SourceControlProvider) =>
