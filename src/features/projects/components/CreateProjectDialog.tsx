@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useConvex, useMutation } from "convex/react"
-import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle2, ExclamationCircleIcon as AlertCircle, FolderIcon as FolderGit2 } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, ExclamationCircleIcon as AlertCircle, FolderIcon as FolderGit2 } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -38,12 +38,23 @@ import {
 } from "@/lib/git/providerRepositoryManagement"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { getWorkspaceSourceControlReadiness } from "@/lib/sourceControl/workspaceSourceControlReadiness"
+import { cn } from "@/lib/utils"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import {
+  browseForDirectory,
+  buildFilesystemSlug,
+  deriveNameFromPath,
+  deriveProviderFromRepoUrl,
+  detectCurrentBranch,
+  inspectLocalGitState,
+  type LocalGitState,
+} from "@/features/projects/lib/localProjectImport"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 
 interface CreateProjectDialogProps {
   open: boolean
   mode: CreateProjectDialogMode
+  initialLocalFolderPath?: string
   onOpenChange: (open: boolean) => void
 }
 
@@ -51,15 +62,6 @@ interface DialogCopy {
   title: string
   description: string
   submitLabel: string
-}
-
-interface LocalGitState {
-  isLoading: boolean
-  isRepo: boolean
-  hasOriginRemote: boolean
-  branch: string
-  remoteUrl: string | null
-  error: string | null
 }
 
 interface RemoteCreationDetails {
@@ -88,31 +90,6 @@ const DIALOG_COPY: Record<CreateProjectDialogMode, DialogCopy> = {
   },
 }
 
-function deriveNameFromPath(projectPath: string): string {
-  const normalized = projectPath.replace(/[\\/]+$/, "")
-  const segments = normalized.split(/[\\/]/).filter(Boolean)
-  return segments[segments.length - 1] ?? ""
-}
-
-function deriveProviderFromRepoUrl(repoUrl: string): "github" | "gitlab" | "bitbucket" {
-  const trimmed = repoUrl.trim()
-  if (!trimmed) return "github"
-  if (/bitbucket/i.test(trimmed)) return "bitbucket"
-  if (/gitlab/i.test(trimmed)) return "gitlab"
-  return "github"
-}
-
-function buildFilesystemSlug(name: string): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50)
-
-  return slug || "project"
-}
-
 function getPreferredOwner(
   owners: RepositoryOwnerDescriptor[],
   setupMode: "personal" | "organization",
@@ -122,136 +99,6 @@ function getPreferredOwner(
   }
 
   return owners.find((owner) => owner.kind === "user") ?? owners[0] ?? null
-}
-
-function parseGitRemoteUrl(configText: string): string | null {
-  let inOriginSection = false
-
-  for (const rawLine of configText.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) continue
-
-    if (/^\[remote\s+"origin"\]$/i.test(line)) {
-      inOriginSection = true
-      continue
-    }
-
-    if (/^\[.+\]$/.test(line)) {
-      inOriginSection = false
-      continue
-    }
-
-    if (!inOriginSection) continue
-
-    const match = line.match(/^url\s*=\s*(.+)$/i)
-    if (match?.[1]) {
-      return match[1].trim()
-    }
-  }
-
-  return null
-}
-
-function joinFsPath(basePath: string, ...segments: string[]): string {
-  const separator = basePath.includes("\\") ? "\\" : "/"
-  return [basePath.replace(/[\\/]+$/, ""), ...segments.map((segment) => segment.replace(/^[/\\]+|[/\\]+$/g, ""))]
-    .filter(Boolean)
-    .join(separator)
-}
-
-function resolveRelativeFsPath(basePath: string, targetPath: string): string {
-  if (/^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(targetPath)) {
-    return targetPath
-  }
-
-  const hasDrivePrefix = /^[A-Za-z]:/.test(basePath)
-  const rootPrefix = hasDrivePrefix ? `${basePath.slice(0, 2)}/` : basePath.startsWith("/") ? "/" : ""
-  const baseSegments = basePath
-    .replace(/\\/g, "/")
-    .replace(/^[A-Za-z]:/, "")
-    .split("/")
-    .filter(Boolean)
-  const targetSegments = targetPath.replace(/\\/g, "/").split("/").filter(Boolean)
-
-  for (const segment of targetSegments) {
-    if (segment === ".") continue
-    if (segment === "..") {
-      baseSegments.pop()
-      continue
-    }
-    baseSegments.push(segment)
-  }
-
-  return `${rootPrefix}${baseSegments.join("/")}`
-}
-
-async function detectOriginRemoteUrl(projectPath: string): Promise<string | null> {
-  const directConfig = await window.electronAPI.fs.readFile(joinFsPath(projectPath, ".git", "config"))
-  if (directConfig) {
-    return parseGitRemoteUrl(directConfig)
-  }
-
-  const gitEntry = await window.electronAPI.fs.readFile(joinFsPath(projectPath, ".git"))
-  const gitDirMatch = gitEntry?.match(/gitdir:\s*(.+)\s*$/i)
-  if (!gitDirMatch?.[1]) {
-    return null
-  }
-
-  const resolvedGitDir = resolveRelativeFsPath(projectPath, gitDirMatch[1].trim())
-  const linkedConfig = await window.electronAPI.fs.readFile(joinFsPath(resolvedGitDir, "config"))
-  return linkedConfig ? parseGitRemoteUrl(linkedConfig) : null
-}
-
-async function detectCurrentBranch(projectPath: string, fallbackBranch: string): Promise<string> {
-  try {
-    const result = await window.electronAPI.project.listGitBranches({ projectPath })
-    const currentBranch = result.branches.find((branch) => branch.current && !branch.isRemote)?.name?.trim()
-    if (currentBranch) {
-      return currentBranch
-    }
-
-    const defaultBranch = result.branches.find((branch) => branch.isDefault && !branch.isRemote)?.name?.trim()
-    return defaultBranch || fallbackBranch
-  } catch {
-    return fallbackBranch
-  }
-}
-
-async function inspectLocalGitState(projectPath: string): Promise<LocalGitState> {
-  try {
-    const branches = await window.electronAPI.project.listGitBranches({ projectPath })
-    const branch =
-      branches.branches.find((item) => item.current && !item.isRemote)?.name?.trim() ??
-      branches.branches.find((item) => item.isDefault && !item.isRemote)?.name?.trim() ??
-      "main"
-    const remoteUrl = branches.hasOriginRemote ? await detectOriginRemoteUrl(projectPath) : null
-
-    return {
-      isLoading: false,
-      isRepo: branches.isRepo,
-      hasOriginRemote: branches.hasOriginRemote,
-      branch,
-      remoteUrl,
-      error: branches.error ?? null,
-    }
-  } catch (error) {
-    return {
-      isLoading: false,
-      isRepo: false,
-      hasOriginRemote: false,
-      branch: "main",
-      remoteUrl: null,
-      error: error instanceof Error ? error.message : "Failed to inspect local git state.",
-    }
-  }
-}
-
-async function browseForDirectory(title: string): Promise<string | null> {
-  const result = await window.electronAPI.dialog.selectDirectory({ title })
-  if (!result.success || !result.path) {
-    return null
-  }
-  return result.path
 }
 
 function getBlockingCopy(reason: string | null, setupMode: "personal" | "organization") {
@@ -299,7 +146,12 @@ function formatRemoteVisibility(visibility: string | undefined, isPrivate: boole
   return isPrivate ? "private" : "public"
 }
 
-export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectDialogProps) {
+export function CreateProjectDialog({
+  open,
+  mode,
+  initialLocalFolderPath = "",
+  onOpenChange,
+}: CreateProjectDialogProps) {
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
@@ -331,7 +183,18 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
   const [hasEditedName, setHasEditedName] = useState(false)
   const [hasEditedRemoteRepositoryName, setHasEditedRemoteRepositoryName] = useState(false)
 
-  const copy = DIALOG_COPY[mode]
+  const copy = useMemo(() => {
+    if (mode !== "local" || !initialLocalFolderPath.trim()) {
+      return DIALOG_COPY[mode]
+    }
+
+    const folderName = deriveNameFromPath(initialLocalFolderPath.trim()) || "this folder"
+    return {
+      title: "Create remote to import folder",
+      description: `Cozea can import ${folderName} as soon as it has a GitHub remote. Set that up here and we'll finish the import.`,
+      submitLabel: "Create remote and import",
+    } satisfies DialogCopy
+  }, [initialLocalFolderPath, mode])
   const setupMode = personalScoped ? "personal" : "organization"
   const githubConnection = getConnection("github")
   const sourceControlReadiness = useMemo(
@@ -369,7 +232,7 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
 
         setName("")
         setParentDirectory(settings.projectsDirectory)
-        setLocalFolderPath("")
+        setLocalFolderPath(mode === "local" ? initialLocalFolderPath : "")
         setRepositorySearchValue("")
         setSelectedRepository(null)
         setSelectedRepositoryBranch("")
@@ -391,7 +254,7 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
     return () => {
       cancelled = true
     }
-  }, [open, mode])
+  }, [initialLocalFolderPath, open, mode])
 
   useEffect(() => {
     if (mode !== "local" || hasEditedName || !localFolderPath) {
@@ -677,7 +540,8 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
       return
     }
 
-    const trimmedName = name.trim()
+    const trimmedName =
+      mode === "local" ? deriveNameFromPath(localFolderPath).trim() || name.trim() : name.trim()
     const trimmedParentDirectory = parentDirectory.trim()
     const trimmedLocalFolderPath = localFolderPath.trim()
     const resolvedBranch =
@@ -949,6 +813,27 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
     updateProjectStatus,
   ])
 
+  useEffect(() => {
+    if (
+      !open ||
+      mode !== "local" ||
+      isSubmitting ||
+      !localFolderPath.trim() ||
+      !localGitState?.remoteUrl
+    ) {
+      return
+    }
+
+    void handleSubmit()
+  }, [
+    handleSubmit,
+    isSubmitting,
+    localFolderPath,
+    localGitState?.remoteUrl,
+    mode,
+    open,
+  ])
+
   const blockingCopy = getBlockingCopy(sourceControlReadiness.blockingReason, setupMode)
   const shouldShowRemoteCreationSection =
     mode === "empty" || (mode === "local" && !localGitState?.remoteUrl)
@@ -1083,28 +968,39 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
         }
       }}
     >
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent
+        className={cn(
+          mode === "local" ? "sm:max-w-xl" : "sm:max-w-4xl",
+        )}
+      >
         <DialogHeader className="items-start text-left">
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[calc(100vh-16rem)] space-y-5 overflow-y-auto py-2 pr-1">
-          <div className="space-y-2">
-            <Label htmlFor="create-project-name">Project name</Label>
-            <Input
-              id="create-project-name"
-              value={name}
-              onChange={(event) => {
-                setHasEditedName(true)
-                setName(event.target.value)
-                setError(null)
-              }}
-              placeholder="My project"
-              disabled={isSubmitting}
-              autoFocus
-            />
-          </div>
+        <div
+          className={cn(
+            "max-h-[calc(100vh-16rem)] overflow-y-auto py-2 pr-1",
+            mode === "local" ? "space-y-4" : "space-y-5",
+          )}
+        >
+          {mode !== "local" ? (
+            <div className="space-y-2">
+              <Label htmlFor="create-project-name">Project name</Label>
+              <Input
+                id="create-project-name"
+                value={name}
+                onChange={(event) => {
+                  setHasEditedName(true)
+                  setName(event.target.value)
+                  setError(null)
+                }}
+                placeholder="My project"
+                disabled={isSubmitting}
+                autoFocus
+              />
+            </div>
+          ) : null}
 
           {mode === "empty" || mode === "repo" ? (
             <div className="space-y-2">
@@ -1137,75 +1033,14 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
             </div>
           ) : null}
 
-          {mode === "local" ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="import-project-folder">Local folder</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="import-project-folder"
-                    value={localFolderPath}
-                    onChange={(event) => {
-                      setLocalFolderPath(event.target.value)
-                      setError(null)
-                    }}
-                    placeholder="Choose an existing project folder"
-                    disabled={isSubmitting}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={async () => {
-                      const selectedPath = await browseForDirectory("Select local project folder")
-                      if (!selectedPath) return
-                      setLocalFolderPath(selectedPath)
-                      setError(null)
-                    }}
-                    disabled={isSubmitting}
-                  >
-                    Browse
-                  </Button>
-                </div>
-              </div>
-
-              {localGitState?.isLoading ? (
-                <Alert className="rounded-2xl bg-secondary/35">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <AlertTitle>Inspecting local git state</AlertTitle>
-                  <AlertDescription>
-                    Checking whether this folder already has a remote and which branch it is on.
-                  </AlertDescription>
-                </Alert>
-              ) : localGitState?.remoteUrl ? (
-                <Alert className="rounded-2xl bg-secondary/35">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <AlertTitle>Existing remote detected</AlertTitle>
-                  <AlertDescription className="space-y-2">
-                    <p className="break-all">{localGitState.remoteUrl}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Badge variant="secondary">Branch {localGitState.branch}</Badge>
-                      <Badge variant="outline">
-                        {localGitState.isRepo ? "Git checkout" : "Folder"}
-                      </Badge>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              ) : localFolderPath.trim() ? (
-                <Alert className="rounded-2xl bg-secondary/35">
-                  <FolderGit2 className="h-4 w-4" />
-                  <AlertTitle>
-                    {localGitState?.hasOriginRemote
-                      ? "Origin remote could not be resolved"
-                      : "No remote detected yet"}
-                  </AlertTitle>
-                  <AlertDescription>
-                    {localGitState?.hasOriginRemote
-                      ? "This checkout has an origin remote, but Cozea could not read its URL from the local git config. Creating a new remote below will replace origin for this folder."
-                      : "This folder does not have an origin remote yet. Cozea will create one before saving the project."}
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-            </>
+          {mode === "local" && localGitState?.isLoading ? (
+            <Alert className="rounded-2xl bg-secondary/35">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertTitle>Checking the folder</AlertTitle>
+              <AlertDescription>
+                Preparing the import and confirming whether we need to create a remote first.
+              </AlertDescription>
+            </Alert>
           ) : null}
 
           {mode === "repo" ? (
@@ -1287,9 +1122,9 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
 
           {renderRemoteCreationSection()}
 
-          {resolvedProjectPathPreview ? (
+          {mode !== "local" && resolvedProjectPathPreview ? (
             <div className="rounded-2xl border border-border/60 bg-secondary/20 px-4 py-3 text-sm text-muted-foreground">
-              {mode === "local" ? "Folder" : "Local path"}: {resolvedProjectPathPreview}
+              Local path: {resolvedProjectPathPreview}
             </div>
           ) : null}
 
