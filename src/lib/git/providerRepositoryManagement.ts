@@ -33,9 +33,16 @@ interface SessionCacheEntry {
   value: ResolvedProviderRepositoryAuth
 }
 
+interface OwnerCacheEntry {
+  expiresAt: number
+  value: RepositoryOwnerDescriptor[]
+}
+
 const SESSION_CACHE_TTL_MS = 30_000
+const OWNER_CACHE_TTL_MS = 5 * 60_000
 
 const providerSessionCache = new Map<string, SessionCacheEntry>()
+const providerOwnerCache = new Map<string, OwnerCacheEntry>()
 
 function buildSessionCacheKey(args: {
   organizationId: Id<'organizations'>
@@ -51,6 +58,23 @@ function clearExpiredSessionEntries(): void {
   for (const [key, entry] of providerSessionCache.entries()) {
     if (entry.expiresAt <= now) {
       providerSessionCache.delete(key)
+    }
+  }
+}
+
+function buildOwnerCacheKey(args: {
+  organizationId: Id<'organizations'>
+  userId: Id<'users'>
+  provider: RepositoryProvider
+}): string {
+  return JSON.stringify(args)
+}
+
+function clearExpiredOwnerEntries(): void {
+  const now = Date.now()
+  for (const [key, entry] of providerOwnerCache.entries()) {
+    if (entry.expiresAt <= now) {
+      providerOwnerCache.delete(key)
     }
   }
 }
@@ -208,8 +232,14 @@ export async function invalidateProviderRepositoryManagementCache(options?: {
         providerSessionCache.delete(key)
       }
     }
+    for (const key of providerOwnerCache.keys()) {
+      if (key.includes(`"provider":"${options.provider}"`)) {
+        providerOwnerCache.delete(key)
+      }
+    }
   } else {
     providerSessionCache.clear()
+    providerOwnerCache.clear()
   }
 
   await window.electronAPI.sourceControl.invalidateProviderCache(options)
@@ -222,6 +252,20 @@ export async function listConnectedRepositoryOwners(args: {
   provider: RepositoryProvider
   bypassCache?: boolean
 }): Promise<RepositoryOwnerDescriptor[]> {
+  clearExpiredOwnerEntries()
+
+  const ownerCacheKey = buildOwnerCacheKey({
+    organizationId: args.organizationId,
+    userId: args.userId,
+    provider: args.provider,
+  })
+  if (!args.bypassCache) {
+    const cachedOwners = providerOwnerCache.get(ownerCacheKey)
+    if (cachedOwners && cachedOwners.expiresAt > Date.now()) {
+      return cachedOwners.value
+    }
+  }
+
   const auth = await resolveProviderRepositoryAuth({
     ...args,
     purpose: 'setup',
@@ -234,17 +278,23 @@ export async function listConnectedRepositoryOwners(args: {
     bypassCache: args.bypassCache,
   })
 
-  if (args.provider !== 'github') {
-    return owners
-  }
+  const resolvedOwners =
+    args.provider !== 'github'
+      ? owners
+      : await enrichGitHubOwnersWithInstallations({
+          convex: args.convex,
+          organizationId: args.organizationId,
+          userId: args.userId,
+          providerHost: auth.providerHost,
+          owners,
+        })
 
-  return await enrichGitHubOwnersWithInstallations({
-    convex: args.convex,
-    organizationId: args.organizationId,
-    userId: args.userId,
-    providerHost: auth.providerHost,
-    owners,
+  providerOwnerCache.set(ownerCacheKey, {
+    expiresAt: Date.now() + OWNER_CACHE_TTL_MS,
+    value: resolvedOwners,
   })
+
+  return resolvedOwners
 }
 
 export async function listConnectedRepositories(args: {
