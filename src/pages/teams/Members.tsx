@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type MouseEvent, useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { featureFlags } from '@/lib/featureFlags'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
@@ -8,7 +8,6 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
-import { Badge } from '../../components/ui/badge'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
@@ -23,11 +22,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from '../../components/ui/dropdown-menu'
 import {
   Dialog,
@@ -37,16 +32,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../components/ui/dialog'
-import { ArrowPathIcon as Loader2, ArrowsUpDownIcon as ArrowUpDown, ChevronDownIcon as ChevronDown, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, EllipsisVerticalIcon as MoreVertical, PaperAirplaneIcon as Send, ShieldCheckIcon as Shield, TrashIcon as Trash, TrashIcon as Trash2, UserIcon as User, UserPlusIcon as UserPlus, XCircleIcon as XCircle } from "@heroicons/react/24/outline"
+import type { ContextMenuItem } from "@cozea/assistant-contracts"
+import { ArrowPathIcon as Loader2, ArrowsUpDownIcon as ArrowUpDown, ChevronDownIcon as ChevronDown, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, EllipsisVerticalIcon as MoreVertical, PaperAirplaneIcon as Send, TrashIcon as Trash, TrashIcon as Trash2, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
 import { FunnelIcon } from '@heroicons/react/24/outline'
-import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 import {
   formatOrganizationWorkspaceRole,
   type OrganizationWorkspaceRole,
 } from '@/lib/workspaces/organizationRoles'
+import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
+import { cn } from '@/lib/utils'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedWorkspacePeopleData } from '@/hooks/useScopedWorkspacePeopleData'
 import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
+import {
+  SettingsPageBody,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+} from '@/components/settings/SettingsChrome'
 
 const WORKSPACE_BILLING_ROUTE =
   getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
@@ -212,14 +214,6 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
   const startIndex = (currentPage - 1) * pageSize
   const endIndex = startIndex + pageSize
   const paginatedRows = filteredRows.slice(startIndex, endIndex)
-
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).replace(/\//g, '-')
-  }
 
   const toggleAll = () => {
     setSelected(selected.length === paginatedRows.length ? [] : paginatedRows.map((d) => d.id))
@@ -434,6 +428,93 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     }
   }
 
+  const handleOpenRowMenu = async (
+    row: TableRowData,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const items: ContextMenuItem<string>[] = []
+
+    if (row.type === 'member') {
+      items.push({
+        id: 'change-role',
+        label: 'Change role',
+        enabled: canUpdateRole,
+        submenu: roleOptions.map((role) => {
+          const isCurrentRole = row.roleId
+            ? row.roleId === role.roleId
+            : row.roleBaseRole === role.baseRole
+
+          return {
+            id: `role:${role.value}`,
+            label: role.label,
+            type: 'radio',
+            checked: isCurrentRole,
+            enabled: canUpdateRole && !isCurrentRole,
+          } satisfies ContextMenuItem<string>
+        }),
+      })
+      items.push({
+        id: 'view-details',
+        label: 'View details',
+      })
+      items.push({ id: 'separator-member', type: 'separator' })
+      items.push({
+        id: 'remove',
+        label: row.email === user?.email ? "Can't remove yourself" : 'Remove',
+        destructive: true,
+        enabled: canRemove && row.email !== user?.email,
+      })
+    } else {
+      items.push({
+        id: 'view-details',
+        label: 'View details',
+        enabled: false,
+      })
+      items.push({
+        id: 'revoke',
+        label: 'Revoke',
+        destructive: true,
+        enabled: canRevokeInvite,
+      })
+    }
+
+    const action = await showDesktopContextMenu(items, {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.bottom),
+    })
+
+    if (!action) return
+
+    if (action.startsWith('role:') && row.type === 'member') {
+      const nextRoleValue = action.slice('role:'.length)
+      await handleChangeRole(row.id, row.workosMembershipId, nextRoleValue)
+      return
+    }
+
+    switch (action) {
+      case 'view-details':
+        if (row.type === 'member') {
+          if (surface === 'drawer') {
+            openSettingsDrawer(`/teams/members/${row.id}`)
+          } else {
+            navigate(`/teams/members/${row.id}`)
+          }
+        }
+        break
+      case 'remove':
+        if (row.type === 'member') {
+          await handleRemoveMember(row.id, row.workosMembershipId)
+        }
+        break
+      case 'revoke':
+        if (row.type === 'invite') {
+          await handleRevokeInvite(row.id, row.workosInvitationId)
+        }
+        break
+    }
+  }
+
   const handleBulkDelete = async () => {
     const selectedInvites = paginatedRows.filter(
       (row) => selected.includes(row.id) && row.type === 'invite'
@@ -476,7 +557,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
   const inviteButton = (
     <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2 h-7 px-2 text-xs rounded-full" disabled={!canInvite}>
+        <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs" disabled={!canInvite}>
           <UserPlus className="h-3.5 w-3.5" />
           Invite
         </Button>
@@ -586,11 +667,17 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
           description="You do not have permission to view workspace members and invitations."
         />
       ) : (
-      <div className={featureFlags.contentVisibility ? 'perf-contain-auto' : undefined}>
+      <div className={cn('space-y-5', featureFlags.contentVisibility && 'perf-contain-auto')}>
+        <div className="min-w-0">
+          <SettingsSectionTitle className="px-0">Members</SettingsSectionTitle>
+          <SettingsSectionDescription className="mb-0 px-0">
+            Manage workspace members, invitations, and seat access.
+          </SettingsSectionDescription>
+        </div>
         {seatManagement?.entitlement.source === 'legacy' && (
-          <Alert className="mb-4">
-            <AlertTitle>Legacy workspace billing is active</AlertTitle>
-            <AlertDescription>
+          <div className="rounded-[14px] bg-muted px-4 py-3 text-sm">
+            <p className="text-foreground">Legacy workspace billing is active</p>
+            <p className="mt-1 text-muted-foreground">
               This workspace still uses legacy billing entitlements. Migrate and manage explicit paid seats in{' '}
               <Button
                 variant="link"
@@ -600,24 +687,24 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                 Billing Settings
               </Button>
               {' '}(workspace seat billing).
-            </AlertDescription>
-          </Alert>
+            </p>
+          </div>
         )}
 
         {seatManagement && seatManagedEntitlement && seatManagement.entitlement.source !== 'legacy' && seatManagement.entitlement.seatCounts.total > 0 && (
-          <Alert className="mb-4">
-            <AlertTitle>Paid seat coverage</AlertTitle>
-            <AlertDescription>
+          <div className="rounded-[14px] bg-muted px-4 py-3 text-sm">
+            <p className="text-foreground">Paid seat coverage</p>
+            <p className="mt-1 text-muted-foreground">
               {seatManagement.entitlement.seatCounts.assigned}/{seatManagement.entitlement.seatCounts.total} paid seats assigned.
               Workspace access is capped by purchased seats. Members still need an assigned paid seat for AI and sync.
-            </AlertDescription>
-          </Alert>
+            </p>
+          </div>
         )}
 
         {seatManagement && seatManagedEntitlement && !seatManagement.entitlement.canUseAi && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertTitle>No paid seat assigned to you</AlertTitle>
-            <AlertDescription>
+          <div className="rounded-[14px] bg-destructive/10 px-4 py-3 text-sm">
+            <p className="text-destructive">No paid seat assigned to you</p>
+            <p className="mt-1 text-destructive/80">
               Ask {seatManagement.billingUser?.email || 'the billing owner'} to assign your seat in{' '}
               <Button
                 variant="link"
@@ -627,68 +714,70 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                 Billing Settings
               </Button>
               .
-            </AlertDescription>
-          </Alert>
+            </p>
+          </div>
         )}
 
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {selected.length > 0 && (
-            <Button variant="destructive" size="sm" className="h-7 rounded-full" onClick={handleBulkDelete}>
-              <Trash className="mr-2 h-4 w-4" />
-              Delete ({selected.length})
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-                <FunnelIcon className="h-3.5 w-3.5" />
-                {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {selected.length > 0 && (
+              <Button variant="destructive" size="sm" className="h-7 rounded-full text-[11px]" onClick={handleBulkDelete}>
+                <Trash className="mr-1.5 h-3.5 w-3.5" />
+                Delete ({selected.length})
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
-              {roleOptions.map((role) => (
-                <DropdownMenuItem key={role.value} onClick={() => { setRoleFilter(role.baseRole); setCurrentPage(1) }}>
-                  {role.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-                <ArrowUpDown className="h-3.5 w-3.5" />
-                {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date Joined</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-                {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {inviteButton}
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs focus:z-10">
+                  <FunnelIcon className="h-3.5 w-3.5" />
+                  {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
+                {roleOptions.map((role) => (
+                  <DropdownMenuItem key={role.value} onClick={() => { setRoleFilter(role.baseRole); setCurrentPage(1) }}>
+                    {role.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs focus:z-10">
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date joined</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs focus:z-10">
+                  {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div className="shrink-0">{inviteButton}</div>
         </div>
 
         {/* Table */}
         <div
           className={[
             featureFlags.contentVisibility ? 'perf-contain-card' : '',
-            'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40',
+            'overflow-hidden rounded-[14px] bg-muted',
           ].join(' ').trim()}
         >
-          <Table className="[&_th]:px-4 [&_td]:px-4">
+          <Table className="[&_th]:px-4 [&_th]:font-normal [&_th]:text-muted-foreground [&_td]:px-4">
             <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
               <TableRow>
                 <TableHead className="w-12">
@@ -698,10 +787,9 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                     disabled={paginatedRows.length === 0}
                   />
                 </TableHead>
-                <TableHead className="w-[42%]">Member Name</TableHead>
-                <TableHead className="w-[24%]">Role</TableHead>
+                <TableHead className="w-[48%]">Member Name</TableHead>
+                <TableHead className="w-[26%]">Role</TableHead>
                 <TableHead className="w-[14%]">Status</TableHead>
-                <TableHead className="w-[12%]">Date</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -725,111 +813,41 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="truncate font-medium">{row.name}</span>
+                            <span className="truncate text-foreground">{row.name}</span>
                           </div>
                           <div className="truncate text-sm text-muted-foreground">{row.email}</div>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="overflow-hidden">
-                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                        <Badge className="max-w-full shrink justify-start border-0 bg-primary/10 text-primary">
-                          <span className="truncate">
-                            {formatOrganizationWorkspaceRole(row.roleBaseRole, row.roleName ?? row.role)}
-                          </span>
-                        </Badge>
-                        {row.email === user?.email ? (
-                          <>
-                            <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden="true" />
-                            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                              you
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="overflow-hidden">
-                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
-                            }`}
-                        />
-                        <span className={`truncate ${row.status === 'active' ? 'text-green-600' : 'text-amber-600'}`}>
-                          {row.status === 'active' ? 'Active' : 'Pending'}
+                      <div className="min-w-0 overflow-hidden">
+                        <span className="block truncate text-muted-foreground">
+                          {formatOrganizationWorkspaceRole(row.roleBaseRole, row.roleName ?? row.role)}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="truncate text-muted-foreground">
-                      {formatDate(row.date)}
+                    <TableCell className="overflow-hidden">
+                      <div
+                        className="flex min-w-0 items-center gap-2 overflow-hidden"
+                        title={row.status === 'active' ? 'Active' : 'Pending'}
+                      >
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
+                            }`}
+                          aria-label={row.status === 'active' ? 'Active' : 'Pending'}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {row.type === 'member' ? (
-                            <>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger disabled={!canUpdateRole}>
-                                  <Shield className="h-4 w-4 mr-2" />
-                                  Change Role
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  {roleOptions.map((role) => (
-                                    <DropdownMenuItem
-                                      key={role.value}
-                                      onClick={() => handleChangeRole(row.id, row.workosMembershipId, role.value)}
-                                      disabled={row.roleId ? row.roleId === role.roleId : row.roleBaseRole === role.baseRole}
-                                    >
-                                      {role.label}
-                                      {(row.roleId ? row.roleId === role.roleId : row.roleBaseRole === role.baseRole) && (
-                                        <span className="ml-2 text-muted-foreground">(current)</span>
-                                      )}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  surface === 'drawer'
-                                    ? openSettingsDrawer(`/teams/members/${row.id}`)
-                                    : navigate(`/teams/members/${row.id}`)
-                                }
-                              >
-                                <User className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                disabled={!canRemove || row.email === user?.email}
-                                onClick={() => handleRemoveMember(row.id, row.workosMembershipId)}
-                              >
-                                <Trash className="h-4 w-4 mr-2" />
-                                {row.email === user?.email ? "Can't remove yourself" : 'Remove'}
-                              </DropdownMenuItem>
-                            </>
-                          ) : (
-                            <>
-                              <DropdownMenuItem disabled>
-                                <User className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                disabled={!canRevokeInvite}
-                                onClick={() => handleRevokeInvite(row.id, row.workosInvitationId)}
-                              >
-                                <XCircle className="h-4 w-4 mr-2" />
-                                Revoke
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={(event) => void handleOpenRowMenu(row, event)}
+                        aria-label="Open member actions"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -848,15 +866,15 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
 
         {/* Pagination */}
         {!isLoading && filteredRows.length > 0 && (
-          <div className="flex items-center justify-between mt-4">
+          <div className="mt-3 flex items-center justify-between gap-3">
             <div className="text-sm text-muted-foreground">
-              Showing <span className="font-medium">{startIndex + 1}-{Math.min(endIndex, filteredRows.length)}</span> of <span className="font-medium">{filteredRows.length}</span> entries
+              Showing {startIndex + 1}-{Math.min(endIndex, filteredRows.length)} of {filteredRows.length} entries
             </div>
             <div className="flex items-center gap-1">
               <Button
                 variant="secondary"
                 size="icon"
-                className="h-8 w-8 rounded-full"
+                className="h-7 w-7 rounded-full"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
               >
@@ -868,7 +886,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                     key={i}
                     variant={currentPage === page ? 'default' : 'secondary'}
                     size="icon"
-                    className="h-8 w-8 rounded-full"
+                    className="h-7 w-7 rounded-full text-xs"
                     onClick={() => setCurrentPage(page)}
                   >
                     {page}
@@ -880,7 +898,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
               <Button
                 variant="secondary"
                 size="icon"
-                className="h-8 w-8 rounded-full"
+                className="h-7 w-7 rounded-full"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages || totalPages === 0}
               >
@@ -898,5 +916,5 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     return content
   }
 
-  return content
+  return <SettingsPageBody>{content}</SettingsPageBody>
 }

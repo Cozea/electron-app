@@ -41,12 +41,13 @@ const PERSONAL_DEVICE_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> 
 /** Single “Settings” list when the active workspace is personal (everything is user settings UX) */
 const PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
   general: 0,
-  account: 1,
-  sourceControl: 2,
-  appearance: 3,
-  cliTools: 4,
-  storage: 5,
-  tooling: 6,
+  billing: 1,
+  account: 2,
+  sourceControl: 3,
+  appearance: 4,
+  cliTools: 5,
+  storage: 6,
+  tooling: 7,
 }
 
 export function compareWorkspaceScopedSidebarSurfaces(
@@ -95,7 +96,7 @@ const preloadToolingPage = async () => {
 }
 const preloadPoliciesPage = () => import("@/pages/workspace/Policies")
 const preloadMembersPage = () => import("@/pages/teams/Members")
-const preloadPermissionsPage = () => import("@/pages/teams/Roles")
+const preloadRolesPage = () => import("@/pages/teams/Roles")
 
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
@@ -116,7 +117,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     routes: { personal: "/settings/billing", workspace: "/workspace/billing" },
     storageMode: { personal: "cloud", workspace: "cloud" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { workspace: "workspace" },
+    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "billing",
     preload: preloadBillingPage,
     commandKeywords: ["billing", "subscription", "payment", "usage", "plan"],
@@ -217,8 +218,8 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     commandKeywords: ["team", "members", "organization", "invite"],
   },
   {
-    id: "permissions",
-    label: "Permissions",
+    id: "roles",
+    label: "Roles",
     icon: ShieldCheckIcon,
     routes: { workspace: "/teams/roles" },
     storageMode: { workspace: "cloud" },
@@ -226,7 +227,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { workspace: "team" },
     workspaceAccessKey: "roles",
     alpha: true,
-    preload: preloadPermissionsPage,
+    preload: preloadRolesPage,
     commandKeywords: ["permissions", "roles", "iam", "access"],
   },
 ] as const

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArchiveBoxIcon as Package, ArrowDownTrayIcon as Download, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, CheckIcon as Check, CommandLineIcon as Terminal, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
-import { FaApple, FaLinux, FaWindows } from 'react-icons/fa6'
+import { ArchiveBoxIcon as Package, ArrowDownTrayIcon as Download, ArrowPathIcon as Loader2, CheckIcon as Check, CommandLineIcon as Terminal, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
+import { SettingsPageBody } from '@/components/settings/SettingsChrome'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { toolingSettingsClient } from '@/lib/settings/toolingSettingsClient'
 import { Badge } from '../../components/ui/badge'
@@ -53,100 +53,11 @@ export async function prewarmToolingSettings(): Promise<void> {
   await runtimeStatusPrewarmPromise
 }
 
-function getRuntimeTargetPresentation(target: string): {
-  label: string
-  icon: React.ReactNode
-} {
-  const normalized = target.trim().toLowerCase()
-
-  if (!normalized) {
-    return {
-      label: 'Unknown platform',
-      icon: <Terminal className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'darwin-arm64') {
-    return {
-      label: 'Apple silicon',
-      icon: <FaApple className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'darwin-x64') {
-    return {
-      label: 'Intel Mac',
-      icon: <FaApple className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'win32-arm64') {
-    return {
-      label: 'Windows on ARM',
-      icon: <FaWindows className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'win32-x64') {
-    return {
-      label: 'Windows (x64)',
-      icon: <FaWindows className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'win32-ia32') {
-    return {
-      label: 'Windows (32-bit)',
-      icon: <FaWindows className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'linux-x64') {
-    return {
-      label: 'Linux (x64)',
-      icon: <FaLinux className="h-3.5 w-3.5" />,
-    }
-  }
-  if (normalized === 'linux-arm64') {
-    return {
-      label: 'Linux ARM64',
-      icon: <FaLinux className="h-3.5 w-3.5" />,
-    }
-  }
-
-  const [platform, arch] = normalized.split('-', 2)
-  if (!platform || !arch) {
-    return {
-      label: target,
-      icon: <Terminal className="h-3.5 w-3.5" />,
-    }
-  }
-
-  const platformLabel =
-    platform === 'darwin'
-      ? 'macOS'
-      : platform === 'win32'
-        ? 'Windows'
-        : platform === 'linux'
-          ? 'Linux'
-          : platform.charAt(0).toUpperCase() + platform.slice(1)
-
-  const archLabel =
-    arch === 'x64'
-      ? 'x64'
-      : arch === 'arm64'
-        ? 'ARM64'
-        : arch === 'ia32'
-        ? '32-bit'
-          : arch.toUpperCase()
-
-  const icon =
-    platform === 'darwin'
-      ? <FaApple className="h-3.5 w-3.5" />
-      : platform === 'win32'
-        ? <FaWindows className="h-3.5 w-3.5" />
-        : platform === 'linux'
-          ? <FaLinux className="h-3.5 w-3.5" />
-          : <Terminal className="h-3.5 w-3.5" />
-
-  return {
-    label: `${platformLabel} (${archLabel})`,
-    icon,
-  }
+function getGitExecutableLabel(executablePath?: string): string {
+  if (!executablePath) return 'git'
+  const normalizedPath = executablePath.replace(/\\/g, '/')
+  const basename = normalizedPath.split('/').pop()?.trim()
+  return basename || executablePath
 }
 
 function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
@@ -213,9 +124,6 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const runtimeInstallJobs = useRuntimeInstallStore((state) => state.jobs)
   const ensureRuntimeInstalled = useRuntimeInstallStore((state) => state.ensureRuntimeInstalled)
   const previousStatusesRef = useRef<Partial<Record<RuntimeKind, RuntimeInstallStatus>>>({})
-  const runtimeTargetPresentation = runtimeStatus
-    ? getRuntimeTargetPresentation(runtimeStatus.target)
-    : null
 
   const loadRuntimeStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -318,45 +226,16 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   )
 
   const content = (
-    <div
-      className={
-        surface === 'drawer'
-          ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
-          : 'max-w-6xl space-y-6 px-6 pt-6 pb-8'
-      }
-    >
+    <SettingsPageBody surface={surface} className="space-y-6">
         <div className="px-1 py-1">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start gap-4">
             <div>
               <h2 className="text-base font-medium">Tooling and Framework Support</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 This page reflects what your current Cozea instance can execute on this device.
               </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Current builder target mode: web projects (websites and web apps).
-              </p>
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                void loadRuntimeStatus()
-              }}
-              disabled={isLoading}
-              className="rounded-full"
-            >
-              <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
-              Refresh
-            </Button>
           </div>
-          {runtimeStatus && runtimeTargetPresentation && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="secondary" className="gap-1.5">
-                {runtimeTargetPresentation.icon}
-                {runtimeTargetPresentation.label}
-              </Badge>
-            </div>
-          )}
         </div>
 
         {error && (
@@ -373,10 +252,25 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
             {gitRuntimeHealth ? (
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                    <span
+                      className="min-w-0 truncate whitespace-nowrap text-xs text-muted-foreground"
+                      title={
+                        gitRuntimeHealth.executablePath
+                          ? `${gitRuntimeHealth.executablePath}${gitRuntimeHealth.gitVersion ? ` • Version ${gitRuntimeHealth.gitVersion}` : ''}`
+                          : gitRuntimeHealth.gitVersion
+                            ? `git • Version ${gitRuntimeHealth.gitVersion}`
+                            : 'git'
+                      }
+                    >
+                      {getGitExecutableLabel(gitRuntimeHealth.executablePath)}
+                      {gitRuntimeHealth.gitVersion ? ` • v${gitRuntimeHealth.gitVersion}` : ''}
+                    </span>
+                  </div>
                   <Badge
                     variant={gitRuntimeHealth.available ? 'secondary' : 'destructive'}
-                    className="gap-1.5"
+                    className="ml-auto shrink-0 gap-1.5"
                   >
                     {gitRuntimeHealth.available ? (
                       <Check className="h-3 w-3" />
@@ -385,16 +279,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                     )}
                     {gitRuntimeHealth.available ? 'Available' : 'Not available'}
                   </Badge>
-                  <Badge variant="outline" className="capitalize">
-                    source: {gitRuntimeHealth.source}
-                  </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground break-all">
-                  Executable: {gitRuntimeHealth.executablePath || 'git (PATH lookup)'}
-                </p>
-                {gitRuntimeHealth.gitVersion ? (
-                  <p className="text-xs text-muted-foreground">Version: {gitRuntimeHealth.gitVersion}</p>
-                ) : null}
                 {!gitRuntimeHealth.available && (
                   <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
                     Git is required for project sync and source control. Install Git and restart Cozea, or set
@@ -417,10 +302,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
               <div>
                 <h3 className="text-sm font-medium">Preview Embed Compatibility</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Enabled by default. Cozea removes frame-blocking headers from localhost preview responses so project pages can load inside the embedded preview.
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  When disabled, preview falls back to credentialless mode and may require opening pages externally.
+                  Helps localhost previews load inside Cozea&apos;s embedded browser.
                 </p>
               </div>
               <Switch
@@ -534,7 +416,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
             </div>
           </div>
         </section>
-      </div>
+      </SettingsPageBody>
   )
 
   if (surface === 'drawer') {

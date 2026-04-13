@@ -146,14 +146,14 @@ export function ProjectWorkbenchPage() {
   }, []);
   const headerCenter = useMemo(
     () => (
-      <div className="flex min-w-0 max-w-[52vw] items-center justify-center gap-2">
-        <div className="flex h-6 min-w-0 max-w-full items-center">
-          <div
-            className="flex h-6 min-w-0 max-w-[320px] items-center px-2.5 text-xs font-medium text-foreground"
-            title={projectName}
-          >
-            <span className="block truncate">{projectName}</span>
-          </div>
+      <div className="relative flex h-6 shrink-0 items-center justify-center">
+        <div
+          className="flex h-6 min-w-0 max-w-[320px] items-center px-2.5 text-xs font-normal text-foreground"
+          title={projectName}
+        >
+          <span className="block truncate">{projectName}</span>
+        </div>
+        <div className="titlebar-no-drag absolute left-full top-1/2 ml-2 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap">
           <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
           <WorkbenchHeaderBranchControl
             project={project ?? null}
@@ -168,13 +168,13 @@ export function ProjectWorkbenchPage() {
             }}
             triggerClassName="h-6 rounded-md border-0 bg-transparent px-1.5 hover:bg-muted/60"
           />
+          {project?._id ? (
+            <ProjectSyncIndicator
+              variant="compact"
+              className="h-5 w-5 shrink-0 rounded-sm bg-transparent"
+            />
+          ) : null}
         </div>
-        {project?._id ? (
-          <ProjectSyncIndicator
-            variant="compact"
-            className="h-5 w-5 shrink-0 rounded-sm bg-transparent"
-          />
-        ) : null}
       </div>
     ),
     [

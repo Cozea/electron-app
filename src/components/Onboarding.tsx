@@ -95,7 +95,7 @@ export function Onboarding() {
           </Button>
 
           <p className="text-center text-sm text-muted-foreground">
-            A workspace groups members, permissions, billing, and project settings. Source control is configured when a project needs it.
+            A workspace groups members, roles, billing, and project settings. Source control is configured when a project needs it.
           </p>
         </div>
       </div>

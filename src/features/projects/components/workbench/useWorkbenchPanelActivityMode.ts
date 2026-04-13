@@ -1,21 +1,34 @@
 import { useEffect, useState } from "react"
 import type { DockviewPanelApi } from "dockview"
 
-function getPanelActivityMode(panelApi: DockviewPanelApi): "visible" | "hidden" {
-  return panelApi.isActive && panelApi.isVisible ? "visible" : "hidden"
+export interface WorkbenchPanelActivityState {
+  mode: "visible" | "hidden"
+  visible: boolean
+  focused: boolean
 }
 
-export function useWorkbenchPanelActivityMode(panelApi: DockviewPanelApi): "visible" | "hidden" {
-  const [mode, setMode] = useState<"visible" | "hidden">(() => getPanelActivityMode(panelApi))
+function getPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
+  const visible = panelApi.isVisible
+  const focused = panelApi.isVisible && panelApi.isActive
+
+  return {
+    mode: visible ? "visible" : "hidden",
+    visible,
+    focused,
+  }
+}
+
+export function useWorkbenchPanelActivityMode(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
+  const [state, setState] = useState<WorkbenchPanelActivityState>(() => getPanelActivityState(panelApi))
 
   useEffect(() => {
-    setMode(getPanelActivityMode(panelApi))
+    setState(getPanelActivityState(panelApi))
 
     const activeDisposable = panelApi.onDidActiveChange(() => {
-      setMode(getPanelActivityMode(panelApi))
+      setState(getPanelActivityState(panelApi))
     })
     const visibilityDisposable = panelApi.onDidVisibilityChange(() => {
-      setMode(getPanelActivityMode(panelApi))
+      setState(getPanelActivityState(panelApi))
     })
 
     return () => {
@@ -24,5 +37,5 @@ export function useWorkbenchPanelActivityMode(panelApi: DockviewPanelApi): "visi
     }
   }, [panelApi])
 
-  return mode
+  return state
 }

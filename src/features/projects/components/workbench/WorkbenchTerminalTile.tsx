@@ -25,7 +25,7 @@ export function WorkbenchTerminalTile({
   panelApi,
   containerApi,
 }: WorkbenchTerminalTileProps) {
-  const activityMode = useWorkbenchPanelActivityMode(panelApi)
+  const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
@@ -38,8 +38,8 @@ export function WorkbenchTerminalTile({
       return
     }
 
-    setTerminalUiAttached(terminalId, activityMode === "visible")
-  }, [activityMode, setTerminalUiAttached, terminalId])
+    setTerminalUiAttached(terminalId, panelActivity.visible)
+  }, [panelActivity.visible, setTerminalUiAttached, terminalId])
 
   useEffect(() => {
     if (!projectPath) {
@@ -175,12 +175,13 @@ export function WorkbenchTerminalTile({
     )
   } else {
     body = (
-      <Activity mode={activityMode} name={`workbench-terminal-${tileId}`}>
+      <Activity mode={panelActivity.mode} name={`workbench-terminal-${tileId}`}>
         <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
           <TerminalInstance
             terminalId={terminalId}
             className="h-full workbench-terminal-instance"
-            gpuActive={activityMode === "visible"}
+            shouldAutoFocus={panelActivity.focused}
+            gpuActive={panelActivity.visible}
           />
         </div>
       </Activity>

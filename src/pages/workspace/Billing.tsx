@@ -19,9 +19,5 @@ export function Billing({ surface = "page", route }: BillingProps) {
     <BillingContent controller={controller} surface={surface} />
   )
 
-  if (surface === "drawer") {
-    return <div className="mx-auto w-full max-w-6xl">{content}</div>
-  }
-
   return content
 }
