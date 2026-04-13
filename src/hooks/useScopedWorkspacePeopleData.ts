@@ -16,7 +16,7 @@ import type { SettingsSurfaceId } from '@/lib/settings/settingsSurfaceTypes'
 
 interface UseScopedWorkspacePeopleDataOptions {
   route: string
-  surfaceId: Extract<SettingsSurfaceId, 'members' | 'permissions'>
+  surfaceId: Extract<SettingsSurfaceId, 'members' | 'roles'>
   includeSeatManagement?: boolean
 }
 

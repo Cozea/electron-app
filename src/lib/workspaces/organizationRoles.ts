@@ -242,8 +242,8 @@ export const ORGANIZATION_WORKSPACE_PERMISSION_GROUPS: OrganizationWorkspacePerm
     permissions: [
       {
         key: 'roles:view',
-        label: 'View permissions',
-        description: 'Open the workspace permissions page.',
+        label: 'View roles',
+        description: 'Open the workspace roles page.',
       },
       {
         key: 'roles:create',

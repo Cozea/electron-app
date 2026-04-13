@@ -121,7 +121,7 @@ export function WorkbenchDevServerTile({
   const replaceTerminalOutput = useTerminalStore((state) => state.actions.replaceTerminalOutput)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const updateTerminalDisplay = useTerminalStore((state) => state.actions.updateTerminalDisplay)
-  const activityMode = useWorkbenchPanelActivityMode(panelApi)
+  const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
     storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
   )
@@ -207,7 +207,7 @@ export function WorkbenchDevServerTile({
     projectId,
     laneId,
     projectPath,
-    visible: showWebEmbeddedPreview && activityMode === "visible",
+    visible: showWebEmbeddedPreview && panelActivity.visible,
     storageScope: "ephemeral",
     workspaceId: workspaceId ?? undefined,
     persistModel: true,
@@ -333,8 +333,8 @@ export function WorkbenchDevServerTile({
     if (!terminalId) {
       return
     }
-    setTerminalUiAttached(terminalId, activityMode === "visible")
-  }, [activityMode, setTerminalUiAttached, terminalId])
+    setTerminalUiAttached(terminalId, panelActivity.visible)
+  }, [panelActivity.visible, setTerminalUiAttached, terminalId])
 
   useEffect(() => {
     if (!terminalId) {
@@ -353,7 +353,7 @@ export function WorkbenchDevServerTile({
   }, [devServer.port, projectPath, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
 
   useEffect(() => {
-    if (!terminalId || activityMode !== "visible") {
+    if (!terminalId || !panelActivity.visible) {
       return
     }
 
@@ -368,7 +368,7 @@ export function WorkbenchDevServerTile({
     return () => {
       cancelled = true
     }
-  }, [activityMode, replaceTerminalOutput, terminalId, viewMode])
+  }, [panelActivity.visible, replaceTerminalOutput, terminalId, viewMode])
 
   useEffect(() => {
     let cancelled = false
@@ -720,8 +720,8 @@ export function WorkbenchDevServerTile({
       <TerminalInstance
         terminalId={terminalId}
         className="h-full workbench-terminal-instance"
-        shouldAutoFocus={viewMode === "code" && activityMode === "visible"}
-        gpuActive={viewMode === "code" && activityMode === "visible"}
+        shouldAutoFocus={viewMode === "code" && panelActivity.focused}
+        gpuActive={viewMode === "code" && panelActivity.visible}
       />
     </div>
   )
@@ -824,7 +824,7 @@ export function WorkbenchDevServerTile({
   ) : (
     <div className="h-full min-h-0 bg-content-surface">
       <Activity
-        mode={viewMode === "preview" && activityMode === "visible" ? "visible" : "hidden"}
+        mode={viewMode === "preview" && panelActivity.visible ? "visible" : "hidden"}
         name={`workbench-devserver-preview-${tile.id}`}
       >
         <div className={cn("h-full min-h-0", viewMode === "preview" ? "block" : "hidden")}>
@@ -832,7 +832,7 @@ export function WorkbenchDevServerTile({
         </div>
       </Activity>
       <Activity
-        mode={viewMode === "code" && activityMode === "visible" ? "visible" : "hidden"}
+        mode={viewMode === "code" && panelActivity.visible ? "visible" : "hidden"}
         name={`workbench-devserver-logs-${tile.id}`}
       >
         <div className={cn("h-full min-h-0", viewMode === "code" ? "block" : "hidden")}>

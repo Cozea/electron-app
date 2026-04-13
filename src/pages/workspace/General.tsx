@@ -8,8 +8,6 @@ import {
   SettingsDangerGroup,
   SettingsFooterActions,
   SettingsGroup,
-  SettingsGroupError,
-  SettingsGroupSuccess,
   SettingsPageBody,
   SettingsRow,
   SettingsRowControl,
@@ -33,7 +31,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { ArrowPathIcon as Loader2, CheckIcon as Check, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as Loader2, ArrowPathIcon as RotateCcw, CheckIcon as Check, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { sanitizeWorkspaceIdentityInput, type WorkspaceIdentityInput } from "@shared/workspaceIdentity.ts";
 import { cn } from "@/lib/utils";
 
@@ -192,97 +190,104 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                 ? "Name, URL, and how this workspace appears in the app."
                 : "How your personal workspace appears in the app."}
             </SettingsSectionDescription>
-
-            <SettingsGroup>
-              <SettingsRow isFirst>
-                <SettingsRowLabel title="Workspace name" htmlFor="ws-name" />
-                <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
-                  <Input
-                    id="ws-name"
-                    value={workspaceName}
-                    onChange={(e) => setWorkspaceName(e.target.value)}
-                    disabled={isLoading || !canManageGeneral}
-                    className={cn(settingsInlineInputClass, "w-full")}
-                  />
-                </SettingsRowControl>
-              </SettingsRow>
-
-              {isWorkspaceScoped ? (
-                <SettingsRow>
-                  <SettingsRowLabel
-                    title="Workspace URL"
-                    htmlFor="ws-slug"
-                    description="Used in links: app.cozea.io/…"
-                  />
-                  <SettingsRowControl className={cn("min-w-0 max-w-full flex-1 sm:max-w-[320px]")}>
-                    <div
-                      className={cn(
-                        "flex w-full min-w-0 items-baseline justify-end gap-1",
-                        settingsInlineInputWidth,
-                      )}
-                    >
-                      <span className="shrink-0 text-[11px] text-muted-foreground">app.cozea.io/</span>
-                      <Input
-                        id="ws-slug"
-                        value={workspaceSlug}
-                        onChange={(e) =>
-                          setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
-                        }
-                        className={cn(settingsInlineInputClass, "min-w-0 flex-1")}
-                        disabled={isLoading || !canManageGeneral}
-                      />
-                    </div>
+            <div className="space-y-7">
+              <SettingsGroup>
+                <SettingsRow isFirst>
+                  <SettingsRowLabel title="Workspace name" htmlFor="ws-name" />
+                  <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                    <Input
+                      id="ws-name"
+                      value={workspaceName}
+                      onChange={(e) => setWorkspaceName(e.target.value)}
+                      disabled={isLoading || !canManageGeneral}
+                      className={cn(settingsInlineInputClass, "w-full text-[13px] font-normal")}
+                    />
                   </SettingsRowControl>
                 </SettingsRow>
-              ) : null}
 
-              <div className="border-t border-border/40 px-4 py-3">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">Icon & appearance</p>
-                <WorkspaceIdentityPicker
-                  workspaceType={isWorkspaceScoped ? "organization" : "personal"}
-                  workspaceName={workspaceName || "Workspace"}
-                  value={workspaceIdentity}
-                  onChange={setWorkspaceIdentity}
-                  disabled={isLoading || !canManageGeneral}
-                />
-              </div>
+                {isWorkspaceScoped ? (
+                  <SettingsRow>
+                    <SettingsRowLabel
+                      title="Workspace URL"
+                      htmlFor="ws-slug"
+                      description="Used in shared links."
+                      descriptionClassName="truncate"
+                    />
+                    <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                      <div className="ml-auto inline-flex max-w-full items-center justify-end gap-0.5 whitespace-nowrap">
+                          <span className="shrink-0 text-[13px] text-muted-foreground">app.cozea.io/</span>
+                          <Input
+                            id="ws-slug"
+                            value={workspaceSlug}
+                            onChange={(e) =>
+                              setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
+                            }
+                            className={cn(settingsInlineInputClass, "w-[11ch] min-w-[11ch] text-[13px] font-normal")}
+                            disabled={isLoading || !canManageGeneral}
+                          />
+                      </div>
+                    </SettingsRowControl>
+                  </SettingsRow>
+                ) : null}
+              </SettingsGroup>
+
+              <WorkspaceIdentityPicker
+                layout="groups"
+                workspaceType={isWorkspaceScoped ? "organization" : "personal"}
+                workspaceName={workspaceName || "Workspace"}
+                value={workspaceIdentity}
+                onChange={setWorkspaceIdentity}
+                disabled={isLoading || !canManageGeneral}
+              />
 
               {saveError ? (
-                <SettingsGroupError>
+                <p className="px-1 text-[11px] text-destructive">
                   <span className="inline-flex items-center gap-2">
                     <X className="size-3.5 shrink-0" />
                     {saveError}
                   </span>
-                </SettingsGroupError>
+                </p>
               ) : null}
               {saveSuccess ? (
-                <SettingsGroupSuccess>
+                <p className="px-1 text-[11px] text-emerald-600 dark:text-emerald-500">
                   <span className="inline-flex items-center gap-2">
                     <Check className="size-3.5 shrink-0" />
                     Changes saved successfully
                   </span>
-                </SettingsGroupSuccess>
+                </p>
               ) : null}
-            </SettingsGroup>
 
-            <SettingsFooterActions>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-                onClick={() => void handleSave()}
-                disabled={isLoading || isSaving || !hasChanges || !canManageGeneral}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  "Save changes"
-                )}
-              </Button>
-            </SettingsFooterActions>
+              <SettingsFooterActions>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal"
+                    onClick={() => setWorkspaceIdentity({})}
+                    disabled={isLoading || !canManageGeneral || (!workspaceIdentity.iconKey && !workspaceIdentity.iconColor)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset style
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+                    onClick={() => void handleSave()}
+                    disabled={isLoading || isSaving || !hasChanges || !canManageGeneral}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save changes"
+                    )}
+                  </Button>
+                </div>
+              </SettingsFooterActions>
+            </div>
           </section>
 
           {isWorkspaceScoped ? (
@@ -291,9 +296,6 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                 <AlertTriangle className="size-3.5" aria-hidden />
                 Danger zone
               </SettingsSectionTitle>
-              <SettingsSectionDescription className="text-destructive/80">
-                Irreversible and destructive actions
-              </SettingsSectionDescription>
               <SettingsDangerGroup>
                 <SettingsRow isFirst borderClassName="border-destructive/20">
                   <SettingsRowLabel

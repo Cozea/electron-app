@@ -17,16 +17,10 @@ import { MemberDetailsContent } from '@/pages/teams/MemberDetails'
 import { Roles } from '@/pages/teams/Roles'
 import { Billing } from '@/pages/workspace/Billing'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
-
 import {
-  canAccessWorkspaceSurface,
-  comparePersonalContextUnifiedSettingsSidebar,
-  comparePersonalDeviceSidebarSurfaces,
-  compareWorkspaceScopedSidebarSurfaces,
-  getSettingsSurfaceDisplayLabel,
-  listSettingsSurfaces,
   resolveSettingsSurfaceFromRoute,
 } from '@/lib/settings/settingsRegistry'
+import { resolveSettingsNavigationSections } from '@/lib/settings/settingsNavigation'
 import { resolveSettingsNavChrome } from '@/lib/workspaces/settingsRoutes'
 import {
   useSettingsDrawerStore,
@@ -77,22 +71,11 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
     return <Members surface="drawer" route={route} />
   }
 
-  if (section === 'permissions') {
+  if (section === 'roles') {
     return <Roles surface="drawer" route={route} />
   }
 
   return <Tooling surface="drawer" route={route} />
-}
-
-function getDrawerSurfaceLabel(
-  surface: ReturnType<typeof listSettingsSurfaces>[number],
-  scopeKind: 'personal' | 'workspace',
-) {
-  if (surface.id === 'cliTools') {
-    return scopeKind === 'workspace' ? 'Integrations' : 'CLI Tools'
-  }
-
-  return getSettingsSurfaceDisplayLabel(surface, scopeKind)
 }
 
 export function SettingsDrawer() {
@@ -119,48 +102,6 @@ export function SettingsDrawer() {
   } = useScopedAppContext({
     route: routePath || '/settings/account',
   })
-  const workspaceDrawerSurfaces = useMemo(() => {
-    if (!workspaceScoped) return []
-    return listSettingsSurfaces({
-      scopeKind: 'workspace',
-      placement: 'drawer',
-    })
-      .filter((surface) => canAccessWorkspaceSurface(surface, surfaceAccess))
-      .sort(compareWorkspaceScopedSidebarSurfaces)
-  }, [surfaceAccess, workspaceScoped])
-
-  const personalDeviceDrawerSurfaces = useMemo(
-    () =>
-      [...listSettingsSurfaces({
-        scopeKind: 'personal',
-        placement: 'drawer',
-        sidebarGroup: 'personalDevice',
-      })].sort(comparePersonalDeviceSidebarSurfaces),
-    [],
-  )
-
-  const personalContextUnifiedDrawerSurfaces = useMemo(() => {
-    if (workspaceScoped) return []
-    const hub = listSettingsSurfaces({
-      scopeKind: 'personal',
-      placement: 'drawer',
-      sidebarGroup: 'personalWorkspace',
-    })
-    const device = listSettingsSurfaces({
-      scopeKind: 'personal',
-      placement: 'drawer',
-      sidebarGroup: 'personalDevice',
-    })
-    const seen = new Set<string>()
-    const merged: (typeof hub)[number][] = []
-    for (const surface of [...hub, ...device]) {
-      if (seen.has(surface.id)) continue
-      seen.add(surface.id)
-      merged.push(surface)
-    }
-    merged.sort(comparePersonalContextUnifiedSettingsSidebar)
-    return merged
-  }, [workspaceScoped])
 
   const drawerPathnameForChrome = useMemo(() => {
     const raw = (routePath.split('?')[0] || '').trim()
@@ -172,6 +113,15 @@ export function SettingsDrawer() {
   }, [routePath])
 
   const settingsNavChrome = resolveSettingsNavChrome(drawerPathnameForChrome, workspaceScoped)
+  const navSections = useMemo(
+    () =>
+      resolveSettingsNavigationSections({
+        placement: 'drawer',
+        navChrome: settingsNavChrome,
+        access: surfaceAccess,
+      }),
+    [settingsNavChrome, surfaceAccess],
+  )
 
   const preloadSurface = useCallback((route: string, preload?: () => Promise<unknown>) => {
     if (!preload) return
@@ -248,7 +198,7 @@ export function SettingsDrawer() {
         <SheetHeader className="sr-only">
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription>
-            Browse and update account, workspace, billing, integrations, storage, members, and permissions settings.
+            Browse and update account, workspace, billing, integrations, storage, members, and roles settings.
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -267,186 +217,39 @@ export function SettingsDrawer() {
                 ref={sidebarScrollRef}
                 className="h-full overflow-y-auto scrollbar-hide px-2 py-3"
               >
-                {settingsNavChrome === 'personalUnified' ? (
-                  <>
+                {navSections.map((navSection, index) => (
+                  <div key={navSection.id} className={cn(index > 0 && 'mt-3')}>
                     <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                      Settings
+                      {navSection.label}
                     </div>
                     <div className="space-y-1">
-                      {personalContextUnifiedDrawerSurfaces.map((item) => {
-                        const Icon = item.icon
-                        const itemRoute = item.routes.personal
-                        if (!itemRoute) {
-                          return null
-                        }
+                      {navSection.items.map((item) => {
+                        const Icon = item.surface.icon
                         const isActive =
-                          resolvedDrawerSurface?.surface.id === item.id || section === item.id
+                          resolvedDrawerSurface?.surface.id === item.surface.id ||
+                          section === item.surface.id
 
                         return (
                           <button
-                            key={itemRoute}
+                            key={item.route}
                             type="button"
-                            onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
-                            onFocus={() => preloadSurface(itemRoute, item.preload)}
-                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
+                            onClick={() => openFromRoute(item.route)}
+                            onMouseEnter={() => preloadSurface(item.route, item.surface.preload)}
+                            onFocus={() => preloadSurface(item.route, item.surface.preload)}
+                            onPointerDown={() => preloadSurface(item.route, item.surface.preload)}
                             className={cn(
                               SETTINGS_DRAWER_NAV_ROW_CLASS,
                               isActive && SIDEBAR_PILL_ACTIVE_CLASS,
                             )}
                           >
                             <Icon />
-                            <span>{getDrawerSurfaceLabel(item, 'personal')}</span>
+                            <span>{item.label}</span>
                           </button>
                         )
                       })}
                     </div>
-                  </>
-                ) : null}
-                {settingsNavChrome === 'orgWorkspaceAdmin' ? (
-                  <>
-                    <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                      Workspace
-                    </div>
-                    <div className="space-y-1">
-                      {workspaceDrawerSurfaces.map((item) => {
-                        const Icon = item.icon
-                        const itemRoute = item.routes.workspace
-                        if (!itemRoute) {
-                          return null
-                        }
-                        const isActive =
-                          resolvedDrawerSurface?.surface.id === item.id || section === item.id
-
-                        return (
-                          <button
-                            key={itemRoute}
-                            type="button"
-                            onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
-                            onFocus={() => preloadSurface(itemRoute, item.preload)}
-                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
-                            className={cn(
-                              SETTINGS_DRAWER_NAV_ROW_CLASS,
-                              isActive && SIDEBAR_PILL_ACTIVE_CLASS,
-                            )}
-                          >
-                            <Icon />
-                            <span>{getDrawerSurfaceLabel(item, 'workspace')}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </>
-                ) : null}
-                {settingsNavChrome === 'userSettings' && personalDeviceDrawerSurfaces.length > 0 ? (
-                  <>
-                    <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                      User settings
-                    </div>
-                    <div className="space-y-1">
-                      {personalDeviceDrawerSurfaces.map((item) => {
-                        const Icon = item.icon
-                        const itemRoute = item.routes.personal
-                        if (!itemRoute) {
-                          return null
-                        }
-                        const isActive =
-                          resolvedDrawerSurface?.surface.id === item.id || section === item.id
-
-                        return (
-                          <button
-                            key={itemRoute}
-                            type="button"
-                            onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
-                            onFocus={() => preloadSurface(itemRoute, item.preload)}
-                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
-                            className={cn(
-                              SETTINGS_DRAWER_NAV_ROW_CLASS,
-                              isActive && SIDEBAR_PILL_ACTIVE_CLASS,
-                            )}
-                          >
-                            <Icon />
-                            <span>{getDrawerSurfaceLabel(item, 'personal')}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </>
-                ) : null}
-                {settingsNavChrome === 'mixed' ? (
-                  <>
-                    <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                      Workspace
-                    </div>
-                    <div className="space-y-1">
-                      {workspaceDrawerSurfaces.map((item) => {
-                        const Icon = item.icon
-                        const itemRoute = item.routes.workspace
-                        if (!itemRoute) {
-                          return null
-                        }
-                        const isActive =
-                          resolvedDrawerSurface?.surface.id === item.id || section === item.id
-
-                        return (
-                          <button
-                            key={itemRoute}
-                            type="button"
-                            onClick={() => openFromRoute(itemRoute)}
-                            onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
-                            onFocus={() => preloadSurface(itemRoute, item.preload)}
-                            onPointerDown={() => preloadSurface(itemRoute, item.preload)}
-                            className={cn(
-                              SETTINGS_DRAWER_NAV_ROW_CLASS,
-                              isActive && SIDEBAR_PILL_ACTIVE_CLASS,
-                            )}
-                          >
-                            <Icon />
-                            <span>{getDrawerSurfaceLabel(item, 'workspace')}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {personalDeviceDrawerSurfaces.length > 0 ? (
-                      <>
-                        <div className="mt-3 px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                          User settings
-                        </div>
-                        <div className="space-y-1">
-                          {personalDeviceDrawerSurfaces.map((item) => {
-                            const Icon = item.icon
-                            const itemRoute = item.routes.personal
-                            if (!itemRoute) {
-                              return null
-                            }
-                            const isActive =
-                              resolvedDrawerSurface?.surface.id === item.id || section === item.id
-
-                            return (
-                              <button
-                                key={itemRoute}
-                                type="button"
-                                onClick={() => openFromRoute(itemRoute)}
-                                onMouseEnter={() => preloadSurface(itemRoute, item.preload)}
-                                onFocus={() => preloadSurface(itemRoute, item.preload)}
-                                onPointerDown={() => preloadSurface(itemRoute, item.preload)}
-                                className={cn(
-                                  SETTINGS_DRAWER_NAV_ROW_CLASS,
-                                  isActive && SIDEBAR_PILL_ACTIVE_CLASS,
-                                )}
-                              >
-                                <Icon />
-                                <span>{getDrawerSurfaceLabel(item, 'personal')}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
+                  </div>
+                ))}
               </div>
               <div
                 className={cn(

@@ -15,13 +15,7 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useLocation } from "@/lib/router"
 import { cn } from "@/lib/utils"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
-import {
-  canAccessWorkspaceSurface,
-  comparePersonalContextUnifiedSettingsSidebar,
-  comparePersonalDeviceSidebarSurfaces,
-  compareWorkspaceScopedSidebarSurfaces,
-  listSettingsSurfaces,
-} from "@/lib/settings/settingsRegistry"
+import { resolveSettingsNavigationSections } from "@/lib/settings/settingsNavigation"
 import { resolveSettingsNavChrome } from "@/lib/workspaces/settingsRoutes"
 import {
   SIDEBAR_GROUP_LABEL_CLASS,
@@ -72,76 +66,18 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
   const location = useLocation()
   const { workspaceScoped, surfaceAccess } = useScopedAppContext()
   const settingsNavChrome = resolveSettingsNavChrome(location.pathname, workspaceScoped)
-
-  const workspaceTeamItems = workspaceScoped
-    ? listSettingsSurfaces({
-        scopeKind: "workspace",
+  const navSections = React.useMemo(
+    () =>
+      resolveSettingsNavigationSections({
         placement: "sidebar",
-        sidebarGroup: "team",
-      }).filter((surface) => canAccessWorkspaceSurface(surface, surfaceAccess))
-    : []
-
-  const workspaceHubSurfaces = workspaceScoped
-    ? listSettingsSurfaces({
-        scopeKind: "workspace",
-        placement: "sidebar",
-        sidebarGroup: "workspace",
-      }).filter((surface) => canAccessWorkspaceSurface(surface, surfaceAccess))
-    : []
-
-  const orgWorkspaceHubSorted = workspaceScoped
-    ? [...workspaceHubSurfaces].sort(compareWorkspaceScopedSidebarSurfaces)
-    : []
-
-  const personalDeviceSurfaces = workspaceScoped
-    ? listSettingsSurfaces({
-        scopeKind: "personal",
-        placement: "sidebar",
-        sidebarGroup: "personalDevice",
-      }).sort(comparePersonalDeviceSidebarSurfaces)
-    : []
-
-  const personalContextMergedSurfaces = !workspaceScoped
-    ? (() => {
-        const hub = listSettingsSurfaces({
-          scopeKind: "personal",
-          placement: "sidebar",
-          sidebarGroup: "personalWorkspace",
-        })
-        const device = listSettingsSurfaces({
-          scopeKind: "personal",
-          placement: "sidebar",
-          sidebarGroup: "personalDevice",
-        })
-        const seen = new Set<string>()
-        const merged: (typeof hub)[number][] = []
-        for (const surface of [...hub, ...device]) {
-          if (seen.has(surface.id)) continue
-          seen.add(surface.id)
-          merged.push(surface)
-        }
-        merged.sort(comparePersonalContextUnifiedSettingsSidebar)
-        return merged
-      })()
-    : []
-
-  const sectionRoutes = (() => {
-    const team = workspaceTeamItems.map((surface) => toProjectsPath(surface.routes.workspace!))
-    if (settingsNavChrome === "personalUnified") {
-      return [...team, ...personalContextMergedSurfaces.map((s) => toProjectsPath(s.routes.personal!))]
-    }
-    if (settingsNavChrome === "orgWorkspaceAdmin") {
-      return [...team, ...orgWorkspaceHubSorted.map((s) => toProjectsPath(s.routes.workspace!))]
-    }
-    if (settingsNavChrome === "userSettings") {
-      return personalDeviceSurfaces.map((s) => toProjectsPath(s.routes.personal!))
-    }
-    return [
-      ...team,
-      ...orgWorkspaceHubSorted.map((s) => toProjectsPath(s.routes.workspace!)),
-      ...personalDeviceSurfaces.map((s) => toProjectsPath(s.routes.personal!)),
-    ]
-  })()
+        navChrome: settingsNavChrome,
+        access: surfaceAccess,
+      }),
+    [settingsNavChrome, surfaceAccess],
+  )
+  const sectionRoutes = navSections.flatMap((section) =>
+    section.items.map((item) => toProjectsPath(item.route)),
+  )
 
   const directSectionRoute = sectionRoutes.find((route) => route === location.pathname) ?? null
   const parentSectionRoute =
@@ -171,19 +107,20 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
           </button>
         </div>
 
-        {workspaceTeamItems.length > 0 && settingsNavChrome !== "userSettings" ? (
-          <SidebarGroup className="px-0 py-0">
-            <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>Team</SidebarGroupLabel>
+        {navSections.map((section, index) => (
+          <SidebarGroup key={section.id} className={cn("px-0", index === 0 ? "py-0" : "py-2")}>
+            <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>{section.label}</SidebarGroupLabel>
             <div className="space-y-1">
-              {workspaceTeamItems.map((surface) => {
-                const href = toProjectsPath(surface.routes.workspace!)
+              {section.items.map((item) => {
+                const href = toProjectsPath(item.route)
                 const isActive =
                   location.pathname === href || location.pathname.startsWith(`${href}/`)
+
                 return (
                   <SettingsSidebarNavRow
-                    key={surface.id}
-                    icon={surface.icon}
-                    label={surface.label}
+                    key={item.surface.id}
+                    icon={item.surface.icon}
+                    label={item.label}
                     isActive={isActive}
                     onClick={() => navigate(href)}
                   />
@@ -191,118 +128,7 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
               })}
             </div>
           </SidebarGroup>
-        ) : null}
-
-        {settingsNavChrome === "personalUnified" ? (
-          <SidebarGroup className="px-0 py-2">
-            <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>Settings</SidebarGroupLabel>
-            <div className="space-y-1">
-              {personalContextMergedSurfaces.map((surface) => {
-                const href = toProjectsPath(surface.routes.personal!)
-                const isActive =
-                  location.pathname === href || location.pathname.startsWith(`${href}/`)
-                return (
-                  <SettingsSidebarNavRow
-                    key={surface.id}
-                    icon={surface.icon}
-                    label={surface.label}
-                    isActive={isActive}
-                    onClick={() => navigate(href)}
-                  />
-                )
-              })}
-            </div>
-          </SidebarGroup>
-        ) : null}
-
-        {settingsNavChrome === "orgWorkspaceAdmin" ? (
-          <SidebarGroup className="px-0 py-2">
-            <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>Workspace</SidebarGroupLabel>
-            <div className="space-y-1">
-              {orgWorkspaceHubSorted.map((surface) => {
-                const href = toProjectsPath(surface.routes.workspace!)
-                const isActive =
-                  location.pathname === href || location.pathname.startsWith(`${href}/`)
-                return (
-                  <SettingsSidebarNavRow
-                    key={surface.id}
-                    icon={surface.icon}
-                    label={surface.label}
-                    isActive={isActive}
-                    onClick={() => navigate(href)}
-                  />
-                )
-              })}
-            </div>
-          </SidebarGroup>
-        ) : null}
-
-        {settingsNavChrome === "userSettings" && personalDeviceSurfaces.length > 0 ? (
-          <SidebarGroup className="px-0 py-2">
-            <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>User settings</SidebarGroupLabel>
-            <div className="space-y-1">
-              {personalDeviceSurfaces.map((surface) => {
-                const href = toProjectsPath(surface.routes.personal!)
-                const isActive =
-                  location.pathname === href || location.pathname.startsWith(`${href}/`)
-                return (
-                  <SettingsSidebarNavRow
-                    key={surface.id}
-                    icon={surface.icon}
-                    label={surface.label}
-                    isActive={isActive}
-                    onClick={() => navigate(href)}
-                  />
-                )
-              })}
-            </div>
-          </SidebarGroup>
-        ) : null}
-
-        {settingsNavChrome === "mixed" ? (
-          <>
-            <SidebarGroup className="px-0 py-2">
-              <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>Workspace</SidebarGroupLabel>
-              <div className="space-y-1">
-                {orgWorkspaceHubSorted.map((surface) => {
-                  const href = toProjectsPath(surface.routes.workspace!)
-                  const isActive =
-                    location.pathname === href || location.pathname.startsWith(`${href}/`)
-                  return (
-                    <SettingsSidebarNavRow
-                      key={surface.id}
-                      icon={surface.icon}
-                      label={surface.label}
-                      isActive={isActive}
-                      onClick={() => navigate(href)}
-                    />
-                  )
-                })}
-              </div>
-            </SidebarGroup>
-            {personalDeviceSurfaces.length > 0 ? (
-              <SidebarGroup className="px-0 py-2">
-                <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>User settings</SidebarGroupLabel>
-                <div className="space-y-1">
-                  {personalDeviceSurfaces.map((surface) => {
-                    const href = toProjectsPath(surface.routes.personal!)
-                    const isActive =
-                      location.pathname === href || location.pathname.startsWith(`${href}/`)
-                    return (
-                      <SettingsSidebarNavRow
-                        key={surface.id}
-                        icon={surface.icon}
-                        label={surface.label}
-                        isActive={isActive}
-                        onClick={() => navigate(href)}
-                      />
-                    )
-                  })}
-                </div>
-              </SidebarGroup>
-            ) : null}
-          </>
-        ) : null}
+        ))}
       </SidebarContent>
 
       <SidebarSeparator />
@@ -326,4 +152,3 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
     </Sidebar>
   )
 }
-

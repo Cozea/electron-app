@@ -1,8 +1,16 @@
 import { AdjustmentsHorizontalIcon as SlidersHorizontal, LockClosedIcon as Lock, ShieldCheckIcon as ShieldCheck } from "@heroicons/react/24/outline"
 
+import {
+  SettingsGroup,
+  SettingsPageBody,
+  SettingsRow,
+  SettingsRowControl,
+  SettingsRowLabel,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+} from '@/components/settings/SettingsChrome'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Badge } from '@/components/ui/badge'
-import { CardTitle } from '@/components/ui/card'
 import { useScopedPoliciesData } from '@/hooks/useScopedPoliciesData'
 
 const POLICY_CARDS = [
@@ -42,59 +50,42 @@ export function Policies({ surface = 'page', route }: PoliciesProps = {}) {
           description="You do not have permission to view workspace policies."
         />
       ) : (
-      <div className="space-y-4">
-        <div className="flex items-start gap-3 rounded-2xl bg-secondary/80 px-5 py-4 dark:bg-secondary/40">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background/60 text-muted-foreground">
-            <Lock className="h-5 w-5" />
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold">Policies</h1>
-            <p className="text-sm text-muted-foreground">
-              Define how the workspace operates. Policies are separate from permissions and do
-              not control who can use a capability.
+      <div className="space-y-5">
+        <div className="min-w-0">
+          <SettingsSectionTitle className="px-0">Policies</SettingsSectionTitle>
+          <SettingsSectionDescription className="mb-0 px-0">
+            Set workspace-wide rules for sharing, defaults, and governance.
+          </SettingsSectionDescription>
+          {workspaceName ? (
+            <p className="mt-2 px-0 text-[11px] text-muted-foreground">
+              Workspace: {workspaceName}
             </p>
-            {workspaceName ? (
-              <p className="text-xs text-muted-foreground">
-                Workspace:{' '}
-                <span className="font-medium text-foreground">
-                  {workspaceName}
-                </span>
-              </p>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
-        <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40">
-          <div className="border-b border-border/60 px-5 py-4">
-            <CardTitle className="text-base">Workspace governance</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Policy controls will live here. They govern sharing, defaults, and retention for the
-              workspace as a whole.
-            </p>
-          </div>
-          <div className="grid gap-3 p-5 md:grid-cols-3">
-            {POLICY_CARDS.map((policy) => {
-              const Icon = policy.icon
-              return (
-                <div
-                  key={policy.title}
-                  className="rounded-2xl border border-border/60 bg-background/40 p-4"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/80 text-muted-foreground dark:bg-secondary/40">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="font-medium">{policy.title}</div>
-                    </div>
-                    <Badge variant="outline">Coming soon</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{policy.description}</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        {POLICY_CARDS.map((policy) => {
+          const Icon = policy.icon
+          return (
+            <SettingsGroup key={policy.title}>
+              <SettingsRow isFirst>
+                <SettingsRowLabel
+                  title={
+                    <span className="inline-flex items-center gap-2">
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span>{policy.title}</span>
+                    </span>
+                  }
+                  description={policy.description}
+                />
+                <SettingsRowControl>
+                  <Badge variant="outline" className="font-normal">
+                    Coming soon
+                  </Badge>
+                </SettingsRowControl>
+              </SettingsRow>
+            </SettingsGroup>
+          )
+        })}
       </div>
       )}
     </>
@@ -104,5 +95,5 @@ export function Policies({ surface = 'page', route }: PoliciesProps = {}) {
     return content
   }
 
-  return content
+  return <SettingsPageBody>{content}</SettingsPageBody>
 }

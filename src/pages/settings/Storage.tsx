@@ -13,7 +13,6 @@ import {
 } from '@/components/settings/SettingsChrome'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
-import { getDefaultFolderIcon } from '../../lib/fileExplorer'
 import { cn } from '../../lib/utils'
 import {
   Table,
@@ -606,18 +605,6 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
       className={surface === 'drawer' ? '!max-w-6xl' : undefined}
     >
       <section>
-        <SettingsSectionTitle>
-          <span>Local storage</span>
-          {isLoadingStorage ? (
-            <Loader2
-              className="h-3.5 w-3.5 animate-spin text-muted-foreground"
-              aria-label="Refreshing storage usage"
-            />
-          ) : null}
-        </SettingsSectionTitle>
-        <SettingsSectionDescription>
-          Disk usage from projects, dependencies, build cache, and logs on this device.
-        </SettingsSectionDescription>
         <div className="space-y-4 px-1 pt-1">
           {actionError ? (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{actionError}</div>
@@ -678,7 +665,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               <Dialog open={isClearCacheDialogOpen} onOpenChange={setIsClearCacheDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage || Boolean(pendingAction)}>
+                  <Button variant="outline" className="w-full gap-2 font-normal" disabled={isLoadingStorage || Boolean(pendingAction)}>
                     <Package className="h-4 w-4" />
                     Clear Cache
                   </Button>
@@ -708,7 +695,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
 
               <Dialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage || Boolean(pendingAction)}>
+                  <Button variant="outline" className="w-full gap-2 font-normal" disabled={isLoadingStorage || Boolean(pendingAction)}>
                     <FileText className="h-4 w-4" />
                     Clear Logs
                   </Button>
@@ -738,7 +725,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
 
               <Button
                 variant="outline"
-                className="w-full gap-2"
+                className="w-full gap-2 font-normal"
                 onClick={() => void handleRefresh()}
                 disabled={isLoadingStorage || Boolean(pendingAction)}
               >
@@ -748,11 +735,11 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
 
               <Button
                 variant="outline"
-                className="w-full gap-2"
+                className="w-full gap-2 font-normal"
                 onClick={() => void handleOpenProjectsDirectory()}
                 disabled={Boolean(pendingAction)}
               >
-                {getDefaultFolderIcon(true, { width: 16, height: 16 })}
+                <FolderIcon className="h-4 w-4" />
                 View Folder
               </Button>
             </div>
@@ -806,7 +793,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
             </div>
           ) : null}
           <div className="overflow-hidden">
-              <Table className="[&_th]:px-4 [&_td]:px-4">
+              <Table className="[&_th]:px-4 [&_th]:font-normal [&_th]:text-muted-foreground [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
                     <TableHead className="w-12">
@@ -835,7 +822,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                             aria-label={`Select ${project.name}`}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{project.name}</TableCell>
+                        <TableCell className="text-foreground">{project.name}</TableCell>
                         <TableCell>{formatBytes(project.size)}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {formatRelativeTime(project.lastModified)}
@@ -924,9 +911,6 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
           <AlertTriangle className="size-3.5" aria-hidden />
           Danger zone
         </SettingsSectionTitle>
-        <SettingsSectionDescription className="text-destructive/80">
-          Irreversible actions that remove data from this device only.
-        </SettingsSectionDescription>
         <SettingsDangerGroup>
           <SettingsRow isFirst borderClassName="border-destructive/20">
             <SettingsRowLabel

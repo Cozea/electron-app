@@ -1,5 +1,4 @@
 import * as React from "react"
-import { Cog6ToothIcon as Settings } from "@heroicons/react/24/outline"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import {
@@ -9,6 +8,7 @@ import {
 } from "@/components/ui/avatar"
 import {
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
@@ -218,23 +218,30 @@ export function NavUser({
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
+          asChild
           size="lg"
-          type="button"
-          className="group rounded-2xl"
-          onClick={handleMenuClick}
+          className="rounded-2xl cursor-default hover:bg-transparent hover:text-inherit active:bg-transparent active:text-inherit"
         >
-          <Avatar className="h-6 w-6 rounded-full">
-            <AvatarImage src={userData.avatar} alt={userData.name} />
-            <AvatarFallback className="rounded-full">
-              {userData.name.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate font-normal text-sidebar-foreground">{userData.name}</span>
-            <span className="truncate font-normal text-muted-foreground">{activePlanLabel}</span>
+          <div>
+            <Avatar className="h-6 w-6 rounded-full">
+              <AvatarImage src={userData.avatar} alt={userData.name} />
+              <AvatarFallback className="rounded-full">
+                {userData.name.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
+              <span className="truncate font-normal text-sidebar-foreground">{userData.name}</span>
+              <span className="truncate font-normal text-muted-foreground">{activePlanLabel}</span>
+            </div>
           </div>
-          <Settings className="ml-auto size-5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>
+        <SidebarMenuAction
+          type="button"
+          showOnHover
+          aria-label="Open user menu"
+          onClick={handleMenuClick}
+          className="rounded-md"
+        />
       </SidebarMenuItem>
     </SidebarMenu>
   )

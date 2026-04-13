@@ -167,8 +167,8 @@ const WorkspaceCreate = createLazyRouteComponent(
 );
 
 const WORKSPACE_MEMBERS_ROUTE = getSettingsSurfaceRoute("members", "workspace") ?? "/teams";
-const WORKSPACE_PERMISSIONS_ROUTE =
-  getSettingsSurfaceRoute("permissions", "workspace") ?? "/teams/roles";
+const WORKSPACE_ROLES_ROUTE =
+  getSettingsSurfaceRoute("roles", "workspace") ?? "/teams/roles";
 const WORKSPACE_GENERAL_ROUTE =
   getSettingsSurfaceRoute("general", "workspace") ?? "/workspace/general";
 const PERSONAL_GENERAL_ROUTE =
@@ -509,9 +509,9 @@ const projectsTeamMemberDetailsRoute = createRoute({
 
 const projectsTeamsRolesRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_PERMISSIONS_ROUTE),
+  path: toRoutePath(WORKSPACE_ROLES_ROUTE),
   component: () => (
-    <OrganizationWorkspacePermissionOnly surfaceId="permissions">
+    <OrganizationWorkspacePermissionOnly surfaceId="roles">
       <Roles />
     </OrganizationWorkspacePermissionOnly>
   ),
@@ -651,7 +651,7 @@ const teamMemberDetailsRoute = createRoute({
 
 const teamsRolesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_PERMISSIONS_ROUTE),
+  path: toRoutePath(WORKSPACE_ROLES_ROUTE),
   component: () => <Navigate to={"/projects/teams/roles" as never} replace />,
 });
 

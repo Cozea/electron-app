@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation } from 'convex/react'
 
 import { api } from '../../../convex/_generated/api'
@@ -40,11 +40,16 @@ import {
   type OrganizationWorkspaceResolvedRole,
   type OrganizationWorkspaceRole,
 } from '@/lib/workspaces/organizationRoles'
-import { cn } from '@/lib/utils'
 import type { Id } from '../../../convex/_generated/dataModel'
+import {
+  SettingsFooterActions,
+  SettingsPageBody,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+} from '@/components/settings/SettingsChrome'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedWorkspacePeopleData } from '@/hooks/useScopedWorkspacePeopleData'
-import { ArrowPathIcon as Loader2, ChevronDownIcon as ChevronDown, ChevronRightIcon as ChevronRight, LockClosedIcon as Lock, PencilSquareIcon as Pencil, PlusIcon as Plus, TrashIcon as Trash2, UserIcon as User } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as Loader2, LockClosedIcon as Lock, PencilSquareIcon as Pencil, PlusIcon as Plus, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 
 interface RoleDraft {
   name: string
@@ -194,7 +199,7 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
     isLoading,
   } = useScopedWorkspacePeopleData({
     route,
-    surfaceId: 'permissions',
+    surfaceId: 'roles',
   })
 
   const [roleSheetOpen, setRoleSheetOpen] = useState(false)
@@ -208,7 +213,6 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
   const [overrideSubmitting, setOverrideSubmitting] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
   const [editingAccessRow, setEditingAccessRow] = useState<AccessRow | null>(null)
-  const [expandedRoleKeys, setExpandedRoleKeys] = useState<string[]>([])
   const searchQuery = ''
   const [overrideDraft, setOverrideDraft] = useState<PermissionOverrideDraft>(() => {
     const initial = {} as PermissionOverrideDraft
@@ -384,17 +388,6 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
       .filter((group): group is RoleGroup => group !== null)
   }, [roleGroups, searchQuery])
 
-  useEffect(() => {
-    if (roleGroups.length === 0) return
-    setExpandedRoleKeys((current) =>
-      current.length > 0
-        ? current
-        : roleGroups
-            .filter((group) => group.principals.length > 0)
-            .map((group) => group.key),
-    )
-  }, [roleGroups])
-
   function openCreateRoleSheet() {
     setEditingRole(null)
     setDraft(makeDefaultDraft())
@@ -432,14 +425,6 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
     setPrincipalSheetOpen(false)
     setEditingAccessRow(null)
     setOverrideError(null)
-  }
-
-  function toggleRoleGroup(roleKey: string) {
-    setExpandedRoleKeys((current) =>
-      current.includes(roleKey)
-        ? current.filter((entry) => entry !== roleKey)
-        : [...current, roleKey],
-    )
   }
 
   function togglePermission(permission: OrganizationWorkspacePermission) {
@@ -631,185 +616,159 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
     <>
       {settingsPage.isWorkspaceAccessDenied ? (
         <WorkspaceAccessNotice
-          title="Permissions access required"
-          description="You do not have permission to view workspace permissions."
+          title="Roles access required"
+          description="You do not have permission to view workspace roles."
         />
       ) : (
-      <div className="space-y-4">
-        {canManageRoles ? (
-          <div className="flex items-center justify-end">
-            <Button className="gap-2 h-7 px-2 text-xs rounded-full" onClick={openCreateRoleSheet}>
-              <Plus className="h-3.5 w-3.5" />
-              New role
-            </Button>
-          </div>
-        ) : null}
+      <div className="space-y-5">
+        <div className="min-w-0">
+          <SettingsSectionTitle className="px-0">Roles</SettingsSectionTitle>
+          <SettingsSectionDescription className="mb-0 px-0">
+            Manage workspace roles and the people assigned to them.
+          </SettingsSectionDescription>
+        </div>
         {isLoading ? (
-          <div className="rounded-2xl bg-secondary/80 px-5 py-10 text-sm text-muted-foreground dark:bg-secondary/40">
-            Loading workspace permissions…
+          <div className="rounded-[14px] bg-muted px-5 py-10 text-sm text-muted-foreground">
+            Loading workspace roles…
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
-              {accessActionError ? (
-                <p className="px-5 pt-4 text-sm text-destructive">{accessActionError}</p>
-              ) : null}
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-[34%] pl-5">Role / Principal</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Inheritance</TableHead>
-                      <TableHead className="text-right" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRoleGroups.map((group) => {
-                      const expanded = expandedRoleKeys.includes(group.key)
-                      const editableRole = group.resolvedRole
-                      return (
-                        <Fragment key={group.key}>
-                          <TableRow
-                            className={cn(
-                              'group bg-secondary/40 hover:bg-secondary/60',
-                              canManageRoles && group.resolvedRole ? 'cursor-pointer' : undefined,
-                            )}
-                            onClick={() => {
-                              if (canManageRoles && editableRole) {
-                                openEditRoleSheet(editableRole)
-                              }
-                            }}
-                          >
-                            <TableCell colSpan={3}>
-                              <div className="flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  className="group flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    toggleRoleGroup(group.key)
-                                  }}
+            {accessActionError ? (
+              <div className="rounded-[14px] bg-muted px-4 py-3 text-sm text-destructive">
+                {accessActionError}
+              </div>
+            ) : null}
+            {filteredRoleGroups.length === 0 ? (
+              <div className="rounded-[14px] bg-muted px-5 py-10 text-center text-sm text-muted-foreground">
+                No roles or principals match this filter.
+              </div>
+            ) : (
+              filteredRoleGroups.map((group) => {
+                const editableRole = group.resolvedRole
+                return (
+                  <section key={group.key} className="space-y-2">
+                    <div className="flex items-center justify-between gap-4 px-1">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm text-foreground">{group.name}</h3>
+                      </div>
+                      {canManageRoles && editableRole ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 shrink-0 rounded-full px-0 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditRoleSheet(editableRole)}
+                          aria-label="Edit role"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      ) : !canManageRoles ? (
+                        <div className="flex items-center justify-end">
+                          <Lock className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="overflow-hidden rounded-[14px] bg-muted">
+                      <div className="overflow-x-auto">
+                        <Table className="[&_td]:px-4 [&_td:last-child]:pr-5 [&_th]:px-4 [&_th]:font-normal [&_th]:text-muted-foreground [&_th:last-child]:pr-5">
+                          <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                            <TableRow>
+                              <TableHead className="w-[32%]">Principal</TableHead>
+                              <TableHead className="w-[22%]">Name</TableHead>
+                              <TableHead className="w-[30%]">Inheritance</TableHead>
+                              <TableHead className="w-[56px] text-right" />
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                            {group.principals.length === 0 ? (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={4}
+                                  className="py-8 text-center text-sm text-muted-foreground"
                                 >
-                                  {expanded ? (
-                                    <ChevronDown className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                                  )}
-                                </button>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium">{group.name}</span>
-                                  <Badge
-                                    variant="default"
-                                    className="h-5 w-5 items-center justify-center px-0 text-[0.65rem] font-semibold"
+                                  No principals assigned.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              group.principals.map((row) => {
+                                const directOverrideLabels = summarizeDirectOverrides(row)
+                                const permissionCount = getEffectivePermissionCount(row)
+                                const canEditPrincipal = canAssignRoles
+                                const showPrincipalLock = !canAssignRoles
+                                return (
+                                  <TableRow
+                                    key={`${group.key}:${row.type}:${row.id}`}
+                                    className="group"
                                   >
-                                    {group.principals.length}
-                                  </Badge>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right pr-5">
-                              {canManageRoles && editableRole ? (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  className="h-8 w-8 rounded-full px-0"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    openEditRoleSheet(editableRole)
-                                  }}
-                                  aria-label="Edit role"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              ) : !canManageRoles ? (
-                                <div className="flex items-center justify-end pr-2">
-                                  <Lock className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                              ) : null}
-                            </TableCell>
-                          </TableRow>
-                          {expanded &&
-                            group.principals.map((row) => {
-                              const directOverrideLabels = summarizeDirectOverrides(row)
-                              const permissionCount = getEffectivePermissionCount(row)
-                              const canEditPrincipal = canAssignRoles
-                              const showPrincipalLock = !canAssignRoles
-                              return (
-                                <TableRow
-                                  key={`${group.key}:${row.type}:${row.id}`}
-                                  className="group"
-                                >
-                                  <TableCell>
-                                    <div className="flex items-center gap-3 pl-12">
-                                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary/50">
-                                        <User className="h-5 w-5 text-muted-foreground" />
-                                      </div>
+                                    <TableCell>
                                       <div className="flex min-w-0 items-center gap-2">
-                                        <div className="truncate font-medium">{row.email}</div>
+                                        <div className="truncate text-sm text-foreground">{row.email}</div>
                                         {row.type === 'invite' ? (
                                           <Badge variant="outline">Pending</Badge>
                                         ) : null}
                                       </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="truncate font-medium">{row.name}</div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-sm text-muted-foreground">
-                                        {permissionCount} permissions
-                                      </span>
-                                      {directOverrideLabels.slice(0, 2).map((override) => (
-                                        <Badge key={override.key} variant="outline">
-                                          {override.label}
-                                        </Badge>
-                                      ))}
-                                      {directOverrideLabels.length > 2 ? (
-                                        <Badge variant="outline">
-                                          +{directOverrideLabels.length - 2}
-                                        </Badge>
-                                      ) : null}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-right pr-5">
-                                    {canEditPrincipal ? (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 px-0"
-                                        onClick={() => openPrincipalSheet(row)}
-                                        aria-label="Edit access"
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </Button>
-                                    ) : showPrincipalLock ? (
-                                      <div className="flex items-center justify-end pr-2">
-                                        <Lock className="h-4 w-4 text-muted-foreground" />
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="truncate text-sm text-foreground">{row.name}</div>
+                                    </TableCell>
+                                    <TableCell className="[&>div]:overflow-visible">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-sm text-muted-foreground">
+                                          {permissionCount} permissions
+                                        </span>
+                                        {directOverrideLabels.slice(0, 2).map((override) => (
+                                          <Badge key={override.key} variant="outline">
+                                            {override.label}
+                                          </Badge>
+                                        ))}
+                                        {directOverrideLabels.length > 2 ? (
+                                          <Badge variant="outline">
+                                            +{directOverrideLabels.length - 2}
+                                          </Badge>
+                                        ) : null}
                                       </div>
-                                    ) : null}
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })}
-                        </Fragment>
-                      )
-                    })}
-                    {filteredRoleGroups.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={4}
-                          className="px-5 py-10 text-center text-sm text-muted-foreground"
-                        >
-                          No roles or principals match this filter.
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {canEditPrincipal ? (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 rounded-full px-0 text-muted-foreground hover:text-foreground"
+                                          onClick={() => openPrincipalSheet(row)}
+                                          aria-label="Edit access"
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </Button>
+                                      ) : showPrincipalLock ? (
+                                        <div className="flex items-center justify-end">
+                                          <Lock className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                      ) : null}
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              })
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </section>
+                )
+              })
+            )}
+            {canManageRoles ? (
+              <SettingsFooterActions>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+                  onClick={openCreateRoleSheet}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New role
+                </Button>
+              </SettingsFooterActions>
+            ) : null}
           </div>
         )}
 
@@ -1097,5 +1056,5 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
     return content
   }
 
-  return content
+  return <SettingsPageBody>{content}</SettingsPageBody>
 }

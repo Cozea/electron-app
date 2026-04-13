@@ -680,10 +680,10 @@ export function ProjectSidebar({
       >
         <SidebarContent className="gap-0 px-2 py-3">
           {!isOnCurrentProjectSubMenu && (
-            <div className="mb-4 space-y-1 px-1">
+            <div className="mb-4 space-y-1">
               <button
                 type="button"
-                className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
+                className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, "px-1.5")}
                 onClick={(event) => void openProjectCreationMenu(event)}
               >
                 <PlusIcon />

@@ -87,7 +87,7 @@ export function WorkbenchBrowserTile({
   containerApi,
 }: WorkbenchBrowserTileProps) {
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
-  const activityMode = useWorkbenchPanelActivityMode(panelApi)
+  const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
   const [draftUrl, setDraftUrl] = useState(tile.url)
   const [isFindVisible, setIsFindVisible] = useState(false)
@@ -109,7 +109,7 @@ export function WorkbenchBrowserTile({
     projectId,
     laneId,
     projectPath,
-    visible: activityMode === "visible",
+    visible: panelActivity.visible,
     storageScope: tile.storageScope ?? "workspace",
     workspaceId: workspaceId ?? undefined,
     persistModel: true,

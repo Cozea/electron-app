@@ -43,38 +43,6 @@ interface SelectionOption {
   icon: typeof AppWindow
 }
 
-function buildPreviewContext(tile: WorkbenchSelectionTile): {
-  title: string
-  description: string
-} | null {
-  if (
-    tile.mode !== "edgePreview" &&
-    tile.mode !== "seamPreview" &&
-    tile.mode !== "junctionPreview"
-  ) {
-    return null
-  }
-
-  const sourceLabel =
-    tile.previewTargetKind === "junction"
-      ? "Junction split"
-      : tile.previewTargetKind === "seam"
-        ? "Seam split"
-        : "Edge split"
-  const scopeLabel = tile.previewScope === "full-span" ? "full-span" : "local"
-  const description =
-    tile.previewTargetKind === "junction"
-      ? "This insertion comes from a structural junction and follows the full-span branch at that point."
-      : tile.previewScope === "full-span"
-      ? "This insertion will span the full shared axis of the current layout segment."
-      : "This insertion will split the specific tile segment you hovered."
-
-  return {
-    title: `${sourceLabel} • ${scopeLabel}`,
-    description,
-  }
-}
-
 const CORE_SELECTION_OPTIONS: SelectionOption[] = [
   {
     id: "browser",
@@ -349,7 +317,7 @@ function MarketplacePlaceholder() {
 }
 
 export function WorkbenchSelectionTile({
-  tile,
+  tile: _tile,
   singletonEmptyWorkbench = false,
   projectName,
   projectPath,
@@ -365,7 +333,6 @@ export function WorkbenchSelectionTile({
     if (activeCategory === "All") return all
     return all.filter((option) => option.category === activeCategory)
   }, [activeCategory])
-  const previewContext = useMemo(() => buildPreviewContext(tile), [tile])
   const showHero = singletonEmptyWorkbench && layout === "spacious"
   const centerSingletonEmpty = singletonEmptyWorkbench
 
@@ -395,17 +362,6 @@ export function WorkbenchSelectionTile({
             layout={layout}
           />
         )}
-
-        {previewContext ? (
-          <div className="mx-auto w-full max-w-5xl px-3 pt-3 md:px-6">
-            <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                {previewContext.title}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">{previewContext.description}</div>
-            </div>
-          </div>
-        ) : null}
 
         <div
           className={cn(

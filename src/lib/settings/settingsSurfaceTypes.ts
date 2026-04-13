@@ -24,7 +24,7 @@ export type SettingsSurfaceId =
   | "general"
   | "policies"
   | "members"
-  | "permissions"
+  | "roles"
 
 export interface SettingsSurfaceDefinition {
   id: SettingsSurfaceId
