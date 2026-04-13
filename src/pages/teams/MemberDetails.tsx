@@ -197,7 +197,8 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
     usageRecords,
     memberProjects,
     organizationMembers,
-    isLoading,
+    isRefreshing,
+    hasResolvedMember,
   } = useScopedMemberDetailsData({ memberId, route })
 
   const scopedProjects = useMemo(() => {
@@ -265,17 +266,24 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
           title="Member access required"
           description="You do not have permission to view workspace members."
         />
-      ) : isLoading ? (
-        <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
-          Loading member details...
-        </div>
       ) : !member ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <h2 className="text-xl font-semibold mb-2">Member not found</h2>
-          <p className="text-muted-foreground">This member may have been removed from the organization.</p>
+          <h2 className="mb-2 text-xl font-semibold">
+            {hasResolvedMember ? 'Member not found' : 'Preparing member details'}
+          </h2>
+          <p className="text-muted-foreground">
+            {hasResolvedMember
+              ? 'This member may have been removed from the organization.'
+              : 'Member details will appear here once the workspace directory is ready.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
+        {isRefreshing ? (
+          <p className="px-1 text-[11px] text-muted-foreground">
+            Refreshing member details in the background.
+          </p>
+        ) : null}
         {/* Profile header */}
         <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
           <div className="flex flex-col gap-6 sm:flex-row">

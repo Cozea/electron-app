@@ -122,6 +122,17 @@ export function useWorkspaceSourceControl(
     () => listQuery ?? cachedConnections ?? [],
     [cachedConnections, listQuery]
   )
+  const hasResolved =
+    !enabled ||
+    !organizationId ||
+    !convexUserId ||
+    listQuery !== undefined ||
+    cachedConnections !== null
+  const isRefreshing =
+    enabled &&
+    Boolean(organizationId && convexUserId) &&
+    listQuery === undefined &&
+    Boolean(cachedConnections)
   const isLoading =
     enabled &&
     Boolean(organizationId && convexUserId) &&
@@ -326,6 +337,8 @@ export function useWorkspaceSourceControl(
     organizationId,
     userId: convexUserId,
     connections,
+    hasResolved,
+    isRefreshing,
     isLoading,
     getConnection,
     connectingProvider,

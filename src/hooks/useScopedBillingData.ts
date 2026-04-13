@@ -8,7 +8,7 @@ import {
   getSeatManagementCacheKey,
 } from '@/lib/queryCacheKeys'
 import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
-import { useCachedQuery } from '@/stores/useQueryCache'
+import { useCachedQueryState } from '@/stores/useQueryCache'
 
 interface UseScopedBillingDataOptions {
   route?: string
@@ -52,7 +52,11 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
-  const members = canViewWorkspaceMembers ? membersQuery : []
+  const membersState = useCachedQueryState(
+    `billing-members-${convexOrg?._id ?? 'none'}-${convexUserId ?? 'none'}`,
+    membersQuery,
+  )
+  const members = canViewWorkspaceMembers ? (membersState.data ?? []) : []
   const memberAccessResolved = settingsPage.workspaceAccess.memberAccess !== undefined
   const canLoadPersonalBillingData =
     !workspaceScoped &&
@@ -87,10 +91,11 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     api.billing.getSeatManagement,
     billingViewerArgs,
   )
-  const seatManagement = useCachedQuery(
+  const seatManagementState = useCachedQueryState(
     getSeatManagementCacheKey(convexOrg?._id, convexUserId),
     freshSeatManagement,
   )
+  const seatManagement = seatManagementState.data
 
   return {
     settingsPage,
@@ -107,5 +112,13 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     billingRoute,
     members,
     seatManagement,
+    hasResolvedMembers:
+      !canViewWorkspaceMembers ||
+      membersState.data !== undefined ||
+      membersState.hasResolved,
+    isRefreshingMembers: membersState.isRefreshing,
+    hasResolvedSeatManagement:
+      seatManagementState.data !== undefined || seatManagementState.hasResolved,
+    isRefreshingSeatManagement: seatManagementState.isRefreshing,
   }
 }

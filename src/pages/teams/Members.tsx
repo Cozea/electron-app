@@ -101,7 +101,8 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     canUpdateRole,
     canRevokeInvite,
     seatManagement,
-    isLoading,
+    isRefreshing,
+    hasResolvedData,
   } = useScopedWorkspacePeopleData({
     route,
     surfaceId: 'members',
@@ -673,6 +674,11 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
           <SettingsSectionDescription className="mb-0 px-0">
             Manage workspace members, invitations, and seat access.
           </SettingsSectionDescription>
+          {isRefreshing ? (
+            <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+              Refreshing workspace directory in the background.
+            </p>
+          ) : null}
         </div>
         {seatManagement?.entitlement.source === 'legacy' && (
           <div className="rounded-[14px] bg-muted px-4 py-3 text-sm">
@@ -854,9 +860,9 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
-                    {isLoading
-                      ? 'Loading members...'
-                      : 'No members found. Invite members to get started.'}
+                    {hasResolvedData
+                      ? 'No members found. Invite members to get started.'
+                      : 'Members will appear here once the workspace directory is ready.'}
                   </TableCell>
                 </TableRow>
               )}
@@ -865,7 +871,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
         </div>
 
         {/* Pagination */}
-        {!isLoading && filteredRows.length > 0 && (
+        {filteredRows.length > 0 && (
           <div className="mt-3 flex items-center justify-between gap-3">
             <div className="text-sm text-muted-foreground">
               Showing {startIndex + 1}-{Math.min(endIndex, filteredRows.length)} of {filteredRows.length} entries

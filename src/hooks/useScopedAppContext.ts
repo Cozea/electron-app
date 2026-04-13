@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useResolvedScope } from '@/hooks/useResolvedScope'
 import { useScopedOrganizationData } from '@/hooks/useScopedOrganizationData'
 import type { WorkspaceSurfaceAccessState } from '@/lib/settings/settingsSurfaceTypes'
-import { useCachedQuery } from '@/stores/useQueryCache'
+import { useCachedQueryState } from '@/stores/useQueryCache'
 import type { OrganizationWorkspacePermission } from '@/lib/workspaces/organizationRoles'
 import {
   resolveWorkspaceCapabilities,
@@ -31,21 +31,33 @@ export function useScopedAppContext(options: UseScopedAppContextOptions = {}) {
     resolvedScope.activeConvexOrganizationId ??
     undefined
 
-  const { convexOrg } = useScopedOrganizationData({
+  const {
+    convexOrg,
+    hasResolvedOrganization,
+    isRefreshingOrganization,
+  } = useScopedOrganizationData({
     route: options.route,
     forceOrganizationScope: workspaceScoped,
   })
+  const shouldResolveMemberAccess = workspaceScoped && Boolean(convexOrg?._id && convexUserId)
 
   const freshMemberAccess = useQuery(
     api.organizations.getCurrentMemberAccess,
-    workspaceScoped && convexOrg?._id && convexUserId
+    shouldResolveMemberAccess && convexOrg?._id && convexUserId
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
-  const memberAccess = useCachedQuery(
+  const memberAccessState = useCachedQueryState(
     `app-context-member-access-${convexOrg?._id ?? 'none'}-${convexUserId ?? 'none'}`,
     freshMemberAccess,
   )
+  const memberAccess = memberAccessState.data
+  const hasResolvedMemberAccess =
+    !shouldResolveMemberAccess ||
+    memberAccessState.data !== undefined ||
+    memberAccessState.hasResolved
+  const isRefreshingMemberAccess =
+    shouldResolveMemberAccess && memberAccessState.isRefreshing
 
   const permissions = useMemo(
     () => (memberAccess?.permissions ?? []) as OrganizationWorkspacePermission[],
@@ -68,6 +80,12 @@ export function useScopedAppContext(options: UseScopedAppContextOptions = {}) {
     resolvedScope.scopedWorkspace?.organizationName ??
     resolvedScope.activeWorkspace?.organizationName ??
     'Workspace'
+  const hasResolvedWorkspaceAccess =
+    !workspaceScoped || hasResolvedMemberAccess
+  const hasResolvedContext =
+    !workspaceScoped || (hasResolvedOrganization && hasResolvedWorkspaceAccess)
+  const isContextRefreshing =
+    isRefreshingOrganization || isRefreshingMemberAccess
 
   return {
     resolvedScope,
@@ -80,8 +98,13 @@ export function useScopedAppContext(options: UseScopedAppContextOptions = {}) {
     convexOrg,
     workspaceName,
     memberAccess,
+    hasResolvedMemberAccess,
+    isRefreshingMemberAccess,
     permissions,
     capabilities,
     surfaceAccess,
+    hasResolvedWorkspaceAccess,
+    hasResolvedContext,
+    isContextRefreshing,
   }
 }

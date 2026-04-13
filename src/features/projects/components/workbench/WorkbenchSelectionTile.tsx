@@ -133,14 +133,7 @@ function SelectionFilterBar({
 
   return (
     <div className={cn("w-full shrink-0 border-b border-border/70 bg-content-surface", isSpacious ? "pt-3" : "px-2 py-2")}>
-      <div
-        className={cn(
-          "mx-auto flex w-full max-w-5xl gap-3",
-          isSpacious && "items-end justify-between",
-          isVerticalCompact && "flex-col",
-          !isSpacious && !isVerticalCompact && "items-end justify-between",
-        )}
-      >
+      <div className={cn("mx-auto flex w-full max-w-5xl flex-col gap-2.5", isSpacious && "pb-2")}>
         <div
           className={cn(
             "flex min-w-0 items-stretch overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
@@ -169,12 +162,9 @@ function SelectionFilterBar({
           ))}
         </div>
 
-        <div className={cn("flex shrink-0 justify-end", isVerticalCompact ? "w-full" : "w-auto", isSpacious && "pb-2")}>
+        <div className="flex w-full shrink-0 justify-end">
           <div
-            className={cn(
-              "flex h-9 items-center gap-2 rounded-full bg-secondary/50 px-3 text-sm transition-[color,box-shadow]",
-              isVerticalCompact ? "w-full max-w-none" : "w-[17rem]",
-            )}
+            className="flex h-9 w-full items-center gap-2 rounded-full bg-secondary/50 px-3 text-sm transition-[color,box-shadow]"
             role="status"
             aria-label="Quick open hint"
           >

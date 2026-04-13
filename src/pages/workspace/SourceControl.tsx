@@ -162,6 +162,7 @@ interface ProviderCardProps {
   connection: ReturnType<
     ReturnType<typeof useWorkspaceSourceControl>['getConnection']
   >
+  connectionsReady: boolean
   connectingProvider: ReturnType<
     typeof useWorkspaceSourceControl
   >['connectingProvider']
@@ -181,6 +182,7 @@ function SourceControlProviderCard({
   canManageSourceControl,
   variant = 'card',
   connection,
+  connectionsReady,
   connectingProvider,
   clearConnectError,
   startOAuth,
@@ -398,7 +400,7 @@ function SourceControlProviderCard({
                   }
                   void handleConnect()
                 }}
-                disabled={isConnecting || !canManageSourceControl}
+                disabled={isConnecting || !canManageSourceControl || !connectionsReady}
               >
                 {isConnecting ? (
                   <>
@@ -440,6 +442,7 @@ function SourceControlProviderCard({
                   }}
                   disabled={
                     !canManageSourceControl ||
+                    !connectionsReady ||
                     isLoadingOwners ||
                     ownerOptions.length === 0
                   }
@@ -690,7 +693,7 @@ function SourceControlProviderCard({
               onClick={() => {
                 void handleConnect()
               }}
-              disabled={isConnecting}
+              disabled={isConnecting || !connectionsReady}
             >
               {isConnecting ? (
                 <>
@@ -711,7 +714,7 @@ function SourceControlProviderCard({
                 onClick={() => {
                   void handleDisconnect()
                 }}
-                disabled={isConnecting}
+                disabled={isConnecting || !connectionsReady}
               >
                 <Unplug className="mr-2 h-4 w-4" />
                 Disconnect
@@ -737,6 +740,8 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
   } = useScopedAppContext({ route })
   const {
     userId,
+    hasResolved,
+    isRefreshing,
     isLoading,
     getConnection,
     connectingProvider,
@@ -790,15 +795,6 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
         </div>
       ) : null}
 
-      {isLoading ? (
-        <div className="rounded-[14px] bg-muted px-4 py-3 text-xs text-muted-foreground">
-          <div className="inline-flex items-center gap-2">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Loading GitHub settings…
-          </div>
-        </div>
-      ) : null}
-
       <SourceControlProviderCard
         provider="github"
         label="GitHub"
@@ -808,6 +804,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
         setupMode={setupMode}
         canManageSourceControl={canManageSourceControl}
         connection={githubConnection}
+        connectionsReady={hasResolved}
         connectingProvider={connectingProvider}
         clearConnectError={clearConnectError}
         startOAuth={startOAuth}
@@ -815,6 +812,9 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
         updateSelection={updateSelection}
         variant="rows"
       />
+      {isRefreshing ? (
+        <p className="px-1 text-[11px] text-muted-foreground">Refreshing source control state in the background.</p>
+      ) : null}
     </SettingsPageBody>
   ) : (
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
@@ -850,15 +850,6 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
             </div>
           ) : null}
 
-          {isLoading ? (
-            <Card className="border-border/60">
-              <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading source control connections…
-              </CardContent>
-            </Card>
-          ) : null}
-
           <div className="grid gap-5 lg:grid-cols-2">
             {PROVIDER_CARDS.map((providerCard) => (
               <SourceControlProviderCard
@@ -871,6 +862,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
                 setupMode={setupMode}
                 canManageSourceControl={canManageSourceControl}
                 connection={githubConnection}
+                connectionsReady={hasResolved}
                 connectingProvider={connectingProvider}
                 clearConnectError={clearConnectError}
                 startOAuth={startOAuth}
@@ -879,6 +871,12 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
               />
             ))}
           </div>
+
+          {isRefreshing || isLoading ? (
+            <p className="px-1 text-[11px] text-muted-foreground">
+              Refreshing source control state in the background.
+            </p>
+          ) : null}
 
         </div>
   )

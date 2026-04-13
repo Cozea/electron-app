@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArchiveBoxIcon as Package, ArrowDownTrayIcon as Download, ArrowPathIcon as Loader2, CheckIcon as Check, CommandLineIcon as Terminal, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
+import { ArchiveBoxIcon as Package, ArrowDownTrayIcon as Download, CheckIcon as Check, CommandLineIcon as Terminal, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { SettingsPageBody } from '@/components/settings/SettingsChrome'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
@@ -290,7 +290,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                {isLoading ? 'Checking git runtime...' : 'Git runtime status unavailable.'}
+                {isLoading
+                  ? 'Git runtime details will appear here.'
+                  : 'Git runtime status unavailable.'}
               </p>
             )}
           </div>
@@ -324,9 +326,6 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Runtime Inventory</h3>
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : null}
           </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
             <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
@@ -410,7 +409,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                 ))
               ) : (
                 <div className="px-3 py-4 text-sm text-muted-foreground">
-                  {isLoading ? 'Checking runtime inventory...' : 'No runtime data available.'}
+                  {isLoading
+                    ? 'Runtime inventory will appear here.'
+                    : 'No runtime data available.'}
                 </div>
               )}
             </div>

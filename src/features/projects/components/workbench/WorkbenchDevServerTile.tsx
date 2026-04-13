@@ -26,13 +26,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
@@ -194,6 +187,15 @@ export function WorkbenchDevServerTile({
   const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
   const previewServerActive =
     devServer.status === "ready" || devServer.status === "unhealthy" || devServer.status === "starting"
+
+  const terminalShell = (
+    <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
+      <div
+        className="h-full w-full rounded-[4px]"
+        style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
+      />
+    </div>
+  )
 
   const showEmbeddedPreview = viewMode === "preview" && previewDestination === "cozea"
   const showWebEmbeddedPreview = showEmbeddedPreview && !isIosNativePreview
@@ -711,10 +713,7 @@ export function WorkbenchDevServerTile({
       {terminalError}
     </div>
   ) : !terminalId ? (
-    <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-      <RefreshCcw className="h-4 w-4 animate-spin" />
-      Preparing terminal…
-    </div>
+    terminalShell
   ) : (
     <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
       <TerminalInstance
@@ -727,46 +726,36 @@ export function WorkbenchDevServerTile({
   )
 
   const externalPreviewBody = (
-    <div className="flex h-full items-center justify-center p-6">
-      <Empty className="w-full max-w-md py-8">
-        <EmptyHeader>
-          <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-            {createElement(getExternalBrowserIcon(effectiveBrowserId), { className: "h-7 w-7" })}
-          </EmptyMedia>
-          <EmptyTitle className="text-base font-medium">
-            {!externalPreviewUrl
-              ? "No preview yet"
-              : `Preview opens in ${effectiveSelectedBrowser.name}`}
-          </EmptyTitle>
-          <EmptyDescription>
-            {!externalPreviewUrl
-              ? `Start the dev server to open the local preview in ${effectiveSelectedBrowser.name}.`
-              : `Cozea is sending this preview to ${effectiveSelectedBrowser.name}. Use refresh to reopen it, or switch back to Cozea to embed it here.`}
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+    <div className="flex h-full items-center justify-center p-6 text-center">
+      <div className="max-w-sm space-y-1">
+        <div className="text-sm text-foreground">
+          {!externalPreviewUrl
+            ? `Preview will open in ${effectiveSelectedBrowser.name}.`
+            : `Preview is open in ${effectiveSelectedBrowser.name}.`}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {!externalPreviewUrl
+            ? "Start the dev server to send the local preview there."
+            : "Use refresh to reopen it, or switch back to Cozea to embed it here."}
+        </div>
+      </div>
     </div>
   )
 
   const webEmbeddedPreviewBody = (
     <div className="relative h-full min-h-0 overflow-hidden bg-content-surface p-px">
       {!previewUrl ? (
-        <div className="flex h-full w-full items-center justify-center p-6">
-          <Empty className="w-full max-w-md py-8">
-            <EmptyHeader>
-              <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-                <AppWindow className="h-7 w-7" />
-              </EmptyMedia>
-              <EmptyTitle className="text-base font-medium">
-                {devServer.status === "starting" ? "Starting preview…" : "No preview yet"}
-              </EmptyTitle>
-              <EmptyDescription>
-                {devServer.status === "starting"
-                  ? "Waiting for the local dev server to expose a preview URL."
-                  : "Start the dev server to load the local preview here."}
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+        <div className="absolute inset-px flex items-center justify-center bg-content-surface p-6 text-center">
+          <div className="max-w-sm space-y-1">
+            <div className="text-sm text-foreground">
+              {devServer.status === "starting" ? "Local preview will attach here." : "No preview yet"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {devServer.status === "starting"
+                ? "The browser shell is ready. As soon as the dev server exposes a URL, the page will appear here."
+                : "Start the dev server to load the local preview here."}
+            </div>
+          </div>
         </div>
       ) : null}
       {previewUrl && previewState.loadError ? (

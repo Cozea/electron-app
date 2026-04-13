@@ -196,7 +196,8 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
     roleOptions,
     canManageRoles,
     canAssignRoles,
-    isLoading,
+    isRefreshing,
+    hasResolvedData,
   } = useScopedWorkspacePeopleData({
     route,
     surfaceId: 'roles',
@@ -626,13 +627,13 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
           <SettingsSectionDescription className="mb-0 px-0">
             Manage workspace roles and the people assigned to them.
           </SettingsSectionDescription>
+          {isRefreshing ? (
+            <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+              Refreshing role assignments in the background.
+            </p>
+          ) : null}
         </div>
-        {isLoading ? (
-          <div className="rounded-[14px] bg-muted px-5 py-10 text-sm text-muted-foreground">
-            Loading workspace roles…
-          </div>
-        ) : (
-          <div className="space-y-4">
+        <div className="space-y-4">
             {accessActionError ? (
               <div className="rounded-[14px] bg-muted px-4 py-3 text-sm text-destructive">
                 {accessActionError}
@@ -640,7 +641,9 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
             ) : null}
             {filteredRoleGroups.length === 0 ? (
               <div className="rounded-[14px] bg-muted px-5 py-10 text-center text-sm text-muted-foreground">
-                No roles or principals match this filter.
+                {hasResolvedData
+                  ? 'No roles or principals match this filter.'
+                  : 'Roles and assignments will appear here once the workspace directory is ready.'}
               </div>
             ) : (
               filteredRoleGroups.map((group) => {
@@ -770,7 +773,6 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
               </SettingsFooterActions>
             ) : null}
           </div>
-        )}
 
         <Sheet
           open={roleSheetOpen}

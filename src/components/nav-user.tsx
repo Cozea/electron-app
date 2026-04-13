@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/avatar"
 import {
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
@@ -218,30 +217,24 @@ export function NavUser({
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
-          asChild
           size="lg"
-          className="rounded-2xl cursor-default hover:bg-transparent hover:text-inherit active:bg-transparent active:text-inherit"
+          type="button"
+          onClick={handleMenuClick}
+          aria-label="Open user menu"
+          title="Open user menu"
+          className="rounded-2xl hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)] active:bg-[var(--sidebar-pill-hover-bg)] active:text-[var(--sidebar-pill-hover-fg)]"
         >
-          <div>
-            <Avatar className="h-6 w-6 rounded-full">
-              <AvatarImage src={userData.avatar} alt={userData.name} />
-              <AvatarFallback className="rounded-full">
-                {userData.name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-normal text-sidebar-foreground">{userData.name}</span>
-              <span className="truncate font-normal text-muted-foreground">{activePlanLabel}</span>
-            </div>
+          <Avatar className="h-6 w-6 rounded-full">
+            <AvatarImage src={userData.avatar} alt={userData.name} />
+            <AvatarFallback className="rounded-full">
+              {userData.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="grid flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate font-normal text-sidebar-foreground">{userData.name}</span>
+            <span className="truncate font-normal text-muted-foreground">{activePlanLabel}</span>
           </div>
         </SidebarMenuButton>
-        <SidebarMenuAction
-          type="button"
-          showOnHover
-          aria-label="Open user menu"
-          onClick={handleMenuClick}
-          className="rounded-md"
-        />
       </SidebarMenuItem>
     </SidebarMenu>
   )

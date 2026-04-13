@@ -8,7 +8,10 @@ function isMacPlatform(): boolean {
     return false
   }
 
-  const platform = navigator.userAgentData?.platform ?? navigator.platform ?? ''
+  const userAgentDataPlatform = (
+    navigator as Navigator & { userAgentData?: { platform?: string } }
+  ).userAgentData?.platform
+  const platform = userAgentDataPlatform ?? navigator.platform ?? ''
   return /mac/i.test(platform)
 }
 
