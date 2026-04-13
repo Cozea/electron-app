@@ -98,21 +98,33 @@ export const useQueryCache = create<QueryCacheState>()(
   )
 )
 
-/**
- * Hook to use cached query data with automatic cache updates.
- * Returns cached data immediately, updates when fresh data arrives.
- */
-export function useCachedQuery<T>(
-  key: string,
-  freshData: T | undefined,
-  maxAge = DEFAULT_MAX_AGE
-): T | undefined {
-  const cached = useQueryCache((state) => {
+export interface CachedQueryState<T> {
+  data: T | undefined
+  cachedData: T | undefined
+  freshData: T | undefined
+  hasResolved: boolean
+  isRefreshing: boolean
+}
+
+function useCachedQueryEntry<T>(key: string, maxAge: number): T | undefined {
+  return useQueryCache((state) => {
     const entry = state.cache[key]
     if (!entry) return undefined
     if (Date.now() - entry.timestamp > maxAge) return undefined
     return entry.data as T
   })
+}
+
+/**
+ * Hook to use cached query data with automatic cache updates.
+ * Returns cached data immediately, updates when fresh data arrives.
+ */
+export function useCachedQueryState<T>(
+  key: string,
+  freshData: T | undefined,
+  maxAge = DEFAULT_MAX_AGE
+): CachedQueryState<T> {
+  const cachedData = useCachedQueryEntry<T>(key, maxAge)
 
   // Update cache when fresh data arrives
   useEffect(() => {
@@ -137,6 +149,21 @@ export function useCachedQuery<T>(
     }
   }, [key, freshData])
 
-  // Return fresh data if available, otherwise cached
-  return freshData ?? cached
+  const hasResolved = freshData !== undefined
+
+  return {
+    data: freshData === undefined ? cachedData : freshData,
+    cachedData,
+    freshData,
+    hasResolved,
+    isRefreshing: freshData === undefined && cachedData !== undefined,
+  }
+}
+
+export function useCachedQuery<T>(
+  key: string,
+  freshData: T | undefined,
+  maxAge = DEFAULT_MAX_AGE
+): T | undefined {
+  return useCachedQueryState(key, freshData, maxAge).data
 }

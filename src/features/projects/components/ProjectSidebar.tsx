@@ -6,7 +6,6 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
 import {
   ArrowLeftIcon as ArrowLeft,
-  ArrowPathIcon as Loader2,
   PlusIcon,
 } from "@heroicons/react/24/outline"
 
@@ -718,9 +717,8 @@ export function ProjectSidebar({
                 );
               })
             ) : isProjectsLoading ? (
-              <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" />
-                Loading projects…
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                Projects will appear here as this workspace finishes syncing.
               </div>
             ) : sortedProjects.length === 0 ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">

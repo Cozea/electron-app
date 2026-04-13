@@ -664,6 +664,11 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
           <SettingsSectionDescription>
             Purchased seats cap workspace access. Select which members receive a paid seat.
           </SettingsSectionDescription>
+          {controller.isRefreshingMembers ? (
+            <p className="px-1 text-[11px] text-muted-foreground">
+              Refreshing workspace members in the background.
+            </p>
+          ) : null}
           <div>
               <div className="overflow-hidden rounded-[14px] bg-muted">
                 <Table className="[&_th]:px-4 [&_th]:font-normal [&_th]:text-muted-foreground [&_th:last-child]:pr-5 [&_td]:px-4 [&_td:last-child]:pr-5">
@@ -675,10 +680,10 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                    {controller.members === undefined ? (
+                    {!controller.hasResolvedMembers && controller.members.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={3} className="h-16 text-center text-muted-foreground">
-                          Loading workspace members...
+                          Members will appear here once the workspace directory is ready.
                         </TableCell>
                       </TableRow>
                     ) : controller.paginatedSeatAssignmentRows.length > 0 ? (

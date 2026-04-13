@@ -45,6 +45,7 @@ export function useScopedGeneralData(options: UseScopedGeneralDataOptions = {}) 
     canManageGeneral,
     updateWorkosOrganization,
     deleteWorkosOrganization,
-    isLoading: convexOrg === undefined,
+    isLoading: convexOrg === undefined && !settingsPage.hasResolvedContext,
+    isRefreshing: settingsPage.isContextRefreshing,
   }
 }

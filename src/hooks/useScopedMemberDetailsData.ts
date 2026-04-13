@@ -5,6 +5,7 @@ import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
+import { useCachedQueryState } from '@/stores/useQueryCache'
 
 interface UseScopedMemberDetailsDataOptions {
   memberId?: string
@@ -25,7 +26,7 @@ export function useScopedMemberDetailsData(
     settingsPage.resolvedScope.scopedWorkspace?.organizationName ??
     'Workspace'
 
-  const member = useQuery<any>(
+  const freshMember = useQuery<any>(
     api.organizations.getMember,
     convexOrg?._id && convexUserId && options.memberId
       ? {
@@ -35,6 +36,11 @@ export function useScopedMemberDetailsData(
         }
       : 'skip',
   )
+  const memberState = useCachedQueryState(
+    `workspace-member-details-${convexOrg?._id ?? 'none'}-${options.memberId ?? 'none'}`,
+    freshMember,
+  )
+  const member = memberState.data
 
   const usageRecords = useQuery<any>(
     undefined,
@@ -74,6 +80,8 @@ export function useScopedMemberDetailsData(
     usageRecords,
     memberProjects,
     organizationMembers,
-    isLoading: convexOrg === undefined || member === undefined,
+    isLoading: convexOrg === undefined || (member === undefined && !memberState.cachedData),
+    isRefreshing: memberState.isRefreshing,
+    hasResolvedMember: memberState.data !== undefined || memberState.hasResolved,
   }
 }

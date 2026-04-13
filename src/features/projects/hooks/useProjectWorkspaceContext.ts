@@ -4,11 +4,13 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
+import { useCachedQueryState } from '@/stores/useQueryCache'
 
 interface UseProjectWorkspaceContextResult {
   organization: Doc<'organizations'> | null | undefined
   organizationId: Id<'organizations'> | null
   isLoading: boolean
+  isRefreshing: boolean
   isPersonalWorkspace: boolean
   isOrganizationWorkspace: boolean
 }
@@ -20,19 +22,28 @@ export function useProjectWorkspaceContext(
   const activeWorkspaceMatchesProject =
     Boolean(project?.organizationId) && convexOrganizationId === project?.organizationId
 
-  const organization = useQuery(
+  const freshOrganization = useQuery(
     api.organizations.get,
     project?.organizationId && !activeWorkspaceMatchesProject
       ? { id: project.organizationId }
       : 'skip',
   )
+  const organizationState = useCachedQueryState(
+    `project-workspace-${project?.organizationId ?? 'none'}`,
+    freshOrganization,
+  )
 
   return useMemo(() => {
     const resolvedOrganization =
-      activeWorkspaceMatchesProject && convexOrg ? convexOrg : organization
+      activeWorkspaceMatchesProject && convexOrg ? convexOrg : organizationState.data
     const isLoading =
       project === undefined ||
-      (Boolean(project) && !activeWorkspaceMatchesProject && organization === undefined)
+      (
+        Boolean(project) &&
+        !activeWorkspaceMatchesProject &&
+        organizationState.data === undefined &&
+        !organizationState.hasResolved
+      )
     const organizationId = project?.organizationId ?? null
     const isPersonalWorkspace = activeWorkspaceMatchesProject
       ? personalScoped
@@ -42,8 +53,17 @@ export function useProjectWorkspaceContext(
       organization: resolvedOrganization,
       organizationId,
       isLoading,
+      isRefreshing: organizationState.isRefreshing,
       isPersonalWorkspace,
       isOrganizationWorkspace: Boolean(organizationId) && !isPersonalWorkspace,
     }
-  }, [activeWorkspaceMatchesProject, convexOrg, organization, personalScoped, project])
+  }, [
+    activeWorkspaceMatchesProject,
+    convexOrg,
+    organizationState.data,
+    organizationState.hasResolved,
+    organizationState.isRefreshing,
+    personalScoped,
+    project,
+  ])
 }

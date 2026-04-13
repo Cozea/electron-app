@@ -306,7 +306,7 @@ export function ProjectWorkbenchPage() {
       ? "dockview-theme-dark"
       : "dockview-theme-light";
 
-  if (!projectId || !projectWorkbench) {
+  if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Loading workbench…

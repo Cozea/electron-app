@@ -1,6 +1,6 @@
 import { Activity, useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { ArrowPathIcon as Loader2, CommandLineIcon as TerminalSquare } from "@heroicons/react/24/outline"
+import { CommandLineIcon as TerminalSquare } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
@@ -32,6 +32,15 @@ export function WorkbenchTerminalTile({
   const replaceTerminalOutput = useTerminalStore((state) => state.actions.replaceTerminalOutput)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const terminalIdRef = useRef<string | null>(null)
+
+  const terminalShell = (
+    <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
+      <div
+        className="h-full w-full rounded-[4px]"
+        style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
+      />
+    </div>
+  )
 
   useEffect(() => {
     if (!terminalId) {
@@ -167,12 +176,7 @@ export function WorkbenchTerminalTile({
       </div>
     )
   } else if (!terminalId) {
-    body = (
-      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Preparing terminal…
-      </div>
-    )
+    body = terminalShell
   } else {
     body = (
       <Activity mode={panelActivity.mode} name={`workbench-terminal-${tileId}`}>

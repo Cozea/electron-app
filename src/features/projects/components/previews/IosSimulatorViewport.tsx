@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
-import { ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink, DevicePhoneMobileIcon as Smartphone } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink } from "@heroicons/react/24/outline"
 
 import { Button } from '@/components/ui/button'
 import {
@@ -347,7 +347,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
 
   const emptyState = useMemo(() => {
     if (simulatorsLoading) {
-      return 'Loading iOS simulators...'
+      return 'Available iOS simulators will appear here.'
     }
     if (simulatorsError) {
       return simulatorsError
@@ -365,7 +365,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       return sessionError
     }
     if (sessionLoading || sessionState?.status === 'starting') {
-      return 'Starting native preview session...'
+      return 'Simulator preview will attach here.'
     }
     return 'Waiting for the simulator stream.'
   }, [selectedSimulator, serverRunning, sessionError, sessionLoading, sessionState?.status, simulatorsError, simulatorsLoading])
@@ -405,9 +405,8 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-4 bg-content-surface px-6 text-center text-muted-foreground">
-                <Smartphone className="h-16 w-16 opacity-20" />
-                <div className="space-y-2">
-                  <p className="text-lg text-foreground/90">{emptyState}</p>
+                <div className="max-w-sm space-y-1">
+                  <p className="text-sm text-foreground/90">{emptyState}</p>
                   {selectedSimulator ? (
                     <p className="text-xs text-muted-foreground">
                       {selectedSimulator.name} · {selectedSimulator.state}

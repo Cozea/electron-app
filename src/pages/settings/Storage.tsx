@@ -850,7 +850,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                     <TableRow>
                       <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                         {isLoadingProjects
-                          ? 'Loading projects...'
+                          ? 'Projects in this directory will appear here.'
                           : 'No projects found in this directory'}
                       </TableCell>
                     </TableRow>

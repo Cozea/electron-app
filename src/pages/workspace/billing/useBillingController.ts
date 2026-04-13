@@ -60,6 +60,8 @@ export function useBillingController({ surface, route }: UseBillingControllerOpt
     billingRoute,
     members,
     seatManagement,
+    hasResolvedMembers,
+    isRefreshingMembers,
   } = useScopedBillingData({ route });
 
   const setSeatAssignment = useMutation(api.billing.setSeatAssignment);
@@ -893,9 +895,11 @@ export function useBillingController({ surface, route }: UseBillingControllerOpt
     isCycleChangePending,
     isPlanActionPending,
     isPortalPending,
+    isRefreshingMembers,
     isSeatQuantityUpdating,
     maxTrialEligible,
     members,
+    hasResolvedMembers,
     paidSeatAssigned,
     paidSeatAvailable,
     paidSeatProgress,

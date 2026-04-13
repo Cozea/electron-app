@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import { Navigate, Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -13,6 +13,8 @@ import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
 import { useResolvedScope } from './hooks/useResolvedScope'
+import { Login } from './pages/Login'
+import { Onboarding } from './components/Onboarding'
 
 const warmedModelCatalogOrganizations = new Set<string>()
 const attemptedModelCatalogWarmups = new Set<string>()
@@ -57,11 +59,6 @@ function formatUnixTimestamp(value: number | undefined): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return new Date(value * 1000).toISOString()
 }
-
-const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })))
-const Onboarding = lazy(() =>
-  import('./components/Onboarding').then((module) => ({ default: module.Onboarding }))
-)
 
 function FullscreenLoading() {
   return (
@@ -263,6 +260,25 @@ function AppContent() {
     }
   }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
 
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || needsOnboarding) {
+      return
+    }
+
+    const warmupTimer = window.setTimeout(() => {
+      void import('./pages/settings/Storage').then((module) =>
+        module.prewarmStorageSettings?.()
+      )
+      void import('./pages/settings/Tooling').then((module) =>
+        module.prewarmToolingSettings?.()
+      )
+    }, 150)
+
+    return () => {
+      window.clearTimeout(warmupTimer)
+    }
+  }, [isAuthenticated, isLoading, needsOnboarding])
+
   if (isLoading) {
     return <FullscreenLoading />
   }
@@ -280,19 +296,13 @@ function AppContent() {
     if (isPublicProjectAccessRoute) {
       return <Outlet />
     }
-    return (
-      <Suspense fallback={<FullscreenLoading />}>
-        <Login />
-      </Suspense>
-    )
+    return <Login />
   }
 
   if (needsOnboarding) {
     return (
       <>
-        <Suspense fallback={<FullscreenLoading />}>
-          <Onboarding />
-        </Suspense>
+        <Onboarding />
         <CreateWorkspaceDialogHost />
         <CreateProjectDialogHost />
       </>

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHydrateWorkspaceMembers } from '@/hooks/useHydrateWorkspaceMembers'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
 import { getSeatManagementCacheKey } from '@/lib/queryCacheKeys'
-import { useCachedQuery } from '@/stores/useQueryCache'
+import { useCachedQueryState } from '@/stores/useQueryCache'
 import {
   buildOrganizationWorkspaceRoleOptions,
   hasOrganizationWorkspacePermission,
@@ -41,7 +41,7 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     convexOrg?.name ??
     settingsPage.resolvedScope.scopedWorkspace?.organizationName ??
     'Workspace'
-  const memberAccessResolved = settingsPage.workspaceAccess.memberAccess !== undefined
+  const memberAccessResolved = settingsPage.hasResolvedWorkspaceAccess
   const currentUserPermissions = useMemo(
     () => settingsPage.workspaceAccess.permissions as OrganizationWorkspaceResolvedRole['permissions'] | undefined,
     [settingsPage.workspaceAccess.permissions],
@@ -78,11 +78,11 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
-  const membersQuery = useCachedQuery(
+  const membersState = useCachedQueryState(
     `workspace-members-${options.surfaceId}-${convexOrg?._id ?? 'none'}`,
     freshMembers,
   )
-  const members = canReadMembers ? membersQuery : []
+  const members = canReadMembers ? (membersState.data ?? []) : []
 
   const canViewInvitations = hasAnyWorkspacePermission(currentUserPermissions, [
     'invitations:view',
@@ -99,19 +99,26 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
-  const pendingInvitesQuery = useCachedQuery(
+  const pendingInvitesState = useCachedQueryState(
     `workspace-invites-${options.surfaceId}-${convexOrg?._id ?? 'none'}`,
     freshInvites,
   )
-  const pendingInvites = canViewInvitations ? (pendingInvitesQuery ?? []) : []
+  const pendingInvites = canViewInvitations ? (pendingInvitesState.data ?? []) : []
 
-  const organizationRolesQuery = useQuery(
+  const freshOrganizationRoles = useQuery(
     api.organizations.listRoles,
     convexOrg?._id && convexUserId && canReadRoles
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
-  const organizationRoles = useMemo(() => canReadRoles ? (organizationRolesQuery ?? []) : [], [canReadRoles, organizationRolesQuery])
+  const organizationRolesState = useCachedQueryState(
+    `workspace-roles-${options.surfaceId}-${convexOrg?._id ?? 'none'}`,
+    freshOrganizationRoles,
+  )
+  const organizationRoles = useMemo(
+    () => (canReadRoles ? (organizationRolesState.data ?? []) : []),
+    [canReadRoles, organizationRolesState.data],
+  )
 
   const freshSeatManagement = useQuery(
     api.billing.getSeatManagement,
@@ -123,10 +130,11 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
       ? { organizationId: convexOrg._id, userId: convexUserId }
       : 'skip',
   )
-  const seatManagement = useCachedQuery(
+  const seatManagementState = useCachedQueryState(
     getSeatManagementCacheKey(convexOrg?._id, convexUserId),
     freshSeatManagement,
   )
+  const seatManagement = seatManagementState.data
 
   const roleOptions = useMemo(
     () =>
@@ -137,7 +145,10 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
         : [],
     [canReadRoles, organizationRoles],
   )
-  const rolesLoaded = !canReadRoles || organizationRolesQuery !== undefined
+  const rolesLoaded =
+    !canReadRoles ||
+    organizationRolesState.data !== undefined ||
+    organizationRolesState.hasResolved
 
   const hasInvitePermission =
     hasOrganizationWorkspacePermission(currentUserPermissions, 'members:invite') ||
@@ -158,14 +169,32 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     enabled: Boolean(convexOrg?._id) && memberAccessResolved && canReadMembers,
   })
 
-  const isLoading =
-    !memberAccessResolved ||
-    (canReadMembers && membersQuery === undefined) ||
-    (canReadRoles && organizationRolesQuery === undefined) ||
-    (canViewInvitations && pendingInvitesQuery === undefined)
+  const hasResolvedData =
+    memberAccessResolved &&
+    (!canReadMembers || membersState.data !== undefined || membersState.hasResolved) &&
+    (!canReadRoles ||
+      organizationRolesState.data !== undefined ||
+      organizationRolesState.hasResolved) &&
+    (!canViewInvitations ||
+      pendingInvitesState.data !== undefined ||
+      pendingInvitesState.hasResolved)
+  const hasCachedSnapshot =
+    membersState.cachedData !== undefined ||
+    pendingInvitesState.cachedData !== undefined ||
+    organizationRolesState.cachedData !== undefined ||
+    seatManagementState.cachedData !== undefined
+  const isLoading = !hasResolvedData && !hasCachedSnapshot
+  const isRefreshing =
+    settingsPage.isContextRefreshing ||
+    membersState.isRefreshing ||
+    pendingInvitesState.isRefreshing ||
+    organizationRolesState.isRefreshing ||
+    seatManagementState.isRefreshing
 
   const isSeatManagementLoading =
-    options.includeSeatManagement === true && seatManagement === undefined
+    options.includeSeatManagement === true &&
+    seatManagement === undefined &&
+    seatManagementState.cachedData === undefined
 
   return {
     settingsPage,
@@ -190,6 +219,8 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     rolesLoaded,
     seatManagement,
     isLoading,
+    isRefreshing,
+    hasResolvedData,
     isSeatManagementLoading,
   }
 }

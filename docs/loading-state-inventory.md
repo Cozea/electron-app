@@ -2,283 +2,242 @@
 
 Last reviewed: 2026-04-13
 
-This is a user-facing inventory of loading UI across the app:
+## Current Status
 
-- route fallbacks
-- full-page boot/loading shells
-- in-page loading messages
-- spinners on buttons and menus
-- shimmer/skeleton states
-- silent loading states that only disable controls
+The 2026-04-13 desktop-loading refactor already removed or softened several of the most visible gates:
 
-This intentionally excludes backend-only `pending` enums and internal non-UI async state in `electron/`, `convex/`, and `server/` unless they surface visible loading UI in `src/`.
+- common settings/admin route `Suspense` loaders were removed by eagerly importing those surfaces in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
+- [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx) no longer shows a visible `Loading workspace settings…` banner
+- [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx), [Roles.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Roles.tsx), and [MemberDetails.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/MemberDetails.tsx) now render shell-first and only use inline background-refresh copy
+- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx) now renders immediately and keeps controls disabled until the connection snapshot is known instead of showing page-level loading cards
+- [BillingContent.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx) now keeps the seat-assignment table visible and uses inline refresh text instead of replacing the table with a loading row
+- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer blocks on the workbench slice existing before rendering the shell
+- several local-only pages now use calmer empty-state language instead of explicit `Checking…` / `Loading…` copy:
+  - [Storage.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
+  - [Tooling.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
+  - [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
 
-## Global App Shell
+The lists below still include the remaining gates and mixed states that should be reviewed later.
 
-- `App` full-screen workspace boot spinner in `src/App.tsx`
-- Shared route fallback spinner component `RouteLoading` in `src/router/RouteLoading.tsx`
-- Auth gate fallback `Loading workspace…` in `src/router/routes.tsx`
-- Workspace resolution fallback `Resolving workspace…` in `src/router/routes.tsx`
+This inventory is split for a desktop app mindset:
 
-## Route-Level Lazy Loading
+- `cloud data loading gates`: waiting on auth, Convex, server routes, provider APIs, or other remote data
+- `local / code / desktop runtime loading gates`: waiting on lazy chunks, Electron IPC, filesystem, PTY, git, simulators, browser views, or other local runtime setup
+- `mixed gates`: one visible loading state hides both cloud and local work
 
-These all use `Suspense` + `RouteLoading` via `createLazyRouteComponent` in `src/router/routes.tsx`.
+This focuses on user-facing loading UI and silent loading states that disable or defer UI in `src/`.
 
-- `Loading project invite…` for:
-  - `ProjectJoinPage`
-  - `ProjectInvitePage`
-- `Loading project…` for `LegacyProjectRedirectPage`
-- `Loading settings…` for workspace/personal general settings
-- `Loading billing…` for billing
-- `Loading integrations…` for integrations / CLI tools
-- `Loading source control…` for source control
-- `Loading account settings…` for account
-- `Loading appearance settings…` for appearance
-- `Loading storage settings…` for storage
-- `Loading tooling settings…` for tooling
-- `Loading team members…` for members
-- `Loading member details…` for member details
-- `Loading roles…` for roles
-- `Loading policies…` for policies
-- `Loading invitation…` for invitation acceptance
-- `Loading workspaces…` for workspace selector
-- `Loading workspace setup…` for workspace creation
+## Cloud Data Loading Gates
 
-## Shared Loading Primitives
+These are the loaders we should treat as real remote-data waits.
 
-- Generic skeleton primitive in `src/components/ui/skeleton.tsx`
-- Sidebar menu skeleton rows in `src/components/ui/sidebar.tsx`
-- Loading toast visual state in `src/features/projects/components/assistant/ui/toast.tsx`
-- Presence spinner in `src/components/presence/PresenceAvatarGroup.tsx`
+### App / Auth / Scope Resolution
 
-## Personal Settings
+- Full app boot spinner in `src/App.tsx`
+- Auth gate `Loading workspace…` in `src/router/routes.tsx`
+- Workspace resolution gate `Resolving workspace…` in `src/router/routes.tsx`
 
-### Account
+### Personal Settings
 
-- Silent profile-loading state disables notification toggles in `src/pages/settings/Account.tsx`
+- Profile-backed account settings silently loading in `src/pages/settings/Account.tsx`
 
-### Appearance
-
-- No dedicated loading UI found beyond route-level loading
-
-### Storage
-
-- Initial storage snapshot load in `src/pages/settings/Storage.tsx`
-- Initial local-projects table load in `src/pages/settings/Storage.tsx`
-- `Loading projects...` in the projects table in `src/pages/settings/Storage.tsx`
-- Action spinners in `src/pages/settings/Storage.tsx` for:
-  - `Clear cache`
-  - `Clear logs`
-  - `Refresh`
-  - `Change` project directory
-  - `Delete selected`
-  - per-project delete
-  - `Clear all local data`
-
-### Tooling
-
-- `Checking git runtime...` state in `src/pages/settings/Tooling.tsx`
-- Git runtime spinner in `src/pages/settings/Tooling.tsx`
-- `Checking runtime inventory...` state in `src/pages/settings/Tooling.tsx`
-
-## Workspace Settings
-
-### General
+### Workspace Settings
 
 - `Loading workspace settings…` in `src/pages/workspace/General.tsx`
-- Save spinner in `src/pages/workspace/General.tsx`
-- Delete workspace spinner in `src/pages/workspace/General.tsx`
-
-### Billing
-
-- Manage billing portal action spinner in `src/pages/workspace/billing/BillingContent.tsx`
-- Change-plan action spinners in `src/pages/workspace/billing/BillingContent.tsx`
-- Seat-assignment action spinners in `src/pages/workspace/billing/BillingContent.tsx`
-- `Loading workspace members...` inside billing seat coverage in `src/pages/workspace/billing/BillingContent.tsx`
-- Invoice-history spinner in `src/pages/workspace/billing/BillingContent.tsx`
-- `Loading invoices...` empty-state label from `src/pages/workspace/billing/useBillingController.ts`
-
-### Integrations / CLI Tools
-
-- Connect/disconnect pending states in `src/pages/workspace/Integrations.tsx` via:
+- Billing summary, seat, and invoice loaders in:
+  - `src/pages/workspace/billing/BillingContent.tsx`
+  - `src/pages/workspace/billing/useBillingController.ts`
+- Integrations connection state and provider/API loading in:
+  - `src/pages/workspace/Integrations.tsx`
   - `src/components/integrations/IntegrationConnectDialog.tsx`
   - `src/components/integrations/ApiKeyForm.tsx`
   - `src/components/integrations/ServiceAccountForm.tsx`
   - `src/components/integrations/IntegrationCard.tsx`
-- Repository owner/repository loading in `src/components/git/RepositoryProvisioner.tsx`
-- `Loading repositories...` / `Loading...` / repository refresh spinner in `src/components/git/RepositoryProvisioner.tsx`
-- Remote repository pagination and branch loading in `src/components/git/ConnectedRepositoryPicker.tsx`
-- `Loading repositories...`, `Loading more repositories...`, and branch `Loading...` in `src/components/git/ConnectedRepositoryPicker.tsx`
+- Source control connection and namespace loading in `src/pages/workspace/SourceControl.tsx`
 
-### Source Control
-
-- Page-level `Loading GitHub settings…` in `src/pages/workspace/SourceControl.tsx`
-- Page-level `Loading source control connections…` in `src/pages/workspace/SourceControl.tsx`
-- Namespace/owner loading in `src/pages/workspace/SourceControl.tsx`
-- `Loading namespaces…` in the namespace selector in `src/pages/workspace/SourceControl.tsx`
-- Refresh / reconnect / connect action spinners in `src/pages/workspace/SourceControl.tsx`
-
-### Policies
-
-- No dedicated in-page loading UI found beyond route-level loading
-
-## Workspace People / Admin Pages
-
-### Members
+### Workspace People / Admin
 
 - `Loading members...` in `src/pages/teams/Members.tsx`
-- Invite action spinner in `src/pages/teams/Members.tsx`
-- Member row action loading is handled through pending menu actions in `src/pages/teams/Members.tsx`
-
-### Member Details
-
 - `Loading member details...` in `src/pages/teams/MemberDetails.tsx`
-- Organization-members count fallback `Loading...` in `src/pages/teams/MemberDetails.tsx`
-
-### Roles
-
 - `Loading workspace roles…` in `src/pages/teams/Roles.tsx`
-- Role create/update/delete action spinners in `src/pages/teams/Roles.tsx`
 
-## Auth / Workspace Entry
+### Workspace / Project Entry
 
-- Login button spinner in `src/components/login-form.tsx`
-- Full app auth boot spinner in `src/App.tsx`
-- Workspace launch spinner and empty-state loading shell in `src/features/projects/pages/ProjectsLaunchPage.tsx`
-- `Loading workspace` and `Loading projects` variants in `src/features/projects/pages/ProjectsLaunchPage.tsx`
-- New project import flow spinner in `src/pages/NewProject.tsx`
-- Workspace creation dialog validation and submit spinners in `src/components/workspaces/CreateWorkspaceDialog.tsx`
+- Workspace launch gating in `src/features/projects/pages/ProjectsLaunchPage.tsx`
+- Project invite / join data loading in:
+  - `src/features/projects/pages/ProjectJoinPage.tsx`
+  - `src/features/projects/pages/ProjectInvitePage.tsx`
+- Login spinner in `src/components/login-form.tsx`
 
-## Project Entry / Invite / Redirect Flow
-
-- Project join page full-card loading state in `src/features/projects/pages/ProjectJoinPage.tsx`
-- Project join page action spinner for join/login in `src/features/projects/pages/ProjectJoinPage.tsx`
-- Project invite page full-card loading state in `src/features/projects/pages/ProjectInvitePage.tsx`
-- Project invite page action spinners for accept / decline / login / logout in `src/features/projects/pages/ProjectInvitePage.tsx`
-- Legacy project redirect spinner in `src/features/projects/pages/LegacyProjectRedirectPage.tsx`
-
-## Project Shell / Sidebar / Header
+### Project Lists / Headers / Sharing
 
 - `Loading projects…` in `src/features/projects/components/ProjectSidebar.tsx`
-- Project row action spinner in `src/features/projects/components/ProjectSidebar.tsx`
-- Sync indicator spin state in `src/features/projects/components/ProjectSyncIndicator.tsx`
-- Header inbox dropdown `Loading...` state in `src/components/layouts/unified-header/HeaderInboxButton.tsx`
-- Header share menu `Loading project sharing settings…` in `src/components/layouts/unified-header/HeaderProjectShareButton.tsx`
-- Header share menu `Loading contacts…` in `src/components/layouts/unified-header/HeaderProjectShareButton.tsx`
-- Header share menu action spinners for invite/cancel/resend/remove/role/link operations in `src/components/layouts/unified-header/HeaderProjectShareButton.tsx`
+- Inbox dropdown loading in `src/components/layouts/unified-header/HeaderInboxButton.tsx`
+- Share dialog data loading in `src/components/layouts/unified-header/HeaderProjectShareButton.tsx`
+- Project-level sync/loading state in `src/features/projects/components/ProjectSyncIndicator.tsx`
 
-## Project Pages
-
-### Workbench
-
-- `Loading workbench…` in `src/features/projects/pages/ProjectWorkbenchPage.tsx`
-- Lazy workbench panel fallback `Loading panel…` in `src/features/projects/components/workbench/WorkbenchDockPanels.tsx`
-
-### Project Settings
+### Project Pages
 
 - `Loading project settings…` in `src/features/projects/pages/ProjectSettingsPage.tsx`
-- Save/archive/delete action spinners in `src/features/projects/pages/ProjectSettingsPage.tsx`
-
-### Project Team
-
 - `Loading project team…` in `src/features/projects/pages/ProjectTeamPage.tsx`
-- Invite/member mutation spinners in `src/features/projects/pages/ProjectTeamPage.tsx`
+- `Loading tasks…` and `Loading people...` in `src/features/projects/pages/TasksPage.tsx`
+- Comments/change selection loading in `src/features/projects/pages/ChangesPage.tsx`
 
-### Tasks
+### Silent Cloud-Backed Loading
 
-- `Loading tasks…` in `src/features/projects/pages/TasksPage.tsx`
-- `Loading people...` in assignee picker in `src/features/projects/pages/TasksPage.tsx`
-- `Loading previews...` / `Loading files...` in task context pickers in `src/features/projects/pages/TasksPage.tsx`
-- Task action spinners in `src/features/projects/pages/TasksPage.tsx`
+- Workspace general data in `src/hooks/useScopedGeneralData.ts`
+- Workspace people data in `src/hooks/useScopedWorkspacePeopleData.ts`
+- Member details data in `src/hooks/useScopedMemberDetailsData.ts`
+- Project workspace context in `src/features/projects/hooks/useProjectWorkspaceContext.ts`
+- Project presence in `src/hooks/useProjectPresence.ts`
 
-### Changes
+## Local / Code / Desktop Runtime Loading Gates
 
-- `Loading comments…` shimmer in `src/features/projects/pages/ChangesPage.tsx`
-- `Updating…` shimmer in `src/features/projects/pages/ChangesPage.tsx`
-- `Loading diff preview...` in `src/features/projects/components/changes/DiffPanel.tsx`
-- `Loading selected diff...` in `src/features/projects/components/changes/DiffPanel.tsx`
+These are not network waits. They are chunk loads, local state restore, local git/runtime setup, or Electron-native work.
 
-### Conflicts
+### Route Code-Splitting / Suspense
 
-- `Loading conflicts…` in `src/features/projects/pages/ProjectConflictsPage.tsx`
-- Conflict status refresh spinner in `src/features/projects/pages/ProjectConflictsPage.tsx`
-- File-content loading spinner in `src/features/projects/pages/ProjectConflictsPage.tsx`
-- Resolve/save spinner in `src/features/projects/pages/ProjectConflictsPage.tsx`
+All of these use `Suspense` + `RouteLoading` in `src/router/routes.tsx`, so they are local code-load gates, not data fetches:
 
-## Workbench Tiles / Embedded Tools
+- `Loading project invite…`
+- `Loading project…`
+- `Loading settings…`
+- `Loading billing…`
+- `Loading integrations…`
+- `Loading source control…`
+- `Loading account settings…`
+- `Loading appearance settings…`
+- `Loading storage settings…`
+- `Loading tooling settings…`
+- `Loading team members…`
+- `Loading member details…`
+- `Loading roles…`
+- `Loading policies…`
+- `Loading invitation…`
+- `Loading workspaces…`
+- `Loading workspace setup…`
 
-### Terminal
+Shared component:
 
-- `Preparing terminal…` in `src/features/projects/components/workbench/WorkbenchTerminalTile.tsx`
+- `RouteLoading` in `src/router/RouteLoading.tsx`
 
-### Branch Control
+### Shared Local Loading Primitives
 
-- Branch fetch/switch spinner in `src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx`
+- Skeleton primitive in `src/components/ui/skeleton.tsx`
+- Sidebar skeleton rows in `src/components/ui/sidebar.tsx`
+- Assistant loading toasts in `src/features/projects/components/assistant/ui/toast.tsx`
+- Presence spinner in `src/components/presence/PresenceAvatarGroup.tsx`
 
-### Dev Server / Preview
+### Personal Settings
 
-- `Starting preview…` empty state in `src/features/projects/components/workbench/WorkbenchDevServerTile.tsx`
-- Native iOS preview loading states in `src/features/projects/components/previews/IosSimulatorViewport.tsx`:
-  - `Loading iOS simulators...`
-  - `Starting native preview session...`
-- Native-preview action/state loading is wired through `src/features/projects/hooks/useIosNativePreview.ts`
+- Storage page loading in `src/pages/settings/Storage.tsx`
+  - disk snapshot
+  - local projects table
+  - local destructive actions
+- Tooling page loading in `src/pages/settings/Tooling.tsx`
+  - git runtime check
+  - local runtime inventory check
+- Appearance page has no dedicated in-page loader beyond route chunk loading
 
-### Browser Tile
+### Desktop Runtime / Git / Filesystem
 
-- Browser load state exists in `src/features/projects/components/workbench/useWorkbenchBrowserView.ts`
-- Current visible loading is mostly indirect through tile readiness / overlay handling, not a dedicated text loader
+- Repository owner/repository loading in:
+  - `src/components/git/RepositoryProvisioner.tsx`
+  - `src/components/git/ConnectedRepositoryPicker.tsx`
+- Local workspace creation UI validation in `src/components/workspaces/CreateWorkspaceDialog.tsx`
+- Local git inspection in `src/features/projects/components/CreateProjectDialog.tsx`
+- Legacy redirect spinner in `src/features/projects/pages/LegacyProjectRedirectPage.tsx`
+- Project conflicts local loading in `src/features/projects/pages/ProjectConflictsPage.tsx`
 
-### Assistant
+### Workbench Shell / Panels
 
-- Assistant composer interrupt spinner in `src/features/projects/components/assistant/chat/CozeaChatSurface.tsx`
-- Assistant pending-user-input submit label `Submitting...` in `src/features/projects/components/assistant/chat/CozeaChatSurface.tsx`
-- Assistant diff dialog `Loading diff…` in `src/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog.tsx`
-- Assistant config-loading state is tracked in:
+- `Loading workbench…` in `src/features/projects/pages/ProjectWorkbenchPage.tsx`
+- Lazy panel fallback `Loading panel…` in `src/features/projects/components/workbench/WorkbenchDockPanels.tsx`
+- Workbench lane restore/loading in `src/features/projects/hooks/useProjectLaneState.ts`
+
+### Workbench Tiles
+
+- Terminal boot `Preparing terminal…` in `src/features/projects/components/workbench/WorkbenchTerminalTile.tsx`
+- Branch control local fetch/switch spinner in `src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx`
+- Dev server preview startup in `src/features/projects/components/workbench/WorkbenchDevServerTile.tsx`
+- Native iOS preview runtime loading in `src/features/projects/components/previews/IosSimulatorViewport.tsx`
+- Browser tile local load/overlay state in:
+  - `src/features/projects/browser/browserTileModel.ts`
+  - `src/features/projects/components/workbench/useWorkbenchBrowserView.ts`
+- Assistant diff loading in `src/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog.tsx`
+- Assistant local runtime/config loading in:
   - `src/features/projects/components/workbench/assistant/assistantRuntimeMetadataStore.ts`
   - `src/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController.tsx`
   - `src/features/projects/components/workbench/assistant/useAssistantServerConfig.ts`
 
-## Project / Workspace Creation Dialogs
+## Mixed Gates
 
-### Create Project Dialog
+These are the places where one visible loading state hides both remote and local work.
 
-- Local git inspection spinner in `src/features/projects/components/CreateProjectDialog.tsx`
-- Owner loading in the remote-creation fallback flow in `src/features/projects/components/CreateProjectDialog.tsx`
-- Submit spinner in `src/features/projects/components/CreateProjectDialog.tsx`
+### New Project / Import Flows
 
-### Create Workspace Dialog
+- `src/pages/NewProject.tsx`
+  - can involve immediate local picker/runtime work
+  - can also lead into project creation mutations
+- `src/features/projects/components/CreateProjectDialog.tsx`
+  - local git inspection
+  - owner/provider loading
+  - project creation submit
 
-- Slug/name validation spinner in `src/components/workspaces/CreateWorkspaceDialog.tsx`
-- Submit spinner in `src/components/workspaces/CreateWorkspaceDialog.tsx`
+### Workspace Creation
 
-## Things That Currently Load Silently
+- `src/components/workspaces/CreateWorkspaceDialog.tsx`
+  - local validation feel
+  - workspace creation is still remote data creation
 
-These have real loading state, but the UI mostly responds by disabling controls or deferring render instead of showing a dedicated loader.
+### Integrations / Source Control
 
-- Personal account profile fetch in `src/pages/settings/Account.tsx`
-- Workspace general settings fetch in `src/hooks/useScopedGeneralData.ts`
-- Workspace people fetches in `src/hooks/useScopedWorkspacePeopleData.ts`
-- Member-details data assembly in `src/hooks/useScopedMemberDetailsData.ts`
-- Project workspace context fetch in `src/features/projects/hooks/useProjectWorkspaceContext.ts`
-- Project presence fetch in `src/hooks/useProjectPresence.ts`
-- Workbench browser tile loading flags in `src/features/projects/browser/browserTileModel.ts` and `src/features/projects/components/workbench/useWorkbenchBrowserView.ts`
-- Project lane restore/loading state in `src/features/projects/hooks/useProjectLaneState.ts`
+- `src/pages/workspace/Integrations.tsx`
+- `src/pages/workspace/SourceControl.tsx`
+- `src/components/git/RepositoryProvisioner.tsx`
+- `src/components/git/ConnectedRepositoryPicker.tsx`
 
-## Notes For Cleanup
+These are mixed because the visible loader often combines:
 
-Patterns currently in use:
+- remote provider/account data
+- local dialog state
+- local menu/control disable states
 
-- full-screen spinner shell
-- route-level spinner shell
-- centered page/card spinner
-- inline button spinner
-- shimmer text placeholder
-- skeleton rows
-- silent disabled-controls loading
+### Project Pages With Split Context
 
-There is clear consolidation room here:
+- `src/features/projects/pages/TasksPage.tsx`
+  - tasks / people are cloud-backed
+  - preview/file context loading is local
+- `src/features/projects/pages/ChangesPage.tsx`
+  - comments are cloud-backed
+  - diff preview/update states can be local/runtime-driven
+- `src/features/projects/pages/ProjectWorkbenchPage.tsx`
+  - project/workspace route context is cloud-backed
+  - workbench session/lane restoration is local
 
-- route/page loaders could share fewer variants
-- table loaders could use one shared row pattern
-- silent loading vs visible loading is inconsistent between settings pages
-- some action spinners are text-only and some are icon-only
+## Cleanup Lens
+
+Now that the inventory is split correctly for a desktop app, the cleanup work should probably treat these as different classes:
+
+- `cloud gates`
+  - okay to be more explicit
+  - should explain what data is being resolved
+- `local/runtime gates`
+  - should feel faster and lighter
+  - often should avoid full-screen blockers
+- `mixed gates`
+  - should probably be decomposed so local prep does not masquerade as remote waiting
+
+## Suggested Next Pass
+
+If we want to simplify this systematically, the clean next step is to mark every item with one of:
+
+- `cloud`
+- `local`
+- `mixed`
+
+and then separately decide:
+
+- which ones deserve a blocking loader
+- which ones should become inline progress only
+- which ones should become optimistic with no loader at all

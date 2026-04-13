@@ -20,6 +20,21 @@ import { TasksPage } from "@/features/projects/pages/TasksPage";
 import { ProjectConflictsPage } from "@/features/projects/pages/ProjectConflictsPage";
 import { ProjectTeamPage } from "@/features/projects/pages/ProjectTeamPage";
 import NewProject from "@/pages/NewProject";
+import { General } from "@/pages/workspace/General";
+import { Billing } from "@/pages/workspace/Billing";
+import { Integrations } from "@/pages/workspace/Integrations";
+import { SourceControl } from "@/pages/workspace/SourceControl";
+import { Account } from "@/pages/settings/Account";
+import { Appearance } from "@/pages/settings/Appearance";
+import { Storage } from "@/pages/settings/Storage";
+import { Tooling } from "@/pages/settings/Tooling";
+import { Members } from "@/pages/teams/Members";
+import { MemberDetails } from "@/pages/teams/MemberDetails";
+import { Roles } from "@/pages/teams/Roles";
+import { Policies } from "@/pages/workspace/Policies";
+import { AcceptInvitation } from "@/pages/AcceptInvitation";
+import { WorkspaceSelect } from "@/pages/WorkspaceSelect";
+import { WorkspaceCreate } from "@/pages/WorkspaceCreate";
 import {
   canAccessWorkspaceSurface,
   getSettingsSurface,
@@ -68,104 +83,6 @@ const LegacyProjectRedirectPage = createLazyRouteComponent(
     })),
   "Loading project…",
 );
-const General = createLazyRouteComponent(
-  () =>
-    import("@/pages/workspace/General").then((module) => ({
-      default: module.General,
-    })),
-  "Loading settings…",
-);
-const Billing = createLazyRouteComponent(
-  () =>
-    import("@/pages/workspace/Billing").then((module) => ({
-      default: module.Billing,
-    })),
-  "Loading billing…",
-);
-const Integrations = createLazyRouteComponent(
-  () =>
-    import("@/pages/workspace/Integrations").then((module) => ({
-      default: module.Integrations,
-    })),
-  "Loading integrations…",
-);
-const SourceControl = createLazyRouteComponent(
-  () =>
-    import("@/pages/workspace/SourceControl").then((module) => ({
-      default: module.SourceControl,
-    })),
-  "Loading source control…",
-);
-const Account = createLazyRouteComponent(
-  () =>
-    import("@/pages/settings/Account").then((module) => ({
-      default: module.Account,
-    })),
-  "Loading account settings…",
-);
-const Appearance = createLazyRouteComponent(
-  () =>
-    import("@/pages/settings/Appearance").then((module) => ({
-      default: module.Appearance,
-    })),
-  "Loading appearance settings…",
-);
-const Storage = createLazyRouteComponent(
-  () =>
-    import("@/pages/settings/Storage").then((module) => ({
-      default: module.Storage,
-    })),
-  "Loading storage settings…",
-);
-const Tooling = createLazyRouteComponent(
-  () =>
-    import("@/pages/settings/Tooling").then((module) => ({
-      default: module.Tooling,
-    })),
-  "Loading tooling settings…",
-);
-const Members = createLazyRouteComponent(
-  () => import("@/pages/teams/Members").then((module) => ({ default: module.Members })),
-  "Loading team members…",
-);
-const MemberDetails = createLazyRouteComponent(
-  () =>
-    import("@/pages/teams/MemberDetails").then((module) => ({
-      default: module.MemberDetails,
-    })),
-  "Loading member details…",
-);
-const Roles = createLazyRouteComponent(
-  () => import("@/pages/teams/Roles").then((module) => ({ default: module.Roles })),
-  "Loading roles…",
-);
-const Policies = createLazyRouteComponent(
-  () =>
-    import("@/pages/workspace/Policies").then((module) => ({ default: module.Policies })),
-  "Loading policies…",
-);
-const AcceptInvitation = createLazyRouteComponent(
-  () =>
-    import("@/pages/AcceptInvitation").then((module) => ({
-      default: module.AcceptInvitation,
-    })),
-  "Loading invitation…",
-);
-const WorkspaceSelect = createLazyRouteComponent(
-  () =>
-    import("@/pages/WorkspaceSelect").then((module) => ({
-      default: module.WorkspaceSelect,
-    })),
-  "Loading workspaces…",
-);
-const WorkspaceCreate = createLazyRouteComponent(
-  () =>
-    import("@/pages/WorkspaceCreate").then((module) => ({
-      default: module.WorkspaceCreate,
-    })),
-  "Loading workspace setup…",
-);
-
 const WORKSPACE_MEMBERS_ROUTE = getSettingsSurfaceRoute("members", "workspace") ?? "/teams";
 const WORKSPACE_ROLES_ROUTE =
   getSettingsSurfaceRoute("roles", "workspace") ?? "/teams/roles";
@@ -213,7 +130,7 @@ function OrganizationWorkspacePermissionOnly({
   const { workspaceScoped, surfaceAccess } = useScopedAppContext({ route: "/workspace/general" });
 
   if (isLoading) {
-    return <RouteLoading label="Loading workspace…" />;
+    return null;
   }
 
   if (!workspaceScoped) {
@@ -245,7 +162,7 @@ function WorkspaceScopedSettingRoute({
   });
 
   if (isLoading) {
-    return <RouteLoading label="Resolving workspace…" />;
+    return null;
   }
 
   if (!currentOrganizationWorkspace && !currentPersonalWorkspace) {

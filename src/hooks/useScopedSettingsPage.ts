@@ -53,8 +53,17 @@ export function useScopedSettingsPage(options: UseScopedSettingsPageOptions) {
       return false
     }
 
+    if (!appContext.hasResolvedWorkspaceAccess) {
+      return false
+    }
+
     return !canAccessWorkspaceSurface(surface, workspaceAccess.surfaceAccess)
-  }, [scopedSettingsSurface.workspaceScoped, surface, workspaceAccess.surfaceAccess])
+  }, [
+    appContext.hasResolvedWorkspaceAccess,
+    scopedSettingsSurface.workspaceScoped,
+    surface,
+    workspaceAccess.surfaceAccess,
+  ])
 
   return {
     ...scopedSettingsSurface,
@@ -62,5 +71,8 @@ export function useScopedSettingsPage(options: UseScopedSettingsPageOptions) {
     workspaceAccess,
     breadcrumbs,
     isWorkspaceAccessDenied,
+    hasResolvedContext: appContext.hasResolvedContext,
+    isContextRefreshing: appContext.isContextRefreshing,
+    hasResolvedWorkspaceAccess: appContext.hasResolvedWorkspaceAccess,
   }
 }

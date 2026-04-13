@@ -173,10 +173,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
         />
       ) : (
         <SettingsPageBody surface={surface}>
-          {isLoading ? (
-            <p className="mb-1 px-1 text-[11px] text-muted-foreground">Loading workspace settings…</p>
-          ) : null}
-          {!isLoading && !canManageGeneral ? (
+          {settingsPage.hasResolvedWorkspaceAccess && !canManageGeneral ? (
             <p className="mb-3 px-1 text-[11px] text-muted-foreground">
               You can view workspace details, but only owners or admins with organization update access can
               edit them.
