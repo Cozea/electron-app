@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GpuAccelerationDiagnostics } from '@shared/electronApiTypes'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { extractTerminalLinks, isTerminalLinkActivation, resolvePathLinkTarget } from '@/lib/terminalLinks'
 
 import { SearchAddon } from '@xterm/addon-search'
@@ -16,8 +17,11 @@ import {
   relativeLuminance,
   resolveThemeColor,
   syncTerminalTheme,
+  XTERM_CUSTOM_GLYPHS,
   XTERM_FONT_FAMILY,
   XTERM_LINE_HEIGHT,
+  XTERM_RESCALE_OVERLAPPING_GLYPHS,
+  XTERM_UNICODE_VERSION,
 } from '@/lib/xtermTheme'
 
 interface TerminalInstanceProps {
@@ -235,6 +239,30 @@ export function TerminalInstance({
         syncWebglRendererRef.current()
       }, 250)
     })
+
+    requestAnimationFrame(() => {
+      const fitAddon = fitAddonRef.current
+      const activeTerminal = xtermRef.current
+      if (!fitAddon || !activeTerminal || activeTerminal !== terminal) {
+        return
+      }
+
+      try {
+        const wasAtBottom =
+          activeTerminal.buffer.active.viewportY >= activeTerminal.buffer.active.baseY
+        fitAddon.fit()
+        if (wasAtBottom) {
+          activeTerminal.scrollToBottom()
+        }
+        void window.electronAPI.terminal.resize({
+          terminalId,
+          cols: activeTerminal.cols,
+          rows: activeTerminal.rows,
+        })
+      } catch (error) {
+        console.error('[Terminal] WebGL post-load fit failed:', error)
+      }
+    })
   }, [disposeWebglRenderer])
 
   useEffect(() => {
@@ -259,14 +287,8 @@ export function TerminalInstance({
     }
 
     const fontSize = 12
-    const charWidth = fontSize * 0.6
-    const charHeight = fontSize * XTERM_LINE_HEIGHT
-    const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))
-    const rows = Math.max(10, Math.floor((rect.height - 8) / charHeight))
 
     const term = new Terminal({
-      cols,
-      rows,
       theme: buildProjectTerminalTheme(container),
       fontSize,
       fontFamily: XTERM_FONT_FAMILY,
@@ -274,17 +296,29 @@ export function TerminalInstance({
       fontWeightBold: '700',
       letterSpacing: 0,
       lineHeight: XTERM_LINE_HEIGHT,
+      customGlyphs: XTERM_CUSTOM_GLYPHS,
+      rescaleOverlappingGlyphs: XTERM_RESCALE_OVERLAPPING_GLYPHS,
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 10000,
+      scrollOnEraseInDisplay: true,
+      windowOptions: {
+        getWinSizePixels: true,
+        getCellSizePixels: true,
+        getWinSizeChars: true,
+      },
       allowProposedApi: true,
       drawBoldTextInBrightColors: true,
-      minimumContrastRatio: 4.5,
       disableStdin: readOnly,
     })
 
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
+    const unicode11Addon = new Unicode11Addon()
+    term.loadAddon(unicode11Addon)
+    if (term.unicode.activeVersion !== XTERM_UNICODE_VERSION) {
+      term.unicode.activeVersion = XTERM_UNICODE_VERSION
+    }
     const projectPath = useTerminalStore.getState().terminals[terminalId]?.projectPath || ''
     
     const terminalLinksDisposable = term.registerLinkProvider({
@@ -390,8 +424,15 @@ export function TerminalInstance({
       return true
     })
     term.open(container)
+    fitAddon.fit()
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+
+    void window.electronAPI.terminal.resize({
+      terminalId,
+      cols: term.cols,
+      rows: term.rows,
+    })
 
     // Initialize with existing history from Zustand without subscribing to changes
     const existingHistory = useTerminalStore.getState().outputBuffers[terminalId] ?? []
@@ -444,7 +485,7 @@ export function TerminalInstance({
       } catch (error) {
         console.error('[Terminal] Fit failed:', error)
       }
-    }, 50)
+    }, 30)
 
     return () => {
       clearTimeout(fitTimeout)

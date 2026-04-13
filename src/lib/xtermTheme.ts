@@ -3,12 +3,26 @@ import type { ITheme, Terminal } from '@xterm/xterm'
 
 const ROOT_THEME_SELECTOR = '.dark, .navy, .wine, .clay, .forest'
 
+function isMacPlatform(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+
+  const platform = navigator.userAgentData?.platform ?? navigator.platform ?? ''
+  return /mac/i.test(platform)
+}
+
 /** Primary SF Mono stack (parity with t3-style embedded terminals; falls back cross-platform). */
 export const XTERM_FONT_FAMILY =
-  '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace'
+  `"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace${
+    isMacPlatform() ? ', AppleBraille' : ''
+  }`
 
 /** Slightly relaxed line height for readability (matches common desktop terminal drawers). */
 export const XTERM_LINE_HEIGHT = 1.2
+export const XTERM_CUSTOM_GLYPHS = true
+export const XTERM_RESCALE_OVERLAPPING_GLYPHS = true
+export const XTERM_UNICODE_VERSION = '11'
 
 export function colorToHex(cssColor: string): string {
   const canvas = document.createElement('canvas')

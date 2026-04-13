@@ -484,14 +484,8 @@ export class TerminalService {
                             }),
                         },
                         (data) => {
-                            let cleanData = data
-                            // eslint-disable-next-line no-control-regex
-                            cleanData = cleanData.replace(/\x1b\](10|11|12);(?:\?|rgb:)[^\x07\x1b]*(\x07|\x1b\\)/g, '')
-                            // eslint-disable-next-line no-control-regex
-                            cleanData = cleanData.replace(/\x1b\[6n/g, '')
-
-                            terminal.output = appendTerminalOutput(terminal.output || '', cleanData)
-                            const outputEvent = { terminalId, data: cleanData, runId: terminal.runId }
+                            terminal.output = appendTerminalOutput(terminal.output || '', data)
+                            const outputEvent = { terminalId, data, runId: terminal.runId }
                             this.broadcastOutput(outputEvent)
                             this.emitObserverOutput(terminalId, {
                                 ...outputEvent,
