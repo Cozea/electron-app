@@ -300,7 +300,10 @@ export function TerminalInstance({
       rescaleOverlappingGlyphs: XTERM_RESCALE_OVERLAPPING_GLYPHS,
       cursorBlink: true,
       cursorStyle: 'block',
-      scrollback: 10000,
+      scrollback: 1000,
+      scrollSensitivity: 1,
+      fastScrollSensitivity: 5,
+      smoothScrollDuration: 0,
       scrollOnEraseInDisplay: true,
       windowOptions: {
         getWinSizePixels: true,
