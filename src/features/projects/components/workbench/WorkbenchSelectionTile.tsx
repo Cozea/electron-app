@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type RefObject, type SVGProps } from "react"
-import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
+import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
 import type { ProviderKind } from "@cozea/assistant-contracts"
+import { SiGooglechrome } from "react-icons/si"
 
 import type {
   WorkbenchSelectionTile,
@@ -79,16 +80,29 @@ interface SelectionOption {
   icon: SelectionOptionIcon
 }
 
+function CommandPromptIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5.5 7.5L10 12l-4.5 4.5" />
+      <path d="M13 16.5h5.5" />
+    </svg>
+  )
+}
+
+function ChromiumIcon(props: SVGProps<SVGSVGElement>) {
+  return <SiGooglechrome {...props} />
+}
+
 const DEVELOPMENT_SELECTION_OPTIONS: SelectionOption[] = [
   {
     id: "browser",
     label: "Browser",
     description: "persistent web surface",
-    iconBgClass: "bg-sky-500/90",
+    iconBgClass: "bg-zinc-950",
     iconColorClass: "text-white",
     category: "Development",
     type: "browser",
-    icon: AppWindow,
+    icon: ChromiumIcon,
   },
   {
     id: "devServer",
@@ -108,7 +122,7 @@ const DEVELOPMENT_SELECTION_OPTIONS: SelectionOption[] = [
     iconColorClass: "text-white dark:text-zinc-900",
     category: "Development",
     type: "terminal",
-    icon: SquareTerminal,
+    icon: CommandPromptIcon,
   },
   {
     id: "mobileSimulator",

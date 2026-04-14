@@ -3,6 +3,7 @@ import type { DockviewApi, DockviewPanelApi } from "dockview"
 import { ArrowsPointingInIcon as Minimize2, ArrowsPointingOutIcon as Maximize2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import {
   ArchiveBoxIcon as PackageOpen,
+  ChatBubbleLeftRightIcon as Messages,
   CommandLineIcon as SquareTerminal,
   DevicePhoneMobileIcon as Phone,
   GlobeAltIcon as Globe,
@@ -42,8 +43,9 @@ function resolveAssistantProviderIcon(provider: string | null | undefined) {
     case "openCode":
       return OpenCodeIcon
     case "codex":
-    default:
       return OpenAI
+    default:
+      return null
   }
 }
 
@@ -53,7 +55,7 @@ function resolveTileIcon(
 ) {
   switch (tileType) {
     case "assistantChat":
-      return resolveAssistantProviderIcon(assistantProvider)
+      return resolveAssistantProviderIcon(assistantProvider) ?? Messages
     case "terminal":
       return SquareTerminal
     case "browser":
