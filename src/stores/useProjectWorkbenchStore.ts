@@ -51,6 +51,7 @@ export type WorkbenchTileType =
   | "browser"
   | "terminal"
   | "devServer"
+  | "mobileSimulator"
   | "selection"
   | "tasks"
   | "changes"
@@ -85,6 +86,10 @@ export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
 
 export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   type: "devServer"
+}
+
+export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
+  type: "mobileSimulator"
 }
 
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
@@ -122,6 +127,7 @@ export type WorkbenchTile =
   | WorkbenchBrowserTile
   | WorkbenchTerminalTile
   | WorkbenchDevServerTile
+  | WorkbenchMobileSimulatorTile
   | WorkbenchSelectionTile
   | WorkbenchTasksTile
   | WorkbenchChangesTile
@@ -201,7 +207,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer">,
+      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator">,
       options?: CreateTileOptions,
     ) => string
     removeTile: (projectId: string, laneId: string, tileId: string) => void
@@ -246,6 +252,7 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   browser: "Browser",
   terminal: "Terminal",
   devServer: "Dev Server",
+  mobileSimulator: "Mobile Simulator",
   selection: "Add Tile",
   tasks: "Tasks",
   changes: "Changes",
@@ -296,6 +303,8 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     case "terminal":
       return { id, type, title, createdAt }
     case "devServer":
+      return { id, type, title, createdAt }
+    case "mobileSimulator":
       return { id, type, title, createdAt }
     case "selection":
       return {
@@ -688,7 +697,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             const workbench = state.workbenches[scopeKey] ?? createDefaultWorkbenchState(projectId, normalizedLaneId)
             const existingTile = workbench.order
               .map((tileId) => workbench.tiles[tileId])
-              .find((tile): tile is WorkbenchDevServerTile => tile?.type === type)
+              .find((tile) => tile?.type === type)
 
             if (existingTile) {
               resolvedTileId = existingTile.id

@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, CpuChipIcon as Bot, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, CpuChipIcon as Bot, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
 
 import type {
   WorkbenchSelectionTile,
@@ -8,19 +8,22 @@ import type {
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
+import {
+  computeWorkbenchSelectionLauncherLayout,
+  WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT,
+  WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH,
+  WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP,
+  WORKBENCH_SELECTION_LAUNCHER_ROW_GAP,
+  type WorkbenchSelectionLauncherLayout,
+} from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
 
 type CategoryTab = "All" | "Development" | "Assistant" | "Explore marketplace"
-
-type SelectionLayout = "spacious" | "verticalCompact" | "horizontalCompact"
 
 const SPACIOUS_MIN_W = 720
 const SPACIOUS_MIN_H = 480
 
-function deriveSelectionLayout(width: number, height: number): SelectionLayout {
-  if (width <= 0 || height <= 0) return "horizontalCompact"
-  if (width >= SPACIOUS_MIN_W && height >= SPACIOUS_MIN_H) return "spacious"
-  if (height > width * 1.02) return "verticalCompact"
-  return "horizontalCompact"
+function isSpaciousSelectionSurface(width: number, height: number) {
+  return width >= SPACIOUS_MIN_W && height >= SPACIOUS_MIN_H
 }
 
 interface WorkbenchSelectionTileProps {
@@ -29,7 +32,8 @@ interface WorkbenchSelectionTileProps {
   singletonEmptyWorkbench?: boolean
   projectName?: string | null
   projectPath?: string | null
-  onChoose: (type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">) => void
+  framework?: string | null
+  onChoose: (type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">) => void
 }
 
 interface SelectionOption {
@@ -39,7 +43,7 @@ interface SelectionOption {
   iconBgClass: string
   iconColorClass: string
   category: "Development" | "Assistant" | "Explore marketplace"
-  type?: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">
+  type?: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">
   icon: typeof AppWindow
 }
 
@@ -57,7 +61,7 @@ const CORE_SELECTION_OPTIONS: SelectionOption[] = [
   {
     id: "devServer",
     label: "Dev Server",
-    description: "preview and runtime",
+    description: "web preview and runtime",
     iconBgClass: "bg-emerald-500/90",
     iconColorClass: "text-white",
     category: "Development",
@@ -85,6 +89,10 @@ const CORE_SELECTION_OPTIONS: SelectionOption[] = [
     icon: Bot,
   },
 ]
+
+function supportsMobileSimulatorForFramework(framework: string | null | undefined) {
+  return framework === "expo" || framework === "react-native"
+}
 
 const CATEGORY_TABS: CategoryTab[] = ["All", "Development", "Assistant", "Explore marketplace"]
 
@@ -120,25 +128,18 @@ function SelectionFilterBar({
   isMac,
   activeCategory,
   onCategoryChange,
-  layout,
 }: {
   isMac: boolean
   activeCategory: CategoryTab
   onCategoryChange: (category: CategoryTab) => void
-  layout: SelectionLayout
 }) {
   const shortcut = isMac ? "⌘P" : "Ctrl+P"
-  const isSpacious = layout === "spacious"
-  const isVerticalCompact = layout === "verticalCompact"
 
   return (
-    <div className={cn("w-full shrink-0 border-b border-border/70 bg-content-surface", isSpacious ? "pt-3" : "px-2 py-2")}>
-      <div className={cn("mx-auto flex w-full max-w-5xl flex-col gap-2.5", isSpacious && "pb-2")}>
+    <div className="w-full shrink-0 border-b border-border/70 bg-content-surface px-2 py-2 md:px-0">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2.5 pb-2">
         <div
-          className={cn(
-            "flex min-w-0 items-stretch overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            isVerticalCompact ? "w-full" : "items-end",
-          )}
+          className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {CATEGORY_TABS.map((cat, index, array) => (
             <div key={cat} className="flex shrink-0 items-stretch">
@@ -178,15 +179,15 @@ function SelectionFilterBar({
   )
 }
 
-function useContainerLayout(): [RefObject<HTMLDivElement | null>, SelectionLayout] {
+function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean] {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [layout, setLayout] = useState<SelectionLayout>("horizontalCompact")
+  const [spacious, setSpacious] = useState(false)
 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
-    setLayout(deriveSelectionLayout(width, height))
+    setSpacious(isSpaciousSelectionSurface(width, height))
   }, [])
 
   useEffect(() => {
@@ -197,17 +198,61 @@ function useContainerLayout(): [RefObject<HTMLDivElement | null>, SelectionLayou
       const entry = entries[0]
       if (!entry) return
       const { width, height } = entry.contentRect
-      setLayout(deriveSelectionLayout(width, height))
+      setSpacious(isSpaciousSelectionSurface(width, height))
     })
 
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
+  return [ref, spacious]
+}
+
+function useLauncherGridLayout(
+  itemCount: number,
+): [RefObject<HTMLDivElement | null>, WorkbenchSelectionLauncherLayout] {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [layout, setLayout] = useState<WorkbenchSelectionLauncherLayout>(() =>
+    computeWorkbenchSelectionLauncherLayout({
+      width: 0,
+      height: 0,
+      itemCount,
+    }),
+  )
+
+  const recalculate = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    setLayout(
+      computeWorkbenchSelectionLauncherLayout({
+        width,
+        height,
+        itemCount,
+      }),
+    )
+  }, [itemCount])
+
+  useLayoutEffect(() => {
+    recalculate()
+  }, [recalculate])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const ro = new ResizeObserver(() => {
+      recalculate()
+    })
+
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [recalculate])
+
   return [ref, layout]
 }
 
-function OptionCardButton({
+function SelectionLauncherButton({
   option,
   onChoose,
 }: {
@@ -222,12 +267,12 @@ function OptionCardButton({
       type="button"
       disabled={!option.type}
       className={cn(
-        "group flex shrink-0 items-center gap-3 rounded-xl border border-border/80 bg-background p-2 text-left transition-colors",
-        "min-w-[13rem] max-w-[16rem]",
+        "group flex w-[112px] shrink-0 flex-col items-center gap-3 text-center transition-transform",
         option.type
-          ? "hover:border-border hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/5"
+          ? "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           : "cursor-default opacity-80",
       )}
+      title={option.description}
       onClick={() => {
         if (!option.type) return
         onChoose(option.type)
@@ -235,59 +280,16 @@ function OptionCardButton({
     >
       <div
         className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]",
+          "flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-[24px] ring-1 ring-black/5 transition-transform group-hover:scale-[1.03]",
           option.iconBgClass,
           option.iconColorClass,
         )}
       >
-        <Icon className="h-5 w-5" aria-hidden />
+        <Icon className="h-8 w-8" aria-hidden />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] font-semibold text-foreground">{option.label}</span>
-        <span className="truncate text-[11px] text-muted-foreground">{option.description}</span>
-      </div>
-    </button>
-  )
-}
-
-function OptionListRow({
-  option,
-  onChoose,
-}: {
-  option: SelectionOption
-  onChoose: WorkbenchSelectionTileProps["onChoose"]
-}) {
-  const Icon = option.icon
-  if (!Icon) return null
-
-  return (
-    <button
-      type="button"
-      disabled={!option.type}
-      className={cn(
-        "flex w-full min-w-0 items-center gap-3 rounded-none border-b border-border/55 bg-background px-4 py-2.5 text-left transition-colors last:border-b-0 md:px-6",
-        option.type
-          ? "hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/5"
-          : "cursor-default opacity-80",
-      )}
-      onClick={() => {
-        if (!option.type) return
-        onChoose(option.type)
-      }}
-    >
-      <div
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-          option.iconBgClass,
-          option.iconColorClass,
-        )}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-foreground">{option.label}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{option.description}</div>
-      </div>
+      <span className="line-clamp-2 text-[13px] font-medium leading-tight text-foreground">
+        {option.label}
+      </span>
     </button>
   )
 }
@@ -311,29 +313,83 @@ export function WorkbenchSelectionTile({
   singletonEmptyWorkbench = false,
   projectName,
   projectPath,
+  framework,
   onChoose,
 }: WorkbenchSelectionTileProps) {
   const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
 
-  const [rootRef, layout] = useContainerLayout()
+  const [rootRef, spacious] = useSelectionSurfaceDensity()
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
 
   const filteredOptions = useMemo(() => {
     const all = [...CORE_SELECTION_OPTIONS]
+    if (supportsMobileSimulatorForFramework(framework)) {
+      all.splice(2, 0, {
+        id: "mobileSimulator",
+        label: "Mobile Simulator",
+        description: "native device preview",
+        iconBgClass: "bg-indigo-500/90",
+        iconColorClass: "text-white",
+        category: "Development",
+        type: "mobileSimulator",
+        icon: Phone,
+      })
+    }
     if (activeCategory === "All") return all
     return all.filter((option) => option.category === activeCategory)
-  }, [activeCategory])
-  const showHero = singletonEmptyWorkbench && layout === "spacious"
-  const centerSingletonEmpty = singletonEmptyWorkbench
+  }, [activeCategory, framework])
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(filteredOptions.length)
+  const launcherPagerRef = launcherViewportRef
+  const [currentPage, setCurrentPage] = useState(0)
+
+  const pagedOptions = useMemo(() => {
+    const pages: SelectionOption[][] = []
+    for (let index = 0; index < filteredOptions.length; index += launcherLayout.itemsPerPage) {
+      pages.push(filteredOptions.slice(index, index + launcherLayout.itemsPerPage))
+    }
+    return pages.length > 0 ? pages : [[]]
+  }, [filteredOptions, launcherLayout.itemsPerPage])
+
+  const showHero = singletonEmptyWorkbench && spacious
+
+  useEffect(() => {
+    setCurrentPage(0)
+    const pager = launcherPagerRef.current
+    if (!pager) return
+    pager.scrollTo({ left: 0, top: 0, behavior: "auto" })
+  }, [activeCategory, launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows, launcherPagerRef])
+
+  useEffect(() => {
+    const pager = launcherPagerRef.current
+    if (!pager) return
+
+    const handleScroll = () => {
+      const nextPage = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth))
+      setCurrentPage(Math.max(0, Math.min(nextPage, pagedOptions.length - 1)))
+    }
+
+    handleScroll()
+    pager.addEventListener("scroll", handleScroll, { passive: true })
+    return () => pager.removeEventListener("scroll", handleScroll)
+  }, [launcherPagerRef, pagedOptions.length])
+
+  const handlePageSelect = useCallback(
+    (pageIndex: number) => {
+      const pager = launcherPagerRef.current
+      if (!pager) return
+      pager.scrollTo({
+        left: pageIndex * pager.clientWidth,
+        top: 0,
+        behavior: "smooth",
+      })
+      setCurrentPage(pageIndex)
+    },
+    [launcherPagerRef],
+  )
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-y-auto",
-          centerSingletonEmpty && "justify-center",
-        )}
-      >
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {showHero ? (
           <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-8 md:px-10 md:pt-10">
             <WelcomeHero projectName={projectName} projectPath={projectPath} />
@@ -341,7 +397,6 @@ export function WorkbenchSelectionTile({
               isMac={isMac}
               activeCategory={activeCategory}
               onCategoryChange={setActiveCategory}
-              layout={layout}
             />
           </div>
         ) : (
@@ -349,32 +404,71 @@ export function WorkbenchSelectionTile({
             isMac={isMac}
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
-            layout={layout}
           />
         )}
 
         <div
           className={cn(
-            "mx-auto flex w-full flex-col pb-4",
-            layout === "verticalCompact" ? "px-0" : "px-3 md:px-6",
-            layout === "verticalCompact" ? "pt-0" : "pt-3",
-            layout === "verticalCompact" ? "max-w-none" : "max-w-5xl",
-            centerSingletonEmpty ? "flex-none" : "flex-1",
+            "mx-auto flex w-full flex-1 min-h-0 flex-col px-3 pb-4 pt-3 md:px-6",
+            "max-w-5xl",
           )}
         >
           {activeCategory === "Explore marketplace" ? (
             <MarketplacePlaceholder />
-          ) : layout === "verticalCompact" ? (
-            <div className="app-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto">
-              {filteredOptions.map((option) => (
-                <OptionListRow key={option.id} option={option} onChoose={onChoose} />
-              ))}
-            </div>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-row items-start gap-2 overflow-x-auto overflow-y-hidden py-0.5 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5">
-              {filteredOptions.map((option) => (
-                <OptionCardButton key={option.id} option={option} onChoose={onChoose} />
-              ))}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div
+                ref={launcherPagerRef}
+                className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              >
+                <div className="flex h-full">
+                  {pagedOptions.map((page, pageIndex) => {
+                    const pageColumns = Math.min(launcherLayout.columns, Math.max(1, page.length))
+                    return (
+                      <div
+                        key={`selection-page-${pageIndex}`}
+                        className="flex min-w-full snap-start px-1 py-2"
+                      >
+                        <div
+                          className="grid w-full content-start justify-center"
+                          style={{
+                            gridTemplateColumns: `repeat(${pageColumns}, ${WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH}px)`,
+                            gridAutoRows: `${WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT}px`,
+                            columnGap: `${WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP}px`,
+                            rowGap: `${WORKBENCH_SELECTION_LAUNCHER_ROW_GAP}px`,
+                          }}
+                        >
+                          {page.map((option) => (
+                            <SelectionLauncherButton
+                              key={option.id}
+                              option={option}
+                              onChoose={onChoose}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {pagedOptions.length > 1 ? (
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  {pagedOptions.map((_, pageIndex) => (
+                    <button
+                      key={`selection-page-dot-${pageIndex}`}
+                      type="button"
+                      aria-label={`Go to page ${pageIndex + 1}`}
+                      aria-pressed={pageIndex === currentPage}
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full transition-colors",
+                        pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
+                      )}
+                      onClick={() => handlePageSelect(pageIndex)}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

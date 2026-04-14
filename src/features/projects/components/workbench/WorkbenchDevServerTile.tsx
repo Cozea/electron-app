@@ -45,7 +45,11 @@ import {
 import { type DevServerStatus, useDevServerManager } from "@/hooks/useDevServerManager"
 import { cn } from "@/lib/utils"
 import type { PageRoute, ServerStatus } from "@/features/projects/lib/previewRuntimeTypes"
-import { type WorkbenchDevServerTile as WorkbenchDevServerTileRecord, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+import {
+  type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
+  type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
+  useProjectWorkbenchStore,
+} from "@/stores/useProjectWorkbenchStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
@@ -85,7 +89,7 @@ const NATIVE_PREVIEW_ROUTE: PageRoute = {
 interface WorkbenchDevServerTileProps {
   projectId: string
   laneId: string
-  tile: WorkbenchDevServerTileRecord
+  tile: WorkbenchDevServerTileRecord | WorkbenchMobileSimulatorTileRecord
   projectPath: string | null
   workspaceId: string | null
   framework: string | null
@@ -94,9 +98,10 @@ interface WorkbenchDevServerTileProps {
   workbenchSession: WorkbenchSessionSnapshot | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
+  surfaceType: "web" | "mobileSimulator"
 }
 
-export function WorkbenchDevServerTile({
+function WorkbenchRuntimePreviewTile({
   projectId,
   laneId,
   tile,
@@ -108,6 +113,7 @@ export function WorkbenchDevServerTile({
   workbenchSession,
   panelApi,
   containerApi,
+  surfaceType,
 }: WorkbenchDevServerTileProps) {
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
@@ -148,7 +154,9 @@ export function WorkbenchDevServerTile({
 
   const framework = resolvedFramework ?? (storedFramework as Framework | null) ?? undefined
   const nativePreviewPlatform = useNativeMobilePreviewMode(framework)
-  const isIosNativePreview = nativePreviewPlatform === "ios"
+  const supportsIosNativePreview = nativePreviewPlatform === "ios"
+  const isMobileSimulatorSurface = surfaceType === "mobileSimulator"
+  const usesNativePreview = isMobileSimulatorSurface && supportsIosNativePreview
 
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview")
   const [previewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop")
@@ -169,8 +177,8 @@ export function WorkbenchDevServerTile({
     autoStart: false,
     storedDevCommand,
     storedDevPort,
-    previewMode: isIosNativePreview ? "native" : "web",
-    nativePlatform: nativePreviewPlatform,
+    previewMode: usesNativePreview ? "native" : "web",
+    nativePlatform: usesNativePreview ? nativePreviewPlatform : null,
     keepAliveOnUnmount: true,
     initialSnapshot: workbenchSession?.devServer ?? null,
   })
@@ -179,7 +187,7 @@ export function WorkbenchDevServerTile({
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
     scopeKey: nativePreviewScopeKey,
-    enabled: isIosNativePreview,
+    enabled: usesNativePreview,
     projectPath,
     serverStatus: serverStatusForNative,
     keepAliveOnUnmount: true,
@@ -197,8 +205,9 @@ export function WorkbenchDevServerTile({
     </div>
   )
 
-  const showEmbeddedPreview = viewMode === "preview" && previewDestination === "cozea"
-  const showWebEmbeddedPreview = showEmbeddedPreview && !isIosNativePreview
+  const showEmbeddedPreview =
+    viewMode === "preview" && (isMobileSimulatorSurface || previewDestination === "cozea")
+  const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
   const {
     hostRef,
     state: previewState,
@@ -408,16 +417,23 @@ export function WorkbenchDevServerTile({
   }, [selectedBrowserId])
 
   useEffect(() => {
+    if (isMobileSimulatorSurface) {
+      return
+    }
     try {
       window.localStorage.setItem(PREVIEW_DESTINATION_PREFERENCE_KEY, previewDestination)
     } catch {
       // Ignore desktop local storage failures.
     }
-  }, [previewDestination])
+  }, [isMobileSimulatorSurface, previewDestination])
 
   useEffect(() => {
+    if (!isMobileSimulatorSurface) {
+      return
+    }
+
     const locator =
-      isIosNativePreview && projectPath && nativePreview.selectedSimulator
+      usesNativePreview && projectPath && nativePreview.selectedSimulator
         ? {
             projectPath,
             deviceId: nativePreview.selectedSimulator.udid,
@@ -434,7 +450,7 @@ export function WorkbenchDevServerTile({
       .catch((error) => {
         console.warn("[WorkbenchDevServerTile] Failed to sync native preview session", error)
       })
-  }, [isIosNativePreview, laneId, nativePreview.selectedSimulator, projectId, projectPath])
+  }, [isMobileSimulatorSurface, usesNativePreview, laneId, nativePreview.selectedSimulator, projectId, projectPath])
 
   const visibleBrowsers = useMemo(() => {
     return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
@@ -457,7 +473,7 @@ export function WorkbenchDevServerTile({
     ? Eye
     : getExternalBrowserIcon(effectiveBrowserId)
 
-  const externalPreviewUrl = isIosNativePreview ? nativeStreamUrl ?? previewUrl : previewUrl
+  const externalPreviewUrl = usesNativePreview ? nativeStreamUrl ?? previewUrl : previewUrl
 
   const openPreviewExternally = useCallback(
     async (force = false) => {
@@ -535,12 +551,16 @@ export function WorkbenchDevServerTile({
       return
     }
 
+    if (isMobileSimulatorSurface) {
+      return
+    }
+
     if (previewDestination !== "external" || viewMode !== "preview") {
       return
     }
 
     void openPreviewExternally()
-  }, [externalPreviewUrl, openPreviewExternally, previewDestination, viewMode])
+  }, [externalPreviewUrl, isMobileSimulatorSurface, openPreviewExternally, previewDestination, viewMode])
 
   const handlePreviewDestinationChange = useCallback((value: string) => {
     if (value === "cozea") {
@@ -552,14 +572,43 @@ export function WorkbenchDevServerTile({
     setPreviewDestination("external")
   }, [])
 
-  const nativePreviewLabel =
-    nativePreviewPlatform === "ios"
-      ? "Native (iOS)"
-      : nativePreviewPlatform === "android"
-        ? "Native (Android)"
-        : null
-
-  const chromeControls = (
+  const chromeControls = isMobileSimulatorSurface ? (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="inline-flex h-8 min-w-0 items-center">
+        <button
+          type="button"
+          className={cn(
+            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
+            "hover:text-foreground",
+            viewMode === "preview" &&
+              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
+          )}
+          onClick={() => setViewMode("preview")}
+          aria-pressed={viewMode === "preview"}
+          aria-label="Simulator preview"
+          title="Simulator preview"
+        >
+          <Eye className="h-4 w-4" />
+        </button>
+        <div className="mx-1 h-4 w-px bg-border/45" aria-hidden />
+        <button
+          type="button"
+          className={cn(
+            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
+            "hover:text-foreground",
+            viewMode === "code" &&
+              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
+          )}
+          onClick={() => setViewMode("code")}
+          aria-pressed={viewMode === "code"}
+          aria-label="Code"
+          title="Code"
+        >
+          <SquareTerminal className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  ) : (
     <div className="flex min-w-0 items-center gap-2">
       <div className="inline-flex h-8 min-w-0 items-center">
         <DropdownMenu>
@@ -640,14 +689,6 @@ export function WorkbenchDevServerTile({
           <SquareTerminal className="h-4 w-4" />
         </button>
       </div>
-      {nativePreviewLabel ? (
-        <span
-          className="inline-flex max-w-[9rem] shrink truncate rounded-md border border-border/60 bg-muted/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-          title="Preview uses the device simulator stream instead of the in-app browser."
-        >
-          {nativePreviewLabel}
-        </span>
-      ) : null}
     </div>
   )
 
@@ -660,20 +701,26 @@ export function WorkbenchDevServerTile({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            disabled={!previewUrl && !isIosNativePreview}
+            disabled={isMobileSimulatorSurface ? !supportsIosNativePreview : !previewUrl}
             onClick={() => {
-              if (previewDestination === "external") {
+              if (!isMobileSimulatorSurface && previewDestination === "external") {
                 void openPreviewExternally(true)
                 return
               }
-              if (isIosNativePreview) {
+              if (isMobileSimulatorSurface) {
                 void nativePreview.refreshSimulators()
                 return
               }
               if (!previewUrl) return
               void window.electronAPI.workbenchBrowser.reload({ tileId: tile.id })
             }}
-            aria-label={previewDestination === "external" ? `Open preview in ${effectiveSelectedBrowser.name} again` : "Reload preview"}
+            aria-label={
+              isMobileSimulatorSurface
+                ? "Refresh simulator"
+                : previewDestination === "external"
+                  ? `Open preview in ${effectiveSelectedBrowser.name} again`
+                  : "Reload preview"
+            }
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </Button>
@@ -742,6 +789,17 @@ export function WorkbenchDevServerTile({
     </div>
   )
 
+  const nativeUnsupportedBody = (
+    <div className="flex h-full items-center justify-center p-6 text-center">
+      <div className="max-w-sm space-y-1">
+        <div className="text-sm text-foreground">No mobile simulator available</div>
+        <div className="text-xs text-muted-foreground">
+          This project does not expose an iOS simulator preview yet.
+        </div>
+      </div>
+    </div>
+  )
+
   const webEmbeddedPreviewBody = (
     <div className="relative h-full min-h-0 overflow-hidden bg-content-surface p-px">
       {!previewUrl ? (
@@ -804,11 +862,13 @@ export function WorkbenchDevServerTile({
     </div>
   )
 
-  const cozeaEmbeddedPreviewBody = isIosNativePreview ? nativeIosPreviewBody : webEmbeddedPreviewBody
+  const cozeaEmbeddedPreviewBody = usesNativePreview ? nativeIosPreviewBody : webEmbeddedPreviewBody
 
   const body = !projectPath ? (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-      Open or relink a local project folder to manage a dev server here.
+      {isMobileSimulatorSurface
+        ? "Open or relink a local project folder to run a mobile simulator here."
+        : "Open or relink a local project folder to manage a dev server here."}
     </div>
   ) : (
     <div className="h-full min-h-0 bg-content-surface">
@@ -817,7 +877,9 @@ export function WorkbenchDevServerTile({
         name={`workbench-devserver-preview-${tile.id}`}
       >
         <div className={cn("h-full min-h-0", viewMode === "preview" ? "block" : "hidden")}>
-          {previewDestination === "cozea" ? cozeaEmbeddedPreviewBody : externalPreviewBody}
+          {isMobileSimulatorSurface
+            ? (supportsIosNativePreview ? nativeIosPreviewBody : nativeUnsupportedBody)
+            : (previewDestination === "cozea" ? cozeaEmbeddedPreviewBody : externalPreviewBody)}
         </div>
       </Activity>
       <Activity
@@ -836,11 +898,27 @@ export function WorkbenchDevServerTile({
       title={tile.title}
       panelApi={panelApi}
       containerApi={containerApi}
-      tileType="devServer"
+      tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
       controls={chromeControls}
       actions={chromeActions}
     >
       <div className="h-full min-h-0 bg-content-surface">{body}</div>
     </WorkbenchTileChrome>
   )
+}
+
+export function WorkbenchDevServerTile(
+  props: Omit<WorkbenchDevServerTileProps, "surfaceType"> & {
+    tile: WorkbenchDevServerTileRecord
+  },
+) {
+  return <WorkbenchRuntimePreviewTile {...props} surfaceType="web" />
+}
+
+export function WorkbenchMobileSimulatorTile(
+  props: Omit<WorkbenchDevServerTileProps, "surfaceType"> & {
+    tile: WorkbenchMobileSimulatorTileRecord
+  },
+) {
+  return <WorkbenchRuntimePreviewTile {...props} surfaceType="mobileSimulator" />
 }

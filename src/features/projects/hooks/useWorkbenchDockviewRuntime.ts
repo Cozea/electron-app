@@ -63,7 +63,7 @@ interface UseWorkbenchDockviewRuntimeResult {
   handleWorkbenchPointerLeave: () => void;
   handleResolveSelectionTile: (
     selectionTileId: string,
-    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">,
+    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
   ) => void;
   handleDuplicateAssistantTile: (sourceTileId: string) => void;
   handleEdgeActivate: (targetId: string) => void;
@@ -499,7 +499,7 @@ export function useWorkbenchDockviewRuntime(
   const handleResolveSelectionTile = useCallback(
     (
       selectionTileId: string,
-      type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">,
+      type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
     ) => {
       if (!input.projectId) return;
 
@@ -512,8 +512,8 @@ export function useWorkbenchDockviewRuntime(
       if (!api || !isSelectionTile(selectionTile)) return;
 
       const tileId =
-        type === "devServer"
-          ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, "devServer")
+        type === "devServer" || type === "mobileSimulator"
+          ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, type)
           : workbenchActions.addTile(input.projectId, input.activeLaneId, type);
       const nextTile =
         useProjectWorkbenchStore.getState().workbenches[
@@ -826,7 +826,7 @@ export function useWorkbenchDockviewRuntime(
               console.warn("[WorkbenchSession] Failed to release terminal for removed panel", error);
             });
         }
-        if (removedTile?.type === "devServer") {
+        if (removedTile?.type === "devServer" || removedTile?.type === "mobileSimulator") {
           void window.electronAPI.workbenchSession
             .releaseBrowser({
               projectId: input.projectId,
@@ -834,21 +834,23 @@ export function useWorkbenchDockviewRuntime(
               tileId: panel.id,
             })
             .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release dev-server browser surface", error);
+              console.warn("[WorkbenchSession] Failed to release runtime browser surface", error);
             });
           void disposeBrowserTileModel(panel.id).catch((error) => {
-            console.warn("[WorkbenchBrowser] Failed to dispose dev-server browser model", error);
+            console.warn("[WorkbenchBrowser] Failed to dispose runtime browser model", error);
           });
-          void window.electronAPI.workbenchSession
-            .setNativePreviewSession({
-              projectId: input.projectId,
-              laneId: input.activeLaneId,
-              locator: null,
-              stopPrevious: true,
-            })
-            .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to stop native preview for removed panel", error);
-            });
+          if (removedTile.type === "mobileSimulator") {
+            void window.electronAPI.workbenchSession
+              .setNativePreviewSession({
+                projectId: input.projectId,
+                laneId: input.activeLaneId,
+                locator: null,
+                stopPrevious: true,
+              })
+              .catch((error) => {
+                console.warn("[WorkbenchSession] Failed to stop native preview for removed panel", error);
+              });
+          }
           void window.electronAPI.workbenchSession
             .releaseTerminal({
               projectId: input.projectId,
@@ -862,7 +864,7 @@ export function useWorkbenchDockviewRuntime(
               }
             })
             .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release dev-server terminal for removed panel", error);
+              console.warn("[WorkbenchSession] Failed to release runtime terminal for removed panel", error);
             });
         }
 

@@ -4,6 +4,7 @@ import { ArrowsPointingInIcon as Minimize2, ArrowsPointingOutIcon as Maximize2, 
 import {
   ArchiveBoxIcon as PackageOpen,
   CommandLineIcon as SquareTerminal,
+  DevicePhoneMobileIcon as Phone,
   GlobeAltIcon as Globe,
   SparklesIcon as Sparkles,
 } from "@heroicons/react/24/solid"
@@ -23,7 +24,7 @@ interface WorkbenchTileChromeProps {
   containerApi: DockviewApi
   chromeVariant?: "bar" | "pill"
   hideTitlePill?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer"
+  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
   assistantProvider?: string | null
   controls?: ReactNode
   actions?: ReactNode
@@ -61,6 +62,8 @@ function resolveTileIcon(
       return Sparkles
     case "devServer":
       return PackageOpen
+    case "mobileSimulator":
+      return Phone
     default:
       return null
   }
