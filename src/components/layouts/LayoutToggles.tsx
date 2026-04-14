@@ -35,7 +35,8 @@ export function SidebarInsetToggle() {
     )
     /** `ProjectShellTitleBarLeft` already includes `SidebarTrigger` */
     const sidebarToggleInSharedShellLeft =
-        /^\/projects\/(?:settings|workspace|teams)(\/|$)/.test(pathname) || /^\/projects\/?$/.test(pathname)
+        /^\/projects\/(?:settings|workspace|teams|store)(\/|$)/.test(pathname) ||
+        /^\/projects\/?$/.test(pathname)
 
     if (
         !sidebar ||

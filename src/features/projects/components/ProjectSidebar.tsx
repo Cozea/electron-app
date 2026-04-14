@@ -6,6 +6,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
 import {
   ArrowLeftIcon as ArrowLeft,
+  BuildingStorefrontIcon as Store,
   PlusIcon,
 } from "@heroicons/react/24/outline"
 
@@ -376,6 +377,12 @@ export function ProjectSidebar({
     [navigate],
   );
 
+  const handleOpenMarketplace = React.useCallback(() => {
+    navigate("/projects/store");
+  }, [navigate]);
+
+  const isOnAppStore = location.pathname === "/projects/store";
+
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, localPath: string | null) => {
       try {
@@ -687,6 +694,18 @@ export function ProjectSidebar({
               >
                 <PlusIcon />
                 <span className="truncate">New project</span>
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                  "px-1.5",
+                  isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS,
+                )}
+                onClick={handleOpenMarketplace}
+              >
+                <Store />
+                <span className="truncate">App Store</span>
               </button>
             </div>
           )}
