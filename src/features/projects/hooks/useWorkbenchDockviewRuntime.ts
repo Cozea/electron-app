@@ -18,7 +18,6 @@ import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectW
 import {
   buildWorkbenchScopeKey,
   type WorkbenchProjectState,
-  type WorkbenchTileType,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { useTerminalStore } from "@/stores/useTerminalStore";
@@ -40,6 +39,7 @@ import {
   type WorkbenchJunctionTarget,
   type WorkbenchSeamTarget,
 } from "@/features/projects/lib/workbenchDockview";
+import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
 
 interface UseWorkbenchDockviewRuntimeInput {
@@ -63,7 +63,7 @@ interface UseWorkbenchDockviewRuntimeResult {
   handleWorkbenchPointerLeave: () => void;
   handleResolveSelectionTile: (
     selectionTileId: string,
-    type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
+    request: WorkbenchSelectionLaunchRequest,
   ) => void;
   handleDuplicateAssistantTile: (sourceTileId: string) => void;
   handleEdgeActivate: (targetId: string) => void;
@@ -499,7 +499,7 @@ export function useWorkbenchDockviewRuntime(
   const handleResolveSelectionTile = useCallback(
     (
       selectionTileId: string,
-      type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
+      request: WorkbenchSelectionLaunchRequest,
     ) => {
       if (!input.projectId) return;
 
@@ -511,10 +511,18 @@ export function useWorkbenchDockviewRuntime(
         null;
       if (!api || !isSelectionTile(selectionTile)) return;
 
+      const { type } = request
       const tileId =
         type === "devServer" || type === "mobileSimulator"
           ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, type)
-          : workbenchActions.addTile(input.projectId, input.activeLaneId, type);
+          : workbenchActions.addTile(
+              input.projectId,
+              input.activeLaneId,
+              type,
+              type === "assistantChat" && request.provider
+                ? { provider: request.provider }
+                : undefined,
+            );
       const nextTile =
         useProjectWorkbenchStore.getState().workbenches[
           buildWorkbenchScopeKey(input.projectId, input.activeLaneId)
