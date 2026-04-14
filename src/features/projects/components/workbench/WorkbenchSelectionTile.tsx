@@ -24,6 +24,7 @@ type CategoryTab = "All" | "Development" | "Assistant" | "Explore marketplace"
 
 const SPACIOUS_MIN_W = 720
 const SPACIOUS_MIN_H = 480
+const WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH = 680
 
 const LAUNCHER_DENSITY_CONFIG = {
   large: {
@@ -185,16 +186,23 @@ function SelectionFilterBar({
   activeCategory,
   onCategoryChange,
   contentWidth,
+  flush = false,
 }: {
   isMac: boolean
   activeCategory: CategoryTab
   onCategoryChange: (category: CategoryTab) => void
   contentWidth?: number
+  flush?: boolean
 }) {
   const shortcut = isMac ? "⌘P" : "Ctrl+P"
 
   return (
-    <div className="w-full shrink-0 bg-content-surface px-2 py-2 md:px-0">
+    <div
+      className={cn(
+        "w-full shrink-0 bg-content-surface py-2",
+        flush ? "px-0" : "px-2 md:px-0",
+      )}
+    >
       <div
         className="mx-auto flex w-full flex-col gap-2.5 pb-2"
         style={contentWidth ? { maxWidth: `${contentWidth}px` } : undefined}
@@ -410,9 +418,9 @@ function SelectionListButton({
       type="button"
       disabled={!option.type}
       className={cn(
-        "group flex w-full items-center gap-4 rounded-[18px] border border-border/60 bg-content-surface px-4 py-3 text-left transition-colors",
+        "group flex w-full items-center gap-4 bg-transparent px-4 py-3 text-left transition-colors",
         option.type
-          ? "hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          ? "hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           : "cursor-default opacity-80",
       )}
       title={option.description}
@@ -567,7 +575,18 @@ export function WorkbenchSelectionTile({
     [launcherPagerRef],
   )
 
-  const filterContentWidth = useListView ? undefined : launcherContentWidth
+  const filterContentWidth = useListView
+    ? WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH
+    : launcherContentWidth
+  const sharedFilterBar = (
+    <SelectionFilterBar
+      isMac={isMac}
+      activeCategory={activeCategory}
+      onCategoryChange={setActiveCategory}
+      contentWidth={useListView ? undefined : filterContentWidth}
+      flush={useListView}
+    />
+  )
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
@@ -575,21 +594,11 @@ export function WorkbenchSelectionTile({
         {showHero ? (
           <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-8 md:px-10 md:pt-10">
             <WelcomeHero projectName={projectName} projectPath={projectPath} />
-            <SelectionFilterBar
-              isMac={isMac}
-              activeCategory={activeCategory}
-              onCategoryChange={setActiveCategory}
-              contentWidth={filterContentWidth}
-            />
+            {useListView ? null : sharedFilterBar}
           </div>
-        ) : (
-          <SelectionFilterBar
-            isMac={isMac}
-            activeCategory={activeCategory}
-            onCategoryChange={setActiveCategory}
-            contentWidth={filterContentWidth}
-          />
-        )}
+        ) : null}
+
+        {!useListView && !showHero ? sharedFilterBar : null}
 
         <div
           className={cn(
@@ -602,7 +611,11 @@ export function WorkbenchSelectionTile({
           ) : (
             <div ref={launcherViewportRef} className="flex min-h-0 flex-1 flex-col">
               {useListView ? (
-                <div className="mx-auto flex w-full flex-col gap-2 px-1 py-2">
+                <div
+                  className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
+                  style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
+                >
+                  {sharedFilterBar}
                   {filteredOptions.map((option) => (
                     <SelectionListButton
                       key={option.id}
