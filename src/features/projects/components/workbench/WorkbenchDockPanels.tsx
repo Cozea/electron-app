@@ -6,9 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react"
 import type { IDockviewPanelProps } from "dockview"
+import { Squares2X2Icon as GridIcon } from "@heroicons/react/24/solid"
 
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
@@ -129,6 +131,45 @@ function useSyncPanelTitle(
   }, [api, title])
 }
 
+function SelectionLauncherDensityControls(props: {
+  value: "large" | "normal"
+  onChange: (value: "large" | "normal") => void
+}) {
+  const baseButtonClassName =
+    "flex h-5 w-6 items-center justify-center rounded-full transition-colors"
+
+  return (
+    <div className="inline-flex h-7 items-center rounded-full bg-secondary px-1 shadow-none ring-0">
+      <button
+        type="button"
+        aria-label="Large launcher icons"
+        aria-pressed={props.value === "large"}
+        className={
+          props.value === "large"
+            ? `${baseButtonClassName} bg-background text-foreground`
+            : `${baseButtonClassName} text-muted-foreground hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]`
+        }
+        onClick={() => props.onChange("large")}
+      >
+        <GridIcon className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        aria-label="Normal launcher icons"
+        aria-pressed={props.value === "normal"}
+        className={
+          props.value === "normal"
+            ? `${baseButtonClassName} bg-background text-foreground`
+            : `${baseButtonClassName} text-muted-foreground hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]`
+        }
+        onClick={() => props.onChange("normal")}
+      >
+        <GridIcon className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const runtime = useWorkbenchDockRuntime()
   const storedTile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
@@ -142,6 +183,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
     const sole = wb.tiles[wb.order[0]]
     return sole?.type === "selection"
   })
+  const [launcherDensity, setLauncherDensity] = useState<"large" | "normal">("large")
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -168,6 +210,14 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
       containerApi={props.containerApi}
       chromeVariant="pill"
       tileType="selection"
+      controls={
+        <div className="flex items-center justify-center">
+          <SelectionLauncherDensityControls
+            value={launcherDensity}
+            onChange={setLauncherDensity}
+          />
+        </div>
+      }
       contentClassName="h-full"
     >
       <Suspense fallback={panelSuspenseFallback}>
@@ -176,6 +226,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
           singletonEmptyWorkbench={singletonEmptyWorkbench}
           projectName={runtime.projectName}
           projectPath={runtime.projectPath}
+          launcherDensity={launcherDensity}
           onChoose={(request) => {
             runtime.onResolveSelectionTile(selectionTile.id, request)
           }}

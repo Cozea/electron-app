@@ -21,6 +21,8 @@ describe("workbenchSelectionLauncherLayout", () => {
     })
 
     expect(layout).toEqual({
+      fittingColumns: 4,
+      fittingRows: 3,
       columns: 4,
       rows: 3,
       itemsPerPage: 12,
@@ -40,6 +42,8 @@ describe("workbenchSelectionLauncherLayout", () => {
     })
 
     expect(layout).toEqual({
+      fittingColumns: 4,
+      fittingRows: 2,
       columns: 4,
       rows: 2,
       itemsPerPage: 8,
@@ -65,11 +69,27 @@ describe("workbenchSelectionLauncherLayout", () => {
     })
 
     expect(layout).toEqual({
+      fittingColumns: 1,
+      fittingRows: 1,
       columns: 1,
       rows: 1,
       itemsPerPage: 1,
       pageCount: 20,
     })
   })
-})
 
+  it("reports fitting column capacity separately from rendered columns", () => {
+    const layout = computeWorkbenchSelectionLauncherLayout({
+      width:
+        WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH * 4 +
+        WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP * 3,
+      height:
+        WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT * 2 +
+        WORKBENCH_SELECTION_LAUNCHER_ROW_GAP,
+      itemCount: 2,
+    })
+
+    expect(layout.fittingColumns).toBe(4)
+    expect(layout.columns).toBe(2)
+  })
+})
