@@ -9,6 +9,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
 import { SettingsSidebar } from "../components/SettingsSidebar";
+import { AppStoreSidebar } from "../components/AppStoreSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
@@ -306,6 +307,7 @@ export function ProjectLayout({
 
   const isWorkbenchView = location.pathname.endsWith("/workbench");
   const isChangesView = location.pathname.endsWith("/changes");
+  const isAppStoreRoute = location.pathname.startsWith("/projects/store");
   const isSettingsModeRoute =
     location.pathname.startsWith("/projects/settings/") ||
     location.pathname.startsWith("/projects/workspace/") ||
@@ -389,7 +391,9 @@ export function ProjectLayout({
       <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
-          {isSettingsModeRoute ? (
+          {isAppStoreRoute ? (
+            <AppStoreSidebar color="currentColor" user={user} onLogout={logout} />
+          ) : isSettingsModeRoute ? (
             <SettingsSidebar color="currentColor" user={user} onLogout={logout} />
           ) : (
             <ProjectSidebar

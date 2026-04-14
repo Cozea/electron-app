@@ -19,6 +19,7 @@ import { ProjectWorkbenchPage } from "@/features/projects/pages/ProjectWorkbench
 import { TasksPage } from "@/features/projects/pages/TasksPage";
 import { ProjectConflictsPage } from "@/features/projects/pages/ProjectConflictsPage";
 import { ProjectTeamPage } from "@/features/projects/pages/ProjectTeamPage";
+import { AppStorePage } from "@/features/projects/pages/AppStorePage";
 import NewProject from "@/pages/NewProject";
 import { General } from "@/pages/workspace/General";
 import { Billing } from "@/pages/workspace/Billing";
@@ -276,6 +277,12 @@ const projectsIndexRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/",
   component: ProjectsLaunchPage,
+});
+
+const projectsStoreRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/store",
+  component: AppStorePage,
 });
 
 const projectNewRoute = createRoute({
@@ -685,6 +692,7 @@ export const routeTree = rootRoute.addChildren([
   joinProjectRoute,
   projectsShellRoute.addChildren([
     projectsIndexRoute,
+    projectsStoreRoute,
     projectNewRoute,
     projectJoinRoute,
     projectInviteRoute,

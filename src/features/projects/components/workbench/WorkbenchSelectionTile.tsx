@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type RefObject, type SVGProps } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type RefObject, type SVGProps } from "react"
 import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
 import type { ProviderKind } from "@cozea/assistant-contracts"
 import { SiGooglechrome } from "react-icons/si"
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { ClaudeAI, OpenAI } from "@/features/projects/components/assistant/Icons"
 import { useAssistantServerConfig } from "@/features/projects/components/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
+import { useViewTransitionNavigate } from "@/lib/navigation"
 import {
   computeWorkbenchSelectionLauncherLayout,
   WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT,
@@ -20,6 +21,7 @@ import {
   WORKBENCH_SELECTION_LAUNCHER_ROW_GAP,
   type WorkbenchSelectionLauncherLayout,
 } from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
+import { useWindowChrome } from "@/hooks/useWindowChrome"
 
 type CategoryTab = "All" | "Development" | "Assistant" | "Explore marketplace"
 
@@ -170,15 +172,27 @@ const CATEGORY_TABS: CategoryTab[] = ["All", "Development", "Assistant", "Explor
 function WelcomeHero({
   projectName,
   projectPath,
+  compact = false,
 }: {
   projectName?: string | null
   projectPath?: string | null
+  compact?: boolean
 }) {
   const normalizedProjectName = projectName?.trim() || "this project"
 
   return (
-    <div className="mb-8 flex w-full max-w-4xl flex-col items-center">
-      <div className="mb-8 flex flex-col items-center gap-1">
+    <div
+      className={cn(
+        "flex w-full max-w-4xl flex-col items-center",
+        compact ? "mb-4" : "mb-8",
+      )}
+    >
+      <div
+        className={cn(
+          "flex flex-col items-center gap-1",
+          compact ? "mb-4" : "mb-8",
+        )}
+      >
         <span className="text-center text-2xl text-muted-foreground md:text-3xl">
           Let&apos;s work on
         </span>
@@ -221,42 +235,57 @@ function SelectionFilterBar({
         className="mx-auto flex w-full flex-col gap-2.5 pb-2"
         style={contentWidth ? { maxWidth: `${contentWidth}px` } : undefined}
       >
-        <div
-          className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {CATEGORY_TABS.map((cat, index, array) => (
-            <div key={cat} className="flex shrink-0 items-stretch">
-              <button
-                type="button"
-                onClick={() => onCategoryChange(cat)}
-                className={cn(
-                  "relative inline-flex items-center gap-1.5 px-3 pb-2.5 pt-1.5 text-[12px] font-medium transition-colors sm:px-4 sm:pb-3 sm:pt-2 sm:text-[13px]",
-                  activeCategory === cat
-                    ? "text-foreground after:absolute after:-bottom-px after:left-0 after:right-0 after:h-0.5 after:bg-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {cat === "Explore marketplace" ? <Store className="size-3.5" aria-hidden /> : null}
-                {cat}
-              </button>
-              {index < array.length - 1 ? (
-                <span aria-hidden className="mx-0.5 my-2 w-px shrink-0 bg-border/70 sm:mx-1" />
-              ) : null}
-            </div>
-          ))}
-        </div>
+        <SelectionCategoryTabs activeCategory={activeCategory} onCategoryChange={onCategoryChange} />
+        <SelectionSearchHint shortcut={shortcut} />
+      </div>
+    </div>
+  )
+}
 
-        <div className="flex w-full shrink-0 justify-end">
-          <div
-            className="flex h-9 w-full items-center gap-2 rounded-full bg-secondary px-3 text-sm transition-[color,box-shadow]"
-            role="status"
-            aria-label="Quick open hint"
+function SelectionCategoryTabs({
+  activeCategory,
+  onCategoryChange,
+}: {
+  activeCategory: CategoryTab
+  onCategoryChange: (category: CategoryTab) => void
+}) {
+  return (
+    <div className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {CATEGORY_TABS.map((cat, index, array) => (
+        <div key={cat} className="flex shrink-0 items-stretch">
+          <button
+            type="button"
+            onClick={() => onCategoryChange(cat)}
+            className={cn(
+              "relative inline-flex items-center gap-1.5 px-3 pb-2.5 pt-1.5 text-[12px] font-medium transition-colors sm:px-4 sm:pb-3 sm:pt-2 sm:text-[13px]",
+              activeCategory === cat
+                ? "text-foreground after:absolute after:-bottom-px after:left-0 after:right-0 after:h-0.5 after:bg-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Search...</span>
-            <Kbd className="shrink-0 px-1.5">{shortcut}</Kbd>
-          </div>
+            {cat === "Explore marketplace" ? <Store className="size-3.5" aria-hidden /> : null}
+            {cat}
+          </button>
+          {index < array.length - 1 ? (
+            <span aria-hidden className="mx-0.5 my-2 w-px shrink-0 bg-border/70 sm:mx-1" />
+          ) : null}
         </div>
+      ))}
+    </div>
+  )
+}
+
+function SelectionSearchHint({ shortcut }: { shortcut: string }) {
+  return (
+    <div className="flex w-full shrink-0 justify-end">
+      <div
+        className="flex h-9 w-full items-center gap-2 rounded-full bg-secondary px-3 text-sm transition-[color,box-shadow]"
+        role="status"
+        aria-label="Quick open hint"
+      >
+        <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Search...</span>
+        <Kbd className="shrink-0 px-1.5">{shortcut}</Kbd>
       </div>
     </div>
   )
@@ -475,20 +504,6 @@ function SelectionListButton({
   )
 }
 
-function MarketplacePlaceholder() {
-  return (
-    <div className="flex w-full max-w-4xl flex-col items-center justify-center py-12 sm:py-16">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-        <PackageOpen className="h-6 w-6 text-muted-foreground" aria-hidden />
-      </div>
-      <h3 className="text-sm font-medium text-foreground">Marketplace coming soon</h3>
-      <p className="mt-1 max-w-xs text-center text-xs text-muted-foreground">
-        Extensions, integrations and community tools will appear here.
-      </p>
-    </div>
-  )
-}
-
 export function WorkbenchSelectionTile({
   tile: _tile,
   singletonEmptyWorkbench = false,
@@ -497,6 +512,8 @@ export function WorkbenchSelectionTile({
   launcherDensity = "large",
   onChoose,
 }: WorkbenchSelectionTileProps) {
+  const navigate = useViewTransitionNavigate()
+  const windowChrome = useWindowChrome()
   const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
   const { config } = useAssistantServerConfig(true)
   const densityConfig = LAUNCHER_DENSITY_CONFIG[launcherDensity]
@@ -551,6 +568,8 @@ export function WorkbenchSelectionTile({
   }, [filteredOptions, launcherLayout.itemsPerPage])
 
   const showHero = singletonEmptyWorkbench && spacious
+  const shouldCenterSearchInFullscreen =
+    windowChrome.isFullScreen && showHero && !useListView
 
   useEffect(() => {
     setCurrentPage(0)
@@ -592,20 +611,31 @@ export function WorkbenchSelectionTile({
   const filterContentWidth = useListView
     ? WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH
     : launcherContentWidth
+  const handleCategoryChange = useCallback(
+    (category: CategoryTab) => {
+      if (category === "Explore marketplace") {
+        navigate("/projects/store")
+        return
+      }
+      setActiveCategory(category)
+    },
+    [navigate],
+  )
   const sharedFilterBar = (
     <SelectionFilterBar
       isMac={isMac}
       activeCategory={activeCategory}
-      onCategoryChange={setActiveCategory}
+      onCategoryChange={handleCategoryChange}
       contentWidth={useListView ? undefined : filterContentWidth}
       flush={useListView}
     />
   )
+  const searchShortcut = isMac ? "⌘P" : "Ctrl+P"
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {showHero ? (
+        {showHero && !shouldCenterSearchInFullscreen ? (
           <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-8 md:px-10 md:pt-10">
             <WelcomeHero projectName={projectName} projectPath={projectPath} />
             {useListView ? null : sharedFilterBar}
@@ -620,85 +650,192 @@ export function WorkbenchSelectionTile({
             "max-w-5xl",
           )}
         >
-          {activeCategory === "Explore marketplace" ? (
-            <MarketplacePlaceholder />
-          ) : (
-            <div ref={launcherViewportRef} className="flex min-h-0 flex-1 flex-col">
-              {useListView ? (
-                <div
-                  className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
-                  style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
+          <div ref={launcherViewportRef} className="flex min-h-0 flex-1 flex-col">
+            {useListView ? (
+              <div
+                className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
+                style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
+              >
+                {sharedFilterBar}
+                {filteredOptions.map((option) => (
+                  <SelectionListButton
+                    key={option.id}
+                    option={option}
+                    launcherDensity={launcherDensity}
+                    onChoose={onChoose}
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <LauncherPager
+                  launcherPagerRef={launcherPagerRef}
+                  pagedOptions={pagedOptions}
+                  launcherLayout={launcherLayout}
+                  densityConfig={densityConfig}
+                  launcherDensity={launcherDensity}
+                  onChoose={onChoose}
                 >
-                  {sharedFilterBar}
-                  {filteredOptions.map((option) => (
-                    <SelectionListButton
-                      key={option.id}
-                      option={option}
-                      launcherDensity={launcherDensity}
-                      onChoose={onChoose}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <>
-                  <div
-                    ref={launcherPagerRef}
-                    className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                  >
+                  {shouldCenterSearchInFullscreen ? (
                     <div className="flex h-full">
                       {pagedOptions.map((page, pageIndex) => {
                         const pageColumns = Math.min(launcherLayout.columns, Math.max(1, page.length))
                         return (
                           <div
                             key={`selection-page-${pageIndex}`}
-                            className="flex min-w-full snap-start px-1 py-2"
+                            className="relative min-w-full snap-start"
                           >
-                            <div
-                              className="grid w-full content-start justify-center"
-                              style={{
-                                gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
-                                gridAutoRows: `${densityConfig.cellHeight}px`,
-                                columnGap: `${densityConfig.columnGap}px`,
-                                rowGap: `${densityConfig.rowGap}px`,
-                              }}
-                            >
-                              {page.map((option) => (
-                                <SelectionLauncherButton
-                                  key={option.id}
-                                  option={option}
-                                  launcherDensity={launcherDensity}
-                                  onChoose={onChoose}
+                            <div className="absolute inset-x-0 bottom-[calc(50%+1.15rem)] px-3 md:px-6">
+                              <div className="mx-auto flex w-full max-w-4xl flex-col items-stretch">
+                                <WelcomeHero
+                                  projectName={projectName}
+                                  projectPath={projectPath}
+                                  compact
                                 />
-                              ))}
+                                <div
+                                  className="mx-auto w-full"
+                                  style={
+                                    filterContentWidth
+                                      ? { maxWidth: `${filterContentWidth}px` }
+                                      : undefined
+                                  }
+                                >
+                                  <SelectionCategoryTabs
+                                    activeCategory={activeCategory}
+                                    onCategoryChange={handleCategoryChange}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-4">
+                              <div
+                                className="mx-auto w-full"
+                                style={
+                                  filterContentWidth
+                                    ? { maxWidth: `${filterContentWidth}px` }
+                                    : undefined
+                                }
+                              >
+                                <SelectionSearchHint shortcut={searchShortcut} />
+                              </div>
+                            </div>
+
+                            <div className="absolute inset-x-0 top-[calc(50%+2.6rem)] px-1 py-2">
+                              <div
+                                className="grid w-full content-start justify-center"
+                                style={{
+                                  gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
+                                  gridAutoRows: `${densityConfig.cellHeight}px`,
+                                  columnGap: `${densityConfig.columnGap}px`,
+                                  rowGap: `${densityConfig.rowGap}px`,
+                                }}
+                              >
+                                {page.map((option) => (
+                                  <SelectionLauncherButton
+                                    key={option.id}
+                                    option={option}
+                                    launcherDensity={launcherDensity}
+                                    onChoose={onChoose}
+                                  />
+                                ))}
+                              </div>
                             </div>
                           </div>
                         )
                       })}
                     </div>
-                  </div>
-
-                  {pagedOptions.length > 1 ? (
-                    <div className="mt-3 flex items-center justify-center gap-2">
-                      {pagedOptions.map((_, pageIndex) => (
-                        <button
-                          key={`selection-page-dot-${pageIndex}`}
-                          type="button"
-                          aria-label={`Go to page ${pageIndex + 1}`}
-                          aria-pressed={pageIndex === currentPage}
-                          className={cn(
-                            "h-2.5 w-2.5 rounded-full transition-colors",
-                            pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
-                          )}
-                          onClick={() => handlePageSelect(pageIndex)}
-                        />
-                      ))}
-                    </div>
                   ) : null}
-                </>
-              )}
-            </div>
-          )}
+                </LauncherPager>
+
+                {pagedOptions.length > 1 ? (
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    {pagedOptions.map((_, pageIndex) => (
+                      <button
+                        key={`selection-page-dot-${pageIndex}`}
+                        type="button"
+                        aria-label={`Go to page ${pageIndex + 1}`}
+                        aria-pressed={pageIndex === currentPage}
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-full transition-colors",
+                          pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
+                        )}
+                        onClick={() => handlePageSelect(pageIndex)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function LauncherPager({
+  launcherPagerRef,
+  pagedOptions,
+  launcherLayout,
+  densityConfig,
+  launcherDensity,
+  onChoose,
+  children,
+}: {
+  launcherPagerRef: RefObject<HTMLDivElement | null>
+  pagedOptions: SelectionOption[][]
+  launcherLayout: WorkbenchSelectionLauncherLayout
+  densityConfig: typeof LAUNCHER_DENSITY_CONFIG.large
+  launcherDensity: NonNullable<WorkbenchSelectionTileProps["launcherDensity"]>
+  onChoose: WorkbenchSelectionTileProps["onChoose"]
+  children?: ReactNode
+}) {
+  if (children) {
+    return (
+      <div
+        ref={launcherPagerRef}
+        className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={launcherPagerRef}
+      className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <div className="flex h-full">
+        {pagedOptions.map((page, pageIndex) => {
+          const pageColumns = Math.min(launcherLayout.columns, Math.max(1, page.length))
+          return (
+            <div
+              key={`selection-page-${pageIndex}`}
+              className="flex min-w-full snap-start px-1 py-2"
+            >
+              <div
+                className="grid w-full content-start justify-center"
+                style={{
+                  gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
+                  gridAutoRows: `${densityConfig.cellHeight}px`,
+                  columnGap: `${densityConfig.columnGap}px`,
+                  rowGap: `${densityConfig.rowGap}px`,
+                }}
+              >
+                {page.map((option) => (
+                  <SelectionLauncherButton
+                    key={option.id}
+                    option={option}
+                    launcherDensity={launcherDensity}
+                    onChoose={onChoose}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
