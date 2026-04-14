@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table'
+import { TablePaginationControls } from '../../components/ui/table-pagination-controls'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +34,7 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-import { ArrowPathIcon as Loader2, ArrowsUpDownIcon as ArrowUpDown, ChevronDownIcon as ChevronDown, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, EllipsisVerticalIcon as MoreVertical, PaperAirplaneIcon as Send, TrashIcon as Trash, TrashIcon as Trash2, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as Loader2, ArrowsUpDownIcon as ArrowUpDown, ChevronDownIcon as ChevronDown, EllipsisVerticalIcon as MoreVertical, PaperAirplaneIcon as Send, TrashIcon as Trash, TrashIcon as Trash2, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
 import { FunnelIcon } from '@heroicons/react/24/outline'
 import {
   formatOrganizationWorkspaceRole,
@@ -211,7 +212,6 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
   }, [members, pendingInvites, roleFilter, sortDirection, sortField])
 
   // Pagination
-  const totalPages = Math.ceil(filteredRows.length / pageSize)
   const startIndex = (currentPage - 1) * pageSize
   const endIndex = startIndex + pageSize
   const paginatedRows = filteredRows.slice(startIndex, endIndex)
@@ -526,23 +526,6 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     }
 
     setSelected([])
-  }
-
-  // Generate page numbers for pagination
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = []
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i)
-    } else {
-      if (currentPage <= 3) {
-        pages.push(1, 2, 3, '...', totalPages)
-      } else if (currentPage >= totalPages - 2) {
-        pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages)
-      } else {
-        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages)
-      }
-    }
-    return pages
   }
 
   const seatManagedEntitlement = Boolean(
@@ -870,49 +853,12 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
           </Table>
         </div>
 
-        {/* Pagination */}
-        {filteredRows.length > 0 && (
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <div className="text-sm text-muted-foreground">
-              Showing {startIndex + 1}-{Math.min(endIndex, filteredRows.length)} of {filteredRows.length} entries
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-7 w-7 rounded-full"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              {getPageNumbers().map((page, i) => (
-                typeof page === 'number' ? (
-                  <Button
-                    key={i}
-                    variant={currentPage === page ? 'default' : 'secondary'}
-                    size="icon"
-                    className="h-7 w-7 rounded-full text-xs"
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </Button>
-                ) : (
-                  <span key={i} className="px-2 text-muted-foreground">...</span>
-                )
-              ))}
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-7 w-7 rounded-full"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages || totalPages === 0}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <TablePaginationControls
+          currentPage={currentPage}
+          totalCount={filteredRows.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
       )}
     </>

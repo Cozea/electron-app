@@ -6,7 +6,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
 import {
   ArrowLeftIcon as ArrowLeft,
-  BuildingStorefrontIcon as Store,
+  ShoppingBagIcon as ShoppingBag,
   PlusIcon,
 } from "@heroicons/react/24/outline"
 
@@ -704,8 +704,8 @@ export function ProjectSidebar({
                 )}
                 onClick={handleOpenMarketplace}
               >
-                <Store />
-                <span className="truncate">App Store</span>
+                <ShoppingBag />
+                <span className="truncate">DevApps Store</span>
               </button>
             </div>
           )}

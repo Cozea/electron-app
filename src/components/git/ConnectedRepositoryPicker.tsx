@@ -12,23 +12,19 @@ import {
   listConnectedRepositoryBranches,
 } from '@/lib/git/providerRepositoryManagement'
 import { useAuth } from '@/contexts/AuthContext'
+import { settingsNativeSelectClass } from '@/components/settings/SettingsChrome'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
+  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { IntegrationIcon } from '@/components/integrations/IntegrationIcon'
-import { LockClosedIcon as Lock, StarIcon as Star } from "@heroicons/react/24/outline"
+import { TablePaginationControls } from '@/components/ui/table-pagination-controls'
+import { cn } from '@/lib/utils'
+import { LockClosedIcon as Lock } from "@heroicons/react/24/outline"
 
 type RepositoryProvider = 'github'
 
@@ -52,13 +48,24 @@ interface ConnectedRepositoryPickerProps {
   onRemoteRepositoriesLoadingChange?: (isLoading: boolean) => void
   onRepositorySelected: (repository: RepositoryDescriptor) => void
   onRepositoryBranchSelected?: (repository: RepositoryDescriptor, branch: string) => void
+  /** Called when the user clears the row checkbox (single-select UX). */
+  onRepositorySelectionCleared?: () => void
+  /** When `none`, table pagination is not rendered here (e.g. host renders it in a dialog footer). */
+  paginationSlot?: 'below-table' | 'none'
+  /** Called when `paginationSlot` is `none` so the host can render pagination elsewhere. */
+  onPaginationStateChange?: (state: ConnectedRepositoryPickerPaginationState | null) => void
 }
 
 const REMOTE_REPOSITORY_PAGE_SIZE = 50
+const REPOSITORY_TABLE_PAGE_SIZE = 5
 
-function getOwnerAvatarFallback(ownerLogin: string): string {
-  const segment = ownerLogin.split('/').filter(Boolean).pop() ?? ownerLogin
-  return segment.slice(0, 2).toUpperCase()
+export interface ConnectedRepositoryPickerPaginationState {
+  totalCount: number
+  currentPage: number
+  pageSize: number
+  isNextDisabled: boolean
+  onPageChange: (page: number) => void
+  onNextClick: () => void
 }
 
 function createRepositoryPageState(): RepositoryPageLoadState {
@@ -80,34 +87,6 @@ function buildRepositoryPageStateMap(
   ) as Partial<Record<RepositoryProvider, RepositoryPageLoadState>>
 }
 
-function formatRepositoryLastCommit(timestamp?: string): string {
-  if (!timestamp) {
-    return 'Unavailable'
-  }
-
-  const parsedDate = new Date(timestamp)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return 'Unavailable'
-  }
-
-  const now = Date.now()
-  const diffMs = Math.max(0, now - parsedDate.getTime())
-  const minute = 60_000
-  const hour = 60 * minute
-  const day = 24 * hour
-  const week = 7 * day
-  const month = 30 * day
-  const year = 365 * day
-
-  if (diffMs < minute) return 'Just now'
-  if (diffMs < hour) return `${Math.floor(diffMs / minute)}m ago`
-  if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`
-  if (diffMs < week) return `${Math.floor(diffMs / day)}d ago`
-  if (diffMs < month) return `${Math.floor(diffMs / week)}w ago`
-  if (diffMs < year) return `${Math.floor(diffMs / month)}mo ago`
-  return `${Math.floor(diffMs / year)}y ago`
-}
-
 export function ConnectedRepositoryPicker({
   provider,
   organizationId,
@@ -119,6 +98,9 @@ export function ConnectedRepositoryPicker({
   onRemoteRepositoriesLoadingChange,
   onRepositorySelected,
   onRepositoryBranchSelected,
+  onRepositorySelectionCleared,
+  paginationSlot = 'below-table',
+  onPaginationStateChange,
 }: ConnectedRepositoryPickerProps) {
   const convex = useConvex()
   const { convexUserId } = useAuth()
@@ -137,6 +119,9 @@ export function ConnectedRepositoryPicker({
   const lastHandledRefreshNonceRef = useRef<number | undefined>(refreshNonce)
   const remoteRepositoryLoadGenerationRef = useRef(0)
   const remoteRepositoryNextPageLockRef = useRef(false)
+  const pendingRepositoryTablePageRef = useRef<number | null>(null)
+
+  const [repositoryTablePage, setRepositoryTablePage] = useState(1)
 
   const repositorySearch = repositorySearchValue ?? ''
   const availableProviders = useMemo(() => [provider], [provider])
@@ -345,6 +330,45 @@ export function ConnectedRepositoryPicker({
   }, [resetAndLoadRemoteRepositories])
 
   useEffect(() => {
+    setRepositoryTablePage(1)
+  }, [repositorySearch, refreshNonce])
+
+  useEffect(() => {
+    const pending = pendingRepositoryTablePageRef.current
+    if (pending === null) {
+      return
+    }
+    if (isRemoteRepositoryLoading) {
+      return
+    }
+    const tableTotalPages = Math.max(
+      1,
+      Math.ceil(remoteRepositories.length / REPOSITORY_TABLE_PAGE_SIZE),
+    )
+    if (pending <= tableTotalPages) {
+      setRepositoryTablePage(pending)
+      pendingRepositoryTablePageRef.current = null
+      return
+    }
+    setRepositoryTablePage(tableTotalPages)
+    pendingRepositoryTablePageRef.current = null
+  }, [isRemoteRepositoryLoading, remoteRepositories.length])
+
+  useEffect(() => {
+    if (pendingRepositoryTablePageRef.current !== null) {
+      return
+    }
+    if (remoteRepositories.length === 0) {
+      return
+    }
+    const tableTotalPages = Math.max(
+      1,
+      Math.ceil(remoteRepositories.length / REPOSITORY_TABLE_PAGE_SIZE),
+    )
+    setRepositoryTablePage((page) => (page > tableTotalPages ? tableTotalPages : page))
+  }, [remoteRepositories.length])
+
+  useEffect(() => {
     if (refreshNonce === undefined || refreshNonce === lastHandledRefreshNonceRef.current) {
       return
     }
@@ -463,6 +487,63 @@ export function ConnectedRepositoryPicker({
     selectedRepoUrl,
   ])
 
+  const repositoryTableTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(remoteRepositories.length / REPOSITORY_TABLE_PAGE_SIZE)),
+    [remoteRepositories.length],
+  )
+
+  const paginatedRepositories = useMemo(() => {
+    const start = (repositoryTablePage - 1) * REPOSITORY_TABLE_PAGE_SIZE
+    return remoteRepositories.slice(start, start + REPOSITORY_TABLE_PAGE_SIZE)
+  }, [remoteRepositories, repositoryTablePage])
+
+  const handleRepositoryTableNext = useCallback(() => {
+    if (repositoryTablePage < repositoryTableTotalPages) {
+      setRepositoryTablePage((page) => page + 1)
+      return
+    }
+    if (hasRemoteRepositoryNextPage && !isRemoteRepositoryLoading) {
+      pendingRepositoryTablePageRef.current = repositoryTablePage + 1
+      void loadNextRemoteRepositories()
+    }
+  }, [
+    hasRemoteRepositoryNextPage,
+    isRemoteRepositoryLoading,
+    loadNextRemoteRepositories,
+    repositoryTablePage,
+    repositoryTableTotalPages,
+  ])
+
+  useEffect(() => {
+    if (!onPaginationStateChange || paginationSlot !== 'none') {
+      return
+    }
+    if (!integrationConnected) {
+      onPaginationStateChange(null)
+      return
+    }
+    onPaginationStateChange({
+      totalCount: remoteRepositories.length,
+      currentPage: repositoryTablePage,
+      pageSize: REPOSITORY_TABLE_PAGE_SIZE,
+      isNextDisabled:
+        isRemoteRepositoryLoading ||
+        (repositoryTablePage >= repositoryTableTotalPages && !hasRemoteRepositoryNextPage),
+      onPageChange: setRepositoryTablePage,
+      onNextClick: handleRepositoryTableNext,
+    })
+  }, [
+    handleRepositoryTableNext,
+    hasRemoteRepositoryNextPage,
+    integrationConnected,
+    isRemoteRepositoryLoading,
+    onPaginationStateChange,
+    paginationSlot,
+    remoteRepositories.length,
+    repositoryTablePage,
+    repositoryTableTotalPages,
+  ])
+
   if (!integrationConnected) {
     return (
         <div className="rounded-xl border border-dashed border-border/60 bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
@@ -472,28 +553,19 @@ export function ConnectedRepositoryPicker({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="relative min-h-0 flex-1 w-full">
-        <div
-          className="app-scrollbar h-full overflow-y-auto"
-          onScroll={(event) => {
-            const target = event.currentTarget
-            const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
-            if (remaining < 320) {
-              void loadNextRemoteRepositories()
-            }
-          }}
-        >
-          <div className="h-[80px] shrink-0" />
-          <table className="w-full caption-bottom text-sm [&_th]:px-4 [&_td]:px-4">
-            <TableHeader>
-              <TableRow className="bg-background hover:bg-transparent border-b-0">
-                <TableHead className="w-[460px] bg-background">Repository</TableHead>
-                <TableHead className="bg-background">Provider</TableHead>
-                <TableHead className="w-[180px] bg-background">Branch</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+    <div className="flex w-full min-w-0 flex-col gap-2">
+      <div className="relative flex w-full min-w-0 flex-col">
+        <div className="w-full min-w-0 overflow-hidden rounded-[14px] bg-muted">
+          <div className="app-scrollbar max-h-[min(60vh,420px)] w-full min-w-0 overflow-auto">
+            <Table className="w-full min-w-0 [&_th]:px-3 [&_th]:font-normal [&_th]:text-muted-foreground [&_td]:px-3 sm:[&_th]:px-4 sm:[&_td]:px-4">
+              <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                <TableRow>
+                  <TableHead className="w-12" />
+                  <TableHead className="min-w-0">Repository</TableHead>
+                  <TableHead className="min-w-[8rem] w-[38%]">Branch</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
               {!hasRemoteRepositoryResults && isRemoteRepositoryLoading ? (
                 <TableRow>
                   <TableCell colSpan={3} className="h-20 text-center text-muted-foreground">
@@ -501,41 +573,47 @@ export function ConnectedRepositoryPicker({
                   </TableCell>
                 </TableRow>
               ) : remoteRepositories.length > 0 ? (
-                remoteRepositories.map((repository) => {
+                paginatedRepositories.map((repository) => {
                   const isSelected = selectedRepoUrl === repository.url
                   const branches = branchOptionsByRepository[repository.url] ?? []
-                  const branchValue = isSelected
-                    ? selectedBranch || repository.defaultBranch || branches[0]?.name || 'main'
-                    : undefined
                   const isBranchLoading = branchLoadingByRepository[repository.url] === true
-                  const lastCommit = formatRepositoryLastCommit(repository.lastActivityAt)
+                  const isBranchSelectDisabled = isBranchLoading && branches.length === 0
+                  const computedBranch = isSelected
+                    ? selectedBranch || repository.defaultBranch || branches[0]?.name || 'main'
+                    : '__none__'
+                  const branchMissingFromList =
+                    isSelected &&
+                    !isBranchSelectDisabled &&
+                    branches.length > 0 &&
+                    !branches.some((b) => b.name === computedBranch)
+                  const showRepoMeta = Boolean(repository.language)
 
                   return (
-                    <TableRow
-                      key={repository.url}
-                      className={
-                        isSelected
-                          ? 'cursor-pointer bg-primary/5 hover:bg-primary/10'
-                          : 'cursor-pointer hover:bg-muted/40'
-                      }
-                      onClick={() => {
-                        handleRepositoryRowSelect(repository)
-                      }}
-                    >
-                      <TableCell className="font-medium">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <Avatar className="h-8 w-8 shrink-0 rounded-xl">
-                            <AvatarImage
-                              src={repository.ownerAvatarUrl}
-                              alt={repository.ownerLogin}
-                            />
-                            <AvatarFallback className="rounded-xl text-[11px] font-medium">
-                              {getOwnerAvatarFallback(repository.ownerLogin)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex min-w-0 flex-col">
+                    <TableRow key={repository.url}>
+                      <TableCell
+                        className="w-12"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                        }}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            if (checked === true) {
+                              handleRepositoryRowSelect(repository)
+                              return
+                            }
+                            if (checked === false) {
+                              onRepositorySelectionCleared?.()
+                            }
+                          }}
+                          aria-label={`Select ${repository.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="overflow-hidden">
+                        <div className="flex min-w-0 flex-col">
                             <div className="flex items-center gap-2">
-                              <span className="truncate font-semibold">{repository.name}</span>
+                              <span className="truncate font-normal text-foreground">{repository.name}</span>
                               {repository.private ? (
                                 <Lock className="h-3 w-3 text-muted-foreground" />
                               ) : null}
@@ -548,77 +626,60 @@ export function ConnectedRepositoryPicker({
                                 {repository.description}
                               </span>
                             ) : null}
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1.5 font-medium">
-                              {repository.language ? (
-                                <div className="flex items-center gap-1.5">
-                                  <span className="h-2 w-2 rounded-full bg-primary/60" />
-                                  <span>{repository.language}</span>
-                                </div>
-                              ) : null}
-                              {typeof repository.starsCount === 'number' && repository.starsCount >= 0 ? (
-                                <div className="flex items-center gap-1.5">
-                                  <Star className="h-3.5 w-3.5 opacity-70" />
-                                  <span>
-                                    {Intl.NumberFormat('en-US', {
-                                      notation: 'compact',
-                                      maximumFractionDigits: 1,
-                                    }).format(repository.starsCount)}
-                                  </span>
-                                </div>
-                              ) : null}
-                              <div className="flex items-center gap-1.5">
-                                <span>{lastCommit}</span>
+                            {showRepoMeta ? (
+                              <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                                <span className="h-2 w-2 shrink-0 rounded-full bg-primary/60" />
+                                <span>{repository.language}</span>
                               </div>
-                            </div>
-                          </div>
+                            ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2.5 text-sm">
-                          <IntegrationIcon
-                            provider="github"
-                            size="lg"
-                            className="h-5 w-5 text-muted-foreground"
-                          />
-                          GitHub
-                        </div>
-                      </TableCell>
-                      <TableCell onClick={(event) => event.stopPropagation()}>
-                        <Select
-                          value={branchValue}
-                          onOpenChange={(open) => {
-                            if (open) {
-                              void loadBranchesForRepository(repository)
+                      <TableCell className="overflow-hidden" onClick={(event) => event.stopPropagation()}>
+                        <select
+                          aria-label={`Branch for ${repository.name}`}
+                          disabled={isBranchSelectDisabled}
+                          value={
+                            isBranchSelectDisabled
+                              ? '__loading__'
+                              : !isSelected
+                                ? '__none__'
+                                : computedBranch
+                          }
+                          onFocus={() => {
+                            void loadBranchesForRepository(repository)
+                          }}
+                          onChange={(event) => {
+                            const next = event.target.value
+                            if (next === '__none__' || next === '__loading__') {
+                              return
                             }
-                          }}
-                          onValueChange={(branch) => {
                             onRepositorySelected(repository)
-                            onRepositoryBranchSelected?.(repository, branch)
+                            onRepositoryBranchSelected?.(repository, next)
                           }}
+                          className={cn(
+                            settingsNativeSelectClass,
+                            'w-full min-w-0 max-w-full text-foreground',
+                          )}
                         >
-                          <SelectTrigger
-                            size="sm"
-                            className="h-8 w-[150px] rounded-lg bg-muted/60"
-                          >
-                            <SelectValue
-                              placeholder={
-                                isBranchLoading
-                                  ? 'Loading...'
-                                  : isSelected
-                                    ? 'Select branch'
-                                    : 'Choose branch'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent align="end">
-                            {branches.map((branch) => (
-                              <SelectItem key={branch.name} value={branch.name}>
-                                {branch.name}
-                                {branch.isDefault ? ' (default)' : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          {isBranchSelectDisabled ? (
+                            <option value="__loading__">Loading...</option>
+                          ) : (
+                            <>
+                              {!isSelected ? (
+                                <option value="__none__">Choose branch</option>
+                              ) : null}
+                              {branchMissingFromList ? (
+                                <option value={computedBranch}>{computedBranch}</option>
+                              ) : null}
+                              {branches.map((branch) => (
+                                <option key={branch.name} value={branch.name}>
+                                  {branch.name}
+                                  {branch.isDefault ? ' (default)' : ''}
+                                </option>
+                              ))}
+                            </>
+                          )}
+                        </select>
                       </TableCell>
                     </TableRow>
                   )
@@ -632,22 +693,28 @@ export function ConnectedRepositoryPicker({
                   </TableCell>
                 </TableRow>
               )}
-              {hasRemoteRepositoryResults && isRemoteRepositoryLoading ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="h-12 text-center text-muted-foreground">
-                    Loading more repositories...
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </TableBody>
-          </table>
+              </TableBody>
+            </Table>
+          </div>
         </div>
+        {paginationSlot === 'below-table' ? (
+          <TablePaginationControls
+            className="mt-2 w-full min-w-0 shrink-0 px-1"
+            currentPage={repositoryTablePage}
+            totalCount={remoteRepositories.length}
+            pageSize={REPOSITORY_TABLE_PAGE_SIZE}
+            onPageChange={setRepositoryTablePage}
+            onNextClick={handleRepositoryTableNext}
+            isNextDisabled={
+              isRemoteRepositoryLoading ||
+              (repositoryTablePage >= repositoryTableTotalPages && !hasRemoteRepositoryNextPage)
+            }
+          />
+        ) : null}
       </div>
 
       {remoteRepositoryError ? (
         <p className="text-xs text-destructive">{remoteRepositoryError}</p>
-      ) : hasRemoteRepositoryResults && !hasRemoteRepositoryNextPage ? (
-        <p className="text-xs text-muted-foreground">All available repositories are loaded.</p>
       ) : null}
     </div>
   )

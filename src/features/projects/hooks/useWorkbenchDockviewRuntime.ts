@@ -83,7 +83,7 @@ function createRuntimeSelectionPreviewTile(input: {
   return {
     id,
     type: "selection",
-    title: "Add Tile",
+    title: "Add DevApp",
     createdAt: Date.now(),
     mode: input.intent.previewMode,
     edge: input.intent.edge ?? null,

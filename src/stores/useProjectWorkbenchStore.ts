@@ -253,7 +253,7 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   terminal: "Terminal",
   devServer: "Dev Server",
   mobileSimulator: "Mobile Simulator",
-  selection: "Add Tile",
+  selection: "Add DevApp",
   tasks: "Tasks",
   changes: "Changes",
   assistantChat: "AI Agent",
