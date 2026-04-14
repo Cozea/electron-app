@@ -15,6 +15,7 @@ import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
+  type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
   buildWorkbenchScopeKey,
@@ -42,7 +43,7 @@ interface WorkbenchDockRuntimeValue {
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
-    type: "assistantChat" | "browser" | "devServer" | "terminal",
+    type: "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal",
   ) => void
 }
 
@@ -65,6 +66,11 @@ const LazyWorkbenchBrowserTile = lazy(() =>
 const LazyWorkbenchDevServerTile = lazy(() =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchDevServerTile,
+  })),
+)
+const LazyWorkbenchMobileSimulatorTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
+    default: m.WorkbenchMobileSimulatorTile,
   })),
 )
 const LazyWorkbenchSelectionTile = lazy(() =>
@@ -169,6 +175,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
           singletonEmptyWorkbench={singletonEmptyWorkbench}
           projectName={runtime.projectName}
           projectPath={runtime.projectPath}
+          framework={runtime.framework}
           onChoose={(type) => {
             runtime.onResolveSelectionTile(selectionTile.id, type)
           }}
@@ -282,6 +289,45 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
   )
 })
 
+const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
+  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
+  const runtime = useWorkbenchDockRuntime()
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "mobileSimulator") {
+    return (
+      <WorkbenchTileChrome
+        title="Mobile Simulator"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchMobileSimulatorTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchMobileSimulatorTileRecord}
+        projectPath={runtime.projectPath}
+        workspaceId={runtime.workspaceId}
+        framework={runtime.framework}
+        storedDevCommand={runtime.storedDevCommand}
+        storedDevPort={runtime.storedDevPort}
+        workbenchSession={runtime.workbenchSession}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      />
+    </Suspense>
+  )
+})
+
 const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
@@ -322,6 +368,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   browser: BrowserPanel,
   terminal: TerminalPanel,
   devServer: DevServerPanel,
+  mobileSimulator: MobileSimulatorPanel,
   assistantChat: AssistantChatPanel,
 }
 
@@ -339,7 +386,7 @@ export function WorkbenchDockRuntimeProvider(props: {
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
-    type: "assistantChat" | "browser" | "devServer" | "terminal",
+    type: "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal",
   ) => void
   children: ReactNode
 }) {

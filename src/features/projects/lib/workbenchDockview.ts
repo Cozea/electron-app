@@ -758,12 +758,13 @@ export function resolveWorkbenchInsertionIntent(
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-): "selection" | "browser" | "terminal" | "devServer" | "assistantChat" {
+): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" {
   switch (type) {
     case "browser":
     case "selection":
     case "terminal":
     case "devServer":
+    case "mobileSimulator":
     case "assistantChat":
       return type
     default:
@@ -810,6 +811,7 @@ export function buildAddPanelOptions(
   switch (tile.type) {
     case "browser":
     case "devServer":
+    case "mobileSimulator":
     case "terminal":
       if (activePanel) {
         return {

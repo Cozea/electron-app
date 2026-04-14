@@ -206,11 +206,11 @@ export function ProjectWorkbenchPage() {
 
   const openWorkbenchTarget = useCallback(
     (
-      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "terminal">,
+      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
     ) => {
       if (!projectId) return;
-      if (target === "devServer") {
-        workbenchActions.openSingletonTile(projectId, activeLaneId, "devServer");
+      if (target === "devServer" || target === "mobileSimulator") {
+        workbenchActions.openSingletonTile(projectId, activeLaneId, target);
         return;
       }
       workbenchActions.addTile(projectId, activeLaneId, target);

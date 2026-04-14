@@ -1,6 +1,7 @@
 import {
   CommandLineIcon as SquareTerminal,
   ComputerDesktopIcon as ComputerScreen,
+  DevicePhoneMobileIcon as Phone,
   GlobeAltIcon as Globe,
 } from "@heroicons/react/24/outline"
 
@@ -52,6 +53,8 @@ function SurfaceTileGlyph(props: {
       return <Globe className={className} aria-hidden />
     case "devServer":
       return <ComputerScreen className={className} aria-hidden />
+    case "mobileSimulator":
+      return <Phone className={className} aria-hidden />
     case "terminal":
     default:
       return <SquareTerminal className={className} aria-hidden />
