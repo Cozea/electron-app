@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type MessageId, type TurnId } from "@cozea/assistant-contracts";
+import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant-contracts";
 import {
   memo,
   useCallback,
@@ -27,7 +27,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { ArrowUturnLeftIcon as Undo2Icon, ArrowsUpDownIcon as ChevronsUpDown, BoltIcon as ZapIcon, CheckIcon, ChevronRightIcon, CommandLineIcon as TerminalIcon, CpuChipIcon as BotIcon, ExclamationCircleIcon as CircleAlertIcon, EyeIcon, GlobeAltIcon as GlobeIcon, PencilSquareIcon as SquarePenIcon, WrenchScrewdriverIcon as HammerIcon, WrenchScrewdriverIcon as WrenchIcon } from "@heroicons/react/24/outline"
+import { ArrowUturnLeftIcon as Undo2Icon, ArrowsUpDownIcon as ChevronsUpDown, BoltIcon as ZapIcon, ChatBubbleLeftRightIcon as MessageSquareIcon, CheckIcon, ChevronRightIcon, CommandLineIcon as TerminalIcon, CpuChipIcon as BotIcon, ExclamationCircleIcon as CircleAlertIcon, EyeIcon, GlobeAltIcon as GlobeIcon, PencilSquareIcon as SquarePenIcon, WrenchScrewdriverIcon as HammerIcon, WrenchScrewdriverIcon as WrenchIcon } from "@heroicons/react/24/outline"
 import type { ComponentType, SVGProps } from "react"
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,7 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
+import { ClaudeAI, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
@@ -58,6 +59,7 @@ const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 interface MessagesTimelineProps {
   hasMessages: boolean;
   isWorking: boolean;
+  selectedProvider: ProviderKind | null;
   activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
   scrollContainer: HTMLDivElement | null;
@@ -78,9 +80,25 @@ interface MessagesTimelineProps {
   workspaceRoot: string | undefined;
 }
 
+function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined): LucideIcon {
+  switch (provider) {
+    case "claudeAgent":
+      return ClaudeAI
+    case "gemini":
+      return Gemini
+    case "openCode":
+      return OpenCodeIcon
+    case "codex":
+      return OpenAI
+    default:
+      return MessageSquareIcon
+  }
+}
+
 export const MessagesTimeline = memo(function MessagesTimeline({
   hasMessages,
   isWorking,
+  selectedProvider,
   activeTurnInProgress,
   activeTurnStartedAt,
   scrollContainer,
@@ -102,6 +120,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 }: MessagesTimelineProps) {
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
+  const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
     const timelineRoot = timelineRootRef.current;
@@ -555,7 +574,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         <Empty className="w-full max-w-md py-8">
           <EmptyHeader>
             <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-              <BotIcon className="h-7 w-7" />
+              <EmptyAssistantIcon className="h-7 w-7" />
             </EmptyMedia>
             <EmptyTitle className="text-base font-medium">Ready to assist</EmptyTitle>
             <EmptyDescription>

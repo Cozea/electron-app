@@ -9,7 +9,7 @@ import {
   type ServerProvider,
   type TurnId,
 } from "@cozea/assistant-contracts"
-import { ArrowPathIcon as Loader2, ChevronLeftIcon, ChevronRightIcon, CpuChipIcon as BotIcon, ListBulletIcon as ListTodoIcon, LockClosedIcon as LockIcon, LockOpenIcon, XMarkIcon as XIcon } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as Loader2, ChatBubbleLeftRightIcon as ChatIcon, ChevronLeftIcon, ChevronRightIcon, ListBulletIcon as ListTodoIcon, LockClosedIcon as LockIcon, LockOpenIcon, XMarkIcon as XIcon } from "@heroicons/react/24/outline"
 import {
   type ClipboardEventHandler,
   memo,
@@ -783,7 +783,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   : "Default mode - click to enter plan mode"
               }
             >
-              {showPlanFollowUpPrompt ? <ListTodoIcon /> : <BotIcon />}
+              {props.selectedInteractionMode === "plan" ? <ListTodoIcon /> : <ChatIcon />}
               <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
             </Button>
 
@@ -859,6 +859,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}
               isWorking={isWorking}
+              selectedProvider={props.selectedProvider}
               activeTurnInProgress={isWorking || !latestTurnSettled}
               activeTurnStartedAt={activeTurnStartedAt}
               scrollContainer={props.timelineRef.current}
