@@ -1,4 +1,6 @@
 export interface WorkbenchSelectionLauncherLayout {
+  fittingColumns: number
+  fittingRows: number
   columns: number
   rows: number
   itemsPerPage: number
@@ -57,10 +59,11 @@ export function computeWorkbenchSelectionLauncherLayout({
   const pageCount = Math.max(1, Math.ceil(Math.max(1, safeItemCount) / itemsPerPage))
 
   return {
+    fittingColumns,
+    fittingRows,
     columns,
     rows,
     itemsPerPage,
     pageCount,
   }
 }
-
