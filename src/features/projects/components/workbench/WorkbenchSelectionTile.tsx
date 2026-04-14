@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, CpuChipIcon as Bot, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type RefObject, type SVGProps } from "react"
+import { ArchiveBoxIcon as PackageOpen, BuildingStorefrontIcon as Store, CommandLineIcon as SquareTerminal, ComputerDesktopIcon as AppWindow, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search } from "@heroicons/react/24/outline"
+import type { ProviderKind } from "@cozea/assistant-contracts"
 
 import type {
   WorkbenchSelectionTile,
-  WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
+import { ClaudeAI, OpenAI } from "@/features/projects/components/assistant/Icons"
+import { useAssistantServerConfig } from "@/features/projects/components/workbench/assistant/useAssistantServerConfig"
+import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import {
   computeWorkbenchSelectionLauncherLayout,
   WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT,
@@ -32,9 +35,10 @@ interface WorkbenchSelectionTileProps {
   singletonEmptyWorkbench?: boolean
   projectName?: string | null
   projectPath?: string | null
-  framework?: string | null
-  onChoose: (type: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">) => void
+  onChoose: (request: WorkbenchSelectionLaunchRequest) => void
 }
+
+type SelectionOptionIcon = ComponentType<SVGProps<SVGSVGElement>>
 
 interface SelectionOption {
   id: string
@@ -43,11 +47,12 @@ interface SelectionOption {
   iconBgClass: string
   iconColorClass: string
   category: "Development" | "Assistant" | "Explore marketplace"
-  type?: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">
-  icon: typeof AppWindow
+  type?: WorkbenchSelectionLaunchRequest["type"]
+  provider?: ProviderKind
+  icon: SelectionOptionIcon
 }
 
-const CORE_SELECTION_OPTIONS: SelectionOption[] = [
+const DEVELOPMENT_SELECTION_OPTIONS: SelectionOption[] = [
   {
     id: "browser",
     label: "Browser",
@@ -79,19 +84,44 @@ const CORE_SELECTION_OPTIONS: SelectionOption[] = [
     icon: SquareTerminal,
   },
   {
-    id: "assistantChat",
-    label: "AI Agent",
-    description: "workspace",
-    iconBgClass: "bg-[#C48CFF]",
-    iconColorClass: "text-black",
-    category: "Assistant",
-    type: "assistantChat",
-    icon: Bot,
+    id: "mobileSimulator",
+    label: "Mobile Simulator",
+    description: "native device preview",
+    iconBgClass: "bg-indigo-500/90",
+    iconColorClass: "text-white",
+    category: "Development",
+    type: "mobileSimulator",
+    icon: Phone,
   },
 ]
 
-function supportsMobileSimulatorForFramework(framework: string | null | undefined) {
-  return framework === "expo" || framework === "react-native"
+const SUPPORTED_ASSISTANT_PROVIDER_OPTIONS: ReadonlyArray<SelectionOption> = [
+  {
+    id: "assistant-codex",
+    label: "Codex",
+    description: "AI agent",
+    iconBgClass: "bg-zinc-950",
+    iconColorClass: "text-white",
+    category: "Assistant",
+    type: "assistantChat",
+    provider: "codex",
+    icon: OpenAI,
+  },
+  {
+    id: "assistant-claude",
+    label: "Claude",
+    description: "AI agent",
+    iconBgClass: "bg-[#d97757]",
+    iconColorClass: "text-white",
+    category: "Assistant",
+    type: "assistantChat",
+    provider: "claudeAgent",
+    icon: ClaudeAI,
+  },
+]
+
+function isSupportedAssistantProvider(provider: ProviderKind): provider is "codex" | "claudeAgent" {
+  return provider === "codex" || provider === "claudeAgent"
 }
 
 const CATEGORY_TABS: CategoryTab[] = ["All", "Development", "Assistant", "Explore marketplace"]
@@ -275,7 +305,10 @@ function SelectionLauncherButton({
       title={option.description}
       onClick={() => {
         if (!option.type) return
-        onChoose(option.type)
+        onChoose({
+          type: option.type,
+          provider: option.provider,
+        })
       }}
     >
       <div
@@ -313,31 +346,39 @@ export function WorkbenchSelectionTile({
   singletonEmptyWorkbench = false,
   projectName,
   projectPath,
-  framework,
   onChoose,
 }: WorkbenchSelectionTileProps) {
   const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
+  const { config } = useAssistantServerConfig(true)
 
   const [rootRef, spacious] = useSelectionSurfaceDensity()
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
 
-  const filteredOptions = useMemo(() => {
-    const all = [...CORE_SELECTION_OPTIONS]
-    if (supportsMobileSimulatorForFramework(framework)) {
-      all.splice(2, 0, {
-        id: "mobileSimulator",
-        label: "Mobile Simulator",
-        description: "native device preview",
-        iconBgClass: "bg-indigo-500/90",
-        iconColorClass: "text-white",
-        category: "Development",
-        type: "mobileSimulator",
-        icon: Phone,
-      })
+  const assistantOptions = useMemo(() => {
+    const configuredProviders =
+      config?.providers
+        .filter((provider) => isSupportedAssistantProvider(provider.provider))
+        .filter((provider) => provider.enabled)
+        .map((provider) => provider.provider) ?? []
+
+    if (configuredProviders.length <= 0) {
+      return [...SUPPORTED_ASSISTANT_PROVIDER_OPTIONS]
     }
+
+    const optionByProvider = new Map(
+      SUPPORTED_ASSISTANT_PROVIDER_OPTIONS.map((option) => [option.provider, option]),
+    )
+
+    return configuredProviders
+      .map((provider) => optionByProvider.get(provider))
+      .filter((option): option is SelectionOption => Boolean(option))
+  }, [config])
+
+  const filteredOptions = useMemo(() => {
+    const all = [...DEVELOPMENT_SELECTION_OPTIONS, ...assistantOptions]
     if (activeCategory === "All") return all
     return all.filter((option) => option.category === activeCategory)
-  }, [activeCategory, framework])
+  }, [activeCategory, assistantOptions])
   const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(filteredOptions.length)
   const launcherPagerRef = launcherViewportRef
   const [currentPage, setCurrentPage] = useState(0)

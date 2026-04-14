@@ -11,6 +11,7 @@ import {
 import type { IDockviewPanelProps } from "dockview"
 
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
@@ -43,7 +44,7 @@ interface WorkbenchDockRuntimeValue {
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
-    type: "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal",
+    request: WorkbenchSelectionLaunchRequest,
   ) => void
 }
 
@@ -175,9 +176,8 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
           singletonEmptyWorkbench={singletonEmptyWorkbench}
           projectName={runtime.projectName}
           projectPath={runtime.projectPath}
-          framework={runtime.framework}
-          onChoose={(type) => {
-            runtime.onResolveSelectionTile(selectionTile.id, type)
+          onChoose={(request) => {
+            runtime.onResolveSelectionTile(selectionTile.id, request)
           }}
         />
       </Suspense>
@@ -386,7 +386,7 @@ export function WorkbenchDockRuntimeProvider(props: {
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
-    type: "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal",
+    request: WorkbenchSelectionLaunchRequest,
   ) => void
   children: ReactNode
 }) {
