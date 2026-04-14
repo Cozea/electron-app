@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useConvex, useMutation } from "convex/react"
-import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, ExclamationCircleIcon as AlertCircle, FolderIcon as FolderGit2 } from "@heroicons/react/24/outline"
+import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -8,9 +8,11 @@ import type {
   RepositoryDescriptor,
   RepositoryOwnerDescriptor,
 } from "@shared/electronApiTypes"
-import { ConnectedRepositoryPicker } from "@/components/git/ConnectedRepositoryPicker"
+import {
+  ConnectedRepositoryPicker,
+  type ConnectedRepositoryPickerPaginationState,
+} from "@/components/git/ConnectedRepositoryPicker"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -21,14 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { TablePaginationControls } from "@/components/ui/table-pagination-controls"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { useWorkspaceSourceControl } from "@/hooks/useWorkspaceSourceControl"
@@ -39,6 +34,18 @@ import {
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { getWorkspaceSourceControlReadiness } from "@/lib/sourceControl/workspaceSourceControlReadiness"
 import { cn } from "@/lib/utils"
+import {
+  SettingsGroup,
+  SettingsGroupError,
+  SettingsRow,
+  SettingsRowControl,
+  SettingsRowLabel,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+  settingsInlineInputClass,
+  settingsInlineInputWidth,
+  settingsNativeSelectClass,
+} from "@/components/settings/SettingsChrome"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import {
   browseForDirectory,
@@ -146,6 +153,19 @@ function formatRemoteVisibility(visibility: string | undefined, isPrivate: boole
   return isPrivate ? "private" : "public"
 }
 
+function formatLocationPathPreview(pathValue: string, maxParents = 2): string {
+  const trimmed = pathValue.trim()
+  if (!trimmed) return ""
+
+  const maxSegments = Math.max(1, maxParents + 1)
+  const segments = trimmed.split(/[\\/]+/).filter(Boolean)
+  if (segments.length <= maxSegments) {
+    return trimmed
+  }
+
+  return `.../${segments.slice(-maxSegments).join("/")}`
+}
+
 export function CreateProjectDialog({
   open,
   mode,
@@ -182,6 +202,33 @@ export function CreateProjectDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasEditedName, setHasEditedName] = useState(false)
   const [hasEditedRemoteRepositoryName, setHasEditedRemoteRepositoryName] = useState(false)
+  const [repoPickerPagination, setRepoPickerPagination] =
+    useState<ConnectedRepositoryPickerPaginationState | null>(null)
+
+  const handleRepoPickerPaginationChange = useCallback(
+    (next: ConnectedRepositoryPickerPaginationState | null) => {
+      setRepoPickerPagination((prev) => {
+        if (prev === next) {
+          return prev
+        }
+        if (!prev || !next) {
+          return next
+        }
+        if (
+          prev.totalCount === next.totalCount &&
+          prev.currentPage === next.currentPage &&
+          prev.pageSize === next.pageSize &&
+          prev.isNextDisabled === next.isNextDisabled &&
+          prev.onPageChange === next.onPageChange &&
+          prev.onNextClick === next.onNextClick
+        ) {
+          return prev
+        }
+        return next
+      })
+    },
+    [],
+  )
 
   const copy = useMemo(() => {
     if (mode !== "local" || !initialLocalFolderPath.trim()) {
@@ -206,6 +253,10 @@ export function CreateProjectDialog({
     [githubConnection, setupMode],
   )
   const sourceControlSettingsHref = "/settings/source-control"
+  const locationPathPreview = useMemo(
+    () => formatLocationPathPreview(parentDirectory, 2),
+    [parentDirectory],
+  )
 
   const ownerOptions = useMemo(() => {
     const compatibleOwners = owners.filter((owner) =>
@@ -219,6 +270,12 @@ export function CreateProjectDialog({
     () => ownerOptions.find((owner) => owner.id === selectedOwnerId) ?? null,
     [ownerOptions, selectedOwnerId],
   )
+
+  useEffect(() => {
+    if (!open || mode !== "repo") {
+      setRepoPickerPagination(null)
+    }
+  }, [mode, open])
 
   useEffect(() => {
     if (!open) return
@@ -265,12 +322,15 @@ export function CreateProjectDialog({
   }, [hasEditedName, localFolderPath, mode])
 
   useEffect(() => {
-    if (mode !== "repo" || hasEditedName || !selectedRepository) {
+    if (mode !== "repo") {
       return
     }
-
+    if (!selectedRepository) {
+      setName("")
+      return
+    }
     setName(selectedRepository.name)
-  }, [hasEditedName, mode, selectedRepository])
+  }, [mode, selectedRepository])
 
   useEffect(() => {
     if (hasEditedRemoteRepositoryName) {
@@ -378,17 +438,6 @@ export function CreateProjectDialog({
     setupMode,
     sourceControlReadiness.isReady,
   ])
-
-  const resolvedProjectPathPreview = useMemo(() => {
-    if (mode === "local") {
-      return localFolderPath.trim()
-    }
-
-    const base = parentDirectory.trim().replace(/[\\/]+$/, "")
-    const folderName = buildFilesystemSlug(name)
-    if (!base || !folderName) return ""
-    return `${base}/${folderName}`
-  }, [localFolderPath, mode, name, parentDirectory])
 
   const closeDialog = useCallback(() => {
     if (isSubmitting) return
@@ -541,7 +590,11 @@ export function CreateProjectDialog({
     }
 
     const trimmedName =
-      mode === "local" ? deriveNameFromPath(localFolderPath).trim() || name.trim() : name.trim()
+      mode === "local"
+        ? deriveNameFromPath(localFolderPath).trim() || name.trim()
+        : mode === "repo"
+          ? (selectedRepository?.name ?? name).trim()
+          : name.trim()
     const trimmedParentDirectory = parentDirectory.trim()
     const trimmedLocalFolderPath = localFolderPath.trim()
     const resolvedBranch =
@@ -869,93 +922,92 @@ export function CreateProjectDialog({
     }
 
     return (
-      <div className="space-y-4 rounded-2xl border border-border/60 bg-secondary/25 p-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <FolderGit2 className="h-4 w-4 text-muted-foreground" />
-            <p className="text-sm font-medium">Remote repository</p>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {mode === "empty"
-              ? "Cozea will create a connected GitHub repository and wire it to this project from the start."
-              : "This local folder does not have an origin remote yet, so Cozea will create one before saving the project."}
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
-          <div className="space-y-2">
-            <Label htmlFor="create-project-remote-owner">Owner</Label>
-            <Select
-              value={selectedOwnerId}
-              onValueChange={(value) => {
-                setSelectedOwnerId(value)
-                setError(null)
-              }}
-              disabled={isSubmitting || isLoadingOwners || ownerOptions.length === 0}
-            >
-              <SelectTrigger id="create-project-remote-owner" className="rounded-xl bg-background">
-                <SelectValue
-                  placeholder={
-                    isLoadingOwners
-                      ? "Loading owners..."
-                      : ownerOptions.length > 0
-                        ? "Select owner"
-                        : "No owner available"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
+      <section>
+        <SettingsSectionTitle>Remote repository</SettingsSectionTitle>
+        <SettingsSectionDescription>
+          {mode === "empty"
+            ? "Cozea creates and connects a GitHub repository before opening workbench."
+            : "No origin remote found, so Cozea will create one before import."}
+        </SettingsSectionDescription>
+        <SettingsGroup>
+          <SettingsRow isFirst>
+            <SettingsRowLabel
+              title="Owner"
+              htmlFor="create-project-remote-owner"
+              description={isLoadingOwners ? "Loading owners..." : "Where the repository is created."}
+              descriptionClassName="truncate"
+            />
+            <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+              <select
+                id="create-project-remote-owner"
+                value={selectedOwnerId}
+                onChange={(event) => {
+                  setSelectedOwnerId(event.target.value)
+                  setError(null)
+                }}
+                disabled={isSubmitting || isLoadingOwners || ownerOptions.length === 0}
+                className={cn(settingsNativeSelectClass, "w-[176px]")}
+              >
+                {ownerOptions.length === 0 ? (
+                  <option value="">{isLoadingOwners ? "Loading owners..." : "No owner available"}</option>
+                ) : null}
                 {ownerOptions.map((owner) => (
-                  <SelectItem key={owner.id} value={owner.id}>
+                  <option key={owner.id} value={owner.id}>
                     {owner.displayName} ({owner.login})
-                  </SelectItem>
+                  </option>
                 ))}
-              </SelectContent>
-            </Select>
-            {ownersError ? (
-              <p className="text-xs text-destructive">{ownersError}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="create-project-remote-visibility">Visibility</Label>
-            <Select
-              value={remoteVisibility}
-              onValueChange={(value) => {
-                setRemoteVisibility(value === "public" ? "public" : "private")
-                setError(null)
-              }}
-              disabled={isSubmitting}
-            >
-              <SelectTrigger id="create-project-remote-visibility" className="rounded-xl bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="private">Private</SelectItem>
-                <SelectItem value="public">Public</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="create-project-remote-name">Repository name</Label>
-          <Input
-            id="create-project-remote-name"
-            value={remoteRepositoryName}
-            onChange={(event) => {
-              setHasEditedRemoteRepositoryName(true)
-              setRemoteRepositoryName(event.target.value)
-              setError(null)
-            }}
-            placeholder="my-project"
-            disabled={isSubmitting}
-          />
-          <p className="text-xs text-muted-foreground">
-            The remote is required now, so this repository will be created before the project opens in workbench.
-          </p>
-        </div>
-      </div>
+              </select>
+            </SettingsRowControl>
+          </SettingsRow>
+          <SettingsRow>
+            <SettingsRowLabel
+              title="Visibility"
+              htmlFor="create-project-remote-visibility"
+              description="Repository visibility."
+              descriptionClassName="truncate"
+            />
+            <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+              <select
+                id="create-project-remote-visibility"
+                value={remoteVisibility}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setRemoteVisibility(value === "public" ? "public" : "private")
+                  setError(null)
+                }}
+                disabled={isSubmitting}
+                className={cn(settingsNativeSelectClass, "w-[176px]")}
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+            </SettingsRowControl>
+          </SettingsRow>
+          <SettingsRow>
+            <SettingsRowLabel
+              title="Repository name"
+              htmlFor="create-project-remote-name"
+              description="Created before opening workbench."
+              descriptionClassName="truncate"
+            />
+            <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+              <Input
+                id="create-project-remote-name"
+                value={remoteRepositoryName}
+                onChange={(event) => {
+                  setHasEditedRemoteRepositoryName(true)
+                  setRemoteRepositoryName(event.target.value)
+                  setError(null)
+                }}
+                placeholder="my-project"
+                className={cn(settingsInlineInputClass, "w-full text-[13px] font-normal")}
+                disabled={isSubmitting}
+              />
+            </SettingsRowControl>
+          </SettingsRow>
+          {ownersError ? <SettingsGroupError>{ownersError}</SettingsGroupError> : null}
+        </SettingsGroup>
+      </section>
     )
   }
 
@@ -969,68 +1021,79 @@ export function CreateProjectDialog({
       }}
     >
       <DialogContent
-        className={cn(
-          mode === "local" ? "sm:max-w-xl" : "sm:max-w-4xl",
-        )}
+        showCloseButton={false}
+        className="p-3 sm:max-w-xl sm:p-4"
       >
-        <DialogHeader className="items-start text-left">
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
-        </DialogHeader>
+        {mode !== "empty" && mode !== "repo" ? (
+          <DialogHeader className="items-start space-y-1 text-left">
+            <DialogTitle>{copy.title}</DialogTitle>
+            <DialogDescription className="text-sm">{copy.description}</DialogDescription>
+          </DialogHeader>
+        ) : null}
 
         <div
           className={cn(
-            "max-h-[calc(100vh-16rem)] overflow-y-auto py-2 pr-1",
-            mode === "local" ? "space-y-4" : "space-y-5",
+            "max-h-[calc(100vh-16rem)] overflow-y-auto",
+            mode === "local" ? "space-y-2" : "space-y-2.5",
           )}
         >
           {mode !== "local" ? (
-            <div className="space-y-2">
-              <Label htmlFor="create-project-name">Project name</Label>
-              <Input
-                id="create-project-name"
-                value={name}
-                onChange={(event) => {
-                  setHasEditedName(true)
-                  setName(event.target.value)
-                  setError(null)
-                }}
-                placeholder="My project"
-                disabled={isSubmitting}
-                autoFocus
-              />
-            </div>
-          ) : null}
+            <section>
+              <SettingsGroup>
+                {mode === "empty" ? (
+                  <SettingsRow isFirst>
+                    <SettingsRowLabel title="Project name" htmlFor="create-project-name" />
+                    <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                      <Input
+                        id="create-project-name"
+                        value={name}
+                        onChange={(event) => {
+                          setHasEditedName(true)
+                          setName(event.target.value)
+                          setError(null)
+                        }}
+                        placeholder="My project"
+                        disabled={isSubmitting}
+                        autoFocus
+                        className={cn(settingsInlineInputClass, "w-full text-[13px] font-normal")}
+                      />
+                    </SettingsRowControl>
+                  </SettingsRow>
+                ) : null}
 
-          {mode === "empty" || mode === "repo" ? (
-            <div className="space-y-2">
-              <Label htmlFor="create-project-location">Location</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="create-project-location"
-                  value={parentDirectory}
-                  onChange={(event) => {
-                    setParentDirectory(event.target.value)
-                    setError(null)
-                  }}
-                  placeholder="Choose a parent folder"
-                  disabled={isSubmitting}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={async () => {
-                    const selectedPath = await browseForDirectory("Select project location")
-                    if (!selectedPath) return
-                    setParentDirectory(selectedPath)
-                    setError(null)
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Browse
-                </Button>
-              </div>
-            </div>
+                {mode === "empty" || mode === "repo" ? (
+                  <SettingsRow isFirst={mode === "repo"}>
+                    <SettingsRowLabel
+                      title="Location"
+                      htmlFor="create-project-location"
+                      description="Parent folder for the local project."
+                      descriptionClassName="truncate"
+                    />
+                    <SettingsRowControl>
+                      <Button
+                        id="create-project-location"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-[220px] max-w-full justify-end rounded-md border-border/50 bg-transparent px-2 text-[11px] font-normal shadow-none transition-colors hover:bg-accent/50 hover:text-foreground"
+                        onClick={async () => {
+                          const selectedPath = await browseForDirectory("Select project location")
+                          if (!selectedPath) return
+                          setParentDirectory(selectedPath)
+                          setError(null)
+                        }}
+                        disabled={isSubmitting}
+                        title={parentDirectory || "Choose a parent folder"}
+                      >
+                        <span className="w-full truncate text-right">
+                          {locationPathPreview || "Choose a parent folder"}
+                        </span>
+                      </Button>
+                    </SettingsRowControl>
+                  </SettingsRow>
+                ) : null}
+              </SettingsGroup>
+            </section>
           ) : null}
 
           {mode === "local" && localGitState?.isLoading ? (
@@ -1067,54 +1130,67 @@ export function CreateProjectDialog({
                   </AlertDescription>
                 </Alert>
               ) : (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="import-project-repo-search">Search repositories</Label>
-                    <Input
-                      id="import-project-repo-search"
-                      value={repositorySearchValue}
-                      onChange={(event) => {
-                        setRepositorySearchValue(event.target.value)
-                        setError(null)
-                      }}
-                      placeholder="Search connected GitHub repositories"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-border/60 bg-secondary/20 p-2">
-                    <div className="h-[360px]">
-                      <ConnectedRepositoryPicker
-                        provider="github"
-                        organizationId={preferredConvexOrganizationId}
-                        integrationConnected={sourceControlReadiness.isReady}
-                        selectedRepoUrl={selectedRepository?.url}
-                        selectedBranch={selectedRepositoryBranch}
-                        repositorySearchValue={repositorySearchValue}
-                        onRepositorySelected={(repository) => {
-                          setSelectedRepository(repository)
-                          setSelectedRepositoryBranch(
-                            repository.defaultBranch || selectedRepositoryBranch || "main",
-                          )
-                          setError(null)
-                        }}
-                        onRepositoryBranchSelected={(repository, branch) => {
-                          setSelectedRepository(repository)
-                          setSelectedRepositoryBranch(branch)
-                          setError(null)
-                        }}
+                <div className="space-y-2.5">
+                  <SettingsGroup>
+                    <SettingsRow isFirst>
+                      <SettingsRowLabel
+                        title="Search repositories"
+                        htmlFor="import-project-repo-search"
+                        description="Filter connected GitHub repositories."
+                        descriptionClassName="truncate"
                       />
-                    </div>
-                  </div>
+                      <SettingsRowControl className="min-w-0 max-w-full flex-1 shrink">
+                        <Input
+                          id="import-project-repo-search"
+                          value={repositorySearchValue}
+                          onChange={(event) => {
+                            setRepositorySearchValue(event.target.value)
+                            setError(null)
+                          }}
+                          placeholder="Search connected repositories"
+                          disabled={isSubmitting}
+                          className="h-7 w-full min-w-0 rounded-md border border-border/50 bg-transparent px-2 text-[11px] shadow-none focus-visible:ring-1 focus-visible:ring-ring/50"
+                        />
+                      </SettingsRowControl>
+                    </SettingsRow>
+                  </SettingsGroup>
 
-                  {selectedRepository ? (
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <Badge variant="secondary">{selectedRepository.fullName}</Badge>
-                      <Badge variant="outline">
-                        Branch {selectedRepositoryBranch || selectedRepository.defaultBranch || "main"}
-                      </Badge>
-                    </div>
-                  ) : null}
+                  <section>
+                    <SettingsSectionTitle>Connected repositories</SettingsSectionTitle>
+                    <SettingsGroup className="bg-card/50">
+                      <SettingsRow isFirst className="flex-col items-stretch gap-2 py-2">
+                        <div className="w-full min-w-0">
+                          <ConnectedRepositoryPicker
+                            provider="github"
+                            organizationId={preferredConvexOrganizationId}
+                            integrationConnected={sourceControlReadiness.isReady}
+                            selectedRepoUrl={selectedRepository?.url}
+                            selectedBranch={selectedRepositoryBranch}
+                            repositorySearchValue={repositorySearchValue}
+                            paginationSlot="none"
+                            onPaginationStateChange={handleRepoPickerPaginationChange}
+                            onRepositorySelected={(repository) => {
+                              setSelectedRepository(repository)
+                              setSelectedRepositoryBranch(
+                                repository.defaultBranch || selectedRepositoryBranch || "main",
+                              )
+                              setError(null)
+                            }}
+                            onRepositoryBranchSelected={(repository, branch) => {
+                              setSelectedRepository(repository)
+                              setSelectedRepositoryBranch(branch)
+                              setError(null)
+                            }}
+                            onRepositorySelectionCleared={() => {
+                              setSelectedRepository(null)
+                              setSelectedRepositoryBranch("")
+                              setError(null)
+                            }}
+                          />
+                        </div>
+                      </SettingsRow>
+                    </SettingsGroup>
+                  </section>
                 </div>
               )}
             </>
@@ -1122,23 +1198,44 @@ export function CreateProjectDialog({
 
           {renderRemoteCreationSection()}
 
-          {mode !== "local" && resolvedProjectPathPreview ? (
-            <div className="rounded-2xl border border-border/60 bg-secondary/20 px-4 py-3 text-sm text-muted-foreground">
-              Local path: {resolvedProjectPathPreview}
-            </div>
-          ) : null}
-
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={closeDialog} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {copy.submitLabel}
-          </Button>
+        <DialogFooter
+          className={cn(
+            "flex-col gap-3 sm:flex-row sm:items-center",
+            mode === "repo" &&
+              sourceControlReadiness.isReady &&
+              repoPickerPagination &&
+              repoPickerPagination.totalCount > 0
+              ? "sm:justify-between"
+              : "sm:justify-end",
+          )}
+        >
+          {mode === "repo" &&
+          sourceControlReadiness.isReady &&
+          repoPickerPagination &&
+          repoPickerPagination.totalCount > 0 ? (
+            <TablePaginationControls
+              showEntryCount={false}
+              className="mt-0 min-w-0 flex-1"
+              currentPage={repoPickerPagination.currentPage}
+              totalCount={repoPickerPagination.totalCount}
+              pageSize={repoPickerPagination.pageSize}
+              onPageChange={repoPickerPagination.onPageChange}
+              onNextClick={repoPickerPagination.onNextClick}
+              isNextDisabled={repoPickerPagination.isNextDisabled}
+            />
+          ) : null}
+          <div className="flex shrink-0 justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={closeDialog} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button type="button" size="sm" className="rounded-full" onClick={() => void handleSubmit()} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {copy.submitLabel}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

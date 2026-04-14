@@ -159,3 +159,7 @@ export const settingsInlineInputClass =
   "h-7 max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right";
 
 export const settingsInlineInputWidth = "w-[240px] max-w-full";
+
+/** Native `<select>` in settings / create-project rows (compact bordered control). */
+export const settingsNativeSelectClass =
+  "h-7 max-w-full rounded-md border border-border/50 bg-transparent px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-ring/50";

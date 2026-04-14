@@ -7,7 +7,7 @@ import {
   CommandLineIcon as SquareTerminal,
   DevicePhoneMobileIcon as Phone,
   GlobeAltIcon as Globe,
-  SparklesIcon as Sparkles,
+  PlusCircleIcon as PlusCircle,
 } from "@heroicons/react/24/solid"
 
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ interface WorkbenchTileChromeProps {
   containerApi: DockviewApi
   chromeVariant?: "bar" | "pill"
   hideTitlePill?: boolean
+  hideWindowActions?: boolean
   tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
   assistantProvider?: string | null
   controls?: ReactNode
@@ -61,7 +62,7 @@ function resolveTileIcon(
     case "browser":
       return Globe
     case "selection":
-      return Sparkles
+      return PlusCircle
     case "devServer":
       return PackageOpen
     case "mobileSimulator":
@@ -77,6 +78,7 @@ export function WorkbenchTileChrome({
   containerApi,
   chromeVariant = "bar",
   hideTitlePill = false,
+  hideWindowActions = false,
   tileType,
   assistantProvider,
   controls,
@@ -139,54 +141,56 @@ export function WorkbenchTileChrome({
           <div className="min-w-0 flex-1" />
         )}
 
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-1 transition-colors",
-            chromeVariant === "pill" &&
-              "rounded-full bg-secondary px-1 shadow-none ring-0",
-          )}
-        >
-          {actions}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
+        {!hideWindowActions ? (
+          <div
             className={cn(
-              "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
-              chromeVariant === "pill"
-                ? pillControlHoverClasses
-                : "hover:bg-accent",
+              "flex shrink-0 items-center gap-1 transition-colors",
+              chromeVariant === "pill" &&
+                "rounded-full bg-secondary px-1 shadow-none ring-0",
             )}
-            onClick={() => {
-              if (panelApi.isMaximized()) {
-                panelApi.exitMaximized()
-                setIsMaximized(false)
-                return
-              }
-              panelApi.maximize()
-              setIsMaximized(true)
-            }}
-            aria-label={isMaximized ? "Restore tile" : "Maximize tile"}
           >
-            {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          </Button>
+            {actions}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
+                chromeVariant === "pill"
+                  ? pillControlHoverClasses
+                  : "hover:bg-accent",
+              )}
+              onClick={() => {
+                if (panelApi.isMaximized()) {
+                  panelApi.exitMaximized()
+                  setIsMaximized(false)
+                  return
+                }
+                panelApi.maximize()
+                setIsMaximized(true)
+              }}
+              aria-label={isMaximized ? "Restore tile" : "Maximize tile"}
+            >
+              {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
-              chromeVariant === "pill"
-                ? pillControlHoverClasses
-                : "hover:bg-accent",
-            )}
-            onClick={() => panelApi.close()}
-            aria-label={`Close ${title}`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
+                chromeVariant === "pill"
+                  ? pillControlHoverClasses
+                  : "hover:bg-accent",
+              )}
+              onClick={() => panelApi.close()}
+              aria-label={`Close ${title}`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className={cn("min-h-0 flex-1", contentClassName)}>
