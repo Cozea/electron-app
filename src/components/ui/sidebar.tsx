@@ -41,6 +41,7 @@ const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+const SIDEBAR_MAC_TOP_INSET_PX = 36
 const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 160, 320] as const
 
 /** Same as Lucide PanelLeft but with the left side filled (panel open state) */
@@ -268,9 +269,9 @@ function Sidebar({
     <div
       aria-hidden="true"
       data-slot="sidebar-window-chrome-inset"
-      className="titlebar-drag-region shrink-0 transition-[height,opacity] duration-200 ease-out"
+      className="titlebar-drag-region shrink-0 transition-opacity duration-200 ease-out"
       style={{
-        height: windowChrome.topInset,
+        height: SIDEBAR_MAC_TOP_INSET_PX,
         opacity: windowChrome.showMacWindowControls ? 1 : 0,
       }}
     />
