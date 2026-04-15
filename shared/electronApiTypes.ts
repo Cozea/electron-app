@@ -939,6 +939,22 @@ export interface IntegrationToolResult {
   error?: string
 }
 
+export interface CollabDeviceIdentity {
+  deviceId: string
+  deviceLabel: string
+  platform: string
+  publicKeyAlgorithm: string
+  fingerprint: string
+  publicKeyJwk: string
+}
+
+export interface CollabWrappedRoomKeyResult {
+  wrappedKey: string
+  wrapAlgorithm: string
+  senderPublicKeyJwk: string
+  senderDeviceId: string
+}
+
 export interface LocalAiRuntimeStatus {
   enabled: boolean
   running: boolean
@@ -1193,6 +1209,21 @@ export interface ElectronAPI {
     getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
     listTools: () => Promise<IntegrationToolDefinition[]>
   }
+  collab: {
+    isEncryptionAvailable: () => Promise<boolean>
+    ensureDeviceIdentity: () => Promise<CollabDeviceIdentity>
+    getStoredDeviceIdentity: () => Promise<CollabDeviceIdentity | null>
+    wrapRoomKey: (options: {
+      roomKeyBase64: string
+      recipientPublicKeyJwk: string
+    }) => Promise<CollabWrappedRoomKeyResult>
+    unwrapRoomKey: (options: {
+      senderPublicKeyJwk: string
+      wrappedKey: string
+      wrapAlgorithm?: string
+    }) => Promise<{ roomKeyBase64: string }>
+    deleteDeviceIdentity: () => Promise<{ success: boolean; error?: string }>
+  }
   tools: {
     run: (request: {
       name: string
@@ -1402,7 +1433,6 @@ export interface ElectronAPI {
     rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
     clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
     getLaneState: (options: { projectId: string }) => Promise<ProjectLaneState | null>
-    ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) => Promise<ProjectLaneState>
     upsertLane: (options: {
       projectId: string
       branch: string

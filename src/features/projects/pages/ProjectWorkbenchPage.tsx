@@ -6,7 +6,6 @@ import "dockview/dist/styles/dockview.css";
 import "@/features/projects/components/workbench/workbench.css";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
-import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/hooks/useProjectHeader";
 import {
@@ -70,20 +69,10 @@ export function ProjectWorkbenchPage() {
   const [isChangesOpen, setIsChangesOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false);
-  const collabBranch =
-    project?.sourceControl?.activeCollabBranch ??
-    project?.sourceControl?.defaultBranch ??
-    project?.gitRepository?.defaultBranch ??
-    "main";
-  const {
-    laneState,
-    activeLane,
-    refreshLaneState,
-  } = useProjectLaneState({
-    projectId,
-    projectPath,
-    collabBranch,
-  });
+  const collabBranch = projectRouteContext?.collabBranch ?? "main";
+  const laneState = projectRouteContext?.laneState ?? null;
+  const activeLane = projectRouteContext?.activeLane ?? null;
+  const refreshLaneState = projectRouteContext?.refreshLaneState;
   const activeLaneId =
     activeLane?.id ??
     laneState?.activeLaneId ??
@@ -156,15 +145,13 @@ export function ProjectWorkbenchPage() {
         <div className="titlebar-no-drag absolute left-full top-1/2 ml-2 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap">
           <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
           <WorkbenchHeaderBranchControl
-            project={project ?? null}
             projectId={projectId}
             projectPath={projectPath}
             collabBranch={collabBranch}
             laneState={laneState}
             activeLane={activeLane}
-            userId={convexUserId}
             onLaneStateChange={() => {
-              void refreshLaneState();
+              void refreshLaneState?.();
             }}
             triggerClassName="h-6 rounded-md border-0 bg-transparent px-1.5 hover:bg-muted/60"
           />
@@ -231,7 +218,9 @@ export function ProjectWorkbenchPage() {
     activeLaneId,
     searchParams,
     replaceSearchParams,
-    refreshLaneState,
+    refreshLaneState: async () => {
+      await refreshLaneState?.();
+    },
     openWorkbenchTarget,
     focusWorkbenchTile,
   });

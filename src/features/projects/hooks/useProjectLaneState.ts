@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+import {
+  buildProjectBranchLaneState,
+  readProjectBranchSession,
+  rememberProjectBranchSession,
+} from "@/features/projects/lib/projectBranchSessionStore"
 
 interface UseProjectLaneStateArgs {
   projectId: string | null
@@ -22,10 +27,14 @@ interface ScopedLaneState {
   isLoading: boolean
 }
 
-/** Stable across local path resolution — avoids wiping lanes when `projectPath` goes "" → real path. */
+function normalizeBranch(value: string | null | undefined, fallback = "main"): string {
+  const trimmed = value?.trim()
+  return trimmed || fallback
+}
+
 function buildLaneIdentityKey(projectId: string | null, collabBranch: string | null): string | null {
   if (!projectId) return null
-  return `${projectId}::${collabBranch ?? ""}`
+  return `${projectId}::${normalizeBranch(collabBranch)}`
 }
 
 const laneStateCache = new Map<string, ProjectLaneState>()
@@ -35,9 +44,13 @@ export function useProjectLaneState({
   projectPath,
   collabBranch,
 }: UseProjectLaneStateArgs): UseProjectLaneStateResult {
+  const normalizedCollabBranch = useMemo(
+    () => normalizeBranch(collabBranch),
+    [collabBranch],
+  )
   const identityKey = useMemo(
-    () => buildLaneIdentityKey(projectId, collabBranch),
-    [collabBranch, projectId],
+    () => buildLaneIdentityKey(projectId, normalizedCollabBranch),
+    [normalizedCollabBranch, projectId],
   )
 
   const [scoped, setScoped] = useState<ScopedLaneState>(() => ({
@@ -73,50 +86,51 @@ export function useProjectLaneState({
       return
     }
 
-    setScoped((current) => {
-      if (current.identityKey === identityKey) {
-        return {
-          identityKey,
-          laneState: current.laneState,
-          isLoading: true,
-        }
-      }
-      return {
-        identityKey,
-        laneState: laneStateCache.get(identityKey) ?? null,
-        isLoading: true,
-      }
-    })
+    setScoped((current) => ({
+      identityKey,
+      laneState:
+        current.identityKey === identityKey
+          ? current.laneState
+          : laneStateCache.get(identityKey) ?? null,
+      isLoading: true,
+    }))
 
     try {
-      let nextLaneState: ProjectLaneState
+      const storedSession = readProjectBranchSession(projectId)
+      let activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
 
-      if (projectPath && collabBranch) {
-        nextLaneState = await window.electronAPI.project.ensureCollabLane({
-          projectId,
+      if (projectPath) {
+        const statusResult = await window.electronAPI.sync.gitStatus({
           projectPath,
-          branch: collabBranch,
-        })
-      } else {
-        const loaded = await window.electronAPI.project.getLaneState({ projectId })
-        if (loaded == null) {
-          if (refreshRequestIdRef.current !== requestId) return
-          setScoped((current) => ({
-            identityKey,
-            laneState:
-              current.identityKey === identityKey && current.laneState
-                ? current.laneState
-                : laneStateCache.get(identityKey) ?? null,
-            isLoading: false,
-          }))
-          return
+        }).catch(() => null)
+
+        if (statusResult?.success !== false && statusResult?.currentBranch) {
+          activeBranch = statusResult.currentBranch
         }
-        nextLaneState = loaded
+
+        rememberProjectBranchSession({
+          projectId,
+          branch: activeBranch,
+          collabBranch: normalizedCollabBranch,
+          projectPath,
+        })
       }
+
+      const nextLaneState = buildProjectBranchLaneState({
+        projectId,
+        projectPath: projectPath ?? storedSession?.projectPath ?? null,
+        collabBranch: normalizedCollabBranch,
+        activeBranch,
+      })
 
       if (refreshRequestIdRef.current !== requestId) return
 
-      laneStateCache.set(identityKey, nextLaneState)
+      if (nextLaneState) {
+        laneStateCache.set(identityKey, nextLaneState)
+      } else {
+        laneStateCache.delete(identityKey)
+      }
+
       setScoped({
         identityKey,
         laneState: nextLaneState,
@@ -124,21 +138,35 @@ export function useProjectLaneState({
       })
     } catch (error) {
       if (refreshRequestIdRef.current !== requestId) return
-      console.error("[ProjectLane] Failed to load lane state", error)
+      console.error("[ProjectBranchSession] Failed to load branch session state", error)
       setScoped((current) => ({
         identityKey,
         laneState:
-          current.identityKey === identityKey && current.laneState
+          current.identityKey === identityKey
             ? current.laneState
             : laneStateCache.get(identityKey) ?? null,
         isLoading: false,
       }))
     }
-  }, [collabBranch, identityKey, projectId, projectPath])
+  }, [identityKey, normalizedCollabBranch, projectId, projectPath])
 
   useEffect(() => {
     void refreshLaneState()
   }, [refreshLaneState])
+
+  useEffect(() => {
+    if (!projectId || !projectPath) {
+      return
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshLaneState()
+    }, 5000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [projectId, projectPath, refreshLaneState])
 
   const laneState = useMemo(() => {
     if (scoped.identityKey === identityKey) {

@@ -28,7 +28,6 @@ import {
   resolveCanonicalProjectPath,
 } from '../projectPathRegistry'
 import {
-  ensureProjectCollabLane,
   readProjectLaneState,
   setActiveProjectLane,
   upsertProjectLane,
@@ -505,20 +504,6 @@ npm-debug.log*
     'project:getLaneState',
     async (_event, { projectId }: { projectId: string }) => {
       return readProjectLaneState(projectId)
-    },
-  )
-
-  ipcMain.handle(
-    'project:ensureCollabLane',
-    async (
-      _event,
-      {
-        projectId,
-        projectPath,
-        branch,
-      }: { projectId: string; projectPath: string; branch: string }
-    ) => {
-      return ensureProjectCollabLane({ projectId, projectPath, branch })
     },
   )
 

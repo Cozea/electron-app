@@ -719,7 +719,8 @@ export default defineSchema({
       })
     ),
 
-    // Source Control
+    // Legacy repository integration metadata.
+    // Collaboration should not depend on these fields on the active path.
     sourceControl: v.optional(
       v.object({
         provider: v.optional(v.string()), // github, gitlab, bitbucket, local
@@ -741,10 +742,10 @@ export default defineSchema({
       })
     ),
 
-    // Git is the only supported durability mode for projects.
+    // Legacy compatibility metadata for older git-first project flows.
     syncMode: v.optional(v.literal("git")),
 
-    // Canonical Git repository metadata for Git-backed sync.
+    // Optional attached repository metadata.
     gitRepository: v.optional(
       v.object({
         provider: v.string(), // github, gitlab, bitbucket
@@ -755,7 +756,7 @@ export default defineSchema({
       })
     ),
 
-    // Git sync state tracked by Cozea. This is product metadata, not user-facing history.
+    // Optional repository status metadata kept for compatibility and tooling.
     gitSyncState: v.optional(
       v.object({
         accessState: v.union(
@@ -881,8 +882,7 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_slug", ["organizationId", "slug"])
     .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_created_by", ["createdBy"])
-    .index("by_sync_mode", ["syncMode"]),
+    .index("by_created_by", ["createdBy"]),
 
   // Project members with expanded roles
   projectMembers: defineTable({
@@ -1305,6 +1305,77 @@ export default defineSchema({
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_project_and_status", ["projectId", "status"])
     .index("by_storage_id", ["storageId"]),
+
+  // ============================================
+  // COLLABORATION ENCRYPTION TABLES
+  // ============================================
+
+  // Collaboration-capable device identities. Only public metadata is stored here.
+  collabDevices: defineTable({
+    userId: v.id("users"),
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.string(),
+    publicKeyJwk: v.string(),
+    publicKeyAlgorithm: v.string(),
+    fingerprint: v.string(),
+    createdAt: v.number(),
+    lastSeenAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_user_and_device", ["userId", "deviceId"])
+    .index("by_device", ["deviceId"])
+    .index("by_user", ["userId"]),
+
+  // One logical room-key record per encrypted collaboration room/version.
+  projectCollabRoomKeys: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("rotating"),
+      v.literal("revoked"),
+    ),
+    createdByUserId: v.id("users"),
+    createdByDeviceId: v.string(),
+    createdAt: v.number(),
+    rotatedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_room", ["projectId", "roomId"])
+    .index("by_project_room_and_version", ["projectId", "roomId", "keyVersion"]),
+
+  // Wrapped room keys, one row per recipient device.
+  projectCollabWrappedKeys: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    recipientUserId: v.id("users"),
+    recipientDeviceId: v.string(),
+    senderDeviceId: v.string(),
+    senderPublicKeyJwk: v.string(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    createdAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project_room_and_recipient", ["projectId", "roomId", "recipientDeviceId"])
+    .index("by_project_room_and_key_version", ["projectId", "roomId", "keyVersion"]),
+
+  // Pending room-key requests when a new collaborator device needs access
+  // to an encrypted collaboration room.
+  projectCollabKeyRequests: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    recipientUserId: v.id("users"),
+    recipientDeviceId: v.string(),
+    recipientPublicKeyJwk: v.string(),
+    recipientFingerprint: v.string(),
+    requestedAt: v.number(),
+    fulfilledAt: v.optional(v.number()),
+  })
+    .index("by_project_and_room", ["projectId", "roomId"])
+    .index("by_project_room_and_device", ["projectId", "roomId", "recipientDeviceId"]),
 
   // ============================================
   // YJS COLLABORATIVE EDITING TABLES

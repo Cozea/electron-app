@@ -8,10 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { scheduleTask } from "@/lib/scheduler";
 import { buildProjectJoinUrl } from "@shared/projectShare";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
-import { GitDurabilityCoordinator } from "@/lib/git/GitDurabilityCoordinator";
 import { useQueryCache } from "@/stores/useQueryCache";
 import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys";
-import { syncProjectRepositoryAccess } from "@/lib/git/projectRepoAutomation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,7 +43,6 @@ import {
   PERSONAL_CONTACTS_CACHE_MAX_AGE_MS,
   type PersonalProjectContact,
   type ProjectInviteRole,
-  type ProjectRepoAccessRecord,
   PROJECT_INVITE_ROLE_OPTIONS,
 } from "./headerShared";
 
@@ -81,10 +78,6 @@ export function HeaderProjectShareButton({
   );
   const pendingProjectInvites = useQuery(
     api.projectInvites.listForProject,
-    projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : "skip",
-  );
-  const repoAccessRecords = useQuery(
-    api.projectRepoAccess.listForProject,
     projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : "skip",
   );
   const project = useQuery(
@@ -169,22 +162,6 @@ export function HeaderProjectShareButton({
     }
     return next;
   }, [pendingProjectInvites]);
-  const repoAccessByUserId = useMemo(() => {
-    const next = new Map<string, ProjectRepoAccessRecord>();
-    for (const record of repoAccessRecords ?? []) {
-      if (!record.memberUserId) continue;
-      next.set(String(record.memberUserId), record);
-    }
-    return next;
-  }, [repoAccessRecords]);
-  const repoAccessByEmail = useMemo(() => {
-    const next = new Map<string, ProjectRepoAccessRecord>();
-    for (const record of repoAccessRecords ?? []) {
-      if (!record.inviteEmail) continue;
-      next.set(record.inviteEmail.trim().toLowerCase(), record);
-    }
-    return next;
-  }, [repoAccessRecords]);
   const unavailableContactEmails = useMemo(() => {
     const emails = new Set<string>();
     inviteMembers.forEach((member) => {
@@ -272,28 +249,9 @@ export function HeaderProjectShareButton({
   }, [convex, convexUserId, personalContactsCacheKey, projectId]);
 
   const flushProjectBeforeShare = useCallback(async () => {
-    if (!projectId || !convexUserId || !syncContext?.projectPath) return;
-    if (project?.sourceControl?.syncPolicy === "manual") return;
-
-    const coordinator = GitDurabilityCoordinator.acquireShared({
-      projectId,
-      projectPath: syncContext.projectPath,
-      convex,
-      userId: convexUserId,
-    });
-
-    try {
-      await coordinator.flushNow(true);
-    } finally {
-      coordinator.release();
-    }
-  }, [
-    convex,
-    convexUserId,
-    project?.sourceControl?.syncPolicy,
-    projectId,
-    syncContext?.projectPath,
-  ]);
+    if (!syncContext?.collaborationEnabled) return;
+    await syncContext.triggerSync();
+  }, [syncContext]);
 
   useEffect(() => {
     if (!isInviteOpen || !activeJoinLink) return;
@@ -329,36 +287,11 @@ export function HeaderProjectShareButton({
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
-        const member = (projectMembers ?? []).find((entry) => entry.userId === memberUserId);
-        const repoAccess =
-          repoAccessByUserId.get(String(memberUserId)) ??
-          (member?.user?.email
-            ? repoAccessByEmail.get(member.user.email.trim().toLowerCase())
-            : undefined);
         await removeProjectMember({
           projectId,
           actorUserId: convexUserId,
           memberUserId,
         });
-
-        if (member?.user?.email) {
-          const syncOutcome = await syncProjectRepositoryAccess({
-            convex,
-            project,
-            actorUserId: convexUserId,
-            subjectType: "member",
-            memberUserId,
-            inviteEmail: member.user.email,
-            providerAccountHandle: repoAccess?.providerAccountHandle,
-            role: member.role,
-            action: "revoke",
-            isPersonalWorkspace: true,
-          });
-
-          if (!syncOutcome.success && syncOutcome.error) {
-            setTeamError(syncOutcome.error);
-          }
-        }
       } catch (error) {
         setTeamError(cleanConvexError(error, "Failed to remove member"));
       } finally {
@@ -367,14 +300,10 @@ export function HeaderProjectShareButton({
     },
     [
       canManagePersonalProjectAccess,
-      convex,
       convexUserId,
       project,
       projectId,
-      projectMembers,
       removeProjectMember,
-      repoAccessByEmail,
-      repoAccessByUserId,
     ],
   );
 
@@ -402,29 +331,7 @@ export function HeaderProjectShareButton({
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
-        const invite = (pendingProjectInvites ?? []).find((entry) => entry._id === inviteId);
-        const repoAccess = invite?.email
-          ? repoAccessByEmail.get(invite.email.trim().toLowerCase())
-          : undefined;
         await cancelProjectInvite({ inviteId, cancelledBy: convexUserId });
-
-        if (invite?.email) {
-          const syncOutcome = await syncProjectRepositoryAccess({
-            convex,
-            project,
-            actorUserId: convexUserId,
-            subjectType: "invite",
-            inviteEmail: invite.email,
-            providerAccountHandle: repoAccess?.providerAccountHandle,
-            role: invite.role,
-            action: "revoke",
-            isPersonalWorkspace: true,
-          });
-
-          if (!syncOutcome.success && syncOutcome.error) {
-            setTeamError(syncOutcome.error);
-          }
-        }
       } catch (error) {
         setTeamError(cleanConvexError(error, "Failed to cancel invite"));
       } finally {
@@ -434,11 +341,8 @@ export function HeaderProjectShareButton({
     [
       cancelProjectInvite,
       canManagePersonalProjectAccess,
-      convex,
       convexUserId,
-      pendingProjectInvites,
       project,
-      repoAccessByEmail,
     ],
   );
 

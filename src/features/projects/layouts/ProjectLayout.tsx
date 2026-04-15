@@ -22,8 +22,6 @@ import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge";
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge";
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
-import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync";
-import { logGitOpenDebug } from "@/lib/git/gitOpenDebug";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import { useScopedAppContext } from "@/hooks/useScopedAppContext";
@@ -31,10 +29,13 @@ import { getWorkspaceSelectionId } from "@shared/types";
 import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
+import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
 } from "@/features/projects/contexts/ProjectRouteContext";
+import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
+import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 
 function normalizeProjectPath(projectPath: string | null | undefined): string | null {
   if (!projectPath?.trim()) {
@@ -49,7 +50,6 @@ interface ProjectLayoutProps {
 }
 
 interface ProjectLayoutLocationState {
-  syncMode?: "git";
   localPath?: string | null;
   projectName?: string | null;
   pendingTeamSetup?: Array<{
@@ -79,7 +79,6 @@ export function ProjectLayout({
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
   const locationState = (location.state as ProjectLayoutLocationState | null) ?? null;
-  const initialSyncMode = locationState?.syncMode ?? null;
 
   // Get project data (with caching)
   const freshProjectById = useQuery(
@@ -104,34 +103,6 @@ export function ProjectLayout({
       ? freshProjectBySlug.project
       : null;
   const project = useCachedQuery(`layout-project-${routeProjectId ?? routeSlug}`, freshProject);
-  const projectIdForSyncBypass = routeProjectId ?? (project?._id ? String(project._id) : null);
-  const shouldSkipInitialSyncCheck =
-    initialSyncMode === "git" ||
-    project?.syncMode === "git" ||
-    (projectIdForSyncBypass ? hasRecentProjectOpenSync(projectIdForSyncBypass) : false);
-  useEffect(() => {
-    if (!project?._id) {
-      return;
-    }
-
-    logGitOpenDebug("project_layout:route_state", {
-      projectId: String(project._id),
-      routeProjectId: routeProjectId ?? null,
-      routeSlug: routeSlug ?? null,
-      syncMode: project.syncMode ?? null,
-      initialSyncMode,
-      shouldSkipInitialSyncCheck,
-      projectIdForSyncBypass,
-    });
-  }, [
-    initialSyncMode,
-    project?._id,
-    project?.syncMode,
-    projectIdForSyncBypass,
-    routeProjectId,
-    routeSlug,
-    shouldSkipInitialSyncCheck,
-  ]);
   const projectSlug = project?.slug ?? routeSlug ?? null;
   const effectiveProjectName = project?.name ?? locationState?.projectName ?? null;
   const projectBasePath = routeProjectId
@@ -222,9 +193,8 @@ export function ProjectLayout({
         }
 
         const nextState =
-          locationState?.syncMode || navigationLocalPath
+          navigationLocalPath
             ? {
-                syncMode: locationState?.syncMode,
                 localPath: navigationLocalPath,
               }
             : null;
@@ -248,7 +218,6 @@ export function ProjectLayout({
     location.pathname,
     location.search,
     navigationLocalPath,
-    locationState?.syncMode,
     navigate,
     pendingTeamSetup,
     pendingTeamSetupReady,
@@ -314,6 +283,35 @@ export function ProjectLayout({
     location.pathname.startsWith("/projects/teams");
   const shouldEnableProjectRuntime = Boolean(effectiveLocalPath && (isWorkbenchView || isChangesView));
   const runtimeProjectPath = shouldEnableProjectRuntime ? effectiveLocalPath : null;
+  const collabBranch = useMemo(
+    () => resolveProjectSharedBranch(project),
+    [project],
+  );
+  const routeProjectIdentity = project?._id ? String(project._id) : routeProjectId ?? null;
+  const {
+    laneState,
+    activeLane,
+    collabLane,
+    refreshLaneState,
+  } = useProjectLaneState({
+    projectId: shouldEnableProjectRuntime ? routeProjectIdentity : null,
+    projectPath: runtimeProjectPath,
+    collabBranch,
+  });
+  const activeBranch = activeLane?.branch ?? collabBranch;
+  const collaborationEnabled =
+    shouldEnableProjectRuntime && Boolean(runtimeProjectPath) && activeBranch === collabBranch;
+  const documentScopeId = useMemo(() => {
+    if (!routeProjectIdentity) {
+      return null;
+    }
+
+    if (!activeLane || activeLane.isCollab) {
+      return routeProjectIdentity;
+    }
+
+    return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
+  }, [activeLane, collabBranch, routeProjectIdentity]);
 
   useDiagnosticsBridge(runtimeProjectPath);
 
@@ -449,13 +447,25 @@ export function ProjectLayout({
       localPath: effectiveLocalPath ?? null,
       projectBasePath,
       projectName: effectiveProjectName,
+      collabBranch,
+      laneState,
+      activeLane,
+      collabLane,
+      collaborationEnabled,
+      refreshLaneState,
     }),
     [
+      activeLane,
+      collabBranch,
+      collabLane,
+      collaborationEnabled,
       effectiveProjectName,
       effectiveLocalPath,
       freshProjectBySlug,
+      laneState,
       project,
       projectBasePath,
+      refreshLaneState,
       routeProjectId,
       routeSlug,
     ],
@@ -470,7 +480,10 @@ export function ProjectLayout({
         projectSlug={projectSlug}
         localPath={runtimeProjectPath}
         lastSyncAt={project?.lastSyncAt}
-        skipInitialSyncCheck={shouldSkipInitialSyncCheck}
+        collaborationEnabled={collaborationEnabled}
+        activeBranch={activeBranch}
+        sharedBranch={collabBranch}
+        documentScopeId={documentScopeId}
       >
         {layoutContent}
       </ProjectSyncProvider>

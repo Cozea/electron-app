@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useConvex, useMutation } from "convex/react"
+import { useMutation } from "convex/react"
 import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import type {
-  RepositoryDescriptor,
-  RepositoryOwnerDescriptor,
-} from "@shared/electronApiTypes"
+import type { RepositoryDescriptor } from "@shared/electronApiTypes"
 import {
   ConnectedRepositoryPicker,
   type ConnectedRepositoryPickerPaginationState,
@@ -27,24 +24,17 @@ import { TablePaginationControls } from "@/components/ui/table-pagination-contro
 import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { useWorkspaceSourceControl } from "@/hooks/useWorkspaceSourceControl"
-import {
-  createConnectedRepository,
-  listConnectedRepositoryOwners,
-} from "@/lib/git/providerRepositoryManagement"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { getWorkspaceSourceControlReadiness } from "@/lib/sourceControl/workspaceSourceControlReadiness"
 import { cn } from "@/lib/utils"
 import {
   SettingsGroup,
-  SettingsGroupError,
   SettingsRow,
   SettingsRowControl,
   SettingsRowLabel,
-  SettingsSectionDescription,
   SettingsSectionTitle,
   settingsInlineInputClass,
   settingsInlineInputWidth,
-  settingsNativeSelectClass,
 } from "@/components/settings/SettingsChrome"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import {
@@ -71,22 +61,17 @@ interface DialogCopy {
   submitLabel: string
 }
 
-interface RemoteCreationDetails {
-  repository: RepositoryDescriptor
-  owner: RepositoryOwnerDescriptor | null
-}
-
 const DIALOG_COPY: Record<CreateProjectDialogMode, DialogCopy> = {
   empty: {
     title: "Empty project",
     description:
-      "Create a blank local project with a connected remote and jump straight into the workbench.",
+      "Create a blank local project and jump straight into the workbench.",
     submitLabel: "Create project",
   },
   local: {
     title: "Import local folder",
     description:
-      "Attach an existing local folder. Every imported project needs a remote, so Cozea will use the current origin or create one before saving.",
+      "Attach an existing local folder and start working in Cozea. Git stays exactly as it is on your machine.",
     submitLabel: "Import folder",
   },
   repo: {
@@ -95,17 +80,6 @@ const DIALOG_COPY: Record<CreateProjectDialogMode, DialogCopy> = {
       "Browse connected GitHub repositories, clone one locally, and open it directly in the workbench.",
     submitLabel: "Import repository",
   },
-}
-
-function getPreferredOwner(
-  owners: RepositoryOwnerDescriptor[],
-  setupMode: "personal" | "organization",
-): RepositoryOwnerDescriptor | null {
-  if (setupMode === "organization") {
-    return owners.find((owner) => owner.kind !== "user") ?? owners[0] ?? null
-  }
-
-  return owners.find((owner) => owner.kind === "user") ?? owners[0] ?? null
 }
 
 function getBlockingCopy(reason: string | null, setupMode: "personal" | "organization") {
@@ -141,7 +115,7 @@ function getBlockingCopy(reason: string | null, setupMode: "personal" | "organiz
       return {
         title: "Connect GitHub to continue",
         description:
-          "Every project now requires a remote. Connect GitHub in Source Control before creating or importing projects.",
+          "Connect GitHub in Git Providers before importing a connected repository.",
       }
   }
 }
@@ -172,7 +146,6 @@ export function CreateProjectDialog({
   initialLocalFolderPath = "",
   onOpenChange,
 }: CreateProjectDialogProps) {
-  const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const {
@@ -191,17 +164,10 @@ export function CreateProjectDialog({
   const [repositorySearchValue, setRepositorySearchValue] = useState("")
   const [selectedRepository, setSelectedRepository] = useState<RepositoryDescriptor | null>(null)
   const [selectedRepositoryBranch, setSelectedRepositoryBranch] = useState("")
-  const [remoteRepositoryName, setRemoteRepositoryName] = useState("")
-  const [remoteVisibility, setRemoteVisibility] = useState<"private" | "public">("private")
-  const [owners, setOwners] = useState<RepositoryOwnerDescriptor[]>([])
-  const [selectedOwnerId, setSelectedOwnerId] = useState("")
-  const [isLoadingOwners, setIsLoadingOwners] = useState(false)
-  const [ownersError, setOwnersError] = useState<string | null>(null)
   const [localGitState, setLocalGitState] = useState<LocalGitState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasEditedName, setHasEditedName] = useState(false)
-  const [hasEditedRemoteRepositoryName, setHasEditedRemoteRepositoryName] = useState(false)
   const [repoPickerPagination, setRepoPickerPagination] =
     useState<ConnectedRepositoryPickerPaginationState | null>(null)
 
@@ -237,9 +203,9 @@ export function CreateProjectDialog({
 
     const folderName = deriveNameFromPath(initialLocalFolderPath.trim()) || "this folder"
     return {
-      title: "Create remote to import folder",
-      description: `Cozea can import ${folderName} as soon as it has a GitHub remote. Set that up here and we'll finish the import.`,
-      submitLabel: "Create remote and import",
+      title: "Import local folder",
+      description: `Import ${folderName} into Cozea and keep any git setup on disk exactly as it already is.`,
+      submitLabel: "Import folder",
     } satisfies DialogCopy
   }, [initialLocalFolderPath, mode])
   const setupMode = personalScoped ? "personal" : "organization"
@@ -256,19 +222,6 @@ export function CreateProjectDialog({
   const locationPathPreview = useMemo(
     () => formatLocationPathPreview(parentDirectory, 2),
     [parentDirectory],
-  )
-
-  const ownerOptions = useMemo(() => {
-    const compatibleOwners = owners.filter((owner) =>
-      setupMode === "organization" ? owner.kind !== "user" : owner.kind === "user",
-    )
-
-    return compatibleOwners.length > 0 ? compatibleOwners : owners
-  }, [owners, setupMode])
-
-  const selectedOwner = useMemo(
-    () => ownerOptions.find((owner) => owner.id === selectedOwnerId) ?? null,
-    [ownerOptions, selectedOwnerId],
   )
 
   useEffect(() => {
@@ -293,15 +246,9 @@ export function CreateProjectDialog({
         setRepositorySearchValue("")
         setSelectedRepository(null)
         setSelectedRepositoryBranch("")
-        setRemoteRepositoryName("")
-        setRemoteVisibility("private")
-        setOwners([])
-        setSelectedOwnerId("")
-        setOwnersError(null)
         setLocalGitState(null)
         setError(null)
         setHasEditedName(false)
-        setHasEditedRemoteRepositoryName(false)
       })
       .catch((nextError) => {
         if (cancelled) return
@@ -333,19 +280,6 @@ export function CreateProjectDialog({
   }, [mode, selectedRepository])
 
   useEffect(() => {
-    if (hasEditedRemoteRepositoryName) {
-      return
-    }
-
-    if (mode === "repo") {
-      return
-    }
-
-    const fallbackName = mode === "local" && !name.trim() ? deriveNameFromPath(localFolderPath) : name
-    setRemoteRepositoryName(buildFilesystemSlug(fallbackName))
-  }, [hasEditedRemoteRepositoryName, localFolderPath, mode, name])
-
-  useEffect(() => {
     if (mode !== "local" || !localFolderPath.trim()) {
       setLocalGitState(null)
       return
@@ -370,74 +304,6 @@ export function CreateProjectDialog({
       cancelled = true
     }
   }, [localFolderPath, mode])
-
-  useEffect(() => {
-    if (
-      !open ||
-      !preferredConvexOrganizationId ||
-      !convexUserId ||
-      !sourceControlReadiness.isReady
-    ) {
-      setOwners([])
-      setSelectedOwnerId("")
-      setOwnersError(null)
-      return
-    }
-
-    let cancelled = false
-    setIsLoadingOwners(true)
-    setOwnersError(null)
-
-    void listConnectedRepositoryOwners({
-      convex,
-      organizationId: preferredConvexOrganizationId,
-      userId: convexUserId,
-      provider: "github",
-    })
-      .then((loadedOwners) => {
-        if (cancelled) return
-        setOwners(loadedOwners)
-        const preferredOwner = getPreferredOwner(
-          loadedOwners.filter((owner) =>
-            setupMode === "organization" ? owner.kind !== "user" : owner.kind === "user",
-          ).length > 0
-            ? loadedOwners.filter((owner) =>
-                setupMode === "organization" ? owner.kind !== "user" : owner.kind === "user",
-              )
-            : loadedOwners,
-          setupMode,
-        )
-        setSelectedOwnerId((current) => {
-          if (loadedOwners.some((owner) => owner.id === current)) {
-            return current
-          }
-          return preferredOwner?.id ?? ""
-        })
-      })
-      .catch((loadError) => {
-        if (cancelled) return
-        setOwners([])
-        setSelectedOwnerId("")
-        setOwnersError(
-          loadError instanceof Error ? loadError.message : "Failed to load GitHub owners.",
-        )
-      })
-      .finally(() => {
-        if (cancelled) return
-        setIsLoadingOwners(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    convex,
-    convexUserId,
-    open,
-    preferredConvexOrganizationId,
-    setupMode,
-    sourceControlReadiness.isReady,
-  ])
 
   const closeDialog = useCallback(() => {
     if (isSubmitting) return
@@ -490,7 +356,6 @@ export function CreateProjectDialog({
       repository: RepositoryDescriptor
       branch: string
       workingCopyMode: "managed" | "attached"
-      owner?: RepositoryOwnerDescriptor | null
     }) => {
       if (!convexUserId) {
         return
@@ -509,10 +374,8 @@ export function CreateProjectDialog({
           setupMode,
           repoId: args.repository.id,
           ownerId: args.repository.ownerId,
-          ownerName: args.owner?.displayName ?? args.repository.ownerLogin,
-          ownerType:
-            args.owner?.kind ??
-            (setupMode === "organization" ? "organization" : "user"),
+          ownerName: args.repository.ownerLogin,
+          ownerType: setupMode === "organization" ? "organization" : "user",
           providerHost: githubConnection?.providerHost,
         })
       } catch (bindingError) {
@@ -533,56 +396,11 @@ export function CreateProjectDialog({
           projectId,
           projectName,
           localPath: projectPath,
-          syncMode: "git",
         },
       })
     },
     [navigate, onOpenChange],
   )
-
-  const createManagedRemoteRepository = useCallback(async (): Promise<RemoteCreationDetails> => {
-    if (!preferredConvexOrganizationId || !convexUserId) {
-      throw new Error("No workspace selected.")
-    }
-
-    if (!sourceControlReadiness.isReady) {
-      throw new Error("Connect GitHub in Source Control before creating a project remote.")
-    }
-
-    if (!selectedOwner) {
-      throw new Error("Choose a GitHub owner for the remote repository.")
-    }
-
-    const trimmedRemoteRepositoryName = remoteRepositoryName.trim()
-    if (!trimmedRemoteRepositoryName) {
-      throw new Error("Repository name is required.")
-    }
-
-    const repository = await createConnectedRepository({
-      convex,
-      organizationId: preferredConvexOrganizationId,
-      userId: convexUserId,
-      provider: "github",
-      ownerId: selectedOwner.id,
-      ownerLogin: selectedOwner.login,
-      ownerKind: selectedOwner.kind,
-      name: trimmedRemoteRepositoryName,
-      private: remoteVisibility !== "public",
-    })
-
-    return {
-      repository,
-      owner: selectedOwner,
-    }
-  }, [
-    convex,
-    convexUserId,
-    preferredConvexOrganizationId,
-    remoteRepositoryName,
-    remoteVisibility,
-    selectedOwner,
-    sourceControlReadiness.isReady,
-  ])
 
   const handleSubmit = useCallback(async () => {
     if (!convexUserId || !preferredConvexOrganizationId || isSubmitting) {
@@ -623,16 +441,8 @@ export function CreateProjectDialog({
       return
     }
 
-    if ((mode === "empty" || (mode === "local" && !localGitState?.remoteUrl)) && !sourceControlReadiness.isReady) {
-      setError("Connect GitHub in Source Control before continuing.")
-      return
-    }
-
-    if (
-      (mode === "empty" || (mode === "local" && !localGitState?.remoteUrl)) &&
-      !remoteRepositoryName.trim()
-    ) {
-      setError("Repository name is required.")
+    if (mode === "repo" && !sourceControlReadiness.isReady) {
+      setError("Connect GitHub in Git Providers before importing a connected repository.")
       return
     }
 
@@ -645,7 +455,7 @@ export function CreateProjectDialog({
       if (mode === "empty") {
         const createFolderResult = await window.electronAPI.project.createFolder({
           slug: buildFilesystemSlug(trimmedName),
-          initGit: true,
+          initGit: false,
           baseDirectory: trimmedParentDirectory,
         })
 
@@ -654,17 +464,6 @@ export function CreateProjectDialog({
         }
 
         createdProjectPath = createFolderResult.localPath
-        const remote = await createManagedRemoteRepository()
-        const branch = remote.repository.defaultBranch || "main"
-        const ensureRepoResult = await window.electronAPI.sync.gitEnsureRepo({
-          projectPath: createdProjectPath,
-          branch,
-          repoUrl: remote.repository.url,
-        })
-
-        if (!ensureRepoResult.success) {
-          throw new Error(ensureRepoResult.error || "Failed to attach the new remote repository.")
-        }
 
         const result = await createProject({
           organizationId: preferredConvexOrganizationId,
@@ -672,18 +471,6 @@ export function CreateProjectDialog({
           name: trimmedName,
           template: "blank",
           creationPath: "fresh",
-          sourceControl: {
-            provider: remote.repository.provider,
-            repoUrl: remote.repository.url,
-            activeCollabBranch: branch,
-            defaultBranch: branch,
-            visibility: formatRemoteVisibility(
-              remote.repository.visibility,
-              remote.repository.private,
-            ),
-            workingCopyMode: "managed",
-            setupMode,
-          },
         })
 
         await updateProjectStatus({
@@ -692,70 +479,39 @@ export function CreateProjectDialog({
           status: "active",
         })
         await persistProjectPath(result.projectId, createdProjectPath)
-        await persistBindingDetails({
-          projectId: result.projectId,
-          repository: remote.repository,
-          branch,
-          owner: remote.owner,
-          workingCopyMode: "managed",
-        })
         navigateToProjectWorkbench(String(result.projectId), createdProjectPath, trimmedName)
         return
       }
 
       if (mode === "local") {
         const existingRemoteUrl = localGitState?.remoteUrl?.trim() || ""
-        let repositoryForBinding: RepositoryDescriptor | null = null
-        let repositoryOwner: RepositoryOwnerDescriptor | null = null
-        let repoUrl = existingRemoteUrl
-        let branch = localGitState?.branch || "main"
-
-        if (!existingRemoteUrl) {
-          const remote = await createManagedRemoteRepository()
-          repositoryForBinding = remote.repository
-          repositoryOwner = remote.owner
-          repoUrl = remote.repository.url
-          branch = remote.repository.defaultBranch || branch
-
-          const ensureRepoResult = await window.electronAPI.sync.gitEnsureRepo({
-            projectPath: trimmedLocalFolderPath,
-            branch,
-            repoUrl,
-          })
-
-          if (!ensureRepoResult.success) {
-            throw new Error(ensureRepoResult.error || "Failed to attach a remote to the local folder.")
-          }
-        }
-
-        const provider = repositoryForBinding?.provider ?? deriveProviderFromRepoUrl(repoUrl)
-        const normalizedBranch = await detectCurrentBranch(trimmedLocalFolderPath, branch)
+        const normalizedBranch = await detectCurrentBranch(
+          trimmedLocalFolderPath,
+          localGitState?.branch || "main",
+        )
+        const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
         const result = await createProject({
           organizationId: preferredConvexOrganizationId,
           userId: convexUserId,
           name: trimmedName,
           template: "blank",
           creationPath: "repo",
-          sourceControl: {
-            provider,
-            repoUrl,
-            activeCollabBranch: normalizedBranch,
-            defaultBranch: normalizedBranch,
-            visibility:
-              repositoryForBinding
-                ? formatRemoteVisibility(
-                    repositoryForBinding.visibility,
-                    repositoryForBinding.private,
-                  )
-                : undefined,
-            workingCopyMode: "attached",
-            setupMode,
-          },
-          repoSource: {
-            provider,
-            repoUrl,
-            branch: normalizedBranch,
-          },
+          sourceControl: existingRemoteUrl && provider
+            ? {
+                provider,
+                repoUrl: existingRemoteUrl,
+                defaultBranch: normalizedBranch,
+                workingCopyMode: "attached",
+                setupMode,
+              }
+            : undefined,
+          repoSource: existingRemoteUrl && provider
+            ? {
+                provider,
+                repoUrl: existingRemoteUrl,
+                branch: normalizedBranch,
+              }
+            : undefined,
         })
 
         await updateProjectStatus({
@@ -764,15 +520,6 @@ export function CreateProjectDialog({
           status: "active",
         })
         await persistProjectPath(result.projectId, trimmedLocalFolderPath)
-        if (repositoryForBinding) {
-          await persistBindingDetails({
-            projectId: result.projectId,
-            repository: repositoryForBinding,
-            branch: normalizedBranch,
-            owner: repositoryOwner,
-            workingCopyMode: "attached",
-          })
-        }
         navigateToProjectWorkbench(String(result.projectId), trimmedLocalFolderPath, trimmedName)
         return
       }
@@ -805,7 +552,6 @@ export function CreateProjectDialog({
         sourceControl: {
           provider: repository.provider,
           repoUrl: repository.url,
-          activeCollabBranch: branch,
           defaultBranch: branch,
           visibility: formatRemoteVisibility(
             repository.visibility,
@@ -845,7 +591,6 @@ export function CreateProjectDialog({
     }
   }, [
     convexUserId,
-    createManagedRemoteRepository,
     createProject,
     isSubmitting,
     localFolderPath,
@@ -858,158 +603,13 @@ export function CreateProjectDialog({
     persistBindingDetails,
     persistProjectPath,
     preferredConvexOrganizationId,
-    remoteRepositoryName,
     selectedRepository,
     selectedRepositoryBranch,
     setupMode,
     sourceControlReadiness.isReady,
     updateProjectStatus,
   ])
-
-  useEffect(() => {
-    if (
-      !open ||
-      mode !== "local" ||
-      isSubmitting ||
-      !localFolderPath.trim() ||
-      !localGitState?.remoteUrl
-    ) {
-      return
-    }
-
-    void handleSubmit()
-  }, [
-    handleSubmit,
-    isSubmitting,
-    localFolderPath,
-    localGitState?.remoteUrl,
-    mode,
-    open,
-  ])
-
   const blockingCopy = getBlockingCopy(sourceControlReadiness.blockingReason, setupMode)
-  const shouldShowRemoteCreationSection =
-    mode === "empty" || (mode === "local" && !localGitState?.remoteUrl)
-
-  const renderRemoteCreationSection = () => {
-    if (!shouldShowRemoteCreationSection) {
-      return null
-    }
-
-    if (!sourceControlReadiness.isReady) {
-      return (
-        <Alert className="rounded-2xl bg-secondary/40">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{blockingCopy.title}</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>{blockingCopy.description}</p>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full"
-              onClick={() => {
-                onOpenChange(false)
-                navigate(sourceControlSettingsHref)
-              }}
-              disabled={isSubmitting}
-            >
-              Open Source Control
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )
-    }
-
-    return (
-      <section>
-        <SettingsSectionTitle>Remote repository</SettingsSectionTitle>
-        <SettingsSectionDescription>
-          {mode === "empty"
-            ? "Cozea creates and connects a GitHub repository before opening workbench."
-            : "No origin remote found, so Cozea will create one before import."}
-        </SettingsSectionDescription>
-        <SettingsGroup>
-          <SettingsRow isFirst>
-            <SettingsRowLabel
-              title="Owner"
-              htmlFor="create-project-remote-owner"
-              description={isLoadingOwners ? "Loading owners..." : "Where the repository is created."}
-              descriptionClassName="truncate"
-            />
-            <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
-              <select
-                id="create-project-remote-owner"
-                value={selectedOwnerId}
-                onChange={(event) => {
-                  setSelectedOwnerId(event.target.value)
-                  setError(null)
-                }}
-                disabled={isSubmitting || isLoadingOwners || ownerOptions.length === 0}
-                className={cn(settingsNativeSelectClass, "w-[176px]")}
-              >
-                {ownerOptions.length === 0 ? (
-                  <option value="">{isLoadingOwners ? "Loading owners..." : "No owner available"}</option>
-                ) : null}
-                {ownerOptions.map((owner) => (
-                  <option key={owner.id} value={owner.id}>
-                    {owner.displayName} ({owner.login})
-                  </option>
-                ))}
-              </select>
-            </SettingsRowControl>
-          </SettingsRow>
-          <SettingsRow>
-            <SettingsRowLabel
-              title="Visibility"
-              htmlFor="create-project-remote-visibility"
-              description="Repository visibility."
-              descriptionClassName="truncate"
-            />
-            <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
-              <select
-                id="create-project-remote-visibility"
-                value={remoteVisibility}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setRemoteVisibility(value === "public" ? "public" : "private")
-                  setError(null)
-                }}
-                disabled={isSubmitting}
-                className={cn(settingsNativeSelectClass, "w-[176px]")}
-              >
-                <option value="private">Private</option>
-                <option value="public">Public</option>
-              </select>
-            </SettingsRowControl>
-          </SettingsRow>
-          <SettingsRow>
-            <SettingsRowLabel
-              title="Repository name"
-              htmlFor="create-project-remote-name"
-              description="Created before opening workbench."
-              descriptionClassName="truncate"
-            />
-            <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
-              <Input
-                id="create-project-remote-name"
-                value={remoteRepositoryName}
-                onChange={(event) => {
-                  setHasEditedRemoteRepositoryName(true)
-                  setRemoteRepositoryName(event.target.value)
-                  setError(null)
-                }}
-                placeholder="my-project"
-                className={cn(settingsInlineInputClass, "w-full text-[13px] font-normal")}
-                disabled={isSubmitting}
-              />
-            </SettingsRowControl>
-          </SettingsRow>
-          {ownersError ? <SettingsGroupError>{ownersError}</SettingsGroupError> : null}
-        </SettingsGroup>
-      </section>
-    )
-  }
 
   return (
     <Dialog
@@ -1101,7 +701,7 @@ export function CreateProjectDialog({
               <Loader2 className="h-4 w-4 animate-spin" />
               <AlertTitle>Checking the folder</AlertTitle>
               <AlertDescription>
-                Preparing the import and confirming whether we need to create a remote first.
+                Preparing the local import and reading any existing git details on disk.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -1124,7 +724,7 @@ export function CreateProjectDialog({
                       }}
                       disabled={isSubmitting}
                     >
-                      Open Source Control
+                      Open Git Providers
                       <ExternalLink className="h-4 w-4" />
                     </Button>
                   </AlertDescription>
@@ -1195,8 +795,6 @@ export function CreateProjectDialog({
               )}
             </>
           ) : null}
-
-          {renderRemoteCreationSection()}
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>

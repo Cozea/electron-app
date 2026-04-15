@@ -4,7 +4,8 @@ import type {
   ProjectLaneState,
 } from "@shared/electronApiTypes"
 
-import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenGitSync"
+import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenTypes"
+import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration"
 import { cn } from "@/lib/utils"
 
 /** Use on `<button>`/rows; pair with `SIDEBAR_PILL_ACTIVE_CLASS` when selected */
@@ -112,12 +113,7 @@ export interface SidebarProjectTreeItemProps {
 }
 
 export function resolveProjectCollabBranch(project: SidebarProjectItem): string {
-  return (
-    project.sourceControl?.activeCollabBranch ??
-    project.sourceControl?.defaultBranch ??
-    project.gitRepository?.defaultBranch ??
-    "main"
-  )
+  return resolveProjectSharedBranch(project)
 }
 
 export function areSidebarProjectItemsEqual(
@@ -134,7 +130,6 @@ export function areSidebarProjectItemsEqual(
     left.updatedAt === right.updatedAt &&
     left.organizationId === right.organizationId &&
     left.createdBy === right.createdBy &&
-    left.syncMode === right.syncMode &&
     left.localPath === right.localPath &&
     left.importedFrom?.provider === right.importedFrom?.provider &&
     left.importedFrom?.repoFullName === right.importedFrom?.repoFullName &&

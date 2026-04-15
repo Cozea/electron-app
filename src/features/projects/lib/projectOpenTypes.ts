@@ -22,7 +22,6 @@ export interface ProjectOpenGitProjectLike {
   slug: string;
   organizationId: Id<"organizations">;
   createdBy?: Id<"users"> | string | null;
-  syncMode?: "git";
   localPath?: string | null;
   gitRepository?: GitRepositoryMetadataLike | null;
   sourceControl?: ProjectGitRuntimeSourceControlLike | null;

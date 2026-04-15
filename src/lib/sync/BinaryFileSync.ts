@@ -1,6 +1,5 @@
 import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 
 /**
  * Binary file extensions that should be synced via LFS-like blob storage
@@ -39,29 +38,21 @@ const UPLOAD_QUEUE_KEY = 'cozea:binary-upload-queue'
 const MAX_RETRIES = 3
 
 /**
- * BinaryFileSync - Schedules Git durability syncs for binary file changes.
+ * BinaryFileSync - Tracks binary file changes for later Cozea-native durability.
  */
 export class BinaryFileSync {
   private projectId: Id<'projects'>
-  private gitDurabilityCoordinator: GitDurabilityCoordinator
 
   constructor(
     projectId: Id<'projects'>,
-    projectPath: string,
-    convex: ConvexReactClient,
-    userId: Id<'users'>
+    _projectPath: string,
+    _convex: ConvexReactClient,
+    _userId: Id<'users'>
   ) {
     this.projectId = projectId
-    this.gitDurabilityCoordinator = GitDurabilityCoordinator.acquireShared({
-      projectId,
-      projectPath,
-      convex,
-      userId,
-    })
   }
 
   destroy(): void {
-    this.gitDurabilityCoordinator.release()
   }
 
   /**
@@ -69,9 +60,8 @@ export class BinaryFileSync {
    */
   async uploadBinaryFile(relativePath: string): Promise<string | null> {
     try {
-      this.gitDurabilityCoordinator.scheduleSync(`binary:${relativePath}`)
-      console.log(`[BinaryFileSync] Scheduled git durability sync: ${relativePath}`)
-      return 'git-sync'
+      console.log(`[BinaryFileSync] Observed binary change: ${relativePath}`)
+      return 'queued'
     } catch (err) {
       console.error(`[BinaryFileSync] Upload failed for ${relativePath}:`, err)
       this.enqueueUpload(relativePath)

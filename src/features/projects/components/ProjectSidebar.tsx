@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
 import {
@@ -30,7 +30,7 @@ import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { buildProjectPath } from "../lib/projectRoutes";
 import { buildWorkbenchHref } from "../lib/lastWorkbenchRoute";
-import { prepareGitProjectForOpen } from "../lib/projectOpenGitSync";
+import { prepareLocalProjectForOpen } from "../lib/projectOpenLocal";
 import { buildProjectLocalPathLookupOptions } from "@/features/projects/lib/projectLocalRootHints";
 import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
 import {
@@ -65,10 +65,6 @@ import { primeLocalProjectPath } from "@/features/projects/hooks/useLocalProject
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectRenameDialog } from "./ProjectRenameDialog";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
-import {
-  hasRecentProjectOpenSync,
-  markRecentProjectOpenSync,
-} from "@/features/projects/lib/recentProjectOpenSync";
 
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -92,7 +88,6 @@ export function ProjectSidebar({
   className,
   ...props
 }: ProjectSidebarProps) {
-  const convex = useConvex();
   const navigate = useViewTransitionNavigate();
   const location = useLocation();
   const { openProjectCreationMenu } = useProjectCreationMenu();
@@ -172,7 +167,6 @@ export function ProjectSidebar({
           updatedAt: project.updatedAt,
           organizationId: project.organizationId,
           createdBy: project.createdBy ?? null,
-          syncMode: project.syncMode,
           localPath: project.localPath ?? null,
           sourceControl: project.sourceControl,
           gitRepository: project.gitRepository,
@@ -386,67 +380,21 @@ export function ProjectSidebar({
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, localPath: string | null) => {
       try {
-        const candidateLocalPath = await window.electronAPI.project.getLocalPath(
-          buildProjectLocalPathLookupOptions({
-            project,
-            localPathHint: localPath,
-          }),
-        );
-
-        if (candidateLocalPath) {
-          primeLocalProjectPath(project.id, candidateLocalPath, project.slug);
-          markRecentProjectOpenSync(project.id);
-          navigate(buildProjectPath(project.id, "workbench"), {
-            state: {
-              projectId: project.id,
-              projectSlug: project.slug,
-              projectName: project.name,
-              projectTemplate: project.template ?? undefined,
-              localPath: candidateLocalPath,
-              syncMode: project.syncMode === "git" || hasRecentProjectOpenSync(project.id)
-                ? "git"
-                : undefined,
-            },
-          });
-          return;
-        }
-
-        const gitOpenResult = await prepareGitProjectForOpen({
-          convex,
+        const localOpenResult = await prepareLocalProjectForOpen({
           project,
-          localPath: candidateLocalPath,
+          localPath,
           userId: convexUserId,
           updateMemberLocalPath: convexUserId ? updateMemberLocalPath : undefined,
         });
 
-        if (gitOpenResult.cancelled) {
-          if (gitOpenResult.needsConflictResolution) {
-            primeLocalProjectPath(project.id, gitOpenResult.localPath, project.slug);
-            markRecentProjectOpenSync(project.id);
-            navigate(buildProjectPath(project.id, "conflicts"), {
-              state: {
-                projectId: project.id,
-                projectSlug: project.slug,
-                projectName: project.name,
-                projectTemplate: project.template ?? undefined,
-                localPath: gitOpenResult.localPath,
-                syncMode: "git",
-              },
-            });
-          }
-          return;
-        }
-
-        primeLocalProjectPath(project.id, gitOpenResult.localPath, project.slug);
-        markRecentProjectOpenSync(project.id);
+        primeLocalProjectPath(project.id, localOpenResult.localPath, project.slug);
         navigate(buildProjectPath(project.id, "workbench"), {
           state: {
             projectId: project.id,
             projectSlug: project.slug,
             projectName: project.name,
             projectTemplate: project.template ?? undefined,
-            localPath: gitOpenResult.localPath,
-            syncMode: "git",
+            localPath: localOpenResult.localPath,
           },
         });
       } catch (error) {
@@ -471,7 +419,7 @@ export function ProjectSidebar({
         }
       }
     },
-    [convex, convexUserId, navigate, updateMemberLocalPath, workspaceScoped],
+    [convexUserId, navigate, updateMemberLocalPath, workspaceScoped],
   );
 
   const handleOpenProjectFolder = React.useCallback(

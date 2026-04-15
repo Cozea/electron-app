@@ -1,4 +1,10 @@
 export const projectOpenDesktopClient = {
+  createFolder: (options: {
+    slug: string
+    initGit?: boolean
+    projectId?: string
+    baseDirectory?: string
+  }) => window.electronAPI.project.createFolder(options),
   getLocalPath: (options: {
     slug: string
     projectId: string
@@ -10,8 +16,6 @@ export const projectOpenDesktopClient = {
     window.electronAPI.project.rememberLocalPath(options),
   listFiles: (options: { projectPath: string }) => window.electronAPI.project.listFiles(options),
   openFolder: (options: { projectPath: string }) => window.electronAPI.project.openFolder(options),
-  ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) =>
-    window.electronAPI.project.ensureCollabLane(options),
   showMessageBox: (options: Parameters<typeof window.electronAPI.dialog.showMessageBox>[0]) =>
     window.electronAPI.dialog.showMessageBox(options),
   getSettings: () => window.electronAPI.settings.get(),

@@ -19,6 +19,7 @@ import { IntegrationService } from './services/IntegrationService'
 import { ProjectSourceControlService } from './services/ProjectSourceControlService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { AgentToolService } from './services/AgentToolService'
+import { CollabEncryptionService } from './services/CollabEncryptionService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
@@ -1422,6 +1423,7 @@ function createWindow() {
 AuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
+CollabEncryptionService.getInstance().registerIpcHandlers()
 ProjectSourceControlService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()

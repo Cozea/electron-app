@@ -366,7 +366,7 @@ function SourceControlProviderCard({
           provider === 'github' && !owner.installationId ? 'missing_setup' : 'active',
         lastError:
           provider === 'github' && !owner.installationId
-            ? 'This namespace does not have the GitHub App installed yet.'
+            ? 'This namespace does not have the GitHub App installed yet for Cozea repository tools.'
             : undefined,
       })
     },
@@ -376,15 +376,15 @@ function SourceControlProviderCard({
   if (variant === 'rows') {
     return (
       <section>
-        <SettingsSectionTitle>GitHub</SettingsSectionTitle>
+        <SettingsSectionTitle>GitHub Repository Tools</SettingsSectionTitle>
         <SettingsSectionDescription>
-          Connect GitHub and choose the namespace Cozea should use for personal project repositories.
+          Optional. Connect GitHub and choose the namespace Cozea should use for repository imports, browsing, and manual publish workflows.
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst>
             <SettingsRowLabel
               title="Account"
-              description="Connect or disconnect GitHub."
+              description="Connect or disconnect GitHub for optional repository tooling."
               descriptionClassName="truncate"
             />
             <SettingsRowControl>
@@ -422,7 +422,7 @@ function SourceControlProviderCard({
               descriptionClassName="truncate"
               description={
                 connection
-                  ? 'Choose the GitHub owner for personal projects.'
+                  ? 'Choose the GitHub owner Cozea should use for repository tools.'
                   : 'Connect GitHub before choosing a namespace.'
               }
             />
@@ -474,7 +474,7 @@ function SourceControlProviderCard({
             <SettingsGroupError>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span>
-                  Install the GitHub App on <strong>{selectedOwner.login}</strong> before using provider-native repo automation.
+                  Install the GitHub App on <strong>{selectedOwner.login}</strong> before using provider-native repository tools.
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {installUrl ? (
@@ -565,7 +565,7 @@ function SourceControlProviderCard({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-border/60 bg-secondary/20 p-4 text-sm text-muted-foreground">
-            Connect {label} here to use it for project repository creation, provider-native access grants, and git sync.
+            Connect {label} here if you want Cozea to help with repository imports and manual GitHub workflows.
           </div>
         )}
 
@@ -625,7 +625,7 @@ function SourceControlProviderCard({
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <p>
                     The GitHub App is not installed on <strong>{selectedOwner.login}</strong> yet.
-                    Install it there before using provider-native repo automation from Cozea.
+                    Install it there before using provider-native repository tools from Cozea.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -679,8 +679,8 @@ function SourceControlProviderCard({
             <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <p>
               {setupMode === 'organization'
-                ? `Projects in this workspace can now bind their repositories through ${label} without using the agent integrations surface.`
-                : `Your account is ready to use ${label} for non-org project repositories without using the agent integrations surface.`}
+                ? `Projects in this workspace can now attach repositories through ${label} for manual git workflows.`
+                : `Your account is ready to use ${label} for optional repository tools on personal projects.`}
             </p>
           </div>
         ) : null}
@@ -762,17 +762,17 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
     capabilities.canManageWorkspaceSettings ||
     capabilities.canManageWorkspaceIntegrations
   const pageTitle = workspaceScoped
-    ? 'Workspace Source Control'
-    : 'Your Source Control'
+    ? 'Workspace Git Providers'
+    : 'Your Git Providers'
   const pageDescription = workspaceScoped
-    ? 'Choose the shared provider identity and namespace that own repositories for projects in this organization workspace.'
-    : 'Connect the provider accounts Cozea can use when you open or collaborate on non-organization projects.'
+    ? 'Connect the shared GitHub identity and namespace this workspace should use for optional repository tooling.'
+    : 'Connect the provider accounts Cozea can use for optional repository imports and manual git workflows on personal projects.'
 
   const content = !convexOrganizationId || !userId ? (
     <div className="p-6">
       <WorkspaceAccessNotice
-        title="Source control is unavailable"
-        description="You do not have access to configure project source control for this workspace."
+        title="Git providers are unavailable"
+        description="You do not have access to configure optional repository providers for this workspace."
       />
     </div>
   ) : !workspaceScoped ? (
@@ -813,7 +813,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
         variant="rows"
       />
       {isRefreshing ? (
-        <p className="px-1 text-[11px] text-muted-foreground">Refreshing source control state in the background.</p>
+        <p className="px-1 text-[11px] text-muted-foreground">Refreshing git provider state in the background.</p>
       ) : null}
     </SettingsPageBody>
   ) : (
@@ -845,7 +845,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
             <div className="flex items-start gap-2 rounded-2xl border border-border/60 bg-secondary/30 p-4 text-sm text-muted-foreground">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
-                You can review connection status here. An admin will need to reconnect a provider or change the shared namespace for organization projects.
+                You can review connection status here. An admin will need to reconnect a provider or change the shared namespace for repository tooling.
               </p>
             </div>
           ) : null}
@@ -874,7 +874,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
 
           {isRefreshing || isLoading ? (
             <p className="px-1 text-[11px] text-muted-foreground">
-              Refreshing source control state in the background.
+              Refreshing git provider state in the background.
             </p>
           ) : null}
 
@@ -884,8 +884,8 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
   if (surface === 'drawer') {
     return settingsPage.isWorkspaceAccessDenied ? (
       <WorkspaceAccessNotice
-        title="Source control access required"
-        description="You do not have permission to view project source control for this workspace."
+        title="Git provider access required"
+        description="You do not have permission to view optional repository provider settings for this workspace."
       />
     ) : (
       content
@@ -894,8 +894,8 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
 
   return settingsPage.isWorkspaceAccessDenied ? (
     <WorkspaceAccessNotice
-      title="Source control access required"
-      description="You do not have permission to view project source control for this workspace."
+      title="Git provider access required"
+      description="You do not have permission to view optional repository provider settings for this workspace."
     />
   ) : (
     content

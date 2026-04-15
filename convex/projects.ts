@@ -26,7 +26,6 @@ import {
 import {
   type GitAccessState,
   type GitSyncStateMetadata,
-  type ProjectSyncMode,
   type ProjectTeamSeedMember,
   buildGitRepositoryMetadata,
   generateSlug,
@@ -346,11 +345,6 @@ export const create = mutation({
     const normalizedSourceControl = args.sourceControl
       ? {
           ...args.sourceControl,
-          activeCollabBranch:
-            args.sourceControl.activeCollabBranch?.trim() ||
-            args.sourceControl.defaultBranch?.trim() ||
-            args.repoSource?.branch?.trim() ||
-            "main",
           defaultBranch:
             args.sourceControl.defaultBranch?.trim() ||
             args.sourceControl.activeCollabBranch?.trim() ||
@@ -370,8 +364,6 @@ export const create = mutation({
         normalizedSourceControl?.activeCollabBranch,
     })
 
-    const syncMode: ProjectSyncMode = "git"
-
     const projectId = await ctx.db.insert("projects", {
       organizationId: args.organizationId,
       name: args.name,
@@ -387,11 +379,7 @@ export const create = mutation({
       },
       stack: args.stack,
       sourceControl: normalizedSourceControl,
-      syncMode,
       gitRepository,
-      gitSyncState: {
-        accessState: "granted",
-      },
       visuals: args.visuals,
       creationPath: args.creationPath,
       status: initialStatus,
@@ -406,13 +394,14 @@ export const create = mutation({
       updatedAt: now,
     })
 
-    const automatedProvider =
-      gitRepository?.provider === "github" || gitRepository?.provider === "gitlab"
-        ? gitRepository.provider
-        : normalizedSourceControl?.provider === "github" ||
-            normalizedSourceControl?.provider === "gitlab"
-          ? normalizedSourceControl.provider
-          : undefined
+    if (normalizedSourceControl || gitRepository) {
+      const automatedProvider =
+        gitRepository?.provider === "github" || gitRepository?.provider === "gitlab"
+          ? gitRepository.provider
+          : normalizedSourceControl?.provider === "github" ||
+              normalizedSourceControl?.provider === "gitlab"
+            ? normalizedSourceControl.provider
+            : undefined
       const workspaceConnection =
         automatedProvider
           ? await findWorkspaceConnectionByProvider(
@@ -425,9 +414,9 @@ export const create = mutation({
 
       await upsertProjectRepositoryBindingDocument({
         ctx,
-      binding: buildProjectRepositoryBindingRecord({
-        projectId,
-        organizationId: args.organizationId,
+        binding: buildProjectRepositoryBindingRecord({
+          projectId,
+          organizationId: args.organizationId,
           sourceControl: normalizedSourceControl,
           gitRepository,
           defaultSetupMode,
@@ -438,6 +427,7 @@ export const create = mutation({
           now,
         }),
       })
+    }
 
     // Add creator as project manager
     // For local folder imports, also set the localPath so sync knows where files are
@@ -1691,7 +1681,7 @@ export const getGitSyncMetadata = query({
     return {
       projectId: project._id,
       organizationId: project.organizationId,
-      syncMode: (project.syncMode ?? "git") as ProjectSyncMode,
+      syncMode: project.syncMode ?? null,
       gitRepository: project.gitRepository ?? null,
       gitSyncState: project.gitSyncState ?? null,
       sourceControl: project.sourceControl ?? null,
