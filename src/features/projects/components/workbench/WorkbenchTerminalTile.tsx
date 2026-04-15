@@ -1,12 +1,14 @@
 import { Activity, useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { CommandLineIcon as TerminalSquare } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { useTerminalStore } from "@/stores/useTerminalStore"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchTerminalTileProps {
   projectId: string
@@ -159,7 +161,7 @@ export function WorkbenchTerminalTile({
   } else if (error) {
     body = (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <TerminalSquare className="h-5 w-5 text-muted-foreground" />
+        <HugeiconsIcon icon={__ComputerTerminalHugeIcon} className="h-5 w-5 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button
           type="button"
@@ -204,3 +206,4 @@ export function WorkbenchTerminalTile({
     </WorkbenchTileChrome>
   )
 }
+

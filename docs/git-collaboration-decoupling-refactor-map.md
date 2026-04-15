@@ -33,10 +33,12 @@ This map is now implemented on the active product path.
   - [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
   - [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
   - [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- new project creation no longer writes default git-sync metadata (`syncMode` / `gitSyncState`) just because a repository is attached:
+- new project creation no longer writes default git-sync metadata just because a repository is attached:
   - [convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
-- schema/docs now mark git-shaped project fields as legacy compatibility metadata rather than core collaboration state:
+- project records no longer carry `syncMode`, `sourceControl.activeCollabBranch`, or `sourceControl.syncPolicy` on the active schema path:
   - [schema.ts](/Users/admin/Downloads/electron-app-main/convex/schema.ts)
+  - [projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
+  - [projectPagination.ts](/Users/admin/Downloads/electron-app-main/convex/lib/projectPagination.ts)
 - stale git-era helpers were removed from the active tree:
   - [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
   - [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
@@ -51,15 +53,9 @@ This map is now implemented on the active product path.
   - [EncryptedLocalSnapshotStore.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
   - [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
   - [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
-  - [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
-- plaintext legacy rooms now migrate into encrypted rooms automatically from the first authorized shared-branch device
-- trusted-device key sharing and revoked-device blocking are now implemented on the active encrypted collaboration path
-
-### Still intentionally deferred
-
-- deeper destructive schema migration that fully removes legacy git-shaped project fields after compatibility is no longer needed
-- optional cleanup of remaining manual git/lane compatibility IPC in Electron once the optional git tool surface is simplified further
-- advanced encrypted-collaboration follow-ups like key rotation and recovery with no currently-authorized device, tracked in [collaboration-encryption-architecture.md](./collaboration-encryption-architecture.md)
+- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- legacy plaintext room assumptions have been removed from the live collaboration path; any stale pre-encryption payloads are cleared when a shared room initializes
+- trusted-device key sharing, recovery-code based non-destructive device recovery, key rotation, automatic key rotation on device revocation, destructive room recovery, and revoked-device blocking are now implemented on the active encrypted collaboration path
 
 ## Goal
 
@@ -739,7 +735,7 @@ Users stop learning that collaboration equals “shared branch + personal branch
 
 ## Phase 4: Demote GitHub / Source Control To Optional Tooling
 
-Status: mostly completed on project creation/open/collaboration paths, with optional settings/tooling UI cleanup still deferred
+Status: completed on the active product path
 
 ### Goal
 
@@ -807,7 +803,7 @@ Invites stop implying repo access.
 
 ## Phase 6: Simplify Project Data Model
 
-Status: completed on the active model, with destructive field removal intentionally deferred for compatibility
+Status: completed on the active model, with optional repository-binding compatibility fields intentionally retained
 
 ### Goal
 

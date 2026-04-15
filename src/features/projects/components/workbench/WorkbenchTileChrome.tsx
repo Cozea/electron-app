@@ -1,23 +1,25 @@
 import { useEffect, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import { ArrowsPointingInIcon as Minimize2, ArrowsPointingOutIcon as Maximize2, XMarkIcon as X } from "@heroicons/react/24/outline"
-import {
-  ArchiveBoxIcon as PackageOpen,
-  ChatBubbleLeftRightIcon as Messages,
-  CommandLineIcon as SquareTerminal,
-  DevicePhoneMobileIcon as Phone,
-  GlobeAltIcon as Globe,
-  PlusCircleIcon as PlusCircle,
-} from "@heroicons/react/24/solid"
 
 import { Button } from "@/components/ui/button"
 import {
+
   ClaudeAI,
   Gemini,
   OpenAI,
   OpenCodeIcon,
 } from "@/features/projects/components/assistant/Icons"
 import { cn } from "@/lib/utils"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Archive01Icon as __PackageOpenHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, CalendarCheckOut01Icon as __Maximize2HugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, HandPointingDown01Icon as __Minimize2HugeIcon, PlusMinusCircle01Icon as __PlusCircleHugeIcon } from '@hugeicons/core-free-icons'
+
+const PackageOpen = (props: any) => <HugeiconsIcon icon={__PackageOpenHugeIcon} {...props} />
+const Messages = (props: any) => <HugeiconsIcon icon={__MessagesHugeIcon} {...props} />
+const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminalHugeIcon} {...props} />
+const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
+const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
+const PlusCircle = (props: any) => <HugeiconsIcon icon={__PlusCircleHugeIcon} {...props} />
 
 interface WorkbenchTileChromeProps {
   title: string
@@ -58,7 +60,7 @@ function resolveTileIcon(
     case "assistantChat":
       return resolveAssistantProviderIcon(assistantProvider) ?? Messages
     case "terminal":
-      return SquareTerminal
+      return ComputerTerminal
     case "browser":
       return Globe
     case "selection":
@@ -171,7 +173,7 @@ export function WorkbenchTileChrome({
               }}
               aria-label={isMaximized ? "Restore tile" : "Maximize tile"}
             >
-              {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {isMaximized ? <HugeiconsIcon icon={__Minimize2HugeIcon} className="h-3.5 w-3.5" /> : <HugeiconsIcon icon={__Maximize2HugeIcon} className="h-3.5 w-3.5" />}
             </Button>
 
             <Button
@@ -187,7 +189,7 @@ export function WorkbenchTileChrome({
               onClick={() => panelApi.close()}
               aria-label={`Close ${title}`}
             >
-              <X className="h-3.5 w-3.5" />
+              <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
             </Button>
           </div>
         ) : null}
@@ -199,3 +201,4 @@ export function WorkbenchTileChrome({
     </div>
   )
 }
+

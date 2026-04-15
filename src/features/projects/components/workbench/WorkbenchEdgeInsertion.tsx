@@ -1,11 +1,15 @@
-import { PlusIcon as Plus } from "@heroicons/react/24/outline"
+
 import { useEffect, useState } from "react"
 
 import type {
+
   WorkbenchEdgeTarget,
   WorkbenchInsertionEdge,
 } from "@/features/projects/lib/workbenchDockview"
 import { cn } from "@/lib/utils"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchEdgeInsertionProps {
   armed?: boolean
@@ -88,7 +92,7 @@ export function WorkbenchEdgeInsertion({
                   getBandClasses(target.edge),
                 )}
               >
-                <Plus className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
               </div>
             ) : null}
           </div>
@@ -97,3 +101,4 @@ export function WorkbenchEdgeInsertion({
     </>
   )
 }
+

@@ -1,7 +1,11 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon, DocumentAttachmentIcon as __CopyIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { getSharedHighlighter } from "@pierre/diffs";
 import type { DiffsHighlighter, SupportedLanguages } from "@pierre/diffs";
-import { CheckIcon, DocumentDuplicateIcon as CopyIcon } from "@heroicons/react/24/outline"
 import React, {
   Children,
   Suspense,
@@ -181,7 +185,7 @@ function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNo
         title={copied ? "Copied" : "Copy code"}
         aria-label={copied ? "Copied" : "Copy code"}
       >
-        {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+        {copied ? <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3" /> : <HugeiconsIcon icon={__CopyIconHugeIcon} className="size-3" />}
       </button>
       {children}
     </div>
@@ -246,7 +250,8 @@ function SuspenseShikiCodeBlock({
 
 function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: ChatMarkdownProps) {
   const { theme } = useTheme();
-  const diffThemeName = resolveDiffThemeName(resolveAppliedTheme(theme));
+  const appliedTheme = resolveAppliedTheme(theme);
+  const diffThemeName = resolveDiffThemeName(appliedTheme === "light" ? "light" : "dark");
   const markdownComponents = useMemo<Components>(
     () => ({
       a({ node: _node, href, ...props }) {

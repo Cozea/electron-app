@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon } from '@hugeicons/core-free-icons'
 
 export function buildPaginationPageNumbers(
   currentPage: number,
@@ -12,6 +14,7 @@ export function buildPaginationPageNumbers(
   }
   if (totalPages <= 7) {
     for (let i = 1; i <= totalPages; i += 1) {
+
       pages.push(i)
     }
   } else if (currentPage <= 3) {
@@ -83,7 +86,7 @@ export function TablePaginationControls({
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
         >
-          <ChevronLeftIcon className="h-4 w-4" />
+          <HugeiconsIcon icon={__ChevronLeftIconHugeIcon} className="h-4 w-4" />
         </Button>
         {pageNumbers.map((page, index) =>
           typeof page === 'number' ? (
@@ -117,7 +120,7 @@ export function TablePaginationControls({
           }}
           disabled={nextDisabled}
         >
-          <ChevronRightIcon className="h-4 w-4" />
+          <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="h-4 w-4" />
         </Button>
       </div>
     </div>

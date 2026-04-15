@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react"
-import { ArrowPathIcon as Loader2, ArrowRightStartOnRectangleIcon as LogOut, EnvelopeIcon as Mail, ExclamationCircleIcon as AlertCircle, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
 import { useMutation, useQuery } from "convex/react"
 import { useParams } from '@/lib/router'
 
@@ -10,12 +9,16 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { Button } from "@/components/ui/button"
 import {
+
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowDownRight01Icon as __LogOutHugeIcon, Mail01Icon as __MailHugeIcon, Refresh01Icon as __Loader2HugeIcon, UserAdd01Icon as __UserPlusHugeIcon } from '@hugeicons/core-free-icons'
 
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
@@ -119,7 +122,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-7 w-7 text-destructive" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
             <CardTitle>Invalid Invite</CardTitle>
             <CardDescription>The project invite link is malformed.</CardDescription>
@@ -140,7 +143,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
             </div>
             <CardTitle>Loading Invite...</CardTitle>
             <CardDescription>Checking this project invite now.</CardDescription>
@@ -156,7 +159,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-7 w-7 text-destructive" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
             <CardTitle>Invite Not Available</CardTitle>
             <CardDescription>
@@ -179,7 +182,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Mail className="h-7 w-7 text-primary" />
+              <HugeiconsIcon icon={__MailHugeIcon} className="h-7 w-7 text-primary" />
             </div>
             <CardTitle>{invite.project.name}</CardTitle>
             <CardDescription>
@@ -213,7 +216,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
             </div>
             <CardTitle>Finishing Sign-in...</CardTitle>
             <CardDescription>Preparing your account so this invite can be applied.</CardDescription>
@@ -229,7 +232,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted/70">
-              <UserPlus className="h-7 w-7 text-muted-foreground" />
+              <HugeiconsIcon icon={__UserPlusHugeIcon} className="h-7 w-7 text-muted-foreground" />
             </div>
             <CardTitle>Invite No Longer Pending</CardTitle>
             <CardDescription>
@@ -251,7 +254,7 @@ export function ProjectInvitePage() {
       <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <UserPlus className="h-7 w-7 text-primary" />
+            <HugeiconsIcon icon={__UserPlusHugeIcon} className="h-7 w-7 text-primary" />
           </div>
           <CardTitle>{invite.project.name}</CardTitle>
           <CardDescription>
@@ -288,9 +291,9 @@ export function ProjectInvitePage() {
                   disabled={isSubmitting !== null}
                 >
                   {isSubmitting === "switch" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    <LogOut className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={__LogOutHugeIcon} className="mr-2 h-4 w-4" />
                   )}
                   Use different account
                 </Button>
@@ -313,7 +316,7 @@ export function ProjectInvitePage() {
                   disabled={isSubmitting !== null}
                 >
                   {isSubmitting === "decline" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                   ) : null}
                   Decline
                 </Button>
@@ -325,7 +328,7 @@ export function ProjectInvitePage() {
                   disabled={isSubmitting !== null}
                 >
                   {isSubmitting === "accept" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                   ) : null}
                   Accept invite
                 </Button>
@@ -337,3 +340,4 @@ export function ProjectInvitePage() {
     </div>
   )
 }
+

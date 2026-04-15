@@ -5,6 +5,7 @@ import { api } from "../../../convex/_generated/api";
 import { WorkspaceAccessNotice } from "@/components/workspaces/WorkspaceAccessNotice";
 import { WorkspaceIdentityPicker } from "@/components/workspaces/WorkspaceIdentityPicker";
 import {
+
   SettingsDangerGroup,
   SettingsFooterActions,
   SettingsGroup,
@@ -31,9 +32,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { ArrowPathIcon as Loader2, ArrowPathIcon as RotateCcw, CheckIcon as Check, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { sanitizeWorkspaceIdentityInput, type WorkspaceIdentityInput } from "@shared/workspaceIdentity.ts";
 import { cn } from "@/lib/utils";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, Delete02Icon as __Trash2HugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RotateCcwHugeIcon } from '@hugeicons/core-free-icons'
 
 interface GeneralProps {
   surface?: "page" | "drawer";
@@ -240,7 +243,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
               {saveError ? (
                 <p className="px-1 text-[11px] text-destructive">
                   <span className="inline-flex items-center gap-2">
-                    <X className="size-3.5 shrink-0" />
+                    <HugeiconsIcon icon={__XHugeIcon} className="size-3.5 shrink-0" />
                     {saveError}
                   </span>
                 </p>
@@ -248,7 +251,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
               {saveSuccess ? (
                 <p className="px-1 text-[11px] text-emerald-600 dark:text-emerald-500">
                   <span className="inline-flex items-center gap-2">
-                    <Check className="size-3.5 shrink-0" />
+                    <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0" />
                     Changes saved successfully
                   </span>
                 </p>
@@ -263,7 +266,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                     onClick={() => setWorkspaceIdentity({})}
                     disabled={isLoading || !canManageGeneral || (!workspaceIdentity.iconKey && !workspaceIdentity.iconColor)}
                   >
-                    <RotateCcw className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__RotateCcwHugeIcon} className="h-3.5 w-3.5" />
                     Reset style
                   </Button>
                   <Button
@@ -275,7 +278,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                   >
                     {isSaving ? (
                       <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
                         Saving…
                       </>
                     ) : (
@@ -290,7 +293,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
           {isWorkspaceScoped ? (
             <section>
               <SettingsSectionTitle variant="danger">
-                <AlertTriangle className="size-3.5" aria-hidden />
+                <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="size-3.5" aria-hidden />
                 Danger zone
               </SettingsSectionTitle>
               <SettingsDangerGroup>
@@ -308,7 +311,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                           className="h-7 gap-1.5 text-[11px]"
                           disabled={!canManageGeneral}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
                           Delete
                         </Button>
                       </DialogTrigger>
@@ -333,7 +336,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                           </div>
                           {deleteError ? (
                             <div className="flex items-center gap-2 text-sm text-destructive">
-                              <X className="h-4 w-4" />
+                              <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
                               {deleteError}
                             </div>
                           ) : null}
@@ -356,7 +359,7 @@ export function General({ surface = "page", route }: GeneralProps = {}) {
                           >
                             {isDeleting ? (
                               <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                                 Deleting…
                               </>
                             ) : (

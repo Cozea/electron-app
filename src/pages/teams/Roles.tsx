@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Input } from '../../components/ui/input'
 import {
+
   Select,
   SelectContent,
   SelectItem,
@@ -49,7 +50,9 @@ import {
 } from '@/components/settings/SettingsChrome'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { useScopedWorkspacePeopleData } from '@/hooks/useScopedWorkspacePeopleData'
-import { ArrowPathIcon as Loader2, LockClosedIcon as Lock, PencilSquareIcon as Pencil, PlusIcon as Plus, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, Delete02Icon as __Trash2HugeIcon, Edit01Icon as __PencilHugeIcon, LockIcon as __LockHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface RoleDraft {
   name: string
@@ -662,11 +665,11 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
                           onClick={() => openEditRoleSheet(editableRole)}
                           aria-label="Edit role"
                         >
-                          <Pencil className="h-4 w-4" />
+                          <HugeiconsIcon icon={__PencilHugeIcon} className="h-4 w-4" />
                         </Button>
                       ) : !canManageRoles ? (
                         <div className="flex items-center justify-end">
-                          <Lock className="h-4 w-4 text-muted-foreground" />
+                          <HugeiconsIcon icon={__LockHugeIcon} className="h-4 w-4 text-muted-foreground" />
                         </div>
                       ) : null}
                     </div>
@@ -739,11 +742,11 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
                                           onClick={() => openPrincipalSheet(row)}
                                           aria-label="Edit access"
                                         >
-                                          <Pencil className="h-4 w-4" />
+                                          <HugeiconsIcon icon={__PencilHugeIcon} className="h-4 w-4" />
                                         </Button>
                                       ) : showPrincipalLock ? (
                                         <div className="flex items-center justify-end">
-                                          <Lock className="h-4 w-4 text-muted-foreground" />
+                                          <HugeiconsIcon icon={__LockHugeIcon} className="h-4 w-4 text-muted-foreground" />
                                         </div>
                                       ) : null}
                                     </TableCell>
@@ -767,7 +770,7 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
                   className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
                   onClick={openCreateRoleSheet}
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
                   New role
                 </Button>
               </SettingsFooterActions>
@@ -885,7 +888,7 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
                   onClick={() => void handleDelete(editingRole)}
                   disabled={submitting}
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-4 w-4" />
                   Delete role
                 </Button>
               ) : null}
@@ -1037,7 +1040,7 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
                   <Button onClick={() => void handleOverrideSubmit()} disabled={overrideSubmitting}>
                     {overrideSubmitting ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                         Saving
                       </>
                     ) : (
@@ -1060,3 +1063,4 @@ export function Roles({ surface = 'page', route = '/teams/roles' }: RolesProps =
 
   return <SettingsPageBody>{content}</SettingsPageBody>
 }
+

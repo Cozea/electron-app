@@ -1,7 +1,6 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { Squares2X2Icon as PanelLeftIcon } from "@heroicons/react/24/outline"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
@@ -24,6 +23,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+import { HugeiconsIcon } from '@hugeicons/react'
+import { SidebarLeftIcon } from '@hugeicons/core-free-icons'
+
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 
@@ -31,6 +33,7 @@ function getSidebarStateFromCookie(): boolean | null {
   if (typeof document === "undefined") return null
   const match = document.cookie.match(
     new RegExp("(^| )" + SIDEBAR_COOKIE_NAME + "=([^;]+)")
+
   )
   const value = match ? match[2] : null
   if (value === "true") return true
@@ -43,33 +46,6 @@ const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 const SIDEBAR_MAC_TOP_INSET_PX = 36
 const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 160, 320] as const
-
-/** Same as Lucide PanelLeft but with the left side filled (panel open state) */
-function PanelLeftFilledIcon({ className, ...props }: React.SVGAttributes<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={cn("shrink-0", className)}
-      {...props}
-    >
-      {/* Left half of rounded rect (same shape as PanelLeft left side), filled */}
-      <path
-        d="M5 3 L9 3 L9 21 L5 21 Q3 21 3 19 L3 5 Q3 3 5 3 Z"
-        fill="currentColor"
-        stroke="none"
-      />
-      {/* Same as PanelLeft: outer rect + vertical divider */}
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      <path d="M9 3v18" />
-    </svg>
-  )
-}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -398,7 +374,7 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar, open } = useSidebar()
+  const { toggleSidebar } = useSidebar()
 
   return (
     <Button
@@ -413,7 +389,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      {open ? <PanelLeftFilledIcon className="size-3" /> : <PanelLeftIcon className="size-3 shrink-0" />}
+      <HugeiconsIcon icon={SidebarLeftIcon} className="h-3.5 w-3.5 shrink-0" />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )

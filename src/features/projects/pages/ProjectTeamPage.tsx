@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
+
   Table,
   TableBody,
   TableCell,
@@ -28,7 +29,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ArrowPathIcon as Loader2, ArrowPathIcon as RotateCcw, ArrowsUpDownIcon as ArrowUpDown, EllipsisVerticalIcon as MoreVertical, FunnelIcon as Filter, ShieldCheckIcon as Shield, TrashIcon as Trash2, UserMinusIcon as UserMinus, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserAdd01Icon as __UserPlusHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
 
 type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
 type SortField = 'name' | 'role' | 'date'
@@ -59,6 +62,7 @@ interface WorkspaceMemberRecord {
 }
 
 const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
+
   { value: 'project_manager', label: 'Project Manager' },
   { value: 'developer', label: 'Developer' },
   { value: 'designer', label: 'Designer' },
@@ -396,7 +400,7 @@ export function ProjectTeamPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
-              <Filter className="h-3.5 w-3.5" />
+              <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
               {roleFilter === 'all' ? 'All Roles' : getRoleLabel(roleFilter)}
             </Button>
           </DropdownMenuTrigger>
@@ -413,7 +417,7 @@ export function ProjectTeamPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
-              <ArrowUpDown className="h-3.5 w-3.5" />
+              <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
               {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
             </Button>
           </DropdownMenuTrigger>
@@ -444,7 +448,7 @@ export function ProjectTeamPage() {
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
         Loading project team…
       </div>
     )
@@ -522,9 +526,9 @@ export function ProjectTeamPage() {
                     }}
                   >
                     {teamActionKey === 'add-member' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
                     ) : (
-                      <UserPlus className="h-4 w-4" />
+                      <HugeiconsIcon icon={__UserPlusHugeIcon} className="h-4 w-4" />
                     )}
                     Add member
                   </Button>
@@ -626,7 +630,7 @@ export function ProjectTeamPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
+                            <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -636,7 +640,7 @@ export function ProjectTeamPage() {
                                 <DropdownMenuSubTrigger
                                   disabled={!canManageTeam || row.isSelf || !row.userId}
                                 >
-                                  <Shield className="mr-2 h-4 w-4" />
+                                  <HugeiconsIcon icon={__ShieldHugeIcon} className="mr-2 h-4 w-4" />
                                   Change Role
                                 </DropdownMenuSubTrigger>
                                 <DropdownMenuSubContent>
@@ -654,7 +658,7 @@ export function ProjectTeamPage() {
                                       }}
                                     >
                                       {teamActionKey === roleActionKey && row.role !== option.value ? (
-                                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                       ) : null}
                                       {option.label}
                                       {row.role === option.value ? (
@@ -679,9 +683,9 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <UserMinus className="mr-2 h-3.5 w-3.5" />
+                                  <HugeiconsIcon icon={__UserMinusHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
                                 {row.isSelf ? "Can't remove yourself" : 'Remove'}
                               </DropdownMenuItem>
@@ -696,9 +700,9 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                                  <HugeiconsIcon icon={__RotateCcwHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
                                 Resend
                               </DropdownMenuItem>
@@ -711,9 +715,9 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
                                 Cancel
                               </DropdownMenuItem>

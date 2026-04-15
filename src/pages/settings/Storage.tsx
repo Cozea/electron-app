@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { storageSettingsClient } from '@/lib/settings/storageSettingsClient'
 import {
+
   SettingsDangerGroup,
   SettingsGroup,
   SettingsPageBody,
@@ -31,9 +32,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../../components/ui/dialog'
-import { ArchiveBoxIcon as Package, ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, DocumentTextIcon as FileText, ExclamationTriangleIcon as AlertTriangle, FolderIcon, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
 import type { LocalProject, StorageProjectsPage, StorageSnapshot, StorageUsage } from '../../types/electron'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftHugeIcon, ChevronDoubleCloseIcon as __ChevronRightHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __FileTextHugeIcon, Folder01Icon as __FolderIconHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
 
 interface StorageProps {
   surface?: 'page' | 'drawer'
@@ -666,7 +669,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               <Dialog open={isClearCacheDialogOpen} onOpenChange={setIsClearCacheDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full gap-2 font-normal" disabled={isLoadingStorage || Boolean(pendingAction)}>
-                    <Package className="h-4 w-4" />
+                    <HugeiconsIcon icon={__PackageHugeIcon} className="h-4 w-4" />
                     Clear Cache
                   </Button>
                 </DialogTrigger>
@@ -686,7 +689,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                       onClick={() => void handleClearCache()}
                       disabled={pendingAction === 'clear-cache'}
                     >
-                      {pendingAction === 'clear-cache' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {pendingAction === 'clear-cache' ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Clear Cache
                     </Button>
                   </DialogFooter>
@@ -696,7 +699,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               <Dialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full gap-2 font-normal" disabled={isLoadingStorage || Boolean(pendingAction)}>
-                    <FileText className="h-4 w-4" />
+                    <HugeiconsIcon icon={__FileTextHugeIcon} className="h-4 w-4" />
                     Clear Logs
                   </Button>
                 </DialogTrigger>
@@ -716,7 +719,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                       onClick={() => void handleClearLogs()}
                       disabled={pendingAction === 'clear-logs'}
                     >
-                      {pendingAction === 'clear-logs' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {pendingAction === 'clear-logs' ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Clear Logs
                     </Button>
                   </DialogFooter>
@@ -729,7 +732,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                 onClick={() => void handleRefresh()}
                 disabled={isLoadingStorage || Boolean(pendingAction)}
               >
-                <RefreshCw className={cn("h-4 w-4", pendingAction === 'refresh' && "animate-spin")} />
+                <HugeiconsIcon icon={__RefreshCwHugeIcon} className={cn("h-4 w-4", pendingAction === 'refresh' && "animate-spin")} />
                 Refresh
               </Button>
 
@@ -739,7 +742,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                 onClick={() => void handleOpenProjectsDirectory()}
                 disabled={Boolean(pendingAction)}
               >
-                <FolderIcon className="h-4 w-4" />
+                <HugeiconsIcon icon={__FolderIconHugeIcon} className="h-4 w-4" />
                 View Folder
               </Button>
             </div>
@@ -752,7 +755,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
         <SettingsSectionDescription>Where new projects are created on your computer.</SettingsSectionDescription>
         <SettingsGroup>
           <div className="flex items-center gap-4 px-4 py-3">
-            <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground/75" />
+            <HugeiconsIcon icon={__FolderIconHugeIcon} className="h-4 w-4 shrink-0 text-muted-foreground/75" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[11px] text-foreground">{projectsDirectory}</p>
             </div>
@@ -763,7 +766,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
               onClick={() => void handleChangeDirectory()}
               disabled={Boolean(pendingAction)}
             >
-              {pendingAction === 'change-directory' ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+              {pendingAction === 'change-directory' ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
               Change
             </Button>
           </div>
@@ -784,9 +787,9 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                 disabled={pendingAction === 'delete:selected'}
               >
                 {pendingAction === 'delete:selected' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
                 )}
                 Delete ({selectedProjectPaths.length})
               </Button>
@@ -837,9 +840,9 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                               disabled={Boolean(pendingAction)}
                             >
                               {pendingAction === `delete:${project.path}` ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin text-muted-foreground" />
                               ) : (
-                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                <HugeiconsIcon icon={__Trash2HugeIcon} className="h-4 w-4 text-muted-foreground" />
                               )}
                             </Button>
                           </div>
@@ -871,7 +874,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                     onClick={() => void handleProjectPageChange((projectsPage.page ?? 1) - 1)}
                     disabled={projectsPage.page === 1 || isLoadingProjects}
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <HugeiconsIcon icon={__ChevronLeftHugeIcon} className="h-4 w-4" />
                   </Button>
                   {projectPageNumbers.map((pageNumber, index) => (
                     typeof pageNumber === 'number' ? (
@@ -898,7 +901,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                     onClick={() => void handleProjectPageChange((projectsPage.page ?? 1) + 1)}
                     disabled={projectsPage.page >= projectsPage.totalPages || isLoadingProjects}
                   >
-                    <ChevronRight className="h-4 w-4" />
+                    <HugeiconsIcon icon={__ChevronRightHugeIcon} className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -908,7 +911,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
 
       <section>
         <SettingsSectionTitle variant="danger">
-          <AlertTriangle className="size-3.5" aria-hidden />
+          <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="size-3.5" aria-hidden />
           Danger zone
         </SettingsSectionTitle>
         <SettingsDangerGroup>
@@ -927,7 +930,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                     className="h-7 gap-1.5 text-[11px]"
                     disabled={Boolean(pendingAction)}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
                     Clear all
                   </Button>
                 </DialogTrigger>
@@ -948,7 +951,7 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
                       onClick={() => void handleClearAll()}
                       disabled={pendingAction === 'clear-all'}
                     >
-                      {pendingAction === 'clear-all' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {pendingAction === 'clear-all' ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Clear everything
                     </Button>
                   </DialogFooter>
@@ -967,3 +970,4 @@ export function Storage({ surface = 'page', route: _route }: StorageProps) {
 
   return content
 }
+

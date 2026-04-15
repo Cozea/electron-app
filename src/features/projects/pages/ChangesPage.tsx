@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, ArrowLeftRightIcon as __MessageSquareHugeIcon, Cancel01Icon as __XHugeIcon, ChartBarBigIcon as __ActivityHugeIcon, CpuChargeIcon as __BotHugeIcon, FaceIdIcon as __SmileHugeIcon, MinusSignIcon as __MinusHugeIcon, SparklesIcon as __AsteriskHugeIcon } from '@hugeicons/core-free-icons'
+
 const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-4 w-full'}`} />;
 import { memo, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from '@/lib/router'
@@ -18,8 +23,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-
-import { ChartBarIcon as Activity, ChatBubbleLeftRightIcon as MessageSquare, CpuChipIcon as Bot, FaceSmileIcon as Smile, MinusIcon as Minus, PlusIcon as Plus, SparklesIcon as Asterisk, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { DiffPanel, type ChangeWithContent } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
@@ -145,20 +148,20 @@ function getChangeIcon(changeType: string) {
     case 'create':
       return (
         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary">
-          <Plus className={`${baseClasses} text-green-500`} />
+          <HugeiconsIcon icon={__PlusHugeIcon} className={`${baseClasses} text-green-500`} />
         </span>
       )
     case 'delete':
       return (
         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary">
-          <Minus className={`${baseClasses} text-red-500`} />
+          <HugeiconsIcon icon={__MinusHugeIcon} className={`${baseClasses} text-red-500`} />
         </span>
       )
     case 'modify':
     default:
       return (
         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary">
-          <Asterisk className={`${baseClasses} text-amber-500`} />
+          <HugeiconsIcon icon={__AsteriskHugeIcon} className={`${baseClasses} text-amber-500`} />
         </span>
       )
   }
@@ -354,7 +357,7 @@ const ChangeComments = memo(function ChangeComments({
                   disabled={!viewerUserId}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 >
-                  <Smile className="h-4 w-4" />
+                  <HugeiconsIcon icon={__SmileHugeIcon} className="h-4 w-4" />
                   <span>+</span>
                 </button>
               </DropdownMenuTrigger>
@@ -552,7 +555,7 @@ const ActivityFeedRow = memo(function ActivityFeedRow({
               style={{ backgroundColor: item.userColor }}
             >
               {item.isAgent ? (
-                <Bot className="h-4 w-4" />
+                <HugeiconsIcon icon={__BotHugeIcon} className="h-4 w-4" />
               ) : (
                 item.userName?.charAt(0).toUpperCase() || 'U'
               )}
@@ -582,7 +585,7 @@ const ActivityFeedRow = memo(function ActivityFeedRow({
           )}
           {commentCount > 0 && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
-              <MessageSquare className="h-3 w-3" />
+              <HugeiconsIcon icon={__MessageSquareHugeIcon} className="h-3 w-3" />
               {commentCount}
             </span>
           )}
@@ -775,7 +778,7 @@ export function ChangesPage({
               className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               aria-label="Close changes"
             >
-              <X className="h-3.5 w-3.5" />
+              <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : null}
@@ -843,7 +846,7 @@ export function ChangesPage({
                 null
               ) : filteredActivity.length === 0 ? (
                 <Card className="p-12 text-center">
-                  <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <HugeiconsIcon icon={__ActivityHugeIcon} className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <h3 className="text-lg font-medium mb-2">No Changes Yet</h3>
                   <p className="text-sm text-muted-foreground">
                     {selectedUserId

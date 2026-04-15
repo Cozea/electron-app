@@ -1,4 +1,5 @@
 import {
+
   ApprovalRequestId,
   MessageId,
   type ModelSelection,
@@ -9,7 +10,6 @@ import {
   type ServerProvider,
   type TurnId,
 } from "@cozea/assistant-contracts"
-import { ArrowPathIcon as Loader2, ChatBubbleLeftRightIcon as ChatIcon, ChevronLeftIcon, ChevronRightIcon, ListBulletIcon as ListTodoIcon, LockClosedIcon as LockIcon, LockOpenIcon, XMarkIcon as XIcon } from "@heroicons/react/24/outline"
 import {
   type ClipboardEventHandler,
   memo,
@@ -60,10 +60,14 @@ import {
 import { type Thread } from "@/stores/types"
 import { cn } from "@/lib/utils"
 
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeftRightIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
 export interface ProviderModelOptionsByProvider {
   codex: ReadonlyArray<{ slug: string; name: string }>
+
   claudeAgent: ReadonlyArray<{ slug: string; name: string }>
 }
 
@@ -729,7 +733,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   disabled={!props.isRuntimeReady || props.isInterrupting}
                 >
                   {props.isInterrupting ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <HugeiconsIcon icon={__Loader2HugeIcon} className="size-3 animate-spin" />
                   ) : (
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
                       <rect x="2" y="2" width="8" height="8" rx="1.5" />
@@ -783,7 +787,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   : "Default mode - click to enter plan mode"
               }
             >
-              {props.selectedInteractionMode === "plan" ? <ListTodoIcon /> : <ChatIcon />}
+              {props.selectedInteractionMode === "plan" ? <HugeiconsIcon icon={__ListTodoIconHugeIcon} /> : <HugeiconsIcon icon={__ChatIconHugeIcon} />}
               <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
             </Button>
 
@@ -802,7 +806,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   : "Approval required - click for full access"
               }
             >
-              {props.selectedRuntimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
+              {props.selectedRuntimeMode === "full-access" ? <HugeiconsIcon icon={__LockOpenIconHugeIcon} /> : <HugeiconsIcon icon={__LockIconHugeIcon} />}
               <span>
                 {props.selectedRuntimeMode === "full-access" ? "Full access" : "Supervised"}
               </span>
@@ -946,7 +950,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 navigateExpandedImage(-1)
               }}
             >
-              <ChevronLeftIcon className="size-5" />
+              <HugeiconsIcon icon={__ChevronLeftIconHugeIcon} className="size-5" />
             </Button>
           ) : null}
           <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
@@ -958,7 +962,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               onClick={closeExpandedImage}
               aria-label="Close image preview"
             >
-              <XIcon className="size-4" />
+              <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />
             </Button>
             <img
               src={expandedImageItem.src}
@@ -984,7 +988,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 navigateExpandedImage(1)
               }}
             >
-              <ChevronRightIcon className="size-5" />
+              <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-5" />
             </Button>
           ) : null}
         </div>

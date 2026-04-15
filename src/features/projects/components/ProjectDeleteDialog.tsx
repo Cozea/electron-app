@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 
 import {
+
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -12,7 +13,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ProjectDeleteDialogProps {
   open: boolean
@@ -84,7 +87,7 @@ export function ProjectDeleteDialog({
 
         {errorMessage ? (
           <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0" />
             <p className="leading-6">{errorMessage}</p>
           </div>
         ) : null}
@@ -106,3 +109,4 @@ export function ProjectDeleteDialog({
     </AlertDialog>
   )
 }
+

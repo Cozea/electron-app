@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle2, CheckIcon as Check, ChevronLeftIcon as ChevronLeft, ChevronRightIcon as ChevronRight, MinusIcon as Minus, PlusIcon as Plus, XCircleIcon as XCircle } from "@heroicons/react/24/outline"
 
 import { featureFlags } from "@/lib/featureFlags";
 import { cn } from "@/lib/utils";
@@ -10,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+
   SettingsGroup,
   SettingsPageBody,
   SettingsRow,
@@ -49,6 +49,9 @@ import {
   STARTUP_MIN_SEATS,
   STARTUP_PLAN_CARD,
 } from "./billingShared";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, CancelCircleIcon as __XCircleHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftHugeIcon, ChevronDoubleCloseIcon as __ChevronRightHugeIcon, MinusSignIcon as __MinusHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
 
 interface BillingContentProps {
   controller: BillingController;
@@ -197,7 +200,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
     >
       {controller.successType && (
         <Alert className="rounded-[14px] border-green-500/50 bg-green-500/10">
-          <CheckCircle2 className="h-4 w-4 text-green-500" />
+          <HugeiconsIcon icon={__CheckCircle2HugeIcon} className="h-4 w-4 text-green-500" />
           <AlertTitle className="text-green-500">Subscription Updated</AlertTitle>
           <AlertDescription>Billing details were updated successfully.</AlertDescription>
         </Alert>
@@ -205,7 +208,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
 
       {controller.wasCanceled && (
         <Alert className="rounded-[14px] border-amber-500/50 bg-amber-500/10">
-          <XCircle className="h-4 w-4 text-amber-500" />
+          <HugeiconsIcon icon={__XCircleHugeIcon} className="h-4 w-4 text-amber-500" />
           <AlertTitle className="text-amber-500">Checkout Canceled</AlertTitle>
           <AlertDescription>Your checkout was canceled. No charges were made.</AlertDescription>
         </Alert>
@@ -230,7 +233,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
 
       {controller.hasPastDueEntitlement && (
         <Alert variant="destructive" className="rounded-[14px]">
-          <XCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={__XCircleHugeIcon} className="h-4 w-4" />
           <AlertTitle>Payment failed</AlertTitle>
           <AlertDescription>
             Your latest Stripe payment was declined. Update your payment method in Manage Billing to
@@ -259,7 +262,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
               }
             >
               {controller.isCancelScheduledCycleChangePending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
               Cancel scheduled change
             </Button>
@@ -311,7 +314,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
               onClick={controller.handleManageBilling}
               disabled={!controller.canOpenCheckout || controller.isPortalPending}
             >
-              {controller.isPortalPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {controller.isPortalPending ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : null}
               Manage Billing
             </Button>
             <Button
@@ -333,7 +336,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
               {!controller.workspaceScoped &&
                 (controller.currentPlanIdForCards === "startup" || controller.currentPlanIdForCards === "enterprise") && (
                   <Alert className="rounded-[12px] border-primary/20 bg-primary/5">
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <HugeiconsIcon icon={__CheckCircle2HugeIcon} className="h-4 w-4 text-primary" />
                     <AlertTitle>Covered by Workspace Plan</AlertTitle>
                     <AlertDescription>
                       Your personal workspace is automatically upgraded because you manage an active{" "}
@@ -427,9 +430,9 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                           {planCard.features.map((feature, featureIndex) => (
                             <li key={`${planCard.id}-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
                               {feature.included ? (
-                                <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                                <HugeiconsIcon icon={__CheckHugeIcon} className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                               ) : (
-                                <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                                <HugeiconsIcon icon={__XCircleHugeIcon} className="h-4 w-4 shrink-0 text-destructive" />
                               )}
                               <span>{feature.text}</span>
                             </li>
@@ -458,7 +461,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                           }
                         >
                           {controller.isPlanActionPending ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                           ) : null}
                           {planCardCtaLabel}
                         </Button>
@@ -505,7 +508,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                             }
                             disabled={controller.selectedStartupSeatQuantity <= STARTUP_MIN_SEATS || controller.isPlanActionPending}
                           >
-                            <Minus className="h-4 w-4" />
+                            <HugeiconsIcon icon={__MinusHugeIcon} className="h-4 w-4" />
                           </Button>
                           <Input
                             type="number"
@@ -532,7 +535,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                             }
                             disabled={controller.selectedStartupSeatQuantity >= STARTUP_MAX_SEATS || controller.isPlanActionPending}
                           >
-                            <Plus className="h-4 w-4" />
+                            <HugeiconsIcon icon={__PlusHugeIcon} className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -541,9 +544,9 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                       {STARTUP_PLAN_CARD.features.map((feature, featureIndex) => (
                         <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
                           {feature.included ? (
-                            <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                            <HugeiconsIcon icon={__CheckHugeIcon} className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                           ) : (
-                            <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                            <HugeiconsIcon icon={__XCircleHugeIcon} className="h-4 w-4 shrink-0 text-destructive" />
                           )}
                           <span>{feature.text}</span>
                         </li>
@@ -569,7 +572,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                       }
                     >
                       {controller.isPlanActionPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                       ) : null}
                       {controller.startupPrimaryActionLabel}
                     </Button>
@@ -587,7 +590,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                     <ul className="mt-5 flex-1 space-y-2.5">
                       {ENTERPRISE_PLAN_CARD.features.map((feature, featureIndex) => (
                         <li key={`enterprise-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                          <HugeiconsIcon icon={__CheckHugeIcon} className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                           <span>{feature}</span>
                         </li>
                       ))}
@@ -628,7 +631,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
               {controller.pendingDowngradeLostBenefits.length > 0 ? (
                 controller.pendingDowngradeLostBenefits.map((benefit) => (
                   <div key={benefit} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                    <HugeiconsIcon icon={__XCircleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                     <span>{benefit}</span>
                   </div>
                 ))
@@ -650,7 +653,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                 disabled={controller.isPlanActionPending || controller.isPortalPending}
               >
                 {controller.isPlanActionPending || controller.isPortalPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                 ) : null}
                 Lose all my benefits
               </Button>
@@ -736,7 +739,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                                 }
                               >
                                 {isBusy ? (
-                                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 shrink-0 animate-spin" />
                                 ) : (
                                   <Checkbox
                                     checked={hasSeat}
@@ -791,7 +794,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                         onClick={() => controller.setSeatAssignmentsPage((current) => Math.max(1, current - 1))}
                         disabled={controller.seatAssignmentsPage === 1}
                       >
-                        <ChevronLeft className="h-4 w-4" />
+                        <HugeiconsIcon icon={__ChevronLeftHugeIcon} className="h-4 w-4" />
                       </Button>
                       {controller.seatAssignmentsPageNumbers.map((pageNumber, index) => (
                         typeof pageNumber === "number" ? (
@@ -821,7 +824,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                         }
                         disabled={controller.seatAssignmentsPage === controller.seatAssignmentsTotalPages}
                       >
-                        <ChevronRight className="h-4 w-4" />
+                        <HugeiconsIcon icon={__ChevronRightHugeIcon} className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : null}
@@ -836,7 +839,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
           <SettingsSectionTitle className="mb-0">
             <span>Invoice history</span>
             {controller.invoicesLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin text-muted-foreground" />
             ) : null}
           </SettingsSectionTitle>
           <SettingsSectionDescription className="mb-0">{controller.invoiceHistoryDescription}</SettingsSectionDescription>
@@ -879,7 +882,7 @@ export function BillingContent({ controller, surface }: BillingContentProps) {
                               }}
                             >
                               View
-                              <ExternalLink className="h-3 w-3" />
+                              <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
                             </Button>
                           ) : null}
                         </TableCell>

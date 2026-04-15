@@ -3,6 +3,7 @@ import { useConvex } from 'convex/react'
 
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
+
   RepositoryBranchDescriptor,
   RepositoryDescriptor,
 } from '@shared/electronApiTypes'
@@ -24,7 +25,9 @@ import {
 } from '@/components/ui/table'
 import { TablePaginationControls } from '@/components/ui/table-pagination-controls'
 import { cn } from '@/lib/utils'
-import { LockClosedIcon as Lock } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
 
 type RepositoryProvider = 'github'
 
@@ -615,7 +618,7 @@ export function ConnectedRepositoryPicker({
                             <div className="flex items-center gap-2">
                               <span className="truncate font-normal text-foreground">{repository.name}</span>
                               {repository.private ? (
-                                <Lock className="h-3 w-3 text-muted-foreground" />
+                                <HugeiconsIcon icon={__LockHugeIcon} className="h-3 w-3 text-muted-foreground" />
                               ) : null}
                             </div>
                             {repository.description ? (
@@ -719,3 +722,4 @@ export function ConnectedRepositoryPicker({
     </div>
   )
 }
+

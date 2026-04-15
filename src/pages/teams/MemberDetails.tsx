@@ -5,7 +5,13 @@ import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNo
 import { useScopedMemberDetailsData } from '@/hooks/useScopedMemberDetailsData'
 import { Badge } from '../../components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
-import { BoltIcon as Zap, CalendarDaysIcon as Calendar, ChartBarIcon as Activity, EnvelopeIcon as Mail, FolderIcon as FolderKanban, UsersIcon as Users } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Calendar01Icon as __CalendarHugeIcon, ChartBarBigIcon as __ActivityHugeIcon, FirstBracketCircleIcon as __ZapHugeIcon, Folder01Icon as __FolderKanbanHugeIcon, Mail01Icon as __MailHugeIcon, UserGroupIcon as __UsersHugeIcon } from '@hugeicons/core-free-icons'
+
+const Zap = (props: any) => <HugeiconsIcon icon={__ZapHugeIcon} {...props} />
+const Activity = (props: any) => <HugeiconsIcon icon={__ActivityHugeIcon} {...props} />
+const FolderKanban = (props: any) => <HugeiconsIcon icon={__FolderKanbanHugeIcon} {...props} />
 
 // Contribution graph component (GitHub-style)
 function ContributionGraph({ data }: { data: number[][] }) {
@@ -24,6 +30,7 @@ function ContributionGraph({ data }: { data: number[][] }) {
   // Calculate which months to show based on weeks
   const getMonthLabels = () => {
     const labels: { month: string; col: number }[] = []
+
     const now = new Date()
     let currentMonth = -1
 
@@ -307,12 +314,12 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
 
               <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4" />
+                  <HugeiconsIcon icon={__CalendarHugeIcon} className="h-4 w-4" />
                   <span>Joined {formatDate(member.joinedAt)}</span>
                 </div>
                 {member.user?.email && (
                   <div className="flex items-center gap-1.5">
-                    <Mail className="h-4 w-4" />
+                    <HugeiconsIcon icon={__MailHugeIcon} className="h-4 w-4" />
                     <span>{member.user.email}</span>
                   </div>
                 )}
@@ -377,7 +384,7 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
           {/* Teams */}
           <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
             <div className="mb-4 flex items-center gap-2">
-              <Users className="h-5 w-5 text-muted-foreground" />
+              <HugeiconsIcon icon={__UsersHugeIcon} className="h-5 w-5 text-muted-foreground" />
               <h2 className="text-lg font-semibold">Teams</h2>
             </div>
             <div className="space-y-3">
@@ -385,7 +392,7 @@ export function MemberDetailsContent({ surface = 'page', route = '/teams' }: Mem
                 <div className="flex items-center justify-between rounded-xl bg-background/50 px-3 py-2">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center">
-                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <HugeiconsIcon icon={__UsersHugeIcon} className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">{workspaceName}</p>

@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlignHorizontalCenterIcon as __EllipsisIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { memo, useState, useId } from "react";
 import {
@@ -9,7 +14,6 @@ import {
   stripDisplayedPlanMarkdown,
 } from "../proposedPlan";
 import ChatMarkdown from "./ChatMarkdown";
-import { EllipsisHorizontalIcon as EllipsisIcon } from "@heroicons/react/24/outline"
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -125,7 +129,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <MenuTrigger
             render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
           >
-            <EllipsisIcon aria-hidden="true" className="size-4" />
+            <HugeiconsIcon icon={__EllipsisIconHugeIcon} aria-hidden="true" className="size-4" />
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>

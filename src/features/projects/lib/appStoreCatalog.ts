@@ -1,22 +1,21 @@
 import type { ComponentType } from "react"
+import { AArrowDownIcon as __CloudDownloadHugeIcon, ArrowDownZeroOneIcon as __DownloadHugeIcon, ArrowLeftRightIcon as __ChatHugeIcon, CodeCircleIcon as __CodeHugeIcon, CommandLineIcon as __CommandLineHugeIcon, CpuChargeIcon as __ChipHugeIcon, EyeIcon as __EyeHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon, PaintBrush01Icon as __PaintBrushHugeIcon, Rocket01Icon as __RocketHugeIcon, Shield01Icon as __ShieldHugeIcon, SparklesIcon as __SparklesHugeIcon, SwatchIcon as __SwatchHugeIcon, Wrench01Icon as __ToolsHugeIcon } from '@hugeicons/core-free-icons'
 
-import {
-  ArrowDownTrayIcon as Download,
-  BoltIcon as Bolt,
-  ChatBubbleLeftRightIcon as Chat,
-  CloudArrowDownIcon as CloudDownload,
-  CodeBracketIcon as Code,
-  CommandLineIcon as CommandLine,
-  CpuChipIcon as Chip,
-  EyeIcon as Eye,
-  PaintBrushIcon as PaintBrush,
-  RocketLaunchIcon as Rocket,
-  ShieldCheckIcon as Shield,
-  SparklesIcon as Sparkles,
-  SwatchIcon as Swatch,
-  WrenchScrewdriverIcon as Tools,
-} from "@heroicons/react/24/outline"
-
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+const Download = asHugeIcon(__DownloadHugeIcon)
+const Bolt = asHugeIcon(__BoltHugeIcon)
+const Chat = asHugeIcon(__ChatHugeIcon)
+const CloudDownload = asHugeIcon(__CloudDownloadHugeIcon)
+const Code = asHugeIcon(__CodeHugeIcon)
+const CommandLine = asHugeIcon(__CommandLineHugeIcon)
+const Chip = asHugeIcon(__ChipHugeIcon)
+const Eye = asHugeIcon(__EyeHugeIcon)
+const PaintBrush = asHugeIcon(__PaintBrushHugeIcon)
+const Rocket = asHugeIcon(__RocketHugeIcon)
+const Shield = asHugeIcon(__ShieldHugeIcon)
+const Sparkles = asHugeIcon(__SparklesHugeIcon)
+const Swatch = asHugeIcon(__SwatchHugeIcon)
+const Tools = asHugeIcon(__ToolsHugeIcon)
 export type AppStoreCategoryId =
   | "discover"
   | "agent-kits"
@@ -267,3 +266,4 @@ export function resolveAppStoreCategory(value: string | null | undefined): AppSt
     APP_STORE_CATEGORIES[0]
   )
 }
+

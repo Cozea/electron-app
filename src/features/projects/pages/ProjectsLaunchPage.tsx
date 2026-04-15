@@ -2,7 +2,6 @@ import { useEffect, useState } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
 import { getWorkspaceSelectionId } from "@shared/types"
-import { ArrowPathIcon as Loader2, FolderOpenIcon as FolderOpen, PlusIcon as Plus } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -12,6 +11,7 @@ import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu"
 import { Button } from "@/components/ui/button"
 import {
+
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -24,6 +24,9 @@ import {
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/projects/lib/lastWorkbenchRoute"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface ProjectsLaunchLoadingStateProps {
   title: string
@@ -40,7 +43,7 @@ function ProjectsLaunchLoadingState({
         <Empty className="py-6">
           <EmptyHeader>
             <EmptyMedia>
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-8 w-8 animate-spin text-muted-foreground" />
             </EmptyMedia>
             <EmptyTitle>{title}</EmptyTitle>
             <EmptyDescription>{description}</EmptyDescription>
@@ -171,7 +174,7 @@ export function ProjectsLaunchPage() {
         <Empty className="py-6">
           <EmptyHeader>
             <EmptyMedia>
-              <FolderOpen className="h-8 w-8" />
+              <HugeiconsIcon icon={__FolderOpenHugeIcon} className="h-8 w-8" />
             </EmptyMedia>
             <EmptyTitle>{hasProjects ? "Select a project" : "No projects yet"}</EmptyTitle>
             <EmptyDescription>
@@ -187,7 +190,7 @@ export function ProjectsLaunchPage() {
           {!hasProjects && canStartProjectFlow ? (
             <EmptyContent>
               <Button className="gap-2" onClick={(event) => void openProjectCreationMenu(event)}>
-                <Plus className="h-4 w-4" />
+                <HugeiconsIcon icon={__PlusHugeIcon} className="h-4 w-4" />
                 {canCreateProjects ? "Create Project" : "Import Project"}
               </Button>
             </EmptyContent>
@@ -197,3 +200,4 @@ export function ProjectsLaunchPage() {
     </div>
   )
 }
+

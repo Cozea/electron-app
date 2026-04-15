@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArchiveBoxIcon as Package, ArrowDownTrayIcon as Download, CheckIcon as Check, CommandLineIcon as Terminal, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { SettingsPageBody } from '@/components/settings/SettingsChrome'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
@@ -10,6 +9,9 @@ import { Switch } from '../../components/ui/switch'
 import { cn } from '../../lib/utils'
 import type { GitRuntimeHealth, RuntimeHealth, RuntimeKind } from '../../types/electron'
 import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/useRuntimeInstallStore'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, ArrowDownZeroOneIcon as __DownloadHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, CommandLineIcon as __TerminalHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ToolingProps {
   surface?: 'page' | 'drawer'
@@ -29,6 +31,7 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
 }
 
 let cachedRuntimeStatus: { target: string; runtimes: RuntimeHealth[] } | null = null
+
 let cachedGitRuntimeHealth: GitRuntimeHealth | null = null
 let runtimeStatusPrewarmPromise: Promise<void> | null = null
 
@@ -70,7 +73,7 @@ function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
     case 'npm':
       return <SiNpm className="h-4 w-4" style={{ color: '#CB3837' }} />
     case 'corepack':
-      return <Package className="h-4 w-4" style={{ color: mutedColor }} />
+      return <HugeiconsIcon icon={__PackageHugeIcon} className="h-4 w-4" style={{ color: mutedColor }} />
     case 'pnpm':
       return <SiPnpm className="h-4 w-4" style={{ color: '#F9AD00' }} />
     case 'yarn':
@@ -84,7 +87,7 @@ function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
     case 'go':
       return <SiGo className="h-4 w-4" style={{ color: '#00ADD8' }} />
     default:
-      return <Package className="h-4 w-4" style={{ color: mutedColor }} />
+      return <HugeiconsIcon icon={__PackageHugeIcon} className="h-4 w-4" style={{ color: mutedColor }} />
   }
 }
 
@@ -246,7 +249,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <HugeiconsIcon icon={__PackageHugeIcon} className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Git Runtime</h3>
           </div>
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
@@ -273,9 +276,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                     className="ml-auto shrink-0 gap-1.5"
                   >
                     {gitRuntimeHealth.available ? (
-                      <Check className="h-3 w-3" />
+                      <HugeiconsIcon icon={__CheckHugeIcon} className="h-3 w-3" />
                     ) : (
-                      <AlertTriangle className="h-3 w-3" />
+                      <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3 w-3" />
                     )}
                     {gitRuntimeHealth.available ? 'Available' : 'Not available'}
                   </Badge>
@@ -324,7 +327,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <Terminal className="h-4 w-4 text-muted-foreground" />
+            <HugeiconsIcon icon={__TerminalHugeIcon} className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Runtime Inventory</h3>
           </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
@@ -363,7 +366,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                         <div className="flex items-center justify-end">
                           {isInstalled ? (
                             <Badge variant="secondary" className="gap-1 rounded-full">
-                              <Check className="h-3 w-3" />
+                              <HugeiconsIcon icon={__CheckHugeIcon} className="h-3 w-3" />
                               Installed
                             </Badge>
                           ) : (
@@ -396,9 +399,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                               {isInstalling ? (
                                 <RuntimeProgressRing progress={installJob?.progress ?? 0} />
                               ) : installFailed ? (
-                                <AlertTriangle className="h-4 w-4" />
+                                <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-4 w-4" />
                               ) : (
-                                <Download className="h-4 w-4" />
+                                <HugeiconsIcon icon={__DownloadHugeIcon} className="h-4 w-4" />
                               )}
                             </Button>
                           )}

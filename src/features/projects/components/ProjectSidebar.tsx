@@ -1,14 +1,14 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeft01Icon as __ArrowLeftHugeIcon, FolderAddIcon as __FolderAddHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
+
 "use client";
 
 import * as React from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
-import {
-  ArrowLeftIcon as ArrowLeft,
-  ShoppingBagIcon as ShoppingBag,
-  PlusIcon,
-} from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
@@ -640,7 +640,7 @@ export function ProjectSidebar({
                 className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, "px-1.5")}
                 onClick={(event) => void openProjectCreationMenu(event)}
               >
-                <PlusIcon />
+                <HugeiconsIcon icon={__FolderAddHugeIcon} />
                 <span className="truncate">New project</span>
               </button>
               <button
@@ -652,7 +652,7 @@ export function ProjectSidebar({
                 )}
                 onClick={handleOpenMarketplace}
               >
-                <ShoppingBag />
+                <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
                 <span className="truncate">DevApps Store</span>
               </button>
             </div>
@@ -744,7 +744,7 @@ export function ProjectSidebar({
               className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
               onClick={() => navigate(`${buildProjectPath(currentProjectId)}/workbench`)}
             >
-              <ArrowLeft className="size-3.5 shrink-0 text-muted-foreground/80" />
+              <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/80" />
               Back to workbench
             </Button>
           ) : (

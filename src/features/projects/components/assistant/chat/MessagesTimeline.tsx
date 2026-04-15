@@ -8,13 +8,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentType,
   type ReactNode,
+  type SVGProps,
 } from "react";
 import {
   measureElement as measureVirtualElement,
   type VirtualItem,
   useVirtualizer,
 } from "@tanstack/react-virtual";
+import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
 import { deriveTimelineEntries } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/stores/types";
@@ -27,8 +30,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { ArrowUturnLeftIcon as Undo2Icon, ArrowsUpDownIcon as ChevronsUpDown, BoltIcon as ZapIcon, ChatBubbleLeftRightIcon as MessageSquareIcon, CheckIcon, ChevronRightIcon, CommandLineIcon as TerminalIcon, CpuChipIcon as BotIcon, ExclamationCircleIcon as CircleAlertIcon, EyeIcon, GlobeAltIcon as GlobeIcon, PencilSquareIcon as SquarePenIcon, WrenchScrewdriverIcon as HammerIcon, WrenchScrewdriverIcon as WrenchIcon } from "@heroicons/react/24/outline"
-import type { ComponentType, SVGProps } from "react"
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
 import { clamp } from "effect/Number";
@@ -52,6 +54,18 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { ClaudeAI, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+
+const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
+const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
+const CheckIcon = asHugeIcon(__CheckIconHugeIcon)
+const TerminalIcon = asHugeIcon(__TerminalIconHugeIcon)
+const BotIcon = asHugeIcon(__BotIconHugeIcon)
+const CircleAlertIcon = asHugeIcon(__CircleAlertIconHugeIcon)
+const EyeIcon = asHugeIcon(__EyeIconHugeIcon)
+const GlobeIcon = asHugeIcon(__GlobeIconHugeIcon)
+const SquarePenIcon = asHugeIcon(__SquarePenIconHugeIcon)
+const HammerIcon = asHugeIcon(__HammerIconHugeIcon)
+const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon)
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
@@ -438,7 +452,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         title="Revert to this message"
                         aria-label="Revert to this message"
                       >
-                        <Undo2Icon className="size-3" />
+                        <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
                       </Button>
                     )}
                   </div>
@@ -460,7 +474,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     <span className="font-medium">
                       {completionSummary ?? "Response ready"}
                     </span>
-                    <ChevronRightIcon className="size-3.5 shrink-0 stroke-[2.2] text-muted-foreground/65" />
+                    <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-3.5 shrink-0 stroke-[2.2] text-muted-foreground/65" />
                   </div>
                   <div className="mt-2 h-px bg-border/70" />
                 </div>
@@ -506,7 +520,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                             aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           >
-                            <ChevronsUpDown className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                           </Button>
                           <Button
                             type="button"

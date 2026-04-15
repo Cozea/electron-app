@@ -725,14 +725,10 @@ export default defineSchema({
       v.object({
         provider: v.optional(v.string()), // github, gitlab, bitbucket, local
         repoUrl: v.optional(v.string()),
-        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()), // public, private
         mergeStrategy: v.optional(v.string()), // squash, merge, rebase
         mergeQueue: v.optional(v.string()),
-        syncPolicy: v.optional(
-          v.union(v.literal("auto"), v.literal("manual"))
-        ),
         workingCopyMode: v.optional(
           v.union(v.literal("managed"), v.literal("attached"))
         ),
@@ -741,9 +737,6 @@ export default defineSchema({
         ),
       })
     ),
-
-    // Legacy compatibility metadata for older git-first project flows.
-    syncMode: v.optional(v.literal("git")),
 
     // Optional attached repository metadata.
     gitRepository: v.optional(
@@ -1376,6 +1369,24 @@ export default defineSchema({
   })
     .index("by_project_and_room", ["projectId", "roomId"])
     .index("by_project_room_and_device", ["projectId", "roomId", "recipientDeviceId"]),
+
+  // Optional recovery kits for encrypted collaboration rooms.
+  // The server stores only encrypted room-key backups, never plaintext keys.
+  projectCollabRecoveryKits: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    salt: v.string(),
+    iterations: v.number(),
+    createdByUserId: v.id("users"),
+    createdByDeviceId: v.string(),
+    createdAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_room", ["projectId", "roomId"])
+    .index("by_project_room_and_key_version", ["projectId", "roomId", "keyVersion"]),
 
   // ============================================
   // YJS COLLABORATIVE EDITING TABLES

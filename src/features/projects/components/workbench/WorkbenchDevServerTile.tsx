@@ -1,21 +1,13 @@
 import { Activity, createElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 import type {
+
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
   ExternalBrowserId,
   WorkbenchSessionSnapshot,
 } from "@shared/electronApiTypes"
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
-import {
-  ArrowPathIcon as RefreshCcw,
-  ChevronDownIcon as ChevronDown,
-  CommandLineIcon as SquareTerminal,
-  ComputerDesktopIcon as AppWindow,
-  EyeIcon as Eye,
-  PlayIcon as Play,
-  StopIcon as Square,
-} from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
@@ -52,6 +44,11 @@ import {
 } from "@/stores/useProjectWorkbenchStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronDownHugeIcon, CommandLineIcon as __SquareTerminalHugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, EyeIcon as __EyeHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon } from '@hugeicons/core-free-icons'
+
+const Eye = (props: any) => <HugeiconsIcon icon={__EyeHugeIcon} {...props} />
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   switch (status) {
@@ -502,6 +499,7 @@ function WorkbenchRuntimePreviewTile({
     async (request: {
       type: "start" | "move" | "end"
       touches: Array<{ xRatio: number; yRatio: number }>
+
       rotation?: NativePreviewRotation
     }) => {
       if (!projectPath || !nativePreview.selectedSimulator) return
@@ -604,7 +602,7 @@ function WorkbenchRuntimePreviewTile({
           aria-label="Code"
           title="Code"
         >
-          <SquareTerminal className="h-4 w-4" />
+          <HugeiconsIcon icon={__SquareTerminalHugeIcon} className="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -626,7 +624,7 @@ function WorkbenchRuntimePreviewTile({
                   : `Choose preview destination (currently ${effectiveSelectedBrowser.name})`
               }
             >
-              <ChevronDown className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
+              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
@@ -636,7 +634,7 @@ function WorkbenchRuntimePreviewTile({
               onValueChange={handlePreviewDestinationChange}
             >
               <DropdownMenuRadioItem value="cozea">
-                <AppWindow className="mr-2 h-4 w-4 text-muted-foreground" />
+                <HugeiconsIcon icon={__AppWindowHugeIcon} className="mr-2 h-4 w-4 text-muted-foreground" />
                 Cozea
               </DropdownMenuRadioItem>
               {visibleBrowsers.map((browser) => {
@@ -686,7 +684,7 @@ function WorkbenchRuntimePreviewTile({
           aria-label="Code"
           title="Code"
         >
-          <SquareTerminal className="h-4 w-4" />
+          <HugeiconsIcon icon={__SquareTerminalHugeIcon} className="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -722,7 +720,7 @@ function WorkbenchRuntimePreviewTile({
                   : "Reload preview"
             }
           >
-            <RefreshCcw className="h-3.5 w-3.5" />
+            <HugeiconsIcon icon={__RefreshCcwHugeIcon} className="h-3.5 w-3.5" />
           </Button>
           <Button
             type="button"
@@ -734,7 +732,7 @@ function WorkbenchRuntimePreviewTile({
             }}
             aria-label="Stop dev server"
           >
-            <Square className="h-3.5 w-3.5 fill-current" />
+            <HugeiconsIcon icon={__SquareHugeIcon} className="h-3.5 w-3.5 fill-current" />
           </Button>
         </>
       ) : (
@@ -749,7 +747,7 @@ function WorkbenchRuntimePreviewTile({
           }}
           aria-label="Start dev server"
         >
-          <Play className="h-3.5 w-3.5 fill-current" />
+          <HugeiconsIcon icon={__PlayHugeIcon} className="h-3.5 w-3.5 fill-current" />
         </Button>
       )}
     </>

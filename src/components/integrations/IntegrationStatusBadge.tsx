@@ -1,3 +1,12 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, CancelCircleIcon as __XCircleHugeIcon, CheckmarkCircle02Icon as __CheckCircleHugeIcon } from '@hugeicons/core-free-icons'
+
+const CheckCircle = (props: any) => <HugeiconsIcon icon={__CheckCircleHugeIcon} {...props} />
+const AlertCircle = (props: any) => <HugeiconsIcon icon={__AlertCircleHugeIcon} {...props} />
+const XCircle = (props: any) => <HugeiconsIcon icon={__XCircleHugeIcon} {...props} />
+
 /**
  * Integration Status Badge
  *
@@ -5,7 +14,6 @@
  */
 
 import { Badge } from '@/components/ui/badge'
-import { CheckCircleIcon as CheckCircle, ExclamationCircleIcon as AlertCircle, XCircleIcon as XCircle } from "@heroicons/react/24/outline"
 import type { IntegrationStatus } from '@/lib/integrations/types'
 
 interface IntegrationStatusBadgeProps {

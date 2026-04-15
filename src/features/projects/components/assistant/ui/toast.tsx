@@ -1,8 +1,18 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __TriangleAlertIconHugeIcon, AlertCircleIcon as __CircleAlertIconHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CheckmarkCircle02Icon as __CircleCheckIconHugeIcon, DocumentAttachmentIcon as __CopyIconHugeIcon, InformationCircleIcon as __InfoIconHugeIcon, Refresh01Icon as __LoaderCircleIconHugeIcon } from '@hugeicons/core-free-icons'
+
+const LoaderCircleIcon = (props: any) => <HugeiconsIcon icon={__LoaderCircleIconHugeIcon} {...props} />
+const CircleCheckIcon = (props: any) => <HugeiconsIcon icon={__CircleCheckIconHugeIcon} {...props} />
+const CircleAlertIcon = (props: any) => <HugeiconsIcon icon={__CircleAlertIconHugeIcon} {...props} />
+const TriangleAlertIcon = (props: any) => <HugeiconsIcon icon={__TriangleAlertIconHugeIcon} {...props} />
+const InfoIcon = (props: any) => <HugeiconsIcon icon={__InfoIconHugeIcon} {...props} />
+
 "use client";
 
 import { Toast } from "@base-ui/react/toast";
 import { useEffect, type CSSProperties } from "react";
-import { ArrowPathIcon as LoaderCircleIcon, CheckCircleIcon as CircleCheckIcon, CheckIcon, DocumentDuplicateIcon as CopyIcon, ExclamationCircleIcon as CircleAlertIcon, ExclamationTriangleIcon as TriangleAlertIcon, InformationCircleIcon as InfoIcon } from "@heroicons/react/24/outline"
 
 import { cn } from "@/lib/utils";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -39,9 +49,9 @@ function CopyErrorButton({ text }: { text: string }) {
       type="button"
     >
       {isCopied ? (
-        <CheckIcon className="size-3.5 text-success" />
+        <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 text-success" />
       ) : (
-        <CopyIcon className="size-3.5" />
+        <HugeiconsIcon icon={__CopyIconHugeIcon} className="size-3.5" />
       )}
     </button>
   );

@@ -1,10 +1,14 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
 import { resolveSelectableModel } from "@cozea/assistant-shared/model";
 import { memo, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { type ProviderPickerKind, PROVIDER_OPTIONS } from "./session-logic";
-import { ChevronDownIcon } from "@heroicons/react/24/outline"
 import { Button, buttonVariants } from "../ui/button";
 import {
   Menu,
@@ -124,7 +128,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             )}
           />
           <span className="min-w-0 flex-1 truncate">{selectedModelLabel}</span>
-          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+          <HugeiconsIcon icon={__ChevronDownIconHugeIcon} aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
       </MenuTrigger>
       <MenuPopup align="start">

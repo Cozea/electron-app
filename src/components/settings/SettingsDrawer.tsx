@@ -1,4 +1,4 @@
-import { ChevronLeftIcon as ChevronLeft } from "@heroicons/react/24/outline"
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -18,6 +18,7 @@ import { Roles } from '@/pages/teams/Roles'
 import { Billing } from '@/pages/workspace/Billing'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import {
+
   resolveSettingsSurfaceFromRoute,
 } from '@/lib/settings/settingsRegistry'
 import { resolveSettingsNavigationSections } from '@/lib/settings/settingsNavigation'
@@ -31,7 +32,11 @@ import {
   SIDEBAR_PILL_ACTIVE_CLASS,
 } from '@/features/projects/components/sidebar/projectSidebarShared'
 
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
+
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
+
   if (section === 'account') {
     return <Account surface="drawer" route={route} />
   }
@@ -266,7 +271,7 @@ export function SettingsDrawer() {
             </div>
             <div className="mt-auto p-2 pb-3">
               <button type="button" onClick={close} className={SETTINGS_DRAWER_NAV_ROW_CLASS}>
-                <ChevronLeft className="h-4 w-4" />
+                <HugeiconsIcon icon={__ChevronLeftHugeIcon} className="h-4 w-4" />
                 <span>Back</span>
               </button>
             </div>

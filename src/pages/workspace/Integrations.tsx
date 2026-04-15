@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, PuzzleIcon as __PlugHugeIcon } from '@hugeicons/core-free-icons'
+
 /**
  * Integrations Page
  *
@@ -28,7 +33,6 @@ import type {
   IntegrationCategory,
   IntegrationCredentials,
 } from '@/lib/integrations/types'
-import { PlusIcon as Plus, PuzzlePieceIcon as Plug } from "@heroicons/react/24/outline"
 
 type FilterType = 'all' | 'connected' | 'disconnected'
 
@@ -143,7 +147,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full">
-            <Plug className="h-3.5 w-3.5" />
+            <HugeiconsIcon icon={__PlugHugeIcon} className="h-3.5 w-3.5" />
             {getFilterLabel()}
           </Button>
         </DropdownMenuTrigger>
@@ -155,7 +159,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
       </DropdownMenu>
 
       <Button className="gap-2 h-7 px-2 text-xs rounded-full" onClick={() => setFilter('disconnected')}>
-        <Plus className="h-3.5 w-3.5" />
+        <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
         Add Integration
       </Button>
     </div>

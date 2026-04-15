@@ -955,6 +955,14 @@ export interface CollabWrappedRoomKeyResult {
   senderDeviceId: string
 }
 
+export interface CollabRecoveryKitResult {
+  recoveryCode: string
+  wrappedKey: string
+  wrapAlgorithm: string
+  salt: string
+  iterations: number
+}
+
 export interface LocalAiRuntimeStatus {
   enabled: boolean
   running: boolean
@@ -1220,6 +1228,17 @@ export interface ElectronAPI {
     unwrapRoomKey: (options: {
       senderPublicKeyJwk: string
       wrappedKey: string
+      wrapAlgorithm?: string
+    }) => Promise<{ roomKeyBase64: string }>
+    createRecoveryKit: (options: {
+      roomKeyBase64: string
+      recoveryCode?: string
+    }) => Promise<CollabRecoveryKitResult>
+    unwrapRecoveryKit: (options: {
+      recoveryCode: string
+      wrappedKey: string
+      salt: string
+      iterations: number
       wrapAlgorithm?: string
     }) => Promise<{ roomKeyBase64: string }>
     deleteDeviceIdentity: () => Promise<{ success: boolean; error?: string }>

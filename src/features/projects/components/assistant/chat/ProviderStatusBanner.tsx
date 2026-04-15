@@ -1,8 +1,12 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { PROVIDER_DISPLAY_NAMES, type ServerProvider } from "@cozea/assistant-contracts";
 import { memo } from "react";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { ExclamationCircleIcon as CircleAlertIcon } from "@heroicons/react/24/outline"
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
@@ -23,7 +27,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pt-3 sm:px-5">
       <Alert variant={status.status === "error" ? "error" : "warning"}>
-        <CircleAlertIcon />
+        <HugeiconsIcon icon={__CircleAlertIconHugeIcon} />
         <AlertTitle className="line-clamp-1">{title}</AlertTitle>
         <AlertDescription title={status.message ?? defaultMessage}>
           <span className="line-clamp-2 block min-w-0">

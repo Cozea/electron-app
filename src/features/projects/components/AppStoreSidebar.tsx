@@ -1,11 +1,8 @@
 import * as React from "react"
-import {
-  ArrowLeftIcon as ArrowLeft,
-  MagnifyingGlassIcon as Search,
-} from "@heroicons/react/24/outline"
 
 import { NavUser } from "@/components/nav-user"
 import {
+
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -28,6 +25,9 @@ import {
   SIDEBAR_NAV_ROW_BUTTON_CLASS,
   SIDEBAR_PILL_ACTIVE_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeft01Icon as __ArrowLeftHugeIcon, Search01Icon as __SearchHugeIcon } from '@hugeicons/core-free-icons'
 
 interface AppStoreSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -107,12 +107,12 @@ export function AppStoreSidebar({ user, onLogout, className, ...props }: AppStor
           className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
           onClick={() => navigate("/projects")}
         >
-          <ArrowLeft />
+          <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
           <span className="truncate">Back to projects</span>
         </button>
 
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+          <HugeiconsIcon icon={__SearchHugeIcon} className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
           <SidebarInput
             type="search"
             value={query}
@@ -148,3 +148,4 @@ export function AppStoreSidebar({ user, onLogout, className, ...props }: AppStor
     </Sidebar>
   )
 }
+

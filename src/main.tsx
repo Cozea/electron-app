@@ -39,7 +39,6 @@ function applyBootstrapRouteFromSearch(): void {
   window.history.replaceState(window.history.state, '', bootstrapRoute)
 }
 
-
 ;(globalThis as { __COZEA_OFFSCREEN_SCREENSHOT_FLAG__?: string }).__COZEA_OFFSCREEN_SCREENSHOT_FLAG__ =
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
 

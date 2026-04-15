@@ -1,15 +1,18 @@
 import { useMemo } from 'react'
 import { useParams } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 import { Button } from '../components/ui/button'
 import {
+
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from '../components/ui/card'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-icons'
 
 export function AcceptInvitation() {
   const navigate = useViewTransitionNavigate()
@@ -26,7 +29,7 @@ export function AcceptInvitation() {
       <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-            <AlertCircle className="h-7 w-7 text-destructive" />
+            <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
           </div>
           <CardTitle>Invitation Link Retired</CardTitle>
           <CardDescription>
@@ -56,3 +59,4 @@ export function AcceptInvitation() {
     </div>
   )
 }
+

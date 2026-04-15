@@ -406,72 +406,6 @@ export function YjsProjectProvider({
           })
           Y.applyUpdate(yjsDoc.doc, decryptedUpdate, "snapshot")
         }
-      } else if (initialSync.deltaUpdate && initialSync.deltaUpdate.byteLength > 0) {
-        Y.applyUpdate(yjsDoc.doc, new Uint8Array(initialSync.deltaUpdate), "state-vector")
-      } else if (initialSync.serverSnapshot) {
-        Y.applyUpdate(yjsDoc.doc, new Uint8Array(initialSync.serverSnapshot), "snapshot")
-        for (const update of initialSync.recentUpdates) {
-          if (update.clientId === yjsDoc.doc.clientID.toString()) continue
-          Y.applyUpdate(yjsDoc.doc, new Uint8Array(update.update), "snapshot")
-        }
-      }
-
-      if (
-        session.encryption.status === "plaintext_legacy" &&
-        session.devicePublicKeyJwk
-      ) {
-        try {
-          const roomKeyBase64 = generateRoomKeyBase64()
-          const encryptedSnapshot = await encryptPayload({
-            roomKeyBase64,
-            kind: "yjs_snapshot",
-            keyVersion: 1,
-            plaintext: Y.encodeStateAsUpdate(yjsDoc.doc),
-            metadata: {
-              projectId: String(projectId),
-              roomId: session.roomId,
-            },
-          })
-          const wrapped = await window.electronAPI.collab.wrapRoomKey({
-            roomKeyBase64,
-            recipientPublicKeyJwk: session.devicePublicKeyJwk,
-          })
-
-          await convex.mutation(api.yjs.migratePlaintextRoomToEncrypted, {
-            projectId,
-            roomId: session.roomId,
-            userId,
-            deviceId: session.deviceId,
-            keyVersion: 1,
-            wrapAlgorithm: wrapped.wrapAlgorithm,
-            wrappedKey: wrapped.wrappedKey,
-            senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
-            encryptedSnapshot: toArrayBuffer(envelopeToBytes(encryptedSnapshot)),
-            createdByClientId: yjsDoc.doc.clientID.toString(),
-          })
-
-          const localStore =
-            encryptedLocalStoreRef.current ?? new EncryptedLocalSnapshotStore()
-          encryptedLocalStoreRef.current = localStore
-
-          await localStore.save({
-            scopeKey,
-            keyVersion: 1,
-            envelopeJson: JSON.stringify(encryptedSnapshot),
-            updatedAt: Date.now(),
-          })
-
-          setRoomEncryption({
-            encryptionEnabled: true,
-            roomKeyBase64,
-            keyVersion: 1,
-          })
-          initialKnownSeqRef.current = 0
-          await refreshCollabSession?.()
-          return
-        } catch (error) {
-          console.warn("[YjsProjectProvider] Failed to migrate plaintext room to encrypted:", error)
-        }
       }
 
       initialKnownSeqRef.current =
@@ -717,19 +651,7 @@ export function YjsProjectProvider({
         return
       }
 
-      if (persistServer && collaborationEnabled) {
-        const snapshotBuffer = new ArrayBuffer(snapshot.byteLength)
-        new Uint8Array(snapshotBuffer).set(snapshot)
-        await convex.mutation(api.yjs.saveSnapshot, {
-          projectId,
-          snapshot: snapshotBuffer,
-          version: Date.now(),
-        })
-        await convex.mutation(api.yjs.cleanupOldUpdates, {
-          projectId,
-          olderThan: Date.now() - 5 * 60 * 1000,
-        })
-      }
+      return
     }
 
     const handleDocUpdate = () => {

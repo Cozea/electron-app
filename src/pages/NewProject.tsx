@@ -1,11 +1,13 @@
 import { useEffect } from "react"
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 function resolveMode(search: string): CreateProjectDialogMode {
   const params = new URLSearchParams(search)
@@ -56,8 +58,9 @@ export default function NewProject() {
 
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
       Opening project setup…
     </div>
   )
 }
+

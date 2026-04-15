@@ -1,4 +1,5 @@
 import {
+
   memo,
   useCallback,
   useEffect,
@@ -9,7 +10,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
-import { ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink } from "@heroicons/react/24/outline"
 
 import { Button } from '@/components/ui/button'
 import {
@@ -30,6 +30,9 @@ import type {
 } from '@shared/nativePreviewTypes'
 
 import type { PreviewDevice } from './types'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __RefreshCwHugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
 
 const MIN_PREVIEW_SCALE = 0.5
 const MAX_PREVIEW_SCALE = 3
@@ -52,6 +55,7 @@ interface IosSimulatorViewportProps {
   onSendTouches: (request: {
     type: 'start' | 'move' | 'end'
     touches: Array<{ xRatio: number; yRatio: number }>
+
     rotation?: NativePreviewRotation
   }) => Promise<void>
   onSendWheel: (request: {
@@ -415,11 +419,11 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={onRefreshSimulators}>
-                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-1.5 h-3.5 w-3.5" />
                     Refresh
                   </Button>
                   <Button size="sm" variant="outline" onClick={onOpenExternally} disabled={!streamUrl}>
-                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="mr-1.5 h-3.5 w-3.5" />
                     Stream
                   </Button>
                 </div>
@@ -444,7 +448,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
                 </SelectContent>
               </Select>
               <Button size="icon" variant="outline" className="h-8 w-8 rounded-lg bg-background/85 backdrop-blur" onClick={onRefreshSimulators}>
-                <RefreshCw className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
               </Button>
             </div>
 

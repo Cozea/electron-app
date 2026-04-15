@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type RefObject, type SVGProps } from "react"
-import { ArchiveBoxIcon as PackageOpen, DevicePhoneMobileIcon as Phone, MagnifyingGlassIcon as Search, ShoppingBagIcon as ShoppingBag } from "@heroicons/react/24/outline"
 import type { ProviderKind } from "@cozea/assistant-contracts"
 import { SiGooglechrome } from "react-icons/si"
 
 import type {
+
   WorkbenchSelectionTile,
 } from "@/stores/useProjectWorkbenchStore"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
@@ -17,6 +17,13 @@ import {
   computeWorkbenchSelectionLauncherLayout,
   type WorkbenchSelectionLauncherLayout,
 } from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Search01Icon as __SearchHugeIcon, ServerStack02Icon as __ServerStackHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
+
+const ServerStack = (props: any) => <HugeiconsIcon icon={__ServerStackHugeIcon} {...props} />
+const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminalHugeIcon} {...props} />
+const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
 
 type CategoryTab = "All" | "Development" | "Assistant" | "Explore DevApps Store"
 
@@ -63,15 +70,6 @@ interface SelectionOption {
   icon: SelectionOptionIcon
 }
 
-function CommandPromptIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M5.5 7.5L10 12l-4.5 4.5" />
-      <path d="M13 16.5h5.5" />
-    </svg>
-  )
-}
-
 function ChromiumIcon(props: SVGProps<SVGSVGElement>) {
   return <SiGooglechrome {...props} />
 }
@@ -95,7 +93,7 @@ const DEVELOPMENT_SELECTION_OPTIONS: SelectionOption[] = [
     iconColorClass: "text-white",
     category: "Development",
     type: "devServer",
-    icon: PackageOpen,
+    icon: ServerStack,
   },
   {
     id: "terminal",
@@ -105,7 +103,7 @@ const DEVELOPMENT_SELECTION_OPTIONS: SelectionOption[] = [
     iconColorClass: "text-white dark:text-zinc-900",
     category: "Development",
     type: "terminal",
-    icon: CommandPromptIcon,
+    icon: ComputerTerminal,
   },
   {
     id: "mobileSimulator",
@@ -164,6 +162,7 @@ function WelcomeHero({
       <div className="mb-8 flex flex-col items-center gap-1">
         <span className="text-center text-2xl text-muted-foreground md:text-3xl">
           Let&apos;s work on
+
         </span>
         <span className="inline-flex items-center gap-3 text-center text-2xl font-bold tracking-tight text-foreground md:text-4xl">
           <NativeProjectFolderIcon
@@ -219,7 +218,7 @@ function SelectionFilterBar({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {cat === "Explore DevApps Store" ? <ShoppingBag className="size-3.5" aria-hidden /> : null}
+                {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3.5" aria-hidden /> : null}
                 {cat}
               </button>
               {index < array.length - 1 ? (
@@ -235,7 +234,7 @@ function SelectionFilterBar({
             role="status"
             aria-label="Quick open hint"
           >
-            <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Search...</span>
             <Kbd className="shrink-0 px-1.5">{shortcut}</Kbd>
           </div>

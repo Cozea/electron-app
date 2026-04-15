@@ -1,10 +1,12 @@
 import { ipcMain } from 'electron'
 
 import {
+  createRecoveryKit,
   deleteCollabDeviceIdentity,
   ensureCollabDeviceIdentity,
   getStoredCollabDeviceIdentitySummary,
   isCollabEncryptionAvailable,
+  unwrapRoomKeyFromRecoveryKit,
   unwrapRoomKeyFromSender,
   wrapRoomKeyForRecipient,
 } from '../collabKeys'
@@ -51,6 +53,32 @@ export class CollabEncryptionService {
         options: { senderPublicKeyJwk: string; wrappedKey: string; wrapAlgorithm?: string },
       ) => {
         return await unwrapRoomKeyFromSender(options)
+      },
+    )
+
+    ipcMain.handle(
+      'collab:createRecoveryKit',
+      async (
+        _event,
+        options: { roomKeyBase64: string; recoveryCode?: string },
+      ) => {
+        return await createRecoveryKit(options)
+      },
+    )
+
+    ipcMain.handle(
+      'collab:unwrapRecoveryKit',
+      async (
+        _event,
+        options: {
+          recoveryCode: string
+          wrappedKey: string
+          salt: string
+          iterations: number
+          wrapAlgorithm?: string
+        },
+      ) => {
+        return await unwrapRoomKeyFromRecoveryKit(options)
       },
     )
 

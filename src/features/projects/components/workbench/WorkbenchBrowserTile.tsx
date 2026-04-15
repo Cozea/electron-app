@@ -1,4 +1,5 @@
 import {
+
   useCallback,
   useEffect,
   useMemo,
@@ -9,16 +10,6 @@ import {
 } from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import {
-  ArrowLeftIcon as ArrowLeft,
-  ArrowRightIcon as ArrowRight,
-  ChevronDownIcon as ChevronDown,
-  ChevronUpIcon as ChevronUp,
-  EllipsisVerticalIcon as EllipsisVertical,
-  GlobeAltIcon as Globe,
-  LockClosedIcon as Lock,
-  XMarkIcon as X,
-} from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -38,6 +29,9 @@ import {
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { MoreVerticalIcon as __EllipsisVerticalHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, Cancel01Icon as __XHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, ChevronDoubleCloseIcon as __ChevronUpHugeIcon, Globe02Icon as __GlobeHugeIcon, LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchBrowserTileProps {
   projectId: string
@@ -344,7 +338,7 @@ export function WorkbenchBrowserTile({
         }}
         aria-label="Back"
       >
-        <ArrowLeft className="h-3.5 w-3.5" />
+        <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-3.5 w-3.5" />
       </Button>
       <Button
         type="button"
@@ -357,7 +351,7 @@ export function WorkbenchBrowserTile({
         }}
         aria-label="Forward"
       >
-        <ArrowRight className="h-3.5 w-3.5" />
+        <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-secondary px-2">
         {state.favicon ? (
@@ -367,7 +361,7 @@ export function WorkbenchBrowserTile({
             className="size-3.5 shrink-0 rounded-sm object-contain"
           />
         ) : draftUrl.startsWith("https://") ? (
-          <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
         ) : null}
         <Input
           ref={urlInputRef}
@@ -424,7 +418,7 @@ export function WorkbenchBrowserTile({
             }}
             aria-label="Find previous"
           >
-            <ChevronUp className="h-3 w-3" />
+            <HugeiconsIcon icon={__ChevronUpHugeIcon} className="h-3 w-3" />
           </Button>
           <Button
             type="button"
@@ -437,7 +431,7 @@ export function WorkbenchBrowserTile({
             }}
             aria-label="Find next"
           >
-            <ChevronDown className="h-3 w-3" />
+            <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3 w-3" />
           </Button>
           <Button
             type="button"
@@ -449,7 +443,7 @@ export function WorkbenchBrowserTile({
             }}
             aria-label="Close find"
           >
-            <X className="h-3 w-3" />
+            <HugeiconsIcon icon={__XHugeIcon} className="h-3 w-3" />
           </Button>
         </div>
       ) : null}
@@ -515,7 +509,7 @@ export function WorkbenchBrowserTile({
           }
         }}
       >
-        <EllipsisVertical className="h-4 w-4" />
+        <HugeiconsIcon icon={__EllipsisVerticalHugeIcon} className="h-4 w-4" />
       </Button>
     </>
   )
@@ -538,7 +532,7 @@ export function WorkbenchBrowserTile({
                 <Empty className="w-full max-w-md py-8">
                   <EmptyHeader>
                     <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-                      <Globe className="h-7 w-7" />
+                      <HugeiconsIcon icon={__GlobeHugeIcon} className="h-7 w-7" />
                     </EmptyMedia>
                     <EmptyTitle className="text-base font-medium">No page loaded yet</EmptyTitle>
                     <EmptyDescription>
@@ -595,3 +589,4 @@ export function WorkbenchBrowserTile({
     </div>
   )
 }
+

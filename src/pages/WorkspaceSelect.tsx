@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { Navigate } from '@/lib/router'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { CheckIcon as Check, PlusIcon as Plus } from "@heroicons/react/24/outline"
 import { useAuth } from '@/contexts/AuthContext'
 import { useResolvedScope } from '@/hooks/useResolvedScope'
 import { getWorkspaceSelectionId, workspaceMatchesSelectionId } from '@shared/types'
@@ -9,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { WorkspaceAvatar } from '@/components/workspaces/WorkspaceAvatar'
 import {
+
   Table,
   TableBody,
   TableCell,
@@ -17,6 +17,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialogStore'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
 
 export function WorkspaceSelect() {
   const navigate = useViewTransitionNavigate()
@@ -80,7 +83,7 @@ export function WorkspaceSelect() {
             }}
             className="gap-2"
           >
-            <Plus className="size-4" />
+            <HugeiconsIcon icon={__PlusHugeIcon} className="size-4" />
             Create workspace
           </Button>
         </div>
@@ -140,7 +143,7 @@ export function WorkspaceSelect() {
                             aria-label="Current workspace"
                             title="Current workspace"
                           >
-                            <Check className="size-2.5" />
+                            <HugeiconsIcon icon={__CheckHugeIcon} className="size-2.5" />
                           </span>
                         ) : null}
                       </div>
@@ -160,3 +163,4 @@ export function WorkspaceSelect() {
     </div>
   )
 }
+

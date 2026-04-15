@@ -1,7 +1,16 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CodeCircleIcon as __Code2HugeIcon, DeviceAccessIcon as __TabletSmartphoneHugeIcon, DocumentAttachmentIcon as __FileCode2HugeIcon, Settings01Icon as __SettingsHugeIcon } from '@hugeicons/core-free-icons'
+
+const Code2 = (props: any) => <HugeiconsIcon icon={__Code2HugeIcon} {...props} />
+const Settings = (props: any) => <HugeiconsIcon icon={__SettingsHugeIcon} {...props} />
+const TabletSmartphone = (props: any) => <HugeiconsIcon icon={__TabletSmartphoneHugeIcon} {...props} />
+const FileCode2 = (props: any) => <HugeiconsIcon icon={__FileCode2HugeIcon} {...props} />
+
 const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-full w-full'}`} />;
 import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { CodeBracketIcon as Code2, Cog6ToothIcon as Settings, DeviceTabletIcon as TabletSmartphone, DocumentTextIcon as FileCode2 } from "@heroicons/react/24/outline"
 import { type CSSProperties, useMemo } from "react"
 import {
   Tooltip,

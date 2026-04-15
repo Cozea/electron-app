@@ -21,10 +21,10 @@ const isomorphicLocalStorage: Storage =
       })();
 
 const decode = <T>(schema: Schema.Schema<T, any, never>, value: string) =>
-  Schema.decodeUnknownSync(Schema.parseJson(schema))(value);
+  Schema.decodeUnknownSync(schema)(JSON.parse(value));
 
 const encode = <T>(schema: Schema.Schema<T, any, never>, value: T) =>
-  Schema.encodeSync(Schema.parseJson(schema))(value);
+  JSON.stringify(Schema.encodeSync(schema)(value));
 
 export const getLocalStorageItem = <T>(key: string, schema: Schema.Schema<T, any, never>): T | null => {
   const item = isomorphicLocalStorage.getItem(key);

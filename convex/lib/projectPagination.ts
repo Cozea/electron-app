@@ -20,7 +20,6 @@ export interface ProjectPageItem {
   createdBy: Id<"users">
   lastSyncAt?: number
   lastSyncBy?: Id<"users">
-  syncMode?: Doc<"projects">["syncMode"]
   sourceControl?: Doc<"projects">["sourceControl"]
   gitRepository?: Doc<"projects">["gitRepository"]
   localPath: string | null
@@ -146,7 +145,6 @@ async function buildProjectsPageItems(
       createdBy: project.createdBy,
       lastSyncAt: project.lastSyncAt,
       lastSyncBy: project.lastSyncBy,
-      syncMode: project.syncMode,
       sourceControl: project.sourceControl,
       gitRepository: project.gitRepository,
       localPath: memberPathMap.get(String(project._id)) ?? null,

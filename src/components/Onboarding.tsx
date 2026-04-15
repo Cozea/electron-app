@@ -1,14 +1,18 @@
-import { ArrowRightIcon as ArrowRight, BuildingOffice2Icon as Building2, SparklesIcon as Sparkles } from "@heroicons/react/24/outline"
+
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialogStore'
 import {
+
   readSourceControlProviderPreferences,
   writeSourceControlProviderPreferences,
   type SourceControlProviderPreference,
 } from '@/lib/sourceControlPreferences'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowRight01Icon as __ArrowRightHugeIcon, Building02Icon as __Building2HugeIcon, SparklesIcon as __SparklesHugeIcon } from '@hugeicons/core-free-icons'
 
 export function Onboarding() {
   const openCreateWorkspaceDialog = useCreateWorkspaceDialogStore(
@@ -38,11 +42,12 @@ export function Onboarding() {
       <div className="mx-auto max-w-md space-y-8 p-8">
         <div className="flex flex-col items-center space-y-4 text-center">
           <div className="flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <Sparkles className="size-8" />
+            <HugeiconsIcon icon={__SparklesHugeIcon} className="size-8" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Welcome to Cozea</h1>
           <p className="text-muted-foreground">
             Let&apos;s create your first workspace. You can connect GitHub here now, or later when you open a project that needs it.
+
           </p>
         </div>
 
@@ -88,10 +93,10 @@ export function Onboarding() {
             size="lg"
           >
             <div className="flex items-center gap-3">
-              <Building2 className="size-5" />
+              <HugeiconsIcon icon={__Building2HugeIcon} className="size-5" />
               <span>Create a workspace</span>
             </div>
-            <ArrowRight className="size-5" />
+            <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-5" />
           </Button>
 
           <p className="text-center text-sm text-muted-foreground">

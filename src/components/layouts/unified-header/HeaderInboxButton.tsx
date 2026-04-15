@@ -1,6 +1,5 @@
 import { useCallback, useId, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { InboxIcon as Inbox } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -9,6 +8,7 @@ import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLabel,
@@ -16,6 +16,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { InboxIcon as __InboxHugeIcon } from '@hugeicons/core-free-icons'
 
 function getWorkspaceInitial(workspaceName: string | undefined | null): string {
   const source = (workspaceName ?? "?").trim();
@@ -88,7 +91,7 @@ export function HeaderInboxButton() {
               size="icon"
               className="relative h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             >
-              <Inbox className="size-3 shrink-0" />
+              <HugeiconsIcon icon={__InboxHugeIcon} className="h-3.5 w-3.5 shrink-0" />
               {inviteCount > 0 ? (
                 <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
               ) : null}
@@ -179,7 +182,7 @@ export function HeaderInboxButton() {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-1 px-3 py-8 text-center">
-              <Inbox className="h-5 w-5 text-muted-foreground/50" />
+              <HugeiconsIcon icon={__InboxHugeIcon} className="h-5 w-5 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">All caught up</p>
             </div>
           )}

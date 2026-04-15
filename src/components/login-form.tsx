@@ -2,7 +2,9 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Logo } from "@/components/Logo"
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface LoginFormProps extends React.ComponentProps<"div"> {
   onLogin: () => void
@@ -34,7 +36,7 @@ export function LoginForm({
         >
           {isLoading ? (
             <>
-              <Loader2 className="size-4 animate-spin" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="size-4 animate-spin" />
               Signing in...
             </>
           ) : (
@@ -61,3 +63,4 @@ export function LoginForm({
     </div>
   )
 }
+

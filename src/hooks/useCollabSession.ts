@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+const COLLAB_SESSION_INVALIDATION_EVENT = 'cozea:collab-session-invalidate'
+
 interface CollabCapabilities {
   execution: 'browser-local' | 'vm'
   languageScope: string[]
@@ -12,7 +14,7 @@ interface CollabCapabilities {
 export interface CollabEncryptionBootstrap {
   roomId: string
   encryptionRequired: boolean
-  status: 'plaintext_legacy' | 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
+  status: 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
   activeKeyVersion: number | null
   wrappedRoomKey: string | null
   wrapAlgorithm: string | null
@@ -45,6 +47,18 @@ interface UseCollabSessionResult {
   capabilities: CollabCapabilities | null
   error: string | null
   refresh: () => Promise<CollabSession | null>
+}
+
+export function invalidateCollabSession(projectId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(COLLAB_SESSION_INVALIDATION_EVENT, {
+      detail: { projectId },
+    }),
+  )
 }
 
 function normalizeGatewayBaseUrl(raw: string | undefined): string | null {
@@ -191,6 +205,25 @@ export function useCollabSession({
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleInvalidation = (event: Event) => {
+      const customEvent = event as CustomEvent<{ projectId?: string }>
+      if (!projectId || customEvent.detail?.projectId !== projectId) {
+        return
+      }
+      void refresh()
+    }
+
+    window.addEventListener(COLLAB_SESSION_INVALIDATION_EVENT, handleInvalidation as EventListener)
+    return () => {
+      window.removeEventListener(COLLAB_SESSION_INVALIDATION_EVENT, handleInvalidation as EventListener)
+    }
+  }, [projectId, refresh])
 
   return {
     status,

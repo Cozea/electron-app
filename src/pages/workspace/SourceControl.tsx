@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConvex } from 'convex/react'
-import { ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle2, ExclamationCircleIcon as AlertCircle, FolderIcon as FolderGit2, NoSymbolIcon as Unplug } from "@heroicons/react/24/outline"
 
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { RepositoryOwnerDescriptor } from '@shared/electronApiTypes'
 import type { VersionControlSetupMode } from '@shared/versionControl'
 import {
+
   getVersionControlSetupDescription,
 } from '@shared/versionControl'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
@@ -34,6 +34,9 @@ import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { listConnectedRepositoryOwners } from '@/lib/git/providerRepositoryManagement'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, Folder01Icon as __FolderGit2HugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon, UnavailableIcon as __UnplugHugeIcon } from '@hugeicons/core-free-icons'
 
 type SourceControlProvider = 'github'
 
@@ -404,7 +407,7 @@ function SourceControlProviderCard({
               >
                 {isConnecting ? (
                   <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                     Connecting…
                   </>
                 ) : connection ? (
@@ -487,7 +490,7 @@ function SourceControlProviderCard({
                       }}
                     >
                       Install GitHub App
-                      <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="ml-1.5 h-3.5 w-3.5" />
                     </Button>
                   ) : null}
                   <Button
@@ -501,9 +504,9 @@ function SourceControlProviderCard({
                     disabled={isLoadingOwners || !canManageSourceControl}
                   >
                     {isLoadingOwners ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
                     )}
                     Refresh namespaces
                   </Button>
@@ -522,7 +525,7 @@ function SourceControlProviderCard({
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2">
-              <FolderGit2 className="h-4 w-4" />
+              <HugeiconsIcon icon={__FolderGit2HugeIcon} className="h-4 w-4" />
               {label}
             </CardTitle>
             <CardDescription>
@@ -584,9 +587,9 @@ function SourceControlProviderCard({
                 disabled={isLoadingOwners}
               >
                 {isLoadingOwners ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
                 )}
                 Refresh
               </Button>
@@ -622,7 +625,7 @@ function SourceControlProviderCard({
             {provider === 'github' && selectedOwner && !selectedOwner.installationId ? (
               <div className="space-y-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <HugeiconsIcon icon={__AlertCircleHugeIcon} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <p>
                     The GitHub App is not installed on <strong>{selectedOwner.login}</strong> yet.
                     Install it there before using provider-native repository tools from Cozea.
@@ -639,7 +642,7 @@ function SourceControlProviderCard({
                       }}
                     >
                       Install GitHub App
-                      <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="ml-2 h-3.5 w-3.5" />
                     </Button>
                   ) : null}
                   <Button
@@ -671,12 +674,12 @@ function SourceControlProviderCard({
 
         {connection?.lastError ? (
           <div className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <HugeiconsIcon icon={__AlertCircleHugeIcon} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <p>{connection.lastError}</p>
           </div>
         ) : connection?.authStatus === 'active' ? (
           <div className="flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <HugeiconsIcon icon={__CheckCircle2HugeIcon} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <p>
               {setupMode === 'organization'
                 ? `Projects in this workspace can now attach repositories through ${label} for manual git workflows.`
@@ -697,7 +700,7 @@ function SourceControlProviderCard({
             >
               {isConnecting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
                   Connecting…
                 </>
               ) : connection ? (
@@ -716,7 +719,7 @@ function SourceControlProviderCard({
                 }}
                 disabled={isConnecting || !connectionsReady}
               >
-                <Unplug className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={__UnplugHugeIcon} className="mr-2 h-4 w-4" />
                 Disconnect
               </Button>
             ) : null}
@@ -779,7 +782,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
     <SettingsPageBody surface={surface}>
       {connectError ? (
         <div className="flex items-start gap-2 rounded-[14px] border border-destructive/40 bg-destructive/5 px-4 py-3 text-xs text-destructive">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div className="space-y-2">
             <p>{connectError}</p>
             <Button
@@ -825,7 +828,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
 
           {connectError ? (
             <div className="flex items-start gap-2 rounded-2xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0" />
               <div className="space-y-2">
                 <p>{connectError}</p>
                 <Button
@@ -843,7 +846,7 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
 
           {!canManageSourceControl ? (
             <div className="flex items-start gap-2 rounded-2xl border border-border/60 bg-secondary/30 p-4 text-sm text-muted-foreground">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
                 You can review connection status here. An admin will need to reconnect a provider or change the shared namespace for repository tooling.
               </p>
@@ -901,3 +904,4 @@ export function SourceControl({ surface = 'page', route }: SourceControlProps = 
     content
   )
 }
+

@@ -3,13 +3,16 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import type { ProjectRepoAccessStatus } from '@/lib/git/projectRepoAccess'
 import {
+
   supportsVersionControlAutomation,
   type VersionControlSetupMode,
 } from '@shared/versionControl'
 import type { Doc } from '../../../../../convex/_generated/dataModel'
-import { ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import { Switch } from '@/components/ui/switch'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-icons'
 
 type VersionControlProviderOption = 'github' | 'local'
 
@@ -55,7 +58,7 @@ export function ProjectSettingsSourceControlPanel({
         <div className="mb-8 flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400">
-              <AlertCircle className="size-4" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="size-4" />
             </div>
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-medium leading-snug">{repoAccessStatus.title}</p>
@@ -145,3 +148,4 @@ export function ProjectSettingsSourceControlPanel({
     </div>
   )
 }
+

@@ -14,14 +14,9 @@ The first encrypted collaboration slice is now implemented on the live websocket
 - encrypted room metadata and wrapped-key distribution in [schema.ts](/Users/admin/Downloads/electron-app-main/convex/schema.ts) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
 - encrypted websocket updates and awareness payloads in [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
 - encrypted bootstrap snapshots and encrypted local snapshot cache in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), [cipherEnvelope.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts), and [EncryptedLocalSnapshotStore.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
-- automatic plaintext-room migration when an authorized shared-branch device opens a legacy room in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-- trusted-device key sharing and device revocation controls in [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-
-### Still intentionally deferred
-
-- room-key rotation and rotation UI
-- recovery when no currently-authorized device is available
-- destructive cleanup of legacy plaintext collaboration assumptions after migration is complete
+- stale plaintext-room assumptions removed from the live path; the first encrypted room initialization clears any leftover pre-encryption payloads before the room comes online
+- trusted-device key sharing, recovery-code generation, recovery-code based device recovery, device revocation controls, automatic room-key rotation on revocation, manual room-key rotation, and destructive room recovery in [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
+- encrypted payload version validation and stale-key websocket invalidation in [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts), [yjsAwareness.ts](/Users/admin/Downloads/electron-app-main/convex/yjsAwareness.ts), [collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts), and [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
 
 ## Goal
 
@@ -595,13 +590,13 @@ This keeps rollout manageable while still moving immediately toward the main pri
 2. new `keyVersion` becomes active
 3. new wrapped keys are created for remaining authorized devices
 4. new outgoing traffic uses new version
-5. old ciphertext remains readable only while old wrapped keys are retained
+5. old wrapped keys, recovery kits, awareness entries, and encrypted payload blobs are revoked or replaced as the new version takes over
 
 ### Revoking a device
 
 - revoke wrapped key entries for that device
 - remove or revoke its `collabDevices` registration
-- device can no longer unwrap future room keys
+- rotate the shared room key immediately so the revoked device cannot read future collaboration traffic with an already-held key
 
 ## Recovery and Onboarding Tradeoffs
 
@@ -611,14 +606,12 @@ This is the hardest part of true end-to-end encryption.
 
 - new collaborator device can be approved by an already-authorized active device
 - existing authorized device can re-wrap and share room keys
+- recovery-code based device recovery works without another trusted device, using a server-stored encrypted recovery kit that is unreadable without the offline recovery code
 
-### Explicitly deferred
+### Still intentionally out of scope
 
-- magical recovery with no trusted device
 - server-side escrow of plaintext room keys
-- password-derived recovery of project collaboration keys
-
-That deferral is intentional. It keeps the security model honest.
+- “magical” recovery with no trusted device and no recovery code
 
 ## Migration Strategy
 

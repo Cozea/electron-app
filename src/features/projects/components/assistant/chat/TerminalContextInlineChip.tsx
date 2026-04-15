@@ -1,13 +1,16 @@
-// @ts-nocheck
-import { CommandLineIcon as TerminalIcon } from "@heroicons/react/24/outline"
+
 
 import { cn } from "@/lib/utils";
 import {
+
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
 } from "../composerInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CommandLineIcon as __TerminalIconHugeIcon } from '@hugeicons/core-free-icons'
 
 interface TerminalContextInlineChipProps {
   label: string;
@@ -29,7 +32,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
             )}
             data-terminal-context-expired={expired ? "true" : undefined}
           >
-            <TerminalIcon
+            <HugeiconsIcon icon={__TerminalIconHugeIcon}
               className={cn(
                 COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
                 "size-3.5",

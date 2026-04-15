@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useMutation } from "convex/react"
-import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import type { RepositoryDescriptor } from "@shared/electronApiTypes"
 import {
+
   ConnectedRepositoryPicker,
   type ConnectedRepositoryPickerPaginationState,
 } from "@/components/git/ConnectedRepositoryPicker"
@@ -47,6 +47,9 @@ import {
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
 
 interface CreateProjectDialogProps {
   open: boolean
@@ -698,7 +701,7 @@ export function CreateProjectDialog({
 
           {mode === "local" && localGitState?.isLoading ? (
             <Alert className="rounded-2xl bg-secondary/35">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
               <AlertTitle>Checking the folder</AlertTitle>
               <AlertDescription>
                 Preparing the local import and reading any existing git details on disk.
@@ -710,7 +713,7 @@ export function CreateProjectDialog({
             <>
               {!sourceControlReadiness.isReady ? (
                 <Alert className="rounded-2xl bg-secondary/40">
-                  <AlertCircle className="h-4 w-4" />
+                  <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-4 w-4" />
                   <AlertTitle>{blockingCopy.title}</AlertTitle>
                   <AlertDescription className="space-y-3">
                     <p>{blockingCopy.description}</p>
@@ -725,7 +728,7 @@ export function CreateProjectDialog({
                       disabled={isSubmitting}
                     >
                       Open Git Providers
-                      <ExternalLink className="h-4 w-4" />
+                      <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-4 w-4" />
                     </Button>
                   </AlertDescription>
                 </Alert>
@@ -830,7 +833,7 @@ export function CreateProjectDialog({
               Cancel
             </Button>
             <Button type="button" size="sm" className="rounded-full" onClick={() => void handleSubmit()} disabled={isSubmitting}>
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {isSubmitting ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" /> : null}
               {copy.submitLabel}
             </Button>
           </div>
@@ -839,3 +842,4 @@ export function CreateProjectDialog({
     </Dialog>
   )
 }
+
