@@ -591,18 +591,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:rememberLocalPath', options),
     clearLocalPath: (options: { projectId: string }) =>
       ipcRenderer.invoke('project:clearLocalPath', options),
-    getLaneState: (options: { projectId: string }) =>
-      ipcRenderer.invoke('project:getLaneState', options),
-    upsertLane: (options: {
-      projectId: string
-      branch: string
-      projectPath: string
-      name?: string
-      isCollab?: boolean
-      laneId?: string
-    }) => ipcRenderer.invoke('project:upsertLane', options),
-    setActiveLane: (options: { projectId: string; laneId: string }) =>
-      ipcRenderer.invoke('project:setActiveLane', options),
     listGitBranches: (options: { projectPath: string }) =>
       ipcRenderer.invoke('project:listGitBranches', options),
     checkoutGitBranch: (options: { projectPath: string; branch: string }) =>

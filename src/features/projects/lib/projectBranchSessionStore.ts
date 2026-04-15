@@ -2,6 +2,7 @@ import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronAp
 
 const STORAGE_KEY = "cozea:project-branch-sessions:v1"
 const COLLAB_LANE_ID = "collab"
+const LOCAL_LANE_PREFIX = "branch:"
 
 interface StoredProjectBranchSession {
   projectId: string
@@ -76,13 +77,36 @@ export function buildBranchSessionLaneId(branch: string, collabBranch: string): 
     return COLLAB_LANE_ID
   }
 
-  const sanitized = branch
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+  return `${LOCAL_LANE_PREFIX}${encodeURIComponent(normalizeBranch(branch, collabBranch))}`
+}
 
-  return `branch:${sanitized || "local"}`
+export function resolveBranchSessionLaneBranch(
+  laneId: string | null | undefined,
+  collabBranch: string,
+): string | null {
+  const normalizedLaneId = laneId?.trim()
+  if (!normalizedLaneId) {
+    return null
+  }
+
+  if (normalizedLaneId === COLLAB_LANE_ID) {
+    return normalizeBranch(collabBranch)
+  }
+
+  if (!normalizedLaneId.startsWith(LOCAL_LANE_PREFIX)) {
+    return null
+  }
+
+  const encodedBranch = normalizedLaneId.slice(LOCAL_LANE_PREFIX.length)
+  if (!encodedBranch) {
+    return null
+  }
+
+  try {
+    return normalizeBranch(decodeURIComponent(encodedBranch), collabBranch)
+  } catch {
+    return null
+  }
 }
 
 export function readProjectBranchSession(projectId: string | null | undefined): StoredProjectBranchSession | null {
@@ -117,6 +141,25 @@ export function rememberProjectBranchSession(args: {
   state.projects[normalizedProjectId] = nextSession
   writeState(state)
   return nextSession
+}
+
+export function activateProjectBranchLane(args: {
+  projectId: string
+  laneId: string
+  collabBranch: string
+  projectPath: string | null
+}): StoredProjectBranchSession | null {
+  const branch = resolveBranchSessionLaneBranch(args.laneId, args.collabBranch)
+  if (!branch) {
+    return null
+  }
+
+  return rememberProjectBranchSession({
+    projectId: args.projectId,
+    branch,
+    collabBranch: args.collabBranch,
+    projectPath: args.projectPath,
+  })
 }
 
 export function buildProjectBranchLaneState(args: {

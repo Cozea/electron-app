@@ -1432,16 +1432,6 @@ export interface ElectronAPI {
     getLocalPath: (options: string | ProjectLocalPathLookupOptions) => Promise<string | null>
     rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
     clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
-    getLaneState: (options: { projectId: string }) => Promise<ProjectLaneState | null>
-    upsertLane: (options: {
-      projectId: string
-      branch: string
-      projectPath: string
-      name?: string
-      isCollab?: boolean
-      laneId?: string
-    }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
-    setActiveLane: (options: { projectId: string; laneId: string }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
     listGitBranches: (options: { projectPath: string }) => Promise<ProjectGitBranchListResult>
     checkoutGitBranch: (options: { projectPath: string; branch: string }) => Promise<ProjectGitCheckoutResult>
     createGitWorktree: (options: {

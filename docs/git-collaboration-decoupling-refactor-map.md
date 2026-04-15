@@ -4,7 +4,7 @@ Last reviewed: 2026-04-15
 
 ## Implementation Status
 
-This map is now mostly implemented on the active product path.
+This map is now implemented on the active product path.
 
 ### Completed on the live path
 
@@ -42,12 +42,24 @@ This map is now mostly implemented on the active product path.
   - [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
   - [projectLaneContext.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectLaneContext.ts)
   - [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
+- end-to-end encrypted collaboration is now active on the websocket collaboration path through:
+  - [collabKeys.ts](/Users/admin/Downloads/electron-app-main/electron/collabKeys.ts)
+  - [CollabEncryptionService.ts](/Users/admin/Downloads/electron-app-main/electron/services/CollabEncryptionService.ts)
+  - [collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts)
+  - [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
+  - [cipherEnvelope.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts)
+  - [EncryptedLocalSnapshotStore.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
+  - [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
+  - [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
+  - [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- plaintext legacy rooms now migrate into encrypted rooms automatically from the first authorized shared-branch device
+- trusted-device key sharing and revoked-device blocking are now implemented on the active encrypted collaboration path
 
 ### Still intentionally deferred
 
-- end-to-end encryption on top of the websocket collaboration path, now specified in [collaboration-encryption-architecture.md](./collaboration-encryption-architecture.md)
 - deeper destructive schema migration that fully removes legacy git-shaped project fields after compatibility is no longer needed
 - optional cleanup of remaining manual git/lane compatibility IPC in Electron once the optional git tool surface is simplified further
+- advanced encrypted-collaboration follow-ups like key rotation and recovery with no currently-authorized device, tracked in [collaboration-encryption-architecture.md](./collaboration-encryption-architecture.md)
 
 ## Goal
 
@@ -110,7 +122,7 @@ Cozea will not keep:
   - reconnect behavior
   - room lifecycle
   - observability
-  - future encryption
+  - encrypted collaboration behavior
 - it reduces conceptual duplication in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), where we currently branch between websocket and Convex providers
 
 ### Important nuance
@@ -132,7 +144,7 @@ not about avoiding the server entirely.
 
 ## Encryption Direction
 
-Encryption is not part of the first decoupling slice, but it is now an explicit follow-up direction.
+Encryption is now part of the live websocket collaboration path.
 
 Detailed architecture: [collaboration-encryption-architecture.md](./collaboration-encryption-architecture.md)
 
@@ -149,12 +161,9 @@ The desired future state is:
 - server stores collaboration payloads as opaque encrypted blobs
 - clients hold the decryption capability
 - collaboration metadata can remain server-visible as needed for routing and authorization
-- file contents should become unreadable to the server once encryption lands
+- file contents are unreadable to the server on the encrypted collaboration path
 
-This is deliberately deferred until after transport unification, because:
-
-- encryption on top of two parallel transports would add complexity in the wrong place
-- encryption is easier to reason about once there is only one collaboration protocol to secure
+The sequencing logic above is now what the repo follows in practice: transport unification first, then git decoupling, then encryption.
 
 ## Current Coupling Inventory
 
@@ -601,7 +610,7 @@ Collapse collaboration onto one dedicated websocket transport before deeper prod
 
 ### Outcome
 
-There is one collaboration transport to reason about, one room/session protocol, and one future encryption surface.
+There is one collaboration transport to reason about, one room/session protocol, and one encrypted collaboration surface.
 
 ## Phase 1: Stop Git From Participating In Collaborative Durability
 

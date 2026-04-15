@@ -156,13 +156,3 @@ export async function createGitWorktreeCompat(input: {
   }
 }
 
-export async function switchToLane(projectId: string, laneId: string): Promise<void> {
-  const result = await window.electronAPI.project.setActiveLane({
-    projectId,
-    laneId,
-  })
-  if (!result.success) {
-    throw new Error(result.error || "Failed to activate lane")
-  }
-}
-

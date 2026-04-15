@@ -3,6 +3,7 @@ import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCollabSession } from '@/hooks/useCollabSession'
 import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
@@ -59,19 +60,38 @@ export function ProjectSettingsPage({
 }: ProjectSettingsPageProps = {}) {
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
-  const { convexUserId } = useAuth()
+  const { accessToken, convexUserId } = useAuth()
   const { project } = useAccessibleProject()
   const projectWorkspace = useProjectWorkspaceContext(project)
 
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
   const removeProject = useMutation(api.projects.deleteProject)
+  const revokeCollabDevice = useMutation(api.yjs.revokeCollabDevice)
+  const storeWrappedRoomKey = useMutation(api.yjs.storeWrappedRoomKey)
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
     project?._id && convexUserId
       ? { projectId: project._id, userId: convexUserId }
       : 'skip'
+  )
+  const collabSessionResult = useCollabSession({
+    projectId: project?._id ? String(project._id) : null,
+    accessToken,
+    enabled: Boolean(project?._id && accessToken),
+  })
+  const collaborationDevices = useQuery(
+    api.yjs.listCollabRoomDevices,
+    project?._id && collabSessionResult.session?.roomId
+      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
+      : 'skip',
+  )
+  const pendingKeyRequests = useQuery(
+    api.yjs.listPendingKeyRequests,
+    project?._id && collabSessionResult.session?.roomId
+      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
+      : 'skip',
   )
 
   const [name, setName] = useState('')
@@ -146,6 +166,9 @@ export function ProjectSettingsPage({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [collabAction, setCollabAction] = useState<"share" | `revoke:${string}` | null>(null)
+  const [collabError, setCollabError] = useState<string | null>(null)
+  const [collabNotice, setCollabNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (!project) return
@@ -157,6 +180,8 @@ export function ProjectSettingsPage({
     setSaveError(null)
     setArchiveError(null)
     setDeleteError(null)
+    setCollabError(null)
+    setCollabNotice(null)
   }, [
     project?._id,
     project?.description,
@@ -183,6 +208,11 @@ export function ProjectSettingsPage({
     normalizedDefaultBranch !== projectDefaultBranch
   )
   const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
+  const collabSession = collabSessionResult.session
+  const collabBootstrap = collabSession?.encryption ?? null
+  const currentDeviceId = collabSession?.deviceId ?? null
+  const canManageCollabSecurity = Boolean(project?._id && convexUserId && canEditGeneral)
+  const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
 
 
   const handleSave = useCallback(async () => {
@@ -212,7 +242,7 @@ export function ProjectSettingsPage({
           workingCopyMode:
             provider === 'local'
               ? project.sourceControl?.workingCopyMode
-              : repoIntegration.workingCopyMode,
+              : repositoryIntegration.workingCopyMode,
         },
       })
     } catch (error) {
@@ -229,7 +259,7 @@ export function ProjectSettingsPage({
     normalizedRepoUrl,
     project,
     provider,
-    repoIntegration.workingCopyMode,
+    repositoryIntegration.workingCopyMode,
     setupMode,
     updateProject,
   ])
@@ -277,6 +307,94 @@ export function ProjectSettingsPage({
       setIsDeleting(false)
     }
   }, [convexUserId, navigate, project, removeProject])
+
+  const handleSharePendingDevices = useCallback(async () => {
+    if (
+      !project ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'ready' ||
+      !collabBootstrap.wrappedRoomKey ||
+      !collabBootstrap.senderPublicKeyJwk ||
+      !pendingKeyRequests ||
+      pendingKeyRequests.length === 0
+    ) {
+      return
+    }
+
+    setCollabAction('share')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
+        senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
+        wrappedKey: collabBootstrap.wrappedRoomKey,
+        wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
+      })
+
+      for (const request of pendingKeyRequests) {
+        if (typeof request.fulfilledAt === 'number') {
+          continue
+        }
+
+        const wrapped = await window.electronAPI.collab.wrapRoomKey({
+          roomKeyBase64,
+          recipientPublicKeyJwk: request.recipientPublicKeyJwk,
+        })
+
+        await storeWrappedRoomKey({
+          projectId: project._id,
+          roomId: collabSession.roomId,
+          keyVersion: collabBootstrap.activeKeyVersion ?? 1,
+          recipientUserId: request.recipientUserId,
+          recipientDeviceId: request.recipientDeviceId,
+          senderDeviceId: wrapped.senderDeviceId,
+          senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+          wrapAlgorithm: wrapped.wrapAlgorithm,
+          wrappedKey: wrapped.wrappedKey,
+        })
+      }
+
+      setCollabNotice('Pending devices can now join encrypted collaboration.')
+      await collabSessionResult.refresh()
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to share encrypted room keys'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    collabBootstrap,
+    collabSession,
+    collabSessionResult,
+    pendingKeyRequests,
+    project,
+    storeWrappedRoomKey,
+  ])
+
+  const handleRevokeDevice = useCallback(async (deviceId: string) => {
+    if (!project || !collabSession) {
+      return
+    }
+
+    setCollabAction(`revoke:${deviceId}`)
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      await revokeCollabDevice({
+        projectId: project._id,
+        roomId: collabSession.roomId,
+        deviceId,
+      })
+      setCollabNotice('Device access revoked for future encrypted collaboration.')
+      await collabSessionResult.refresh()
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to revoke collaboration device'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [collabSession, collabSessionResult, project, revokeCollabDevice])
 
   function closeSettingsModal(): void {
     if (isEmbedded) {
@@ -400,6 +518,130 @@ export function ProjectSettingsPage({
                     navigate('/settings/source-control')
                   }}
                 />
+                </div>
+
+                <div className="min-w-0 space-y-6">
+                  <section>
+                    <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
+                      Collaboration Security
+                    </h3>
+                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
+                      <div className="border-b border-border/40 px-4 py-3">
+                        <p className="text-xs font-medium text-foreground">Encrypted shared collaboration</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Shared-branch collaboration is encrypted end to end. Git remains fully manual.
+                        </p>
+                      </div>
+                      <div className="px-4 py-3 text-[11px] text-muted-foreground">
+                        {collabSessionResult.status === 'loading' ? 'Checking collaboration room security…' : null}
+                        {collabSessionResult.status === 'error' ? (
+                          <span className="text-destructive">{collabSessionResult.error ?? 'Failed to load collaboration security status.'}</span>
+                        ) : null}
+                        {collabBootstrap?.status === 'plaintext_legacy' ? (
+                          <span>
+                            This project still has a legacy plaintext room. It will be migrated automatically the next time someone opens the shared branch.
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'room_not_initialized' ? (
+                          <span>
+                            Encrypted collaboration will initialize automatically when the shared branch is used.
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'missing_for_device' ? (
+                          <span>
+                            This device is waiting for an already-authorized device to share the room key.
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'device_revoked' ? (
+                          <span className="text-destructive">
+                            This device has been revoked from encrypted collaboration. Switch to the shared branch from another authorized device to approve a new one.
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'ready' ? (
+                          <span>
+                            This device is authorized for encrypted collaboration. {pendingRequestCount > 0 ? `${pendingRequestCount} device${pendingRequestCount === 1 ? '' : 's'} waiting for approval.` : 'No devices are waiting for approval right now.'}
+                          </span>
+                        ) : null}
+                      </div>
+                      {collabError ? (
+                        <div className="border-t border-border/40 px-4 py-3">
+                          <p className="text-xs text-destructive">{collabError}</p>
+                        </div>
+                      ) : null}
+                      {collabNotice ? (
+                        <div className="border-t border-border/40 px-4 py-3">
+                          <p className="text-xs text-emerald-600">{collabNotice}</p>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Trusted-device recovery</Label>
+                            <p className="text-[11px] text-muted-foreground">
+                              Approve waiting devices from a device that already has the shared room key.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            disabled={pendingRequestCount === 0 || collabAction === 'share'}
+                            onClick={() => {
+                              void handleSharePendingDevices()
+                            }}
+                          >
+                            {collabAction === 'share' ? (
+                              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Share keys
+                          </Button>
+                        </div>
+                      ) : null}
+                      {collaborationDevices && collaborationDevices.length > 0 ? (
+                        <div className="border-t border-border/40">
+                          {collaborationDevices.map((device, index) => (
+                            <div
+                              key={device.deviceId}
+                              className={cn(
+                                'flex min-h-[44px] items-center justify-between gap-4 px-4 py-2',
+                                index > 0 && 'border-t border-border/40',
+                              )}
+                            >
+                              <div className="flex min-w-0 flex-col gap-0.5">
+                                <p className="truncate text-xs font-medium text-foreground">
+                                  {device.deviceLabel}
+                                  {device.deviceId === currentDeviceId ? ' · This device' : ''}
+                                </p>
+                                <p className="truncate text-[11px] text-muted-foreground">
+                                  {device.platform} · {device.fingerprint.slice(0, 12)}
+                                  {device.hasPendingRequest ? ' · waiting for key' : ''}
+                                  {device.revokedAt ? ' · revoked' : ''}
+                                </p>
+                              </div>
+                              {canManageCollabSecurity ? (
+                                <Button
+                                  variant="ghost"
+                                  className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                                  disabled={
+                                    Boolean(device.revokedAt) ||
+                                    device.deviceId === currentDeviceId ||
+                                    collabAction === `revoke:${device.deviceId}`
+                                  }
+                                  onClick={() => {
+                                    void handleRevokeDevice(device.deviceId)
+                                  }}
+                                >
+                                  {collabAction === `revoke:${device.deviceId}` ? (
+                                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  ) : null}
+                                  {device.revokedAt ? 'Revoked' : 'Revoke'}
+                                </Button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
                 </div>
 
                 <div className="min-w-0 space-y-6">

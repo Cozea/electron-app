@@ -6,7 +6,6 @@ import path from 'node:path'
 
 const subtle = webcrypto.subtle
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 const COLLAB_KEYS_DIR = 'collab-keys'
 const DEVICE_IDENTITY_FILE = 'device-identity.bin'
@@ -312,4 +311,3 @@ export function getStoredCollabDeviceIdentitySummary(): CollabDeviceIdentity | n
   const identity = readStoredIdentity()
   return identity ? toPublicIdentity(identity) : null
 }
-

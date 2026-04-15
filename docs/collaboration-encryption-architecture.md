@@ -2,6 +2,27 @@
 
 Last reviewed: 2026-04-15
 
+## Implementation Status
+
+The first encrypted collaboration slice is now implemented on the live websocket collaboration path.
+
+### Implemented on the live path
+
+- Electron-managed device identity and local key wrapping in [collabKeys.ts](/Users/admin/Downloads/electron-app-main/electron/collabKeys.ts)
+- renderer IPC bridge and key operations in [CollabEncryptionService.ts](/Users/admin/Downloads/electron-app-main/electron/services/CollabEncryptionService.ts), [preload.ts](/Users/admin/Downloads/electron-app-main/electron/preload.ts), and [electronApiTypes.ts](/Users/admin/Downloads/electron-app-main/shared/electronApiTypes.ts)
+- encrypted collaboration bootstrap in [collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts) and [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
+- encrypted room metadata and wrapped-key distribution in [schema.ts](/Users/admin/Downloads/electron-app-main/convex/schema.ts) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
+- encrypted websocket updates and awareness payloads in [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
+- encrypted bootstrap snapshots and encrypted local snapshot cache in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), [cipherEnvelope.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts), and [EncryptedLocalSnapshotStore.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
+- automatic plaintext-room migration when an authorized shared-branch device opens a legacy room in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
+- trusted-device key sharing and device revocation controls in [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
+
+### Still intentionally deferred
+
+- room-key rotation and rotation UI
+- recovery when no currently-authorized device is available
+- destructive cleanup of legacy plaintext collaboration assumptions after migration is complete
+
 ## Goal
 
 Add end-to-end encryption to Cozea collaboration on top of the websocket-only collaboration path so that:
@@ -280,10 +301,10 @@ Add a dedicated collaboration key service in Electron, parallel to:
 - `electron/integrationKeys.ts`
 - `electron/integrationCrypto.ts`
 
-Suggested new files:
+Implemented files:
 
 - `electron/collabKeys.ts`
-- `electron/collabCrypto.ts`
+- `electron/services/CollabEncryptionService.ts`
 
 Responsibilities:
 
@@ -335,7 +356,7 @@ Possible bootstrap states:
 - `ready`
 - `missing_for_device`
 - `room_not_initialized`
-- `device_not_registered`
+- `device_revoked`
 
 ## Room Key Lifecycle
 
@@ -627,11 +648,10 @@ This avoids trying to encrypt old server history in place.
 
 ### Electron
 
-Add:
+Implemented:
 
 - `electron/collabKeys.ts`
-- `electron/collabCrypto.ts`
-- `electron/services/CollabKeyService.ts`
+- `electron/services/CollabEncryptionService.ts`
 
 Change:
 
@@ -647,11 +667,10 @@ Change:
 - `src/lib/yjs/CollabWsProvider.ts`
 - `src/lib/yjs/IndexedDBPersistence.ts`
 
-Possibly add:
+Implemented:
 
-- `src/lib/collab/encryption/roomKeyStore.ts`
-- `src/lib/collab/encryption/cipherEnvelope.ts`
-- `src/lib/collab/encryption/deviceKeyRegistry.ts`
+- `src/lib/collab/cipherEnvelope.ts`
+- `src/lib/collab/EncryptedLocalSnapshotStore.ts`
 
 ### Server
 
@@ -660,10 +679,6 @@ Change:
 - `server/src/routes/collab.ts`
 
 ### Convex
-
-Add:
-
-- `convex/collabKeys.ts`
 
 Change:
 

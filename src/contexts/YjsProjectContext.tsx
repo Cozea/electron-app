@@ -125,6 +125,7 @@ export function YjsProjectProvider({
       token: collabSession.token,
       protocolVersion: collabSession.protocolVersion,
       deviceId: collabSession.deviceId,
+      deviceFingerprint: collabSession.deviceFingerprint,
       devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
       encryption: collabSession.encryption,
     }
@@ -309,9 +310,13 @@ export function YjsProjectProvider({
           recipientUserId: userId,
           recipientDeviceId: session.deviceId,
           recipientPublicKeyJwk: session.devicePublicKeyJwk,
-          recipientFingerprint: collabSession?.deviceFingerprint ?? session.deviceId,
+          recipientFingerprint: session.deviceFingerprint ?? session.deviceId,
         })
       }
+      return null
+    }
+
+    if (session.encryption.status === "device_revoked") {
       return null
     }
 
@@ -320,7 +325,7 @@ export function YjsProjectProvider({
       roomKeyBase64: null,
       keyVersion: null,
     }
-  }, [collabSession?.deviceFingerprint, convex, projectId, userId])
+  }, [convex, projectId, userId])
 
   useEffect(() => {
     if (!enabled || !yjsDoc) {
@@ -408,6 +413,64 @@ export function YjsProjectProvider({
         for (const update of initialSync.recentUpdates) {
           if (update.clientId === yjsDoc.doc.clientID.toString()) continue
           Y.applyUpdate(yjsDoc.doc, new Uint8Array(update.update), "snapshot")
+        }
+      }
+
+      if (
+        session.encryption.status === "plaintext_legacy" &&
+        session.devicePublicKeyJwk
+      ) {
+        try {
+          const roomKeyBase64 = generateRoomKeyBase64()
+          const encryptedSnapshot = await encryptPayload({
+            roomKeyBase64,
+            kind: "yjs_snapshot",
+            keyVersion: 1,
+            plaintext: Y.encodeStateAsUpdate(yjsDoc.doc),
+            metadata: {
+              projectId: String(projectId),
+              roomId: session.roomId,
+            },
+          })
+          const wrapped = await window.electronAPI.collab.wrapRoomKey({
+            roomKeyBase64,
+            recipientPublicKeyJwk: session.devicePublicKeyJwk,
+          })
+
+          await convex.mutation(api.yjs.migratePlaintextRoomToEncrypted, {
+            projectId,
+            roomId: session.roomId,
+            userId,
+            deviceId: session.deviceId,
+            keyVersion: 1,
+            wrapAlgorithm: wrapped.wrapAlgorithm,
+            wrappedKey: wrapped.wrappedKey,
+            senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+            encryptedSnapshot: toArrayBuffer(envelopeToBytes(encryptedSnapshot)),
+            createdByClientId: yjsDoc.doc.clientID.toString(),
+          })
+
+          const localStore =
+            encryptedLocalStoreRef.current ?? new EncryptedLocalSnapshotStore()
+          encryptedLocalStoreRef.current = localStore
+
+          await localStore.save({
+            scopeKey,
+            keyVersion: 1,
+            envelopeJson: JSON.stringify(encryptedSnapshot),
+            updatedAt: Date.now(),
+          })
+
+          setRoomEncryption({
+            encryptionEnabled: true,
+            roomKeyBase64,
+            keyVersion: 1,
+          })
+          initialKnownSeqRef.current = 0
+          await refreshCollabSession?.()
+          return
+        } catch (error) {
+          console.warn("[YjsProjectProvider] Failed to migrate plaintext room to encrypted:", error)
         }
       }
 
@@ -539,6 +602,7 @@ export function YjsProjectProvider({
     }
 
     let disposed = false
+    const roomKeyBase64 = roomEncryption.roomKeyBase64
 
     const fulfillPendingRequests = async () => {
       const requests = await convex.query(api.yjs.listPendingKeyRequests, {
@@ -551,7 +615,7 @@ export function YjsProjectProvider({
           continue
         }
         const wrapped = await window.electronAPI.collab.wrapRoomKey({
-          roomKeyBase64: roomEncryption.roomKeyBase64,
+          roomKeyBase64,
           recipientPublicKeyJwk: request.recipientPublicKeyJwk,
         })
         await convex.mutation(api.yjs.storeWrappedRoomKey, {
