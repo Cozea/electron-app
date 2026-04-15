@@ -67,6 +67,7 @@ type EncryptionBootstrapStatus =
   | "room_not_initialized"
   | "ready"
   | "missing_for_device"
+  | "device_revoked"
 
 function defaultRoomId(projectId: Id<"projects">): string {
   return `project:${projectId}`
@@ -161,6 +162,56 @@ async function getWrappedRoomKeyForDevice(
     .sort((a, b) => b.createdAt - a.createdAt)[0]
 
   return (match ?? null) as WrappedRoomKeyRecord | null
+}
+
+async function deleteAllProjectCollabPayloads(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+): Promise<{ removedUpdateBytes: number; removedSnapshotBytes: number }> {
+  let removedUpdateBytes = 0
+  while (true) {
+    const batch = await ctx.db
+      .query("yjsUpdates")
+      .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+      .paginate({
+        cursor: null,
+        numItems: YJS_CLEANUP_PAGE_SIZE,
+      }) as PaginatedResult<{ _id: Id<"yjsUpdates">; update?: ArrayBuffer }>
+
+    if (batch.page.length === 0) {
+      break
+    }
+
+    for (const update of batch.page) {
+      removedUpdateBytes += update.update?.byteLength ?? 0
+      await ctx.db.delete(update._id)
+    }
+  }
+
+  let removedSnapshotBytes = 0
+  while (true) {
+    const batch = await ctx.db
+      .query("yjsDocuments")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .paginate({
+        cursor: null,
+        numItems: YJS_SNAPSHOT_CLEANUP_PAGE_SIZE,
+      }) as PaginatedResult<{ _id: Id<"yjsDocuments">; byteSize?: number; snapshot?: ArrayBuffer }>
+
+    if (batch.page.length === 0) {
+      break
+    }
+
+    for (const snapshotDoc of batch.page) {
+      removedSnapshotBytes += snapshotDoc.byteSize ?? snapshotDoc.snapshot?.byteLength ?? 0
+      await ctx.db.delete(snapshotDoc._id)
+    }
+  }
+
+  return {
+    removedUpdateBytes,
+    removedSnapshotBytes,
+  }
 }
 
 async function forEachPaginated<T>(
@@ -741,6 +792,15 @@ export const registerCollabDevice = mutation({
 
     const now = Date.now()
     if (existing) {
+      if (typeof existing.revokedAt === "number") {
+        await ctx.db.patch(existing._id, {
+          deviceLabel: args.deviceLabel,
+          platform: args.platform,
+          lastSeenAt: now,
+        })
+        return { deviceId: args.deviceId, created: false, revoked: true }
+      }
+
       await ctx.db.patch(existing._id, {
         deviceLabel: args.deviceLabel,
         platform: args.platform,
@@ -748,9 +808,8 @@ export const registerCollabDevice = mutation({
         publicKeyAlgorithm: args.publicKeyAlgorithm,
         fingerprint: args.fingerprint,
         lastSeenAt: now,
-        revokedAt: undefined,
       })
-      return { deviceId: args.deviceId, created: false }
+      return { deviceId: args.deviceId, created: false, revoked: false }
     }
 
     await ctx.db.insert("collabDevices", {
@@ -765,7 +824,7 @@ export const registerCollabDevice = mutation({
       lastSeenAt: now,
     })
 
-    return { deviceId: args.deviceId, created: true }
+    return { deviceId: args.deviceId, created: true, revoked: false }
   },
 })
 
@@ -779,6 +838,25 @@ export const getEncryptionBootstrap = query({
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
     const roomId = args.roomId || defaultRoomId(args.projectId)
+    const registeredDevice = await ctx.db
+      .query("collabDevices")
+      .withIndex("by_user_and_device", (q) =>
+        q.eq("userId", args.userId).eq("deviceId", args.deviceId),
+      )
+      .first()
+
+    if (registeredDevice && typeof registeredDevice.revokedAt === "number") {
+      return {
+        roomId,
+        encryptionRequired: true,
+        status: "device_revoked" as EncryptionBootstrapStatus,
+        activeKeyVersion: null,
+        wrappedRoomKey: null,
+        wrapAlgorithm: null,
+        senderPublicKeyJwk: null,
+      }
+    }
+
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
 
     if (!activeRoomKey) {
@@ -901,6 +979,16 @@ export const createKeyRequest = mutation({
   },
   handler: async (ctx, args) => {
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const device = await ctx.db
+      .query("collabDevices")
+      .withIndex("by_user_and_device", (q) =>
+        q.eq("userId", args.recipientUserId).eq("deviceId", args.recipientDeviceId),
+      )
+      .first()
+    if (device && typeof device.revokedAt === "number") {
+      throw new Error("This device has been revoked from encrypted collaboration")
+    }
+
     const existing = await ctx.db
       .query("projectCollabKeyRequests")
       .withIndex("by_project_room_and_device", (q) =>
@@ -950,6 +1038,79 @@ export const listPendingKeyRequests = query({
     return requests
       .filter((request) => typeof request.fulfilledAt !== "number")
       .sort((a, b) => a.requestedAt - b.requestedAt)
+  },
+})
+
+export const listCollabRoomDevices = query({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await assertCollaborationAccess(ctx, args.projectId)
+    const roomId = args.roomId || defaultRoomId(args.projectId)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
+    const [wrappedKeys, pendingRequests] = await Promise.all([
+      ctx.db
+        .query("projectCollabWrappedKeys")
+        .withIndex("by_project_room_and_key_version", (q) =>
+          q.eq("projectId", args.projectId).eq("roomId", roomId).eq("keyVersion", activeRoomKey?.keyVersion ?? 1),
+        )
+        .collect(),
+      ctx.db
+        .query("projectCollabKeyRequests")
+        .withIndex("by_project_and_room", (q) => q.eq("projectId", args.projectId).eq("roomId", roomId))
+        .collect(),
+    ])
+
+    const deviceIds = new Set<string>()
+    for (const entry of wrappedKeys) {
+      deviceIds.add(entry.recipientDeviceId)
+    }
+    for (const request of pendingRequests) {
+      deviceIds.add(request.recipientDeviceId)
+    }
+
+    const devices = await Promise.all(
+      [...deviceIds].map(async (deviceId) => {
+        const device = await ctx.db
+          .query("collabDevices")
+          .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
+          .first()
+        if (!device) {
+          return null
+        }
+
+        const deviceWrappedKeys = wrappedKeys
+          .filter((entry) => entry.recipientDeviceId === deviceId)
+          .sort((a, b) => b.createdAt - a.createdAt)
+        const pendingRequest = pendingRequests
+          .filter((entry) => entry.recipientDeviceId === deviceId && typeof entry.fulfilledAt !== "number")
+          .sort((a, b) => b.requestedAt - a.requestedAt)[0]
+
+        return {
+          userId: device.userId,
+          deviceId: device.deviceId,
+          deviceLabel: device.deviceLabel,
+          platform: device.platform,
+          fingerprint: device.fingerprint,
+          publicKeyJwk: device.publicKeyJwk,
+          publicKeyAlgorithm: device.publicKeyAlgorithm,
+          createdAt: device.createdAt,
+          lastSeenAt: device.lastSeenAt,
+          revokedAt: device.revokedAt ?? null,
+          hasWrappedKey: deviceWrappedKeys.some((entry) => typeof entry.revokedAt !== "number"),
+          wrappedKeyVersion: deviceWrappedKeys[0]?.keyVersion ?? null,
+          hasPendingRequest: Boolean(pendingRequest),
+          pendingRequestedAt: pendingRequest?.requestedAt ?? null,
+          activeKeyVersion: activeRoomKey?.keyVersion ?? null,
+        }
+      }),
+    )
+
+    return devices
+      .filter((device) => device !== null)
+      .sort((a, b) => (b?.lastSeenAt ?? 0) - (a?.lastSeenAt ?? 0))
   },
 })
 
@@ -1016,6 +1177,213 @@ export const storeWrappedRoomKey = mutation({
     }
 
     return { stored: true }
+  },
+})
+
+export const revokeCollabDevice = mutation({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.optional(v.string()),
+    deviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const roomId = args.roomId || defaultRoomId(args.projectId)
+    const now = Date.now()
+
+    const device = await ctx.db
+      .query("collabDevices")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .first()
+    if (device && typeof device.revokedAt !== "number") {
+      await ctx.db.patch(device._id, {
+        revokedAt: now,
+      })
+    }
+
+    const wrappedKeys = await ctx.db
+      .query("projectCollabWrappedKeys")
+      .withIndex("by_project_room_and_recipient", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId).eq("recipientDeviceId", args.deviceId),
+      )
+      .collect()
+    for (const entry of wrappedKeys) {
+      if (typeof entry.revokedAt === "number") continue
+      await ctx.db.patch(entry._id, {
+        revokedAt: now,
+      })
+    }
+
+    const pendingRequests = await ctx.db
+      .query("projectCollabKeyRequests")
+      .withIndex("by_project_room_and_device", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId).eq("recipientDeviceId", args.deviceId),
+      )
+      .collect()
+    for (const request of pendingRequests) {
+      if (typeof request.fulfilledAt === "number") continue
+      await ctx.db.patch(request._id, {
+        fulfilledAt: now,
+      })
+    }
+
+    return { revoked: true, revokedAt: now }
+  },
+})
+
+export const rotateEncryptedRoomKey = mutation({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.optional(v.string()),
+    userId: v.id("users"),
+    initiatedByDeviceId: v.string(),
+    wrappedKeys: v.array(
+      v.object({
+        recipientUserId: v.id("users"),
+        recipientDeviceId: v.string(),
+        senderPublicKeyJwk: v.string(),
+        wrapAlgorithm: v.string(),
+        wrappedKey: v.string(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const roomId = args.roomId || defaultRoomId(args.projectId)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
+    if (!activeRoomKey) {
+      throw new Error("Encrypted collaboration room is not initialized")
+    }
+
+    const nextKeyVersion = activeRoomKey.keyVersion + 1
+    const now = Date.now()
+
+    await ctx.db.patch(activeRoomKey._id, {
+      status: "rotating",
+      rotatedAt: now,
+    })
+
+    await ctx.db.insert("projectCollabRoomKeys", {
+      projectId: args.projectId,
+      roomId,
+      keyVersion: nextKeyVersion,
+      status: "active",
+      createdByUserId: args.userId,
+      createdByDeviceId: args.initiatedByDeviceId,
+      createdAt: now,
+    })
+
+    const inserted = new Set<string>()
+    for (const wrappedKey of args.wrappedKeys) {
+      const dedupeKey = `${wrappedKey.recipientUserId}:${wrappedKey.recipientDeviceId}`
+      if (inserted.has(dedupeKey)) continue
+      inserted.add(dedupeKey)
+
+      await ctx.db.insert("projectCollabWrappedKeys", {
+        projectId: args.projectId,
+        roomId,
+        keyVersion: nextKeyVersion,
+        recipientUserId: wrappedKey.recipientUserId,
+        recipientDeviceId: wrappedKey.recipientDeviceId,
+        senderDeviceId: args.initiatedByDeviceId,
+        senderPublicKeyJwk: wrappedKey.senderPublicKeyJwk,
+        wrapAlgorithm: wrappedKey.wrapAlgorithm,
+        wrappedKey: wrappedKey.wrappedKey,
+        createdAt: now,
+      })
+    }
+
+    return {
+      rotated: true,
+      roomId,
+      keyVersion: nextKeyVersion,
+      previousKeyVersion: activeRoomKey.keyVersion,
+    }
+  },
+})
+
+export const migratePlaintextRoomToEncrypted = mutation({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.optional(v.string()),
+    userId: v.id("users"),
+    deviceId: v.string(),
+    keyVersion: v.number(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    senderPublicKeyJwk: v.string(),
+    encryptedSnapshot: v.bytes(),
+    createdByClientId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.encryptedSnapshot.byteLength)
+    const roomId = args.roomId || defaultRoomId(args.projectId)
+
+    const existingRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
+    if (existingRoomKey) {
+      return {
+        migrated: false,
+        alreadyEncrypted: true,
+        keyVersion: existingRoomKey.keyVersion,
+      }
+    }
+
+    const hasCollabData = await hasAnyStoredCollabData(ctx, args.projectId)
+    if (!hasCollabData) {
+      throw new Error("No plaintext collaboration data exists to migrate")
+    }
+
+    const { removedUpdateBytes, removedSnapshotBytes } = await deleteAllProjectCollabPayloads(
+      ctx,
+      args.projectId,
+    )
+
+    const now = Date.now()
+    const keyVersion = Math.max(1, Math.floor(args.keyVersion))
+
+    await ctx.db.insert("projectCollabRoomKeys", {
+      projectId: args.projectId,
+      roomId,
+      keyVersion,
+      status: "active",
+      createdByUserId: args.userId,
+      createdByDeviceId: args.deviceId,
+      createdAt: now,
+    })
+
+    await ctx.db.insert("projectCollabWrappedKeys", {
+      projectId: args.projectId,
+      roomId,
+      keyVersion,
+      recipientUserId: args.userId,
+      recipientDeviceId: args.deviceId,
+      senderDeviceId: args.deviceId,
+      senderPublicKeyJwk: args.senderPublicKeyJwk,
+      wrapAlgorithm: args.wrapAlgorithm,
+      wrappedKey: args.wrappedKey,
+      createdAt: now,
+    })
+
+    await ctx.db.insert("yjsDocuments", {
+      projectId: args.projectId,
+      snapshot: args.encryptedSnapshot,
+      version: now,
+      snapshotBaseSeq: 0,
+      byteSize: args.encryptedSnapshot.byteLength,
+      createdByClientId: args.createdByClientId,
+      createdAt: now,
+    })
+
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      collaborationData: -removedUpdateBytes,
+      snapshots: args.encryptedSnapshot.byteLength - removedSnapshotBytes,
+    })
+
+    return {
+      migrated: true,
+      roomId,
+      keyVersion,
+    }
   },
 })
 

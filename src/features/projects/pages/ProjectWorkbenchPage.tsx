@@ -216,6 +216,8 @@ export function ProjectWorkbenchPage() {
   const { closeChangesOverlay } = useProjectWorkbenchSearchParamSync({
     projectId,
     activeLaneId,
+    collabBranch,
+    projectPath: activeWorkbenchPath,
     searchParams,
     replaceSearchParams,
     refreshLaneState: async () => {

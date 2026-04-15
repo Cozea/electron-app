@@ -27,11 +27,6 @@ import {
   rememberProjectPath,
   resolveCanonicalProjectPath,
 } from '../projectPathRegistry'
-import {
-  readProjectLaneState,
-  setActiveProjectLane,
-  upsertProjectLane,
-} from '../projectLaneRegistry'
 import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
@@ -497,70 +492,6 @@ npm-debug.log*
     async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
       clearRegisteredProjectPath(projectId)
       return { success: true }
-    },
-  )
-
-  ipcMain.handle(
-    'project:getLaneState',
-    async (_event, { projectId }: { projectId: string }) => {
-      return readProjectLaneState(projectId)
-    },
-  )
-
-  ipcMain.handle(
-    'project:upsertLane',
-    async (
-      _event,
-      {
-        projectId,
-        branch,
-        projectPath,
-        name,
-        isCollab,
-        laneId,
-      }: {
-        projectId: string
-        branch: string
-        projectPath: string
-        name?: string
-        isCollab?: boolean
-        laneId?: string
-      }
-    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
-      try {
-        const laneState = upsertProjectLane({
-          projectId,
-          branch,
-          projectPath,
-          name,
-          isCollab,
-          laneId,
-        })
-        return { success: true, laneState }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to update project lane',
-        }
-      }
-    },
-  )
-
-  ipcMain.handle(
-    'project:setActiveLane',
-    async (
-      _event,
-      { projectId, laneId }: { projectId: string; laneId: string }
-    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
-      try {
-        const laneState = setActiveProjectLane({ projectId, laneId })
-        return { success: true, laneState }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to activate project lane',
-        }
-      }
     },
   )
 

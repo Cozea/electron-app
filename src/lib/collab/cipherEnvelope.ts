@@ -1,6 +1,12 @@
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
+function toOwnedBuffer(bytes: Uint8Array): ArrayBuffer {
+  const start = bytes.byteOffset
+  const end = start + bytes.byteLength
+  return bytes.buffer.slice(start, end) as ArrayBuffer
+}
+
 export type EncryptedPayloadKind = 'yjs_update' | 'yjs_snapshot' | 'yjs_awareness'
 
 export interface CipherEnvelopeV1 {
@@ -41,7 +47,7 @@ function base64ToBytes(value: string): Uint8Array {
 async function importRoomKey(roomKeyBase64: string): Promise<CryptoKey> {
   return await crypto.subtle.importKey(
     'raw',
-    base64ToBytes(roomKeyBase64),
+    toOwnedBuffer(base64ToBytes(roomKeyBase64)),
     { name: 'AES-GCM' },
     false,
     ['encrypt', 'decrypt'],
@@ -65,11 +71,11 @@ export async function encryptPayload(args: EncryptPayloadArgs): Promise<CipherEn
   const ciphertext = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
-      iv,
-      additionalData: aadBytes,
+      iv: toOwnedBuffer(iv),
+      additionalData: toOwnedBuffer(aadBytes),
     },
     roomKey,
-    args.plaintext,
+    toOwnedBuffer(args.plaintext),
   )
 
   return {
@@ -99,11 +105,11 @@ export async function decryptPayload(args: {
   const plaintext = await crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv: base64ToBytes(args.envelope.iv),
-      additionalData: base64ToBytes(args.envelope.aad),
+      iv: toOwnedBuffer(base64ToBytes(args.envelope.iv)),
+      additionalData: toOwnedBuffer(base64ToBytes(args.envelope.aad)),
     },
     roomKey,
-    base64ToBytes(args.envelope.ciphertext),
+    toOwnedBuffer(base64ToBytes(args.envelope.ciphertext)),
   )
   return new Uint8Array(plaintext)
 }

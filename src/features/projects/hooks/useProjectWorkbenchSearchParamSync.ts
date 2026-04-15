@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react"
 
+import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore"
 import {
   type WorkbenchTileType,
   buildWorkbenchScopeKey,
@@ -67,6 +68,8 @@ export function buildClosedChangesSearchParams(
 interface UseProjectWorkbenchSearchParamSyncProps {
   projectId: string | null
   activeLaneId: string
+  collabBranch: string
+  projectPath: string | null
   searchParams: URLSearchParams
   replaceSearchParams: (nextParams: URLSearchParams) => void
   refreshLaneState: () => Promise<unknown>
@@ -82,6 +85,8 @@ export function useProjectWorkbenchSearchParamSync(
   const {
     projectId,
     activeLaneId,
+    collabBranch,
+    projectPath,
     searchParams,
     replaceSearchParams,
     refreshLaneState,
@@ -106,9 +111,11 @@ export function useProjectWorkbenchSearchParamSync(
 
     void (async () => {
       try {
-        await window.electronAPI.project.setActiveLane({
+        activateProjectBranchLane({
           projectId,
           laneId: laneIdToActivate,
+          collabBranch,
+          projectPath,
         })
 
         if (!isCancelled) {
@@ -122,7 +129,7 @@ export function useProjectWorkbenchSearchParamSync(
     return () => {
       isCancelled = true
     }
-  }, [activeLaneId, projectId, refreshLaneState, searchParams])
+  }, [activeLaneId, collabBranch, projectId, projectPath, refreshLaneState, searchParams])
 
   useEffect(() => {
     if (!projectId) return

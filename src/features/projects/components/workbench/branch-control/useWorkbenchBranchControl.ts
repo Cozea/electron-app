@@ -28,16 +28,16 @@ interface GitToolbarSnapshot {
 function getStatusSummary(
   status: Awaited<ReturnType<typeof window.electronAPI.sync.gitStatus>> | null,
 ): string | null {
-  if (!status) return null
+  if (!status || !status.success) return null
 
   const parts: string[] = []
-  if (status.behindCount > 0) {
-    parts.push(`${status.behindCount} behind`)
+  if ((status.behind ?? 0) > 0) {
+    parts.push(`${status.behind ?? 0} behind`)
   }
-  if (status.aheadCount > 0) {
-    parts.push(`${status.aheadCount} ahead`)
+  if ((status.ahead ?? 0) > 0) {
+    parts.push(`${status.ahead ?? 0} ahead`)
   }
-  if (status.hasWorkingTreeChanges) {
+  if (status.clean === false) {
     parts.push("local changes")
   }
 

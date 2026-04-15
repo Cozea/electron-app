@@ -15,11 +15,12 @@ export interface CollabSessionDescriptor {
   token: string
   protocolVersion: string
   deviceId: string
+  deviceFingerprint?: string
   devicePublicKeyJwk?: string
   encryption: {
     roomId: string
     encryptionRequired: boolean
-    status: 'plaintext_legacy' | 'room_not_initialized' | 'ready' | 'missing_for_device'
+    status: 'plaintext_legacy' | 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
     activeKeyVersion: number | null
     wrappedRoomKey: string | null
     wrapAlgorithm: string | null
