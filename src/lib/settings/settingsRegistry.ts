@@ -1,17 +1,3 @@
-import {
-  CircleStackIcon,
-  CommandLineIcon,
-  CreditCardIcon,
-  DocumentTextIcon,
-  FolderIcon,
-  LockClosedIcon,
-  ShieldCheckIcon,
-  SwatchIcon,
-  UserCircleIcon,
-  UsersIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline"
-
 import type {
   ResolvedSettingsSurfaceRoute,
   SettingsPlacement,
@@ -22,6 +8,20 @@ import type {
   WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
 
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+import { CircleArrowDataTransferDiagonalIcon as __CircleStackIconHugeIcon, CommandLineIcon as __CommandLineIconHugeIcon, CreditCardIcon as __CreditCardIconHugeIcon, DocumentAttachmentIcon as __DocumentTextIconHugeIcon, Folder01Icon as __FolderIconHugeIcon, LockIcon as __LockClosedIconHugeIcon, Shield01Icon as __ShieldCheckIconHugeIcon, SwatchIcon as __SwatchIconHugeIcon, UserCircleIcon as __UserCircleIconHugeIcon, UserGroupIcon as __UsersIconHugeIcon, Wrench01Icon as __WrenchScrewdriverIconHugeIcon } from '@hugeicons/core-free-icons'
+
+const CircleStackIcon = asHugeIcon(__CircleStackIconHugeIcon)
+const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
+const CreditCardIcon = asHugeIcon(__CreditCardIconHugeIcon)
+const DocumentTextIcon = asHugeIcon(__DocumentTextIconHugeIcon)
+const FolderIcon = asHugeIcon(__FolderIconHugeIcon)
+const LockClosedIcon = asHugeIcon(__LockClosedIconHugeIcon)
+const ShieldCheckIcon = asHugeIcon(__ShieldCheckIconHugeIcon)
+const SwatchIcon = asHugeIcon(__SwatchIconHugeIcon)
+const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
+const UsersIcon = asHugeIcon(__UsersIconHugeIcon)
+const WrenchScrewdriverIcon = asHugeIcon(__WrenchScrewdriverIconHugeIcon)
 /** Org workspace sidebar only (no user-only surfaces) */
 const WORKSPACE_SCOPED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
   general: 0,
@@ -30,6 +30,7 @@ const WORKSPACE_SCOPED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>>
 }
 
 /** User + this device (personal routes; shown under “Personal” when org workspace is active) */
+
 const PERSONAL_DEVICE_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
   account: 0,
   sourceControl: 1,

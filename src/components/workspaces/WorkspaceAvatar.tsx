@@ -1,5 +1,6 @@
-import {  } from "@heroicons/react/24/outline"
+
 import type { ComponentType, SVGProps } from "react"
+
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 
 import { cn } from '@/lib/utils'

@@ -1,8 +1,8 @@
 import * as React from "react"
-import { ArrowLeftIcon as ArrowLeft } from "@heroicons/react/24/outline"
 
 import { NavUser } from "@/components/nav-user"
 import {
+
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -22,6 +22,9 @@ import {
   SIDEBAR_NAV_ROW_BUTTON_CLASS,
   SIDEBAR_PILL_ACTIVE_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeft01Icon as __ArrowLeftHugeIcon } from '@hugeicons/core-free-icons'
 
 interface SettingsSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -102,7 +105,7 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
             className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
             onClick={() => navigate("/projects")}
           >
-            <ArrowLeft />
+            <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
             <span className="truncate">Back to projects</span>
           </button>
         </div>
@@ -139,7 +142,7 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
             className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
             onClick={() => navigate(parentSectionRoute)}
           >
-            <ArrowLeft />
+            <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
             <span className="truncate">Back</span>
           </button>
         ) : (
@@ -152,3 +155,4 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
     </Sidebar>
   )
 }
+

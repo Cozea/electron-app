@@ -1521,22 +1521,13 @@ export const upsertProjectBinding = mutation({
       ...(project.sourceControl ?? {}),
       provider,
       repoUrl: trimToUndefined(args.repoUrl),
-      activeCollabBranch:
-        trimToUndefined(args.activeCollabBranch) ??
-        trimToUndefined(args.defaultBranch) ??
-        trimToUndefined(project.sourceControl?.activeCollabBranch) ??
-        trimToUndefined(project.sourceControl?.defaultBranch) ??
-        project.gitRepository?.defaultBranch ??
-        "main",
       defaultBranch:
         trimToUndefined(args.defaultBranch) ??
         trimToUndefined(args.activeCollabBranch) ??
         trimToUndefined(project.sourceControl?.defaultBranch) ??
-        trimToUndefined(project.sourceControl?.activeCollabBranch) ??
         project.gitRepository?.defaultBranch ??
         "main",
       visibility: trimToUndefined(args.visibility),
-      syncPolicy: normalizeProjectSyncPolicy(args.syncPolicy),
       workingCopyMode: normalizeProjectWorkingCopyMode(args.workingCopyMode),
       setupMode: normalizeSetupMode(args.setupMode, defaultSetupMode),
     }
@@ -1577,7 +1568,6 @@ export const upsertProjectBinding = mutation({
               defaultBranch:
                 project.gitRepository?.defaultBranch ??
                 sourceControl.defaultBranch ??
-                sourceControl.activeCollabBranch ??
                 "main",
             },
       updatedAt: now,

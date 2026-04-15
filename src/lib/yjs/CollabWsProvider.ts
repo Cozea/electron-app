@@ -7,6 +7,7 @@ import {
   encryptPayload,
   envelopeToBytes,
 } from '@/lib/collab/cipherEnvelope'
+import { invalidateCollabSession } from '@/hooks/useCollabSession'
 
 export interface CollabSessionDescriptor {
   projectId: string
@@ -20,7 +21,7 @@ export interface CollabSessionDescriptor {
   encryption: {
     roomId: string
     encryptionRequired: boolean
-    status: 'plaintext_legacy' | 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
+    status: 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
     activeKeyVersion: number | null
     wrappedRoomKey: string | null
     wrapAlgorithm: string | null
@@ -96,6 +97,7 @@ const INITIAL_CONNECT_FAILURE_LIMIT = 6
 const INITIAL_CONNECT_FAILURE_WINDOW_MS = 2_500
 const SESSION_REFRESH_BUFFER_MS = 2 * 60 * 1000
 const AUTH_RECOVERY_ERROR_CODES = new Set(['INVALID_SESSION_TOKEN', 'SESSION_MISMATCH'])
+const SESSION_INVALIDATION_ERROR_CODES = new Set(['ENCRYPTION_KEY_STALE', 'DEVICE_REVOKED'])
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -318,6 +320,12 @@ export class CollabWsProvider {
     this.scheduleReconnect(reason)
   }
 
+  private handleSessionInvalidation(reason: string): void {
+    if (this.isDestroyed) return
+    this.onStateChange?.('error', reason)
+    invalidateCollabSession(this.session.projectId)
+  }
+
   private async connect(): Promise<void> {
     if (this.isDestroyed) return
     if (this.socket && this.socket.readyState === WebSocket.OPEN) return
@@ -413,6 +421,11 @@ export class CollabWsProvider {
         return
       }
 
+      if (SESSION_INVALIDATION_ERROR_CODES.has(this.lastServerErrorCode ?? '')) {
+        this.handleSessionInvalidation(closeDetails)
+        return
+      }
+
       if (this.consecutiveInitialFailures >= INITIAL_CONNECT_FAILURE_LIMIT) {
         const message =
           'Collaboration websocket is unavailable after repeated failed handshakes. Switching to fallback sync transport.'
@@ -451,7 +464,7 @@ export class CollabWsProvider {
     metadata: Record<string, unknown>,
   ): Promise<string> {
     if (!this.encryption) {
-      return toBase64(bytes)
+      throw new Error('Encrypted collaboration transport requires a room key')
     }
 
     const envelope = await encryptPayload({
@@ -468,11 +481,11 @@ export class CollabWsProvider {
     encoded: string,
     kind: 'yjs_update' | 'yjs_awareness',
   ): Promise<Uint8Array> {
-    const bytes = fromBase64(encoded)
     if (!this.encryption) {
-      return bytes
+      throw new Error('Encrypted collaboration transport requires a room key')
     }
 
+    const bytes = fromBase64(encoded)
     const envelope = bytesToEnvelope(bytes)
     return await decryptPayload({
       roomKeyBase64: this.encryption.roomKeyBase64,
@@ -658,6 +671,10 @@ export class CollabWsProvider {
         message: messageText,
       })
       this.onStateChange?.('error', messageText)
+
+      if (SESSION_INVALIDATION_ERROR_CODES.has(this.lastServerErrorCode ?? '')) {
+        this.socket?.close(4409, messageText)
+      }
     }
   }
 }

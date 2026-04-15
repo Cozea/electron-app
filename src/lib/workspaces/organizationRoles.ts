@@ -1,5 +1,9 @@
-import { EyeIcon as Eye, ShieldCheckIcon as Shield, UsersIcon as Users } from "@heroicons/react/24/outline"
+import { EyeIcon as __EyeHugeIcon, Shield01Icon as __ShieldHugeIcon, UserGroupIcon as __UsersHugeIcon } from '@hugeicons/core-free-icons'
 
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+const Eye = asHugeIcon(__EyeHugeIcon)
+const Shield = asHugeIcon(__ShieldHugeIcon)
+const Users = asHugeIcon(__UsersHugeIcon)
 export type OrganizationWorkspaceRole = 'admin' | 'member' | 'viewer'
 
 export type OrganizationWorkspacePermission =

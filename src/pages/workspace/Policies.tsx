@@ -1,6 +1,7 @@
-import { AdjustmentsHorizontalIcon as SlidersHorizontal, LockClosedIcon as Lock, ShieldCheckIcon as ShieldCheck } from "@heroicons/react/24/outline"
+
 
 import {
+
   SettingsGroup,
   SettingsPageBody,
   SettingsRow,
@@ -12,6 +13,13 @@ import {
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Badge } from '@/components/ui/badge'
 import { useScopedPoliciesData } from '@/hooks/useScopedPoliciesData'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlignHorizontalCenterIcon as __SlidersHorizontalHugeIcon, LockIcon as __LockHugeIcon, Shield01Icon as __ShieldCheckHugeIcon } from '@hugeicons/core-free-icons'
+
+const SlidersHorizontal = (props: any) => <HugeiconsIcon icon={__SlidersHorizontalHugeIcon} {...props} />
+const Lock = (props: any) => <HugeiconsIcon icon={__LockHugeIcon} {...props} />
+const ShieldCheck = (props: any) => <HugeiconsIcon icon={__ShieldCheckHugeIcon} {...props} />
 
 const POLICY_CARDS = [
   {
@@ -97,3 +105,4 @@ export function Policies({ surface = 'page', route }: PoliciesProps = {}) {
 
   return <SettingsPageBody>{content}</SettingsPageBody>
 }
+

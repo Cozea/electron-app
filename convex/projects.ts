@@ -250,14 +250,10 @@ export const create = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
-        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
         mergeQueue: v.optional(v.string()),
-        syncPolicy: v.optional(
-          v.union(v.literal("auto"), v.literal("manual"))
-        ),
         workingCopyMode: v.optional(
           v.union(v.literal("managed"), v.literal("attached"))
         ),
@@ -347,7 +343,6 @@ export const create = mutation({
           ...args.sourceControl,
           defaultBranch:
             args.sourceControl.defaultBranch?.trim() ||
-            args.sourceControl.activeCollabBranch?.trim() ||
             args.repoSource?.branch?.trim() ||
             "main",
           setupMode: args.sourceControl.setupMode ?? defaultSetupMode,
@@ -360,8 +355,7 @@ export const create = mutation({
       repoUrl: args.repoSource?.repoUrl ?? normalizedSourceControl?.repoUrl,
       defaultBranch:
         args.repoSource?.branch ??
-        normalizedSourceControl?.defaultBranch ??
-        normalizedSourceControl?.activeCollabBranch,
+        normalizedSourceControl?.defaultBranch,
     })
 
     const projectId = await ctx.db.insert("projects", {
@@ -1070,14 +1064,10 @@ export const update = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
-        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
         mergeQueue: v.optional(v.string()),
-        syncPolicy: v.optional(
-          v.union(v.literal("auto"), v.literal("manual"))
-        ),
         workingCopyMode: v.optional(
           v.union(v.literal("managed"), v.literal("attached"))
         ),
@@ -1139,18 +1129,9 @@ export const update = mutation({
       const nextSourceControl = {
         ...project.sourceControl,
         ...args.sourceControl,
-        activeCollabBranch:
-          args.sourceControl.activeCollabBranch ??
-          args.sourceControl.defaultBranch ??
-          project.sourceControl?.activeCollabBranch ??
-          project.sourceControl?.defaultBranch ??
-          project.gitRepository?.defaultBranch ??
-          "main",
         defaultBranch:
           args.sourceControl.defaultBranch ??
-          args.sourceControl.activeCollabBranch ??
           project.sourceControl?.defaultBranch ??
-          project.sourceControl?.activeCollabBranch ??
           project.gitRepository?.defaultBranch ??
           "main",
       }
@@ -1161,7 +1142,6 @@ export const update = mutation({
           defaultBranch:
             project.gitRepository?.defaultBranch ??
             nextSourceControl.defaultBranch ??
-            nextSourceControl.activeCollabBranch ??
             "main",
         }) ?? undefined
       updates.sourceControl = nextSourceControl
@@ -1651,127 +1631,6 @@ export const updateSyncStatus = mutation({
     await ctx.db.patch(args.projectId, updates)
 
     return { success: true }
-  },
-})
-
-// ============================================
-// GIT SYNC METADATA
-// ============================================
-
-export const getGitSyncMetadata = query({
-  args: {
-    projectId: v.id("projects"),
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const canAccess = await canAccessProjectByWorkspaceOrMembership(
-      ctx,
-      args.projectId,
-      args.userId
-    )
-    if (!canAccess) {
-      return null
-    }
-
-    const project = await ctx.db.get(args.projectId)
-    if (!project || project.status === "deleted") {
-      return null
-    }
-
-    return {
-      projectId: project._id,
-      organizationId: project.organizationId,
-      syncMode: project.syncMode ?? null,
-      gitRepository: project.gitRepository ?? null,
-      gitSyncState: project.gitSyncState ?? null,
-      sourceControl: project.sourceControl ?? null,
-      updatedAt: project.updatedAt,
-    }
-  },
-})
-
-export const updateGitSyncMetadata = mutation({
-  args: {
-    projectId: v.id("projects"),
-    userId: v.id("users"),
-    syncMode: v.optional(v.literal("git")),
-    gitRepository: v.optional(
-      v.object({
-        provider: v.string(),
-        owner: v.string(),
-        name: v.string(),
-        url: v.string(),
-        defaultBranch: v.string(),
-      })
-    ),
-    gitSyncState: v.optional(
-      v.object({
-        accessState: v.union(
-          v.literal("unknown"),
-          v.literal("pending"),
-          v.literal("granted"),
-          v.literal("missing"),
-          v.literal("error")
-        ),
-        lastFetchedCommit: v.optional(v.string()),
-        lastPushedCommit: v.optional(v.string()),
-        lastFetchAt: v.optional(v.number()),
-        lastPushAt: v.optional(v.number()),
-        repoBytes: v.optional(v.number()),
-        lastRepoSizeAt: v.optional(v.number()),
-        errorMessage: v.optional(v.string()),
-        migratedFromReplicaAt: v.optional(v.number()),
-      })
-    ),
-  },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
-
-    const canEdit = await canEditProjectByWorkspaceOrMembership(
-      ctx,
-      args.projectId,
-      args.userId
-    )
-    if (!canEdit) {
-      throw new Error("Unauthorized to update git sync metadata")
-    }
-
-    const membership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership || membership.role !== "project_manager") {
-      throw new Error("Only project managers can update git sync metadata")
-    }
-
-    const updates: Record<string, unknown> = {
-      updatedAt: Date.now(),
-    }
-
-    if (args.syncMode !== undefined) {
-      updates.syncMode = args.syncMode
-    }
-
-    if (args.gitRepository !== undefined) {
-      updates.gitRepository = args.gitRepository
-    }
-
-    if (args.gitSyncState !== undefined) {
-      const previousState = project.gitSyncState ?? { accessState: "unknown" as GitAccessState }
-      const nextState: GitSyncStateMetadata = {
-        ...previousState,
-        ...args.gitSyncState,
-      }
-      updates.gitSyncState = nextState
-    }
-
-    await ctx.db.patch(args.projectId, updates)
-
-    return await ctx.db.get(args.projectId)
   },
 })
 

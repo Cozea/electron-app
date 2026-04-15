@@ -1,7 +1,7 @@
 import { useId } from 'react'
-import { ArrowPathIcon as RotateCcw, CheckIcon as Check, SwatchIcon as Palette } from "@heroicons/react/24/outline"
 
 import {
+
   isWorkspaceCustomIconColor as isCustomWorkspaceIconColor,
   resolveWorkspaceIdentity,
   type WorkspaceIdentityInput,
@@ -23,6 +23,9 @@ import {
   WORKSPACE_ICON_OPTIONS,
 } from '@/lib/workspaces/workspaceIdentity'
 import { WorkspaceAvatar } from '@/components/workspaces/WorkspaceAvatar'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckHugeIcon, Refresh01Icon as __RotateCcwHugeIcon, SwatchIcon as __PaletteHugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkspaceIdentityPickerProps {
   workspaceType: WorkspaceType
@@ -98,7 +101,7 @@ export function WorkspaceIdentityPicker({
                 aria-label={`Use ${color.label} icon color`}
               >
                 {isSelected ? (
-                  <Check
+                  <HugeiconsIcon icon={__CheckHugeIcon}
                     className={cn(
                       'size-3',
                       color.key === 'default' ? 'text-secondary-foreground' : 'text-white'
@@ -125,9 +128,9 @@ export function WorkspaceIdentityPicker({
             aria-label="Choose a custom icon color"
           >
             {hasCustomColor ? (
-              <Check className="size-3 text-white" />
+              <HugeiconsIcon icon={__CheckHugeIcon} className="size-3 text-white" />
             ) : (
-              <Palette className="size-3 text-white/80" />
+              <HugeiconsIcon icon={__PaletteHugeIcon} className="size-3 text-white/80" />
             )}
             <input
               id={colorInputId}
@@ -261,7 +264,7 @@ export function WorkspaceIdentityPicker({
           onClick={() => onChange({})}
           disabled={disabled || isDefaultIdentity}
         >
-          <RotateCcw className="size-3.5" />
+          <HugeiconsIcon icon={__RotateCcwHugeIcon} className="size-3.5" />
           Default
         </Button>
       </div>
@@ -278,3 +281,4 @@ export function WorkspaceIdentityPicker({
     </div>
   )
 }
+

@@ -1,6 +1,5 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw, ChevronDownIcon as ChevronDown, DocumentDuplicateIcon as Copy, EllipsisVerticalIcon as MoreVertical, LinkIcon as Link2, PaperAirplaneIcon as Send, PlusIcon as Plus, ShareIcon as Share2, ShieldExclamationIcon as ShieldOff, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -13,6 +12,7 @@ import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+
   Dialog,
   DialogContent,
   DialogDescription,
@@ -45,6 +45,9 @@ import {
   type ProjectInviteRole,
   PROJECT_INVITE_ROLE_OPTIONS,
 } from "./headerShared";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, AddTeamIcon as __AddTeamHugeIcon, MoreVerticalIcon as __MoreVerticalHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __CopyHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SentIcon as __SendHugeIcon, Shield01Icon as __ShieldOffHugeIcon } from '@hugeicons/core-free-icons'
 
 export function HeaderProjectShareButton({
   projectId,
@@ -558,9 +561,9 @@ export function HeaderProjectShareButton({
               onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
-                <Loader2 className="size-3 shrink-0 animate-spin" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 shrink-0 animate-spin" />
               ) : (
-                <Share2 className="size-3 shrink-0" />
+                <HugeiconsIcon icon={__AddTeamHugeIcon} className="h-3.5 w-3.5 shrink-0" />
               )}
             </Button>
           </DialogTrigger>
@@ -710,7 +713,7 @@ export function HeaderProjectShareButton({
                                     {PROJECT_INVITE_ROLE_OPTIONS.find(
                                       (option) => option.value === existingMember.role,
                                     )?.label ?? "Role"}
-                                    <ChevronDown className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
+                                    <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -731,7 +734,7 @@ export function HeaderProjectShareButton({
                                     >
                                       {teamActionKey === roleActionKey &&
                                       existingMember.role !== option.value ? (
-                                        <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
+                                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
                                       ) : null}
                                       {option.label}
                                     </DropdownMenuItem>
@@ -754,9 +757,9 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-2.5 w-2.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-2.5 w-2.5" />
+                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
                                 )}
                                 <span className="sr-only">Remove member</span>
                               </Button>
@@ -778,9 +781,9 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <Loader2 className="mr-1.5 h-2.5 w-2.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-1.5 h-2.5 w-2.5 animate-spin" />
                                 ) : (
-                                  <RefreshCw className="mr-1.5 h-2.5 w-2.5" />
+                                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-1.5 h-2.5 w-2.5" />
                                 )}
                                 Resend
                               </Button>
@@ -799,9 +802,9 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-2.5 w-2.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-2.5 w-2.5" />
+                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
                                 )}
                                 <span className="sr-only">Cancel invite</span>
                               </Button>
@@ -819,7 +822,7 @@ export function HeaderProjectShareButton({
                                 setEmailInput("");
                               }}
                             >
-                              <Plus className="mr-1.5 h-2.5 w-2.5" />
+                              <HugeiconsIcon icon={__PlusHugeIcon} className="mr-1.5 h-2.5 w-2.5" />
                               Add
                             </Button>
                           )}
@@ -875,7 +878,7 @@ export function HeaderProjectShareButton({
                                     {PROJECT_INVITE_ROLE_OPTIONS.find(
                                       (option) => option.value === member.role,
                                     )?.label ?? "Role"}
-                                    <ChevronDown className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
+                                    <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -901,7 +904,7 @@ export function HeaderProjectShareButton({
                                 }}
                                 disabled={isSubmitting}
                               >
-                                <Trash2 className="h-2.5 w-2.5" />
+                                <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
                                 <span className="sr-only">Remove invite</span>
                               </Button>
                             </div>
@@ -925,9 +928,9 @@ export function HeaderProjectShareButton({
                     disabled={inviteMembers.length === 0 || isSubmitting}
                   >
                     {isSubmitting ? (
-                      <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
+                      <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
                     ) : (
-                      <Send className="mr-2 h-2.5 w-2.5" />
+                      <HugeiconsIcon icon={__SendHugeIcon} className="mr-2 h-2.5 w-2.5" />
                     )}
                     Send invites
                   </Button>
@@ -936,7 +939,7 @@ export function HeaderProjectShareButton({
                 <div className="rounded-xl bg-background/60 p-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Link2 className="h-2.5 w-2.5" />
+                      <HugeiconsIcon icon={__Link2HugeIcon} className="h-2.5 w-2.5" />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -970,9 +973,9 @@ export function HeaderProjectShareButton({
                       title="Copy link"
                     >
                       {joinLinkAction === "copy" ? (
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        <HugeiconsIcon icon={__Loader2HugeIcon} className="h-2.5 w-2.5 animate-spin" />
                       ) : (
-                        <Copy className="h-2.5 w-2.5" />
+                        <HugeiconsIcon icon={__CopyHugeIcon} className="h-2.5 w-2.5" />
                       )}
                       <span className="sr-only">Copy link</span>
                     </Button>
@@ -987,7 +990,7 @@ export function HeaderProjectShareButton({
                           disabled={joinLinkAction !== null || !canManageJoinLinks}
                           title="Link options"
                         >
-                          <MoreVertical className="h-2.5 w-2.5" />
+                          <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-2.5 w-2.5" />
                           <span className="sr-only">Link options</span>
                         </Button>
                       </DropdownMenuTrigger>
@@ -999,9 +1002,9 @@ export function HeaderProjectShareButton({
                           }}
                         >
                           {joinLinkAction === "rotate" ? (
-                            <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
+                            <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
                           ) : (
-                            <RefreshCw className="mr-2 h-2.5 w-2.5" />
+                            <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-2 h-2.5 w-2.5" />
                           )}
                           Rotate link
                         </DropdownMenuItem>
@@ -1015,9 +1018,9 @@ export function HeaderProjectShareButton({
                           className="text-destructive focus:text-destructive"
                         >
                           {joinLinkAction === "disable" ? (
-                            <Loader2 className="mr-2 h-2.5 w-2.5 animate-spin" />
+                            <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
                           ) : (
-                            <ShieldOff className="mr-2 h-2.5 w-2.5" />
+                            <HugeiconsIcon icon={__ShieldOffHugeIcon} className="mr-2 h-2.5 w-2.5" />
                           )}
                           Disable link
                         </DropdownMenuItem>

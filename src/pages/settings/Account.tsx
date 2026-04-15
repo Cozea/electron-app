@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
 import {
+
   SettingsDangerGroup,
   SettingsGroup,
   SettingsPageBody,
@@ -27,7 +28,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { ArrowUpTrayIcon as Upload, BellIcon as Bell, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2 } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, ArrowMoveUpLeftIcon as __UploadHugeIcon, Delete02Icon as __Trash2HugeIcon, Notification03Icon as __BellHugeIcon } from '@hugeicons/core-free-icons'
 
 interface UserPrefs {
   emailNotifications: boolean;
@@ -100,7 +103,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="absolute inset-x-0 bottom-0 flex h-6 items-center justify-center rounded-b-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-                <Upload className="h-3 w-3 text-white" />
+                <HugeiconsIcon icon={__UploadHugeIcon} className="h-3 w-3 text-white" />
               </div>
             </div>
             <div className="min-w-0 flex-1">
@@ -139,7 +142,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
       <section>
         <SettingsSectionTitle>
-          <Bell className="size-3.5" aria-hidden />
+          <HugeiconsIcon icon={__BellHugeIcon} className="size-3.5" aria-hidden />
           Notifications
         </SettingsSectionTitle>
         <SettingsGroup>
@@ -174,7 +177,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
       <section>
         <SettingsSectionTitle variant="danger">
-          <AlertTriangle className="size-3.5" aria-hidden />
+          <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="size-3.5" aria-hidden />
           Danger zone
         </SettingsSectionTitle>
         <SettingsDangerGroup>
@@ -187,7 +190,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="destructive" size="sm" className="h-7 gap-1.5 text-[11px]" disabled>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
                     Delete
                   </Button>
                 </DialogTrigger>

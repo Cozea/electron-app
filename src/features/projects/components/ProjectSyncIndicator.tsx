@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { IconType } from "react-icons"
 import {
+
   MdCloudDone,
   MdCloudDownload,
   MdCloudOff,
@@ -8,12 +9,14 @@ import {
   MdCloudUpload,
   MdWarning,
 } from "react-icons/md"
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 type ProjectSyncIndicatorVariant = "sidebar" | "compact"
 
@@ -266,7 +269,7 @@ export function ProjectSyncIndicator({
               )}
             >
               {showCompactSpinner ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground group-hover:text-foreground" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 shrink-0 animate-spin text-muted-foreground group-hover:text-foreground" />
               ) : (
                 <Icon className={iconClassName} />
               )}
@@ -325,3 +328,4 @@ export function ProjectSyncIndicator({
     </div>
   )
 }
+

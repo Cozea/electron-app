@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from "react"
 import { useLocation, useParams } from '@/lib/router'
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
 
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 export function LegacyProjectRedirectPage() {
   const navigate = useViewTransitionNavigate()
@@ -34,7 +36,7 @@ export function LegacyProjectRedirectPage() {
   if (slugResolution === undefined || slugResolution === null) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="h-5 w-5 animate-spin" />
       </div>
     )
   }
@@ -74,3 +76,4 @@ export function LegacyProjectRedirectPage() {
     </div>
   )
 }
+

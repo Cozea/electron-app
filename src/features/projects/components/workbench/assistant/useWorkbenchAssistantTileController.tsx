@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEventHandler, type ComponentProps } from "react"
-import { ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline"
 
 import {
+
   ApprovalRequestId,
   type ModelSelection,
   type OrchestrationGetTurnDiffResult,
@@ -62,6 +62,9 @@ import {
   truncateTitle,
   withWorkspaceBindingLock,
 } from "./workbenchAssistantShared"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-icons'
 
 interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
@@ -854,7 +857,7 @@ export function useWorkbenchAssistantTileController(
     if (bindingError) {
       return (
         <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1">{bindingError}</span>
           <Button
             type="button"
@@ -955,3 +958,4 @@ export function useWorkbenchAssistantTileController(
     },
   }
 }
+

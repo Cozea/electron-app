@@ -4,6 +4,7 @@ import { useConvex } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
+
   RepositoryDescriptor,
   RepositoryOwnerDescriptor,
 } from '@shared/electronApiTypes'
@@ -22,7 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowPathIcon as Loader2, ArrowPathIcon as RefreshCw } from "@heroicons/react/24/outline"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
 
 type RepositoryProvider = 'github'
 type RepositoryOwnerWithProvider = RepositoryOwnerDescriptor & { provider: RepositoryProvider }
@@ -295,6 +298,7 @@ export function RepositoryProvisioner({
             value={selectedRepoUrl ?? ''}
             onChange={(e) => {
               const value = e.target.value;
+
               const selectedRepository =
                 repositories.find((repository) => repository.url === value) ?? null
               if (selectedRepository) {
@@ -341,9 +345,9 @@ export function RepositoryProvisioner({
           disabled={isLoadingOwners || isLoadingRepositories}
         >
           {isLoadingOwners || isLoadingRepositories ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
+            <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
           )}
           Refresh
         </Button>

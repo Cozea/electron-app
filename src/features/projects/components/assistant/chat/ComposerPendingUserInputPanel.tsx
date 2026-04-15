@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { type ApprovalRequestId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useRef } from "react";
@@ -6,7 +11,6 @@ import {
   derivePendingUserInputProgress,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
-import { CheckIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils";
 
 interface PendingUserInputPanelProps {
@@ -173,7 +177,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   </span>
                 ) : null}
               </div>
-              {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-blue-400" /> : null}
+              {isSelected ? <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 shrink-0 text-blue-400" /> : null}
             </button>
           );
         })}

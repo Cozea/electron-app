@@ -11,6 +11,7 @@ import { Input } from '../../components/ui/input'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
+
   Table,
   TableBody,
   TableCell,
@@ -34,8 +35,6 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-import { ArrowPathIcon as Loader2, ArrowsUpDownIcon as ArrowUpDown, ChevronDownIcon as ChevronDown, EllipsisVerticalIcon as MoreVertical, PaperAirplaneIcon as Send, TrashIcon as Trash, TrashIcon as Trash2, UserPlusIcon as UserPlus } from "@heroicons/react/24/outline"
-import { FunnelIcon } from '@heroicons/react/24/outline'
 import {
   formatOrganizationWorkspaceRole,
   type OrganizationWorkspaceRole,
@@ -50,6 +49,9 @@ import {
   SettingsSectionDescription,
   SettingsSectionTitle,
 } from '@/components/settings/SettingsChrome'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, Delete02Icon as __TrashHugeIcon, FilterIcon as __FunnelIconHugeIcon, Refresh01Icon as __Loader2HugeIcon, SentIcon as __SendHugeIcon, UserAdd01Icon as __UserPlusHugeIcon } from '@hugeicons/core-free-icons'
 
 const WORKSPACE_BILLING_ROUTE =
   getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
@@ -542,7 +544,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
     <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
       <DialogTrigger asChild>
         <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs" disabled={!canInvite}>
-          <UserPlus className="h-3.5 w-3.5" />
+          <HugeiconsIcon icon={__UserPlusHugeIcon} className="h-3.5 w-3.5" />
           Invite
         </Button>
       </DialogTrigger>
@@ -596,7 +598,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="group text-muted-foreground gap-1">
                             {formatOrganizationWorkspaceRole(member.role, member.roleName)}
-                            <ChevronDown className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
+                            <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -613,7 +615,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                         className="text-muted-foreground hover:text-destructive transition-colors p-1"
                         disabled={isSubmitting}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <HugeiconsIcon icon={__Trash2HugeIcon} className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -632,9 +634,9 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
               disabled={inviteMembers.length === 0 || isSubmitting}
             >
               {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin mr-2" />
               ) : (
-                <Send className="h-4 w-4 mr-2" />
+                <HugeiconsIcon icon={__SendHugeIcon} className="h-4 w-4 mr-2" />
               )}
               Send invites
             </Button>
@@ -711,19 +713,20 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
           <div className="flex flex-wrap items-center gap-2">
             {selected.length > 0 && (
               <Button variant="destructive" size="sm" className="h-7 rounded-full text-[11px]" onClick={handleBulkDelete}>
-                <Trash className="mr-1.5 h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__TrashHugeIcon} className="mr-1.5 h-3.5 w-3.5" />
                 Delete ({selected.length})
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs focus:z-10">
-                  <FunnelIcon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__FunnelIconHugeIcon} className="h-3.5 w-3.5" />
                   {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
+
                 {roleOptions.map((role) => (
                   <DropdownMenuItem key={role.value} onClick={() => { setRoleFilter(role.baseRole); setCurrentPage(1) }}>
                     {role.label}
@@ -734,7 +737,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="secondary" className="h-7 gap-1.5 rounded-full px-2.5 text-xs focus:z-10">
-                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
                   {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
                 </Button>
               </DropdownMenuTrigger>
@@ -835,7 +838,7 @@ export function Members({ surface = 'page', route = '/teams' }: MembersProps = {
                         onClick={(event) => void handleOpenRowMenu(row, event)}
                         aria-label="Open member actions"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>

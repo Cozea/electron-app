@@ -1,6 +1,7 @@
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
+
 
 import {
+
   Dialog,
   DialogContent,
   DialogDescription,
@@ -9,6 +10,9 @@ import {
 } from "@/components/ui/dialog"
 
 import type { DiffDialogState } from "./workbenchAssistantShared"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchAssistantDiffDialogProps {
   state: DiffDialogState | null
@@ -32,7 +36,7 @@ export function WorkbenchAssistantDiffDialog({
         <div className="min-h-0 flex-1 overflow-auto p-6">
           {state?.isLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
               Loading diff…
             </div>
           ) : state?.error ? (
@@ -49,3 +53,4 @@ export function WorkbenchAssistantDiffDialog({
     </Dialog>
   )
 }
+

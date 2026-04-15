@@ -189,6 +189,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('collab:wrapRoomKey', options),
     unwrapRoomKey: (options: { senderPublicKeyJwk: string; wrappedKey: string; wrapAlgorithm?: string }) =>
       ipcRenderer.invoke('collab:unwrapRoomKey', options),
+    createRecoveryKit: (options: { roomKeyBase64: string; recoveryCode?: string }) =>
+      ipcRenderer.invoke('collab:createRecoveryKit', options),
+    unwrapRecoveryKit: (options: {
+      recoveryCode: string
+      wrappedKey: string
+      salt: string
+      iterations: number
+      wrapAlgorithm?: string
+    }) => ipcRenderer.invoke('collab:unwrapRecoveryKit', options),
     deleteDeviceIdentity: () => ipcRenderer.invoke('collab:deleteDeviceIdentity'),
   },
   sourceControl: {

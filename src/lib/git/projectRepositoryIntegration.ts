@@ -9,7 +9,6 @@ type RepositoryLike = {
 type SourceControlLike = {
   provider?: string | null
   repoUrl?: string | null
-  activeCollabBranch?: string | null
   defaultBranch?: string | null
   setupMode?: VersionControlSetupMode | null
   workingCopyMode?: "managed" | "attached" | null
@@ -40,7 +39,6 @@ export function resolveProjectSharedBranch(
 ): string {
   return (
     project?.sourceControl?.defaultBranch?.trim() ||
-    project?.sourceControl?.activeCollabBranch?.trim() ||
     project?.gitRepository?.defaultBranch?.trim() ||
     "main"
   )

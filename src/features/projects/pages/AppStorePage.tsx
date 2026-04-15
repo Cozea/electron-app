@@ -1,10 +1,8 @@
-import {
-  BoltIcon as Bolt,
-  CpuChipIcon as Chip,
-} from "@heroicons/react/24/outline"
+
 import { useMemo } from "react"
 
 import {
+
   SettingsSectionDescription,
   SettingsSectionTitle,
 } from "@/components/settings/SettingsChrome"
@@ -17,6 +15,9 @@ import {
 import { useProjectHeader } from "@/hooks/useProjectHeader"
 import { useSearchParams } from "@/lib/router"
 import { cn } from "@/lib/utils"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CpuChargeIcon as __ChipHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon } from '@hugeicons/core-free-icons'
 
 function matchesStoreQuery(values: string[], query: string): boolean {
   if (!query.trim()) return true
@@ -236,7 +237,7 @@ export function AppStorePage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-[20px] bg-background/80 p-4">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
-                  <Bolt className="h-5 w-5" />
+                  <HugeiconsIcon icon={__BoltHugeIcon} className="h-5 w-5" />
                 </div>
                 <p className="text-sm font-medium text-foreground">Curated collections</p>
                 <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
@@ -245,7 +246,7 @@ export function AppStorePage() {
               </div>
               <div className="rounded-[20px] bg-background/80 p-4">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
-                  <Chip className="h-5 w-5" />
+                  <HugeiconsIcon icon={__ChipHugeIcon} className="h-5 w-5" />
                 </div>
                 <p className="text-sm font-medium text-foreground">Developer-first tooling</p>
                 <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
@@ -278,7 +279,7 @@ export function AppStorePage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-[20px] bg-background/80 p-4">
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
-                <Bolt className="h-5 w-5" />
+                <HugeiconsIcon icon={__BoltHugeIcon} className="h-5 w-5" />
               </div>
               <p className="text-sm font-medium text-foreground">Install flows</p>
               <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
@@ -287,7 +288,7 @@ export function AppStorePage() {
             </div>
             <div className="rounded-[20px] bg-background/80 p-4">
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
-                <Chip className="h-5 w-5" />
+                <HugeiconsIcon icon={__ChipHugeIcon} className="h-5 w-5" />
               </div>
               <p className="text-sm font-medium text-foreground">Curated bundles</p>
               <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
@@ -300,3 +301,4 @@ export function AppStorePage() {
     </div>
   )
 }
+

@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { useConvex } from "convex/react";
-import { ArrowsRightLeftIcon as GitCompareArrows } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -9,12 +8,16 @@ import { scheduleTask } from "@/lib/scheduler";
 import { useLocation } from "@/lib/router";
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import {
+
   getProjectChangesActivityCacheKey,
   getProjectChangesSelectedChangeCacheKey,
 } from "@/features/projects/lib/changesQueryCache";
 import { useQueryCache } from "@/stores/useQueryCache";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { TransactionHistoryIcon as __TransactionHistoryHugeIcon } from '@hugeicons/core-free-icons'
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();
@@ -102,7 +105,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             });
           }}
         >
-          <GitCompareArrows className="size-3 shrink-0" />
+          <HugeiconsIcon icon={__TransactionHistoryHugeIcon} className="h-3.5 w-3.5 shrink-0" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">Open changes</TooltipContent>

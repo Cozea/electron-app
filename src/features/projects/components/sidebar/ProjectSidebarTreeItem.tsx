@@ -1,6 +1,5 @@
 import * as React from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-import { ChevronRightIcon as ChevronRight, EllipsisVerticalIcon as EllipsisVertical } from "@heroicons/react/24/outline"
 
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
@@ -12,6 +11,7 @@ import { NativeProjectFolderIcon } from "@/features/projects/components/NativePr
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
 import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints"
 import {
+
   resolveProjectCollabBranch,
   areSidebarProjectItemsEqual,
   SIDEBAR_PILL_ACTIVE_CLASS,
@@ -23,6 +23,9 @@ import {
   buildWorkbenchScopeKey,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronRightHugeIcon, MoreVerticalIcon as __EllipsisVerticalHugeIcon } from '@hugeicons/core-free-icons'
 
 async function showNativeSidebarMenu<T extends string>(
   event: React.MouseEvent<HTMLElement>,
@@ -207,7 +210,7 @@ export const ProjectSidebarTreeItem = React.memo(
               }
             }}
           >
-            <NativeProjectFolderIcon folderPath={localPath} />
+            <NativeProjectFolderIcon folderPath={localPath} isOpen={selection.isExpanded} />
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <span className="min-w-0 truncate font-normal text-muted-foreground">
                 {project.name}
@@ -223,7 +226,7 @@ export const ProjectSidebarTreeItem = React.memo(
                   selection.isExpanded ? "Collapse project lanes" : "Expand project lanes"
                 }
               >
-                <ChevronRight
+                <HugeiconsIcon icon={__ChevronRightHugeIcon}
                   className={cn(
                     "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
                     selection.isExpanded && "rotate-90",
@@ -240,7 +243,7 @@ export const ProjectSidebarTreeItem = React.memo(
             onClick={handleProjectMenuClick}
             aria-label={`${project.name} options`}
           >
-            <EllipsisVertical className="size-3.5" />
+            <HugeiconsIcon icon={__EllipsisVerticalHugeIcon} className="size-3.5" />
           </Button>
         </div>
 
@@ -275,3 +278,4 @@ export const ProjectSidebarTreeItem = React.memo(
     )
   },
 )
+

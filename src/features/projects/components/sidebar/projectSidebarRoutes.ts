@@ -1,9 +1,12 @@
 import type { ComponentType } from "react"
-
-import { AdjustmentsHorizontalIcon as SlidersHorizontal, ArrowsRightLeftIcon as GitBranch, ExclamationTriangleIcon as AlertTriangle } from "@heroicons/react/24/outline"
-
 import type { SidebarActiveSelectionLevel } from "@/features/projects/components/sidebar/projectSidebarShared"
 
+import { Alert01Icon as __AlertTriangleHugeIcon, AlignHorizontalCenterIcon as __SlidersHorizontalHugeIcon, ArrowLeftRightIcon as __GitBranchHugeIcon } from '@hugeicons/core-free-icons'
+
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+const SlidersHorizontal = asHugeIcon(__SlidersHorizontalHugeIcon)
+const GitBranch = asHugeIcon(__GitBranchHugeIcon)
+const AlertTriangle = asHugeIcon(__AlertTriangleHugeIcon)
 export type ProjectSettingsSectionId = "general" | "source-control" | "danger"
 
 export const PROJECT_SETTINGS_SECTIONS: Array<{
@@ -71,3 +74,4 @@ export function getProjectSidebarRouteState({
     currentSelectionLevel,
   }
 }
+

@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import * as Y from "yjs"
 import { applyProjectStorageDeltas } from "./lib/workspaceLimits"
 
@@ -9,6 +9,63 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength)
   new Uint8Array(buffer).set(bytes)
   return buffer
+}
+
+interface ParsedCipherEnvelopeMetadata {
+  kind: "yjs_update" | "yjs_snapshot" | "yjs_awareness"
+  keyVersion: number
+}
+
+function parseCipherEnvelopeMetadata(bytes: ArrayBuffer): ParsedCipherEnvelopeMetadata | null {
+  try {
+    const text = new TextDecoder().decode(new Uint8Array(bytes))
+    const parsed = JSON.parse(text) as {
+      v?: unknown
+      alg?: unknown
+      kind?: unknown
+      keyVersion?: unknown
+    }
+
+    if (
+      parsed?.v !== 1 ||
+      parsed.alg !== "A256GCM" ||
+      (parsed.kind !== "yjs_update" &&
+        parsed.kind !== "yjs_snapshot" &&
+        parsed.kind !== "yjs_awareness") ||
+      typeof parsed.keyVersion !== "number" ||
+      !Number.isFinite(parsed.keyVersion)
+    ) {
+      return null
+    }
+
+    return {
+      kind: parsed.kind,
+      keyVersion: Math.max(1, Math.floor(parsed.keyVersion)),
+    }
+  } catch {
+    return null
+  }
+}
+
+function assertEncryptedPayloadMatchesActiveKey(args: {
+  payload: ArrayBuffer
+  expectedKind: ParsedCipherEnvelopeMetadata["kind"]
+  activeKeyVersion: number
+}): void {
+  const parsed = parseCipherEnvelopeMetadata(args.payload)
+  if (!parsed || parsed.kind !== args.expectedKind) {
+    throw new ConvexError({
+      code: "invalid_encrypted_payload",
+      message: `Invalid encrypted ${args.expectedKind} payload.`,
+    })
+  }
+
+  if (parsed.keyVersion !== args.activeKeyVersion) {
+    throw new ConvexError({
+      code: "encryption_key_stale",
+      message: "Encrypted collaboration key is stale. Refresh room access.",
+    })
+  }
 }
 
 type YjsSyncCtx = QueryCtx | MutationCtx
@@ -62,8 +119,22 @@ interface WrappedRoomKeyRecord {
   revokedAt?: number
 }
 
+interface RecoveryKitRecord {
+  _id: Id<"projectCollabRecoveryKits">
+  projectId: Id<"projects">
+  roomId: string
+  keyVersion: number
+  wrapAlgorithm: string
+  wrappedKey: string
+  salt: string
+  iterations: number
+  createdByUserId: Id<"users">
+  createdByDeviceId: string
+  createdAt: number
+  revokedAt?: number
+}
+
 type EncryptionBootstrapStatus =
-  | "plaintext_legacy"
   | "room_not_initialized"
   | "ready"
   | "missing_for_device"
@@ -164,6 +235,31 @@ async function getWrappedRoomKeyForDevice(
   return (match ?? null) as WrappedRoomKeyRecord | null
 }
 
+async function getActiveRecoveryKitRecord(
+  ctx: YjsSyncCtx,
+  args: {
+    projectId: Id<"projects">
+    roomId: string
+    keyVersion?: number | null
+  },
+): Promise<RecoveryKitRecord | null> {
+  const candidates = await ctx.db
+    .query("projectCollabRecoveryKits")
+    .withIndex("by_project_and_room", (q) =>
+      q.eq("projectId", args.projectId).eq("roomId", args.roomId),
+    )
+    .collect()
+
+  const match = candidates
+    .filter((entry) =>
+      typeof entry.revokedAt !== "number" &&
+      (args.keyVersion == null || entry.keyVersion === args.keyVersion),
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)[0]
+
+  return (match ?? null) as RecoveryKitRecord | null
+}
+
 async function deleteAllProjectCollabPayloads(
   ctx: MutationCtx,
   projectId: Id<"projects">,
@@ -212,6 +308,34 @@ async function deleteAllProjectCollabPayloads(
     removedUpdateBytes,
     removedSnapshotBytes,
   }
+}
+
+async function deleteAllProjectAwarenessEntries(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+): Promise<number> {
+  let removedCount = 0
+
+  while (true) {
+    const batch = await ctx.db
+      .query("yjsAwareness")
+      .withIndex("by_project_and_updated", (q) => q.eq("projectId", projectId))
+      .paginate({
+        cursor: null,
+        numItems: YJS_CLEANUP_PAGE_SIZE,
+      }) as PaginatedResult<{ _id: Id<"yjsAwareness"> }>
+
+    if (batch.page.length === 0) {
+      break
+    }
+
+    for (const entry of batch.page) {
+      await ctx.db.delete(entry._id)
+      removedCount += 1
+    }
+  }
+
+  return removedCount
 }
 
 async function forEachPaginated<T>(
@@ -285,6 +409,20 @@ async function insertSequencedUpdate(
   created: boolean
 }> {
   const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.update.byteLength)
+  const roomId = args.roomId || defaultRoomId(args.projectId)
+  const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
+
+  if (!activeRoomKey) {
+    throw new ConvexError({
+      code: "room_not_initialized",
+      message: "Encrypted collaboration room is not initialized.",
+    })
+  }
+  assertEncryptedPayloadMatchesActiveKey({
+    payload: args.update,
+    expectedKind: "yjs_update",
+    activeKeyVersion: activeRoomKey.keyVersion,
+  })
 
   if (args.idempotencyKey?.trim()) {
     const existing = await ctx.db
@@ -313,7 +451,7 @@ async function insertSequencedUpdate(
 
   await ctx.db.insert("yjsUpdates", {
     projectId: args.projectId,
-    roomId: args.roomId || defaultRoomId(args.projectId),
+    roomId,
     seq: nextSeq,
     update: args.update,
     clientId: args.clientId,
@@ -446,6 +584,10 @@ export const getUpdatesSince = query({
   },
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, defaultRoomId(args.projectId))
+    if (!activeRoomKey) {
+      return []
+    }
     const maxItems = Math.min(
       YJS_TAIL_READ_LIMIT,
       Math.max(1, Math.floor(args.limit ?? YJS_TAIL_READ_LIMIT))
@@ -492,6 +634,10 @@ export const getLatestSnapshot = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, defaultRoomId(args.projectId))
+    if (!activeRoomKey) {
+      return null
+    }
     return await ctx.db
       .query("yjsDocuments")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -514,6 +660,18 @@ export const saveSnapshot = mutation({
   },
   handler: async (ctx, args) => {
     const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.snapshot.byteLength)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, defaultRoomId(args.projectId))
+    if (!activeRoomKey) {
+      throw new ConvexError({
+        code: "room_not_initialized",
+        message: "Encrypted collaboration room is not initialized.",
+      })
+    }
+    assertEncryptedPayloadMatchesActiveKey({
+      payload: args.snapshot,
+      expectedKind: "yjs_snapshot",
+      activeKeyVersion: activeRoomKey.keyVersion,
+    })
     const fallbackBaseSeq =
       typeof args.snapshotBaseSeq === "number" && Number.isFinite(args.snapshotBaseSeq)
         ? Math.max(0, Math.floor(args.snapshotBaseSeq))
@@ -589,10 +747,10 @@ export const maybeCompactProject = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectId)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, defaultRoomId(args.projectId))
-    if (activeRoomKey) {
+    if (!activeRoomKey) {
       return {
         compacted: false,
-        reason: "encrypted-room",
+        reason: "room-not-initialized",
         bytesSinceSnapshot: 0,
       }
     }
@@ -860,19 +1018,6 @@ export const getEncryptionBootstrap = query({
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
 
     if (!activeRoomKey) {
-      const hasCollabData = await hasAnyStoredCollabData(ctx, args.projectId)
-      if (hasCollabData) {
-        return {
-          roomId,
-          encryptionRequired: false,
-          status: "plaintext_legacy" as EncryptionBootstrapStatus,
-          activeKeyVersion: null,
-          wrappedRoomKey: null,
-          wrapAlgorithm: null,
-          senderPublicKeyJwk: null,
-        }
-      }
-
       return {
         roomId,
         encryptionRequired: true,
@@ -927,7 +1072,7 @@ export const initializeEncryptedRoom = mutation({
     senderPublicKeyJwk: v.string(),
   },
   handler: async (ctx, args) => {
-    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const roomId = args.roomId || defaultRoomId(args.projectId)
 
     const existingRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
@@ -936,8 +1081,15 @@ export const initializeEncryptedRoom = mutation({
     }
 
     const hasCollabData = await hasAnyStoredCollabData(ctx, args.projectId)
+    let removedUpdateBytes = 0
+    let removedSnapshotBytes = 0
+    let removedAwarenessEntries = 0
+
     if (hasCollabData) {
-      throw new Error("Cannot initialize encrypted room for an existing plaintext collaboration history")
+      const payloadCleanup = await deleteAllProjectCollabPayloads(ctx, args.projectId)
+      removedUpdateBytes = payloadCleanup.removedUpdateBytes
+      removedSnapshotBytes = payloadCleanup.removedSnapshotBytes
+      removedAwarenessEntries = await deleteAllProjectAwarenessEntries(ctx, args.projectId)
     }
 
     const now = Date.now()
@@ -964,7 +1116,21 @@ export const initializeEncryptedRoom = mutation({
       createdAt: now,
     })
 
-    return { roomId, created: true, keyVersion: Math.max(1, Math.floor(args.keyVersion)) }
+    if (removedUpdateBytes > 0 || removedSnapshotBytes > 0) {
+      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+        collaborationData: -removedUpdateBytes,
+        snapshots: -removedSnapshotBytes,
+      })
+    }
+
+    return {
+      roomId,
+      created: true,
+      keyVersion: Math.max(1, Math.floor(args.keyVersion)),
+      removedUpdateBytes,
+      removedSnapshotBytes,
+      removedAwarenessEntries,
+    }
   },
 })
 
@@ -1038,6 +1204,42 @@ export const listPendingKeyRequests = query({
     return requests
       .filter((request) => typeof request.fulfilledAt !== "number")
       .sort((a, b) => a.requestedAt - b.requestedAt)
+  },
+})
+
+export const getActiveRecoveryKit = query({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await assertCollaborationAccess(ctx, args.projectId)
+    const roomId = args.roomId || defaultRoomId(args.projectId)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
+    if (!activeRoomKey) {
+      return null
+    }
+
+    const recoveryKit = await getActiveRecoveryKitRecord(ctx, {
+      projectId: args.projectId,
+      roomId,
+      keyVersion: activeRoomKey.keyVersion,
+    })
+
+    if (!recoveryKit) {
+      return null
+    }
+
+    return {
+      roomId,
+      keyVersion: recoveryKit.keyVersion,
+      wrapAlgorithm: recoveryKit.wrapAlgorithm,
+      wrappedKey: recoveryKit.wrappedKey,
+      salt: recoveryKit.salt,
+      iterations: recoveryKit.iterations,
+      createdAt: recoveryKit.createdAt,
+      createdByDeviceId: recoveryKit.createdByDeviceId,
+    }
   },
 })
 
@@ -1180,6 +1382,68 @@ export const storeWrappedRoomKey = mutation({
   },
 })
 
+export const storeRecoveryKit = mutation({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    salt: v.string(),
+    iterations: v.number(),
+    createdByUserId: v.id("users"),
+    createdByDeviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, args.roomId)
+    if (!activeRoomKey) {
+      throw new ConvexError({
+        code: "room_not_initialized",
+        message: "Encrypted collaboration room is not initialized.",
+      })
+    }
+
+    const normalizedKeyVersion = Math.max(1, Math.floor(args.keyVersion))
+    if (activeRoomKey.keyVersion !== normalizedKeyVersion) {
+      throw new ConvexError({
+        code: "encryption_key_stale",
+        message: "Recovery kit does not match the active encrypted room key.",
+      })
+    }
+
+    const now = Date.now()
+    const existing = await ctx.db
+      .query("projectCollabRecoveryKits")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", args.roomId),
+      )
+      .collect()
+
+    for (const entry of existing) {
+      if (typeof entry.revokedAt === "number") continue
+      await ctx.db.patch(entry._id, {
+        revokedAt: now,
+      })
+    }
+
+    await ctx.db.insert("projectCollabRecoveryKits", {
+      projectId: args.projectId,
+      roomId: args.roomId,
+      keyVersion: normalizedKeyVersion,
+      wrapAlgorithm: args.wrapAlgorithm,
+      wrappedKey: args.wrappedKey,
+      salt: args.salt,
+      iterations: Math.max(1, Math.floor(args.iterations)),
+      createdByUserId: args.createdByUserId,
+      createdByDeviceId: args.createdByDeviceId,
+      createdAt: now,
+    })
+
+    return { stored: true, keyVersion: normalizedKeyVersion }
+  },
+})
+
 export const revokeCollabDevice = mutation({
   args: {
     projectId: v.id("projects"),
@@ -1237,6 +1501,8 @@ export const rotateEncryptedRoomKey = mutation({
     roomId: v.optional(v.string()),
     userId: v.id("users"),
     initiatedByDeviceId: v.string(),
+    encryptedSnapshot: v.bytes(),
+    createdByClientId: v.optional(v.string()),
     wrappedKeys: v.array(
       v.object({
         recipientUserId: v.id("users"),
@@ -1248,7 +1514,11 @@ export const rotateEncryptedRoomKey = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const project = await assertCollaborationWriteAllowed(
+      ctx,
+      args.projectId,
+      args.encryptedSnapshot.byteLength,
+    )
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
     if (!activeRoomKey) {
@@ -1256,12 +1526,62 @@ export const rotateEncryptedRoomKey = mutation({
     }
 
     const nextKeyVersion = activeRoomKey.keyVersion + 1
-    const now = Date.now()
-
-    await ctx.db.patch(activeRoomKey._id, {
-      status: "rotating",
-      rotatedAt: now,
+    assertEncryptedPayloadMatchesActiveKey({
+      payload: args.encryptedSnapshot,
+      expectedKind: "yjs_snapshot",
+      activeKeyVersion: nextKeyVersion,
     })
+    const now = Date.now()
+    const roomKeys = await ctx.db
+      .query("projectCollabRoomKeys")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId),
+      )
+      .collect()
+
+    for (const roomKey of roomKeys) {
+      if (roomKey.status === "revoked") continue
+      await ctx.db.patch(roomKey._id, {
+        status: "revoked",
+        rotatedAt: now,
+      })
+    }
+
+    for (const roomKey of roomKeys) {
+      const wrappedKeys = await ctx.db
+        .query("projectCollabWrappedKeys")
+        .withIndex("by_project_room_and_key_version", (q) =>
+          q.eq("projectId", args.projectId).eq("roomId", roomId).eq("keyVersion", roomKey.keyVersion),
+        )
+        .collect()
+
+      for (const wrappedKey of wrappedKeys) {
+        if (typeof wrappedKey.revokedAt === "number") continue
+        await ctx.db.patch(wrappedKey._id, {
+          revokedAt: now,
+        })
+      }
+    }
+
+    const recoveryKits = await ctx.db
+      .query("projectCollabRecoveryKits")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId),
+      )
+      .collect()
+
+    for (const recoveryKit of recoveryKits) {
+      if (typeof recoveryKit.revokedAt === "number") continue
+      await ctx.db.patch(recoveryKit._id, {
+        revokedAt: now,
+      })
+    }
+
+    const { removedUpdateBytes, removedSnapshotBytes } = await deleteAllProjectCollabPayloads(
+      ctx,
+      args.projectId,
+    )
+    const removedAwarenessEntries = await deleteAllProjectAwarenessEntries(ctx, args.projectId)
 
     await ctx.db.insert("projectCollabRoomKeys", {
       projectId: args.projectId,
@@ -1293,77 +1613,6 @@ export const rotateEncryptedRoomKey = mutation({
       })
     }
 
-    return {
-      rotated: true,
-      roomId,
-      keyVersion: nextKeyVersion,
-      previousKeyVersion: activeRoomKey.keyVersion,
-    }
-  },
-})
-
-export const migratePlaintextRoomToEncrypted = mutation({
-  args: {
-    projectId: v.id("projects"),
-    roomId: v.optional(v.string()),
-    userId: v.id("users"),
-    deviceId: v.string(),
-    keyVersion: v.number(),
-    wrapAlgorithm: v.string(),
-    wrappedKey: v.string(),
-    senderPublicKeyJwk: v.string(),
-    encryptedSnapshot: v.bytes(),
-    createdByClientId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.encryptedSnapshot.byteLength)
-    const roomId = args.roomId || defaultRoomId(args.projectId)
-
-    const existingRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
-    if (existingRoomKey) {
-      return {
-        migrated: false,
-        alreadyEncrypted: true,
-        keyVersion: existingRoomKey.keyVersion,
-      }
-    }
-
-    const hasCollabData = await hasAnyStoredCollabData(ctx, args.projectId)
-    if (!hasCollabData) {
-      throw new Error("No plaintext collaboration data exists to migrate")
-    }
-
-    const { removedUpdateBytes, removedSnapshotBytes } = await deleteAllProjectCollabPayloads(
-      ctx,
-      args.projectId,
-    )
-
-    const now = Date.now()
-    const keyVersion = Math.max(1, Math.floor(args.keyVersion))
-
-    await ctx.db.insert("projectCollabRoomKeys", {
-      projectId: args.projectId,
-      roomId,
-      keyVersion,
-      status: "active",
-      createdByUserId: args.userId,
-      createdByDeviceId: args.deviceId,
-      createdAt: now,
-    })
-
-    await ctx.db.insert("projectCollabWrappedKeys", {
-      projectId: args.projectId,
-      roomId,
-      keyVersion,
-      recipientUserId: args.userId,
-      recipientDeviceId: args.deviceId,
-      senderDeviceId: args.deviceId,
-      senderPublicKeyJwk: args.senderPublicKeyJwk,
-      wrapAlgorithm: args.wrapAlgorithm,
-      wrappedKey: args.wrappedKey,
-      createdAt: now,
-    })
-
     await ctx.db.insert("yjsDocuments", {
       projectId: args.projectId,
       snapshot: args.encryptedSnapshot,
@@ -1380,9 +1629,121 @@ export const migratePlaintextRoomToEncrypted = mutation({
     })
 
     return {
-      migrated: true,
+      rotated: true,
       roomId,
-      keyVersion,
+      keyVersion: nextKeyVersion,
+      previousKeyVersion: activeRoomKey.keyVersion,
+      removedUpdateBytes,
+      removedSnapshotBytes,
+      removedAwarenessEntries,
+    }
+  },
+})
+
+export const resetEncryptedRoom = mutation({
+  args: {
+    projectId: v.id("projects"),
+    roomId: v.optional(v.string()),
+    userId: v.optional(v.id("users")),
+    retainDeviceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const roomId = args.roomId || defaultRoomId(args.projectId)
+    const now = Date.now()
+
+    const roomKeys = await ctx.db
+      .query("projectCollabRoomKeys")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId),
+      )
+      .collect()
+
+    for (const roomKey of roomKeys) {
+      if (roomKey.status === "revoked") continue
+      await ctx.db.patch(roomKey._id, {
+        status: "revoked",
+        rotatedAt: now,
+      })
+    }
+
+    for (const roomKey of roomKeys) {
+      const wrappedKeys = await ctx.db
+        .query("projectCollabWrappedKeys")
+        .withIndex("by_project_room_and_key_version", (q) =>
+          q.eq("projectId", args.projectId).eq("roomId", roomId).eq("keyVersion", roomKey.keyVersion),
+        )
+        .collect()
+
+      for (const wrappedKey of wrappedKeys) {
+        if (typeof wrappedKey.revokedAt === "number") continue
+        await ctx.db.patch(wrappedKey._id, {
+          revokedAt: now,
+        })
+      }
+    }
+
+    const recoveryKits = await ctx.db
+      .query("projectCollabRecoveryKits")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId),
+      )
+      .collect()
+
+    for (const recoveryKit of recoveryKits) {
+      if (typeof recoveryKit.revokedAt === "number") continue
+      await ctx.db.patch(recoveryKit._id, {
+        revokedAt: now,
+      })
+    }
+
+    const keyRequests = await ctx.db
+      .query("projectCollabKeyRequests")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", roomId),
+      )
+      .collect()
+
+    for (const request of keyRequests) {
+      if (typeof request.fulfilledAt === "number") continue
+      await ctx.db.patch(request._id, {
+        fulfilledAt: now,
+      })
+    }
+
+    if (args.userId && args.retainDeviceId) {
+      const retainedDevice = await ctx.db
+        .query("collabDevices")
+        .withIndex("by_user_and_device", (q) =>
+          q.eq("userId", args.userId!).eq("deviceId", args.retainDeviceId!),
+        )
+        .first()
+
+      if (retainedDevice && typeof retainedDevice.revokedAt === "number") {
+        await ctx.db.patch(retainedDevice._id, {
+          revokedAt: undefined,
+          lastSeenAt: now,
+        })
+      }
+    }
+
+    const { removedUpdateBytes, removedSnapshotBytes } = await deleteAllProjectCollabPayloads(
+      ctx,
+      args.projectId,
+    )
+    const removedAwarenessEntries = await deleteAllProjectAwarenessEntries(ctx, args.projectId)
+
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      collaborationData: -removedUpdateBytes,
+      snapshots: -removedSnapshotBytes,
+    })
+
+    return {
+      reset: true,
+      roomId,
+      removedUpdateBytes,
+      removedSnapshotBytes,
+      removedAwarenessEntries,
     }
   },
 })
@@ -1419,84 +1780,58 @@ export const syncWithServer = mutation({
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
 
-    if (activeRoomKey) {
-      const latestSnapshot = await ctx.db
-        .query("yjsDocuments")
-        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-        .order("desc")
-        .first()
-
-      const updatesAfterSnapshot = typeof latestSnapshot?.snapshotBaseSeq === "number"
-        ? await collectUpdatesAfterSeq(ctx, args.projectId, latestSnapshot.snapshotBaseSeq)
-        : latestSnapshot
-          ? await collectUpdatesAfterTimestamp(ctx, args.projectId, latestSnapshot.createdAt)
-          : await collectAllProjectUpdates(ctx, args.projectId)
-
-      const recentUpdates = updatesAfterSnapshot.map((update) => ({
-        update: update.update,
-        clientId: update.clientId,
-        timestamp: update.timestamp,
-      }))
-
-      const latestSeq = updatesAfterSnapshot.reduce(
-        (max, update) => Math.max(max, update.seq ?? 0),
-        latestSnapshot?.snapshotBaseSeq ?? 0,
-      )
-
-      const serverTimestamp = updatesAfterSnapshot.reduce(
-        (max, update) => Math.max(max, update.timestamp),
-        latestSnapshot?.createdAt ?? 0,
-      )
-
+    if (!activeRoomKey) {
+      const emptyDoc = new Y.Doc()
+      const emptyStateVector = Y.encodeStateVector(emptyDoc)
       return {
-        serverSnapshot: latestSnapshot?.snapshot ?? null,
-        snapshotVersion: latestSnapshot?.version ?? 0,
-        snapshotCreatedAt: latestSnapshot?.createdAt ?? 0,
-        recentUpdates,
-        deltaUpdate: undefined,
-        deltaByteLength: undefined,
-        serverStateVector: undefined,
-        serverTimestamp,
-        serverSeq: latestSeq,
+        serverSnapshot: null,
+        snapshotVersion: 0,
+        snapshotCreatedAt: 0,
+        recentUpdates: [],
+        deltaUpdate: toArrayBuffer(Y.encodeStateAsUpdate(emptyDoc)),
+        deltaByteLength: 0,
+        serverStateVector: toArrayBuffer(emptyStateVector),
+        serverTimestamp: 0,
+        serverSeq: 0,
       }
     }
 
-    const {
-      serverDoc,
-      latestSnapshot,
-      serverTimestamp,
-      latestSeq,
-    } = await loadServerState(ctx, args.projectId, {
-      includeUpdatesSinceSnapshot: false,
-    })
+    const latestSnapshot = await ctx.db
+      .query("yjsDocuments")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .first()
 
-    let clientStateVector: Uint8Array | undefined
-    if (args.clientUpdate) {
-      try {
-        const clientDoc = new Y.Doc()
-        Y.applyUpdate(clientDoc, new Uint8Array(args.clientUpdate), "client")
-        clientStateVector = Y.encodeStateVector(clientDoc)
-      } catch {
-        clientStateVector = undefined
-      }
-    }
+    const updatesAfterSnapshot = typeof latestSnapshot?.snapshotBaseSeq === "number"
+      ? await collectUpdatesAfterSeq(ctx, args.projectId, latestSnapshot.snapshotBaseSeq)
+      : latestSnapshot
+        ? await collectUpdatesAfterTimestamp(ctx, args.projectId, latestSnapshot.createdAt)
+        : await collectAllProjectUpdates(ctx, args.projectId)
 
-    const deltaUpdate = clientStateVector
-      ? Y.encodeStateAsUpdate(serverDoc, clientStateVector)
-      : Y.encodeStateAsUpdate(serverDoc)
+    const recentUpdates = updatesAfterSnapshot.map((update) => ({
+      update: update.update,
+      clientId: update.clientId,
+      timestamp: update.timestamp,
+    }))
 
-    const serverStateVector = Y.encodeStateVector(serverDoc)
+    const latestSeq = updatesAfterSnapshot.reduce(
+      (max, update) => Math.max(max, update.seq ?? 0),
+      latestSnapshot?.snapshotBaseSeq ?? 0,
+    )
+
+    const serverTimestamp = updatesAfterSnapshot.reduce(
+      (max, update) => Math.max(max, update.timestamp),
+      latestSnapshot?.createdAt ?? 0,
+    )
 
     return {
-      // Legacy fields for compatibility.
       serverSnapshot: latestSnapshot?.snapshot ?? null,
       snapshotVersion: latestSnapshot?.version ?? 0,
       snapshotCreatedAt: latestSnapshot?.createdAt ?? 0,
-      recentUpdates: [],
-      // State-vector-first payload.
-      deltaUpdate: toArrayBuffer(deltaUpdate),
-      deltaByteLength: deltaUpdate.byteLength,
-      serverStateVector: toArrayBuffer(serverStateVector),
+      recentUpdates,
+      deltaUpdate: undefined,
+      deltaByteLength: undefined,
+      serverStateVector: undefined,
       serverTimestamp,
       serverSeq: latestSeq,
     }

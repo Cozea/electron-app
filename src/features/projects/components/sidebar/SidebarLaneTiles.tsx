@@ -1,11 +1,7 @@
-import {
-  CommandLineIcon as SquareTerminal,
-  ComputerDesktopIcon as ComputerScreen,
-  DevicePhoneMobileIcon as Phone,
-  GlobeAltIcon as Globe,
-} from "@heroicons/react/24/outline"
+
 
 import {
+
   ClaudeAI,
   Gemini,
   OpenAI,
@@ -32,6 +28,9 @@ import type {
 
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
+
 function SurfaceTileGlyph(props: {
   favicon?: string | null
   type: WorkbenchSidebarSurfaceTileSummary["type"]
@@ -50,14 +49,14 @@ function SurfaceTileGlyph(props: {
           />
         )
       }
-      return <Globe className={className} aria-hidden />
+      return <HugeiconsIcon icon={__GlobeHugeIcon} className={className} aria-hidden />
     case "devServer":
-      return <ComputerScreen className={className} aria-hidden />
+      return <HugeiconsIcon icon={__ServerStackHugeIcon} className={className} aria-hidden />
     case "mobileSimulator":
-      return <Phone className={className} aria-hidden />
+      return <HugeiconsIcon icon={__PhoneHugeIcon} className={className} aria-hidden />
     case "terminal":
     default:
-      return <SquareTerminal className={className} aria-hidden />
+      return <HugeiconsIcon icon={__ComputerTerminalHugeIcon} className={className} aria-hidden />
   }
 }
 
@@ -75,6 +74,7 @@ interface SidebarAgentStatusPill {
 }
 
 function ProviderGlyph(props: { provider?: string | null; className?: string }) {
+
   const className = props.className ?? "size-3.5"
 
   switch (props.provider) {

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react"
 import { useParams } from '@/lib/router'
 import { useMutation, useQuery } from "convex/react"
-import { ArrowLeftStartOnRectangleIcon as LogIn, ArrowPathIcon as Loader2, ExclamationCircleIcon as AlertCircle, LinkIcon as Link2 } from "@heroicons/react/24/outline"
 
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -9,12 +8,16 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { Button } from "@/components/ui/button"
 import {
+
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowDownLeft01Icon as __LogInHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
@@ -73,7 +76,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-7 w-7 text-destructive" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
             <CardTitle>Invalid Join Link</CardTitle>
             <CardDescription>The project join token is missing.</CardDescription>
@@ -94,7 +97,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
             </div>
             <CardTitle>Loading Invite Link...</CardTitle>
             <CardDescription>Checking the project access attached to this link.</CardDescription>
@@ -110,7 +113,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-7 w-7 text-destructive" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
             <CardTitle>Unable to Join Project</CardTitle>
             <CardDescription>This invite link is invalid or no longer points to a project.</CardDescription>
@@ -141,7 +144,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Link2 className="h-7 w-7 text-primary" />
+              <HugeiconsIcon icon={__Link2HugeIcon} className="h-7 w-7 text-primary" />
             </div>
             <CardTitle>{preview.project.name}</CardTitle>
             <CardDescription>
@@ -160,7 +163,7 @@ export function ProjectJoinPage() {
                 void login()
               }}
             >
-              <LogIn className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={__LogInHugeIcon} className="mr-2 h-4 w-4" />
               Sign in to continue
             </Button>
           </CardContent>
@@ -175,7 +178,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
             </div>
             <CardTitle>Finishing Sign-in...</CardTitle>
             <CardDescription>Preparing your account for project access.</CardDescription>
@@ -191,7 +194,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-7 w-7 text-destructive" />
+              <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
             <CardTitle>Link No Longer Active</CardTitle>
             <CardDescription>
@@ -213,7 +216,7 @@ export function ProjectJoinPage() {
       <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <Link2 className="h-7 w-7 text-primary" />
+            <HugeiconsIcon icon={__Link2HugeIcon} className="h-7 w-7 text-primary" />
           </div>
           <CardTitle>{preview.project.name}</CardTitle>
           <CardDescription>
@@ -256,7 +259,7 @@ export function ProjectJoinPage() {
                 }}
                 disabled={isJoining}
               >
-                {isJoining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isJoining ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Join project
               </Button>
             )}
@@ -266,3 +269,4 @@ export function ProjectJoinPage() {
     </div>
   )
 }
+

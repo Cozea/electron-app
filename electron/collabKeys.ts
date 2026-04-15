@@ -11,6 +11,8 @@ const COLLAB_KEYS_DIR = 'collab-keys'
 const DEVICE_IDENTITY_FILE = 'device-identity.bin'
 const DEVICE_ALGORITHM = 'ECDH-P256'
 const WRAP_ALGORITHM = 'ECDH-P256+A256GCM'
+const RECOVERY_WRAP_ALGORITHM = 'PBKDF2-SHA256+A256GCM'
+const RECOVERY_WRAP_ITERATIONS = 210_000
 
 interface StoredCollabDeviceIdentity {
   deviceId: string
@@ -39,9 +41,25 @@ export interface WrappedRoomKeyDescriptor {
   senderDeviceId: string
 }
 
+export interface RecoveryKitDescriptor {
+  recoveryCode: string
+  wrappedKey: string
+  wrapAlgorithm: typeof RECOVERY_WRAP_ALGORITHM
+  salt: string
+  iterations: number
+}
+
 interface WrappedRoomKeyEnvelopeV1 {
   v: 1
   alg: typeof WRAP_ALGORITHM
+  iv: string
+  ciphertext: string
+  aad: string
+}
+
+interface WrappedRecoveryKeyEnvelopeV1 {
+  v: 1
+  alg: typeof RECOVERY_WRAP_ALGORITHM
   iv: string
   ciphertext: string
   aad: string
@@ -75,6 +93,16 @@ function publicJwkFingerprint(publicKeyJwk: JsonWebKey): string {
     .update(JSON.stringify(publicKeyJwk))
     .digest('hex')
     .slice(0, 32)
+}
+
+function generateRecoveryCode(): string {
+  const bytes = webcrypto.getRandomValues(new Uint8Array(16))
+  const hex = Buffer.from(bytes).toString('hex').toUpperCase()
+  return hex.match(/.{1,4}/g)?.join('-') ?? hex
+}
+
+function normalizeRecoveryCode(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
 function readStoredIdentity(): StoredCollabDeviceIdentity | null {
@@ -191,6 +219,33 @@ async function deriveWrapKey(
   )
 }
 
+async function deriveRecoveryWrapKey(args: {
+  recoveryCode: string
+  salt: Uint8Array
+  iterations: number
+}): Promise<CryptoKey> {
+  const recoveryKeyMaterial = await subtle.importKey(
+    'raw',
+    encoder.encode(normalizeRecoveryCode(args.recoveryCode)),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  )
+
+  return await subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: args.iterations,
+      hash: 'SHA-256',
+    },
+    recoveryKeyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
 async function loadStoredIdentityOrThrow(): Promise<StoredCollabDeviceIdentity> {
   const identity = readStoredIdentity()
   if (identity) {
@@ -276,6 +331,93 @@ export async function unwrapRoomKeyFromSender(args: {
     identity.privateKeyJwk,
     JSON.parse(args.senderPublicKeyJwk) as JsonWebKey,
   )
+
+  const plaintext = await subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: base64ToBytes(envelope.iv),
+      additionalData: base64ToBytes(envelope.aad),
+    },
+    wrapKey,
+    base64ToBytes(envelope.ciphertext),
+  )
+
+  return {
+    roomKeyBase64: bytesToBase64(new Uint8Array(plaintext)),
+  }
+}
+
+export async function createRecoveryKit(args: {
+  roomKeyBase64: string
+  recoveryCode?: string
+}): Promise<RecoveryKitDescriptor> {
+  const recoveryCode = args.recoveryCode?.trim() || generateRecoveryCode()
+  const iterations = RECOVERY_WRAP_ITERATIONS
+  const salt = webcrypto.getRandomValues(new Uint8Array(16))
+  const iv = webcrypto.getRandomValues(new Uint8Array(12))
+  const wrapKey = await deriveRecoveryWrapKey({
+    recoveryCode,
+    salt,
+    iterations,
+  })
+
+  const aad = encoder.encode(
+    JSON.stringify({
+      v: 1,
+      alg: RECOVERY_WRAP_ALGORITHM,
+      iterations,
+    }),
+  )
+
+  const ciphertext = await subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv,
+      additionalData: aad,
+    },
+    wrapKey,
+    base64ToBytes(args.roomKeyBase64),
+  )
+
+  const envelope: WrappedRecoveryKeyEnvelopeV1 = {
+    v: 1,
+    alg: RECOVERY_WRAP_ALGORITHM,
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+    aad: bytesToBase64(aad),
+  }
+
+  return {
+    recoveryCode,
+    wrappedKey: JSON.stringify(envelope),
+    wrapAlgorithm: RECOVERY_WRAP_ALGORITHM,
+    salt: bytesToBase64(salt),
+    iterations,
+  }
+}
+
+export async function unwrapRoomKeyFromRecoveryKit(args: {
+  recoveryCode: string
+  wrappedKey: string
+  salt: string
+  iterations: number
+  wrapAlgorithm?: string
+}): Promise<{ roomKeyBase64: string }> {
+  const wrapAlgorithm = args.wrapAlgorithm ?? RECOVERY_WRAP_ALGORITHM
+  if (wrapAlgorithm !== RECOVERY_WRAP_ALGORITHM) {
+    throw new Error(`Unsupported recovery wrap algorithm: ${wrapAlgorithm}`)
+  }
+
+  const envelope = JSON.parse(args.wrappedKey) as WrappedRecoveryKeyEnvelopeV1
+  if (envelope.v !== 1 || envelope.alg !== RECOVERY_WRAP_ALGORITHM) {
+    throw new Error('Unsupported recovery-key envelope version')
+  }
+
+  const wrapKey = await deriveRecoveryWrapKey({
+    recoveryCode: args.recoveryCode,
+    salt: base64ToBytes(args.salt),
+    iterations: Math.max(1, Math.floor(args.iterations)),
+  })
 
   const plaintext = await subtle.decrypt(
     {

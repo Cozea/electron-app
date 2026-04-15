@@ -1,6 +1,23 @@
 import type { CSSProperties } from 'react'
-import { ArchiveBoxIcon as Package, BellIcon as Bell, BriefcaseIcon as Briefcase, BuildingOffice2Icon as Building2, CameraIcon as Camera, ChatBubbleLeftRightIcon as MessageSquare, CurrencyDollarIcon as DollarSign, HeartIcon as Heart, MapIcon as Map, RocketLaunchIcon as Rocket, ShieldCheckIcon as Shield, SparklesIcon as Sparkles, StarIcon as Star, UserIcon as User } from "@heroicons/react/24/outline"
 import type { ComponentType, SVGProps } from "react"
+
+import { Archive01Icon as __PackageHugeIcon, ArrowLeftRightIcon as __MessageSquareHugeIcon, Briefcase01Icon as __BriefcaseHugeIcon, Building02Icon as __Building2HugeIcon, Camera01Icon as __CameraHugeIcon, CurrencyIcon as __DollarSignHugeIcon, HeartAddIcon as __HeartHugeIcon, MapPinCheckIcon as __MapHugeIcon, Notification03Icon as __BellHugeIcon, Rocket01Icon as __RocketHugeIcon, Shield01Icon as __ShieldHugeIcon, SparklesIcon as __SparklesHugeIcon, StarIcon as __StarHugeIcon, UserIcon as __UserHugeIcon } from '@hugeicons/core-free-icons'
+
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+const Package = asHugeIcon(__PackageHugeIcon)
+const Bell = asHugeIcon(__BellHugeIcon)
+const Briefcase = asHugeIcon(__BriefcaseHugeIcon)
+const Building2 = asHugeIcon(__Building2HugeIcon)
+const Camera = asHugeIcon(__CameraHugeIcon)
+const MessageSquare = asHugeIcon(__MessageSquareHugeIcon)
+const DollarSign = asHugeIcon(__DollarSignHugeIcon)
+const Heart = asHugeIcon(__HeartHugeIcon)
+const Map = asHugeIcon(__MapHugeIcon)
+const Rocket = asHugeIcon(__RocketHugeIcon)
+const Shield = asHugeIcon(__ShieldHugeIcon)
+const Sparkles = asHugeIcon(__SparklesHugeIcon)
+const Star = asHugeIcon(__StarHugeIcon)
+const User = asHugeIcon(__UserHugeIcon)
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 
 import {
@@ -186,3 +203,4 @@ export function resolveWorkspaceIdentityPresentation(workspace?: WorkspaceIdenti
     color,
   }
 }
+

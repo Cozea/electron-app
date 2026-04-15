@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, AlignBoxBottomLeftIcon as __BoldHugeIcon, AlignBoxBottomLeftIcon as __ItalicHugeIcon, AlignBoxBottomLeftIcon as __UnderlineHugeIcon, Cancel01Icon as __XHugeIcon, FaceIdIcon as __SmileHugeIcon, Link01Icon as __Link2HugeIcon, MinusSignIcon as __MinusHugeIcon, SparklesIcon as __AsteriskHugeIcon } from '@hugeicons/core-free-icons'
+
 const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-4 w-full'}`} />;
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation } from 'convex/react'
@@ -8,7 +13,6 @@ import { Button } from '@/components/ui/button'
 
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
-import { Bars3BottomLeftIcon as Bold, Bars3BottomLeftIcon as Italic, Bars3BottomLeftIcon as Underline, FaceSmileIcon as Smile, LinkIcon as Link2, MinusIcon as Minus, PlusIcon as Plus, SparklesIcon as Asterisk, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { CodeMirrorMergeViewer } from './CodeMirrorMergeViewer'
 
 interface DiffPanelProps {
@@ -56,20 +60,20 @@ function getChangeIcon(changeType: string) {
     case 'create':
       return (
         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
-          <Plus className={`${baseClasses} text-green-500`} />
+          <HugeiconsIcon icon={__PlusHugeIcon} className={`${baseClasses} text-green-500`} />
         </span>
       )
     case 'delete':
       return (
         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
-          <Minus className={`${baseClasses} text-red-500`} />
+          <HugeiconsIcon icon={__MinusHugeIcon} className={`${baseClasses} text-red-500`} />
         </span>
       )
     case 'modify':
     default:
       return (
         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
-          <Asterisk className={`${baseClasses} text-amber-500`} />
+          <HugeiconsIcon icon={__AsteriskHugeIcon} className={`${baseClasses} text-amber-500`} />
         </span>
       )
   }
@@ -458,7 +462,7 @@ export function DiffPanel({
 
           {/* Close button */}
           <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 shrink-0">
-            <X className="h-4 w-4" />
+            <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
           </Button>
         </div>
       )}
@@ -532,7 +536,7 @@ export function DiffPanel({
                 disabled={isComposerLocked}
                 aria-label="Bold"
               >
-                <Bold className="h-4 w-4" />
+                <HugeiconsIcon icon={__BoldHugeIcon} className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -545,7 +549,7 @@ export function DiffPanel({
                 disabled={isComposerLocked}
                 aria-label="Italic"
               >
-                <Italic className="h-4 w-4" />
+                <HugeiconsIcon icon={__ItalicHugeIcon} className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -558,7 +562,7 @@ export function DiffPanel({
                 disabled={isComposerLocked}
                 aria-label="Underline"
               >
-                <Underline className="h-4 w-4" />
+                <HugeiconsIcon icon={__UnderlineHugeIcon} className="h-4 w-4" />
               </Button>
 
               {/* Separator */}
@@ -576,7 +580,7 @@ export function DiffPanel({
                 disabled={isComposerLocked}
                 aria-label="Insert link"
               >
-                <Link2 className="h-4 w-4" />
+                <HugeiconsIcon icon={__Link2HugeIcon} className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -586,7 +590,7 @@ export function DiffPanel({
                 disabled={isComposerLocked}
                 aria-label="Insert emoji"
               >
-                <Smile className="h-4 w-4" />
+                <HugeiconsIcon icon={__SmileHugeIcon} className="h-4 w-4" />
               </Button>
             </div>
 

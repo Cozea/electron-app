@@ -1,11 +1,15 @@
-import { PlusIcon as Plus } from "@heroicons/react/24/outline"
+
 import { useEffect, useState } from "react"
 
 import type {
+
   WorkbenchSeamDirection,
   WorkbenchSeamTarget,
 } from "@/features/projects/lib/workbenchDockview"
 import { cn } from "@/lib/utils"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchSeamInsertionProps {
   armed?: boolean
@@ -77,7 +81,7 @@ export function WorkbenchSeamInsertion({
               data-workbench-browser-overlay-reason="Add Tile controls"
               className={cn("pointer-events-none absolute z-[70]", getHandleClasses(target.direction, isHovered))}
             >
-              {isHovered ? <Plus className="h-3.5 w-3.5" /> : null}
+              {isHovered ? <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" /> : null}
             </div>
           </div>
         )
@@ -85,3 +89,4 @@ export function WorkbenchSeamInsertion({
     </>
   )
 }
+

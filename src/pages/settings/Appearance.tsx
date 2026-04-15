@@ -1,6 +1,7 @@
-import { CheckIcon as Check } from "@heroicons/react/24/outline"
+
 
 import {
+
   SettingsGroup,
   SettingsPageBody,
   SettingsRow,
@@ -14,6 +15,9 @@ import { Switch } from "../../components/ui/switch";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { Theme } from "@/lib/theme";
 import { cn } from "../../lib/utils";
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
 
 interface AppearanceProps {
   surface?: "page" | "drawer";
@@ -92,7 +96,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
                         style={{ background: t.swatch }}
                       >
                         {isSelected ? (
-                          <Check className="h-5 w-5 text-white drop-shadow-sm" />
+                          <HugeiconsIcon icon={__CheckHugeIcon} className="h-5 w-5 text-white drop-shadow-sm" />
                         ) : null}
                       </button>
                     </TooltipTrigger>

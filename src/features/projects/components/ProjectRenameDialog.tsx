@@ -1,7 +1,8 @@
-import { ExclamationTriangleIcon as AlertTriangle, PencilSquareIcon as Pencil } from "@heroicons/react/24/outline"
+
 
 import { Button } from '@/components/ui/button'
 import {
+
   Dialog,
   DialogContent,
   DialogDescription,
@@ -11,6 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, Edit01Icon as __PencilHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ProjectRenameDialogProps {
   open: boolean
@@ -41,7 +45,7 @@ export function ProjectRenameDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Pencil className="h-4 w-4" />
+            <HugeiconsIcon icon={__PencilHugeIcon} className="h-4 w-4" />
             Rename Project
           </DialogTitle>
           <DialogDescription>
@@ -65,7 +69,7 @@ export function ProjectRenameDialog({
 
         {errorMessage ? (
           <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0" />
             <p className="leading-6">{errorMessage}</p>
           </div>
         ) : null}
@@ -87,3 +91,4 @@ export function ProjectRenameDialog({
     </Dialog>
   )
 }
+

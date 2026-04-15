@@ -1,9 +1,13 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, Folder01Icon as __FolderClosedIconHugeIcon, Folder01Icon as __FolderIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { type TurnId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { type TurnDiffFileChange } from "@/stores/types";
 import { buildTurnDiffTree, type TurnDiffTreeNode } from "./turnDiffTree";
-import { ChevronRightIcon, FolderIcon, FolderIcon as FolderClosedIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
@@ -55,7 +59,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
             style={{ paddingLeft: `${leftPadding}px` }}
             onClick={() => toggleDirectory(node.path, depth === 0)}
           >
-            <ChevronRightIcon
+            <HugeiconsIcon icon={__ChevronRightIconHugeIcon}
               aria-hidden="true"
               className={cn(
                 "size-3.5 shrink-0 text-muted-foreground/70 transition-transform group-hover:text-foreground/80",
@@ -63,9 +67,9 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
               )}
             />
             {isExpanded ? (
-              <FolderIcon className="size-3.5 shrink-0 text-muted-foreground/75" />
+              <HugeiconsIcon icon={__FolderIconHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75" />
             ) : (
-              <FolderClosedIcon className="size-3.5 shrink-0 text-muted-foreground/75" />
+              <HugeiconsIcon icon={__FolderClosedIconHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75" />
             )}
             <span className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90">
               {node.name}

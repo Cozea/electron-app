@@ -1,10 +1,15 @@
-import { FolderIcon } from "@heroicons/react/24/outline"
+
 
 import { cn } from "@/lib/utils"
 
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Folder01Icon as __FolderClosedIconHugeIcon, Folder03Icon as __FolderOpenIconHugeIcon } from '@hugeicons/core-free-icons'
+
 export interface NativeProjectFolderIconProps {
   /** Local project folder path; kept for compatibility with existing call sites. */
+
   folderPath: string | null | undefined
+  isOpen?: boolean
   className?: string
   /** Reserved for a future safe native-icon variant. */
   imgClassName?: string
@@ -19,12 +24,16 @@ export interface NativeProjectFolderIconProps {
  */
 export function NativeProjectFolderIcon({
   folderPath: _folderPath,
+  isOpen = false,
   className,
   fallbackClassName = "size-3.5 text-muted-foreground/75",
 }: NativeProjectFolderIconProps) {
   return (
     <span className={cn("inline-flex shrink-0 items-center justify-center", className)}>
-      <FolderIcon className={fallbackClassName} />
+      <HugeiconsIcon
+        icon={isOpen ? __FolderOpenIconHugeIcon : __FolderClosedIconHugeIcon}
+        className={fallbackClassName}
+      />
     </span>
   )
 }

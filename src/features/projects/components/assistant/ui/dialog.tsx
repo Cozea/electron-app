@@ -1,7 +1,11 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
+
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { XMarkIcon as XIcon } from "@heroicons/react/24/outline"
 import type * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -81,7 +85,7 @@ function DialogPopup({
               className="absolute end-2 top-2"
               render={<Button size="icon" variant="ghost" />}
             >
-              <XIcon />
+              <HugeiconsIcon icon={__XIconHugeIcon} />
             </DialogPrimitive.Close>
           )}
         </DialogPrimitive.Popup>

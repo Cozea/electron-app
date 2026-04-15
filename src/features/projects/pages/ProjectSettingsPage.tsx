@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import * as Y from 'yjs'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useCollabSession } from '@/hooks/useCollabSession'
+import { invalidateCollabSession, useCollabSession } from '@/hooks/useCollabSession'
 import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { ProjectSettingsSourceControlPanel } from '@/features/projects/components/settings/ProjectSettingsSourceControlPanel'
 import {
+
   resolveProjectRepoAccessStatus,
 } from '@/lib/git/projectRepoAccess'
 import { resolveProjectRepositoryIntegration } from '@/lib/git/projectRepositoryIntegration'
@@ -32,9 +34,19 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowPathIcon as Loader2, BookmarkIcon as Save, ExclamationTriangleIcon as AlertTriangle, TrashIcon as Trash2, XMarkIcon as X } from "@heroicons/react/24/outline"
 import { cn } from '@/lib/utils'
 import type { ProjectGitRuntimeProjectLike } from '@/lib/git/projectGitRuntime'
+import { EncryptedLocalSnapshotStore } from '@/lib/collab/EncryptedLocalSnapshotStore'
+import {
+  bytesToEnvelope,
+  decryptPayload,
+  encryptPayload,
+  envelopeToBytes,
+  generateRoomKeyBase64,
+} from '@/lib/collab/cipherEnvelope'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 export interface ProjectSettingsPageProps {
   presentation?: 'modal' | 'embedded'
@@ -54,10 +66,22 @@ function cleanConvexError(error: unknown, fallback: string): string {
   return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
 }
 
+interface ActiveRecoveryKit {
+  roomId: string
+  keyVersion: number
+  wrapAlgorithm: string
+  wrappedKey: string
+  salt: string
+  iterations: number
+  createdAt: number
+  createdByDeviceId: string
+}
+
 export function ProjectSettingsPage({
   presentation = 'modal',
   onRequestClose = null,
 }: ProjectSettingsPageProps = {}) {
+  const unsafeYjsApi = api as any
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { accessToken, convexUserId } = useAuth()
@@ -69,6 +93,10 @@ export function ProjectSettingsPage({
   const removeProject = useMutation(api.projects.deleteProject)
   const revokeCollabDevice = useMutation(api.yjs.revokeCollabDevice)
   const storeWrappedRoomKey = useMutation(api.yjs.storeWrappedRoomKey)
+  const storeRecoveryKit = useMutation(unsafeYjsApi.yjs.storeRecoveryKit)
+  const syncCollabRoom = useMutation(api.yjs.syncWithServer)
+  const rotateEncryptedRoomKey = useMutation(api.yjs.rotateEncryptedRoomKey)
+  const resetEncryptedRoom = useMutation(api.yjs.resetEncryptedRoom)
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
@@ -93,6 +121,12 @@ export function ProjectSettingsPage({
       ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
       : 'skip',
   )
+  const activeRecoveryKit = useQuery(
+    unsafeYjsApi.yjs.getActiveRecoveryKit,
+    project?._id && collabSessionResult.session?.roomId
+      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
+      : 'skip',
+  ) as ActiveRecoveryKit | null | undefined
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -166,7 +200,11 @@ export function ProjectSettingsPage({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [collabAction, setCollabAction] = useState<"share" | `revoke:${string}` | null>(null)
+  const [showCollabResetDialog, setShowCollabResetDialog] = useState(false)
+  const [showRecoveryCodeDialog, setShowRecoveryCodeDialog] = useState(false)
+  const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState<string | null>(null)
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState('')
+  const [collabAction, setCollabAction] = useState<"share" | "rotate" | "reset" | "generate-recovery" | "recover" | `revoke:${string}` | null>(null)
   const [collabError, setCollabError] = useState<string | null>(null)
   const [collabNotice, setCollabNotice] = useState<string | null>(null)
 
@@ -182,6 +220,8 @@ export function ProjectSettingsPage({
     setDeleteError(null)
     setCollabError(null)
     setCollabNotice(null)
+    setGeneratedRecoveryCode(null)
+    setRecoveryCodeInput('')
   }, [
     project?._id,
     project?.description,
@@ -211,9 +251,175 @@ export function ProjectSettingsPage({
   const collabSession = collabSessionResult.session
   const collabBootstrap = collabSession?.encryption ?? null
   const currentDeviceId = collabSession?.deviceId ?? null
+  const collabScopeKey = project?._id ? String(project._id) : null
   const canManageCollabSecurity = Boolean(project?._id && convexUserId && canEditGeneral)
   const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
 
+  const buildAndStoreRecoveryKit = useCallback(async (args: {
+    roomKeyBase64: string
+    keyVersion: number
+  }): Promise<string | null> => {
+    if (!project || !convexUserId || !collabSession) {
+      return null
+    }
+
+    const recoveryKit = await window.electronAPI.collab.createRecoveryKit({
+      roomKeyBase64: args.roomKeyBase64,
+    })
+
+    await storeRecoveryKit({
+      projectId: project._id,
+      roomId: collabSession.roomId,
+      keyVersion: args.keyVersion,
+      createdByUserId: convexUserId,
+      createdByDeviceId: collabSession.deviceId,
+      wrapAlgorithm: recoveryKit.wrapAlgorithm,
+      wrappedKey: recoveryKit.wrappedKey,
+      salt: recoveryKit.salt,
+      iterations: recoveryKit.iterations,
+    })
+
+    setGeneratedRecoveryCode(recoveryKit.recoveryCode)
+    setShowRecoveryCodeDialog(true)
+    return recoveryKit.recoveryCode
+  }, [collabSession, convexUserId, project, storeRecoveryKit])
+
+  const rotateRoomKeyWithCurrentRoom = useCallback(async (options?: {
+    devices?: NonNullable<typeof collaborationDevices>
+  }): Promise<number | null> => {
+    if (
+      !project ||
+      !convexUserId ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'ready' ||
+      !collabBootstrap.wrappedRoomKey ||
+      !collabBootstrap.senderPublicKeyJwk
+    ) {
+      return null
+    }
+
+    const devices = options?.devices ?? collaborationDevices
+    if (!devices || devices.length === 0) {
+      throw new Error('No active trusted devices are available for key rotation.')
+    }
+
+    const { roomKeyBase64: currentRoomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
+      senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
+      wrappedKey: collabBootstrap.wrappedRoomKey,
+      wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
+    })
+
+    const syncState = await syncCollabRoom({
+      projectId: project._id,
+      clientId: `settings-rotation:${Date.now()}`,
+      roomId: collabSession.roomId,
+    })
+
+    const roomDoc = new Y.Doc()
+    if (syncState.serverSnapshot) {
+      const decryptedSnapshot = await decryptPayload({
+        roomKeyBase64: currentRoomKeyBase64,
+        envelope: bytesToEnvelope(new Uint8Array(syncState.serverSnapshot)),
+        expectedKind: 'yjs_snapshot',
+      })
+      Y.applyUpdate(roomDoc, decryptedSnapshot, 'snapshot')
+    }
+    for (const update of syncState.recentUpdates) {
+      const decryptedUpdate = await decryptPayload({
+        roomKeyBase64: currentRoomKeyBase64,
+        envelope: bytesToEnvelope(new Uint8Array(update.update)),
+        expectedKind: 'yjs_update',
+      })
+      Y.applyUpdate(roomDoc, decryptedUpdate, 'snapshot')
+    }
+
+    const nextKeyVersion = (collabBootstrap.activeKeyVersion ?? 1) + 1
+    const nextRoomKeyBase64 = generateRoomKeyBase64()
+    const nextSnapshotEnvelope = await encryptPayload({
+      roomKeyBase64: nextRoomKeyBase64,
+      kind: 'yjs_snapshot',
+      keyVersion: nextKeyVersion,
+      plaintext: Y.encodeStateAsUpdate(roomDoc),
+      metadata: {
+        projectId: String(project._id),
+        roomId: collabSession.roomId,
+      },
+    })
+
+    const wrappedKeys: Array<{
+      recipientUserId: NonNullable<typeof devices>[number]['userId']
+      recipientDeviceId: string
+      senderPublicKeyJwk: string
+      wrapAlgorithm: string
+      wrappedKey: string
+    }> = []
+
+    for (const device of devices) {
+      if (device.revokedAt || !device.publicKeyJwk) {
+        continue
+      }
+
+      const wrapped = await window.electronAPI.collab.wrapRoomKey({
+        roomKeyBase64: nextRoomKeyBase64,
+        recipientPublicKeyJwk: device.publicKeyJwk,
+      })
+
+      wrappedKeys.push({
+        recipientUserId: device.userId,
+        recipientDeviceId: device.deviceId,
+        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        wrapAlgorithm: wrapped.wrapAlgorithm,
+        wrappedKey: wrapped.wrappedKey,
+      })
+    }
+
+    if (wrappedKeys.length === 0) {
+      throw new Error('No active trusted devices are available for key rotation.')
+    }
+
+    const nextSnapshotBytes = envelopeToBytes(nextSnapshotEnvelope)
+    await rotateEncryptedRoomKey({
+      projectId: project._id,
+      roomId: collabSession.roomId,
+      userId: convexUserId,
+      initiatedByDeviceId: collabSession.deviceId,
+      encryptedSnapshot: nextSnapshotBytes.slice().buffer,
+      createdByClientId: String(roomDoc.clientID),
+      wrappedKeys,
+    })
+
+    await buildAndStoreRecoveryKit({
+      roomKeyBase64: nextRoomKeyBase64,
+      keyVersion: nextKeyVersion,
+    })
+
+    if (collabScopeKey) {
+      const localStore = new EncryptedLocalSnapshotStore()
+      await localStore.save({
+        scopeKey: collabScopeKey,
+        keyVersion: nextKeyVersion,
+        envelopeJson: JSON.stringify(nextSnapshotEnvelope),
+        updatedAt: Date.now(),
+      })
+    }
+
+    invalidateCollabSession(String(project._id))
+    await collabSessionResult.refresh()
+
+    return nextKeyVersion
+  }, [
+    buildAndStoreRecoveryKit,
+    collabBootstrap,
+    collabScopeKey,
+    collabSession,
+    collabSessionResult,
+    collaborationDevices,
+    convexUserId,
+    project,
+    rotateEncryptedRoomKey,
+    syncCollabRoom,
+  ])
 
   const handleSave = useCallback(async () => {
     if (!project || !convexUserId) return
@@ -387,14 +593,199 @@ export function ProjectSettingsPage({
         roomId: collabSession.roomId,
         deviceId,
       })
-      setCollabNotice('Device access revoked for future encrypted collaboration.')
+      if (collabBootstrap?.status === 'ready' && collaborationDevices) {
+        const nextDevices = collaborationDevices.map((device) =>
+          device.deviceId === deviceId
+            ? { ...device, revokedAt: Date.now() }
+            : device,
+        )
+        await rotateRoomKeyWithCurrentRoom({
+          devices: nextDevices,
+        })
+        setCollabNotice('Device access revoked and the shared room key was rotated automatically.')
+      } else {
+        setCollabNotice('Device access revoked for future encrypted collaboration.')
+      }
       await collabSessionResult.refresh()
     } catch (error) {
       setCollabError(cleanConvexError(error, 'Failed to revoke collaboration device'))
     } finally {
       setCollabAction(null)
     }
-  }, [collabSession, collabSessionResult, project, revokeCollabDevice])
+  }, [
+    collabBootstrap?.status,
+    collabSession,
+    collabSessionResult,
+    collaborationDevices,
+    project,
+    revokeCollabDevice,
+    rotateRoomKeyWithCurrentRoom,
+  ])
+
+  const handleRotateRoomKey = useCallback(async () => {
+    if (!project || !collabSession || collabBootstrap?.status !== 'ready') {
+      return
+    }
+
+    setCollabAction('rotate')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      await rotateRoomKeyWithCurrentRoom()
+      setCollabNotice('Encrypted room keys rotated. Shared-branch devices will refresh onto the new key automatically.')
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to rotate encrypted room keys'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [collabBootstrap?.status, collabSession, project, rotateRoomKeyWithCurrentRoom])
+
+  const handleGenerateRecoveryKit = useCallback(async () => {
+    if (
+      !project ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'ready' ||
+      !collabBootstrap.wrappedRoomKey ||
+      !collabBootstrap.senderPublicKeyJwk
+    ) {
+      return
+    }
+
+    setCollabAction('generate-recovery')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
+        senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
+        wrappedKey: collabBootstrap.wrappedRoomKey,
+        wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
+      })
+
+      await buildAndStoreRecoveryKit({
+        roomKeyBase64,
+        keyVersion: collabBootstrap.activeKeyVersion ?? 1,
+      })
+
+      setCollabNotice(activeRecoveryKit ? 'Recovery code regenerated. Save the new code somewhere safe.' : 'Recovery code generated. Save it somewhere safe.')
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to generate recovery code'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    activeRecoveryKit,
+    buildAndStoreRecoveryKit,
+    collabBootstrap,
+    collabSession,
+    project,
+  ])
+
+  const handleRecoverWithCode = useCallback(async () => {
+    if (
+      !project ||
+      !convexUserId ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'missing_for_device' ||
+      !collabSession.devicePublicKeyJwk ||
+      !activeRecoveryKit ||
+      !recoveryCodeInput.trim()
+    ) {
+      return
+    }
+
+    setCollabAction('recover')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRecoveryKit({
+        recoveryCode: recoveryCodeInput.trim(),
+        wrappedKey: activeRecoveryKit.wrappedKey,
+        salt: activeRecoveryKit.salt,
+        iterations: activeRecoveryKit.iterations,
+        wrapAlgorithm: activeRecoveryKit.wrapAlgorithm,
+      })
+
+      const wrapped = await window.electronAPI.collab.wrapRoomKey({
+        roomKeyBase64,
+        recipientPublicKeyJwk: collabSession.devicePublicKeyJwk,
+      })
+
+      await storeWrappedRoomKey({
+        projectId: project._id,
+        roomId: collabSession.roomId,
+        keyVersion: activeRecoveryKit.keyVersion,
+        recipientUserId: convexUserId,
+        recipientDeviceId: collabSession.deviceId,
+        senderDeviceId: wrapped.senderDeviceId,
+        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        wrapAlgorithm: wrapped.wrapAlgorithm,
+        wrappedKey: wrapped.wrappedKey,
+      })
+
+      invalidateCollabSession(String(project._id))
+      await collabSessionResult.refresh()
+      setRecoveryCodeInput('')
+      setCollabNotice('This device recovered access to the encrypted collaboration room.')
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to recover room access with the recovery code'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    activeRecoveryKit,
+    collabBootstrap,
+    collabSession,
+    collabSessionResult,
+    convexUserId,
+    project,
+    recoveryCodeInput,
+    storeWrappedRoomKey,
+  ])
+
+  const handleResetEncryptedRoom = useCallback(async () => {
+    if (!project || !collabSession) {
+      return
+    }
+
+    setCollabAction('reset')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      await resetEncryptedRoom({
+        projectId: project._id,
+        roomId: collabSession.roomId,
+        userId: convexUserId ?? undefined,
+        retainDeviceId: collabSession.deviceId,
+      })
+
+      if (collabScopeKey) {
+        const localStore = new EncryptedLocalSnapshotStore()
+        await localStore.clear(collabScopeKey)
+      }
+
+      invalidateCollabSession(String(project._id))
+      await collabSessionResult.refresh()
+      setCollabNotice('Encrypted collaboration room reset. Re-open the shared branch to initialize a fresh shared room from local project state.')
+      setShowCollabResetDialog(false)
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to reset encrypted collaboration room'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    collabScopeKey,
+    collabSession,
+    collabSessionResult,
+    convexUserId,
+    project,
+    resetEncryptedRoom,
+  ])
 
   function closeSettingsModal(): void {
     if (isEmbedded) {
@@ -407,7 +798,7 @@ export function ProjectSettingsPage({
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
         Loading project settings…
       </div>
     )
@@ -439,7 +830,7 @@ export function ProjectSettingsPage({
           className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
           aria-label="Close settings"
         >
-          <X className="h-3.5 w-3.5" />
+          <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
         </button>
 
         <div className="flex-1 min-h-0">
@@ -537,19 +928,16 @@ export function ProjectSettingsPage({
                         {collabSessionResult.status === 'error' ? (
                           <span className="text-destructive">{collabSessionResult.error ?? 'Failed to load collaboration security status.'}</span>
                         ) : null}
-                        {collabBootstrap?.status === 'plaintext_legacy' ? (
-                          <span>
-                            This project still has a legacy plaintext room. It will be migrated automatically the next time someone opens the shared branch.
-                          </span>
-                        ) : null}
                         {collabBootstrap?.status === 'room_not_initialized' ? (
                           <span>
-                            Encrypted collaboration will initialize automatically when the shared branch is used.
+                            Encrypted collaboration will initialize automatically the next time someone opens the shared branch.
                           </span>
                         ) : null}
                         {collabBootstrap?.status === 'missing_for_device' ? (
                           <span>
-                            This device is waiting for an already-authorized device to share the room key.
+                            {activeRecoveryKit
+                              ? 'This device is waiting for an already-authorized device or a saved recovery code to restore room access.'
+                              : 'This device is waiting for an already-authorized device to share the room key.'}
                           </span>
                         ) : null}
                         {collabBootstrap?.status === 'device_revoked' ? (
@@ -590,10 +978,109 @@ export function ProjectSettingsPage({
                             }}
                           >
                             {collabAction === 'share' ? (
-                              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                             ) : null}
                             Share keys
                           </Button>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Recovery code</Label>
+                            <p className="text-[11px] text-muted-foreground">
+                              Save an offline recovery code so a new device can restore shared-room access without another trusted device.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            disabled={collabAction === 'generate-recovery'}
+                            onClick={() => {
+                              void handleGenerateRecoveryKit()
+                            }}
+                          >
+                            {collabAction === 'generate-recovery' ? (
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            {activeRecoveryKit ? 'Regenerate code' : 'Generate code'}
+                          </Button>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Rotate room key</Label>
+                            <p className="text-[11px] text-muted-foreground">
+                              Re-wrap the shared room for currently trusted devices and retire the previous room key.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            disabled={collabAction === 'rotate' || !collaborationDevices || collaborationDevices.length === 0}
+                            onClick={() => {
+                              void handleRotateRoomKey()
+                            }}
+                          >
+                            {collabAction === 'rotate' ? (
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Rotate keys
+                          </Button>
+                        </div>
+                      ) : null}
+                      {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Room recovery</Label>
+                            <p className="text-[11px] text-muted-foreground">
+                              If no currently-authorized device can approve this room, reset the encrypted shared room and start fresh.
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                            disabled={collabAction === 'reset'}
+                            onClick={() => {
+                              setShowCollabResetDialog(true)
+                            }}
+                          >
+                            Reset room
+                          </Button>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
+                        <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Recover with code</Label>
+                            <p className="text-[11px] text-muted-foreground">
+                              Enter a saved recovery code to authorize this device without another trusted device.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={recoveryCodeInput}
+                              onChange={(event) => {
+                                setRecoveryCodeInput(event.target.value)
+                              }}
+                              placeholder="XXXX-XXXX-XXXX-XXXX"
+                              className="h-8 text-xs"
+                            />
+                            <Button
+                              variant="outline"
+                              className="h-8 text-[11px]"
+                              disabled={collabAction === 'recover' || recoveryCodeInput.trim().length === 0}
+                              onClick={() => {
+                                void handleRecoverWithCode()
+                              }}
+                            >
+                              {collabAction === 'recover' ? (
+                                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              ) : null}
+                              Recover
+                            </Button>
+                          </div>
                         </div>
                       ) : null}
                       {collaborationDevices && collaborationDevices.length > 0 ? (
@@ -631,7 +1118,7 @@ export function ProjectSettingsPage({
                                   }}
                                 >
                                   {collabAction === `revoke:${device.deviceId}` ? (
-                                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                   ) : null}
                                   {device.revokedAt ? 'Revoked' : 'Revoke'}
                                 </Button>
@@ -647,7 +1134,7 @@ export function ProjectSettingsPage({
                 <div className="min-w-0 space-y-6">
                   <section>
                     <h3 className="flex items-center gap-1.5 px-1 text-xs font-medium text-destructive mb-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
                       Danger Zone
                     </h3>
                     <div className="flex flex-col overflow-hidden rounded-[14px] bg-destructive/15 dark:bg-destructive/20">
@@ -686,7 +1173,7 @@ export function ProjectSettingsPage({
                             setDeleteError(null)
                           }}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
+                          <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-4 w-4" />
                           Delete Project
                         </Button>
                       </div>
@@ -705,9 +1192,9 @@ export function ProjectSettingsPage({
                     disabled={!canSave}
                   >
                     {isSaving ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Save className="h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
                     )}
                     {isSaving ? 'Saving...' : 'Save Changes'}
                   </Button>
@@ -757,6 +1244,76 @@ export function ProjectSettingsPage({
         isDeleting={isDeleting}
         errorMessage={deleteError}
       />
+
+      <AlertDialog open={showCollabResetDialog} onOpenChange={setShowCollabResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset encrypted collaboration room</AlertDialogTitle>
+            <AlertDialogDescription>
+              This clears the current encrypted shared collaboration state for <span className="font-semibold">{project.name}</span>.
+              Use this only when no currently-authorized device can approve access or recover the room.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Local files on this device stay intact, but the shared encrypted room history and keys will be replaced.
+          </p>
+          {collabError ? <p className="text-sm text-destructive">{collabError}</p> : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={collabAction === 'reset'}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleResetEncryptedRoom()
+              }}
+              disabled={collabAction === 'reset'}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {collabAction === 'reset' ? 'Resetting…' : 'Reset room'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={showRecoveryCodeDialog}
+        onOpenChange={(open) => {
+          setShowRecoveryCodeDialog(open)
+          if (!open) {
+            setGeneratedRecoveryCode(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this recovery code</AlertDialogTitle>
+            <AlertDialogDescription>
+              This code can restore encrypted collaboration access for a new device when no trusted device is available.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-xl bg-muted px-4 py-3">
+            <p className="font-mono text-sm tracking-[0.18em] text-foreground">
+              {generatedRecoveryCode ?? 'No recovery code generated.'}
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Keep it somewhere safe. We only show the newly generated code here.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                if (generatedRecoveryCode) {
+                  void navigator.clipboard.writeText(generatedRecoveryCode)
+                }
+              }}
+            >
+              Copy code
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
+

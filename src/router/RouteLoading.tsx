@@ -1,6 +1,9 @@
-import { ArrowPathIcon as Loader2 } from "@heroicons/react/24/outline"
+
 
 import { cn } from "@/lib/utils"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface RouteLoadingProps {
   className?: string
@@ -19,9 +22,10 @@ export function RouteLoading({
       )}
     >
       <div className="flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
         <span>{label}</span>
       </div>
     </div>
   )
 }
+

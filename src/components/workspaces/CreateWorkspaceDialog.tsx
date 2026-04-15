@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowPathIcon as Loader2, CheckIcon as Check, XMarkIcon as X } from "@heroicons/react/24/outline"
 
 import { Button } from '@/components/ui/button'
 import {
+
   Dialog,
   DialogContent,
   DialogDescription,
@@ -21,6 +21,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import type { WorkspaceIdentityInput } from '@shared/workspaceIdentity.ts'
 import { WorkspaceIdentityPicker } from '@/components/workspaces/WorkspaceIdentityPicker'
 import { getDefaultWorkspaceName } from '@/lib/workspaces/defaultWorkspaceName'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface CreateWorkspaceDialogProps {
   open: boolean
@@ -163,14 +166,14 @@ export function CreateWorkspaceDialog({
         <TooltipTrigger asChild>
           <span className="absolute inset-y-0 right-3 flex items-center">
             {availability.status === 'checking' ? (
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="size-4 animate-spin text-muted-foreground" />
             ) : availability.status === 'available' ? (
               <span className="flex size-[18px] items-center justify-center rounded-full bg-emerald-500 text-white">
-                <Check className="size-2.5" />
+                <HugeiconsIcon icon={__CheckHugeIcon} className="size-2.5" />
               </span>
             ) : (
               <span className="flex size-[18px] items-center justify-center rounded-full bg-destructive text-white">
-                <X className="size-2.5" />
+                <HugeiconsIcon icon={__XHugeIcon} className="size-2.5" />
               </span>
             )}
           </span>
@@ -259,7 +262,7 @@ export function CreateWorkspaceDialog({
           >
             {isCreating ? (
               <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 size-4 animate-spin" />
                 Creating...
               </>
             ) : (
@@ -271,3 +274,4 @@ export function CreateWorkspaceDialog({
     </Dialog>
   )
 }
+

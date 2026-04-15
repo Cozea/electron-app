@@ -49,8 +49,6 @@ function canUseGpuTerminalRenderer(diagnostics: GpuAccelerationDiagnostics | nul
   return gpuCompositingReady && webglReady
 }
 
-
-
 function getTerminalSelectionRect(mountElement: HTMLElement): DOMRect | null {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -268,8 +266,6 @@ export function TerminalInstance({
   useEffect(() => {
     syncWebglRendererRef.current = syncWebglRenderer
   }, [syncWebglRenderer])
-
-
 
   
 
@@ -541,8 +537,6 @@ export function TerminalInstance({
       window.clearTimeout(enableGpuTimeout)
     }
   }, [disposeWebglRenderer, shouldUseGpuRenderer])
-
-
 
   const handleResize = useCallback(() => {
     if (!fitAddonRef.current || !xtermRef.current) return

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ChevronDownIcon as ChevronDown, CodeBracketIcon as Code2 } from "@heroicons/react/24/outline"
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm } from "react-icons/si"
 import { VscVscodeInsiders } from "react-icons/vsc"
 import type { ComponentType, MouseEvent, SVGProps } from "react"
@@ -9,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvailableExternalEditor, ExternalEditorId } from "@shared/electronApiTypes"
 import {
+
   openProjectFileInExternalEditor,
   PREVIEW_EDITOR_PREFERENCE_KEY,
   readStoredExternalEditorPreference,
@@ -20,6 +20,11 @@ import {
   VisualStudioCodeIcon,
   ZedIcon,
 } from "@/features/projects/components/workbench/WorkbenchEditorIcons"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'
+
+const Code2 = (props: any) => <HugeiconsIcon icon={__Code2HugeIcon} {...props} />
 
 interface WorkbenchHeaderEditorControlProps {
   projectPath: string | null
@@ -240,7 +245,7 @@ export function WorkbenchHeaderEditorControl({
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
               >
-                <ChevronDown className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
               </Button>
             </>
           ) : null}
@@ -252,3 +257,4 @@ export function WorkbenchHeaderEditorControl({
     </Tooltip>
   )
 }
+

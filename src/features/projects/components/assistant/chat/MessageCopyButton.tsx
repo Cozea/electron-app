@@ -1,6 +1,10 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon, DocumentAttachmentIcon as __CopyIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { memo } from "react";
-import { CheckIcon, DocumentDuplicateIcon as CopyIcon } from "@heroicons/react/24/outline"
 import { Button } from "../ui/button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
@@ -17,7 +21,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({ text }: { tex
       title="Copy message"
       aria-label="Copy message"
     >
-      {isCopied ? <CheckIcon className="size-3 text-success" /> : <CopyIcon className="size-3" />}
+      {isCopied ? <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3 text-success" /> : <HugeiconsIcon icon={__CopyIconHugeIcon} className="size-3" />}
     </Button>
   );
 });

@@ -10,12 +10,10 @@ export type ProjectWorkingCopyMode = 'managed' | 'attached'
 export interface ProjectGitRuntimeSourceControlLike {
   provider?: string
   repoUrl?: string | null
-  activeCollabBranch?: string | null
   defaultBranch?: string | null
   visibility?: string
   mergeStrategy?: string
   mergeQueue?: string
-  syncPolicy?: ProjectGitSyncPolicy
   workingCopyMode?: ProjectWorkingCopyMode
   setupMode?: VersionControlSetupMode
 }
@@ -72,9 +70,9 @@ function resolveProjectRuntimeId(
 }
 
 export function resolveProjectGitSyncPolicy(
-  sourceControl: ProjectGitRuntimeSourceControlLike | null | undefined
+  _sourceControl: ProjectGitRuntimeSourceControlLike | null | undefined
 ): ProjectGitSyncPolicy {
-  return sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto'
+  return 'manual'
 }
 
 export function resolveProjectWorkingCopyMode(
@@ -92,7 +90,6 @@ export async function resolveProjectGitRemoteConfig(args: {
     normalizeProvider(args.project.gitRepository?.provider) ??
     normalizeProvider(args.project.sourceControl?.provider)
   let branch =
-    args.project.sourceControl?.activeCollabBranch?.trim() ||
     args.project.sourceControl?.defaultBranch?.trim() ||
     args.project.gitRepository?.defaultBranch?.trim() ||
     'main'

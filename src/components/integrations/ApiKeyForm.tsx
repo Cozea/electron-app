@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, CheckmarkCircle02Icon as __CheckCircleHugeIcon, EyeIcon as __EyeHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon, ViewOffSlashIcon as __EyeOffHugeIcon } from '@hugeicons/core-free-icons'
+
 /**
  * API Key Form Component
  *
@@ -9,7 +14,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ArrowPathIcon as Loader2, ArrowTopRightOnSquareIcon as ExternalLink, CheckCircleIcon as CheckCircle, ExclamationCircleIcon as AlertCircle, EyeIcon as Eye, EyeSlashIcon as EyeOff } from "@heroicons/react/24/outline"
 import type { IntegrationDefinition, IntegrationCredentials } from '@/lib/integrations/types'
 
 interface ApiKeyFormProps {
@@ -71,7 +75,7 @@ export function ApiKeyForm({
                 className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
               >
                 How to get this
-                <ExternalLink className="h-3 w-3" />
+                <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
               </a>
             )}
           </div>
@@ -96,9 +100,9 @@ export function ApiKeyForm({
                 onClick={() => toggleShowSecret(field.name)}
               >
                 {showSecrets[field.name] ? (
-                  <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  <HugeiconsIcon icon={__EyeOffHugeIcon} className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <Eye className="h-4 w-4 text-muted-foreground" />
+                  <HugeiconsIcon icon={__EyeHugeIcon} className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
             )}
@@ -113,7 +117,7 @@ export function ApiKeyForm({
       {/* Error message */}
       {error && (
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -121,7 +125,7 @@ export function ApiKeyForm({
       {/* Test connection status */}
       {testStatus === 'success' && (
         <Alert>
-          <CheckCircle className="h-4 w-4 text-green-500" />
+          <HugeiconsIcon icon={__CheckCircleHugeIcon} className="h-4 w-4 text-green-500" />
           <AlertDescription>Connection verified successfully!</AlertDescription>
         </Alert>
       )}
@@ -134,7 +138,7 @@ export function ApiKeyForm({
         <Button type="submit" disabled={!isValid || isSubmitting}>
           {isSubmitting ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 mr-2 animate-spin" />
               Connecting...
             </>
           ) : (
