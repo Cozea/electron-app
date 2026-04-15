@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useConvex, useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
-import { syncProjectRepositoryAccess } from '@/lib/git/projectRepoAutomation'
-import {
-  resolveProjectIntegrationProvider,
-  resolveProjectRepoAccessStatus,
-} from '@/lib/git/projectRepoAccess'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -53,11 +46,6 @@ interface TeamTableRow {
   isSelf: boolean
   userId?: Id<'users'>
   inviteId?: Id<'projectInvites'>
-  repoAccess?: {
-    state: 'pending' | 'granted' | 'needs_identity' | 'manual_required' | 'revoked' | 'error'
-    errorMessage?: string
-    providerAccountHandle?: string
-  }
 }
 
 interface WorkspaceMemberRecord {
@@ -130,59 +118,7 @@ function formatDate(timestamp: number): string {
     .replace(/\//g, '-')
 }
 
-function getRepoAccessBadgePresentation(
-  repoAccess: TeamTableRow['repoAccess'] | undefined,
-  provider?: 'github' | 'gitlab'
-): { label: string; className: string } {
-  if (!provider) {
-    return {
-      label: 'No repo sync',
-      className: 'border-border/60 bg-secondary/60 text-muted-foreground',
-    }
-  }
-
-  switch (repoAccess?.state) {
-    case 'granted':
-      return {
-        label: 'Granted',
-        className: 'border-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-      }
-    case 'pending':
-      return {
-        label: 'Pending',
-        className: 'border-0 bg-amber-500/15 text-amber-700 dark:text-amber-300',
-      }
-    case 'needs_identity':
-      return {
-        label: provider === 'github' ? 'Needs GitHub handle' : 'Needs identity',
-        className: 'border-0 bg-orange-500/15 text-orange-700 dark:text-orange-300',
-      }
-    case 'manual_required':
-      return {
-        label: 'Manual',
-        className: 'border-0 bg-secondary text-muted-foreground',
-      }
-    case 'error':
-      return {
-        label: 'Error',
-        className: 'border-0 bg-destructive/15 text-destructive',
-      }
-    case 'revoked':
-      return {
-        label: 'Revoked',
-        className: 'border-0 bg-secondary text-muted-foreground',
-      }
-    default:
-      return {
-        label: 'Not synced',
-        className: 'border-border/60 bg-secondary/60 text-muted-foreground',
-      }
-  }
-}
-
 export function ProjectTeamPage() {
-  const convex = useConvex()
-  const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
   const projectWorkspace = useProjectWorkspaceContext(project)
@@ -228,29 +164,6 @@ export function ProjectTeamPage() {
       ? { projectId: project._id, viewerUserId: convexUserId }
       : 'skip'
   )
-  const repoAccessRecords = useQuery(
-    api.projectRepoAccess.listForProject,
-    project?._id && convexUserId
-      ? { projectId: project._id, viewerUserId: convexUserId }
-      : 'skip'
-  )
-  const { getConnection } = useWorkspaceSourceControl({
-    route: '/settings/source-control',
-    enabled: Boolean(project?.organizationId && convexUserId),
-  })
-  const repoIntegrationProvider = resolveProjectIntegrationProvider(project ?? null)
-  const repoIntegration = repoIntegrationProvider
-    ? getConnection(repoIntegrationProvider)
-    : null
-  const repoAccessStatus = useMemo(
-    () =>
-      resolveProjectRepoAccessStatus({
-        project,
-        sourceControlConnection: repoIntegration,
-        isPersonalWorkspace,
-      }),
-    [isPersonalWorkspace, project, repoIntegration]
-  )
 
   const [teamError, setTeamError] = useState<string | null>(null)
   const [teamActionKey, setTeamActionKey] = useState<string | null>(null)
@@ -269,11 +182,6 @@ export function ProjectTeamPage() {
       ? isManager
       : currentWorkspaceAccess?.permissions.includes('projects:share') ?? false
   )
-  const repoAutomationProvider =
-    repoAccessStatus.supportsProviderAutomation &&
-    (repoAccessStatus.provider === 'github' || repoAccessStatus.provider === 'gitlab')
-      ? repoAccessStatus.provider
-      : undefined
   const assignableWorkspaceMembers = useMemo(() => {
     if (isPersonalWorkspace) return []
 
@@ -284,22 +192,6 @@ export function ProjectTeamPage() {
         formatMemberName(left).localeCompare(formatMemberName(right))
       )
   }, [isPersonalWorkspace, members, workspaceMembers])
-  const repoAccessByUserId = useMemo(() => {
-    const next = new Map<string, NonNullable<typeof repoAccessRecords>[number]>()
-    for (const record of repoAccessRecords ?? []) {
-      if (!record.memberUserId) continue
-      next.set(String(record.memberUserId), record)
-    }
-    return next
-  }, [repoAccessRecords])
-  const repoAccessByEmail = useMemo(() => {
-    const next = new Map<string, NonNullable<typeof repoAccessRecords>[number]>()
-    for (const record of repoAccessRecords ?? []) {
-      if (!record.inviteEmail) continue
-      next.set(record.inviteEmail.trim().toLowerCase(), record)
-    }
-    return next
-  }, [repoAccessRecords])
 
   useEffect(() => {
     if (
@@ -318,15 +210,10 @@ export function ProjectTeamPage() {
 
   const filteredRows = useMemo(() => {
     const memberRows: TeamTableRow[] = (members ?? []).map((member) => {
-      const email = member.user?.email ?? ''
-      const normalizedEmail = email.trim().toLowerCase()
-      const repoAccess =
-        repoAccessByUserId.get(String(member.userId)) ??
-        (normalizedEmail ? repoAccessByEmail.get(normalizedEmail) : undefined)
       return {
         key: `member:${String(member.userId)}`,
         type: 'member',
-        email,
+        email: member.user?.email ?? '',
         name: formatMemberName(member),
         role: member.role,
         status: 'active',
@@ -334,24 +221,15 @@ export function ProjectTeamPage() {
         avatarUrl: member.user?.profileImageUrl ?? null,
         isSelf: convexUserId === member.userId,
         userId: member.userId,
-        repoAccess: repoAccess
-          ? {
-              state: repoAccess.accessState,
-              errorMessage: repoAccess.errorMessage,
-              providerAccountHandle: repoAccess.providerAccountHandle,
-            }
-          : undefined,
       }
     })
 
     const inviteRows: TeamTableRow[] = isPersonalWorkspace
       ? (pendingInvites ?? []).map((invite) => {
-      const email = invite.email
-      const repoAccess = repoAccessByEmail.get(email.trim().toLowerCase())
       return {
         key: `invite:${String(invite._id)}`,
         type: 'invite',
-        email,
+        email: invite.email,
         name: formatInviteeName(invite),
         role: invite.role,
         status: 'pending',
@@ -359,13 +237,6 @@ export function ProjectTeamPage() {
         avatarUrl: invite.user?.profileImageUrl ?? null,
         isSelf: false,
         inviteId: invite._id,
-        repoAccess: repoAccess
-          ? {
-              state: repoAccess.accessState,
-              errorMessage: repoAccess.errorMessage,
-              providerAccountHandle: repoAccess.providerAccountHandle,
-            }
-          : undefined,
       }
     })
       : []
@@ -395,8 +266,6 @@ export function ProjectTeamPage() {
     isPersonalWorkspace,
     members,
     pendingInvites,
-    repoAccessByEmail,
-    repoAccessByUserId,
     roleFilter,
     sortDirection,
     sortField,
@@ -462,34 +331,11 @@ export function ProjectTeamPage() {
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
-        const member = (members ?? []).find((entry) => entry.userId === memberUserId)
-        const repoAccess =
-          repoAccessByUserId.get(String(memberUserId)) ??
-          (member?.user?.email
-            ? repoAccessByEmail.get(member.user.email.trim().toLowerCase())
-            : undefined)
         await removeMember({
           projectId: project._id,
           actorUserId: convexUserId,
           memberUserId,
         })
-
-        const syncOutcome = await syncProjectRepositoryAccess({
-          convex,
-          project,
-          actorUserId: convexUserId,
-          subjectType: 'member',
-          memberUserId,
-          inviteEmail: member?.user?.email ?? undefined,
-          providerAccountHandle: repoAccess?.providerAccountHandle,
-          role: member?.role ?? 'developer',
-          action: 'revoke',
-          isPersonalWorkspace,
-        })
-
-        if (!syncOutcome.success && syncOutcome.error) {
-          setTeamError(syncOutcome.error)
-        }
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to remove member'))
       } finally {
@@ -498,14 +344,9 @@ export function ProjectTeamPage() {
     },
     [
       canManageTeam,
-      convex,
       convexUserId,
-      isPersonalWorkspace,
-      members,
       project,
       removeMember,
-      repoAccessByEmail,
-      repoAccessByUserId,
     ]
   )
 
@@ -516,39 +357,17 @@ export function ProjectTeamPage() {
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
-        const invite = (pendingInvites ?? []).find((entry) => entry._id === inviteId)
-        const repoAccess = invite?.email
-          ? repoAccessByEmail.get(invite.email.trim().toLowerCase())
-          : undefined
         await cancelInvite({
           inviteId,
           cancelledBy: convexUserId,
         })
-
-        if (invite?.email) {
-          const syncOutcome = await syncProjectRepositoryAccess({
-            convex,
-            project,
-            actorUserId: convexUserId,
-            subjectType: 'invite',
-            inviteEmail: invite.email,
-            providerAccountHandle: repoAccess?.providerAccountHandle,
-            role: invite.role,
-            action: 'revoke',
-            isPersonalWorkspace,
-          })
-
-          if (!syncOutcome.success && syncOutcome.error) {
-            setTeamError(syncOutcome.error)
-          }
-        }
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to cancel invite'))
       } finally {
         setTeamActionKey(null)
       }
     },
-    [cancelInvite, canManageTeam, convex, convexUserId, isPersonalWorkspace, pendingInvites, project, repoAccessByEmail]
+    [cancelInvite, canManageTeam, convexUserId, project]
   )
 
   const handleResendInvite = useCallback(
@@ -569,51 +388,6 @@ export function ProjectTeamPage() {
       }
     },
     [canManageTeam, convexUserId, resendInvite, project]
-  )
-
-  const handleRetryRepoAccess = useCallback(
-    async (row: TeamTableRow) => {
-      if (!project || !convexUserId || !canManageTeam || !repoAutomationProvider) return
-
-      let providerAccountHandle = row.repoAccess?.providerAccountHandle
-      if (repoAutomationProvider === 'github' && !providerAccountHandle) {
-        const provided = window.prompt(
-          'Enter the collaborator’s GitHub username for repository access.'
-        )
-        if (!provided?.trim()) {
-          return
-        }
-        providerAccountHandle = provided.trim()
-      }
-
-      const actionKey = `repo:${row.key}`
-      setTeamActionKey(actionKey)
-      setTeamError(null)
-
-      try {
-        const syncOutcome = await syncProjectRepositoryAccess({
-          convex,
-          project,
-          actorUserId: convexUserId,
-          subjectType: row.type === 'member' ? 'member' : 'invite',
-          memberUserId: row.userId,
-          inviteEmail: row.email,
-          providerAccountHandle,
-          role: row.role,
-          action: 'grant',
-          isPersonalWorkspace,
-        })
-
-        if (!syncOutcome.success && syncOutcome.error) {
-          setTeamError(syncOutcome.error)
-        }
-      } catch (error) {
-        setTeamError(cleanConvexError(error, 'Failed to sync repository access'))
-      } finally {
-        setTeamActionKey(null)
-      }
-    },
-    [canManageTeam, convex, convexUserId, isPersonalWorkspace, project, repoAutomationProvider]
   )
 
   const headerActions = useMemo(() => {
@@ -689,29 +463,6 @@ export function ProjectTeamPage() {
       {teamError ? (
         <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {teamError}
-        </div>
-      ) : null}
-
-      {repoAccessStatus.state !== 'not_configured' ? (
-        <div className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h3 className="text-base font-medium">{repoAccessStatus.title}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{repoAccessStatus.description}</p>
-            </div>
-            {repoAccessStatus.state === 'integration_missing' || repoAccessStatus.state === 'integration_mismatch' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-xl"
-                onClick={() => {
-                  navigate('/settings/source-control')
-                }}
-              >
-                {repoAccessStatus.state === 'integration_mismatch' ? 'Fix Source Control' : 'Connect Source Control'}
-              </Button>
-            ) : null}
-          </div>
         </div>
       ) : null}
 
@@ -797,11 +548,10 @@ export function ProjectTeamPage() {
           <Table className="[&_th]:px-4 [&_td]:px-4">
           <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
             <TableRow>
-              <TableHead className="w-[34%]">Member Name</TableHead>
-              <TableHead className="w-[20%]">Role</TableHead>
-              <TableHead className="w-[14%]">Project</TableHead>
-              <TableHead className="w-[16%]">Repo</TableHead>
-              <TableHead className="w-[12%]">Date</TableHead>
+              <TableHead className="w-[40%]">Member Name</TableHead>
+              <TableHead className="w-[22%]">Role</TableHead>
+              <TableHead className="w-[16%]">Project</TableHead>
+              <TableHead className="w-[16%]">Date</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -871,31 +621,6 @@ export function ProjectTeamPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="overflow-hidden">
-                      <div className="min-w-0 space-y-1">
-                        {(() => {
-                          const repoBadge = getRepoAccessBadgePresentation(
-                            row.repoAccess,
-                            repoAutomationProvider
-                          )
-                          return (
-                            <Badge className={repoBadge.className}>
-                              {repoBadge.label}
-                            </Badge>
-                          )
-                        })()}
-                        {row.repoAccess?.providerAccountHandle ? (
-                          <div className="truncate text-xs text-muted-foreground">
-                            {row.repoAccess.providerAccountHandle}
-                          </div>
-                        ) : null}
-                        {row.repoAccess?.errorMessage ? (
-                          <div className="line-clamp-2 text-xs text-muted-foreground">
-                            {row.repoAccess.errorMessage}
-                          </div>
-                        ) : null}
-                      </div>
-                    </TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(row.date)}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -907,24 +632,6 @@ export function ProjectTeamPage() {
                         <DropdownMenuContent align="end">
                           {row.type === 'member' ? (
                             <>
-                              {repoAutomationProvider ? (
-                                <>
-                                  <DropdownMenuItem
-                                    disabled={!canManageTeam || teamActionKey === `repo:${row.key}`}
-                                    onClick={() => {
-                                      void handleRetryRepoAccess(row)
-                                    }}
-                                  >
-                                    {teamActionKey === `repo:${row.key}` ? (
-                                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                                    )}
-                                    Retry Repo Access
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                </>
-                              ) : null}
                               <DropdownMenuSub>
                                 <DropdownMenuSubTrigger
                                   disabled={!canManageTeam || row.isSelf || !row.userId}
@@ -981,24 +688,6 @@ export function ProjectTeamPage() {
                             </>
                           ) : (
                             <>
-                              {repoAutomationProvider ? (
-                                <>
-                                  <DropdownMenuItem
-                                    disabled={!canManageTeam || teamActionKey === `repo:${row.key}`}
-                                    onClick={() => {
-                                      void handleRetryRepoAccess(row)
-                                    }}
-                                  >
-                                    {teamActionKey === `repo:${row.key}` ? (
-                                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                                    )}
-                                    Retry Repo Access
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                </>
-                              ) : null}
                               <DropdownMenuItem
                                 disabled={!canManageTeam || !row.inviteId || teamActionKey === resendActionKey}
                                 onClick={() => {
@@ -1038,7 +727,7 @@ export function ProjectTeamPage() {
               })
             ) : hasResolvedTeamRows ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                   No members or pending invites yet.
                 </TableCell>
               </TableRow>

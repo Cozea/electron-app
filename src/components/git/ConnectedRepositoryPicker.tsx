@@ -547,7 +547,7 @@ export function ConnectedRepositoryPicker({
   if (!integrationConnected) {
     return (
         <div className="rounded-xl border border-dashed border-border/60 bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
-        Connect GitHub in Source Control to browse repositories from the app.
+        Connect GitHub in Git Providers to browse repositories from the app.
       </div>
     )
   }

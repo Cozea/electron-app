@@ -1,6 +1,12 @@
 import * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
 import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
+import {
+  bytesToEnvelope,
+  decryptPayload,
+  encryptPayload,
+  envelopeToBytes,
+} from '@/lib/collab/cipherEnvelope'
 
 export interface CollabSessionDescriptor {
   projectId: string
@@ -8,6 +14,17 @@ export interface CollabSessionDescriptor {
   collabWsUrl: string
   token: string
   protocolVersion: string
+  deviceId: string
+  devicePublicKeyJwk?: string
+  encryption: {
+    roomId: string
+    encryptionRequired: boolean
+    status: 'plaintext_legacy' | 'room_not_initialized' | 'ready' | 'missing_for_device'
+    activeKeyVersion: number | null
+    wrappedRoomKey: string | null
+    wrapAlgorithm: string | null
+    senderPublicKeyJwk: string | null
+  }
 }
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'
@@ -136,6 +153,7 @@ export class CollabWsProvider {
   private readonly onStateChange?: (state: ConnectionState, error?: string | null) => void
   private readonly onPermanentFailure?: (reason: string) => void
   private readonly refreshSession?: () => Promise<CollabSessionDescriptor | null>
+  private readonly encryption?: { roomKeyBase64: string; keyVersion: number } | null
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
   private reconnectAttempt = 0
@@ -163,6 +181,7 @@ export class CollabWsProvider {
     onStateChange?: (state: ConnectionState, error?: string | null) => void
     onPermanentFailure?: (reason: string) => void
     refreshSession?: () => Promise<CollabSessionDescriptor | null>
+    encryption?: { roomKeyBase64: string; keyVersion: number } | null
   }) {
     this.doc = args.doc
     this.awareness = args.awareness
@@ -176,6 +195,7 @@ export class CollabWsProvider {
     this.onStateChange = args.onStateChange
     this.onPermanentFailure = args.onPermanentFailure
     this.refreshSession = args.refreshSession
+    this.encryption = args.encryption ?? null
   }
 
   start(): void {
@@ -424,6 +444,42 @@ export class CollabWsProvider {
     this.pendingUpdates.push({ updateBinary, idempotencyKey, timestamp })
   }
 
+  private async encodeOutboundBytes(
+    bytes: Uint8Array,
+    kind: 'yjs_update' | 'yjs_awareness',
+    metadata: Record<string, unknown>,
+  ): Promise<string> {
+    if (!this.encryption) {
+      return toBase64(bytes)
+    }
+
+    const envelope = await encryptPayload({
+      roomKeyBase64: this.encryption.roomKeyBase64,
+      kind,
+      keyVersion: this.encryption.keyVersion,
+      plaintext: bytes,
+      metadata,
+    })
+    return toBase64(envelopeToBytes(envelope))
+  }
+
+  private async decodeInboundBytes(
+    encoded: string,
+    kind: 'yjs_update' | 'yjs_awareness',
+  ): Promise<Uint8Array> {
+    const bytes = fromBase64(encoded)
+    if (!this.encryption) {
+      return bytes
+    }
+
+    const envelope = bytesToEnvelope(bytes)
+    return await decryptPayload({
+      roomKeyBase64: this.encryption.roomKeyBase64,
+      envelope,
+      expectedKind: kind,
+    })
+  }
+
   private flushPendingUpdates(): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return
     while (this.pendingUpdates.length > 0) {
@@ -438,7 +494,18 @@ export class CollabWsProvider {
       return
     }
     const idempotencyKey = randomId(`upd_${this.clientId}`)
-    this.sendUpdate(toBase64(update), idempotencyKey, Date.now())
+    void this.encodeOutboundBytes(update, 'yjs_update', {
+      projectId: this.session.projectId,
+      roomId: this.session.roomId,
+      clientId: this.clientId,
+      idempotencyKey,
+    })
+      .then((encoded) => {
+        this.sendUpdate(encoded, idempotencyKey, Date.now())
+      })
+      .catch((error) => {
+        console.warn('[CollabWsProvider] Failed to encrypt local update:', error)
+      })
   }
 
   private readonly handleAwarenessUpdate = ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }) => {
@@ -451,17 +518,28 @@ export class CollabWsProvider {
     if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
     try {
       const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
-      this.socket.send(
-        JSON.stringify({
-          type: 'awareness_push',
-          payload: {
-            roomId: this.session.roomId,
-            clientId: this.clientId,
-            awarenessBinary: toBase64(update),
-            ttlMs: 30_000,
-          },
+      void this.encodeOutboundBytes(update, 'yjs_awareness', {
+        projectId: this.session.projectId,
+        roomId: this.session.roomId,
+        clientId: this.clientId,
+      })
+        .then((encoded) => {
+          if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
+          this.socket.send(
+            JSON.stringify({
+              type: 'awareness_push',
+              payload: {
+                roomId: this.session.roomId,
+                clientId: this.clientId,
+                awarenessBinary: encoded,
+                ttlMs: 30_000,
+              },
+            })
+          )
         })
-      )
+        .catch((error) => {
+          console.warn('[CollabWsProvider] Failed to encrypt awareness:', error)
+        })
     } catch (error) {
       console.warn('[CollabWsProvider] Failed to publish awareness:', error)
     }
@@ -492,13 +570,14 @@ export class CollabWsProvider {
     if (!message || typeof message !== 'object' || !('type' in message)) return
     if (message.type === 'sync_delta') {
       const updates = Array.isArray(message.payload?.updatesBinary) ? message.payload.updatesBinary : []
-      for (const encoded of updates) {
-        try {
-          Y.applyUpdate(this.doc, fromBase64(encoded), 'remote')
-        } catch (error) {
-          console.warn('[CollabWsProvider] Failed to apply sync delta update:', error)
+      void (async () => {
+        for (const encoded of updates) {
+          const bytes = await this.decodeInboundBytes(encoded, 'yjs_update')
+          Y.applyUpdate(this.doc, bytes, 'remote')
         }
-      }
+      })().catch((error) => {
+        console.warn('[CollabWsProvider] Failed to apply sync delta update:', error)
+      })
       const toSeq = Number(message.payload?.toSeq)
       if (Number.isFinite(toSeq)) {
         this.knownSeq = Math.max(this.knownSeq, toSeq)
@@ -513,22 +592,26 @@ export class CollabWsProvider {
       }
       const encoded = message.payload?.updateBinary
       if (typeof encoded !== 'string' || encoded.length === 0) return
-      try {
-        Y.applyUpdate(this.doc, fromBase64(encoded), 'remote')
-      } catch (error) {
-        console.warn('[CollabWsProvider] Failed to apply update_push:', error)
-      }
+      void this.decodeInboundBytes(encoded, 'yjs_update')
+        .then((bytes) => {
+          Y.applyUpdate(this.doc, bytes, 'remote')
+        })
+        .catch((error) => {
+          console.warn('[CollabWsProvider] Failed to apply update_push:', error)
+        })
       return
     }
 
     if (message.type === 'awareness_push') {
       const encoded = message.payload?.awarenessBinary
       if (typeof encoded !== 'string' || encoded.length === 0) return
-      try {
-        applyAwarenessUpdate(this.awareness, fromBase64(encoded), 'remote')
-      } catch (error) {
-        console.warn('[CollabWsProvider] Failed to apply awareness update:', error)
-      }
+      void this.decodeInboundBytes(encoded, 'yjs_awareness')
+        .then((bytes) => {
+          applyAwarenessUpdate(this.awareness, bytes, 'remote')
+        })
+        .catch((error) => {
+          console.warn('[CollabWsProvider] Failed to apply awareness update:', error)
+        })
       return
     }
 

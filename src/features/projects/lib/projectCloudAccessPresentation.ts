@@ -197,7 +197,7 @@ export function formatProjectCloudAccessError(
         normalized ||
         'This project cannot open until repository access is provisioned for your account.',
       actionHref: sourceControlHref,
-      actionLabel: 'Open Source Control',
+      actionLabel: 'Open Git Providers',
       isAccessError: true,
     }
   }
@@ -214,7 +214,7 @@ export function formatProjectCloudAccessError(
         normalized ||
         'Accept the repository invitation in your git provider, then reopen the project.',
       actionHref: sourceControlHref,
-      actionLabel: 'Open Source Control',
+      actionLabel: 'Open Git Providers',
       isAccessError: true,
     }
   }

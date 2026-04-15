@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes";
 
 export interface ProjectRouteSlugResolutionCandidate {
   projectId: Id<"projects">;
@@ -26,6 +27,12 @@ export interface ProjectRouteContextValue {
   localPath: string | null;
   projectBasePath: string | null;
   projectName: string | null;
+  collabBranch: string | null;
+  laneState: ProjectLaneState | null;
+  activeLane: ProjectLaneDescriptor | null;
+  collabLane: ProjectLaneDescriptor | null;
+  collaborationEnabled: boolean;
+  refreshLaneState?: () => Promise<void>;
 }
 
 export const ProjectRouteContext = createContext<ProjectRouteContextValue | null>(null);

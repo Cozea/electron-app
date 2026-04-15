@@ -342,13 +342,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
               {showHeader && (
                 <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                  <p className="text-[8px] uppercase tracking-[0.12em] text-muted-foreground/50">
                     {groupLabel} ({groupedEntries.length})
                   </p>
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
+                      className="text-[8px] uppercase tracking-[0.08em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/70"
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
                       {isExpanded ? "Show less" : `Show ${hiddenCount} more`}

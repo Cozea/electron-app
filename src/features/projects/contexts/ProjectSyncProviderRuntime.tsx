@@ -5,10 +5,9 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { useConvex } from "convex/react"
 
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { YjsProjectProvider, normalizeCollabTransport, useYjsProject } from "@/contexts/YjsProjectContext"
+import { YjsProjectProvider, useYjsProject } from "@/contexts/YjsProjectContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
@@ -16,7 +15,6 @@ import { useCollabSession } from "@/hooks/useCollabSession"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
 import type { CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
-import { GitDurabilityCoordinator } from "@/lib/git/GitDurabilityCoordinator"
 import {
   IDLE_SYNC_PROGRESS,
   ProjectSyncContext,
@@ -84,25 +82,25 @@ export function ProjectSyncProviderRuntime({
   lastSyncAt: initialLastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
+  collaborationEnabled = true,
+  activeBranch = null,
+  sharedBranch = null,
+  documentScopeId = null,
 }: ProjectSyncProviderProps) {
   const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
   const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
   const resolvedUserName = userName ?? "User"
-  const convex = useConvex()
   const { accessToken } = useAuth()
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
-  const collabTransport = useMemo(
-    () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
-    [],
-  )
 
   useEffect(() => {
     setLastSyncAt(initialLastSyncAt ?? null)
   }, [initialLastSyncAt])
 
   const canSync = Boolean(projectId && userId && localPath)
-  const shouldUseWsCollab = canSync && collabTransport === "ws"
+  const sharedCollaborationEnabled = canSync && collaborationEnabled
+  const collaborationMode = sharedCollaborationEnabled ? "shared" : "local"
 
   const {
     status: collabSessionStatus,
@@ -111,23 +109,26 @@ export function ProjectSyncProviderRuntime({
   } = useCollabSession({
     projectId: String(resolvedProjectId),
     accessToken,
-    enabled: shouldUseWsCollab && Boolean(accessToken),
+    enabled: sharedCollaborationEnabled && Boolean(accessToken),
   })
 
   const activeCollabSession: CollabSessionDescriptor | null =
-    shouldUseWsCollab && collabSessionStatus === "ready" && collabSession
+    sharedCollaborationEnabled && collabSessionStatus === "ready" && collabSession
       ? {
           projectId: String(resolvedProjectId),
           roomId: collabSession.roomId,
           collabWsUrl: collabSession.collabWsUrl,
           token: collabSession.token,
           protocolVersion: collabSession.protocolVersion,
+          deviceId: collabSession.deviceId,
+          devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
+          encryption: collabSession.encryption,
         }
       : null
 
   const refreshActiveCollabSession = useMemo(
     () => async (): Promise<CollabSessionDescriptor | null> => {
-      if (!shouldUseWsCollab) {
+      if (!sharedCollaborationEnabled) {
         return null
       }
 
@@ -142,39 +143,49 @@ export function ProjectSyncProviderRuntime({
         collabWsUrl: nextSession.collabWsUrl,
         token: nextSession.token,
         protocolVersion: nextSession.protocolVersion,
+        deviceId: nextSession.deviceId,
+        devicePublicKeyJwk: nextSession.devicePublicKeyJwk,
+        encryption: nextSession.encryption,
       }
     },
-    [refreshCollabSession, resolvedProjectId, shouldUseWsCollab],
+    [refreshCollabSession, resolvedProjectId, sharedCollaborationEnabled],
   )
 
   const triggerSync = useCallback(async () => {
-    if (!projectId || !userId || !localPath) {
+    if (!projectId || !localPath) {
       return
     }
 
-    const coordinator = GitDurabilityCoordinator.acquireShared({
-      projectId,
-      projectPath: localPath,
-      convex,
-      userId,
-    })
-
-    setProgress({
-      status: "syncing",
-      message: "Syncing project...",
-      current: 0,
-      total: 0,
-      logs: [],
-    })
-
     try {
-      await coordinator.flushNow(true)
+      if (!sharedCollaborationEnabled) {
+        setProgress({
+          status: "complete",
+          message: "Local branch mode",
+          current: 0,
+          total: 0,
+          logs: ["Live collaboration is paused on this branch."],
+        })
+        window.setTimeout(() => {
+          setProgress(IDLE_SYNC_PROGRESS)
+        }, 1200)
+        return
+      }
+
+      setProgress({
+        status: "syncing",
+        message: "Refreshing collaboration session...",
+        current: 0,
+        total: 0,
+        logs: [],
+      })
+
+      await refreshActiveCollabSession()
       const now = Date.now()
       setLastSyncAt(now)
       onFilesChanged?.()
       setProgress({
         status: "complete",
-        message: "Sync complete",
+        message: "Live collaboration active",
         current: 0,
         total: 0,
         logs: [],
@@ -191,10 +202,8 @@ export function ProjectSyncProviderRuntime({
         total: 0,
         logs: [`Error: ${message}`],
       })
-    } finally {
-      coordinator.release()
     }
-  }, [convex, localPath, onFilesChanged, projectId, userId])
+  }, [localPath, onFilesChanged, projectId, refreshActiveCollabSession, sharedCollaborationEnabled])
 
   return (
     <ProjectSyncContext.Provider
@@ -205,6 +214,10 @@ export function ProjectSyncProviderRuntime({
               cloudSyncBlocked: false,
               lastSyncAt,
               projectPath: localPath,
+              collaborationEnabled: sharedCollaborationEnabled,
+              collaborationMode,
+              activeBranch,
+              sharedBranch,
               triggerSync,
               syncProgress: progress,
             }
@@ -217,6 +230,8 @@ export function ProjectSyncProviderRuntime({
         userName={resolvedUserName}
         projectPath={localPath}
         enabled={canSync}
+        documentScopeId={documentScopeId}
+        collaborationEnabled={sharedCollaborationEnabled}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
       >

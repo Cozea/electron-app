@@ -8,6 +8,10 @@ export interface ProjectSyncContextValue {
   cloudSyncBlocked: boolean;
   lastSyncAt: number | null;
   projectPath: string | null;
+  collaborationEnabled: boolean;
+  collaborationMode: "shared" | "local";
+  activeBranch: string | null;
+  sharedBranch: string | null;
   triggerSync: () => Promise<void>;
   syncProgress: SyncProgress;
 }
@@ -44,4 +48,8 @@ export interface ProjectSyncProviderProps {
   lastSyncAt?: number;
   skipInitialSyncCheck?: boolean;
   onFilesChanged?: () => void;
+  collaborationEnabled?: boolean;
+  activeBranch?: string | null;
+  sharedBranch?: string | null;
+  documentScopeId?: string | null;
 }

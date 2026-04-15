@@ -11,6 +11,7 @@ import { ProjectSettingsSourceControlPanel } from '@/features/projects/component
 import {
   resolveProjectRepoAccessStatus,
 } from '@/lib/git/projectRepoAccess'
+import { resolveProjectRepositoryIntegration } from '@/lib/git/projectRepositoryIntegration'
 import {
   getDefaultVersionControlSetupMode,
   normalizeVersionControlProvider,
@@ -77,8 +78,7 @@ export function ProjectSettingsPage({
   const [description, setDescription] = useState('')
   const [provider, setProvider] = useState<VersionControlProviderOption>('local')
   const [repoUrl, setRepoUrl] = useState('')
-  const [activeCollabBranch, setActiveCollabBranch] = useState('main')
-  const [syncPolicy, setSyncPolicy] = useState<'auto' | 'manual'>('auto')
+  const [defaultBranch, setDefaultBranch] = useState('main')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -94,8 +94,12 @@ export function ProjectSettingsPage({
     () => project?.sourceControl?.setupMode ?? getDefaultVersionControlSetupMode(projectWorkspace.isPersonalWorkspace),
     [project?.sourceControl?.setupMode, projectWorkspace.isPersonalWorkspace]
   )
+  const repositoryIntegration = useMemo(
+    () => resolveProjectRepositoryIntegration(project),
+    [project],
+  )
   const normalizedRepoUrl = repoUrl.trim()
-  const normalizedActiveCollabBranch = activeCollabBranch.trim() || 'main'
+  const normalizedDefaultBranch = defaultBranch.trim() || 'main'
   const editableProject = useMemo<ProjectGitRuntimeProjectLike | null>(() => {
     if (!project) return null
 
@@ -107,26 +111,23 @@ export function ProjectSettingsPage({
           ? {
               provider,
               url: normalizedRepoUrl,
-              defaultBranch: project?.gitRepository?.defaultBranch ?? normalizedActiveCollabBranch,
+              defaultBranch: normalizedDefaultBranch,
             }
           : null,
       sourceControl: {
         ...project.sourceControl,
         provider,
         repoUrl: normalizedRepoUrl || undefined,
-        activeCollabBranch: normalizedActiveCollabBranch,
-        defaultBranch: normalizedActiveCollabBranch,
-        syncPolicy,
+        defaultBranch: normalizedDefaultBranch,
         setupMode,
       },
     }
   }, [
-    normalizedActiveCollabBranch,
+    normalizedDefaultBranch,
     normalizedRepoUrl,
     project,
     provider,
     setupMode,
-    syncPolicy,
   ])
   const repoAccessStatus = useMemo(
     () =>
@@ -150,33 +151,20 @@ export function ProjectSettingsPage({
     if (!project) return
     setName(project.name ?? '')
     setDescription(project.description ?? '')
-    setProvider(normalizeProjectSettingsProviderOption(
-      project.sourceControl?.provider ?? project.gitRepository?.provider
-    ))
-    setRepoUrl(project.gitRepository?.url ?? project.sourceControl?.repoUrl ?? '')
-    setActiveCollabBranch(
-      project.sourceControl?.activeCollabBranch ??
-        project.sourceControl?.defaultBranch ??
-        project.gitRepository?.defaultBranch ??
-        'main'
-    )
-    setSyncPolicy(project.sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto')
+    setProvider(normalizeProjectSettingsProviderOption(repositoryIntegration.provider))
+    setRepoUrl(repositoryIntegration.repoUrl)
+    setDefaultBranch(repositoryIntegration.defaultBranch)
     setSaveError(null)
     setArchiveError(null)
     setDeleteError(null)
   }, [
     project?._id,
     project?.description,
-    project?.gitRepository?.defaultBranch,
-    project?.gitRepository?.provider,
-    project?.gitRepository?.url,
     project?.name,
-    project?.sourceControl?.activeCollabBranch,
-    project?.sourceControl?.defaultBranch,
-    project?.sourceControl?.provider,
-    project?.sourceControl?.repoUrl,
-    project?.sourceControl?.syncPolicy,
     project,
+    repositoryIntegration.defaultBranch,
+    repositoryIntegration.provider,
+    repositoryIntegration.repoUrl,
   ])
 
   const isManager = memberRole === 'project_manager'
@@ -184,22 +172,15 @@ export function ProjectSettingsPage({
 
   const projectName = project?.name ?? ''
   const projectDescription = project?.description ?? ''
-  const projectProvider =
-    normalizeProjectSettingsProviderOption(project?.sourceControl?.provider ?? project?.gitRepository?.provider)
-  const projectRepoUrl = project?.gitRepository?.url ?? project?.sourceControl?.repoUrl ?? ''
-  const projectActiveCollabBranch =
-    project?.sourceControl?.activeCollabBranch ??
-    project?.sourceControl?.defaultBranch ??
-    project?.gitRepository?.defaultBranch ??
-    'main'
-  const projectSyncPolicy = project?.sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto'
+  const projectProvider = normalizeProjectSettingsProviderOption(repositoryIntegration.provider)
+  const projectRepoUrl = repositoryIntegration.repoUrl
+  const projectDefaultBranch = repositoryIntegration.defaultBranch
   const hasChanges = Boolean(project) && (
     name !== projectName ||
     description !== projectDescription ||
     provider !== projectProvider ||
     normalizedRepoUrl !== projectRepoUrl ||
-    normalizedActiveCollabBranch !== projectActiveCollabBranch ||
-    syncPolicy !== projectSyncPolicy
+    normalizedDefaultBranch !== projectDefaultBranch
   )
   const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
 
@@ -226,10 +207,12 @@ export function ProjectSettingsPage({
         sourceControl: {
           provider,
           repoUrl: normalizedRepoUrl || undefined,
-          activeCollabBranch: normalizedActiveCollabBranch,
-          defaultBranch: normalizedActiveCollabBranch,
-          syncPolicy,
+          defaultBranch: normalizedDefaultBranch,
           setupMode,
+          workingCopyMode:
+            provider === 'local'
+              ? project.sourceControl?.workingCopyMode
+              : repoIntegration.workingCopyMode,
         },
       })
     } catch (error) {
@@ -242,12 +225,12 @@ export function ProjectSettingsPage({
     description,
     hasChanges,
     name,
-    normalizedActiveCollabBranch,
+    normalizedDefaultBranch,
     normalizedRepoUrl,
     project,
     provider,
+    repoIntegration.workingCopyMode,
     setupMode,
-    syncPolicy,
     updateProject,
   ])
 
@@ -397,7 +380,6 @@ export function ProjectSettingsPage({
                 <div className="min-w-0 space-y-6">
                   <ProjectSettingsSourceControlPanel
                     project={project}
-                    isPersonalWorkspace={projectWorkspace.isPersonalWorkspace}
                   repoAccessStatus={repoAccessStatus}
                   repoIntegration={repoIntegration}
                   provider={provider}
@@ -405,14 +387,13 @@ export function ProjectSettingsPage({
                     setProvider(next)
                     if (next === 'local') {
                       setRepoUrl('')
+                      setDefaultBranch(projectDefaultBranch)
                     }
                   }}
                   onRepoUrlChange={setRepoUrl}
-                  activeCollabBranch={activeCollabBranch}
-                  onActiveCollabBranchChange={setActiveCollabBranch}
+                  defaultBranch={defaultBranch}
+                  onDefaultBranchChange={setDefaultBranch}
                   setupMode={setupMode}
-                  syncPolicy={syncPolicy}
-                  onSyncPolicyChange={setSyncPolicy}
                   normalizedRepoUrl={normalizedRepoUrl}
                   saveError={saveError}
                   onOpenWorkspaceSourceControlSettings={() => {

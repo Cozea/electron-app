@@ -181,6 +181,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('integrations:getToolDefinition', options),
     listTools: () => ipcRenderer.invoke('integrations:listTools'),
   },
+  collab: {
+    isEncryptionAvailable: () => ipcRenderer.invoke('collab:isEncryptionAvailable'),
+    ensureDeviceIdentity: () => ipcRenderer.invoke('collab:ensureDeviceIdentity'),
+    getStoredDeviceIdentity: () => ipcRenderer.invoke('collab:getStoredDeviceIdentity'),
+    wrapRoomKey: (options: { roomKeyBase64: string; recipientPublicKeyJwk: string }) =>
+      ipcRenderer.invoke('collab:wrapRoomKey', options),
+    unwrapRoomKey: (options: { senderPublicKeyJwk: string; wrappedKey: string; wrapAlgorithm?: string }) =>
+      ipcRenderer.invoke('collab:unwrapRoomKey', options),
+    deleteDeviceIdentity: () => ipcRenderer.invoke('collab:deleteDeviceIdentity'),
+  },
   sourceControl: {
     onOAuthSuccess: (callback: (data: {
       provider: string
@@ -583,8 +593,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:clearLocalPath', options),
     getLaneState: (options: { projectId: string }) =>
       ipcRenderer.invoke('project:getLaneState', options),
-    ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) =>
-      ipcRenderer.invoke('project:ensureCollabLane', options),
     upsertLane: (options: {
       projectId: string
       branch: string

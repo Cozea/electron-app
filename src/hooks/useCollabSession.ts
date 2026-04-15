@@ -9,13 +9,28 @@ interface CollabCapabilities {
   yjs: boolean
 }
 
+export interface CollabEncryptionBootstrap {
+  roomId: string
+  encryptionRequired: boolean
+  status: 'plaintext_legacy' | 'room_not_initialized' | 'ready' | 'missing_for_device'
+  activeKeyVersion: number | null
+  wrappedRoomKey: string | null
+  wrapAlgorithm: string | null
+  senderPublicKeyJwk: string | null
+}
+
 export interface CollabSession {
   projectId: string
   roomId: string
   collabWsUrl: string
   token: string
   protocolVersion: string
+  deviceId: string
+  deviceLabel?: string
+  deviceFingerprint?: string
+  devicePublicKeyJwk?: string
   capabilities: CollabCapabilities
+  encryption: CollabEncryptionBootstrap
 }
 
 interface UseCollabSessionOptions {
@@ -97,6 +112,8 @@ export function useCollabSession({
     }
 
     try {
+      const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
+
       const [capabilityResponse, sessionResponse] = await Promise.all([
         fetch(`${gatewayBaseUrl}/collab/capabilities?projectId=${encodeURIComponent(projectId)}`, {
           method: 'GET',
@@ -110,6 +127,12 @@ export function useCollabSession({
           body: JSON.stringify({
             projectId,
             clientType: 'electron',
+            deviceId: deviceIdentity.deviceId,
+            deviceLabel: deviceIdentity.deviceLabel,
+            platform: deviceIdentity.platform,
+            publicKeyJwk: deviceIdentity.publicKeyJwk,
+            publicKeyAlgorithm: deviceIdentity.publicKeyAlgorithm,
+            fingerprint: deviceIdentity.fingerprint,
           }),
         }),
       ])
@@ -129,15 +152,29 @@ export function useCollabSession({
       const parsedCapabilities = (capabilityPayload || null) as CollabCapabilities | null
       const parsedSession = (sessionPayload || null) as CollabSession | null
 
-      if (!parsedCapabilities || !parsedSession?.token || !parsedSession?.roomId) {
+      if (
+        !parsedCapabilities ||
+        !parsedSession?.token ||
+        !parsedSession?.roomId ||
+        !parsedSession?.deviceId ||
+        !parsedSession?.encryption
+      ) {
         throw new Error('Collab gateway response is invalid')
       }
 
+      const nextSession: CollabSession = {
+        ...parsedSession,
+        deviceLabel: deviceIdentity.deviceLabel,
+        deviceFingerprint: deviceIdentity.fingerprint,
+        devicePublicKeyJwk: deviceIdentity.publicKeyJwk,
+        capabilities: parsedCapabilities,
+      }
+
       setCapabilities(parsedCapabilities)
-      setSession(parsedSession)
+      setSession(nextSession)
       setStatus('ready')
       setError(null)
-      return parsedSession
+      return nextSession
     } catch (requestError) {
       const message =
         requestError instanceof Error

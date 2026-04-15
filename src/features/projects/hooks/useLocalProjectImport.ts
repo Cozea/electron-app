@@ -14,17 +14,14 @@ import {
   detectCurrentBranch,
   inspectLocalGitState,
 } from "@/features/projects/lib/localProjectImport"
-import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
 
 export type LocalProjectImportOutcome =
   | "cancelled"
-  | "fallback-opened"
   | "imported"
   | "error"
 
 export function useLocalProjectImport() {
   const navigate = useViewTransitionNavigate()
-  const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const { convexUserId } = useAuth()
   const { personalScoped, preferredConvexOrganizationId } = useScopedAppContext()
   const createProject = useMutation(api.projects.create)
@@ -80,7 +77,6 @@ export function useLocalProjectImport() {
           projectId,
           projectName,
           localPath: projectPath,
-          syncMode: "git",
         },
       })
     },
@@ -109,14 +105,6 @@ export function useLocalProjectImport() {
 
     const localGitState = await inspectLocalGitState(localFolderPath)
 
-    if (!localGitState.remoteUrl) {
-      openCreateProjectDialog({
-        mode: "local",
-        localFolderPath,
-      })
-      return "fallback-opened"
-    }
-
     if (!convexUserId || !preferredConvexOrganizationId) {
       await showImportError("No workspace is selected right now.")
       return "error"
@@ -128,26 +116,30 @@ export function useLocalProjectImport() {
         localFolderPath,
         localGitState.branch || "main",
       )
-      const provider = deriveProviderFromRepoUrl(localGitState.remoteUrl)
+      const existingRemoteUrl = localGitState.remoteUrl?.trim() || ""
+      const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
       const result = await createProject({
         organizationId: preferredConvexOrganizationId,
         userId: convexUserId,
         name: projectName,
         template: "blank",
         creationPath: "repo",
-        sourceControl: {
-          provider,
-          repoUrl: localGitState.remoteUrl,
-          activeCollabBranch: branch,
-          defaultBranch: branch,
-          workingCopyMode: "attached",
-          setupMode,
-        },
-        repoSource: {
-          provider,
-          repoUrl: localGitState.remoteUrl,
-          branch,
-        },
+        sourceControl: existingRemoteUrl && provider
+          ? {
+              provider,
+              repoUrl: existingRemoteUrl,
+              defaultBranch: branch,
+              workingCopyMode: "attached",
+              setupMode,
+            }
+          : undefined,
+        repoSource: existingRemoteUrl && provider
+          ? {
+              provider,
+              repoUrl: existingRemoteUrl,
+              branch,
+            }
+          : undefined,
       })
 
       await updateProjectStatus({
@@ -172,7 +164,6 @@ export function useLocalProjectImport() {
     convexUserId,
     createProject,
     navigateToProjectWorkbench,
-    openCreateProjectDialog,
     persistProjectPath,
     preferredConvexOrganizationId,
     setupMode,

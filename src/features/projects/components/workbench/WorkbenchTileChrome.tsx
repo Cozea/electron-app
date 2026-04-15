@@ -125,7 +125,7 @@ export function WorkbenchTileChrome({
           <div
             className={cn(
               "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5",
-              chromeVariant === "pill" ? "max-w-fit" : "max-w-[11rem]",
+              chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
             )}
           >
             {TileIcon ? <TileIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}

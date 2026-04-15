@@ -2,7 +2,6 @@ import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { api } from '../../../convex/_generated/api'
-import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
 
@@ -72,30 +71,11 @@ function shouldExcludeActivityPath(path: string): boolean {
   ))
 }
 
-function mergeChangeOrigin(
-  current: ChangeOrigin | null,
-  next: ChangeOrigin
-): ChangeOrigin {
-  if (!current || current === next) {
-    return next
-  }
-  if (current === 'agent' || next === 'agent') {
-    return 'agent'
-  }
-  if (current === 'user' || next === 'user') {
-    return 'user'
-  }
-  if (current === 'remote' || next === 'remote') {
-    return 'remote'
-  }
-  return 'init'
-}
-
 /**
- * ProjectFilesPersistence - Persists Yjs file changes to activity logs and durable sync.
+ * ProjectFilesPersistence - Persists Yjs file changes to activity logs and shared snapshots.
  *
  * This provider tracks local Yjs edits/deletes, logs them for the activity feed,
- * and then routes durability through the Git-backed sync lane.
+ * Cozea collaboration durability is handled by Yjs websocket sync and snapshots.
  */
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
@@ -108,12 +88,11 @@ export class ProjectFilesPersistence {
   private previousContents: Map<string, string> = new Map()
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private debounceMs = 1000
-  private gitDurabilityCoordinator: GitDurabilityCoordinator | null
 
   constructor(
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
-    projectPath: string | null,
+    _projectPath: string | null,
     convex: ConvexReactClient,
     userId: Id<"users">,
     userName: string = 'Unknown'
@@ -123,14 +102,6 @@ export class ProjectFilesPersistence {
     this.convex = convex
     this.userId = userId
     this.userName = userName
-    this.gitDurabilityCoordinator = projectPath
-      ? GitDurabilityCoordinator.acquireShared({
-          projectId,
-          projectPath,
-          convex,
-          userId,
-        })
-      : null
 
     // Initialize previous contents for existing files
     for (const [path, text] of filesMap.entries()) {
@@ -225,21 +196,11 @@ export class ProjectFilesPersistence {
     this.debounceTimer = setTimeout(() => this.persistChanges(), this.debounceMs)
   }
 
-  private async enqueueDurabilitySync(source: ChangeOrigin, reason: string): Promise<void> {
-    if (source === 'remote' || source === 'init') {
-      return
-    }
-
-    this.gitDurabilityCoordinator?.scheduleSync(reason)
-  }
-
   private async persistChanges() {
     const changes = new Map(this.pendingChanges)
     this.pendingChanges.clear()
     const deletes = new Map(this.pendingDeletes)
     this.pendingDeletes.clear()
-    let hasMaterialChanges = false
-    let snapshotSource: ChangeOrigin | null = null
 
     // Persist deletions first
     if (deletes.size > 0) {
@@ -275,8 +236,6 @@ export class ProjectFilesPersistence {
         }
 
         this.previousContents.delete(path)
-        hasMaterialChanges = true
-        snapshotSource = mergeChangeOrigin(snapshotSource, origin)
       }
     }
 
@@ -321,34 +280,15 @@ export class ProjectFilesPersistence {
 
         // Update previous content for next diff
         this.previousContents.set(path, content)
-        hasMaterialChanges = true
-        snapshotSource = mergeChangeOrigin(snapshotSource, origin)
       } catch (error) {
         console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
       }
     }
-
-    if (hasMaterialChanges && snapshotSource) {
-      await this.enqueueDurabilitySync(
-        snapshotSource,
-        `yjs-batch: upserts=${changes.size}, deletes=${deletes.size}`
-      )
-    }
   }
 
   destroy() {
-    const releaseGitCoordinator = () => {
-      this.gitDurabilityCoordinator?.release()
-      this.gitDurabilityCoordinator = null
-    }
-
     if (this.pendingChanges.size > 0 || this.pendingDeletes.size > 0) {
-      void this.persistChanges().finally(releaseGitCoordinator)
-    } else {
-      const flushPromise = this.gitDurabilityCoordinator
-        ? this.gitDurabilityCoordinator.flushNow()
-        : Promise.resolve()
-      void flushPromise.finally(releaseGitCoordinator)
+      void this.persistChanges()
     }
     this.filesMap.unobserveDeep(this.handleFilesChange)
     if (this.debounceTimer) clearTimeout(this.debounceTimer)

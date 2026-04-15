@@ -104,17 +104,19 @@ export function ProjectSyncIndicator({
     if (!syncContext || !hasSyncProgress) {
       return {
         icon: MdCloudOff,
-        label: "Disconnected",
-        detail: "Connecting to collaboration server",
+        label: "Unavailable",
+        detail: "Project collaboration is not active here",
         filled: true,
       }
     }
 
-    if (syncContext.cloudSyncBlocked) {
+    if (syncContext.collaborationMode === "local") {
       return {
         icon: MdCloudOff,
-        label: "Local Only",
-        detail: "Billing is inactive, so cloud sync is disabled",
+        label: "Local Branch",
+        detail: syncContext.sharedBranch
+          ? `Switch back to ${syncContext.sharedBranch} to collaborate live`
+          : "Live collaboration is paused on this branch",
         filled: true,
       }
     }
@@ -123,7 +125,7 @@ export function ProjectSyncIndicator({
       return {
         icon: MdCloudOff,
         label: "Offline",
-        detail: "Changes are queued locally",
+        detail: "Waiting to reconnect live collaboration",
         filled: true,
       }
     }
@@ -131,8 +133,8 @@ export function ProjectSyncIndicator({
     if (syncStatus === "error") {
       return {
         icon: MdWarning,
-        label: "Sync Error",
-        detail: syncMessage || "Sync failed. Retry from Changes.",
+        label: "Collab Error",
+        detail: syncMessage || "Failed to refresh live collaboration.",
         filled: true,
       }
     }
@@ -141,7 +143,7 @@ export function ProjectSyncIndicator({
       return {
         icon: MdCloudSync,
         label: "Checking",
-        detail: "Comparing local and cloud state",
+        detail: "Checking collaboration session",
         filled: true,
         motion: "spin",
       }
@@ -151,7 +153,7 @@ export function ProjectSyncIndicator({
       return {
         icon: MdCloudSync,
         label: "Planning",
-        detail: "Preparing reconciliation",
+        detail: "Preparing collaboration state",
         filled: true,
         motion: "spin",
       }
@@ -170,7 +172,7 @@ export function ProjectSyncIndicator({
 
       return {
         icon: transferIcon,
-        label: isUploading ? "Uploading" : isDownloading ? "Downloading" : "Syncing",
+        label: isUploading ? "Uploading" : isDownloading ? "Downloading" : "Refreshing",
         detail: formatPendingCount(pendingCount),
         filled: true,
         motion: "pulse",
@@ -183,18 +185,20 @@ export function ProjectSyncIndicator({
       return {
         icon: MdCloudSync,
         label: "Reconnecting",
-        detail: "Trying to reach collaboration server",
+        detail: "Trying to reach live collaboration",
         filled: true,
         motion: "spin",
       }
     }
 
-    return {
-      icon: MdCloudDone,
-      label: "Synced",
-      detail: "Connected to cloud",
-      filled: true,
-    }
+      return {
+        icon: MdCloudDone,
+        label: "Live",
+        detail: syncContext.sharedBranch
+          ? `Collaborating on ${syncContext.sharedBranch}`
+          : "Connected to live collaboration",
+        filled: true,
+      }
   }, [
     isConnected,
     isDownloading,
