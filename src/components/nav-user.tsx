@@ -17,12 +17,6 @@ import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { useCreateWorkspaceDialogStore } from "@/stores/useCreateWorkspaceDialogStore"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { useScopedBillingData } from "@/hooks/useScopedBillingData"
-import {
-  getOrganizationPlanLabel,
-  getPersonalPlanLabel,
-} from "@/lib/billing/planLabels"
-import { resolveScopedSettingsHref } from "@/lib/workspaces/settingsRoutes"
 
 // Raw user type from auth context
 interface RawUser {
@@ -76,30 +70,16 @@ export function NavUser({
   const navigate = useViewTransitionNavigate()
   const { organizationWorkspaces, personalWorkspace } = useAuth()
   const { activeWorkspace: currentWorkspace } = useResolvedScope({ ignoreLocation: true })
-  const { seatManagement, workspaceScoped } = useScopedBillingData()
-  const hasWorkspaceSettings = currentWorkspace?.workspaceType === "organization"
   const availableWorkspaceCount =
     organizationWorkspaces.length +
     (personalWorkspace || currentWorkspace?.workspaceType === "personal" ? 1 : 0)
-  const activePlanLabel = workspaceScoped
-    ? getOrganizationPlanLabel(seatManagement?.entitlement?.plan)
-    : getPersonalPlanLabel(seatManagement?.entitlement?.plan)
-  const workspaceSettingsHref = React.useMemo(
-    () => resolveScopedSettingsHref("/settings/general", hasWorkspaceSettings),
-    [hasWorkspaceSettings],
-  )
-  const menuSummarySublabel = workspaceScoped
-    ? [currentWorkspace?.organizationName, activePlanLabel]
-        .filter((value): value is string => Boolean(value))
-        .join(" · ")
-    : userData.email || activePlanLabel
+  const menuSummarySublabel = currentWorkspace?.organizationName || userData.email
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
       const rect = event.currentTarget.getBoundingClientRect()
       const items: ContextMenuItem<
         | "summary"
-        | "workspace-settings"
         | "switch-workspace"
         | "create-workspace"
         | "account-settings"
@@ -121,13 +101,6 @@ export function NavUser({
           enabled: false,
         })
         items.push({ id: "separator-top", label: "", type: "separator" })
-      }
-
-      if (hasWorkspaceSettings) {
-        items.push({
-          id: "workspace-settings",
-          label: "Workspace Settings",
-        })
       }
 
       if (availableWorkspaceCount > 1) {
@@ -169,9 +142,6 @@ export function NavUser({
       const action = await showDesktopContextMenu(items, position)
 
       switch (action) {
-        case "workspace-settings":
-          navigate(`/projects${workspaceSettingsHref}`)
-          break
         case "switch-workspace":
           navigate("/workspaces/select")
           break
@@ -196,10 +166,7 @@ export function NavUser({
       }
     },
     [
-      activePlanLabel,
       availableWorkspaceCount,
-      currentWorkspace?.organizationName,
-      hasWorkspaceSettings,
       menuSummarySublabel,
       navigate,
       onLogout,
@@ -208,8 +175,6 @@ export function NavUser({
       theme,
       userData.email,
       userData.name,
-      workspaceSettingsHref,
-      workspaceScoped,
     ],
   )
 

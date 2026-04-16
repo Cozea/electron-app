@@ -8,14 +8,6 @@ import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
-import { General } from '@/pages/workspace/General'
-import { Integrations } from '@/pages/workspace/Integrations'
-import { SourceControl } from '@/pages/workspace/SourceControl'
-import { Policies } from '@/pages/workspace/Policies'
-import { Members } from '@/pages/teams/Members'
-import { MemberDetailsContent } from '@/pages/teams/MemberDetails'
-import { Roles } from '@/pages/teams/Roles'
-import { Billing } from '@/pages/workspace/Billing'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import {
 
@@ -36,17 +28,8 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
-
   if (section === 'account') {
     return <Account surface="drawer" route={route} />
-  }
-
-  if (section === 'billing') {
-    return <Billing surface="drawer" route={route} />
-  }
-
-  if (section === 'general') {
-    return <General surface="drawer" route={route} />
   }
 
   if (section === 'appearance') {
@@ -55,29 +38,6 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 
   if (section === 'storage') {
     return <Storage surface="drawer" route={route} />
-  }
-
-  if (section === 'cliTools') {
-    return <Integrations surface="drawer" route={route} />
-  }
-
-  if (section === 'sourceControl') {
-    return <SourceControl surface="drawer" route={route} />
-  }
-
-  if (section === 'policies') {
-    return <Policies surface="drawer" route={route} />
-  }
-
-  if (section === 'members') {
-    if (route.startsWith('/teams/members/')) {
-      return <MemberDetailsContent surface="drawer" route={route} />
-    }
-    return <Members surface="drawer" route={route} />
-  }
-
-  if (section === 'roles') {
-    return <Roles surface="drawer" route={route} />
   }
 
   return <Tooling surface="drawer" route={route} />
@@ -203,7 +163,7 @@ export function SettingsDrawer() {
         <SheetHeader className="sr-only">
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription>
-            Browse and update account, workspace, billing, integrations, storage, members, and roles settings.
+            Browse and update device, appearance, storage, and tooling settings.
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">

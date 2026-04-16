@@ -341,7 +341,7 @@ const projectsWorkspacePoliciesRoute = createRoute({
 const projectsPersonalGeneralRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_GENERAL_ROUTE),
-  component: () => <Navigate to={PERSONAL_ACCOUNT_ROUTE as never} replace />,
+  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
 });
 
 const projectsWorkspaceGeneralRoute = createRoute({
@@ -359,13 +359,13 @@ const projectsWorkspaceBillingRoute = createRoute({
 const projectsWorkspaceIntegrationsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
-  component: () => <Navigate to={PERSONAL_TOOLING_ROUTE as never} replace />,
+  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
 });
 
 const projectsPersonalIntegrationsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE),
-  component: () => <Navigate to={PERSONAL_TOOLING_ROUTE as never} replace />,
+  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
 });
 
 const projectsWorkspaceSourceControlRoute = createRoute({
@@ -384,13 +384,13 @@ const projectsPersonalSourceControlRoute = createRoute({
 const projectsLegacyWorkspaceSyncRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "workspace/sync",
-  component: () => <Navigate to={PERSONAL_STORAGE_ROUTE as never} replace />,
+  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
 });
 
 const projectsLegacyPersonalCloudStorageRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "settings/cloud-storage",
-  component: () => <Navigate to={PERSONAL_STORAGE_ROUTE as never} replace />,
+  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
 });
 
 const projectsPersonalAccountRoute = createRoute({

@@ -13,7 +13,7 @@ function resolveMode(search: string): CreateProjectDialogMode {
   const params = new URLSearchParams(search)
   const rawMode = params.get("mode")
 
-  if (rawMode === "local" || rawMode === "repo") {
+  if (rawMode === "local") {
     return rawMode
   }
 
@@ -63,4 +63,3 @@ export default function NewProject() {
     </div>
   )
 }
-

@@ -5,20 +5,8 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { invalidateCollabSession, useCollabSession } from '@/hooks/useCollabSession'
-import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
-import { ProjectSettingsSourceControlPanel } from '@/features/projects/components/settings/ProjectSettingsSourceControlPanel'
-import {
-
-  resolveProjectRepoAccessStatus,
-} from '@/lib/git/projectRepoAccess'
-import { resolveProjectRepositoryIntegration } from '@/lib/git/projectRepositoryIntegration'
-import {
-  getDefaultVersionControlSetupMode,
-  normalizeVersionControlProvider,
-} from '@shared/versionControl'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -35,7 +23,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import type { ProjectGitRuntimeProjectLike } from '@/lib/git/projectGitRuntime'
 import { EncryptedLocalSnapshotStore } from '@/lib/collab/EncryptedLocalSnapshotStore'
 import {
   bytesToEnvelope,
@@ -51,14 +38,6 @@ import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIco
 export interface ProjectSettingsPageProps {
   presentation?: 'modal' | 'embedded'
   onRequestClose?: (() => void) | null
-}
-
-type VersionControlProviderOption = 'github' | 'local'
-
-function normalizeProjectSettingsProviderOption(
-  value: string | null | undefined
-): VersionControlProviderOption {
-  return normalizeVersionControlProvider(value) === 'github' ? 'github' : 'local'
 }
 
 function cleanConvexError(error: unknown, fallback: string): string {
@@ -86,7 +65,6 @@ export function ProjectSettingsPage({
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
-  const projectWorkspace = useProjectWorkspaceContext(project)
 
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
@@ -129,68 +107,8 @@ export function ProjectSettingsPage({
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [provider, setProvider] = useState<VersionControlProviderOption>('local')
-  const [repoUrl, setRepoUrl] = useState('')
-  const [defaultBranch, setDefaultBranch] = useState('main')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-
-  const { getConnection } = useWorkspaceSourceControl({
-    route: '/settings/source-control',
-    enabled: Boolean(project?.organizationId && convexUserId),
-  })
-  const repoIntegration =
-    project?.organizationId && provider === 'github'
-      ? getConnection(provider)
-      : null
-  const setupMode = useMemo(
-    () => project?.sourceControl?.setupMode ?? getDefaultVersionControlSetupMode(projectWorkspace.isPersonalWorkspace),
-    [project?.sourceControl?.setupMode, projectWorkspace.isPersonalWorkspace]
-  )
-  const repositoryIntegration = useMemo(
-    () => resolveProjectRepositoryIntegration(project),
-    [project],
-  )
-  const normalizedRepoUrl = repoUrl.trim()
-  const normalizedDefaultBranch = defaultBranch.trim() || 'main'
-  const editableProject = useMemo<ProjectGitRuntimeProjectLike | null>(() => {
-    if (!project) return null
-
-    return {
-      _id: project._id,
-      organizationId: project.organizationId,
-      gitRepository:
-        provider !== 'local' && normalizedRepoUrl
-          ? {
-              provider,
-              url: normalizedRepoUrl,
-              defaultBranch: normalizedDefaultBranch,
-            }
-          : null,
-      sourceControl: {
-        ...project.sourceControl,
-        provider,
-        repoUrl: normalizedRepoUrl || undefined,
-        defaultBranch: normalizedDefaultBranch,
-        setupMode,
-      },
-    }
-  }, [
-    normalizedDefaultBranch,
-    normalizedRepoUrl,
-    project,
-    provider,
-    setupMode,
-  ])
-  const repoAccessStatus = useMemo(
-    () =>
-      resolveProjectRepoAccessStatus({
-        project: editableProject,
-        sourceControlConnection: repoIntegration,
-        isPersonalWorkspace: projectWorkspace.isPersonalWorkspace,
-      }),
-    [editableProject, projectWorkspace.isPersonalWorkspace, repoIntegration]
-  )
 
   const [showArchiveDialog, setShowArchiveDialog] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -211,9 +129,6 @@ export function ProjectSettingsPage({
     if (!project) return
     setName(project.name ?? '')
     setDescription(project.description ?? '')
-    setProvider(normalizeProjectSettingsProviderOption(repositoryIntegration.provider))
-    setRepoUrl(repositoryIntegration.repoUrl)
-    setDefaultBranch(repositoryIntegration.defaultBranch)
     setSaveError(null)
     setArchiveError(null)
     setDeleteError(null)
@@ -226,9 +141,6 @@ export function ProjectSettingsPage({
     project?.description,
     project?.name,
     project,
-    repositoryIntegration.defaultBranch,
-    repositoryIntegration.provider,
-    repositoryIntegration.repoUrl,
   ])
 
   const isManager = memberRole === 'project_manager'
@@ -236,15 +148,9 @@ export function ProjectSettingsPage({
 
   const projectName = project?.name ?? ''
   const projectDescription = project?.description ?? ''
-  const projectProvider = normalizeProjectSettingsProviderOption(repositoryIntegration.provider)
-  const projectRepoUrl = repositoryIntegration.repoUrl
-  const projectDefaultBranch = repositoryIntegration.defaultBranch
   const hasChanges = Boolean(project) && (
     name !== projectName ||
-    description !== projectDescription ||
-    provider !== projectProvider ||
-    normalizedRepoUrl !== projectRepoUrl ||
-    normalizedDefaultBranch !== projectDefaultBranch
+    description !== projectDescription
   )
   const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
   const collabSession = collabSessionResult.session
@@ -439,16 +345,6 @@ export function ProjectSettingsPage({
         userId: convexUserId,
         name: nextName,
         description,
-        sourceControl: {
-          provider,
-          repoUrl: normalizedRepoUrl || undefined,
-          defaultBranch: normalizedDefaultBranch,
-          setupMode,
-          workingCopyMode:
-            provider === 'local'
-              ? project.sourceControl?.workingCopyMode
-              : repositoryIntegration.workingCopyMode,
-        },
       })
     } catch (error) {
       setSaveError(cleanConvexError(error, 'Failed to save project settings'))
@@ -460,12 +356,7 @@ export function ProjectSettingsPage({
     description,
     hasChanges,
     name,
-    normalizedDefaultBranch,
-    normalizedRepoUrl,
     project,
-    provider,
-    repositoryIntegration.workingCopyMode,
-    setupMode,
     updateProject,
   ])
 
@@ -884,32 +775,6 @@ export function ProjectSettingsPage({
                     </div>
                   </section>
                 </div>
-
-                <div className="min-w-0 space-y-6">
-                  <ProjectSettingsSourceControlPanel
-                    project={project}
-                  repoAccessStatus={repoAccessStatus}
-                  repoIntegration={repoIntegration}
-                  provider={provider}
-                  onProviderChange={(next) => {
-                    setProvider(next)
-                    if (next === 'local') {
-                      setRepoUrl('')
-                      setDefaultBranch(projectDefaultBranch)
-                    }
-                  }}
-                  onRepoUrlChange={setRepoUrl}
-                  defaultBranch={defaultBranch}
-                  onDefaultBranchChange={setDefaultBranch}
-                  setupMode={setupMode}
-                  normalizedRepoUrl={normalizedRepoUrl}
-                  saveError={saveError}
-                  onOpenWorkspaceSourceControlSettings={() => {
-                    navigate('/settings/source-control')
-                  }}
-                />
-                </div>
-
                 <div className="min-w-0 space-y-6">
                   <section>
                     <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">

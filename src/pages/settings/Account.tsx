@@ -69,6 +69,9 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       ? `${user.firstName} ${user.lastName || ""}`.trim()
       : user?.email?.split("@")[0] || "User";
   const avatarImageUrl = profile?.profileImageUrl || user?.profileImageUrl || undefined;
+  const isLocalDeviceProfile = Boolean(
+    user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
+  );
 
   const handlePrefChange = async (key: keyof UserPrefs, value: boolean | string) => {
     if (!convexUserId) return;
@@ -92,7 +95,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   return (
     <SettingsPageBody surface={surface}>
       <section>
-        <SettingsSectionTitle>Profile</SettingsSectionTitle>
+        <SettingsSectionTitle>{isLocalDeviceProfile ? "Device profile" : "Profile"}</SettingsSectionTitle>
         <SettingsGroup>
           <div className="flex items-center gap-4 px-4 py-3">
             <div className="group relative h-14 w-14 shrink-0 cursor-pointer">
@@ -111,7 +114,9 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
               {profile?.jobTitle ? (
                 <p className="truncate text-[11px] text-muted-foreground">{profile.jobTitle}</p>
               ) : null}
-              <p className="truncate text-[11px] text-muted-foreground">{user?.email}</p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {isLocalDeviceProfile ? "Local trusted device" : user?.email}
+              </p>
             </div>
           </div>
         </SettingsGroup>
@@ -119,12 +124,18 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
       <section>
         <div className="mb-1 flex items-center justify-between gap-2 px-1">
-          <SettingsSectionTitle className="mb-0">Active sessions</SettingsSectionTitle>
+          <SettingsSectionTitle className="mb-0">
+            {isLocalDeviceProfile ? "Current device" : "Active sessions"}
+          </SettingsSectionTitle>
           <Button variant="outline" size="sm" className="h-7 shrink-0 text-[11px]" disabled>
-            Sign out all
+            {isLocalDeviceProfile ? "Trusted" : "Sign out all"}
           </Button>
         </div>
-        <SettingsSectionDescription>Devices currently signed in to your account</SettingsSectionDescription>
+        <SettingsSectionDescription>
+          {isLocalDeviceProfile
+            ? "This Cozea installation is using a local device identity for collaboration."
+            : "Devices currently signed in to your account"}
+        </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
@@ -178,13 +189,17 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       <section>
         <SettingsSectionTitle variant="danger">
           <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="size-3.5" aria-hidden />
-          Danger zone
+          {isLocalDeviceProfile ? "Local device controls" : "Danger zone"}
         </SettingsSectionTitle>
         <SettingsDangerGroup>
           <SettingsRow isFirst borderClassName="border-destructive/20">
             <SettingsRowLabel
-              title="Delete account"
-              description="Permanently delete your account and all data"
+              title={isLocalDeviceProfile ? "Reset device identity" : "Delete account"}
+              description={
+                isLocalDeviceProfile
+                  ? "Reserved for future local-identity reset flows."
+                  : "Permanently delete your account and all data"
+              }
             />
             <SettingsRowControl>
               <Dialog>
@@ -196,15 +211,26 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Delete account</DialogTitle>
+                    <DialogTitle>
+                      {isLocalDeviceProfile ? "Reset device identity" : "Delete account"}
+                    </DialogTitle>
                     <DialogDescription>
-                      This action cannot be undone. All your data will be permanently deleted.
+                      {isLocalDeviceProfile
+                        ? "This workflow is not available yet."
+                        : "This action cannot be undone. All your data will be permanently deleted."}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Type &quot;delete my account&quot; to confirm</Label>
-                      <Input placeholder="delete my account" />
+                      <Label>
+                        {isLocalDeviceProfile
+                          ? "Device identity reset is currently disabled"
+                          : "Type \"delete my account\" to confirm"}
+                      </Label>
+                      <Input
+                        placeholder={isLocalDeviceProfile ? "Unavailable" : "delete my account"}
+                        disabled={isLocalDeviceProfile}
+                      />
                     </div>
                   </div>
                   <DialogFooter>
