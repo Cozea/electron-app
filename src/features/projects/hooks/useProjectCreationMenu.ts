@@ -8,7 +8,7 @@ import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/sto
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
-type ProjectCreationMenuAction = "empty" | "local" | "repo"
+type ProjectCreationMenuAction = "empty" | "local"
 
 function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: number } | undefined {
   if (event) {
@@ -60,7 +60,6 @@ export function useProjectCreationMenu() {
         [
           { id: "empty", label: "Empty project" },
           { id: "local", label: "Import local folder" },
-          { id: "repo", label: "Import repository" },
         ],
         resolveMenuPosition(event),
       )

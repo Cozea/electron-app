@@ -3,12 +3,6 @@ import { useMutation } from "convex/react"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import type { RepositoryDescriptor } from "@shared/electronApiTypes"
-import {
-
-  ConnectedRepositoryPicker,
-  type ConnectedRepositoryPickerPaginationState,
-} from "@/components/git/ConnectedRepositoryPicker"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,12 +14,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { TablePaginationControls } from "@/components/ui/table-pagination-controls"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
-import { useWorkspaceSourceControl } from "@/hooks/useWorkspaceSourceControl"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { getWorkspaceSourceControlReadiness } from "@/lib/sourceControl/workspaceSourceControlReadiness"
 import { cn } from "@/lib/utils"
 import {
   SettingsGroup,
@@ -42,14 +33,13 @@ import {
   buildFilesystemSlug,
   deriveNameFromPath,
   deriveProviderFromRepoUrl,
-  detectCurrentBranch,
   inspectLocalGitState,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface CreateProjectDialogProps {
   open: boolean
@@ -77,57 +67,6 @@ const DIALOG_COPY: Record<CreateProjectDialogMode, DialogCopy> = {
       "Attach an existing local folder and start working in Cozea. Git stays exactly as it is on your machine.",
     submitLabel: "Import folder",
   },
-  repo: {
-    title: "Import repository",
-    description:
-      "Browse connected GitHub repositories, clone one locally, and open it directly in the workbench.",
-    submitLabel: "Import repository",
-  },
-}
-
-function getBlockingCopy(reason: string | null, setupMode: "personal" | "organization") {
-  switch (reason) {
-    case "wrong_setup_mode":
-      return {
-        title: "GitHub is connected with the wrong workspace scope",
-        description:
-          setupMode === "organization"
-            ? "This workspace needs an organization-scoped GitHub connection before Cozea can create or browse remote repositories."
-            : "This workspace needs a personal GitHub connection before Cozea can create or browse remote repositories.",
-      }
-    case "needs_reauth":
-      return {
-        title: "GitHub needs attention",
-        description:
-          "Reconnect GitHub or finish its setup before using provider-backed project creation.",
-      }
-    case "missing_namespace":
-      return {
-        title: "Choose a GitHub namespace first",
-        description:
-          "Cozea needs a resolved GitHub namespace before it can create or browse repositories for this workspace.",
-      }
-    case "missing_installation":
-      return {
-        title: "GitHub App installation required",
-        description:
-          "Install or select the GitHub App for this workspace’s namespace before creating repositories from Cozea.",
-      }
-    case "missing_connection":
-    default:
-      return {
-        title: "Connect GitHub to continue",
-        description:
-          "Connect GitHub in Git Providers before importing a connected repository.",
-      }
-  }
-}
-
-function formatRemoteVisibility(visibility: string | undefined, isPrivate: boolean | undefined): "public" | "private" {
-  if (visibility === "public" || visibility === "private") {
-    return visibility
-  }
-  return isPrivate ? "private" : "public"
 }
 
 function formatLocationPathPreview(pathValue: string, maxParents = 2): string {
@@ -157,47 +96,15 @@ export function CreateProjectDialog({
   } = useScopedAppContext()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
-  const updateProjectBinding = useMutation(api.sourceControl.upsertProjectBinding)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-  const { getConnection } = useWorkspaceSourceControl({ enabled: open })
 
   const [name, setName] = useState("")
   const [parentDirectory, setParentDirectory] = useState("")
   const [localFolderPath, setLocalFolderPath] = useState("")
-  const [repositorySearchValue, setRepositorySearchValue] = useState("")
-  const [selectedRepository, setSelectedRepository] = useState<RepositoryDescriptor | null>(null)
-  const [selectedRepositoryBranch, setSelectedRepositoryBranch] = useState("")
   const [localGitState, setLocalGitState] = useState<LocalGitState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasEditedName, setHasEditedName] = useState(false)
-  const [repoPickerPagination, setRepoPickerPagination] =
-    useState<ConnectedRepositoryPickerPaginationState | null>(null)
-
-  const handleRepoPickerPaginationChange = useCallback(
-    (next: ConnectedRepositoryPickerPaginationState | null) => {
-      setRepoPickerPagination((prev) => {
-        if (prev === next) {
-          return prev
-        }
-        if (!prev || !next) {
-          return next
-        }
-        if (
-          prev.totalCount === next.totalCount &&
-          prev.currentPage === next.currentPage &&
-          prev.pageSize === next.pageSize &&
-          prev.isNextDisabled === next.isNextDisabled &&
-          prev.onPageChange === next.onPageChange &&
-          prev.onNextClick === next.onNextClick
-        ) {
-          return prev
-        }
-        return next
-      })
-    },
-    [],
-  )
 
   const copy = useMemo(() => {
     if (mode !== "local" || !initialLocalFolderPath.trim()) {
@@ -211,27 +118,10 @@ export function CreateProjectDialog({
       submitLabel: "Import folder",
     } satisfies DialogCopy
   }, [initialLocalFolderPath, mode])
-  const setupMode = personalScoped ? "personal" : "organization"
-  const githubConnection = getConnection("github")
-  const sourceControlReadiness = useMemo(
-    () =>
-      getWorkspaceSourceControlReadiness({
-        connections: githubConnection ? [githubConnection] : [],
-        expectedSetupMode: setupMode,
-      }),
-    [githubConnection, setupMode],
-  )
-  const sourceControlSettingsHref = "/settings/source-control"
   const locationPathPreview = useMemo(
     () => formatLocationPathPreview(parentDirectory, 2),
     [parentDirectory],
   )
-
-  useEffect(() => {
-    if (!open || mode !== "repo") {
-      setRepoPickerPagination(null)
-    }
-  }, [mode, open])
 
   useEffect(() => {
     if (!open) return
@@ -246,9 +136,6 @@ export function CreateProjectDialog({
         setName("")
         setParentDirectory(settings.projectsDirectory)
         setLocalFolderPath(mode === "local" ? initialLocalFolderPath : "")
-        setRepositorySearchValue("")
-        setSelectedRepository(null)
-        setSelectedRepositoryBranch("")
         setLocalGitState(null)
         setError(null)
         setHasEditedName(false)
@@ -270,17 +157,6 @@ export function CreateProjectDialog({
 
     setName(deriveNameFromPath(localFolderPath))
   }, [hasEditedName, localFolderPath, mode])
-
-  useEffect(() => {
-    if (mode !== "repo") {
-      return
-    }
-    if (!selectedRepository) {
-      setName("")
-      return
-    }
-    setName(selectedRepository.name)
-  }, [mode, selectedRepository])
 
   useEffect(() => {
     if (mode !== "local" || !localFolderPath.trim()) {
@@ -353,44 +229,6 @@ export function CreateProjectDialog({
     [convexUserId, updateMemberLocalPath],
   )
 
-  const persistBindingDetails = useCallback(
-    async (args: {
-      projectId: Id<"projects">
-      repository: RepositoryDescriptor
-      branch: string
-      workingCopyMode: "managed" | "attached"
-    }) => {
-      if (!convexUserId) {
-        return
-      }
-
-      try {
-        await updateProjectBinding({
-          projectId: args.projectId,
-          userId: convexUserId,
-          provider: args.repository.provider,
-          repoUrl: args.repository.url,
-          activeCollabBranch: args.branch,
-          defaultBranch: args.repository.defaultBranch || args.branch,
-          visibility: formatRemoteVisibility(args.repository.visibility, args.repository.private),
-          workingCopyMode: args.workingCopyMode,
-          setupMode,
-          repoId: args.repository.id,
-          ownerId: args.repository.ownerId,
-          ownerName: args.repository.ownerLogin,
-          ownerType: setupMode === "organization" ? "organization" : "user",
-          providerHost: githubConnection?.providerHost,
-        })
-      } catch (bindingError) {
-        console.warn(
-          "[CreateProjectDialog] Failed to persist repository binding metadata.",
-          bindingError,
-        )
-      }
-    },
-    [convexUserId, githubConnection?.providerHost, setupMode, updateProjectBinding],
-  )
-
   const navigateToProjectWorkbench = useCallback(
     (projectId: string, projectPath: string, projectName: string) => {
       onOpenChange(false)
@@ -413,39 +251,22 @@ export function CreateProjectDialog({
     const trimmedName =
       mode === "local"
         ? deriveNameFromPath(localFolderPath).trim() || name.trim()
-        : mode === "repo"
-          ? (selectedRepository?.name ?? name).trim()
-          : name.trim()
+        : name.trim()
     const trimmedParentDirectory = parentDirectory.trim()
     const trimmedLocalFolderPath = localFolderPath.trim()
-    const resolvedBranch =
-      selectedRepositoryBranch ||
-      selectedRepository?.defaultBranch ||
-      localGitState?.branch ||
-      "main"
 
     if (!trimmedName) {
       setError("Project name is required.")
       return
     }
 
-    if ((mode === "empty" || mode === "repo") && !trimmedParentDirectory) {
+    if (mode === "empty" && !trimmedParentDirectory) {
       setError("Choose a project location.")
       return
     }
 
     if (mode === "local" && !trimmedLocalFolderPath) {
       setError("Choose a local folder to import.")
-      return
-    }
-
-    if (mode === "repo" && !selectedRepository) {
-      setError("Choose a repository to import.")
-      return
-    }
-
-    if (mode === "repo" && !sourceControlReadiness.isReady) {
-      setError("Connect GitHub in Git Providers before importing a connected repository.")
       return
     }
 
@@ -488,10 +309,7 @@ export function CreateProjectDialog({
 
       if (mode === "local") {
         const existingRemoteUrl = localGitState?.remoteUrl?.trim() || ""
-        const normalizedBranch = await detectCurrentBranch(
-          trimmedLocalFolderPath,
-          localGitState?.branch || "main",
-        )
+        const normalizedBranch = localGitState?.branch || "main"
         const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
         const result = await createProject({
           organizationId: preferredConvexOrganizationId,
@@ -505,7 +323,7 @@ export function CreateProjectDialog({
                 repoUrl: existingRemoteUrl,
                 defaultBranch: normalizedBranch,
                 workingCopyMode: "attached",
-                setupMode,
+                setupMode: personalScoped ? "personal" : "organization",
               }
             : undefined,
           repoSource: existingRemoteUrl && provider
@@ -526,65 +344,8 @@ export function CreateProjectDialog({
         navigateToProjectWorkbench(String(result.projectId), trimmedLocalFolderPath, trimmedName)
         return
       }
-
-      const repository = selectedRepository
-      if (!repository) {
-        throw new Error("Choose a repository to import.")
-      }
-
-      const cloneResult = await window.electronAPI.project.cloneRepository({
-        slug: buildFilesystemSlug(trimmedName || repository.name),
-        repoUrl: repository.url,
-        provider: repository.provider,
-        branch: resolvedBranch || undefined,
-        baseDirectory: trimmedParentDirectory,
-      })
-
-      if (!cloneResult.success || !cloneResult.localPath) {
-        throw new Error(cloneResult.error || "Failed to clone the repository.")
-      }
-
-      createdProjectPath = cloneResult.localPath
-      const branch = await detectCurrentBranch(createdProjectPath, resolvedBranch)
-      const result = await createProject({
-        organizationId: preferredConvexOrganizationId,
-        userId: convexUserId,
-        name: trimmedName,
-        template: "blank",
-        creationPath: "repo",
-        sourceControl: {
-          provider: repository.provider,
-          repoUrl: repository.url,
-          defaultBranch: branch,
-          visibility: formatRemoteVisibility(
-            repository.visibility,
-            repository.private,
-          ),
-          workingCopyMode: "managed",
-          setupMode,
-        },
-        repoSource: {
-          provider: repository.provider,
-          repoUrl: repository.url,
-          branch,
-        },
-      })
-
-      await updateProjectStatus({
-        projectId: result.projectId,
-        userId: convexUserId,
-        status: "active",
-      })
-      await persistProjectPath(result.projectId, createdProjectPath)
-      await persistBindingDetails({
-        projectId: result.projectId,
-        repository,
-        branch,
-        workingCopyMode: "managed",
-      })
-      navigateToProjectWorkbench(String(result.projectId), createdProjectPath, trimmedName)
     } catch (nextError) {
-      if (createdProjectPath && (mode === "empty" || mode === "repo")) {
+      if (createdProjectPath && mode === "empty") {
         void window.electronAPI.storage.deleteProject({ projectPath: createdProjectPath })
       }
 
@@ -603,16 +364,11 @@ export function CreateProjectDialog({
     name,
     navigateToProjectWorkbench,
     parentDirectory,
-    persistBindingDetails,
     persistProjectPath,
+    personalScoped,
     preferredConvexOrganizationId,
-    selectedRepository,
-    selectedRepositoryBranch,
-    setupMode,
-    sourceControlReadiness.isReady,
     updateProjectStatus,
   ])
-  const blockingCopy = getBlockingCopy(sourceControlReadiness.blockingReason, setupMode)
 
   return (
     <Dialog
@@ -627,7 +383,7 @@ export function CreateProjectDialog({
         showCloseButton={false}
         className="p-3 sm:max-w-xl sm:p-4"
       >
-        {mode !== "empty" && mode !== "repo" ? (
+        {mode !== "empty" ? (
           <DialogHeader className="items-start space-y-1 text-left">
             <DialogTitle>{copy.title}</DialogTitle>
             <DialogDescription className="text-sm">{copy.description}</DialogDescription>
@@ -664,8 +420,8 @@ export function CreateProjectDialog({
                   </SettingsRow>
                 ) : null}
 
-                {mode === "empty" || mode === "repo" ? (
-                  <SettingsRow isFirst={mode === "repo"}>
+                {mode === "empty" ? (
+                  <SettingsRow isFirst>
                     <SettingsRowLabel
                       title="Location"
                       htmlFor="create-project-location"
@@ -709,125 +465,12 @@ export function CreateProjectDialog({
             </Alert>
           ) : null}
 
-          {mode === "repo" ? (
-            <>
-              {!sourceControlReadiness.isReady ? (
-                <Alert className="rounded-2xl bg-secondary/40">
-                  <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-4 w-4" />
-                  <AlertTitle>{blockingCopy.title}</AlertTitle>
-                  <AlertDescription className="space-y-3">
-                    <p>{blockingCopy.description}</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-full"
-                      onClick={() => {
-                        onOpenChange(false)
-                        navigate(sourceControlSettingsHref)
-                      }}
-                      disabled={isSubmitting}
-                    >
-                      Open Git Providers
-                      <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-4 w-4" />
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="space-y-2.5">
-                  <SettingsGroup>
-                    <SettingsRow isFirst>
-                      <SettingsRowLabel
-                        title="Search repositories"
-                        htmlFor="import-project-repo-search"
-                        description="Filter connected GitHub repositories."
-                        descriptionClassName="truncate"
-                      />
-                      <SettingsRowControl className="min-w-0 max-w-full flex-1 shrink">
-                        <Input
-                          id="import-project-repo-search"
-                          value={repositorySearchValue}
-                          onChange={(event) => {
-                            setRepositorySearchValue(event.target.value)
-                            setError(null)
-                          }}
-                          placeholder="Search connected repositories"
-                          disabled={isSubmitting}
-                          className="h-7 w-full min-w-0 rounded-md border border-border/50 bg-transparent px-2 text-[11px] shadow-none focus-visible:ring-1 focus-visible:ring-ring/50"
-                        />
-                      </SettingsRowControl>
-                    </SettingsRow>
-                  </SettingsGroup>
-
-                  <section>
-                    <SettingsSectionTitle>Connected repositories</SettingsSectionTitle>
-                    <SettingsGroup className="bg-card/50">
-                      <SettingsRow isFirst className="flex-col items-stretch gap-2 py-2">
-                        <div className="w-full min-w-0">
-                          <ConnectedRepositoryPicker
-                            provider="github"
-                            organizationId={preferredConvexOrganizationId}
-                            integrationConnected={sourceControlReadiness.isReady}
-                            selectedRepoUrl={selectedRepository?.url}
-                            selectedBranch={selectedRepositoryBranch}
-                            repositorySearchValue={repositorySearchValue}
-                            paginationSlot="none"
-                            onPaginationStateChange={handleRepoPickerPaginationChange}
-                            onRepositorySelected={(repository) => {
-                              setSelectedRepository(repository)
-                              setSelectedRepositoryBranch(
-                                repository.defaultBranch || selectedRepositoryBranch || "main",
-                              )
-                              setError(null)
-                            }}
-                            onRepositoryBranchSelected={(repository, branch) => {
-                              setSelectedRepository(repository)
-                              setSelectedRepositoryBranch(branch)
-                              setError(null)
-                            }}
-                            onRepositorySelectionCleared={() => {
-                              setSelectedRepository(null)
-                              setSelectedRepositoryBranch("")
-                              setError(null)
-                            }}
-                          />
-                        </div>
-                      </SettingsRow>
-                    </SettingsGroup>
-                  </section>
-                </div>
-              )}
-            </>
-          ) : null}
-
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
         <DialogFooter
-          className={cn(
-            "flex-col gap-3 sm:flex-row sm:items-center",
-            mode === "repo" &&
-              sourceControlReadiness.isReady &&
-              repoPickerPagination &&
-              repoPickerPagination.totalCount > 0
-              ? "sm:justify-between"
-              : "sm:justify-end",
-          )}
+          className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
         >
-          {mode === "repo" &&
-          sourceControlReadiness.isReady &&
-          repoPickerPagination &&
-          repoPickerPagination.totalCount > 0 ? (
-            <TablePaginationControls
-              showEntryCount={false}
-              className="mt-0 min-w-0 flex-1"
-              currentPage={repoPickerPagination.currentPage}
-              totalCount={repoPickerPagination.totalCount}
-              pageSize={repoPickerPagination.pageSize}
-              onPageChange={repoPickerPagination.onPageChange}
-              onNextClick={repoPickerPagination.onNextClick}
-              isNextDisabled={repoPickerPagination.isNextDisabled}
-            />
-          ) : null}
           <div className="flex shrink-0 justify-end gap-2">
             <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={closeDialog} disabled={isSubmitting}>
               Cancel
@@ -842,4 +485,3 @@ export function CreateProjectDialog({
     </Dialog>
   )
 }
-
