@@ -1,13 +1,12 @@
 import type { ComponentType } from "react"
 import type { SidebarActiveSelectionLevel } from "@/features/projects/components/sidebar/projectSidebarShared"
 
-import { Alert01Icon as __AlertTriangleHugeIcon, AlignHorizontalCenterIcon as __SlidersHorizontalHugeIcon, ArrowLeftRightIcon as __GitBranchHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, AlignHorizontalCenterIcon as __SlidersHorizontalHugeIcon } from '@hugeicons/core-free-icons'
 
 import { asHugeIcon } from '@/lib/icons/asHugeIcon'
 const SlidersHorizontal = asHugeIcon(__SlidersHorizontalHugeIcon)
-const GitBranch = asHugeIcon(__GitBranchHugeIcon)
 const AlertTriangle = asHugeIcon(__AlertTriangleHugeIcon)
-export type ProjectSettingsSectionId = "general" | "source-control" | "danger"
+export type ProjectSettingsSectionId = "general" | "danger"
 
 export const PROJECT_SETTINGS_SECTIONS: Array<{
   id: ProjectSettingsSectionId
@@ -15,7 +14,6 @@ export const PROJECT_SETTINGS_SECTIONS: Array<{
   icon: ComponentType<{ className?: string }>
 }> = [
   { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "source-control", label: "Source Control", icon: GitBranch },
   { id: "danger", label: "Danger", icon: AlertTriangle },
 ]
 
@@ -53,7 +51,6 @@ export function getProjectSidebarRouteState({
   const currentProjectSettingsSection: ProjectSettingsSectionId = (() => {
     if (!isOnCurrentProjectSettings || !currentProjectSettingsBasePath) return "general"
     const suffix = pathname.slice(currentProjectSettingsBasePath.length).replace(/^\/+/, "")
-    if (suffix === "source-control") return "source-control"
     if (suffix === "danger") return "danger"
     return "general"
   })()
@@ -74,4 +71,3 @@ export function getProjectSidebarRouteState({
     currentSelectionLevel,
   }
 }
-

@@ -40,7 +40,7 @@ type SortDirection = 'asc' | 'desc'
 interface TeamTableRow {
   key: string
   type: 'member' | 'invite'
-  email: string
+  secondaryLabel: string
   name: string
   role: ProjectRole
   status: 'active' | 'pending'
@@ -81,6 +81,9 @@ function getRoleLabel(role: ProjectRole | null | undefined): string {
 }
 
 function formatMemberName(member: {
+  displayName?: string | null
+  secondaryLabel?: string | null
+  contactEmail?: string | null
   user?: {
     firstName?: string | null
     lastName?: string | null
@@ -88,12 +91,30 @@ function formatMemberName(member: {
   } | null
   userId: Id<'users'>
 }): string {
+  if (member.displayName?.trim()) return member.displayName.trim()
   const first = member.user?.firstName?.trim() ?? ''
   const last = member.user?.lastName?.trim() ?? ''
   const fullName = `${first} ${last}`.trim()
   if (fullName) return fullName
+  if (member.contactEmail) return member.contactEmail
+  if (member.secondaryLabel) return member.secondaryLabel
   if (member.user?.email) return member.user.email
   return String(member.userId)
+}
+
+function formatMemberSecondaryLabel(member: {
+  secondaryLabel?: string | null
+  contactEmail?: string | null
+  user?: {
+    email?: string | null
+  } | null
+}): string {
+  return (
+    member.secondaryLabel?.trim() ??
+    member.contactEmail?.trim() ??
+    member.user?.email?.trim() ??
+    ''
+  )
 }
 
 function formatInviteeName(invite: {
@@ -217,7 +238,7 @@ export function ProjectTeamPage() {
       return {
         key: `member:${String(member.userId)}`,
         type: 'member',
-        email: member.user?.email ?? '',
+        secondaryLabel: formatMemberSecondaryLabel(member),
         name: formatMemberName(member),
         role: member.role,
         status: 'active',
@@ -233,7 +254,7 @@ export function ProjectTeamPage() {
       return {
         key: `invite:${String(invite._id)}`,
         type: 'invite',
-        email: invite.email,
+        secondaryLabel: invite.email,
         name: formatInviteeName(invite),
         role: invite.role,
         status: 'pending',
@@ -552,7 +573,7 @@ export function ProjectTeamPage() {
           <Table className="[&_th]:px-4 [&_td]:px-4">
           <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
             <TableRow>
-              <TableHead className="w-[40%]">Member Name</TableHead>
+              <TableHead className="w-[40%]">Collaborator</TableHead>
               <TableHead className="w-[22%]">Role</TableHead>
               <TableHead className="w-[16%]">Project</TableHead>
               <TableHead className="w-[16%]">Date</TableHead>
@@ -590,7 +611,7 @@ export function ProjectTeamPage() {
                           <div className="flex items-center gap-2">
                             <span className="truncate font-medium">{row.name}</span>
                           </div>
-                          <div className="truncate text-sm text-muted-foreground">{row.email}</div>
+                          <div className="truncate text-sm text-muted-foreground">{row.secondaryLabel}</div>
                         </div>
                       </div>
                     </TableCell>

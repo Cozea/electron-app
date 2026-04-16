@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react"
 import { useMutation, useQuery } from "convex/react"
-import { useParams } from '@/lib/router'
+import { useParams } from "@/lib/router"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -9,7 +9,6 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { Button } from "@/components/ui/button"
 import {
-
   Card,
   CardContent,
   CardDescription,
@@ -17,16 +16,16 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowDownRight01Icon as __LogOutHugeIcon, Mail01Icon as __MailHugeIcon, Refresh01Icon as __Loader2HugeIcon, UserAdd01Icon as __UserPlusHugeIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  AlertCircleIcon as __AlertCircleHugeIcon,
+  Refresh01Icon as __Loader2HugeIcon,
+  UserAdd01Icon as __UserPlusHugeIcon,
+} from "@hugeicons/core-free-icons"
 
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
   return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
-}
-
-function normalizeEmail(email: string | null | undefined): string {
-  return email?.trim().toLowerCase() ?? ""
 }
 
 function formatName(input: {
@@ -47,7 +46,7 @@ function isLikelyConvexId(value: string): boolean {
 export function ProjectInvitePage() {
   const navigate = useViewTransitionNavigate()
   const { inviteId: inviteIdParam } = useParams()
-  const { user, convexUserId, isAuthenticated, isLoading, login, logout } = useAuth()
+  const { convexUserId, isLoading } = useAuth()
   const acceptInvite = useMutation(api.projectInvites.acceptInvite)
   const declineInvite = useMutation(api.projectInvites.declineInvite)
 
@@ -60,14 +59,8 @@ export function ProjectInvitePage() {
 
   const invite = useQuery(api.projectInvites.get, inviteId ? { inviteId } : "skip")
 
-  const [isSubmitting, setIsSubmitting] = useState<"accept" | "decline" | "switch" | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState<"accept" | "decline" | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const isEmailMismatch = Boolean(
-    invite?.email &&
-      user?.email &&
-      normalizeEmail(invite.email) !== normalizeEmail(user.email)
-  )
   const projectHref = invite?.project ? buildProjectPath(String(invite.project.id)) : "/projects"
 
   const handleAccept = useCallback(async () => {
@@ -75,11 +68,16 @@ export function ProjectInvitePage() {
     setIsSubmitting("accept")
     setActionError(null)
     try {
+      const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
       const result = await acceptInvite({
         inviteId,
         userId: convexUserId,
+        deviceId: deviceIdentity.deviceId,
+        deviceLabel: deviceIdentity.deviceLabel,
+        platform: deviceIdentity.platform,
+        fingerprint: deviceIdentity.fingerprint,
       })
-      navigate(buildProjectPath(String(result.projectId), 'workbench'), { replace: true })
+      navigate(buildProjectPath(String(result.projectId), "workbench"), { replace: true })
     } catch (error) {
       setActionError(cleanConvexError(error, "Unable to accept this invite."))
     } finally {
@@ -88,13 +86,12 @@ export function ProjectInvitePage() {
   }, [acceptInvite, convexUserId, invite?.project, inviteId, navigate])
 
   const handleDecline = useCallback(async () => {
-    if (!inviteId || !convexUserId) return
+    if (!inviteId) return
     setIsSubmitting("decline")
     setActionError(null)
     try {
       await declineInvite({
         inviteId,
-        userId: convexUserId,
       })
       navigate("/projects", { replace: true })
     } catch (error) {
@@ -102,19 +99,7 @@ export function ProjectInvitePage() {
     } finally {
       setIsSubmitting(null)
     }
-  }, [convexUserId, declineInvite, inviteId, navigate])
-
-  const handleUseDifferentAccount = useCallback(async () => {
-    setIsSubmitting("switch")
-    setActionError(null)
-    try {
-      await logout()
-      await login()
-    } catch (error) {
-      setActionError(cleanConvexError(error, "Unable to switch accounts right now."))
-      setIsSubmitting(null)
-    }
-  }, [login, logout])
+  }, [declineInvite, inviteId, navigate])
 
   if (!inviteId) {
     return (
@@ -137,7 +122,7 @@ export function ProjectInvitePage() {
     )
   }
 
-  if (invite === undefined || (isLoading && !isAuthenticated)) {
+  if (invite === undefined || isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-lg">
@@ -176,40 +161,6 @@ export function ProjectInvitePage() {
     )
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={__MailHugeIcon} className="h-7 w-7 text-primary" />
-            </div>
-            <CardTitle>{invite.project.name}</CardTitle>
-            <CardDescription>
-              {formatName(invite.inviter)} invited you to join this project as a{" "}
-              {invite.role.replace(/_/g, " ")}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              Sign in with <span className="font-medium text-foreground">{invite.email}</span> to
-              review and accept this invite.
-            </div>
-            <Button
-              className="w-full"
-              onClick={() => {
-                void login()
-              }}
-              disabled={isSubmitting === "switch"}
-            >
-              Sign in to continue
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   if (!convexUserId) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -218,8 +169,8 @@ export function ProjectInvitePage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
             </div>
-            <CardTitle>Finishing Sign-in...</CardTitle>
-            <CardDescription>Preparing your account so this invite can be applied.</CardDescription>
+            <CardTitle>Preparing This Device...</CardTitle>
+            <CardDescription>Finishing the local device setup so this invite can be applied.</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -263,16 +214,10 @@ export function ProjectInvitePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isEmailMismatch ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              Signed in as <span className="font-medium">{user?.email}</span>, but this invite was
-              sent to <span className="font-medium">{invite.email}</span>.
-            </div>
-          ) : (
-            <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              Invite email: <span className="font-medium text-foreground">{invite.email}</span>
-            </div>
-          )}
+          <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+            Invite address: <span className="font-medium text-foreground">{invite.email}</span>.
+            Accepting will authorize the current device for this project.
+          </div>
 
           {actionError ? (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -281,63 +226,34 @@ export function ProjectInvitePage() {
           ) : null}
 
           <div className="flex gap-2">
-            {isEmailMismatch ? (
-              <>
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    void handleUseDifferentAccount()
-                  }}
-                  disabled={isSubmitting !== null}
-                >
-                  {isSubmitting === "switch" ? (
-                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <HugeiconsIcon icon={__LogOutHugeIcon} className="mr-2 h-4 w-4" />
-                  )}
-                  Use different account
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => navigate("/projects", { replace: true })}
-                >
-                  Go to Projects
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    void handleDecline()
-                  }}
-                  disabled={isSubmitting !== null}
-                >
-                  {isSubmitting === "decline" ? (
-                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Decline
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    void handleAccept()
-                  }}
-                  disabled={isSubmitting !== null}
-                >
-                  {isSubmitting === "accept" ? (
-                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Accept invite
-                </Button>
-              </>
-            )}
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                void handleDecline()
+              }}
+              disabled={isSubmitting !== null}
+            >
+              {isSubmitting === "decline" ? (
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Decline
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                void handleAccept()
+              }}
+              disabled={isSubmitting !== null}
+            >
+              {isSubmitting === "accept" ? (
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Accept invite
+            </Button>
           </div>
         </CardContent>
       </Card>
     </div>
   )
 }
-

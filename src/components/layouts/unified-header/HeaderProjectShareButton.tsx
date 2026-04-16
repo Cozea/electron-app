@@ -49,6 +49,10 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon as __PlusHugeIcon, AddTeamIcon as __AddTeamHugeIcon, MoreVerticalIcon as __MoreVerticalHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __CopyHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SentIcon as __SendHugeIcon, Shield01Icon as __ShieldOffHugeIcon } from '@hugeicons/core-free-icons'
 
+function isLocalDeviceEmail(email: string | null | undefined): boolean {
+  return typeof email === "string" && email.trim().toLowerCase().endsWith("@local.cozea.app");
+}
+
 export function HeaderProjectShareButton({
   projectId,
   projectName,
@@ -150,7 +154,10 @@ export function HeaderProjectShareButton({
   const projectMembersByEmail = useMemo(() => {
     const next = new Map<string, NonNullable<typeof projectMembers>[number]>();
     for (const member of projectMembers ?? []) {
-      const email = member.user?.email?.trim().toLowerCase();
+      const email = (
+        member.contactEmail ??
+        (member.user?.email && !isLocalDeviceEmail(member.user.email) ? member.user.email : null)
+      )?.trim().toLowerCase();
       if (!email) continue;
       next.set(email, member);
     }

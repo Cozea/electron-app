@@ -260,7 +260,6 @@ const STORAGE_KEY_USER = 'auth_user'
 const STORAGE_KEY_TOKEN = 'auth_token'
 const STORAGE_KEY_ORGS = 'auth_orgs'
 const STORAGE_KEY_CURRENT_ORG_ID = 'auth_current_org_id'
-const LOGIN_FLOW_TIMEOUT_MS = 90_000
 const MIN_TOKEN_REFRESH_INTERVAL_MS = 30_000
 const FOREGROUND_TOKEN_REFRESH_INTERVAL_MS = 5_000
 const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 10 * 60 * 1000
@@ -428,16 +427,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Convex mutations for syncing
   const syncUserToConvex = useMutation(api.users.syncFromWorkOS)
+  const ensureLocalDeviceProfile = useMutation(api.users.ensureLocalDeviceProfile)
   const syncOrgToConvex = useMutation(api.organizations.syncFromWorkOS)
   const syncMembershipToConvex = useMutation(api.organizations.syncMembershipFromWorkOS)
   const reconcileMembershipsToConvex = useMutation(api.organizations.reconcileMembershipSetFromWorkOS)
+
+  const bootstrapLocalDeviceSession = useCallback(async () => {
+    const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
+    const localProfile = await ensureLocalDeviceProfile({
+      deviceId: deviceIdentity.deviceId,
+      deviceLabel: deviceIdentity.deviceLabel,
+      platform: deviceIdentity.platform,
+      fingerprint: deviceIdentity.fingerprint,
+    })
+
+    setAuthError(null)
+    setUser(localProfile.user)
+    setConvexUserId(localProfile.userId)
+    setAccessToken(null)
+    setOrganizationWorkspacesState([])
+    setWorkspaceSelectionRequired(false)
+    setConvexLoading(false)
+
+    const selectionId = getWorkspaceSelectionId(localProfile.personalWorkspace)
+    setCurrentWorkspaceId(selectionId)
+    if (selectionId) {
+      localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, selectionId)
+    }
+
+    setIsLoading(false)
+  }, [ensureLocalDeviceProfile])
 
   const createOrganizationWorkspace = useCallback(async (
     name: string,
     identity?: WorkspaceIdentityInput
   ): Promise<OrganizationWorkspaceMembership> => {
     if (!user || !accessToken) {
-      throw new Error('You must be signed in to create a workspace')
+      throw new Error('Workspace creation is not available in the local-only build.')
     }
 
     const trimmedName = name.trim()
@@ -577,7 +603,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user || !accessToken) {
         return {
           available: false,
-          reason: 'You must be signed in to create a workspace',
+          reason: 'Workspace creation is not available in the local-only build.',
         }
       }
 
@@ -744,18 +770,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applySession = useCallback(
     async (session: Session | null, source: 'startup' | 'callback') => {
       try {
-        await handleSession(session, source)
+        if (session) {
+          await handleSession(session, source)
+          return
+        }
+
+        await bootstrapLocalDeviceSession()
       } catch (error) {
         console.error('[Auth] Failed to apply session:', error)
         await handleSession(null, 'startup')
         setAuthError(
           source === 'callback'
-            ? 'Failed to finish sign in. Please try again.'
-            : 'Failed to restore your session. Please sign in again.',
+            ? 'Failed to finish sign in. Falling back to local mode.'
+            : 'Failed to initialize the local device profile.',
         )
       }
     },
-    [handleSession],
+    [bootstrapLocalDeviceSession, handleSession],
   )
 
   const clearLoginTimeout = useCallback(() => {
@@ -795,9 +826,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return 'retryable'
     }
 
-    await handleSession(null, 'startup')
+    await bootstrapLocalDeviceSession()
     return 'expired'
-  }, [commitRefreshSchedule, handleSession])
+  }, [bootstrapLocalDeviceSession, commitRefreshSchedule])
 
   useEffect(() => {
     // Load initial session with smart token refresh
@@ -807,7 +838,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!session) {
           // No stored session
-          handleSession(null, 'startup')
+          await applySession(null, 'startup')
           return
         }
 
@@ -877,30 +908,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async () => {
     setAuthError(null)
     setIsLoading(true)
-    clearLoginTimeout()
-    loginTimeoutRef.current = setTimeout(() => {
-      console.warn('[Auth] Login flow timed out or was interrupted')
-      setAuthError('Login timed out. Please try again.')
-      setIsLoading(false)
-      loginTimeoutRef.current = null
-    }, LOGIN_FLOW_TIMEOUT_MS)
-
     try {
-      await window.electronAPI.auth.login()
-      // Session will be set via onSuccess callback
+      await bootstrapLocalDeviceSession()
     } catch (error) {
-      clearLoginTimeout()
-      setAuthError('Unable to start login. Please try again.')
+      setAuthError('Unable to initialize the local device profile.')
       setIsLoading(false)
       throw error
     }
-  }, [clearLoginTimeout])
+  }, [bootstrapLocalDeviceSession])
 
   const logout = useCallback(async () => {
     clearLoginTimeout()
     setAuthError(null)
     setIsLoading(true)
-    await window.electronAPI.auth.logout({ accessToken })
+    if (accessToken) {
+      await window.electronAPI.auth.logout({ accessToken })
+    }
     setUser(null)
     setConvexUserId(null)
     setAccessToken(null)
@@ -913,7 +936,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear local storage
     clearLegacyAuthBootstrapStorage()
     localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
-  }, [accessToken, clearLoginTimeout])
+
+    await bootstrapLocalDeviceSession()
+  }, [accessToken, bootstrapLocalDeviceSession, clearLoginTimeout])
 
   // Refresh the access token using the refresh token
   const refreshToken = useCallback(async (): Promise<RefreshTokenStatus> => {

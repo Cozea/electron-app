@@ -20,6 +20,7 @@ import {
   normalizeProjectInviteEmail,
   PERSONAL_WORKSPACE_PREFIX,
   requireProjectManagerMembership,
+  trustProjectDevice,
 } from "./lib/projectSharing"
 import { hasOrganizationPermission } from "./lib/organizationRoles"
 import { canAccessProjectByWorkspaceOrMembership } from "./lib/workspaceProjectAccess"
@@ -675,6 +676,10 @@ export const acceptInvite = mutation({
   args: {
     inviteId: v.id("projectInvites"),
     userId: v.id("users"),
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.optional(v.string()),
+    fingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
@@ -692,16 +697,6 @@ export const acceptInvite = mutation({
       "Workspace projects do not support project invites. Ask a workspace admin to invite you to the workspace first."
     )
 
-    const user = await ctx.db.get(args.userId)
-    if (!user) throw new Error("User not found")
-
-    if (
-      normalizeProjectInviteEmail(user.email) !==
-      normalizeProjectInviteEmail(invite.email)
-    ) {
-      throw new Error("This invite was sent to a different email address")
-    }
-
     const existingMembership = await getProjectMembership(
       ctx,
       invite.projectId,
@@ -709,6 +704,21 @@ export const acceptInvite = mutation({
     )
 
     if (existingMembership) {
+      if (!existingMembership.contactEmail) {
+        await ctx.db.patch(existingMembership._id, {
+          contactEmail: invite.email,
+        })
+      }
+      await trustProjectDevice(ctx, {
+        projectId: invite.projectId,
+        userId: args.userId,
+        deviceId: args.deviceId,
+        deviceLabel: args.deviceLabel,
+        platform: args.platform,
+        fingerprint: args.fingerprint,
+        role: existingMembership.role,
+        addedByUserId: invite.invitedBy,
+      })
       await ctx.db.patch(args.inviteId, { status: "accepted" })
       return {
         membershipId: existingMembership._id,
@@ -720,9 +730,20 @@ export const acceptInvite = mutation({
     const membershipId = await ctx.db.insert("projectMembers", {
       projectId: invite.projectId,
       userId: args.userId,
+      contactEmail: invite.email,
       role: invite.role,
       addedAt: now,
       addedBy: invite.invitedBy,
+    })
+    await trustProjectDevice(ctx, {
+      projectId: invite.projectId,
+      userId: args.userId,
+      deviceId: args.deviceId,
+      deviceLabel: args.deviceLabel,
+      platform: args.platform,
+      fingerprint: args.fingerprint,
+      role: invite.role,
+      addedByUserId: invite.invitedBy,
     })
 
     await ctx.db.patch(args.inviteId, { status: "accepted" })
@@ -738,21 +759,10 @@ export const acceptInvite = mutation({
 export const declineInvite = mutation({
   args: {
     inviteId: v.id("projectInvites"),
-    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
     const invite = await ctx.db.get(args.inviteId)
     if (!invite) throw new Error("Invite not found")
-
-    const user = await ctx.db.get(args.userId)
-    if (!user) throw new Error("User not found")
-
-    if (
-      normalizeProjectInviteEmail(user.email) !==
-      normalizeProjectInviteEmail(invite.email)
-    ) {
-      throw new Error("This invite was sent to a different email address")
-    }
 
     await ctx.db.delete(args.inviteId)
   },

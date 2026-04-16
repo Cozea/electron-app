@@ -156,6 +156,9 @@ interface ClaimantUserSummary {
 
 interface ClaimantMemberSourceRecord {
   userId: string
+  displayName?: string | null
+  secondaryLabel?: string | null
+  contactEmail?: string | null
   user: ClaimantUserSummary | null
 }
 
@@ -863,10 +866,18 @@ export function TasksPage({
     const byIdentity = new Map<string, TaskClaimantCandidate>()
 
     for (const member of sourceMembers) {
-      const email = member.user?.email?.trim().toLowerCase()
+      const email = (
+        member.contactEmail ??
+        member.secondaryLabel ??
+        member.user?.email ??
+        member.displayName ??
+        String(member.userId)
+      )
+        .trim()
+        .toLowerCase()
       if (!email) continue
 
-      const name = formatClaimantName(member.user, email)
+      const name = member.displayName?.trim() || formatClaimantName(member.user, email)
       const candidate: TaskClaimantCandidate = {
         id: String(member.user?.id ?? member.userId),
         name,
@@ -2047,4 +2058,3 @@ export function TasksPage({
     </>
   )
 }
-

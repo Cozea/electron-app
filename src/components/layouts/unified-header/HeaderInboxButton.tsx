@@ -26,7 +26,7 @@ function getWorkspaceInitial(workspaceName: string | undefined | null): string {
 }
 
 export function HeaderInboxButton() {
-  const { convexUserId } = useAuth();
+  const { convexUserId, user } = useAuth();
   const { personalScoped } = useScopedAppContext();
   const acceptInvite = useMutation(api.projectInvites.acceptInvite);
   const declineInvite = useMutation(api.projectInvites.declineInvite);
@@ -41,6 +41,9 @@ export function HeaderInboxButton() {
   const [inviteActionError, setInviteActionError] = useState<string | null>(null);
   const inboxHeadingId = useId();
   const inviteCount = incomingInvites?.length ?? 0;
+  const hasLocalDeviceProfile = Boolean(
+    user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
+  );
 
   const formatRelativeTimestamp = useCallback((timestamp: number) => {
     const now = Date.now();
@@ -60,15 +63,23 @@ export function HeaderInboxButton() {
 
   const handleInviteAction = useCallback(
     async (inviteId: Id<"projectInvites">, action: "accept" | "decline") => {
-      if (!convexUserId) return;
+      if (action === "accept" && !convexUserId) return;
       setInviteActionError(null);
       setActiveInviteAction({ inviteId, action });
 
       try {
         if (action === "accept") {
-          await acceptInvite({ inviteId, userId: convexUserId });
+          const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity();
+          await acceptInvite({
+            inviteId,
+            userId: convexUserId!,
+            deviceId: deviceIdentity.deviceId,
+            deviceLabel: deviceIdentity.deviceLabel,
+            platform: deviceIdentity.platform,
+            fingerprint: deviceIdentity.fingerprint,
+          });
         } else {
-          await declineInvite({ inviteId, userId: convexUserId });
+          await declineInvite({ inviteId });
         }
       } catch (error) {
         setInviteActionError(
@@ -80,6 +91,10 @@ export function HeaderInboxButton() {
     },
     [acceptInvite, convexUserId, declineInvite],
   );
+
+  if (hasLocalDeviceProfile) {
+    return null;
+  }
 
   return (
     <DropdownMenu>

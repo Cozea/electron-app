@@ -84,7 +84,7 @@ export function ProjectSettingsPage({
   const unsafeYjsApi = api as any
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
-  const { accessToken, convexUserId } = useAuth()
+  const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
   const projectWorkspace = useProjectWorkspaceContext(project)
 
@@ -106,8 +106,7 @@ export function ProjectSettingsPage({
   )
   const collabSessionResult = useCollabSession({
     projectId: project?._id ? String(project._id) : null,
-    accessToken,
-    enabled: Boolean(project?._id && accessToken),
+    enabled: Boolean(project?._id),
   })
   const collaborationDevices = useQuery(
     api.yjs.listCollabRoomDevices,
@@ -1316,4 +1315,3 @@ export function ProjectSettingsPage({
     </>
   )
 }
-

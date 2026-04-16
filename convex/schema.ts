@@ -881,6 +881,7 @@ export default defineSchema({
   projectMembers: defineTable({
     projectId: v.id("projects"),
     userId: v.id("users"),
+    contactEmail: v.optional(v.string()),
     role: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -898,6 +899,30 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
+
+  projectTrustedDevices: defineTable({
+    projectId: v.id("projects"),
+    userId: v.optional(v.id("users")),
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.optional(v.string()),
+    fingerprint: v.optional(v.string()),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    addedAt: v.number(),
+    addedByUserId: v.optional(v.id("users")),
+    addedByDeviceId: v.optional(v.string()),
+    lastSeenAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_device", ["projectId", "deviceId"])
+    .index("by_project_and_user", ["projectId", "userId"])
+    .index("by_device", ["deviceId"]),
 
   // Per-project storage accounting aggregate used for fast org rollups and repair jobs.
   projectStorageUsage: defineTable({

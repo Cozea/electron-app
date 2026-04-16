@@ -7,6 +7,7 @@ import {
   getProjectMembership,
   getProjectShareScope,
   requireProjectManagerMembership,
+  trustProjectDevice,
 } from "./lib/projectSharing"
 
 type JoinLinkDoc = Doc<"projectJoinLinks">
@@ -295,6 +296,10 @@ export const joinByToken = mutation({
   args: {
     token: v.string(),
     userId: v.id("users"),
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.optional(v.string()),
+    fingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const normalizedToken = args.token.trim()
@@ -313,13 +318,24 @@ export const joinByToken = mutation({
 
     const { project } = await assertPersonalProjectShareScope(ctx, link.projectId)
 
-    const user = await ctx.db.get(args.userId)
-    if (!user) {
-      throw new Error("User not found")
-    }
-
     const existingMembership = await getProjectMembership(ctx, project._id, args.userId)
+    const now = Date.now()
     if (existingMembership) {
+      await trustProjectDevice(ctx, {
+        projectId: project._id,
+        userId: args.userId,
+        deviceId: args.deviceId,
+        deviceLabel: args.deviceLabel,
+        platform: args.platform,
+        fingerprint: args.fingerprint,
+        role: existingMembership.role,
+        addedByUserId: link.createdBy,
+      })
+      await ctx.db.patch(link._id, {
+        useCount: link.useCount + 1,
+        lastUsedAt: now,
+        updatedAt: now,
+      })
       return {
         projectId: project._id,
         alreadyMember: true,
@@ -327,13 +343,22 @@ export const joinByToken = mutation({
       }
     }
 
-    const now = Date.now()
     await ctx.db.insert("projectMembers", {
       projectId: project._id,
       userId: args.userId,
       role: link.role,
       addedAt: now,
       addedBy: link.createdBy,
+    })
+    await trustProjectDevice(ctx, {
+      projectId: project._id,
+      userId: args.userId,
+      deviceId: args.deviceId,
+      deviceLabel: args.deviceLabel,
+      platform: args.platform,
+      fingerprint: args.fingerprint,
+      role: link.role,
+      addedByUserId: link.createdBy,
     })
 
     await ctx.db.patch(link._id, {

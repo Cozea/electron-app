@@ -37,7 +37,6 @@ export interface CollabSession {
 
 interface UseCollabSessionOptions {
   projectId: string | null
-  accessToken: string | null
   enabled?: boolean
 }
 
@@ -87,7 +86,6 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 
 export function useCollabSession({
   projectId,
-  accessToken,
   enabled = true,
 }: UseCollabSessionOptions): UseCollabSessionResult {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -109,7 +107,7 @@ export function useCollabSession({
       return null
     }
 
-    if (!accessToken || !gatewayBaseUrl) {
+    if (!gatewayBaseUrl) {
       setStatus('error')
       setError('WebSocket collaboration gateway is not configured')
       setSession(null)
@@ -120,54 +118,37 @@ export function useCollabSession({
     setStatus('loading')
     setError(null)
 
-    const authHeaders = {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    }
-
     try {
       const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
 
-      const [capabilityResponse, sessionResponse] = await Promise.all([
-        fetch(`${gatewayBaseUrl}/collab/capabilities?projectId=${encodeURIComponent(projectId)}`, {
-          method: 'GET',
-          headers: authHeaders,
-          credentials: 'include',
+      const sessionResponse = await fetch(`${gatewayBaseUrl}/collab/session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          projectId,
+          clientType: 'electron',
+          deviceId: deviceIdentity.deviceId,
+          deviceLabel: deviceIdentity.deviceLabel,
+          platform: deviceIdentity.platform,
+          publicKeyJwk: deviceIdentity.publicKeyJwk,
+          publicKeyAlgorithm: deviceIdentity.publicKeyAlgorithm,
+          fingerprint: deviceIdentity.fingerprint,
         }),
-        fetch(`${gatewayBaseUrl}/collab/session`, {
-          method: 'POST',
-          headers: authHeaders,
-          credentials: 'include',
-          body: JSON.stringify({
-            projectId,
-            clientType: 'electron',
-            deviceId: deviceIdentity.deviceId,
-            deviceLabel: deviceIdentity.deviceLabel,
-            platform: deviceIdentity.platform,
-            publicKeyJwk: deviceIdentity.publicKeyJwk,
-            publicKeyAlgorithm: deviceIdentity.publicKeyAlgorithm,
-            fingerprint: deviceIdentity.fingerprint,
-          }),
-        }),
-      ])
+      })
 
-      const [capabilityPayload, sessionPayload] = await Promise.all([
-        parseJsonResponse(capabilityResponse),
-        parseJsonResponse(sessionResponse),
-      ])
+      const sessionPayload = await parseJsonResponse(sessionResponse)
 
-      if (!capabilityResponse.ok) {
-        throw new Error(getPayloadError(capabilityPayload, `Failed to fetch collab capabilities (${capabilityResponse.status})`))
-      }
       if (!sessionResponse.ok) {
         throw new Error(getPayloadError(sessionPayload, `Failed to create collab session (${sessionResponse.status})`))
       }
 
-      const parsedCapabilities = (capabilityPayload || null) as CollabCapabilities | null
       const parsedSession = (sessionPayload || null) as CollabSession | null
 
       if (
-        !parsedCapabilities ||
+        !parsedSession?.capabilities ||
         !parsedSession?.token ||
         !parsedSession?.roomId ||
         !parsedSession?.deviceId ||
@@ -175,6 +156,8 @@ export function useCollabSession({
       ) {
         throw new Error('Collab gateway response is invalid')
       }
+
+      const parsedCapabilities = parsedSession.capabilities as CollabCapabilities
 
       const nextSession: CollabSession = {
         ...parsedSession,
@@ -200,7 +183,7 @@ export function useCollabSession({
       setError(message)
       return null
     }
-  }, [accessToken, enabled, gatewayBaseUrl, projectId])
+  }, [enabled, gatewayBaseUrl, projectId])
 
   useEffect(() => {
     void refresh()

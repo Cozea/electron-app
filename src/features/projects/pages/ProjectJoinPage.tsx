@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react"
-import { useParams } from '@/lib/router'
+import { useParams } from "@/lib/router"
 import { useMutation, useQuery } from "convex/react"
 
 import { api } from "../../../../convex/_generated/api"
@@ -8,7 +8,6 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { Button } from "@/components/ui/button"
 import {
-
   Card,
   CardContent,
   CardDescription,
@@ -16,8 +15,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowDownLeft01Icon as __LogInHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  AlertCircleIcon as __AlertCircleHugeIcon,
+  Link01Icon as __Link2HugeIcon,
+  Refresh01Icon as __Loader2HugeIcon,
+} from "@hugeicons/core-free-icons"
 
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
@@ -27,7 +30,7 @@ function cleanConvexError(error: unknown, fallback: string): string {
 export function ProjectJoinPage() {
   const navigate = useViewTransitionNavigate()
   const { token } = useParams()
-  const { convexUserId, isAuthenticated, isLoading, login } = useAuth()
+  const { convexUserId, isLoading } = useAuth()
   const joinByToken = useMutation(api.projectJoinLinks.joinByToken)
   const preview = useQuery(
     api.projectJoinLinks.previewByToken,
@@ -58,11 +61,16 @@ export function ProjectJoinPage() {
     setJoinError(null)
 
     try {
+      const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
       const result = await joinByToken({
         token,
         userId: convexUserId,
+        deviceId: deviceIdentity.deviceId,
+        deviceLabel: deviceIdentity.deviceLabel,
+        platform: deviceIdentity.platform,
+        fingerprint: deviceIdentity.fingerprint,
       })
-      navigate(buildProjectPath(String(result.projectId), 'workbench'), { replace: true })
+      navigate(buildProjectPath(String(result.projectId), "workbench"), { replace: true })
     } catch (error) {
       setJoinError(cleanConvexError(error, "Unable to join this project."))
     } finally {
@@ -91,7 +99,7 @@ export function ProjectJoinPage() {
     )
   }
 
-  if (preview === undefined || (isLoading && !isAuthenticated)) {
+  if (preview === undefined || isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-lg">
@@ -124,47 +132,8 @@ export function ProjectJoinPage() {
                 Link token: {shortToken}
               </div>
             ) : null}
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={() => navigate("/projects", { replace: true })}
-              >
-                Go to Projects
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={__Link2HugeIcon} className="h-7 w-7 text-primary" />
-            </div>
-            <CardTitle>{preview.project.name}</CardTitle>
-            <CardDescription>
-              {preview.inviter?.firstName || preview.inviter?.lastName || preview.inviter?.email
-                ? "A collaborator shared a direct project link with you."
-                : "This project link gives access to a shared Cozea project."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              Sign in to preview and accept this project link.
-            </div>
-            <Button
-              className="w-full"
-              onClick={() => {
-                void login()
-              }}
-            >
-              <HugeiconsIcon icon={__LogInHugeIcon} className="mr-2 h-4 w-4" />
-              Sign in to continue
+            <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
+              Go to Projects
             </Button>
           </CardContent>
         </Card>
@@ -180,8 +149,8 @@ export function ProjectJoinPage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
             </div>
-            <CardTitle>Finishing Sign-in...</CardTitle>
-            <CardDescription>Preparing your account for project access.</CardDescription>
+            <CardTitle>Preparing This Device...</CardTitle>
+            <CardDescription>Finishing the local device setup for project access.</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -227,7 +196,7 @@ export function ProjectJoinPage() {
           <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
             {preview.alreadyMember
               ? `You already have access${preview.existingRole ? ` as ${preview.existingRole.replace(/_/g, " ")}` : ""}.`
-              : "Access will be granted as soon as you accept this link."}
+              : "Accepting this link will authorize the current device for this project."}
           </div>
 
           {joinError ? (
@@ -259,7 +228,9 @@ export function ProjectJoinPage() {
                 }}
                 disabled={isJoining}
               >
-                {isJoining ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isJoining ? (
+                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
                 Join project
               </Button>
             )}
@@ -269,4 +240,3 @@ export function ProjectJoinPage() {
     </div>
   )
 }
-

@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import { ensureSystemOrganizationRoles } from "./lib/organizationRoles"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -96,6 +97,146 @@ export const syncFromWorkOS = mutation({
     })
 
     return userId
+  },
+})
+
+export const ensureLocalDeviceProfile = mutation({
+  args: {
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.optional(v.string()),
+    fingerprint: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const normalizedDeviceId = args.deviceId.trim()
+    const normalizedLabel = args.deviceLabel.trim() || "This Device"
+    const localUserWorkosId = `device:${normalizedDeviceId}`
+    const localEmail = `device+${normalizedDeviceId}@local.cozea.app`
+    const normalizedEmail = normalizeEmail(localEmail)
+    const personalWorkspaceWorkosId = `personal:${localUserWorkosId}`
+    const personalWorkspaceName = `${normalizedLabel} Workspace`
+    const localWorkspaceMembershipId = `local-membership:${normalizedDeviceId}`
+
+    const existingUsers = await ctx.db
+      .query("users")
+      .withIndex("by_workos_id", (q) => q.eq("workosId", localUserWorkosId))
+      .collect()
+    const canonicalUser = pickCanonicalUser(existingUsers)
+
+    let userId = canonicalUser?._id
+    if (canonicalUser) {
+      await ctx.db.patch(canonicalUser._id, {
+        email: localEmail,
+        normalizedEmail,
+        firstName: normalizedLabel,
+        lastName: undefined,
+        profileImageUrl: undefined,
+        updatedAt: now,
+        lastLoginAt: now,
+      })
+    } else {
+      userId = await ctx.db.insert("users", {
+        workosId: localUserWorkosId,
+        email: localEmail,
+        normalizedEmail,
+        firstName: normalizedLabel,
+        lastName: undefined,
+        profileImageUrl: undefined,
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: now,
+      })
+    }
+
+    const existingOrganizations = await ctx.db
+      .query("organizations")
+      .withIndex("by_workos_id", (q) => q.eq("workosId", personalWorkspaceWorkosId))
+      .collect()
+    const canonicalOrganization = existingOrganizations[0] ?? null
+
+    let organizationId = canonicalOrganization?._id
+    if (canonicalOrganization) {
+      await ctx.db.patch(canonicalOrganization._id, {
+        name: personalWorkspaceName,
+        updatedAt: now,
+      })
+    } else {
+      organizationId = await ctx.db.insert("organizations", {
+        workosId: personalWorkspaceWorkosId,
+        name: personalWorkspaceName,
+        slug: `local-${normalizedDeviceId.slice(0, 12)}`,
+        aiSettings: {
+          allowedProviders: ["anthropic", "openai", "google", "xai", "moonshotai"],
+          allowProviderTools: false,
+          allowWebSearch: false,
+          maxReasoningDepth: "high",
+          defaultModelTier: "standard",
+        },
+        subscription: {
+          plan: "free",
+          status: "active",
+          currentPeriodStart: now,
+          currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+        },
+        createdAt: now,
+        updatedAt: now,
+      })
+      await ensureSystemOrganizationRoles(ctx, organizationId)
+    }
+
+    const existingMemberships = await ctx.db
+      .query("members")
+      .withIndex("by_organization_and_user", (q) =>
+        q.eq("organizationId", organizationId!).eq("userId", userId!)
+      )
+      .collect()
+    const canonicalMembership = existingMemberships[0] ?? null
+
+    if (canonicalMembership) {
+      await ctx.db.patch(canonicalMembership._id, {
+        workosId: localWorkspaceMembershipId,
+        role: "admin",
+        updatedAt: now,
+      })
+    } else {
+      await ctx.db.insert("members", {
+        workosId: localWorkspaceMembershipId,
+        organizationId: organizationId!,
+        userId: userId!,
+        role: "admin",
+        joinedAt: now,
+        updatedAt: now,
+      })
+    }
+
+    return {
+      userId: userId!,
+      user: {
+        id: localUserWorkosId,
+        email: localEmail,
+        firstName: normalizedLabel,
+        lastName: null,
+        profileImageUrl: null,
+      },
+      personalWorkspace: {
+        id: localWorkspaceMembershipId,
+        organizationId: personalWorkspaceWorkosId,
+        organizationName: personalWorkspaceName,
+        role: "admin" as const,
+        status: "active" as const,
+        workspaceType: "personal" as const,
+        convexOrgId: organizationId!,
+      },
+      identity: {
+        workosId: localUserWorkosId,
+        organizationWorkosId: personalWorkspaceWorkosId,
+        deviceId: normalizedDeviceId,
+        deviceLabel: normalizedLabel,
+        platform: args.platform?.trim() || "desktop",
+        fingerprint: args.fingerprint?.trim() || null,
+      },
+    }
   },
 })
 

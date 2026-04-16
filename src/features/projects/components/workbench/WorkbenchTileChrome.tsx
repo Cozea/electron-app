@@ -12,14 +12,14 @@ import {
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Archive01Icon as __PackageOpenHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, CalendarCheckOut01Icon as __Maximize2HugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, HandPointingDown01Icon as __Minimize2HugeIcon, PlusMinusCircle01Icon as __PlusCircleHugeIcon } from '@hugeicons/core-free-icons'
+import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, SquareArrowDownRightIcon as __Maximize2HugeIcon, SquareArrowUpLeftIcon as __Minimize2HugeIcon } from '@hugeicons/core-free-icons'
 
-const PackageOpen = (props: any) => <HugeiconsIcon icon={__PackageOpenHugeIcon} {...props} />
+const DevServer = (props: any) => <HugeiconsIcon icon={__DevServerHugeIcon} {...props} />
 const Messages = (props: any) => <HugeiconsIcon icon={__MessagesHugeIcon} {...props} />
 const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminalHugeIcon} {...props} />
 const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
-const PlusCircle = (props: any) => <HugeiconsIcon icon={__PlusCircleHugeIcon} {...props} />
+const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
 
 interface WorkbenchTileChromeProps {
   title: string
@@ -52,6 +52,20 @@ function resolveAssistantProviderIcon(provider: string | null | undefined) {
   }
 }
 
+function resolveAssistantProviderIconClass(provider: string | null | undefined) {
+  switch (provider) {
+    case "claudeAgent":
+      return "text-[#d97757]"
+    case "codex":
+      return "text-foreground"
+    case "gemini":
+    case "openCode":
+      return ""
+    default:
+      return "text-muted-foreground"
+  }
+}
+
 function resolveTileIcon(
   tileType: WorkbenchTileChromeProps["tileType"],
   assistantProvider: string | null | undefined,
@@ -64,9 +78,9 @@ function resolveTileIcon(
     case "browser":
       return Globe
     case "selection":
-      return PlusCircle
+      return AddCircle
     case "devServer":
-      return PackageOpen
+      return DevServer
     case "mobileSimulator":
       return Phone
     default:
@@ -91,6 +105,12 @@ export function WorkbenchTileChrome({
 }: WorkbenchTileChromeProps) {
   const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
   const TileIcon = resolveTileIcon(tileType, assistantProvider)
+  const tileIconClassName = cn(
+    "h-3.5 w-3.5 shrink-0",
+    tileType === "assistantChat"
+      ? resolveAssistantProviderIconClass(assistantProvider)
+      : "text-muted-foreground",
+  )
   const pillControlHoverClasses =
     "text-muted-foreground hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
 
@@ -130,7 +150,7 @@ export function WorkbenchTileChrome({
               chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
             )}
           >
-            {TileIcon ? <TileIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+            {TileIcon ? <TileIcon className={tileIconClassName} /> : null}
             <span className="truncate text-xs text-foreground">{title}</span>
           </div>
         ) : null}
