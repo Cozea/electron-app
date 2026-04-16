@@ -78,6 +78,8 @@ export const ensureLocalDeviceProfile = mutation({
       },
       personalWorkspace: {
         id: localWorkspaceMembershipId,
+        workspaceId: `local:${normalizedDeviceId}`,
+        workspaceName: personalWorkspaceName,
         organizationId: `local:${normalizedDeviceId}`,
         organizationName: personalWorkspaceName,
         role: "admin" as const,

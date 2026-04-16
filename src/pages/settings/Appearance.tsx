@@ -1,7 +1,6 @@
 
 
 import {
-
   SettingsGroup,
   SettingsPageBody,
   SettingsRow,
@@ -15,6 +14,7 @@ import { Switch } from "../../components/ui/switch";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { Theme } from "@/lib/theme";
 import { cn } from "../../lib/utils";
+import { useCallback, useEffect, useState } from "react";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
@@ -68,6 +68,23 @@ const themes: {
 
 export function Appearance({ surface = "page", route: _route }: AppearanceProps) {
   const { theme, setTheme } = useTheme();
+  const [transparencyOff, setTransparencyOff] = useState(false);
+  const [pendingRestart, setPendingRestart] = useState(false);
+
+  useEffect(() => {
+    void window.electronAPI.settings.get().then((s) => {
+      setTransparencyOff(s.deactivateTransparency ?? false);
+    });
+  }, []);
+
+  const handleTransparencyToggle = useCallback(
+    async (checked: boolean) => {
+      setTransparencyOff(checked);
+      await window.electronAPI.settings.set({ deactivateTransparency: checked });
+      setPendingRestart(true);
+    },
+    [],
+  );
 
   return (
     <SettingsPageBody surface={surface}>
@@ -114,6 +131,22 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
         <SettingsSectionDescription>Customize the user interface</SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst>
+            <SettingsRowLabel
+              title="Deactivate transparency"
+              description={
+                pendingRestart
+                  ? "Restart the app to apply this change"
+                  : "Disable window blur effects for faster resizing"
+              }
+            />
+            <SettingsRowControl>
+              <Switch
+                checked={transparencyOff}
+                onCheckedChange={handleTransparencyToggle}
+              />
+            </SettingsRowControl>
+          </SettingsRow>
+          <SettingsRow>
             <SettingsRowLabel
               title="Compact Mode"
               description="Reduce spacing for more content"

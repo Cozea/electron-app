@@ -2,7 +2,7 @@ import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
 export default defineSchema({
-  // Users - synced from WorkOS
+  // Users - local device-backed profiles with legacy identity compatibility
   users: defineTable({
     // WorkOS identifiers
     workosId: v.string(),
@@ -22,9 +22,6 @@ export default defineSchema({
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
-        sourceControlDefaultProvider: v.optional(
-          v.union(v.literal("github"), v.literal("gitlab"))
-        ),
       })
     ),
 
@@ -219,9 +216,6 @@ export default defineSchema({
     lastSyncAt: v.optional(v.number()),
     lastSyncBy: v.optional(v.id("users")),
 
-    // Project team (for role-based access within org)
-    teamId: v.optional(v.id("projectTeams")),
-
     // Collaborative editing state (for future traffic control)
     sharedFilesVersion: v.optional(v.number()),
     lastSharedUpdate: v.optional(v.number()),
@@ -280,9 +274,8 @@ export default defineSchema({
     .index("by_project_and_user", ["projectId", "userId"])
     .index("by_device", ["deviceId"]),
 
-  // Per-project storage accounting aggregate used for fast org rollups and repair jobs.
+  // Per-project storage accounting aggregate used for local/cloud repair jobs.
   projectStorageUsage: defineTable({
-    organizationId: v.optional(v.id("organizations")),
     projectId: v.id("projects"),
     totalBytes: v.number(),
     lastCalculatedAt: v.number(),
@@ -299,9 +292,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_project", ["organizationId", "projectId"]),
+    .index("by_project", ["projectId"]),
 
   // Project invites for pending team members
   projectInvites: defineTable({
@@ -325,125 +316,9 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_project_and_status", ["projectId", "status"]),
 
-  projectRepoAccess: defineTable({
-    projectId: v.id("projects"),
-    provider: v.union(v.literal("github"), v.literal("gitlab")),
-    repoUrl: v.optional(v.string()),
-    subjectType: v.union(v.literal("member"), v.literal("invite")),
-    memberUserId: v.optional(v.id("users")),
-    inviteEmail: v.optional(v.string()),
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
-    accessState: v.union(
-      v.literal("pending"),
-      v.literal("granted"),
-      v.literal("needs_identity"),
-      v.literal("manual_required"),
-      v.literal("revoked"),
-      v.literal("error")
-    ),
-    providerAccountHandle: v.optional(v.string()),
-    externalInvitationId: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-    lastAttemptAt: v.number(),
-    lastSyncedAt: v.optional(v.number()),
-    lastAttemptedBy: v.optional(v.id("users")),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_member_provider", ["projectId", "memberUserId", "provider"])
-    .index("by_project_and_email_provider", ["projectId", "inviteEmail", "provider"]),
-
-  workspaceSourceControlConnections: defineTable({
-    organizationId: v.id("organizations"),
-    scopeType: v.union(v.literal("user"), v.literal("workspace")),
-    userId: v.optional(v.id("users")),
-    provider: v.union(v.literal("github"), v.literal("gitlab")),
-    authType: v.union(v.literal("oauth")),
-    authStatus: v.union(
-      v.literal("active"),
-      v.literal("needs_reauth"),
-      v.literal("revoked"),
-      v.literal("missing_setup"),
-      v.literal("error")
-    ),
-    setupMode: v.union(v.literal("personal"), v.literal("organization")),
-    providerHost: v.optional(v.string()),
-    externalAccountId: v.optional(v.string()),
-    externalAccountName: v.optional(v.string()),
-    externalAccountLogin: v.optional(v.string()),
-    oauthScopes: v.optional(v.array(v.string())),
-    tokenExpiresAt: v.optional(v.number()),
-    encryptedCredentials: v.string(),
-    namespaceId: v.optional(v.string()),
-    namespaceName: v.optional(v.string()),
-    namespaceLogin: v.optional(v.string()),
-    namespaceType: v.optional(
-      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
-    ),
-    installationId: v.optional(v.string()),
-    installationTargetType: v.optional(
-      v.union(v.literal("user"), v.literal("organization"))
-    ),
-    installationTargetLogin: v.optional(v.string()),
-    installationTargetName: v.optional(v.string()),
-    lastVerifiedAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-    connectedBy: v.id("users"),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_provider", ["organizationId", "provider"])
-    .index("by_scope_user", ["scopeType", "userId"])
-    .index("by_scope_user_provider", ["scopeType", "userId", "provider"])
-    .index("by_scope_organization", ["scopeType", "organizationId"])
-    .index("by_scope_organization_provider", ["scopeType", "organizationId", "provider"]),
-
-  projectRepositoryBindings: defineTable({
-    projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
-    workspaceConnectionId: v.optional(v.id("workspaceSourceControlConnections")),
-    provider: v.union(
-      v.literal("github"),
-      v.literal("gitlab"),
-      v.literal("bitbucket"),
-      v.literal("local")
-    ),
-    setupMode: v.union(v.literal("personal"), v.literal("organization")),
-    syncPolicy: v.union(v.literal("auto"), v.literal("manual")),
-    workingCopyMode: v.union(v.literal("managed"), v.literal("attached")),
-    repoUrl: v.optional(v.string()),
-    activeCollabBranch: v.optional(v.string()),
-    defaultBranch: v.string(),
-    ownerId: v.optional(v.string()),
-    ownerLogin: v.optional(v.string()),
-    ownerName: v.optional(v.string()),
-    ownerType: v.optional(
-      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
-    ),
-    repoId: v.optional(v.string()),
-    repoName: v.optional(v.string()),
-    repoFullName: v.optional(v.string()),
-    visibility: v.optional(v.string()),
-    providerHost: v.optional(v.string()),
-    repoAccessPolicy: v.union(v.literal("on_first_open")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_provider", ["organizationId", "provider"])
-    .index("by_workspace_connection", ["workspaceConnectionId"]),
-
   // Shared project tasks created from the task board UI.
   projectTasks: defineTable({
     projectId: v.id("projects"),
-    organizationId: v.optional(v.id("organizations")),
     taskKey: v.string(),
     title: v.string(),
     description: v.string(),
@@ -482,13 +357,11 @@ export default defineSchema({
     completedBy: v.optional(v.id("users")),
   })
     .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
     .index("by_project_and_task_key", ["projectId", "taskKey"]),
 
   // Shared completion state for synthesized task-board items.
   projectTaskStates: defineTable({
     projectId: v.id("projects"),
-    organizationId: v.optional(v.id("organizations")),
     source: v.union(
       v.literal("page"),
       v.literal("entity"),
@@ -508,13 +381,11 @@ export default defineSchema({
     completedBy: v.optional(v.id("users")),
   })
     .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
     .index("by_project_and_source_and_storage", ["projectId", "source", "storageId"]),
 
   // Inbox items for task assignment and completion events.
   projectTaskNotifications: defineTable({
     userId: v.id("users"),
-    organizationId: v.optional(v.id("organizations")),
     projectId: v.id("projects"),
     kind: v.union(v.literal("assigned"), v.literal("completed")),
     taskSource: v.union(
@@ -536,7 +407,6 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_user_and_created", ["userId", "createdAt"])
-    .index("by_user_and_organization_and_created", ["userId", "organizationId", "createdAt"])
     .index("by_project_and_created", ["projectId", "createdAt"]),
 
   // Project join links for personal-project collaboration sharing
@@ -561,41 +431,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_token", ["token"])
     .index("by_project_and_status", ["projectId", "status"]),
-
-  // Project teams - groups of users with shared access to projects
-  projectTeams: defineTable({
-    organizationId: v.id("organizations"),
-    name: v.string(),
-    description: v.optional(v.string()),
-
-    // Team-level permissions (can be overridden per-project)
-    defaultRole: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
-
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"]),
-
-  // Project team members
-  projectTeamMembers: defineTable({
-    teamId: v.id("projectTeams"),
-    userId: v.id("users"),
-    role: v.union(
-      v.literal("team_lead"),
-      v.literal("member")
-    ),
-    addedAt: v.number(),
-    addedBy: v.id("users"),
-  })
-    .index("by_team", ["teamId"])
-    .index("by_user", ["userId"])
-    .index("by_team_and_user", ["teamId", "userId"]),
 
   // File locks for collaborative editing (traffic control system)
   projectFileLocks: defineTable({
@@ -896,18 +731,6 @@ export default defineSchema({
     .index("by_project_and_time", ["projectId", "timestamp"])
     .index("by_user", ["userId"]),
 
-  // Conversation compaction checkpoints for auto-context compression.
-  aiCompactionState: defineTable({
-    organizationId: v.string(), // WorkOS org id from AI runtime request
-    conversationId: v.string(),
-    summary: v.string(),
-    compactedThroughMessageId: v.string(),
-    updatedAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_org_conversation", ["organizationId", "conversationId"])
-    .index("by_expires_at", ["expiresAt"]),
-
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
     changeId: v.id("fileChanges"),
@@ -956,7 +779,6 @@ export default defineSchema({
   // Project assets (images, videos, PDFs, etc.)
   projectAssets: defineTable({
     projectId: v.id("projects"),
-    organizationId: v.optional(v.id("organizations")),
     name: v.string(),
     storageId: v.optional(v.id("_storage")), // Optional for folders
     mimeType: v.string(),
@@ -977,7 +799,6 @@ export default defineSchema({
     ),
   })
     .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
     .index("by_folder", ["projectId", "folderPath"])
     .index("by_category", ["projectId", "category"])
     .searchIndex("search_assets", {

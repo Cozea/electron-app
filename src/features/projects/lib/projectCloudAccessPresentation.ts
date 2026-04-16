@@ -1,5 +1,3 @@
-import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
-
 export interface ProjectCloudAccessPresentation {
   summary: string
   detail: string | null
@@ -38,7 +36,6 @@ export function formatProjectCloudAccessError(
   const rawMessage = extractErrorText(input, fallback)
   const normalized = cleanGitTransportError(rawMessage)
   const lower = normalized.toLowerCase()
-  const storageHref = getSettingsSurfaceRoute('storage', 'personal') ?? '/settings/storage'
 
   if (lower.includes('not a member of this project')) {
     return {
@@ -119,9 +116,9 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Local Project Recovery Failed',
       detail:
-        'This local copy is out of sync or incomplete. Delete the local copy from Storage and open the project again.',
-      actionHref: storageHref,
-      actionLabel: 'Open Storage',
+        'This local copy is out of sync or incomplete. Delete the local copy manually from disk and open the project again.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: false,
     }
   }
@@ -142,9 +139,9 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Local Project Copy Needs Repair',
       detail:
-        'The local git data for this project looks incomplete or corrupted. Delete the local copy from Storage and reopen the project.',
-      actionHref: storageHref,
-      actionLabel: 'Open Storage',
+        'The local git data for this project looks incomplete or corrupted. Delete the local copy manually from disk and reopen the project.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: false,
     }
   }

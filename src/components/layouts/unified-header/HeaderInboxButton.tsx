@@ -112,14 +112,15 @@ export function HeaderInboxButton() {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
-              className="relative h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              className="h-6 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
             >
-              <HugeiconsIcon icon={__InboxHugeIcon} className="h-3.5 w-3.5 shrink-0" />
-              {inviteCount > 0 ? (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
-              ) : null}
-              <span className="sr-only">Inbox</span>
+              <span className="relative flex">
+                <HugeiconsIcon icon={__InboxHugeIcon} className="size-3 shrink-0" />
+                {inviteCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                ) : null}
+              </span>
+              <span className="text-[11px] leading-none">Inbox</span>
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>

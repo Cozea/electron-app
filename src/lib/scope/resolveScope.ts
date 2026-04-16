@@ -23,8 +23,8 @@ export interface ResolvedScope {
   workspaceScoped: false
   personalScoped: boolean
   organizationScoped: false
-  activeOrganizationId: string | null
-  scopedOrganizationId: string | null
+  activeWorkspaceId: string | null
+  scopedWorkspaceId: string | null
 }
 
 function normalizeRoutePath(value?: string | null): string {
@@ -71,7 +71,7 @@ export function resolveScope(input: ResolveScopeInput): ResolvedScope {
     workspaceScoped: false,
     personalScoped,
     organizationScoped: false,
-    activeOrganizationId: activeWorkspace?.organizationId ?? null,
-    scopedOrganizationId: scopedWorkspace?.organizationId ?? null,
+    activeWorkspaceId: activeWorkspace?.workspaceId ?? activeWorkspace?.organizationId ?? null,
+    scopedWorkspaceId: scopedWorkspace?.workspaceId ?? scopedWorkspace?.organizationId ?? null,
   }
 }

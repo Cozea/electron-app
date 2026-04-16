@@ -137,7 +137,7 @@ export function ProjectWorkbenchPage() {
           <span className="block truncate">{projectName}</span>
         </div>
         <div className="titlebar-no-drag absolute left-full top-1/2 ml-2 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap">
-          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+          <span className="text-muted-foreground/40 font-light select-none">/</span>
           <WorkbenchHeaderBranchControl
             projectId={projectId}
             projectPath={projectPath}
