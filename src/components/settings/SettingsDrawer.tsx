@@ -6,15 +6,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { WindowChromeTopInset } from '@/components/window-chrome/WindowChromeTopInset'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
-import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
-import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import {
 
   resolveSettingsSurfaceFromRoute,
 } from '@/lib/settings/settingsRegistry'
 import { resolveSettingsNavigationSections } from '@/lib/settings/settingsNavigation'
-import { resolveSettingsNavChrome } from '@/lib/workspaces/settingsRoutes'
 import {
   useSettingsDrawerStore,
   type SettingsDrawerSection,
@@ -36,9 +33,6 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
     return <Appearance surface="drawer" route={route} />
   }
 
-  if (section === 'storage') {
-    return <Storage surface="drawer" route={route} />
-  }
 
   return <Tooling surface="drawer" route={route} />
 }
@@ -60,33 +54,7 @@ export function SettingsDrawer() {
   const resolvedDrawerSurface = resolveSettingsSurfaceFromRoute(routePath, {
     placement: 'drawer',
   })
-  const {
-    workspaceScoped,
-    personalScoped,
-    surfaceAccess,
-  } = useScopedAppContext({
-    route: routePath || '/settings/account',
-  })
-
-  const drawerPathnameForChrome = useMemo(() => {
-    const raw = (routePath.split('?')[0] || '').trim()
-    const normalized = raw.startsWith('/') ? raw : `/${raw}`
-    if (normalized.startsWith('/projects/')) {
-      return normalized.replace(/\/+$/, '') || '/'
-    }
-    return (`/projects${normalized}`).replace(/\/+$/, '') || '/'
-  }, [routePath])
-
-  const settingsNavChrome = resolveSettingsNavChrome(drawerPathnameForChrome, workspaceScoped)
-  const navSections = useMemo(
-    () =>
-      resolveSettingsNavigationSections({
-        placement: 'drawer',
-        navChrome: settingsNavChrome,
-        access: surfaceAccess,
-      }),
-    [settingsNavChrome, surfaceAccess],
-  )
+  const navSections = useMemo(() => resolveSettingsNavigationSections('drawer'), [])
 
   const preloadSurface = useCallback((route: string, preload?: () => Promise<unknown>) => {
     if (!preload) return
@@ -156,7 +124,7 @@ export function SettingsDrawer() {
     <Sheet open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <SheetContent
         side="right"
-        disableAnimation={personalScoped}
+        disableAnimation
         className="inset-0 flex h-screen w-screen max-w-none flex-col gap-0 p-0 sm:max-w-none"
         closeClassName="hidden"
       >

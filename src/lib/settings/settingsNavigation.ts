@@ -1,68 +1,40 @@
 import {
-  canAccessWorkspaceSurface,
   comparePersonalContextUnifiedSettingsSidebar,
   comparePersonalDeviceSidebarSurfaces,
-  compareWorkspaceScopedSidebarSurfaces,
-  getSettingsSurfaceDisplayLabel,
   listSettingsSurfaces,
 } from "@/lib/settings/settingsRegistry"
 import type {
   SettingsPlacement,
-  SettingsScopeKind,
   SettingsSurfaceDefinition,
-  WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
-import type { SettingsNavChrome } from "@/lib/workspaces/settingsRoutes"
 
 export interface SettingsNavigationItem {
   label: string
   route: string
-  scopeKind: SettingsScopeKind
   surface: SettingsSurfaceDefinition
 }
 
 export interface SettingsNavigationSection {
-  id: "settings" | "team" | "workspace" | "userSettings"
+  id: "settings"
   label: string
   items: SettingsNavigationItem[]
 }
 
-function toNavigationItems(
-  surfaces: SettingsSurfaceDefinition[],
-  scopeKind: SettingsScopeKind,
-): SettingsNavigationItem[] {
+function toNavigationItems(surfaces: SettingsSurfaceDefinition[]): SettingsNavigationItem[] {
   return surfaces.flatMap((surface) => {
-    const route = surface.routes[scopeKind]
+    const route = surface.routes.personal
     if (!route) {
       return []
     }
 
     return [
       {
-        label:
-          surface.id === "cliTools" && scopeKind === "workspace"
-            ? "Integrations"
-            : getSettingsSurfaceDisplayLabel(surface, scopeKind),
+        label: surface.label,
         route,
-        scopeKind,
         surface,
       },
     ]
   })
-}
-
-function resolveWorkspaceSurfaces(
-  placement: SettingsPlacement,
-  sidebarGroup: "team" | "workspace",
-  access: WorkspaceSurfaceAccessState,
-): SettingsSurfaceDefinition[] {
-  return listSettingsSurfaces({
-    scopeKind: "workspace",
-    placement,
-    sidebarGroup,
-  })
-    .filter((surface) => canAccessWorkspaceSurface(surface, access))
-    .sort(compareWorkspaceScopedSidebarSurfaces)
 }
 
 function resolvePersonalDeviceSurfaces(
@@ -106,63 +78,19 @@ function resolveUnifiedPersonalSurfaces(
 }
 
 function buildSection(
-  id: SettingsNavigationSection["id"],
-  label: string,
   surfaces: SettingsSurfaceDefinition[],
-  scopeKind: SettingsScopeKind,
 ): SettingsNavigationSection | null {
-  const items = toNavigationItems(surfaces, scopeKind)
+  const items = toNavigationItems(surfaces)
   if (items.length === 0) {
     return null
   }
 
-  return { id, label, items }
+  return { id: "settings", label: "Settings", items }
 }
 
-export function resolveSettingsNavigationSections(input: {
-  placement: SettingsPlacement
-  navChrome: SettingsNavChrome
-  access: WorkspaceSurfaceAccessState
-}): SettingsNavigationSection[] {
-  const { placement, navChrome, access } = input
-  const workspaceTeamSection = buildSection(
-    "team",
-    "Team",
-    resolveWorkspaceSurfaces(placement, "team", access),
-    "workspace",
-  )
-  const workspaceSection = buildSection(
-    "workspace",
-    "Workspace",
-    resolveWorkspaceSurfaces(placement, "workspace", access),
-    "workspace",
-  )
-  const userSettingsSection = buildSection(
-    "userSettings",
-    "User settings",
-    resolveUnifiedPersonalSurfaces(placement),
-    "personal",
-  )
-  const personalSettingsSection = buildSection(
-    "settings",
-    "Settings",
-    resolveUnifiedPersonalSurfaces(placement),
-    "personal",
-  )
-
-  switch (navChrome) {
-    case "personalUnified":
-      return personalSettingsSection ? [personalSettingsSection] : []
-    case "orgWorkspaceAdmin":
-      return [workspaceTeamSection, workspaceSection].filter(
-        (section): section is SettingsNavigationSection => section !== null,
-      )
-    case "userSettings":
-      return userSettingsSection ? [userSettingsSection] : []
-    case "mixed":
-    default:
-      return [workspaceTeamSection, workspaceSection, userSettingsSection].filter(
-        (section): section is SettingsNavigationSection => section !== null,
-      )
-  }
+export function resolveSettingsNavigationSections(
+  placement: SettingsPlacement,
+): SettingsNavigationSection[] {
+  const section = buildSection(resolveUnifiedPersonalSurfaces(placement))
+  return section ? [section] : []
 }

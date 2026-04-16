@@ -1,7 +1,6 @@
 import type { ConvexReactClient } from "convex/react";
 
 import type { Id } from "../../../../convex/_generated/dataModel";
-import type { ProjectGitRuntimeSourceControlLike } from "@/lib/git/projectGitRuntime";
 
 export interface GitRepositoryMetadataLike {
   provider?: string;
@@ -16,15 +15,25 @@ export interface ProjectImportedFromLike {
   detectedStack?: unknown;
 }
 
+export interface ProjectOpenSourceControlLike {
+  provider?: string;
+  repoUrl?: string | null;
+  defaultBranch?: string | null;
+  visibility?: string;
+  mergeStrategy?: string;
+  mergeQueue?: string;
+  workingCopyMode?: "managed" | "attached";
+  setupMode?: "personal" | "organization";
+}
+
 export interface ProjectOpenGitProjectLike {
   _id: Id<"projects">;
   name?: string | null;
   slug: string;
-  organizationId: Id<"organizations">;
   createdBy?: Id<"users"> | string | null;
   localPath?: string | null;
   gitRepository?: GitRepositoryMetadataLike | null;
-  sourceControl?: ProjectGitRuntimeSourceControlLike | null;
+  sourceControl?: ProjectOpenSourceControlLike | null;
   importedFrom?: ProjectImportedFromLike | null;
 }
 

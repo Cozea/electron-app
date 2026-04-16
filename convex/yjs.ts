@@ -408,7 +408,7 @@ async function insertSequencedUpdate(
   seq: number
   created: boolean
 }> {
-  const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.update.byteLength)
+  await assertCollaborationWriteAllowed(ctx, args.projectId, args.update.byteLength)
   const roomId = args.roomId || defaultRoomId(args.projectId)
   const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
 
@@ -460,7 +460,7 @@ async function insertSequencedUpdate(
     timestamp: args.timestamp ?? Date.now(),
   })
 
-  await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+  await applyProjectStorageDeltas(ctx, args.projectId, {
     collaborationData: args.update.byteLength,
   })
 
@@ -659,7 +659,7 @@ export const saveSnapshot = mutation({
     createdByClientId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.snapshot.byteLength)
+    await assertCollaborationWriteAllowed(ctx, args.projectId, args.snapshot.byteLength)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, defaultRoomId(args.projectId))
     if (!activeRoomKey) {
       throw new ConvexError({
@@ -687,7 +687,7 @@ export const saveSnapshot = mutation({
       createdAt: Date.now(),
     })
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       snapshots: args.snapshot.byteLength,
     })
   },
@@ -703,7 +703,7 @@ export const cleanupOldUpdates = mutation({
     olderThan: v.number(),
   },
   handler: async (ctx, args) => {
-    const project = await getProject(ctx, args.projectId)
+    await getProject(ctx, args.projectId)
     let deletedCount = 0
     let deletedBytes = 0
 
@@ -724,7 +724,7 @@ export const cleanupOldUpdates = mutation({
     }
 
     if (deletedBytes > 0) {
-      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      await applyProjectStorageDeltas(ctx, args.projectId, {
         collaborationData: -deletedBytes,
       })
     }
@@ -745,7 +745,7 @@ export const maybeCompactProject = mutation({
     force: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const project = await getProject(ctx, args.projectId)
+    await getProject(ctx, args.projectId)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, defaultRoomId(args.projectId))
     if (!activeRoomKey) {
       return {
@@ -915,7 +915,7 @@ export const maybeCompactProject = mutation({
       }
     }
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       collaborationData: -removedUpdateBytes,
       snapshots: snapshot.byteLength - removedSnapshotBytes,
     })
@@ -1072,7 +1072,7 @@ export const initializeEncryptedRoom = mutation({
     senderPublicKeyJwk: v.string(),
   },
   handler: async (ctx, args) => {
-    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const roomId = args.roomId || defaultRoomId(args.projectId)
 
     const existingRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
@@ -1117,7 +1117,7 @@ export const initializeEncryptedRoom = mutation({
     })
 
     if (removedUpdateBytes > 0 || removedSnapshotBytes > 0) {
-      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      await applyProjectStorageDeltas(ctx, args.projectId, {
         collaborationData: -removedUpdateBytes,
         snapshots: -removedSnapshotBytes,
       })
@@ -1514,7 +1514,7 @@ export const rotateEncryptedRoomKey = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const project = await assertCollaborationWriteAllowed(
+    await assertCollaborationWriteAllowed(
       ctx,
       args.projectId,
       args.encryptedSnapshot.byteLength,
@@ -1623,7 +1623,7 @@ export const rotateEncryptedRoomKey = mutation({
       createdAt: now,
     })
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       collaborationData: -removedUpdateBytes,
       snapshots: args.encryptedSnapshot.byteLength - removedSnapshotBytes,
     })
@@ -1648,7 +1648,7 @@ export const resetEncryptedRoom = mutation({
     retainDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const now = Date.now()
 
@@ -1733,7 +1733,7 @@ export const resetEncryptedRoom = mutation({
     )
     const removedAwarenessEntries = await deleteAllProjectAwarenessEntries(ctx, args.projectId)
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       collaborationData: -removedUpdateBytes,
       snapshots: -removedSnapshotBytes,
     })

@@ -188,17 +188,7 @@ async function assertAssignableAssignee(
   if (projectMembership) {
     return
   }
-
-  const workspaceMembership = await ctx.db
-    .query("members")
-    .withIndex("by_organization_and_user", (q) =>
-      q.eq("organizationId", project.organizationId).eq("userId", assignee.userId as Id<"users">)
-    )
-    .first()
-
-  if (!workspaceMembership) {
-    throw new Error("Assignee is not part of this workspace")
-  }
+  throw new Error("Assignee is not part of this project")
 }
 
 async function insertAssignmentNotification(
@@ -214,7 +204,6 @@ async function insertAssignmentNotification(
 
   await ctx.db.insert("projectTaskNotifications", {
     userId: assignee.userId,
-    organizationId: project.organizationId,
     projectId: project._id,
     kind: "assigned",
     taskSource: "manual",
@@ -250,7 +239,6 @@ async function insertCompletionNotifications(
 
     await ctx.db.insert("projectTaskNotifications", {
       userId: membership.userId,
-      organizationId: project.organizationId,
       projectId: project._id,
       kind: "completed",
       taskSource,
@@ -346,22 +334,13 @@ export const getOverlayTaskState = query({
 export const listInboxForUser = query({
   args: {
     userId: v.id("users"),
-    organizationId: v.optional(v.id("organizations")),
   },
   handler: async (ctx, args) => {
-    const notifications = args.organizationId
-      ? await ctx.db
-          .query("projectTaskNotifications")
-          .withIndex("by_user_and_organization_and_created", (q) =>
-            q.eq("userId", args.userId).eq("organizationId", args.organizationId as Id<"organizations">)
-          )
-          .order("desc")
-          .take(24)
-      : await ctx.db
-          .query("projectTaskNotifications")
-          .withIndex("by_user_and_created", (q) => q.eq("userId", args.userId))
-          .order("desc")
-          .take(24)
+    const notifications = await ctx.db
+      .query("projectTaskNotifications")
+      .withIndex("by_user_and_created", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(24)
 
     const enriched = await Promise.all(
       notifications.map(async (notification) => {
@@ -440,7 +419,6 @@ export const createManualTask = mutation({
 
     const docId = await ctx.db.insert("projectTasks", {
       projectId: args.projectId,
-      organizationId: project.organizationId,
       taskKey,
       title,
       description: normalizeText(args.description),
@@ -564,7 +542,6 @@ export const setSharedTaskCheckedMarkers = mutation({
     } else {
       await ctx.db.insert("projectTaskStates", {
         projectId: args.projectId,
-        organizationId: project.organizationId,
         source: args.source,
         storageId: args.storageId,
         status: nextStatus,
@@ -659,7 +636,6 @@ export const migrateLocalBoardState = mutation({
 
       await ctx.db.insert("projectTasks", {
         projectId: args.projectId,
-        organizationId: project.organizationId,
         taskKey,
         title: normalizeText(input.title) || "Untitled task",
         description: normalizeText(input.description),
@@ -705,7 +681,6 @@ export const migrateLocalBoardState = mutation({
 
       await ctx.db.insert("projectTaskStates", {
         projectId: args.projectId,
-        organizationId: project.organizationId,
         source: state.source,
         storageId: normalizeText(state.storageId),
         status,

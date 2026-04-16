@@ -9,7 +9,6 @@ export type ProjectsPageSortOption = "last_modified" | "name" | "created"
 
 export interface ProjectPageItem {
   _id: Id<"projects">
-  organizationId: Id<"organizations">
   name: string
   slug: string
   description?: string
@@ -134,7 +133,6 @@ async function buildProjectsPageItems(
   return await Promise.all(
     projects.map(async (project) => ({
       _id: project._id,
-      organizationId: project.organizationId,
       name: project.name,
       slug: project.slug,
       description: project.description,

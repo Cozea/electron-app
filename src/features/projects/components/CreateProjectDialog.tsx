@@ -14,8 +14,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import type { GhCliStatus } from "../../../../shared/electronApiTypes"
 import { useAuth } from "@/contexts/AuthContext"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import {
@@ -23,7 +25,6 @@ import {
   SettingsRow,
   SettingsRowControl,
   SettingsRowLabel,
-  SettingsSectionTitle,
   settingsInlineInputClass,
   settingsInlineInputWidth,
 } from "@/components/settings/SettingsChrome"
@@ -39,7 +40,7 @@ import {
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+import { Refresh01Icon as __Loader2HugeIcon, Folder01Icon } from '@hugeicons/core-free-icons'
 
 interface CreateProjectDialogProps {
   open: boolean
@@ -82,6 +83,27 @@ function formatLocationPathPreview(pathValue: string, maxParents = 2): string {
   return `.../${segments.slice(-maxSegments).join("/")}`
 }
 
+// Cache gh CLI status globally so we only probe once per app session.
+let cachedGhCliStatus: GhCliStatus | null = null
+let ghCliStatusPromise: Promise<GhCliStatus> | null = null
+
+function getGhCliStatus(): Promise<GhCliStatus> {
+  if (cachedGhCliStatus) return Promise.resolve(cachedGhCliStatus)
+  if (ghCliStatusPromise) return ghCliStatusPromise
+  ghCliStatusPromise = window.electronAPI.project
+    .checkGhCliStatus()
+    .then((status) => {
+      cachedGhCliStatus = status
+      return status
+    })
+    .catch(() => {
+      const fallback: GhCliStatus = { available: false, error: "Failed to check GitHub CLI." }
+      cachedGhCliStatus = fallback
+      return fallback
+    })
+  return ghCliStatusPromise
+}
+
 export function CreateProjectDialog({
   open,
   mode,
@@ -90,10 +112,6 @@ export function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
-  const {
-    personalScoped,
-    preferredConvexOrganizationId,
-  } = useScopedAppContext()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
@@ -105,6 +123,9 @@ export function CreateProjectDialog({
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasEditedName, setHasEditedName] = useState(false)
+  const [createGitHubRepo, setCreateGitHubRepo] = useState(false)
+  const [repoVisibility, setRepoVisibility] = useState<"private" | "public">("public")
+  const [ghCliAvailable, setGhCliAvailable] = useState<boolean | null>(cachedGhCliStatus?.available ?? null)
 
   const copy = useMemo(() => {
     if (mode !== "local" || !initialLocalFolderPath.trim()) {
@@ -139,6 +160,14 @@ export function CreateProjectDialog({
         setLocalGitState(null)
         setError(null)
         setHasEditedName(false)
+        setCreateGitHubRepo(false)
+
+        // Resolve cached gh CLI status (fires once per app session)
+        if (mode === "empty") {
+          void getGhCliStatus().then((status) => {
+            if (!cancelled) setGhCliAvailable(status.available)
+          })
+        }
       })
       .catch((nextError) => {
         if (cancelled) return
@@ -242,9 +271,10 @@ export function CreateProjectDialog({
     },
     [navigate, onOpenChange],
   )
+  const isCreateProjectDisabled = isSubmitting || (mode === "empty" && name.trim().length === 0)
 
   const handleSubmit = useCallback(async () => {
-    if (!convexUserId || !preferredConvexOrganizationId || isSubmitting) {
+    if (!convexUserId || isSubmitting) {
       return
     }
 
@@ -256,7 +286,6 @@ export function CreateProjectDialog({
     const trimmedLocalFolderPath = localFolderPath.trim()
 
     if (!trimmedName) {
-      setError("Project name is required.")
       return
     }
 
@@ -279,7 +308,7 @@ export function CreateProjectDialog({
       if (mode === "empty") {
         const createFolderResult = await window.electronAPI.project.createFolder({
           slug: buildFilesystemSlug(trimmedName),
-          initGit: false,
+          initGit: true,
           baseDirectory: trimmedParentDirectory,
         })
 
@@ -289,12 +318,34 @@ export function CreateProjectDialog({
 
         createdProjectPath = createFolderResult.localPath
 
+        // Optionally create a GitHub repo
+        let gitHubRepoUrl: string | undefined
+        if (createGitHubRepo) {
+          const ghResult = await window.electronAPI.project.createGitHubRepo({
+            name: buildFilesystemSlug(trimmedName),
+            localPath: createdProjectPath,
+            visibility: repoVisibility,
+          })
+          if (!ghResult.success) {
+            throw new Error(ghResult.error || "Failed to create GitHub repository.")
+          }
+          gitHubRepoUrl = ghResult.repoUrl
+        }
+
         const result = await createProject({
-          organizationId: preferredConvexOrganizationId,
           userId: convexUserId,
           name: trimmedName,
           template: "blank",
           creationPath: "fresh",
+          ...(gitHubRepoUrl ? {
+            sourceControl: {
+              provider: "github" as const,
+              repoUrl: gitHubRepoUrl,
+              defaultBranch: "main",
+              workingCopyMode: "attached" as const,
+              setupMode: "personal" as const,
+            },
+          } : {}),
         })
 
         await updateProjectStatus({
@@ -312,7 +363,6 @@ export function CreateProjectDialog({
         const normalizedBranch = localGitState?.branch || "main"
         const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
         const result = await createProject({
-          organizationId: preferredConvexOrganizationId,
           userId: convexUserId,
           name: trimmedName,
           template: "blank",
@@ -323,7 +373,7 @@ export function CreateProjectDialog({
                 repoUrl: existingRemoteUrl,
                 defaultBranch: normalizedBranch,
                 workingCopyMode: "attached",
-                setupMode: personalScoped ? "personal" : "organization",
+                setupMode: "personal",
               }
             : undefined,
           repoSource: existingRemoteUrl && provider
@@ -355,6 +405,7 @@ export function CreateProjectDialog({
     }
   }, [
     convexUserId,
+    createGitHubRepo,
     createProject,
     isSubmitting,
     localFolderPath,
@@ -365,8 +416,6 @@ export function CreateProjectDialog({
     navigateToProjectWorkbench,
     parentDirectory,
     persistProjectPath,
-    personalScoped,
-    preferredConvexOrganizationId,
     updateProjectStatus,
   ])
 
@@ -381,7 +430,10 @@ export function CreateProjectDialog({
     >
       <DialogContent
         showCloseButton={false}
-        className="p-3 sm:max-w-xl sm:p-4"
+        className={cn(
+          "p-3 sm:max-w-md sm:p-4",
+          mode === "empty" && "border-none bg-transparent shadow-none",
+        )}
       >
         {mode !== "empty" ? (
           <DialogHeader className="items-start space-y-1 text-left">
@@ -401,7 +453,7 @@ export function CreateProjectDialog({
               <SettingsGroup>
                 {mode === "empty" ? (
                   <SettingsRow isFirst>
-                    <SettingsRowLabel title="Project name" htmlFor="create-project-name" />
+                    <SettingsRowLabel title="Name" htmlFor="create-project-name" />
                     <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
                       <Input
                         id="create-project-name"
@@ -414,19 +466,18 @@ export function CreateProjectDialog({
                         placeholder="My project"
                         disabled={isSubmitting}
                         autoFocus
-                        className={cn(settingsInlineInputClass, "w-full text-[13px] font-normal")}
+                        className={cn(settingsInlineInputClass, "w-auto min-w-[72px] text-left text-[13px] font-normal")}
+                        style={{ fieldSizing: "content" } as React.CSSProperties}
                       />
                     </SettingsRowControl>
                   </SettingsRow>
                 ) : null}
 
                 {mode === "empty" ? (
-                  <SettingsRow isFirst>
+                  <SettingsRow>
                     <SettingsRowLabel
-                      title="Location"
+                      title="Path"
                       htmlFor="create-project-location"
-                      description="Parent folder for the local project."
-                      descriptionClassName="truncate"
                     />
                     <SettingsRowControl>
                       <Button
@@ -434,7 +485,7 @@ export function CreateProjectDialog({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-7 w-[220px] max-w-full justify-end rounded-md border-border/50 bg-transparent px-2 text-[11px] font-normal shadow-none transition-colors hover:bg-accent/50 hover:text-foreground"
+                        className="h-7 max-w-full justify-end rounded-[6px] border-border/50 bg-transparent px-2 text-[11px] font-normal shadow-none transition-colors hover:bg-foreground/10 hover:text-foreground"
                         onClick={async () => {
                           const selectedPath = await browseForDirectory("Select project location")
                           if (!selectedPath) return
@@ -444,9 +495,93 @@ export function CreateProjectDialog({
                         disabled={isSubmitting}
                         title={parentDirectory || "Choose a parent folder"}
                       >
-                        <span className="w-full truncate text-right">
+                        <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
+                        <span className="truncate text-right">
                           {locationPathPreview || "Choose a parent folder"}
                         </span>
+                      </Button>
+                    </SettingsRowControl>
+                  </SettingsRow>
+                ) : null}
+
+                {mode === "empty" ? (
+                  <SettingsRow>
+                    <SettingsRowLabel
+                      title="GitHub"
+                      description="Create a remote repo"
+                      htmlFor="create-project-github"
+                    />
+                    <SettingsRowControl>
+                      {ghCliAvailable === false ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                              <Switch
+                                id="create-project-github"
+                                checked={false}
+                                disabled
+                              />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="left">
+                            Install and authenticate the GitHub CLI to enable
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Switch
+                          id="create-project-github"
+                          checked={createGitHubRepo}
+                          onCheckedChange={setCreateGitHubRepo}
+                          disabled={isSubmitting}
+                        />
+                      )}
+                    </SettingsRowControl>
+                  </SettingsRow>
+                ) : null}
+
+                {mode === "empty" && createGitHubRepo ? (
+                  <SettingsRow>
+                    <SettingsRowLabel
+                      title="Private repo"
+                      description="Only you and collaborators can see it"
+                      htmlFor="create-project-visibility"
+                    />
+                    <SettingsRowControl>
+                      <Switch
+                        id="create-project-visibility"
+                        checked={repoVisibility === "private"}
+                        onCheckedChange={(checked) => setRepoVisibility(checked ? "private" : "public")}
+                        disabled={isSubmitting}
+                      />
+                    </SettingsRowControl>
+                  </SettingsRow>
+                ) : null}
+
+                {mode === "empty" ? (
+                  <SettingsRow>
+                    <div className="min-w-0 flex-1" />
+                    <SettingsRowControl className="gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={closeDialog}
+                        disabled={isSubmitting}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => void handleSubmit()}
+                        disabled={isCreateProjectDisabled}
+                      >
+                        {isSubmitting ? (
+                          <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        {copy.submitLabel}
                       </Button>
                     </SettingsRowControl>
                   </SettingsRow>
@@ -468,19 +603,34 @@ export function CreateProjectDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
-        <DialogFooter
-          className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
-        >
-          <div className="flex shrink-0 justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={closeDialog} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button type="button" size="sm" className="rounded-full" onClick={() => void handleSubmit()} disabled={isSubmitting}>
-              {isSubmitting ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" /> : null}
-              {copy.submitLabel}
-            </Button>
-          </div>
-        </DialogFooter>
+        {mode === "local" ? (
+          <DialogFooter className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex shrink-0 justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={closeDialog}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="rounded-full"
+                onClick={() => void handleSubmit()}
+                disabled={isCreateProjectDisabled}
+              >
+                {isSubmitting ? (
+                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+                ) : null}
+                {copy.submitLabel}
+              </Button>
+            </div>
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

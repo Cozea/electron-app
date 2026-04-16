@@ -1,30 +1,14 @@
 import type { ComponentType, SVGProps } from "react"
 
-export type SettingsScopeKind = "personal" | "workspace"
+export type SettingsScopeKind = "personal"
 export type SettingsStorageMode = "local" | "cloud"
 export type SettingsPlacement = "drawer" | "sidebar" | "command" | "settingsWindow"
-/** `personalDevice` = account, appearance, local storage, runtimes — not org/workspace scoped */
-export type SettingsSidebarGroup = "team" | "workspace" | "personalWorkspace" | "personalDevice"
-export type WorkspaceSurfaceAccessKey =
-  | "general"
-  | "members"
-  | "roles"
-  | "billing"
-  | "settings"
-  | "integrations"
+export type SettingsSidebarGroup = "personalDevice"
 
 export type SettingsSurfaceId =
   | "account"
-  | "billing"
   | "appearance"
-  | "storage"
-  | "sourceControl"
-  | "cliTools"
   | "tooling"
-  | "general"
-  | "policies"
-  | "members"
-  | "roles"
 
 export interface SettingsSurfaceDefinition {
   id: SettingsSurfaceId
@@ -35,7 +19,6 @@ export interface SettingsSurfaceDefinition {
   placements: SettingsPlacement[]
   sidebarGroups?: Partial<Record<SettingsScopeKind, SettingsSidebarGroup>>
   commandKeywords: string[]
-  workspaceAccessKey?: WorkspaceSurfaceAccessKey
   alpha?: boolean
   preload?: () => Promise<unknown>
 }
@@ -44,15 +27,4 @@ export interface ResolvedSettingsSurfaceRoute {
   route: string
   scopeKind: SettingsScopeKind
   surface: SettingsSurfaceDefinition
-}
-
-export interface WorkspaceSurfaceAccessState {
-  canManageWorkspaceBilling: boolean
-  canViewWorkspaceAi: boolean
-  canViewWorkspaceGeneral: boolean
-  canViewWorkspaceIntegrations: boolean
-  canViewWorkspaceMembers: boolean
-  canViewWorkspaceRoles: boolean
-  canViewWorkspaceSettings: boolean
-  canViewWorkspaceUsage: boolean
 }

@@ -26,7 +26,6 @@ import {
 import { useLocation, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useResolvedScope } from "@/hooks/useResolvedScope";
 import { ChangesPage } from "@/features/projects/pages/ChangesPage";
 import { WorkbenchEdgeInsertion } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
 import { WorkbenchJunctionInsertion } from "@/features/projects/components/workbench/WorkbenchJunctionInsertion";
@@ -43,7 +42,6 @@ import {
 } from "@/features/projects/lib/workbenchLayoutPersistence";
 import { useWorkbenchSessionLifecycle } from "@/features/projects/hooks/useWorkbenchSessionLifecycle";
 import { ProjectSettingsPage } from "@/features/projects/pages/ProjectSettingsPage";
-import { getWorkspaceSelectionId } from "@shared/types";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 
 function getTaskOverlayKey(task: TaskOverlayPayload): string {
@@ -61,8 +59,7 @@ export function ProjectWorkbenchPage() {
   const projectId = project?._id ? String(project._id) : projectIdParam ?? null;
   const locationState = (location.state as TaskOverlayLocationState | null) ?? null;
   const { theme } = useTheme();
-  const { convexUserId } = useAuth();
-  const resolvedScope = useResolvedScope({ ignoreLocation: true });
+  const { convexUserId, user } = useAuth();
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
     locationState?.taskOverlay ? [locationState.taskOverlay] : [],
   );
@@ -90,10 +87,7 @@ export function ProjectWorkbenchPage() {
     projectPath: activeWorkbenchPath,
     enabled: Boolean(projectId),
   });
-  const workspaceSelectionId =
-    getWorkspaceSelectionId(resolvedScope.activeWorkspace) ??
-    resolvedScope.activeWorkspace?.organizationId ??
-    null;
+  const workspaceSelectionId = user?.id ?? "local-device";
   const persistedLayout = useMemo(() => {
     if (!workbenchScopeKey || !projectWorkbench) {
       return null;

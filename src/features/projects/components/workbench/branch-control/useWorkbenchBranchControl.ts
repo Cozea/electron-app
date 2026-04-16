@@ -59,17 +59,13 @@ function buildMenuItems(input: {
       ? "Live collaboration is paused on this branch."
       : "Live collaboration is active."
 
+  const statusSummary = getStatusSummary(snapshot.gitStatus)
+
   const items: ContextMenuItem<string>[] = [
     {
       id: "workbench-branch:mode",
       label: modeLabel,
       sublabel: modeDetail,
-      enabled: false,
-    },
-    {
-      id: "workbench-branch:status",
-      label: currentBranch || collabBranch,
-      sublabel: getStatusSummary(snapshot.gitStatus) ?? undefined,
       enabled: false,
     },
     { id: "workbench-branch:sep-branches", type: "separator" },
@@ -92,26 +88,54 @@ function buildMenuItems(input: {
     return items
   }
 
-  if (snapshot.branches.length === 0) {
-    items.push({
-      id: "workbench-branch:no-branches",
-      label: "No branches available.",
-      enabled: false,
-    })
-  } else {
+  let hasShownCurrentBranch = false
+  let displayedBranchCount = 0
+
+  const localBranchNames = new Set(
+    snapshot.branches.filter((b) => !b.isRemote).map((b) => b.name)
+  )
+
+  if (snapshot.branches.length > 0) {
     snapshot.branches.forEach((branch, index) => {
+      if (branch.isRemote) {
+        const localName = deriveLocalBranchNameFromRemoteRef(branch.name)
+        if (localBranchNames.has(localName)) return // Skip this one
+      }
+
+      displayedBranchCount++
+
       const comparableName = branch.isRemote
         ? deriveLocalBranchNameFromRemoteRef(branch.name)
         : branch.name
       const isActive = comparableName === currentBranch
+      if (isActive) hasShownCurrentBranch = true
+
       const branchLabel =
         comparableName === collabBranch ? `${branch.name} · shared` : branch.name
       items.push({
         id: `workbench-branch:branch#${index}`,
         type: "radio",
         label: branchLabel,
+        sublabel: isActive && statusSummary ? statusSummary : undefined,
         checked: isActive,
       })
+    })
+  }
+
+  // If there are no branches listed (e.g. empty repo) OR current branch wasn't explicitly in the list
+  if (!hasShownCurrentBranch && currentBranch) {
+    items.push({
+      id: `workbench-branch:branch#current`,
+      type: "radio",
+      label: currentBranch === collabBranch ? `${currentBranch} · shared` : currentBranch,
+      sublabel: statusSummary ?? undefined,
+      checked: true,
+    })
+  } else if (displayedBranchCount === 0 && !currentBranch) {
+    items.push({
+      id: "workbench-branch:no-branches",
+      label: "No branches available.",
+      enabled: false,
     })
   }
 
@@ -130,7 +154,9 @@ function buildMenuItems(input: {
 function parseBranchIndex(action: string): number | null {
   const prefix = "workbench-branch:branch#"
   if (!action.startsWith(prefix)) return null
-  const value = Number.parseInt(action.slice(prefix.length), 10)
+  const suffix = action.slice(prefix.length)
+  if (suffix === "current") return null // Current branch is already selected
+  const value = Number.parseInt(suffix, 10)
   return Number.isFinite(value) ? value : null
 }
 

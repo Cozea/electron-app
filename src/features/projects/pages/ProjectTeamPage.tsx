@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
 
   Table,
@@ -31,7 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserAdd01Icon as __UserPlusHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
+import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
 
 type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
 type SortField = 'name' | 'role' | 'date'
@@ -49,16 +47,6 @@ interface TeamTableRow {
   isSelf: boolean
   userId?: Id<'users'>
   inviteId?: Id<'projectInvites'>
-}
-
-interface WorkspaceMemberRecord {
-  userId: Id<'users'>
-  user?: {
-    email?: string | null
-    firstName?: string | null
-    lastName?: string | null
-    profileImageUrl?: string | null
-  } | null
 }
 
 const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
@@ -146,12 +134,7 @@ function formatDate(timestamp: number): string {
 export function ProjectTeamPage() {
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
-  const projectWorkspace = useProjectWorkspaceContext(project)
-  const isPersonalWorkspace = projectWorkspace.isPersonalWorkspace
-  const projectOrganizationId = projectWorkspace.organizationId
-  const hasResolvedWorkspaceContext = project !== undefined && !projectWorkspace.isLoading
 
-  const addMember = useMutation(api.projectMembers.addMember)
   const cancelInvite = useMutation(api.projectInvites.cancelInvite)
   const resendInvite = useMutation(api.projectInvites.resendInvite)
   const updateMemberRole = useMutation(api.projectMembers.updateRole)
@@ -167,71 +150,23 @@ export function ProjectTeamPage() {
     api.projectMembers.listMembers,
     project?._id && convexUserId ? { projectId: project._id, viewerUserId: convexUserId } : 'skip'
   )
-  const currentWorkspaceAccess = useQuery(
-    api.organizations.getCurrentMemberAccess,
-    hasResolvedWorkspaceContext && !isPersonalWorkspace && projectOrganizationId && convexUserId
-      ? { orgId: projectOrganizationId, viewerUserId: convexUserId }
-      : 'skip'
-  )
-  const workspaceMembers = useQuery(
-    api.organizations.getMembers,
-    hasResolvedWorkspaceContext &&
-    !isPersonalWorkspace &&
-    projectOrganizationId &&
-    convexUserId &&
-    (currentWorkspaceAccess?.permissions.includes('members:view') ?? false)
-      ? { orgId: projectOrganizationId, viewerUserId: convexUserId }
-      : 'skip'
-  )
   const pendingInvites = useQuery(
     api.projectInvites.listForProject,
-    hasResolvedWorkspaceContext && project?._id && convexUserId && isPersonalWorkspace
+    project?._id && convexUserId
       ? { projectId: project._id, viewerUserId: convexUserId }
       : 'skip'
   )
 
   const [teamError, setTeamError] = useState<string | null>(null)
   const [teamActionKey, setTeamActionKey] = useState<string | null>(null)
-  const [selectedWorkspaceMemberId, setSelectedWorkspaceMemberId] = useState('')
-  const [selectedWorkspaceMemberRole, setSelectedWorkspaceMemberRole] =
-    useState<ProjectRole>('developer')
 
   const [roleFilter, setRoleFilter] = useState<'all' | ProjectRole>('all')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const hasResolvedTeamRows = members !== undefined && (!isPersonalWorkspace || pendingInvites !== undefined)
+  const hasResolvedTeamRows = members !== undefined && pendingInvites !== undefined
 
   const isManager = memberRole === 'project_manager'
-  const canManageTeam = Boolean(convexUserId) && (
-    isPersonalWorkspace
-      ? isManager
-      : currentWorkspaceAccess?.permissions.includes('projects:share') ?? false
-  )
-  const assignableWorkspaceMembers = useMemo(() => {
-    if (isPersonalWorkspace) return []
-
-    const assignedUserIds = new Set((members ?? []).map((member) => String(member.userId)))
-    return ((workspaceMembers ?? []) as WorkspaceMemberRecord[])
-      .filter((member) => member.user && !assignedUserIds.has(String(member.userId)))
-      .sort((left, right) =>
-        formatMemberName(left).localeCompare(formatMemberName(right))
-      )
-  }, [isPersonalWorkspace, members, workspaceMembers])
-
-  useEffect(() => {
-    if (
-      selectedWorkspaceMemberId &&
-      assignableWorkspaceMembers.some(
-        (member) => String(member.userId) === selectedWorkspaceMemberId,
-      )
-    ) {
-      return
-    }
-
-    setSelectedWorkspaceMemberId(
-      assignableWorkspaceMembers[0] ? String(assignableWorkspaceMembers[0].userId) : '',
-    )
-  }, [assignableWorkspaceMembers, selectedWorkspaceMemberId])
+  const canManageTeam = Boolean(convexUserId) && isManager
 
   const filteredRows = useMemo(() => {
     const memberRows: TeamTableRow[] = (members ?? []).map((member) => {
@@ -249,8 +184,7 @@ export function ProjectTeamPage() {
       }
     })
 
-    const inviteRows: TeamTableRow[] = isPersonalWorkspace
-      ? (pendingInvites ?? []).map((invite) => {
+    const inviteRows: TeamTableRow[] = (pendingInvites ?? []).map((invite) => {
       return {
         key: `invite:${String(invite._id)}`,
         type: 'invite',
@@ -264,7 +198,6 @@ export function ProjectTeamPage() {
         inviteId: invite._id,
       }
     })
-      : []
 
     const rows = [...memberRows, ...inviteRows].filter((row) => {
       if (roleFilter === 'all') return true
@@ -288,38 +221,11 @@ export function ProjectTeamPage() {
     })
   }, [
     convexUserId,
-    isPersonalWorkspace,
     members,
     pendingInvites,
     roleFilter,
     sortDirection,
     sortField,
-  ])
-
-  const handleAddWorkspaceMember = useCallback(async () => {
-    if (!project?._id || !project || !convexUserId || !canManageTeam || !selectedWorkspaceMemberId) return
-
-    setTeamActionKey('add-member')
-    setTeamError(null)
-    try {
-      await addMember({
-        projectId: project._id,
-        actorUserId: convexUserId,
-        memberUserId: selectedWorkspaceMemberId as Id<'users'>,
-        role: selectedWorkspaceMemberRole,
-      })
-    } catch (error) {
-      setTeamError(cleanConvexError(error, 'Failed to add workspace member'))
-    } finally {
-      setTeamActionKey(null)
-    }
-  }, [
-    addMember,
-    canManageTeam,
-    convexUserId,
-    project,
-    selectedWorkspaceMemberId,
-    selectedWorkspaceMemberRole,
   ])
 
   const handleRoleChange = useCallback(
@@ -384,7 +290,7 @@ export function ProjectTeamPage() {
       try {
         await cancelInvite({
           inviteId,
-          cancelledBy: convexUserId,
+          actorUserId: convexUserId,
         })
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to cancel invite'))
@@ -404,7 +310,7 @@ export function ProjectTeamPage() {
       try {
         await resendInvite({
           inviteId,
-          resentBy: convexUserId,
+          actorUserId: convexUserId,
         })
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to resend invite'))
@@ -488,84 +394,6 @@ export function ProjectTeamPage() {
       {teamError ? (
         <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {teamError}
-        </div>
-      ) : null}
-
-      {!projectWorkspace.isLoading && !isPersonalWorkspace ? (
-        <div className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h3 className="text-base font-medium">Workspace member assignment</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Organization projects only accept existing workspace members. Add people to the
-                workspace first, then assign them to this project.
-              </p>
-            </div>
-
-            {canManageTeam ? (
-              assignableWorkspaceMembers.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                  <Select
-                    value={selectedWorkspaceMemberId}
-                    onValueChange={setSelectedWorkspaceMemberId}
-                  >
-                    <SelectTrigger className="w-full min-w-[240px] justify-between rounded-xl bg-secondary/80">
-                      <SelectValue placeholder="Select workspace member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assignableWorkspaceMembers.map((member) => (
-                        <SelectItem key={String(member.userId)} value={String(member.userId)}>
-                          {formatMemberName(member)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={selectedWorkspaceMemberRole}
-                    onValueChange={(value) => setSelectedWorkspaceMemberRole(value as ProjectRole)}
-                  >
-                    <SelectTrigger className="w-full min-w-[180px] justify-between rounded-xl bg-secondary/80">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ROLE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Button
-                    type="button"
-                    className="gap-2 rounded-xl"
-                    disabled={!selectedWorkspaceMemberId || teamActionKey === 'add-member'}
-                    onClick={() => {
-                      void handleAddWorkspaceMember()
-                    }}
-                  >
-                    {teamActionKey === 'add-member' ? (
-                      <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <HugeiconsIcon icon={__UserPlusHugeIcon} className="h-4 w-4" />
-                    )}
-                    Add member
-                  </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  All workspace members already have project access.
-                </p>
-              )
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                You need workspace project-sharing access to change this team.
-              </p>
-            )}
-          </div>
         </div>
       ) : null}
 

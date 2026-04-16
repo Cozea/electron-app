@@ -1,22 +1,16 @@
 import { useEffect, useState } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
-import { getWorkspaceSelectionId } from "@shared/types"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useResolvedScope } from "@/hooks/useResolvedScope"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
-import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu"
-import { Button } from "@/components/ui/button"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import {
-
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
-  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
 import {
@@ -25,44 +19,9 @@ import {
   readLastWorkbenchRoute,
 } from "@/features/projects/lib/lastWorkbenchRoute"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon as __PlusHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
-
-interface ProjectsLaunchLoadingStateProps {
-  title: string
-  description: string
-}
-
-function ProjectsLaunchLoadingState({
-  title,
-  description,
-}: ProjectsLaunchLoadingStateProps) {
-  return (
-    <div className="flex min-h-full flex-1 items-center justify-center">
-      <div className="w-full p-6 md:p-10">
-        <Empty className="py-6">
-          <EmptyHeader>
-            <EmptyMedia>
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-8 w-8 animate-spin text-muted-foreground" />
-            </EmptyMedia>
-            <EmptyTitle>{title}</EmptyTitle>
-            <EmptyDescription>{description}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
-    </div>
-  )
-}
-
 export function ProjectsLaunchPage() {
-  const { convexUserId, isLoading } = useAuth()
-  const resolvedScope = useResolvedScope({ ignoreLocation: true })
-  const { personalScoped, workspaceScoped, convexOrg, capabilities } = useScopedAppContext()
-  const { openProjectCreationMenu } = useProjectCreationMenu()
-  const workspaceSelectionId =
-    getWorkspaceSelectionId(resolvedScope.activeWorkspace) ??
-    resolvedScope.activeWorkspace?.organizationId ??
-    null
+  const { convexUserId, user } = useAuth()
+  const workspaceSelectionId = user?.id ?? "local-device"
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const lastWorkbenchRoute =
     ignoredWorkspaceSelectionId === workspaceSelectionId
@@ -79,23 +38,10 @@ export function ProjectsLaunchPage() {
       : "skip",
   )
 
-  const personalProjectsPage = useQuery(
-    api.projects.listPageForPersonalWorkspaceMemberView,
-    !lastWorkbenchRoute && personalScoped && convexUserId
+  const projectsPage = useQuery(
+    api.projects.listPageForCurrentUser,
+    !lastWorkbenchRoute && convexUserId
       ? {
-          userId: convexUserId,
-          statusFilter: "all",
-          sortBy: "last_modified",
-          page: 1,
-          pageSize: 1,
-        }
-      : "skip",
-  )
-  const workspaceProjectsPage = useQuery(
-    api.projects.listPageForOrganization,
-    !lastWorkbenchRoute && workspaceScoped && convexOrg?._id && convexUserId
-      ? {
-          organizationId: convexOrg._id,
           userId: convexUserId,
           statusFilter: "all",
           sortBy: "last_modified",
@@ -117,25 +63,7 @@ export function ProjectsLaunchPage() {
     setIgnoredWorkspaceSelectionId(workspaceSelectionId)
   }, [lastWorkbenchRoute, restoredProject, workspaceSelectionId])
 
-  if (isLoading) {
-    return (
-      <ProjectsLaunchLoadingState
-        title="Loading workspace"
-        description="Preparing your recent work and available projects."
-      />
-    )
-  }
-
   if (lastWorkbenchRoute) {
-    if (restoredProject === undefined) {
-      return (
-        <ProjectsLaunchLoadingState
-          title="Opening recent workbench"
-          description="Restoring the last project you were working in."
-        />
-      )
-    }
-
     if (restoredProject) {
       return (
         <Navigate
@@ -148,51 +76,57 @@ export function ProjectsLaunchPage() {
     }
   }
 
-  const fallbackProject = personalScoped
-    ? (personalProjectsPage?.items?.[0] ?? null)
-    : (workspaceProjectsPage?.items?.[0] ?? null)
-
-  if (
-    (!personalScoped && workspaceScoped && convexOrg?._id && workspaceProjectsPage === undefined) ||
-    (personalScoped && convexUserId && personalProjectsPage === undefined)
-  ) {
-    return (
-      <ProjectsLaunchLoadingState
-        title="Loading projects"
-        description="Checking which projects are available in this workspace."
-      />
-    )
-  }
+  const fallbackProject = projectsPage?.items?.[0] ?? null
 
   const hasProjects = Boolean(fallbackProject?._id)
-  const canCreateProjects = capabilities.canCreateProjects
-  const canStartProjectFlow = canCreateProjects || capabilities.canImportProjects
+  const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac")
+
+  const shortcutRows = [
+    {
+      label: "Open Chat",
+      keys: isMac ? ["⌃", "⌘", "I"] : ["Ctrl", "Alt", "I"],
+    },
+    {
+      label: "Show All Commands",
+      keys: isMac ? ["⇧", "⌘", "P"] : ["Ctrl", "Shift", "P"],
+    },
+    {
+      label: "Toggle Terminal",
+      keys: isMac ? ["⌃", "`"] : ["Ctrl", "`"],
+    },
+  ] as const
 
   return (
     <div className="flex min-h-full flex-1 items-center justify-center">
       <div className="w-full p-6 md:p-10">
         <Empty className="py-6">
-          <EmptyHeader>
-            <EmptyMedia>
-              <HugeiconsIcon icon={__FolderOpenHugeIcon} className="h-8 w-8" />
-            </EmptyMedia>
-            <EmptyTitle>{hasProjects ? "Select a project" : "No projects yet"}</EmptyTitle>
-            <EmptyDescription>
-              {hasProjects
-                ? "Choose a project from the sidebar to continue in its workbench."
-                : canStartProjectFlow
-                  ? canCreateProjects
-                    ? "Create a project to start working in this workspace."
-                    : "Import a project to start working in this workspace."
-                  : "Projects will appear here when this workspace has active projects you can access."}
-            </EmptyDescription>
-          </EmptyHeader>
-          {!hasProjects && canStartProjectFlow ? (
-            <EmptyContent>
-              <Button className="gap-2" onClick={(event) => void openProjectCreationMenu(event)}>
-                <HugeiconsIcon icon={__PlusHugeIcon} className="h-4 w-4" />
-                {canCreateProjects ? "Create Project" : "Import Project"}
-              </Button>
+          {hasProjects ? (
+            <EmptyHeader>
+              <EmptyTitle>Select a project</EmptyTitle>
+              <EmptyDescription>
+                Choose a project from the sidebar to continue in its workbench.
+              </EmptyDescription>
+            </EmptyHeader>
+          ) : null}
+          {!hasProjects ? (
+            <EmptyContent className="w-full max-w-xs">
+              <div className="w-full space-y-2 rounded-lg p-3">
+                {shortcutRows.map((row) => (
+                  <div key={row.label} className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-muted-foreground">{row.label}</span>
+                    <KbdGroup className="gap-1">
+                      {row.keys.map((key) => (
+                        <Kbd
+                          key={`${row.label}-${key}`}
+                          className="h-6 min-w-6 rounded-md border border-border border-b-[2px] bg-background px-1.5 text-foreground shadow-sm"
+                        >
+                          {key}
+                        </Kbd>
+                      ))}
+                    </KbdGroup>
+                  </div>
+                ))}
+              </div>
             </EmptyContent>
           ) : null}
         </Empty>
@@ -200,4 +134,3 @@ export function ProjectsLaunchPage() {
     </div>
   )
 }
-

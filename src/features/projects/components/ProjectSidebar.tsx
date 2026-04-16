@@ -14,7 +14,6 @@ import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
@@ -92,7 +91,6 @@ export function ProjectSidebar({
   const location = useLocation();
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { convexUserId } = useAuth();
-  const { personalScoped, convexOrganizationId, workspaceScoped } = useScopedAppContext();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project: currentProject, projectIdParam } = useAccessibleProject();
   const projectSyncContext = useOptionalProjectSyncContext();
@@ -128,18 +126,9 @@ export function ProjectSidebar({
   const deleteProject = useMutation(api.projects.deleteProject);
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath);
 
-  const organizationProjects = useQuery(
-    api.projects.listForOrganization,
-    !personalScoped && convexOrganizationId && convexUserId
-      ? {
-          organizationId: convexOrganizationId,
-          userId: convexUserId,
-        }
-      : "skip",
-  );
-  const personalProjects = useQuery(
-    api.projects.listForPersonalWorkspaceMemberView,
-    personalScoped && convexUserId
+  const accessibleProjects = useQuery(
+    api.projects.listForCurrentUser,
+    convexUserId
       ? {
           userId: convexUserId,
         }
@@ -147,7 +136,7 @@ export function ProjectSidebar({
   );
 
   const projectItems = React.useMemo<SidebarProjectItem[]>(() => {
-    const source = personalScoped ? personalProjects : organizationProjects;
+    const source = accessibleProjects;
     if (!source) {
       return [];
     }
@@ -165,7 +154,6 @@ export function ProjectSidebar({
           template: project.template ?? null,
           slug: project.slug,
           updatedAt: project.updatedAt,
-          organizationId: project.organizationId,
           createdBy: project.createdBy ?? null,
           localPath: project.localPath ?? null,
           sourceControl: project.sourceControl,
@@ -185,7 +173,7 @@ export function ProjectSidebar({
 
     stableProjectItemsRef.current = nextStableProjectMap;
     return nextItems;
-  }, [organizationProjects, personalProjects, personalScoped]);
+  }, [accessibleProjects]);
 
   React.useEffect(() => {
     if (projectItems.length === 0) return;
@@ -332,9 +320,7 @@ export function ProjectSidebar({
     }
   }, [projectSyncContext]);
 
-  const isProjectsLoading =
-    (personalScoped && personalProjects === undefined) ||
-    (!personalScoped && convexOrganizationId && organizationProjects === undefined);
+  const isProjectsLoading = Boolean(convexUserId) && accessibleProjects === undefined;
   const currentWorkbenchPath = currentProjectId
     ? `${buildProjectPath(currentProjectId)}/workbench`
     : null;
@@ -399,7 +385,7 @@ export function ProjectSidebar({
         });
       } catch (error) {
         const presentation = formatProjectCloudAccessError(error, "Failed to prepare project", {
-          workspaceScoped,
+          workspaceScoped: false,
         });
         const response = await window.electronAPI.dialog.showMessageBox({
           type: presentation.isAccessError ? "warning" : "error",
@@ -419,7 +405,7 @@ export function ProjectSidebar({
         }
       }
     },
-    [convexUserId, navigate, updateMemberLocalPath, workspaceScoped],
+    [convexUserId, navigate, updateMemberLocalPath],
   );
 
   const handleOpenProjectFolder = React.useCallback(
@@ -689,7 +675,7 @@ export function ProjectSidebar({
               </div>
             ) : sortedProjects.length === 0 ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">
-                No projects in this workspace yet
+                Create a project to get started.
               </div>
             ) : (
               sortedProjects.map((project, index) => (

@@ -5,9 +5,7 @@ import type {
   ElectronAPI,
   ElectronWindowContext,
   GpuAccelerationDiagnostics,
-  OrganizationMembership,
   RuntimeKind,
-  Session,
   SyncOp,
   SyncWriteFile,
   UpdateState,
@@ -107,25 +105,6 @@ const terminalOutputBridge = createTerminalOutputBridge()
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   windowContext,
-  auth: {
-    login: () => ipcRenderer.invoke('auth:login'),
-    logout: (options?: { accessToken?: string | null }) => ipcRenderer.invoke('auth:logout', options),
-    getSession: () => ipcRenderer.invoke('auth:getSession'),
-    refresh: () => ipcRenderer.invoke('auth:refresh'),
-    updateOrganizations: (organizations: OrganizationMembership[]) => ipcRenderer.invoke('auth:updateOrganizations', organizations),
-    onSuccess: (callback: (session: Session) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, session: Session) => callback(session)
-      ipcRenderer.on('auth:success', handler)
-      // Return cleanup function
-      return () => ipcRenderer.removeListener('auth:success', handler)
-    },
-    onError: (callback: (error: string) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, error: string) => callback(error)
-      ipcRenderer.on('auth:error', handler)
-      // Return cleanup function
-      return () => ipcRenderer.removeListener('auth:error', handler)
-    },
-  },
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
     generateKey: () => ipcRenderer.invoke('integrations:generateKey'),
@@ -199,114 +178,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       wrapAlgorithm?: string
     }) => ipcRenderer.invoke('collab:unwrapRecoveryKit', options),
     deleteDeviceIdentity: () => ipcRenderer.invoke('collab:deleteDeviceIdentity'),
-  },
-  sourceControl: {
-    onOAuthSuccess: (callback: (data: {
-      provider: string
-      accessToken?: string
-      refreshToken?: string
-      tokenExpiresAt?: number
-      externalId?: string
-      externalAccountName?: string
-      scopes?: string[]
-      metadata?: Record<string, unknown>
-    }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: {
-        provider: string
-        accessToken?: string
-        refreshToken?: string
-        tokenExpiresAt?: number
-        externalId?: string
-        externalAccountName?: string
-        scopes?: string[]
-        metadata?: Record<string, unknown>
-      }) => callback(data)
-      ipcRenderer.on('sourceControl:oauthSuccess', handler)
-      return () => ipcRenderer.removeListener('sourceControl:oauthSuccess', handler)
-    },
-    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { provider: string; error: string }) => callback(data)
-      ipcRenderer.on('sourceControl:oauthError', handler)
-      return () => ipcRenderer.removeListener('sourceControl:oauthError', handler)
-    },
-    startOAuth: (options: { provider: 'github' | 'gitlab'; orgId: string; metadata?: Record<string, unknown> }) =>
-      ipcRenderer.invoke('sourceControl:startOAuth', options),
-    listRepositoryOwners: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      bypassCache?: boolean
-    }) => ipcRenderer.invoke('sourceControl:listRepositoryOwners', options),
-    listRepositoriesPage: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-      search?: string
-      page: number
-      pageSize: number
-      bypassCache?: boolean
-    }) => ipcRenderer.invoke('sourceControl:listRepositoriesPage', options),
-    listBranches: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repositoryId?: string
-      repositoryFullName: string
-      defaultBranch?: string
-      bypassCache?: boolean
-    }) => ipcRenderer.invoke('sourceControl:listBranches', options),
-    listRepositoryLanguages: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repoUrl: string
-      repositoryId?: string
-      bypassCache?: boolean
-    }) => ipcRenderer.invoke('sourceControl:listRepositoryLanguages', options),
-    getRepositoryReadmeSnippet: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repoUrl: string
-      repositoryId?: string
-      branch?: string
-      bypassCache?: boolean
-    }) => ipcRenderer.invoke('sourceControl:getRepositoryReadmeSnippet', options),
-    createRepository: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      name: string
-      description?: string
-      private?: boolean
-      autoInit?: boolean
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-    }) => ipcRenderer.invoke('sourceControl:createRepository', options),
-    syncRepositoryAccess: (options: {
-      projectId?: string
-      provider: 'github' | 'gitlab'
-      repoUrl: string
-      providerHost?: string
-      accessToken?: string
-      action?: 'grant' | 'revoke'
-      role?: string
-      inviteEmail?: string
-      providerAccountHandle?: string
-    }) => ipcRenderer.invoke('sourceControl:syncRepositoryAccess', options),
-    invalidateProviderCache: (options?: {
-      provider?: 'github' | 'gitlab'
-    }) => ipcRenderer.invoke('sourceControl:invalidateProviderCache', options),
   },
   tools: {
     run: (request: {
@@ -650,6 +521,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
     getPathNativeIcon: (options: { projectPath: string }) =>
       ipcRenderer.invoke('project:getPathNativeIcon', options),
+    checkGhCliStatus: () =>
+      ipcRenderer.invoke('project:checkGhCliStatus'),
+    createGitHubRepo: (options: { name: string; localPath: string; visibility?: 'private' | 'public' }) =>
+      ipcRenderer.invoke('project:createGitHubRepo', options),
   },
   runtime: {
     getProjectCapabilities: (options: { projectPath: string }) =>

@@ -1,8 +1,5 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
-import { ensureSystemOrganizationRoles } from "./lib/organizationRoles"
-
-const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
@@ -21,84 +18,6 @@ function pickCanonicalUser<T extends { updatedAt?: number; createdAt: number; _i
   })[0]
 }
 
-function assertGatewaySecret(secret: string | undefined) {
-  if (!AI_GATEWAY_SECRET) {
-    throw new Error("AI_GATEWAY_SECRET is not configured")
-  }
-  if (secret !== AI_GATEWAY_SECRET) {
-    throw new Error("Unauthorized")
-  }
-}
-
-// Sync user from WorkOS - called after authentication
-export const syncFromWorkOS = mutation({
-  args: {
-    workosId: v.string(),
-    email: v.string(),
-    firstName: v.optional(v.string()),
-    lastName: v.optional(v.string()),
-    profileImageUrl: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    const normalizedEmail = normalizeEmail(args.email)
-
-    // Check if user already exists by WorkOS ID.
-    const existingByWorkosId = await ctx.db
-      .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .collect()
-    let existingUser = pickCanonicalUser(existingByWorkosId)
-
-    // If not found by WorkOS ID, check by normalized email (handles WorkOS user recreation).
-    if (!existingUser) {
-      const existingByNormalizedEmail = await ctx.db
-        .query("users")
-        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
-        .collect()
-      existingUser = pickCanonicalUser(existingByNormalizedEmail)
-    }
-
-    // Safety fallback for pre-normalized rows.
-    if (!existingUser) {
-      const existingByEmail = await ctx.db
-        .query("users")
-        .withIndex("by_email", (q) => q.eq("email", args.email))
-        .collect()
-      existingUser = pickCanonicalUser(existingByEmail)
-    }
-
-    if (existingUser) {
-      // Update existing user (including workosId in case it changed)
-      await ctx.db.patch(existingUser._id, {
-        workosId: args.workosId,
-        email: args.email,
-        normalizedEmail,
-        firstName: args.firstName,
-        lastName: args.lastName,
-        profileImageUrl: args.profileImageUrl,
-        updatedAt: now,
-        lastLoginAt: now,
-      })
-      return existingUser._id
-    }
-
-    // Create new user
-    const userId = await ctx.db.insert("users", {
-      workosId: args.workosId,
-      email: args.email,
-      normalizedEmail,
-      firstName: args.firstName,
-      lastName: args.lastName,
-      profileImageUrl: args.profileImageUrl,
-      createdAt: now,
-      updatedAt: now,
-      lastLoginAt: now,
-    })
-
-    return userId
-  },
-})
 
 export const ensureLocalDeviceProfile = mutation({
   args: {
@@ -114,7 +33,6 @@ export const ensureLocalDeviceProfile = mutation({
     const localUserWorkosId = `device:${normalizedDeviceId}`
     const localEmail = `device+${normalizedDeviceId}@local.cozea.app`
     const normalizedEmail = normalizeEmail(localEmail)
-    const personalWorkspaceWorkosId = `personal:${localUserWorkosId}`
     const personalWorkspaceName = `${normalizedLabel} Workspace`
     const localWorkspaceMembershipId = `local-membership:${normalizedDeviceId}`
 
@@ -149,67 +67,6 @@ export const ensureLocalDeviceProfile = mutation({
       })
     }
 
-    const existingOrganizations = await ctx.db
-      .query("organizations")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", personalWorkspaceWorkosId))
-      .collect()
-    const canonicalOrganization = existingOrganizations[0] ?? null
-
-    let organizationId = canonicalOrganization?._id
-    if (canonicalOrganization) {
-      await ctx.db.patch(canonicalOrganization._id, {
-        name: personalWorkspaceName,
-        updatedAt: now,
-      })
-    } else {
-      organizationId = await ctx.db.insert("organizations", {
-        workosId: personalWorkspaceWorkosId,
-        name: personalWorkspaceName,
-        slug: `local-${normalizedDeviceId.slice(0, 12)}`,
-        aiSettings: {
-          allowedProviders: ["anthropic", "openai", "google", "xai", "moonshotai"],
-          allowProviderTools: false,
-          allowWebSearch: false,
-          maxReasoningDepth: "high",
-          defaultModelTier: "standard",
-        },
-        subscription: {
-          plan: "free",
-          status: "active",
-          currentPeriodStart: now,
-          currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
-        },
-        createdAt: now,
-        updatedAt: now,
-      })
-      await ensureSystemOrganizationRoles(ctx, organizationId)
-    }
-
-    const existingMemberships = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", organizationId!).eq("userId", userId!)
-      )
-      .collect()
-    const canonicalMembership = existingMemberships[0] ?? null
-
-    if (canonicalMembership) {
-      await ctx.db.patch(canonicalMembership._id, {
-        workosId: localWorkspaceMembershipId,
-        role: "admin",
-        updatedAt: now,
-      })
-    } else {
-      await ctx.db.insert("members", {
-        workosId: localWorkspaceMembershipId,
-        organizationId: organizationId!,
-        userId: userId!,
-        role: "admin",
-        joinedAt: now,
-        updatedAt: now,
-      })
-    }
-
     return {
       userId: userId!,
       user: {
@@ -221,57 +78,21 @@ export const ensureLocalDeviceProfile = mutation({
       },
       personalWorkspace: {
         id: localWorkspaceMembershipId,
-        organizationId: personalWorkspaceWorkosId,
+        organizationId: `local:${normalizedDeviceId}`,
         organizationName: personalWorkspaceName,
         role: "admin" as const,
         status: "active" as const,
         workspaceType: "personal" as const,
-        convexOrgId: organizationId!,
       },
       identity: {
         workosId: localUserWorkosId,
-        organizationWorkosId: personalWorkspaceWorkosId,
+        organizationWorkosId: `local:${normalizedDeviceId}`,
         deviceId: normalizedDeviceId,
         deviceLabel: normalizedLabel,
         platform: args.platform?.trim() || "desktop",
         fingerprint: args.fingerprint?.trim() || null,
       },
     }
-  },
-})
-
-// Get user by WorkOS ID
-export const getByWorkosId = query({
-  args: { workosId: v.string() },
-  handler: async (ctx, args) => {
-    const users = await ctx.db
-      .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .collect()
-    const user = pickCanonicalUser(users)
-
-    if (!user) return null
-    return user
-  },
-})
-
-// Server-only: return user with decrypted BYOK keys
-export const getByWorkosIdForServer = query({
-  args: {
-    workosId: v.string(),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-
-    const users = await ctx.db
-      .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .collect()
-    const user = pickCanonicalUser(users)
-
-    if (!user) return null
-    return user
   },
 })
 
@@ -387,9 +208,6 @@ export const updatePreferences = mutation({
       defaultModel: v.optional(v.string()),
       emailNotifications: v.optional(v.boolean()),
       pushNotifications: v.optional(v.boolean()),
-      sourceControlDefaultProvider: v.optional(
-        v.union(v.literal("github"), v.literal("gitlab"), v.null())
-      ),
     }),
   },
   handler: async (ctx, args) => {
@@ -410,51 +228,10 @@ export const updatePreferences = mutation({
     if (args.preferences.pushNotifications !== undefined) {
       nextPreferences.pushNotifications = args.preferences.pushNotifications
     }
-    if (args.preferences.sourceControlDefaultProvider === null) {
-      delete nextPreferences.sourceControlDefaultProvider
-    } else if (args.preferences.sourceControlDefaultProvider !== undefined) {
-      nextPreferences.sourceControlDefaultProvider =
-        args.preferences.sourceControlDefaultProvider
-    }
 
     await ctx.db.patch(args.userId, {
       preferences: nextPreferences,
       updatedAt: Date.now(),
     })
-  },
-})
-
-// Get user with their organizations
-export const getWithOrganizations = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.userId)
-    if (!user) return null
-
-    const memberships = await ctx.db
-      .query("members")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect()
-
-    const organizations = await Promise.all(
-      memberships.map(async (membership) => {
-        const org = await ctx.db.get(membership.organizationId)
-        return org ? { ...org, role: membership.role } : null
-      })
-    )
-
-    const dedupedByOrg = new Map<string, NonNullable<(typeof organizations)[number]>>()
-    for (const org of organizations) {
-      if (!org) continue
-      const existing = dedupedByOrg.get(String(org._id))
-      if (!existing || (org.updatedAt || 0) >= (existing.updatedAt || 0)) {
-        dedupedByOrg.set(String(org._id), org)
-      }
-    }
-
-    return {
-      ...user,
-      organizations: [...dedupedByOrg.values()],
-    }
   },
 })

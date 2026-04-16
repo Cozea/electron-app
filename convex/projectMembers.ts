@@ -4,9 +4,6 @@ import type { Id } from "./_generated/dataModel"
 import {
   canAccessProjectByWorkspaceOrMembership,
   canEditProjectByWorkspaceOrMembership,
-  getCanonicalOrganizationMembership,
-  getWorkspaceProjectAccess,
-  hasWorkspaceProjectPermission,
 } from "./lib/workspaceProjectAccess"
 import {
   getProjectTrustedDevice,
@@ -70,11 +67,6 @@ async function getTeamManagementContext(
     throw new Error("Project not found")
   }
 
-  const workspaceAccess = await getWorkspaceProjectAccess(
-    ctx,
-    project.organizationId,
-    actorUserId
-  )
   const actorMembership = await ctx.db
     .query("projectMembers")
     .withIndex("by_project_and_user", (q) =>
@@ -82,17 +74,13 @@ async function getTeamManagementContext(
     )
     .first()
 
-  const isPersonalProject = Boolean(
-    workspaceAccess.organization?.workosId.startsWith("personal:")
+  const canManageTeam = Boolean(
+    actorMembership && hasPermission(actorMembership.role as ProjectRole, "manage_members")
   )
-  const canManageTeam = isPersonalProject
-    ? Boolean(actorMembership && hasPermission(actorMembership.role as ProjectRole, "manage_members"))
-    : hasWorkspaceProjectPermission(workspaceAccess, "projects:share")
 
   return {
     project,
     actorMembership,
-    isPersonalProject,
     canManageTeam,
   }
 }
@@ -292,24 +280,13 @@ export const addMember = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { project, canManageTeam, isPersonalProject } = await getTeamManagementContext(
+    const { canManageTeam } = await getTeamManagementContext(
       ctx,
       args.projectId,
       args.actorUserId
     )
     if (!canManageTeam) {
       throw new Error("Unauthorized to add members")
-    }
-
-    if (!isPersonalProject) {
-      const workspaceMembership = await getCanonicalOrganizationMembership(
-        ctx,
-        project.organizationId,
-        args.memberUserId
-      )
-      if (!workspaceMembership) {
-        throw new Error("User must already be a member of this workspace")
-      }
     }
 
     // Check if user is already a member
@@ -627,21 +604,7 @@ export const updateMemberLocalPath = mutation({
       )
       .first()
 
-    if (!membership) {
-      const workspaceAccess = await getWorkspaceProjectAccess(
-        ctx,
-        project.organizationId,
-        args.userId
-      )
-
-      if (!hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
-        throw new Error("Unauthorized to access this project")
-      }
-
-      if (!workspaceAccess.isPersonalOwner) {
-        return { success: true }
-      }
-
+    if (!membership && project.createdBy === args.userId) {
       const now = Date.now()
       await ctx.db.insert("projectMembers", {
         projectId: args.projectId,
@@ -653,6 +616,10 @@ export const updateMemberLocalPath = mutation({
       })
 
       return { success: true }
+    }
+
+    if (!membership) {
+      throw new Error("Project membership not found")
     }
 
     await ctx.db.patch(membership._id, {
