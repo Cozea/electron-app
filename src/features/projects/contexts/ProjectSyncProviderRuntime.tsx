@@ -8,7 +8,6 @@ import {
 
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { YjsProjectProvider, useYjsProject } from "@/contexts/YjsProjectContext"
-import { useAuth } from "@/contexts/AuthContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useCollabSession } from "@/hooks/useCollabSession"
@@ -90,7 +89,6 @@ export function ProjectSyncProviderRuntime({
   const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
   const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
   const resolvedUserName = userName ?? "User"
-  const { accessToken } = useAuth()
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
 
@@ -108,8 +106,7 @@ export function ProjectSyncProviderRuntime({
     refresh: refreshCollabSession,
   } = useCollabSession({
     projectId: String(resolvedProjectId),
-    accessToken,
-    enabled: sharedCollaborationEnabled && Boolean(accessToken),
+    enabled: sharedCollaborationEnabled,
   })
 
   const activeCollabSession: CollabSessionDescriptor | null =

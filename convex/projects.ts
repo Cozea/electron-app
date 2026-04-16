@@ -134,6 +134,7 @@ async function seedProjectTeamAccess(
         await ctx.db.insert("projectMembers", {
           projectId: args.projectId,
           userId: existingUser._id,
+          contactEmail: normalizedEmail,
           role: member.role,
           addedAt: args.now,
           addedBy: args.actorUserId,

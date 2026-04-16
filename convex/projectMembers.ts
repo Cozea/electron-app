@@ -8,6 +8,11 @@ import {
   getWorkspaceProjectAccess,
   hasWorkspaceProjectPermission,
 } from "./lib/workspaceProjectAccess"
+import {
+  getProjectTrustedDevice,
+  revokeTrustedDevicesForUser,
+  syncTrustedDevicesRoleForUser,
+} from "./lib/projectSharing"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -34,6 +39,25 @@ type Permission = (typeof ROLE_PERMISSIONS)[ProjectRole][number]
 function hasPermission(role: ProjectRole, permission: Permission): boolean {
   const permissions = ROLE_PERMISSIONS[role] as readonly string[]
   return permissions?.includes(permission) ?? false
+}
+
+function isLocalDeviceEmail(email: string | null | undefined): boolean {
+  return typeof email === "string" && email.trim().toLowerCase().endsWith("@local.cozea.app")
+}
+
+function buildTrustedDeviceSecondaryLabel(device: {
+  platform?: string
+  fingerprint?: string
+} | null): string | null {
+  if (!device) return null
+  const parts: string[] = []
+  if (device.platform) {
+    parts.push(device.platform)
+  }
+  if (device.fingerprint) {
+    parts.push(device.fingerprint.slice(0, 8))
+  }
+  return parts.length > 0 ? parts.join(" · ") : null
 }
 
 async function getTeamManagementContext(
@@ -100,9 +124,51 @@ export const listMembers = query({
 
     return await Promise.all(
       memberships.map(async (m) => {
-        const user = await ctx.db.get(m.userId)
+        const [user, trustedDevices] = await Promise.all([
+          ctx.db.get(m.userId),
+          ctx.db
+            .query("projectTrustedDevices")
+            .withIndex("by_project_and_user", (q) =>
+              q.eq("projectId", args.projectId).eq("userId", m.userId)
+            )
+            .collect(),
+        ])
+        const primaryTrustedDevice =
+          trustedDevices
+            .filter((device) => typeof device.revokedAt !== "number")
+            .sort((left, right) => (right.lastSeenAt ?? right.addedAt) - (left.lastSeenAt ?? left.addedAt))[0] ??
+          null
+        const contactEmail =
+          m.contactEmail ??
+          (user?.email && !isLocalDeviceEmail(user.email) ? user.email : null)
+        const first = user?.firstName?.trim() ?? ""
+        const last = user?.lastName?.trim() ?? ""
+        const fullName = `${first} ${last}`.trim()
+        const displayName =
+          primaryTrustedDevice?.deviceLabel?.trim() ||
+          fullName ||
+          contactEmail ||
+          user?.email ||
+          String(m.userId)
+        const secondaryLabel =
+          contactEmail ??
+          buildTrustedDeviceSecondaryLabel(primaryTrustedDevice) ??
+          (user?.email && !isLocalDeviceEmail(user.email) ? user.email : null)
+
         return {
           ...m,
+          contactEmail,
+          displayName,
+          secondaryLabel,
+          trustedDevice: primaryTrustedDevice
+            ? {
+                deviceId: primaryTrustedDevice.deviceId,
+                deviceLabel: primaryTrustedDevice.deviceLabel,
+                platform: primaryTrustedDevice.platform ?? null,
+                fingerprint: primaryTrustedDevice.fingerprint ?? null,
+                lastSeenAt: primaryTrustedDevice.lastSeenAt ?? null,
+              }
+            : null,
           user: user
             ? {
                 id: user._id,
@@ -187,19 +253,23 @@ export const getProjectAccessForServer = query({
   args: {
     projectId: v.id("projects"),
     userId: v.id("users"),
+    deviceId: v.optional(v.string()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
 
+    const trustedDevice = args.deviceId
+      ? await getProjectTrustedDevice(ctx, args.projectId, args.deviceId)
+      : null
     const [canAccess, canEdit] = await Promise.all([
       canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
       canEditProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
     ])
 
     return {
-      canAccess,
-      canEdit,
+      canAccess: Boolean(trustedDevice) || canAccess,
+      canEdit: trustedDevice ? trustedDevice.role !== "viewer" : canEdit,
     }
   },
 })
@@ -259,11 +329,13 @@ export const addMember = mutation({
     if (!user) {
       throw new Error("User not found")
     }
+    const contactEmail = user.email && !isLocalDeviceEmail(user.email) ? user.email : undefined
 
     const now = Date.now()
     const membershipId = await ctx.db.insert("projectMembers", {
       projectId: args.projectId,
       userId: args.memberUserId,
+      contactEmail,
       role: args.role,
       addedAt: now,
       addedBy: args.actorUserId,
@@ -329,6 +401,11 @@ export const updateRole = mutation({
     await ctx.db.patch(targetMembership._id, {
       role: args.newRole,
     })
+    await syncTrustedDevicesRoleForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.memberUserId,
+      role: args.newRole,
+    })
   },
 })
 
@@ -380,6 +457,10 @@ export const removeMember = mutation({
     }
 
     await ctx.db.delete(targetMembership._id)
+    await revokeTrustedDevicesForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.memberUserId,
+    })
   },
 })
 
@@ -415,6 +496,10 @@ export const leaveProject = mutation({
     }
 
     await ctx.db.delete(membership._id)
+    await revokeTrustedDevicesForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.userId,
+    })
   },
 })
 
@@ -458,10 +543,20 @@ export const transferOwnership = mutation({
     await ctx.db.patch(newOwnerMembership._id, {
       role: "project_manager",
     })
+    await syncTrustedDevicesRoleForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.newOwnerId,
+      role: "project_manager",
+    })
 
     // Optionally demote self
     if (args.demoteSelf && args.newRoleForSelf) {
       await ctx.db.patch(actorMembership._id, {
+        role: args.newRoleForSelf,
+      })
+      await syncTrustedDevicesRoleForUser(ctx, {
+        projectId: args.projectId,
+        userId: args.actorUserId,
         role: args.newRoleForSelf,
       })
     }

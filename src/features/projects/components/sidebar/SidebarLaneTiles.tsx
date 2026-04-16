@@ -90,6 +90,23 @@ function ProviderGlyph(props: { provider?: string | null; className?: string }) 
   }
 }
 
+function providerGlyphColorClass(
+  provider: string | null | undefined,
+  isActive: boolean,
+): string {
+  switch (provider) {
+    case "claudeAgent":
+      return isActive ? "text-[#d97757]" : "text-[#d97757]/90"
+    case "codex":
+      return isActive ? "text-foreground" : "text-muted-foreground/90"
+    case "gemini":
+    case "openCode":
+      return ""
+    default:
+      return isActive ? "text-[var(--sidebar-pill-hover-fg)]" : "text-muted-foreground/75"
+  }
+}
+
 function hasUnseenCompletion(
   thread: NonNullable<ReturnType<typeof useStore.getState>["threads"][number]>,
 ): boolean {
@@ -248,8 +265,8 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
             <ProviderGlyph
               provider={tile.provider}
               className={cn(
-                "size-3.5 shrink-0 text-muted-foreground/75",
-                resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
+                "size-3.5 shrink-0",
+                providerGlyphColorClass(tile.provider, resolvedActiveTileId === tile.id),
               )}
             />
             <span className="min-w-0 flex-1 truncate">{tile.title}</span>

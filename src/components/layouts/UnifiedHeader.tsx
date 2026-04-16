@@ -5,6 +5,7 @@ import {
 import type { Id } from "../../../convex/_generated/dataModel";
 import { LayoutToggles, SidebarInsetToggle } from "@/components/layouts/LayoutToggles";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
 import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
@@ -43,6 +44,7 @@ export function UnifiedHeader({
   hideInbox = false,
   projectInviteContext = null,
 }: UnifiedHeaderProps) {
+  const { user } = useAuth();
   const windowChrome = useWindowChrome();
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows;
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth();
@@ -60,6 +62,10 @@ export function UnifiedHeader({
     paddingLeft: contentInsetLeft + windowControlsInsetPadding + macHeaderControlsBuffer,
     paddingRight: rightFrameInset,
   };
+  const hasLocalDeviceProfile = Boolean(
+    user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
+  );
+  const shouldShowInbox = !hideInbox && !hasLocalDeviceProfile;
 
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
 
@@ -79,7 +85,7 @@ export function UnifiedHeader({
             projectName={projectInviteContext.projectName}
           />,
         );
-        if (!hideInbox) {
+        if (shouldShowInbox) {
           parts.push(<HeaderInboxButton key="inbox" />);
         }
         return parts.flatMap((node, index) =>
@@ -96,7 +102,7 @@ export function UnifiedHeader({
         );
       })()}
     </div>
-  ) : !hideInbox ? (
+  ) : shouldShowInbox ? (
     <HeaderInboxButton />
   ) : null;
 

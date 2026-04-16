@@ -2,62 +2,39 @@ import type {
   ResolvedSettingsSurfaceRoute,
   SettingsPlacement,
   SettingsScopeKind,
-  SettingsSidebarGroup,
   SettingsSurfaceDefinition,
   SettingsSurfaceId,
   WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
 
 import { asHugeIcon } from '@/lib/icons/asHugeIcon'
-import { CircleArrowDataTransferDiagonalIcon as __CircleStackIconHugeIcon, CommandLineIcon as __CommandLineIconHugeIcon, CreditCardIcon as __CreditCardIconHugeIcon, DocumentAttachmentIcon as __DocumentTextIconHugeIcon, Folder01Icon as __FolderIconHugeIcon, LockIcon as __LockClosedIconHugeIcon, Shield01Icon as __ShieldCheckIconHugeIcon, SwatchIcon as __SwatchIconHugeIcon, UserCircleIcon as __UserCircleIconHugeIcon, UserGroupIcon as __UsersIconHugeIcon, Wrench01Icon as __WrenchScrewdriverIconHugeIcon } from '@hugeicons/core-free-icons'
+import { CircleArrowDataTransferDiagonalIcon as __CircleStackIconHugeIcon, CommandLineIcon as __CommandLineIconHugeIcon, SwatchIcon as __SwatchIconHugeIcon, UserCircleIcon as __UserCircleIconHugeIcon } from '@hugeicons/core-free-icons'
 
 const CircleStackIcon = asHugeIcon(__CircleStackIconHugeIcon)
 const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
-const CreditCardIcon = asHugeIcon(__CreditCardIconHugeIcon)
-const DocumentTextIcon = asHugeIcon(__DocumentTextIconHugeIcon)
-const FolderIcon = asHugeIcon(__FolderIconHugeIcon)
-const LockClosedIcon = asHugeIcon(__LockClosedIconHugeIcon)
-const ShieldCheckIcon = asHugeIcon(__ShieldCheckIconHugeIcon)
 const SwatchIcon = asHugeIcon(__SwatchIconHugeIcon)
 const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
-const UsersIcon = asHugeIcon(__UsersIconHugeIcon)
-const WrenchScrewdriverIcon = asHugeIcon(__WrenchScrewdriverIconHugeIcon)
-/** Org workspace sidebar only (no user-only surfaces) */
-const WORKSPACE_SCOPED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
-  general: 0,
-  billing: 1,
-  cliTools: 2,
-}
 
 /** User + this device (personal routes; shown under “Personal” when org workspace is active) */
-
 const PERSONAL_DEVICE_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
   account: 0,
-  sourceControl: 1,
-  appearance: 2,
-  storage: 3,
-  tooling: 4,
+  appearance: 1,
+  storage: 2,
+  tooling: 3,
 }
 
 /** Single “Settings” list when the active workspace is personal (everything is user settings UX) */
 const PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
-  general: 0,
-  billing: 1,
-  account: 2,
-  sourceControl: 3,
-  appearance: 4,
-  cliTools: 5,
-  storage: 6,
-  tooling: 7,
+  account: 0,
+  appearance: 1,
+  storage: 2,
+  tooling: 3,
 }
 
 export function compareWorkspaceScopedSidebarSurfaces(
   a: SettingsSurfaceDefinition,
   b: SettingsSurfaceDefinition,
 ): number {
-  const na = WORKSPACE_SCOPED_SIDEBAR_ORDER[a.id] ?? 100
-  const nb = WORKSPACE_SCOPED_SIDEBAR_ORDER[b.id] ?? 100
-  if (na !== nb) return na - nb
   return a.label.localeCompare(b.label)
 }
 
@@ -82,22 +59,15 @@ export function comparePersonalContextUnifiedSettingsSidebar(
 }
 
 const preloadAccountPage = () => import("@/pages/settings/Account")
-const preloadBillingPage = () => import("@/pages/workspace/Billing")
 const preloadAppearancePage = () => import("@/pages/settings/Appearance")
-const preloadGeneralPage = () => import("@/pages/workspace/General")
 const preloadStoragePage = async () => {
   const module = await import("@/pages/settings/Storage")
   await module.prewarmStorageSettings?.()
 }
-const preloadSourceControlPage = () => import("@/pages/workspace/SourceControl")
-const preloadCliToolsPage = () => import("@/pages/workspace/Integrations")
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
   await module.prewarmToolingSettings?.()
 }
-const preloadPoliciesPage = () => import("@/pages/workspace/Policies")
-const preloadMembersPage = () => import("@/pages/teams/Members")
-const preloadRolesPage = () => import("@/pages/teams/Roles")
 
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
@@ -109,19 +79,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadAccountPage,
-    commandKeywords: ["account", "profile", "settings"],
-  },
-  {
-    id: "billing",
-    label: "Billing",
-    icon: CreditCardIcon,
-    routes: { personal: "/settings/billing", workspace: "/workspace/billing" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "billing",
-    preload: preloadBillingPage,
-    commandKeywords: ["billing", "subscription", "payment", "usage", "plan"],
+    commandKeywords: ["device", "profile", "settings"],
   },
   {
     id: "appearance",
@@ -146,32 +104,6 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     commandKeywords: ["storage", "disk", "local files"],
   },
   {
-    id: "sourceControl",
-    label: "Source Control",
-    icon: FolderIcon,
-    routes: { personal: "/settings/source-control" },
-    storageMode: { personal: "cloud" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalDevice" },
-    preload: preloadSourceControlPage,
-    commandKeywords: ["source control", "git", "github", "gitlab", "repository", "repos"],
-  },
-  {
-    id: "cliTools",
-    label: "CLI Tools",
-    icon: WrenchScrewdriverIcon,
-    routes: {
-      personal: "/settings/cli-tools",
-      workspace: "/workspace/integrations",
-    },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "integrations",
-    preload: preloadCliToolsPage,
-    commandKeywords: ["cli", "tools", "integrations", "connect", "services", "terminal"],
-  },
-  {
     id: "tooling",
     label: "Tooling",
     icon: CommandLineIcon,
@@ -181,55 +113,6 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadToolingPage,
     commandKeywords: ["tooling", "runtime", "framework", "local machine"],
-  },
-  {
-    id: "general",
-    label: "General",
-    icon: DocumentTextIcon,
-    routes: { personal: "/settings/general", workspace: "/workspace/general" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "general",
-    preload: preloadGeneralPage,
-    commandKeywords: ["workspace", "general", "settings"],
-  },
-  {
-    id: "policies",
-    label: "Policies",
-    icon: LockClosedIcon,
-    routes: { workspace: "/workspace/policies" },
-    storageMode: { workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { workspace: "team" },
-    workspaceAccessKey: "settings",
-    commandKeywords: ["policies", "governance", "sharing", "retention"],
-    preload: preloadPoliciesPage,
-  },
-  {
-    id: "members",
-    label: "Members",
-    icon: UsersIcon,
-    routes: { workspace: "/teams" },
-    storageMode: { workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { workspace: "team" },
-    workspaceAccessKey: "members",
-    preload: preloadMembersPage,
-    commandKeywords: ["team", "members", "organization", "invite"],
-  },
-  {
-    id: "roles",
-    label: "Roles",
-    icon: ShieldCheckIcon,
-    routes: { workspace: "/teams/roles" },
-    storageMode: { workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { workspace: "team" },
-    workspaceAccessKey: "roles",
-    alpha: true,
-    preload: preloadRolesPage,
-    commandKeywords: ["permissions", "roles", "iam", "access"],
   },
 ] as const
 
