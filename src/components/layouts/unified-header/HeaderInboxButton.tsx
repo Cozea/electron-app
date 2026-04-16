@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useAuth } from "@/contexts/AuthContext";
-import { useScopedAppContext } from "@/hooks/useScopedAppContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,14 +24,24 @@ function getWorkspaceInitial(workspaceName: string | undefined | null): string {
   return source.charAt(0).toUpperCase() || "?";
 }
 
+function getUserDisplayName(user: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+} | null | undefined): string {
+  const first = user?.firstName?.trim() ?? "";
+  const last = user?.lastName?.trim() ?? "";
+  const fullName = `${first} ${last}`.trim();
+  return fullName || user?.email?.trim() || "Unknown owner";
+}
+
 export function HeaderInboxButton() {
   const { convexUserId, user } = useAuth();
-  const { personalScoped } = useScopedAppContext();
   const acceptInvite = useMutation(api.projectInvites.acceptInvite);
   const declineInvite = useMutation(api.projectInvites.declineInvite);
   const incomingInvites = useQuery(
     api.projectInvites.listIncomingForUser,
-    personalScoped && convexUserId ? { userId: convexUserId } : "skip",
+    convexUserId ? { userId: convexUserId } : "skip",
   );
   const [activeInviteAction, setActiveInviteAction] = useState<{
     inviteId: Id<"projectInvites">;
@@ -122,9 +131,9 @@ export function HeaderInboxButton() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="max-h-[30rem] overflow-y-auto" aria-labelledby={inboxHeadingId}>
-          {personalScoped && incomingInvites === undefined ? (
+          {incomingInvites === undefined ? (
             <div className="px-3 py-4 text-center text-xs text-muted-foreground">Loading...</div>
-          ) : personalScoped && inviteCount > 0 ? (
+          ) : inviteCount > 0 ? (
             <div className="space-y-px p-1" role="list">
               {incomingInvites!.slice(0, 8).map((invite) => {
                 const isAccepting =
@@ -145,10 +154,10 @@ export function HeaderInboxButton() {
                       <Avatar className="mt-0.5 h-8 w-8 shrink-0 rounded-full">
                         <AvatarImage
                           src={invite.ownerUser?.profileImageUrl ?? undefined}
-                          alt={invite.ownerWorkspace?.name ?? "Owner"}
+                          alt={getUserDisplayName(invite.ownerUser)}
                         />
                         <AvatarFallback className="text-xs font-normal">
-                          {getWorkspaceInitial(invite.ownerWorkspace?.name)}
+                          {getWorkspaceInitial(getUserDisplayName(invite.ownerUser))}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
@@ -156,7 +165,7 @@ export function HeaderInboxButton() {
                           {invite.project?.name ?? "Unknown Project"}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {invite.ownerWorkspace?.name ?? "Unknown owner"} &middot;{" "}
+                          {getUserDisplayName(invite.ownerUser)} &middot;{" "}
                           {formatRelativeTimestamp(invite.invitedAt)}
                         </p>
                         <div className="mt-2 flex items-center gap-1.5">

@@ -1,7 +1,4 @@
-import type {
-  OrganizationMembership,
-  Session,
-} from './types'
+import type { Session } from './types'
 import type {
   NativePreviewActionResult,
   NativePreviewCaptureScreenshotRequest,
@@ -24,8 +21,6 @@ import type {
 } from './nativePreviewTypes'
 
 export type {
-  OrganizationMembership,
-  OrganizationWorkspaceMembership,
   PersonalWorkspaceMembership,
   Session,
   User,
@@ -220,6 +215,18 @@ export interface RuntimeResolveCommandResult {
 export interface CreateProjectFolderResult {
   success: boolean
   localPath?: string
+  error?: string
+}
+
+export interface GhCliStatus {
+  available: boolean
+  username?: string
+  error?: string
+}
+
+export interface CreateGitHubRepoResult {
+  success: boolean
+  repoUrl?: string
   error?: string
 }
 
@@ -1077,115 +1084,8 @@ export interface WorkbenchSessionSnapshot {
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
-  auth: {
-    login: () => Promise<{ success: boolean }>
-    logout: (options?: { accessToken?: string | null }) => Promise<{ success: boolean }>
-    getSession: () => Promise<Session | null>
-    refresh: () => Promise<AuthRefreshResult>
-    updateOrganizations: (
-      organizations: OrganizationMembership[]
-    ) => Promise<{ success: boolean; error?: string }>
-    onSuccess: (callback: (session: Session) => void) => () => void
-    onError: (callback: (error: string) => void) => () => void
-  }
   localAiRuntime: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
-  }
-  sourceControl: {
-    startOAuth: (options: {
-      provider: 'github' | 'gitlab'
-      orgId: string
-      metadata?: Record<string, unknown>
-    }) => Promise<{ success: boolean; error?: string }>
-    onOAuthSuccess: (callback: (data: {
-      provider: string
-      accessToken?: string
-      refreshToken?: string
-      tokenExpiresAt?: number
-      externalId?: string
-      externalAccountName?: string
-      scopes?: string[]
-      metadata?: Record<string, unknown>
-    }) => void) => () => void
-    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
-    listRepositoryOwners: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      bypassCache?: boolean
-    }) => Promise<RepositoryOwnerDescriptor[]>
-    listRepositoriesPage: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-      search?: string
-      page: number
-      pageSize: number
-      bypassCache?: boolean
-    }) => Promise<RepositoryListPageResult>
-    listBranches: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repositoryId?: string
-      repositoryFullName: string
-      defaultBranch?: string
-      bypassCache?: boolean
-    }) => Promise<RepositoryBranchDescriptor[]>
-    listRepositoryLanguages: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repoUrl: string
-      repositoryId?: string
-      bypassCache?: boolean
-    }) => Promise<RepositoryLanguageDescriptor[]>
-    getRepositoryReadmeSnippet: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repoUrl: string
-      branch?: string
-      repositoryId?: string
-      bypassCache?: boolean
-    }) => Promise<RepositoryReadmeSnippetDescriptor>
-    createRepository: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      name: string
-      description?: string
-      private?: boolean
-      autoInit?: boolean
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-    }) => Promise<RepositoryDescriptor>
-    invalidateProviderCache: (options?: {
-      provider?: 'github' | 'gitlab'
-      ownerId?: string
-      repositoryId?: string
-    }) => Promise<{ success: boolean }>
-    syncRepositoryAccess: (options: {
-      projectId?: string
-      provider: 'github' | 'gitlab'
-      repoUrl: string
-      providerHost?: string
-      accessToken?: string
-      action?: 'grant' | 'revoke'
-      role?: string
-      inviteEmail?: string
-      providerAccountHandle?: string
-    }) => Promise<{ success: boolean; error?: string; accessState?: 'pending' | 'error' | 'revoked' | 'granted' | 'needs_identity' | 'manual_required'; externalInvitationId?: string; providerAccountHandle?: string }>
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
@@ -1494,6 +1394,8 @@ export interface ElectronAPI {
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
     getPathNativeIcon: (options: { projectPath: string }) => Promise<ProjectPathNativeIconResult>
+    checkGhCliStatus: () => Promise<GhCliStatus>
+    createGitHubRepo: (options: { name: string; localPath: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
   }
   runtime: {
     getProjectCapabilities: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>

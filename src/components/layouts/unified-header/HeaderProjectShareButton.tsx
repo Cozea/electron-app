@@ -146,11 +146,10 @@ export function HeaderProjectShareButton({
   const roleCheckPending = Boolean(projectId && convexUserId && memberRole === undefined);
   const shareStatePending = Boolean(projectId && convexUserId && joinLinkState === undefined);
   const canInvite = Boolean(projectId && convexUserId && memberRole === "project_manager");
-  const isPersonalProject = joinLinkState?.isPersonalProject ?? false;
   const activeJoinLink = joinLinkState?.activeLink ?? null;
-  const canSendProjectInvites = canInvite && isPersonalProject;
-  const canManageJoinLinks = canInvite && isPersonalProject;
-  const canManagePersonalProjectAccess = canInvite && isPersonalProject;
+  const canSendProjectInvites = canInvite;
+  const canManageJoinLinks = canInvite;
+  const canManagePersonalProjectAccess = canInvite;
   const projectMembersByEmail = useMemo(() => {
     const next = new Map<string, NonNullable<typeof projectMembers>[number]>();
     for (const member of projectMembers ?? []) {
@@ -193,7 +192,7 @@ export function HeaderProjectShareButton({
   }, [emailInput, personalContacts, unavailableContactEmails]);
 
   useEffect(() => {
-    if (!isInviteOpen || !convexUserId || !projectId || !isPersonalProject) return;
+    if (!isInviteOpen || !convexUserId || !projectId) return;
 
     let cancelled = false;
     const queryCache = useQueryCache.getState();
@@ -228,7 +227,7 @@ export function HeaderProjectShareButton({
     return () => {
       cancelled = true;
     };
-  }, [convex, convexUserId, isInviteOpen, isPersonalProject, personalContactsCacheKey, projectId]);
+  }, [convex, convexUserId, isInviteOpen, personalContactsCacheKey, projectId]);
 
   const prewarmPersonalContacts = useCallback(() => {
     if (!convexUserId || !projectId) return;
@@ -324,7 +323,7 @@ export function HeaderProjectShareButton({
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
-        await resendProjectInvite({ inviteId, resentBy: convexUserId });
+        await resendProjectInvite({ inviteId, actorUserId: convexUserId });
       } catch (error) {
         setTeamError(cleanConvexError(error, "Failed to resend invite"));
       } finally {
@@ -341,7 +340,7 @@ export function HeaderProjectShareButton({
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
-        await cancelProjectInvite({ inviteId, cancelledBy: convexUserId });
+        await cancelProjectInvite({ inviteId, actorUserId: convexUserId });
       } catch (error) {
         setTeamError(cleanConvexError(error, "Failed to cancel invite"));
       } finally {
@@ -452,8 +451,8 @@ export function HeaderProjectShareButton({
           setEmailInput("");
           setInviteNotice(
             deliveryNotConfiguredCount === inviteMembers.length
-              ? "Invites were created, but no Resend integration is connected for this workspace, so no email was sent."
-              : "Some invites were created without email delivery because no Resend integration is connected for this workspace.",
+              ? "Invites were created, but no Resend integration is connected for this project yet, so no email was sent."
+              : "Some invites were created without email delivery because no Resend integration is connected for this project yet.",
           );
           return;
         }
@@ -622,16 +621,10 @@ export function HeaderProjectShareButton({
               </div>
             ) : null}
 
-            {!isPersonalProject ? (
-              <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
-                Workspace projects do not support per-project invites. Invite people to the
-                workspace first, then add them to the project from the workspace flow.
-              </div>
-            ) : (
-              <>
-                <Input
-                  type="email"
-                  placeholder="Enter email addresses..."
+            <>
+              <Input
+                type="email"
+                placeholder="Enter email addresses..."
                   value={emailInput}
                   onChange={(event) => {
                     setEmailInput(event.target.value);
@@ -1039,8 +1032,7 @@ export function HeaderProjectShareButton({
                     {getLinkPermissionDescription(joinLinkRole)}
                   </p>
                 </div>
-              </>
-            )}
+            </>
           </>
         )}
       </DialogContent>

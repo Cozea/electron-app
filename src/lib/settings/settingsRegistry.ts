@@ -1,69 +1,32 @@
 import type {
   ResolvedSettingsSurfaceRoute,
   SettingsPlacement,
+  SettingsSidebarGroup,
   SettingsScopeKind,
   SettingsSurfaceDefinition,
   SettingsSurfaceId,
-  WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
 
-import { asHugeIcon } from '@/lib/icons/asHugeIcon'
-import { CircleArrowDataTransferDiagonalIcon as __CircleStackIconHugeIcon, CommandLineIcon as __CommandLineIconHugeIcon, SwatchIcon as __SwatchIconHugeIcon, UserCircleIcon as __UserCircleIconHugeIcon } from '@hugeicons/core-free-icons'
+import { asHugeIcon } from "@/lib/icons/asHugeIcon"
+import {
+  CommandLineIcon as __CommandLineIconHugeIcon,
+  PaintBoardIcon as __PaintBoardIconHugeIcon,
+  UserCircleIcon as __UserCircleIconHugeIcon,
+} from "@hugeicons/core-free-icons"
 
-const CircleStackIcon = asHugeIcon(__CircleStackIconHugeIcon)
 const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
-const SwatchIcon = asHugeIcon(__SwatchIconHugeIcon)
+const PaintBoardIcon = asHugeIcon(__PaintBoardIconHugeIcon)
 const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
 
-/** User + this device (personal routes; shown under “Personal” when org workspace is active) */
-const PERSONAL_DEVICE_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
+const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
   account: 0,
   appearance: 1,
-  storage: 2,
-  tooling: 3,
-}
-
-/** Single “Settings” list when the active workspace is personal (everything is user settings UX) */
-const PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER: Partial<Record<SettingsSurfaceId, number>> = {
-  account: 0,
-  appearance: 1,
-  storage: 2,
-  tooling: 3,
-}
-
-export function compareWorkspaceScopedSidebarSurfaces(
-  a: SettingsSurfaceDefinition,
-  b: SettingsSurfaceDefinition,
-): number {
-  return a.label.localeCompare(b.label)
-}
-
-export function comparePersonalDeviceSidebarSurfaces(
-  a: SettingsSurfaceDefinition,
-  b: SettingsSurfaceDefinition,
-): number {
-  const na = PERSONAL_DEVICE_SIDEBAR_ORDER[a.id] ?? 100
-  const nb = PERSONAL_DEVICE_SIDEBAR_ORDER[b.id] ?? 100
-  if (na !== nb) return na - nb
-  return a.label.localeCompare(b.label)
-}
-
-export function comparePersonalContextUnifiedSettingsSidebar(
-  a: SettingsSurfaceDefinition,
-  b: SettingsSurfaceDefinition,
-): number {
-  const na = PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER[a.id] ?? 100
-  const nb = PERSONAL_CONTEXT_UNIFIED_SIDEBAR_ORDER[b.id] ?? 100
-  if (na !== nb) return na - nb
-  return a.label.localeCompare(b.label)
+  tooling: 2,
 }
 
 const preloadAccountPage = () => import("@/pages/settings/Account")
 const preloadAppearancePage = () => import("@/pages/settings/Appearance")
-const preloadStoragePage = async () => {
-  const module = await import("@/pages/settings/Storage")
-  await module.prewarmStorageSettings?.()
-}
+
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
   await module.prewarmToolingSettings?.()
@@ -84,7 +47,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "appearance",
     label: "Appearance",
-    icon: SwatchIcon,
+    icon: PaintBoardIcon,
     routes: { personal: "/settings/appearance" },
     storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
@@ -92,20 +55,10 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
   },
-  {
-    id: "storage",
-    label: "Storage",
-    icon: CircleStackIcon,
-    routes: { personal: "/settings/storage" },
-    storageMode: { personal: "local" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalDevice" },
-    preload: preloadStoragePage,
-    commandKeywords: ["storage", "disk", "local files"],
-  },
+
   {
     id: "tooling",
-    label: "Tooling",
+    label: "Local environment",
     icon: CommandLineIcon,
     routes: { personal: "/settings/tooling" },
     storageMode: { personal: "local" },
@@ -126,6 +79,19 @@ function normalizeRoutePath(route?: string | null): string {
   const withLeadingSlash = path.startsWith("/") ? path : `/${path}`
   return withLeadingSlash.replace(/\/+$/, "") || "/"
 }
+
+export function comparePersonalDeviceSidebarSurfaces(
+  a: SettingsSurfaceDefinition,
+  b: SettingsSurfaceDefinition,
+): number {
+  const na = PERSONAL_DEVICE_SIDEBAR_ORDER[a.id]
+  const nb = PERSONAL_DEVICE_SIDEBAR_ORDER[b.id]
+  if (na !== nb) return na - nb
+  return a.label.localeCompare(b.label)
+}
+
+export const comparePersonalContextUnifiedSettingsSidebar =
+  comparePersonalDeviceSidebarSurfaces
 
 export function getSettingsSurface(surfaceId: SettingsSurfaceId): SettingsSurfaceDefinition | null {
   return SETTINGS_SURFACES.find((surface) => surface.id === surfaceId) ?? null
@@ -200,24 +166,16 @@ export function resolveSettingsSurfaceFromRoute(
 
 export function getSettingsSurfaceDisplayLabel(
   surface: SettingsSurfaceDefinition,
-  scopeKind: SettingsScopeKind,
-  options?: {
+  _scopeKind: SettingsScopeKind,
+  _options?: {
     includeScopePrefix?: boolean
   }
 ): string {
-  if (!options?.includeScopePrefix) {
-    return surface.label
-  }
-
-  if (surface.routes.personal && surface.routes.workspace) {
-    return scopeKind === "workspace" ? `Workspace ${surface.label}` : `Personal ${surface.label}`
-  }
-
   return surface.label
 }
 
-export function getSettingsScopeLabel(scopeKind: SettingsScopeKind): string {
-  return scopeKind === 'workspace' ? 'Workspace' : 'Settings'
+export function getSettingsScopeLabel(_scopeKind: SettingsScopeKind): string {
+  return "Settings"
 }
 
 export function getSettingsSurfaceBreadcrumbs(
@@ -227,28 +185,6 @@ export function getSettingsSurfaceBreadcrumbs(
   const surface = getSettingsSurface(surfaceId)
   return [
     { label: getSettingsScopeLabel(scopeKind) },
-    { label: surface?.label ?? 'Settings' },
+    { label: surface?.label ?? "Settings" },
   ]
-}
-
-export function canAccessWorkspaceSurface(
-  surface: SettingsSurfaceDefinition,
-  access: WorkspaceSurfaceAccessState
-): boolean {
-  switch (surface.workspaceAccessKey) {
-    case "general":
-      return access.canViewWorkspaceGeneral
-    case "members":
-      return access.canViewWorkspaceMembers
-    case "roles":
-      return access.canViewWorkspaceRoles
-    case "billing":
-      return access.canViewWorkspaceUsage || access.canManageWorkspaceBilling
-    case "settings":
-      return access.canViewWorkspaceSettings
-    case "integrations":
-      return access.canViewWorkspaceIntegrations
-    default:
-      return true
-  }
 }

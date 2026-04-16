@@ -25,7 +25,7 @@ export function LoginForm({
         <div className="flex flex-col items-center gap-2 text-center">
           <Logo size={48} />
           <h1 className="text-xl font-bold">Welcome to Cozea</h1>
-          <FieldDescription>Sign in to continue</FieldDescription>
+          <FieldDescription>Initialize this device to continue</FieldDescription>
         </div>
         <Button
           onClick={onLogin}
@@ -37,10 +37,10 @@ export function LoginForm({
           {isLoading ? (
             <>
               <HugeiconsIcon icon={__Loader2HugeIcon} className="size-4 animate-spin" />
-              Signing in...
+              Preparing device...
             </>
           ) : (
-            "Sign in"
+            "Continue on this device"
           )}
         </Button>
         {errorMessage ? (
@@ -50,17 +50,8 @@ export function LoginForm({
         ) : null}
       </FieldGroup>
       <FieldDescription className="px-6 text-center">
-        By clicking continue, you agree to our{" "}
-        <a href="#" className="underline underline-offset-4 hover:text-primary">
-          Terms of Service
-        </a>{" "}
-        and{" "}
-        <a href="#" className="underline underline-offset-4 hover:text-primary">
-          Privacy Policy
-        </a>
-        .
+        Cozea uses a local trusted device identity by default. Collaboration access is granted per project.
       </FieldDescription>
     </div>
   )
 }
-

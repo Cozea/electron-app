@@ -18,7 +18,6 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
 import { Badge } from "../../components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,7 @@ import {
 } from "../../components/ui/dialog";
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, ArrowMoveUpLeftIcon as __UploadHugeIcon, Delete02Icon as __Trash2HugeIcon, Notification03Icon as __BellHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Delete02Icon as __Trash2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface UserPrefs {
   emailNotifications: boolean;
@@ -68,7 +67,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     : user?.firstName
       ? `${user.firstName} ${user.lastName || ""}`.trim()
       : user?.email?.split("@")[0] || "User";
-  const avatarImageUrl = profile?.profileImageUrl || user?.profileImageUrl || undefined;
   const isLocalDeviceProfile = Boolean(
     user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
   );
@@ -98,17 +96,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
         <SettingsSectionTitle>{isLocalDeviceProfile ? "Device profile" : "Profile"}</SettingsSectionTitle>
         <SettingsGroup>
           <div className="flex items-center gap-4 px-4 py-3">
-            <div className="group relative h-14 w-14 shrink-0 cursor-pointer">
-              <Avatar className="h-14 w-14">
-                <AvatarImage src={avatarImageUrl} alt={displayName} />
-                <AvatarFallback delayMs={150} className="text-lg">
-                  {displayName.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="absolute inset-x-0 bottom-0 flex h-6 items-center justify-center rounded-b-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-                <HugeiconsIcon icon={__UploadHugeIcon} className="h-3 w-3 text-white" />
-              </div>
-            </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
               {profile?.jobTitle ? (
@@ -124,38 +111,31 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
       <section>
         <div className="mb-1 flex items-center justify-between gap-2 px-1">
-          <SettingsSectionTitle className="mb-0">
-            {isLocalDeviceProfile ? "Current device" : "Active sessions"}
-          </SettingsSectionTitle>
+          <SettingsSectionTitle className="mb-0">My devices</SettingsSectionTitle>
           <Button variant="outline" size="sm" className="h-7 shrink-0 text-[11px]" disabled>
-            {isLocalDeviceProfile ? "Trusted" : "Sign out all"}
+            + Add device
           </Button>
         </div>
         <SettingsSectionDescription>
-          {isLocalDeviceProfile
-            ? "This Cozea installation is using a local device identity for collaboration."
-            : "Devices currently signed in to your account"}
+          Devices linked to your account. Collaboration keys are scoped per device.
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-foreground">Current device</span>
-                <Badge variant="secondary" className="text-[10px]">
-                  Current
-                </Badge>
-              </div>
+              <span className="text-xs font-medium text-foreground">This device</span>
               <p className="text-[11px] text-muted-foreground">Active now</p>
             </div>
+            <SettingsRowControl>
+              <Button variant="ghost" size="sm" className="h-7 text-[11px] text-muted-foreground" disabled>
+                Revoke
+              </Button>
+            </SettingsRowControl>
           </SettingsRow>
         </SettingsGroup>
       </section>
 
       <section>
-        <SettingsSectionTitle>
-          <HugeiconsIcon icon={__BellHugeIcon} className="size-3.5" aria-hidden />
-          Notifications
-        </SettingsSectionTitle>
+        <SettingsSectionTitle>Notifications</SettingsSectionTitle>
         <SettingsGroup>
           <SettingsRow isFirst>
             <SettingsRowLabel

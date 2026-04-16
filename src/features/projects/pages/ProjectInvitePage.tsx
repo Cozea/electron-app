@@ -69,7 +69,7 @@ export function ProjectInvitePage() {
     setActionError(null)
     try {
       const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
-      const result = await acceptInvite({
+      await acceptInvite({
         inviteId,
         userId: convexUserId,
         deviceId: deviceIdentity.deviceId,
@@ -77,7 +77,7 @@ export function ProjectInvitePage() {
         platform: deviceIdentity.platform,
         fingerprint: deviceIdentity.fingerprint,
       })
-      navigate(buildProjectPath(String(result.projectId), "workbench"), { replace: true })
+      navigate(buildProjectPath(String(invite.project.id), "workbench"), { replace: true })
     } catch (error) {
       setActionError(cleanConvexError(error, "Unable to accept this invite."))
     } finally {

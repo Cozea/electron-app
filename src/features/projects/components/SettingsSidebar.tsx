@@ -14,9 +14,7 @@ import {
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useLocation } from "@/lib/router"
 import { cn } from "@/lib/utils"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { resolveSettingsNavigationSections } from "@/lib/settings/settingsNavigation"
-import { resolveSettingsNavChrome } from "@/lib/workspaces/settingsRoutes"
 import {
   SIDEBAR_GROUP_LABEL_CLASS,
   SIDEBAR_NAV_ROW_BUTTON_CLASS,
@@ -67,16 +65,9 @@ function SettingsSidebarNavRow({
 export function SettingsSidebar({ user, onLogout, className, ...props }: SettingsSidebarProps) {
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
-  const { workspaceScoped, surfaceAccess } = useScopedAppContext()
-  const settingsNavChrome = resolveSettingsNavChrome(location.pathname, workspaceScoped)
   const navSections = React.useMemo(
-    () =>
-      resolveSettingsNavigationSections({
-        placement: "sidebar",
-        navChrome: settingsNavChrome,
-        access: surfaceAccess,
-      }),
-    [settingsNavChrome, surfaceAccess],
+    () => resolveSettingsNavigationSections("sidebar"),
+    [],
   )
   const sectionRoutes = navSections.flatMap((section) =>
     section.items.map((item) => toProjectsPath(item.route)),
@@ -155,4 +146,3 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
     </Sidebar>
   )
 }
-

@@ -24,8 +24,6 @@ import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
-import { useScopedAppContext } from "@/hooks/useScopedAppContext";
-import { getWorkspaceSelectionId } from "@shared/types";
 import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
@@ -74,7 +72,6 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { convexUserId, user, logout } = useAuth();
-  const { preferredConvexOrganizationId, workspaceScoped, resolvedScope } = useScopedAppContext();
   const location = useLocation();
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
@@ -93,7 +90,6 @@ export function ProjectLayout({
       ? {
           slug: routeSlug,
           userId: convexUserId,
-          preferredOrganizationId: preferredConvexOrganizationId,
         }
       : "skip",
   );
@@ -362,10 +358,7 @@ export function ProjectLayout({
     [handlePresenceUserClick, presenceUsers],
   );
 
-  const workspaceSelectionId = useMemo(
-    () => getWorkspaceSelectionId(resolvedScope.activeWorkspace),
-    [resolvedScope.activeWorkspace],
-  );
+  const workspaceSelectionId = user?.id ?? "local-device";
 
   const collaborationProjectId = useMemo((): Id<"projects"> | null => {
     if (project?._id) return project._id;
@@ -377,7 +370,7 @@ export function ProjectLayout({
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,
     pathname: location.pathname,
-    workspaceScoped,
+    workspaceScoped: false,
     presencePreSearchAddon: presenceHeaderAddon,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,

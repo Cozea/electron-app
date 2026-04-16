@@ -5,7 +5,6 @@ import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import {
   useOptionalProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
@@ -14,7 +13,6 @@ import {
 export function useAccessibleProject() {
   const { slug, projectId } = useParams()
   const { convexUserId } = useAuth()
-  const { convexOrg, preferredConvexOrganizationId } = useScopedAppContext()
   const projectRouteContext = useOptionalProjectRouteContext()
   const routeProjectIdParam = projectRouteContext?.projectIdParam ?? projectId ?? null
   const routeSlugParam = projectRouteContext?.slugParam ?? slug ?? null
@@ -32,7 +30,6 @@ export function useAccessibleProject() {
       ? {
           slug: routeSlugParam,
           userId: convexUserId,
-          preferredOrganizationId: preferredConvexOrganizationId,
         }
       : "skip"
   ) as ProjectRouteSlugResolutionResult | undefined
@@ -61,7 +58,6 @@ export function useAccessibleProject() {
     projectIdParam: routeProjectIdParam,
     slugParam: routeSlugParam,
     convexUserId,
-    convexOrg,
     slugResolution: projectRouteContext?.slugResolution ?? projectBySlugResult,
   }
 }

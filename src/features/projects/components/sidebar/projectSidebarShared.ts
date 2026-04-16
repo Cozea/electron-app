@@ -128,7 +128,6 @@ export function areSidebarProjectItemsEqual(
     left.template === right.template &&
     left.slug === right.slug &&
     left.updatedAt === right.updatedAt &&
-    left.organizationId === right.organizationId &&
     left.createdBy === right.createdBy &&
     left.localPath === right.localPath &&
     left.importedFrom?.provider === right.importedFrom?.provider &&

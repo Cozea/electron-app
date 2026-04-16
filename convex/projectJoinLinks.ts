@@ -3,7 +3,6 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { mutation, query, type MutationCtx } from "./_generated/server"
 import {
-  assertPersonalProjectShareScope,
   getProjectMembership,
   getProjectShareScope,
   requireProjectManagerMembership,
@@ -63,8 +62,8 @@ export const getForProject = query({
       return null
     }
 
-    const { isPersonalProject } = await getProjectShareScope(ctx, args.projectId)
-    const canManage = membership.role === "project_manager" && isPersonalProject
+    await getProjectShareScope(ctx, args.projectId)
+    const canManage = membership.role === "project_manager"
     const activeLinks = await ctx.db
       .query("projectJoinLinks")
       .withIndex("by_project_and_status", (q) =>
@@ -75,7 +74,6 @@ export const getForProject = query({
     const activeLink = pickNewestActiveLink(activeLinks)
 
     return {
-      isPersonalProject,
       canManage,
       memberRole: membership.role,
       activeLink: canManage && activeLink ? toPublicLink(activeLink) : null,
@@ -104,7 +102,7 @@ export const previewByToken = query({
     }
 
     const scope = await getProjectShareScope(ctx, link.projectId).catch(() => null)
-    if (!scope?.isPersonalProject) {
+    if (!scope) {
       return null
     }
 
@@ -154,7 +152,6 @@ export const createOrUpdateActiveLink = mutation({
       args.actorUserId,
       "Only project managers can manage join links"
     )
-    await assertPersonalProjectShareScope(ctx, args.projectId)
 
     const now = Date.now()
     const activeLinks = await ctx.db
@@ -221,7 +218,6 @@ export const rotateLink = mutation({
       args.actorUserId,
       "Only project managers can manage join links"
     )
-    await assertPersonalProjectShareScope(ctx, args.projectId)
 
     const now = Date.now()
     const activeLinks = await ctx.db
@@ -269,7 +265,6 @@ export const revokeLink = mutation({
       args.actorUserId,
       "Only project managers can manage join links"
     )
-    await assertPersonalProjectShareScope(ctx, args.projectId)
 
     const now = Date.now()
     const activeLinks = await ctx.db
@@ -316,7 +311,7 @@ export const joinByToken = mutation({
       throw new Error("This join link is invalid or has been revoked")
     }
 
-    const { project } = await assertPersonalProjectShareScope(ctx, link.projectId)
+    const { project } = await getProjectShareScope(ctx, link.projectId)
 
     const existingMembership = await getProjectMembership(ctx, project._id, args.userId)
     const now = Date.now()

@@ -5,7 +5,6 @@ import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronAp
 
 export interface ProjectRouteSlugResolutionCandidate {
   projectId: Id<"projects">;
-  organizationId: Id<"organizations">;
   name: string;
   role: string;
   updatedAt: number;

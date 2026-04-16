@@ -8,10 +8,6 @@ export interface ProjectCloudAccessPresentation {
   isAccessError: boolean
 }
 
-interface ProjectCloudAccessPresentationOptions {
-  workspaceScoped?: boolean
-}
-
 function extractErrorText(input: unknown, fallback: string): string {
   if (input instanceof Error) {
     return input.message || fallback
@@ -37,8 +33,7 @@ function includesAny(haystack: string, needles: readonly string[]): boolean {
 
 export function formatProjectCloudAccessError(
   input: unknown,
-  fallback = 'Failed to prepare project',
-  _options: ProjectCloudAccessPresentationOptions = {}
+  fallback = 'Failed to prepare project'
 ): ProjectCloudAccessPresentation {
   const rawMessage = extractErrorText(input, fallback)
   const normalized = cleanGitTransportError(rawMessage)
@@ -58,7 +53,7 @@ export function formatProjectCloudAccessError(
   if (lower.includes('past due')) {
     return {
       summary: 'Cloud Access Unavailable',
-      detail: 'This project still references a legacy subscription gate. Reopen from a current local copy or migrate the project metadata.',
+      detail: 'This project still references retired hosted-plan metadata. Reopen from a current local copy or migrate the project metadata.',
       actionHref: null,
       actionLabel: null,
       isAccessError: true,
@@ -68,7 +63,7 @@ export function formatProjectCloudAccessError(
   if (lower.includes('subscription is canceled') || lower.includes('subscription is cancelled')) {
     return {
       summary: 'Cloud Access Unavailable',
-      detail: 'This project still references a legacy subscription gate. Reopen from a current local copy or migrate the project metadata.',
+      detail: 'This project still references retired hosted-plan metadata. Reopen from a current local copy or migrate the project metadata.',
       actionHref: null,
       actionLabel: null,
       isAccessError: true,
@@ -77,8 +72,8 @@ export function formatProjectCloudAccessError(
 
   if (lower.includes('not assigned to a paid seat')) {
     return {
-      summary: 'Legacy Seat Gate',
-      detail: 'This project still references an old seat-assignment rule that is no longer part of the product.',
+      summary: 'Retired Hosted Gate',
+      detail: 'This project still references old hosted access metadata that is no longer part of the product.',
       actionHref: null,
       actionLabel: null,
       isAccessError: true,
@@ -87,8 +82,8 @@ export function formatProjectCloudAccessError(
 
   if (lower.includes('active paid seat assignment')) {
     return {
-      summary: 'Legacy Seat Gate',
-      detail: 'This project still references an old seat-assignment rule that is no longer part of the product.',
+      summary: 'Retired Hosted Gate',
+      detail: 'This project still references old hosted access metadata that is no longer part of the product.',
       actionHref: null,
       actionLabel: null,
       isAccessError: true,

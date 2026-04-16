@@ -11,7 +11,7 @@ import type { GitRuntimeHealth, RuntimeHealth, RuntimeKind } from '../../types/e
 import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/useRuntimeInstallStore'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, ArrowDownZeroOneIcon as __DownloadHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, CommandLineIcon as __TerminalHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, Download01Icon as __DownloadHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ToolingProps {
   surface?: 'page' | 'drawer'
@@ -124,6 +124,8 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(true)
   const [previewHeaderCompatibilityError, setPreviewHeaderCompatibilityError] = useState<string | null>(null)
   const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 5
   const runtimeInstallJobs = useRuntimeInstallStore((state) => state.jobs)
   const ensureRuntimeInstalled = useRuntimeInstallStore((state) => state.ensureRuntimeInstalled)
   const previousStatusesRef = useRef<Partial<Record<RuntimeKind, RuntimeInstallStatus>>>({})
@@ -249,7 +251,6 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <HugeiconsIcon icon={__PackageHugeIcon} className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Git Runtime</h3>
           </div>
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
@@ -327,7 +328,6 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <HugeiconsIcon icon={__TerminalHugeIcon} className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Runtime Inventory</h3>
           </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
@@ -337,86 +337,128 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
               <span className="text-right">Action</span>
             </div>
             <div className="space-y-1 px-1 pb-1">
-              {(runtimeStatus?.runtimes ?? []).length > 0 ? (
-                (runtimeStatus?.runtimes ?? []).map((runtime) => (
-                  (() => {
-                    const installJob = runtimeInstallJobs[runtime.runtime]
-                    const isInstalling = installJob?.status === 'installing'
-                    const installSucceeded = installJob?.status === 'success'
-                    const installFailed = installJob?.status === 'error'
-                    const isInstalled = runtime.available || installSucceeded
+              {(() => {
+                const runtimes = runtimeStatus?.runtimes ?? []
+                if (runtimes.length === 0) {
+                  return (
+                    <div className="px-3 py-4 text-sm text-muted-foreground">
+                      {isLoading
+                        ? 'Runtime inventory will appear here.'
+                        : 'No runtime data available.'}
+                    </div>
+                  )
+                }
 
-                    return (
-                      <div
-                        key={runtime.runtime}
-                        className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                            <RuntimeLogo runtime={runtime.runtime} />
-                          </div>
-                          <span className="truncate font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
-                        </div>
-                        <span
-                          className="truncate text-muted-foreground"
-                          title={runtime.executablePath || installJob?.error || runtime.error || ''}
-                        >
-                          {runtime.executablePath || installJob?.error || runtime.error || '—'}
-                        </span>
-                        <div className="flex items-center justify-end">
-                          {isInstalled ? (
-                            <Badge variant="secondary" className="gap-1 rounded-full">
-                              <HugeiconsIcon icon={__CheckHugeIcon} className="h-3 w-3" />
-                              Installed
-                            </Badge>
-                          ) : (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className={cn(
-                                'h-8 w-8 rounded-full',
-                                installFailed && 'text-amber-500 hover:text-amber-500'
-                              )}
-                              title={
-                                isInstalling
-                                  ? 'Downloading runtime...'
-                                  : installFailed
-                                    ? 'Retry download'
-                                    : 'Download runtime'
-                              }
-                              aria-label={
-                                isInstalling
-                                  ? 'Downloading runtime'
-                                  : installFailed
-                                    ? 'Retry runtime download'
-                                    : 'Download runtime'
-                              }
-                              disabled={isInstalling}
-                              onClick={() => {
-                                void ensureRuntimeInstalled(runtime.runtime)
-                              }}
+                const totalPages = Math.ceil(runtimes.length / itemsPerPage)
+                const startIndex = (currentPage - 1) * itemsPerPage
+                const paginatedRuntimes = runtimes.slice(startIndex, startIndex + itemsPerPage)
+
+                return (
+                  <>
+                    <div className="min-h-[260px] space-y-1">
+                      {paginatedRuntimes.map((runtime) => (
+                        (() => {
+                          const installJob = runtimeInstallJobs[runtime.runtime]
+                          const isInstalling = installJob?.status === 'installing'
+                          const installSucceeded = installJob?.status === 'success'
+                          const installFailed = installJob?.status === 'error'
+                          const isInstalled = runtime.available || installSucceeded
+
+                          return (
+                            <div
+                              key={runtime.runtime}
+                              className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
                             >
-                              {isInstalling ? (
-                                <RuntimeProgressRing progress={installJob?.progress ?? 0} />
-                              ) : installFailed ? (
-                                <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-4 w-4" />
-                              ) : (
-                                <HugeiconsIcon icon={__DownloadHugeIcon} className="h-4 w-4" />
-                              )}
-                            </Button>
-                          )}
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                                  <RuntimeLogo runtime={runtime.runtime} />
+                                </div>
+                                <span className="truncate font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
+                              </div>
+                              <span
+                                className="truncate text-muted-foreground"
+                                title={runtime.executablePath || installJob?.error || runtime.error || ''}
+                              >
+                                {runtime.executablePath || installJob?.error || runtime.error || '—'}
+                              </span>
+                              <div className="flex items-center justify-end">
+                                {isInstalled ? (
+                                  <Badge variant="secondary" className="gap-1 rounded-full">
+                                    <HugeiconsIcon icon={__CheckHugeIcon} className="h-3 w-3" />
+                                    Installed
+                                  </Badge>
+                                ) : (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className={cn(
+                                      'h-8 w-8 rounded-full',
+                                      installFailed && 'text-amber-500 hover:text-amber-500'
+                                    )}
+                                    title={
+                                      isInstalling
+                                        ? 'Downloading runtime...'
+                                        : installFailed
+                                          ? 'Retry download'
+                                          : 'Download runtime'
+                                    }
+                                    aria-label={
+                                      isInstalling
+                                        ? 'Downloading runtime'
+                                        : installFailed
+                                          ? 'Retry runtime download'
+                                          : 'Download runtime'
+                                    }
+                                    disabled={isInstalling}
+                                    onClick={() => {
+                                      void ensureRuntimeInstalled(runtime.runtime)
+                                    }}
+                                  >
+                                    {isInstalling ? (
+                                      <RuntimeProgressRing progress={installJob?.progress ?? 0} />
+                                    ) : installFailed ? (
+                                      <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-4 w-4" />
+                                    ) : (
+                                      <HugeiconsIcon icon={__DownloadHugeIcon} className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })()
+                      ))}
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="mt-2 flex items-center justify-between border-t border-border/40 px-3 pt-3 pb-1">
+                        <span className="text-xs text-muted-foreground">
+                          Page {currentPage} of {totalPages}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                          >
+                            Next
+                          </Button>
                         </div>
                       </div>
-                    )
-                  })()
-                ))
-              ) : (
-                <div className="px-3 py-4 text-sm text-muted-foreground">
-                  {isLoading
-                    ? 'Runtime inventory will appear here.'
-                    : 'No runtime data available.'}
-                </div>
-              )}
+                    )}
+                  </>
+                )
+              })()}
             </div>
           </div>
         </section>

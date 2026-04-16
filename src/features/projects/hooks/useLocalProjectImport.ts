@@ -4,7 +4,6 @@ import { useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import {
@@ -23,12 +22,9 @@ export type LocalProjectImportOutcome =
 export function useLocalProjectImport() {
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
-  const { personalScoped, preferredConvexOrganizationId } = useScopedAppContext()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-
-  const setupMode = personalScoped ? "personal" : "organization"
 
   const persistProjectPath = useCallback(
     async (projectId: Id<"projects">, projectPath: string) => {
@@ -105,8 +101,8 @@ export function useLocalProjectImport() {
 
     const localGitState = await inspectLocalGitState(localFolderPath)
 
-    if (!convexUserId || !preferredConvexOrganizationId) {
-      await showImportError("No workspace is selected right now.")
+    if (!convexUserId) {
+      await showImportError("No project profile is ready right now.")
       return "error"
     }
 
@@ -119,7 +115,6 @@ export function useLocalProjectImport() {
       const existingRemoteUrl = localGitState.remoteUrl?.trim() || ""
       const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
       const result = await createProject({
-        organizationId: preferredConvexOrganizationId,
         userId: convexUserId,
         name: projectName,
         template: "blank",
@@ -130,7 +125,7 @@ export function useLocalProjectImport() {
               repoUrl: existingRemoteUrl,
               defaultBranch: branch,
               workingCopyMode: "attached",
-              setupMode,
+              setupMode: "personal",
             }
           : undefined,
         repoSource: existingRemoteUrl && provider
@@ -165,8 +160,6 @@ export function useLocalProjectImport() {
     createProject,
     navigateToProjectWorkbench,
     persistProjectPath,
-    preferredConvexOrganizationId,
-    setupMode,
     showImportError,
     updateProjectStatus,
   ])

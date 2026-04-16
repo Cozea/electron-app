@@ -13,15 +13,12 @@ import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
 
 // Services
-import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
-import { ProjectSourceControlService } from './services/ProjectSourceControlService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { AgentToolService } from './services/AgentToolService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
-import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
@@ -122,8 +119,7 @@ function extractNavigationPath(protocolUrl: string): string | null {
       routePath === '/' ||
       routePath.startsWith('/auth/callback') ||
       routePath.startsWith('/billing/') ||
-      routePath.startsWith('/oauth/callback') ||
-      routePath.startsWith('/source-control/callback')
+      routePath.startsWith('/oauth/callback')
     ) {
       return null
     }
@@ -873,7 +869,6 @@ const workbenchBrowserService = new WorkbenchBrowserService({
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
-  '/settings/billing',
   '/settings/appearance',
   '/settings/storage',
   '/settings/tooling',
@@ -1089,38 +1084,6 @@ function stopUpdateChecks(): void {
   }
 }
 
-// Session management logic moved to AuthService
-
-// Handle billing callback (success/cancel from Stripe)
-function handleBillingCallback(url: string): void {
-  const urlObj = new URL(url)
-  const urlPath = urlObj.pathname // '/success' or '/canceled'
-  const type = urlObj.searchParams.get('type') // 'subscription'
-
-  // Focus the window
-  if (win) {
-    // Open the billing settings section with callback status.
-    const isSuccess = urlPath === '/success' || urlPath === '//success'
-    const isCanceled = urlPath === '/canceled' || urlPath === '//canceled'
-
-    let queryString = ''
-    if (isSuccess) {
-      queryString = `?success=${type || 'true'}`
-    } else if (isCanceled) {
-      queryString = '?canceled=true'
-    }
-
-    if (queryString) {
-      void openSettingsWindow(`/settings/billing${queryString}`)
-    }
-  }
-}
-
-// Handle custom protocol callback
-async function handleAuthCallback(url: string): Promise<void> {
-  await AuthService.getInstance().handleAuthCallback(url, win)
-}
-
 function resolveProtocolLaunchArg(): string {
   const argvEntry = process.argv[1]
   if (argvEntry && !argvEntry.startsWith('-')) {
@@ -1149,20 +1112,10 @@ for (const scheme of SUPPORTED_PROTOCOLS) {
 // Handle protocol on macOS
 app.on('open-url', async (event, url) => {
   event.preventDefault()
-  if (matchesProtocolUrl(url, 'auth/callback')) {
-    handleAuthCallback(url)
-  } else if (matchesProtocolUrl(url, 'billing/')) {
-    handleBillingCallback(url)
-  } else if (matchesProtocolUrl(url, 'oauth/callback')) {
+  if (matchesProtocolUrl(url, 'oauth/callback')) {
     await forwardIntegrationOAuthCallback({
       url,
       integrationService: IntegrationService.getInstance(),
-      sender: win?.webContents ?? null,
-    })
-  } else if (matchesProtocolUrl(url, 'source-control/callback')) {
-    await forwardSourceControlOAuthCallback({
-      url,
-      sourceControlService: ProjectSourceControlService.getInstance(),
       sender: win?.webContents ?? null,
     })
   } else {
@@ -1196,20 +1149,10 @@ if (!gotTheLock) {
     // Handle protocol URL on Windows/Linux
     const url = findProtocolArg(commandLine)
     if (url) {
-      if (matchesProtocolUrl(url, 'auth/callback')) {
-        handleAuthCallback(url)
-      } else if (matchesProtocolUrl(url, 'billing/')) {
-        handleBillingCallback(url)
-      } else if (matchesProtocolUrl(url, 'oauth/callback')) {
+      if (matchesProtocolUrl(url, 'oauth/callback')) {
         void forwardIntegrationOAuthCallback({
           url,
           integrationService: IntegrationService.getInstance(),
-          sender: win?.webContents ?? null,
-        })
-      } else if (matchesProtocolUrl(url, 'source-control/callback')) {
-        void forwardSourceControlOAuthCallback({
-          url,
-          sourceControlService: ProjectSourceControlService.getInstance(),
           sender: win?.webContents ?? null,
         })
       } else {
@@ -1420,11 +1363,9 @@ function createWindow() {
 
 // IPC Handlers
 // Register Services
-AuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
-ProjectSourceControlService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
 

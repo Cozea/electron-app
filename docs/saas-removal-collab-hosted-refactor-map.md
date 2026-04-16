@@ -8,8 +8,25 @@ Last reviewed: 2026-04-16
 
 - hosted runtime workspaces removed from the active server runtime path
 - workspace/billing/admin/source-control SaaS routes redirected out of the active app flow
+- dormant SaaS pages/components/modules removed from the live frontend tree:
+  - workspace billing/general/integrations/policies/source-control pages
+  - team/member admin pages
+  - workspace creation dialog host/store
+  - workspace source-control readiness/preferences helpers
+- live settings navigation is reduced to app/device settings only:
+  - account
+  - appearance
+  - storage
+  - tooling
+- settings drawer and settings sidebar now use a single personal/device navigation section
+- settings drawer no longer renders billing, workspace admin, team, or source-control surfaces
 - local device-backed Convex profile bootstrap added
 - app startup now falls back to a local device profile instead of requiring hosted login
+- active auth context is flattened to the local device profile only:
+  - no workspace selection state
+  - no current organization workspace
+  - no personal/workspace switching logic in the hot path
+- active frontend scope resolution is flattened to personal/local-device scope only
 - collaboration session bootstrap no longer requires WorkOS access tokens on the client
 - collaboration session issuance no longer enforces billing/seat entitlements on the server
 - collab session auth now resolves through a device-backed local profile on the server
@@ -18,12 +35,38 @@ Last reviewed: 2026-04-16
 - invite/join acceptance pages no longer depend on hosted sign-in or email-account matching
 - project collaborator listings now expose device-native labels and contact emails on the active path
 - legacy account-shaped inbox UI is removed from the local-device header path
+- active project discovery now runs through current-user collaborator queries, not organization-scoped project lists
+- active project routing/open flows no longer depend on preferred organization selection
+- project creation/import now derives its owning container from the local device profile instead of workspace-scoped app context
+- project team management now runs directly on project membership and pending invites, with no workspace-member assignment layer
+- task assignee selection now comes from project collaborators only, not organization member lists
+- project invite and join-link flows now work on the project-scoped active path regardless of the old workspace/personal distinction
+- local device bootstrap now backfills explicit `projectMembers` rows from legacy workspace memberships as a compatibility migration step
+- the old project workspace context hook is removed from the active frontend path
+- project creation is reduced to:
+  - empty local project
+  - import local folder
+- repository-provider import/setup UX is removed from the active project creation path
+- project settings active path is reduced to project metadata + collaboration security controls
+- onboarding now points to first-project setup instead of workspace/GitHub setup
+- local-device user menu no longer exposes workspace switching or workspace creation
+- workspace selection / workspace creation routes collapse back to `/projects`
+- login UI copy is now device-bootstrap copy, not hosted sign-in copy
+- Electron hosted auth bridge removed
+- hosted auth/billing/source-control server routes and support libs removed
+- server boot/profile reduced to collab-only runtime registration
+- server core no longer registers WorkOS plugin or cookie/session auth plumbing
+- server package metadata now reflects a collaboration service rather than an auth gateway
+- server Convex helper surface is reduced to collab/runtime essentials:
+  - Convex client bootstrap
+  - local device bootstrap
+  - project access checks
 
 ### Still deferred
 
-- full deletion of legacy SaaS pages/components/modules that are no longer on the active path
-- full removal of WorkOS auth/session plumbing from Electron and the server
-- full schema slimming away from organization/workspace-era tables
+- destructive schema slimming away from organization/workspace-era tables
+- broader naming cleanup away from organization/workspace terminology in dormant Convex/shared compatibility types
+- lockfile-level dependency pruning for the server package
 
 ## Goal
 
@@ -153,7 +196,6 @@ If runtime workspaces go local-only:
 
 ### Delete
 
-- [src/pages/Login.tsx](../src/pages/Login.tsx)
 - [src/pages/WorkspaceCreate.tsx](../src/pages/WorkspaceCreate.tsx)
 - [src/pages/WorkspaceSelect.tsx](../src/pages/WorkspaceSelect.tsx)
 - [src/pages/AcceptInvitation.tsx](../src/pages/AcceptInvitation.tsx)
@@ -171,6 +213,8 @@ If runtime workspaces go local-only:
 
 ### Rewrite
 
+- [src/pages/Login.tsx](../src/pages/Login.tsx)
+  - keep only as a local-device bootstrap screen
 - [src/router/routes.tsx](../src/router/routes.tsx)
   - remove login/workspace/billing/source-control SaaS routes
   - collapse settings to app settings + project settings + collaborators

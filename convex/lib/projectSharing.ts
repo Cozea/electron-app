@@ -1,8 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 
-export const PERSONAL_WORKSPACE_PREFIX = "personal:"
-
 type ProjectSharingCtx = Pick<QueryCtx | MutationCtx, "db">
 
 export function normalizeProjectInviteEmail(email: string): string {
@@ -188,25 +186,14 @@ export async function getProjectShareScope(
   projectId: Id<"projects">
 ): Promise<{
   project: Doc<"projects">
-  organization: Doc<"organizations">
-  isPersonalProject: boolean
 }> {
   const project = await ctx.db.get(projectId)
   if (!project || project.status === "deleted") {
     throw new Error("Project not found")
   }
 
-  const organization = await ctx.db.get(project.organizationId)
-  if (!organization) {
-    throw new Error("Workspace not found")
-  }
-
   return {
     project,
-    organization,
-    isPersonalProject: Boolean(
-      organization.workosId && organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
-    ),
   }
 }
 
@@ -214,11 +201,7 @@ export async function assertPersonalProjectShareScope(
   ctx: ProjectSharingCtx,
   projectId: Id<"projects">
 ) {
-  const scope = await getProjectShareScope(ctx, projectId)
-  if (!scope.isPersonalProject) {
-    throw new Error("Shareable invite links are only available for personal projects")
-  }
-  return scope
+  return await getProjectShareScope(ctx, projectId)
 }
 
 export async function findPendingProjectInviteByEmail(

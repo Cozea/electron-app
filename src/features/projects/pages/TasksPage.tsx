@@ -6,7 +6,6 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { openProjectFileInExternalEditor } from '@/features/projects/lib/externalEditorPreference'
-import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import {
 
@@ -785,9 +784,7 @@ export function TasksPage({
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
-  const projectWorkspace = useProjectWorkspaceContext(project)
   const { convexUserId } = useAuth()
-  const hasResolvedWorkspaceContext = project !== undefined && !projectWorkspace.isLoading
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -810,32 +807,14 @@ export function TasksPage({
   const [draftContextPagesLoading, setDraftContextPagesLoading] = useState(false)
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isSyncingLocalTasks, setIsSyncingLocalTasks] = useState(false)
-  const currentProjectOrgId = projectWorkspace.organizationId
-  const isOrganizationWorkspace = projectWorkspace.isOrganizationWorkspace
   const createManualTask = useMutation(api.projectTasks.createManualTask)
   const setManualTaskCheckedMarkers = useMutation(api.projectTasks.setManualTaskCheckedMarkers)
   const migrateLocalBoardState = useMutation(api.projectTasks.migrateLocalBoardState)
 
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
-    hasResolvedWorkspaceContext && !isOrganizationWorkspace && project?._id && convexUserId
+    project?._id && convexUserId
       ? { projectId: project._id, viewerUserId: convexUserId }
-      : 'skip',
-  )
-  const currentWorkspaceAccess = useQuery(
-    api.organizations.getCurrentMemberAccess,
-    hasResolvedWorkspaceContext && isOrganizationWorkspace && currentProjectOrgId && convexUserId
-      ? { orgId: currentProjectOrgId, viewerUserId: convexUserId }
-      : 'skip',
-  )
-  const workspaceMembers = useQuery(
-    api.organizations.getMembers,
-    hasResolvedWorkspaceContext &&
-    isOrganizationWorkspace &&
-    currentProjectOrgId &&
-    convexUserId &&
-    (currentWorkspaceAccess?.permissions.includes('members:view') ?? false)
-      ? { orgId: currentProjectOrgId, viewerUserId: convexUserId }
       : 'skip',
   )
   const sharedManualTasks = useQuery(
@@ -856,13 +835,9 @@ export function TasksPage({
       devPort: project.frameworkInfo.devPort,
     }
   }, [project?.frameworkInfo])
-  const claimantCandidatesLoading = isOrganizationWorkspace
-    ? projectWorkspace.isLoading || (currentProjectOrgId !== null && workspaceMembers === undefined)
-    : Boolean(project?._id) && projectMembers === undefined
+  const claimantCandidatesLoading = Boolean(project?._id) && projectMembers === undefined
   const claimantCandidates = useMemo(() => {
-    const sourceMembers = (
-      (isOrganizationWorkspace ? workspaceMembers : projectMembers) ?? []
-    ) as ClaimantMemberSourceRecord[]
+    const sourceMembers = (projectMembers ?? []) as ClaimantMemberSourceRecord[]
     const byIdentity = new Map<string, TaskClaimantCandidate>()
 
     for (const member of sourceMembers) {
@@ -894,7 +869,7 @@ export function TasksPage({
       if (nameCompare !== 0) return nameCompare
       return left.email.localeCompare(right.email)
     })
-  }, [isOrganizationWorkspace, projectMembers, workspaceMembers])
+  }, [projectMembers])
   const selectedDraftClaimantKeys = useMemo(
     () => new Set(draftClaimants.map((claimant) => getClaimantIdentityKey(claimant))),
     [draftClaimants],
@@ -1742,11 +1717,7 @@ export function TasksPage({
                     value={draftClaimantSearch}
                     onChange={(event) => setDraftClaimantSearch(event.target.value)}
                     placeholder="Search people..."
-                    disabled={
-                      claimantCandidatesLoading
-                        ? false
-                        : claimantCandidates.length === 0 && !currentProjectOrgId && isOrganizationWorkspace
-                    }
+                    disabled={claimantCandidatesLoading ? false : claimantCandidates.length === 0}
                   />
 
                   {hasDraftClaimantSearch ? (
@@ -1758,9 +1729,7 @@ export function TasksPage({
                           </div>
                         ) : claimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
-                            {isOrganizationWorkspace && !currentProjectOrgId
-                              ? 'People are unavailable right now.'
-                              : 'No people available.'}
+                            No people available.
                           </div>
                         ) : filteredClaimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">

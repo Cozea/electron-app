@@ -1,4 +1,5 @@
 import { shell, type IpcMain } from 'electron'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -6,8 +7,10 @@ import type {
   AppSettings,
   CloneRepositoryResult,
   CopyDirectorySnapshotResult,
+  CreateGitHubRepoResult,
   CreateProjectFolderResult,
   FileEntry,
+  GhCliStatus,
   StorageActionResult,
   ImportSourcePreflightIssue,
   ImportSourcePreflightResult,
@@ -1150,4 +1153,158 @@ npm-debug.log*
       return null
     }
   })
+
+  // ---------------------------------------------------------------------------
+  // GitHub CLI helpers
+  // ---------------------------------------------------------------------------
+
+  function runGhCommand(
+    args: string[],
+    options?: { cwd?: string; timeoutMs?: number }
+  ): Promise<{ success: boolean; stdout: string; stderr: string; error?: string }> {
+    const timeoutMs = options?.timeoutMs ?? 15_000
+    return new Promise((resolve) => {
+      let child: ChildProcess
+      try {
+        child = spawn('gh', args, {
+          cwd: options?.cwd,
+          stdio: 'pipe',
+          env: { ...process.env },
+        })
+      } catch (error) {
+        resolve({
+          success: false,
+          stdout: '',
+          stderr: '',
+          error: error instanceof Error ? error.message : 'Failed to spawn gh',
+        })
+        return
+      }
+
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          child.kill('SIGTERM')
+          resolve({ success: false, stdout, stderr, error: 'gh command timed out' })
+        }
+      }, timeoutMs)
+
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+
+      child.on('error', (error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        const isNotFound =
+          (error as NodeJS.ErrnoException).code === 'ENOENT' ||
+          error.message.includes('ENOENT')
+        resolve({
+          success: false,
+          stdout,
+          stderr,
+          error: isNotFound
+            ? 'GitHub CLI (`gh`) is not installed.'
+            : error.message,
+        })
+      })
+
+      child.on('close', (code) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve({
+          success: code === 0,
+          stdout,
+          stderr,
+          error: code !== 0 ? stderr.trim() || `gh exited with code ${code}` : undefined,
+        })
+      })
+    })
+  }
+
+  ipcMain.handle(
+    'project:checkGhCliStatus',
+    async (): Promise<GhCliStatus> => {
+      const result = await runGhCommand(['auth', 'status'])
+
+      if (!result.success) {
+        return {
+          available: false,
+          error: result.error ?? 'GitHub CLI is not available or not authenticated.',
+        }
+      }
+
+      // `gh auth status` prints to stderr, so we combine both streams
+      const combined = `${result.stdout}\n${result.stderr}`
+      const usernameMatch = combined.match(/Logged in to [\w.]+\s+.*?account\s+(\S+)/i)
+        ?? combined.match(/account\s+(\S+)/i)
+        ?? combined.match(/✓\s+Logged in to \S+ as (\S+)/i)
+
+      return {
+        available: true,
+        username: usernameMatch?.[1]?.replace(/\s*\(.*\)$/, '') ?? undefined,
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'project:createGitHubRepo',
+    async (
+      _event,
+      { name, localPath, visibility = 'private' }: { name: string; localPath: string; visibility?: 'private' | 'public' }
+    ): Promise<CreateGitHubRepoResult> => {
+      const trimmedName = name.trim()
+      if (!trimmedName) {
+        return { success: false, error: 'Repository name is required.' }
+      }
+
+      if (!fs.existsSync(localPath)) {
+        return { success: false, error: 'Local project folder does not exist.' }
+      }
+
+      // Ensure the folder has a git repo (it should from createFolder with initGit)
+      const gitDir = path.join(localPath, '.git')
+      if (!fs.existsSync(gitDir)) {
+        const initResult = await runGitCommand(['init'], localPath)
+        if (!initResult.success) {
+          return { success: false, error: initResult.error ?? 'Failed to initialize git.' }
+        }
+      }
+
+      // Create the GitHub repo and set it as origin
+      const visibilityFlag = visibility === 'public' ? '--public' : '--private'
+      const result = await runGhCommand(
+        ['repo', 'create', trimmedName, visibilityFlag, '--source', localPath, '--remote', 'origin'],
+        { cwd: localPath, timeoutMs: 30_000 }
+      )
+
+      if (!result.success) {
+        // Provide a friendlier message for common errors
+        const errLower = (result.error ?? '').toLowerCase()
+        if (errLower.includes('name already exists') || errLower.includes('already exists')) {
+          return {
+            success: false,
+            error: `A GitHub repository named "${trimmedName}" already exists on your account. Choose a different project name.`,
+          }
+        }
+        if (errLower.includes('not logged in') || errLower.includes('gh auth login')) {
+          return {
+            success: false,
+            error: 'GitHub CLI is not authenticated. Run `gh auth login` first.',
+          }
+        }
+        return { success: false, error: result.error ?? 'Failed to create GitHub repository.' }
+      }
+
+      // Extract the repo URL from stdout (gh repo create prints the URL)
+      const repoUrl = result.stdout.trim().split('\n').pop()?.trim() ?? undefined
+
+      return { success: true, repoUrl }
+    }
+  )
 }

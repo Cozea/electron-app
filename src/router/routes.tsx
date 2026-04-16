@@ -20,7 +20,6 @@ import { AppStorePage } from "@/features/projects/pages/AppStorePage";
 import NewProject from "@/pages/NewProject";
 import { Account } from "@/pages/settings/Account";
 import { Appearance } from "@/pages/settings/Appearance";
-import { Storage } from "@/pages/settings/Storage";
 import { Tooling } from "@/pages/settings/Tooling";
 
 function createLazyRouteComponent(
@@ -75,7 +74,6 @@ const PERSONAL_SOURCE_CONTROL_ROUTE = "/settings/source-control";
 const PERSONAL_ACCOUNT_ROUTE = "/settings/account";
 const PERSONAL_APPEARANCE_ROUTE = "/settings/appearance";
 const PERSONAL_TOOLING_ROUTE = "/settings/tooling";
-const PERSONAL_STORAGE_ROUTE = "/settings/storage";
 function toRoutePath(route: string): string {
   return route.replace(/^\//, "");
 }
@@ -384,13 +382,13 @@ const projectsPersonalSourceControlRoute = createRoute({
 const projectsLegacyWorkspaceSyncRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "workspace/sync",
-  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
+  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
 });
 
 const projectsLegacyPersonalCloudStorageRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "settings/cloud-storage",
-  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
+  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
 });
 
 const projectsPersonalAccountRoute = createRoute({
@@ -415,12 +413,6 @@ const projectsPersonalToolingRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_TOOLING_ROUTE),
   component: Tooling,
-});
-
-const projectsPersonalStorageRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(PERSONAL_STORAGE_ROUTE),
-  component: Storage,
 });
 
 const teamsMembersRoute = createRoute({
@@ -510,7 +502,7 @@ const workspaceSyncLegacyRoute = createRoute({
 const personalCloudStorageLegacyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "settings/cloud-storage",
-  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
+  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
 });
 
 const personalAccountRoute = createRoute({
@@ -535,12 +527,6 @@ const personalToolingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_TOOLING_ROUTE),
   component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
-});
-
-const personalStorageRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_STORAGE_ROUTE),
-  component: () => <Navigate to={"/projects/settings/storage" as never} replace />,
 });
 
 const inviteRoute = createRoute({
@@ -592,7 +578,6 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalBillingRoute,
     projectsPersonalAppearanceRoute,
     projectsPersonalToolingRoute,
-    projectsPersonalStorageRoute,
   ]),
   legacyProjectRoute,
   teamsMembersRoute,
@@ -614,7 +599,6 @@ export const routeTree = rootRoute.addChildren([
   personalBillingRoute,
   personalAppearanceRoute,
   personalToolingRoute,
-  personalStorageRoute,
   inviteRoute,
 ]);
 
