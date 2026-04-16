@@ -80,7 +80,7 @@ export function NavUser({
     : userData.name
   const menuSummarySublabel = isLocalDeviceProfile
     ? "Local computer"
-    : currentWorkspace?.organizationName || userData.email
+    : currentWorkspace?.workspaceName || currentWorkspace?.organizationName || userData.email
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {

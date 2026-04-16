@@ -12,7 +12,6 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { useCachedQuery } from '@/stores/useQueryCache'
-import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -845,15 +844,15 @@ export function ChangesPage({
               ) : filteredActivity === undefined ? (
                 null
               ) : filteredActivity.length === 0 ? (
-                <Card className="p-12 text-center">
-                  <HugeiconsIcon icon={__ActivityHugeIcon} className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <h3 className="text-lg font-medium mb-2">No Changes Yet</h3>
-                  <p className="text-sm text-muted-foreground">
+                <div className="flex flex-col items-center justify-center flex-1 py-16 text-center">
+                  <HugeiconsIcon icon={__ActivityHugeIcon} className="h-8 w-8 mb-3 text-muted-foreground/30" />
+                  <h3 className="text-sm font-medium text-muted-foreground mb-1">No Changes Yet</h3>
+                  <p className="text-xs text-muted-foreground/70 max-w-[240px]">
                     {selectedUserId
                       ? "No changes found for this user in the current feed window."
-                      : "File changes will appear here in real-time as you and your team edit files."}
+                      : "File changes will appear here as you and your team edit files."}
                   </p>
-                </Card>
+                </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-6">
                   {selectedUserId && (

@@ -248,6 +248,7 @@ function getDefaultSettings(): AppSettings {
       projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
       previewHeaderCompatibilityEnabled: true,
       approvedExternalReadRoots: [],
+      deactivateTransparency: false,
     }
   }
   return _defaultSettings
@@ -1170,6 +1171,8 @@ function createWindow() {
   const isWindows = process.platform === 'win32'
   const isReleaseBuild = app.isPackaged
   const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
+  const userSettings = loadSettings()
+  const useTransparency = isMac && !userSettings.deactivateTransparency
   let routeRecoveryInFlight = false
 
   // Load window state
@@ -1195,10 +1198,10 @@ function createWindow() {
     // Native material effects:
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
     // - Windows 11: system backdrop material.
-    transparent: isMac,
-    backgroundColor: isMac ? '#00000000' : themedOpaqueBackground,
-    vibrancy: isMac ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
-    visualEffectState: isMac ? 'active' : undefined,
+    transparent: useTransparency,
+    backgroundColor: useTransparency ? '#00000000' : themedOpaqueBackground,
+    vibrancy: useTransparency ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
+    visualEffectState: useTransparency ? 'active' : undefined,
     backgroundMaterial: isWindows ? 'mica' : undefined,
     titleBarStyle: isMac ? 'hiddenInset' : (isWindows ? 'hidden' : 'default'),
     titleBarOverlay: isWindows

@@ -47,36 +47,6 @@ function resolvePersonalDeviceSurfaces(
   }).sort(comparePersonalDeviceSidebarSurfaces)
 }
 
-function resolvePersonalWorkspaceSurfaces(
-  placement: SettingsPlacement,
-): SettingsSurfaceDefinition[] {
-  return listSettingsSurfaces({
-    scopeKind: "personal",
-    placement,
-    sidebarGroup: "personalWorkspace",
-  })
-}
-
-function resolveUnifiedPersonalSurfaces(
-  placement: SettingsPlacement,
-): SettingsSurfaceDefinition[] {
-  const personalWorkspaceSurfaces = resolvePersonalWorkspaceSurfaces(placement)
-  const personalDeviceSurfaces = resolvePersonalDeviceSurfaces(placement)
-  const seen = new Set<string>()
-  const merged: SettingsSurfaceDefinition[] = []
-
-  for (const surface of [...personalWorkspaceSurfaces, ...personalDeviceSurfaces]) {
-    if (seen.has(surface.id)) {
-      continue
-    }
-    seen.add(surface.id)
-    merged.push(surface)
-  }
-
-  merged.sort(comparePersonalContextUnifiedSettingsSidebar)
-  return merged
-}
-
 function buildSection(
   surfaces: SettingsSurfaceDefinition[],
 ): SettingsNavigationSection | null {
@@ -91,6 +61,8 @@ function buildSection(
 export function resolveSettingsNavigationSections(
   placement: SettingsPlacement,
 ): SettingsNavigationSection[] {
-  const section = buildSection(resolveUnifiedPersonalSurfaces(placement))
+  const section = buildSection(
+    resolvePersonalDeviceSurfaces(placement).sort(comparePersonalContextUnifiedSettingsSidebar),
+  )
   return section ? [section] : []
 }

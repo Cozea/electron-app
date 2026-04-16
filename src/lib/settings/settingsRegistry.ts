@@ -38,7 +38,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     label: "Account",
     icon: UserCircleIcon,
     routes: { personal: "/settings/account" },
-    storageMode: { personal: "cloud" },
+    storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadAccountPage,
@@ -55,7 +55,6 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
   },
-
   {
     id: "tooling",
     label: "Local environment",

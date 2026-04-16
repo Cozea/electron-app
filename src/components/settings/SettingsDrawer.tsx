@@ -131,7 +131,7 @@ export function SettingsDrawer() {
         <SheetHeader className="sr-only">
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription>
-            Browse and update device, appearance, storage, and tooling settings.
+            Browse and update device, appearance, and tooling settings.
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">

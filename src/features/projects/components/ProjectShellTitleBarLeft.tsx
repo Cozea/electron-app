@@ -19,7 +19,7 @@ export function ProjectShellTitleBarLeft({ projectPath }: ProjectShellTitleBarLe
   );
 
   return (
-    <div className="workbench-header-toolbar flex min-w-0 items-center gap-0">
+    <div className="workbench-header-toolbar flex min-w-0 items-center gap-1.5">
       <SidebarTrigger
         className={cn(
           "h-7 w-7 shrink-0 rounded-md",
@@ -28,13 +28,7 @@ export function ProjectShellTitleBarLeft({ projectPath }: ProjectShellTitleBarLe
             : "text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground",
         )}
       />
-      <div
-        className={cn(
-          "mx-0.5 h-4 w-px shrink-0",
-          sidebarChromeOpen ? "bg-sidebar-border" : "bg-border",
-        )}
-        aria-hidden
-      />
+
       <WorkbenchHeaderEditorControl
         projectPath={projectPath}
         adjacentOpenSidebar={sidebarChromeOpen}

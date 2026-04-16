@@ -76,8 +76,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="h-6 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
           aria-label="Open changes"
           onMouseEnter={prewarmChanges}
           onFocus={prewarmChanges}
@@ -105,7 +104,8 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             });
           }}
         >
-          <HugeiconsIcon icon={__TransactionHistoryHugeIcon} className="h-3.5 w-3.5 shrink-0" />
+          <HugeiconsIcon icon={__TransactionHistoryHugeIcon} className="size-3 shrink-0" />
+          <span className="text-[11px] leading-none">Changes</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">Open changes</TooltipContent>

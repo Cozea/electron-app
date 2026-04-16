@@ -31,6 +31,7 @@ export interface AppSettings {
   projectsDirectory: string
   previewHeaderCompatibilityEnabled: boolean
   approvedExternalReadRoots?: string[]
+  deactivateTransparency?: boolean
 }
 
 export type UpdateStatus =

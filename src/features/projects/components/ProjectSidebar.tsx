@@ -384,9 +384,7 @@ export function ProjectSidebar({
           },
         });
       } catch (error) {
-        const presentation = formatProjectCloudAccessError(error, "Failed to prepare project", {
-          workspaceScoped: false,
-        });
+        const presentation = formatProjectCloudAccessError(error, "Failed to prepare project");
         const response = await window.electronAPI.dialog.showMessageBox({
           type: presentation.isAccessError ? "warning" : "error",
           buttons: presentation.actionHref

@@ -15,6 +15,8 @@ export type WorkspaceType = "personal" | "organization"
 
 export interface PersonalWorkspaceMembership {
   id: string
+  workspaceId: string
+  workspaceName: string
   organizationId: string
   organizationName: string
   role: "admin"

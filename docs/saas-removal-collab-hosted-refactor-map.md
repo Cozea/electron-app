@@ -1,6 +1,6 @@
 # SaaS Removal / Hosted Collab Refactor Map
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-04-17
 
 ## Implementation Status
 
@@ -16,10 +16,10 @@ Last reviewed: 2026-04-16
 - live settings navigation is reduced to app/device settings only:
   - account
   - appearance
-  - storage
   - tooling
 - settings drawer and settings sidebar now use a single personal/device navigation section
 - settings drawer no longer renders billing, workspace admin, team, or source-control surfaces
+- storage tracking/settings are removed from the active app settings surface
 - local device-backed Convex profile bootstrap added
 - app startup now falls back to a local device profile instead of requiring hosted login
 - active auth context is flattened to the local device profile only:
@@ -61,10 +61,14 @@ Last reviewed: 2026-04-16
   - Convex client bootstrap
   - local device bootstrap
   - project access checks
+- destructive Convex schema slimming is completed on the active path:
+  - organization/billing/waitlist/source-control control-plane tables removed
+  - dormant project team and compaction tables removed
+  - active project/task/asset/storage tables no longer carry organization-scoped indexes or foreign keys
+- local profile payloads now expose workspace-native compatibility fields on the active path while legacy organization aliases remain temporary compatibility shims
 
 ### Still deferred
 
-- destructive schema slimming away from organization/workspace-era tables
 - broader naming cleanup away from organization/workspace terminology in dormant Convex/shared compatibility types
 - lockfile-level dependency pruning for the server package
 

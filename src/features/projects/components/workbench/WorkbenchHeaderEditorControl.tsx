@@ -22,7 +22,7 @@ import {
 } from "@/features/projects/components/workbench/WorkbenchEditorIcons"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ChevronDoubleCloseIcon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'
 
 const Code2 = (props: any) => <HugeiconsIcon icon={__Code2HugeIcon} {...props} />
 
@@ -216,11 +216,10 @@ export function WorkbenchHeaderEditorControl({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="group inline-flex h-7 items-center">
+        <div className={cn("group inline-flex h-6 items-center rounded-md border bg-transparent shadow-none overflow-hidden", adjacentOpenSidebar ? "border-sidebar-foreground/20" : "border-border/60")}>
           <Button
             variant="ghost"
-            size="sm"
-            className={cn("h-7 shrink-0 gap-1 rounded-md border-0 bg-transparent px-1.5", chromeButtonClass)}
+            className={cn("h-full shrink-0 gap-1 rounded-none bg-transparent !px-3 shadow-none", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
             disabled={!projectPath || !selectedEditorOption}
           >
@@ -233,14 +232,13 @@ export function WorkbenchHeaderEditorControl({
           {orderedEditors.length > 1 ? (
             <>
               <div
-                className={cn("hidden h-4 w-px shrink-0 group-hover:block group-focus-within:block", adjacentOpenSidebar ? "bg-sidebar-border" : "bg-border")}
+                className={cn("h-full w-px shrink-0", adjacentOpenSidebar ? "bg-sidebar-border" : "bg-border/60")}
                 aria-hidden
               />
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className={cn("hidden h-7 w-7 shrink-0 rounded-md border-0 bg-transparent group-hover:inline-flex group-focus-within:inline-flex", chromeButtonClass)}
+                className={cn("h-full w-7 shrink-0 rounded-none bg-transparent px-0 shadow-none inline-flex", chromeButtonClass)}
                 aria-label="Choose editor"
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
