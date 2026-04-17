@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react"
 import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore"
 import {
   type WorkbenchTileType,
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
 
@@ -159,9 +159,11 @@ export function useProjectWorkbenchSearchParamSync(
     if (!intent.requestedFocusTileId) return
 
     const liveWorkbench =
-      useProjectWorkbenchStore.getState().workbenches[
-        buildWorkbenchScopeKey(projectId, activeLaneId)
-      ]
+      selectProjectWorkbench(
+        projectId,
+        activeLaneId,
+        projectPath,
+      )(useProjectWorkbenchStore.getState())
 
     if (liveWorkbench?.tiles[intent.requestedFocusTileId]) {
       focusWorkbenchTile(intent.requestedFocusTileId)

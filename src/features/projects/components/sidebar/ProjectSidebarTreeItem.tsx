@@ -20,7 +20,7 @@ import {
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import {
   buildWorkbenchLaneSidebarSummary,
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
 
@@ -79,7 +79,11 @@ export const ProjectSidebarTreeItem = React.memo(
     const activeLane = context.prefetchedActiveLane ?? fetchedLaneState.activeLane
     const activeLaneWorkbench = useProjectWorkbenchStore((state) => {
       if (!activeLane) return null
-      return state.workbenches[buildWorkbenchScopeKey(project.id, activeLane.id)] ?? null
+      return selectProjectWorkbench(
+        project.id,
+        activeLane.id,
+        activeLane.projectPath ?? localPath,
+      )(state)
     })
     const activeLaneSummary = React.useMemo(
       () => (activeLaneWorkbench ? buildWorkbenchLaneSidebarSummary(activeLaneWorkbench) : null),
@@ -90,6 +94,8 @@ export const ProjectSidebarTreeItem = React.memo(
       async (event: React.MouseEvent<HTMLButtonElement>) => {
         const items: ContextMenuItem<
           | "open-project"
+          | "relink-project"
+          | "close-workspace"
           | "open-folder"
           | "settings"
           | "rename"
@@ -103,6 +109,7 @@ export const ProjectSidebarTreeItem = React.memo(
           | "divider-secondary"
         >[] = [
           { id: "open-project", label: "Open Project" },
+          { id: "relink-project", label: "Relink Local Folder" },
           { id: "open-folder", label: "Open Folder" },
           { id: "settings", label: "Settings" },
           { id: "divider-primary", label: "", type: "separator" },
@@ -132,6 +139,7 @@ export const ProjectSidebarTreeItem = React.memo(
         }
 
         if (context.isCurrentProject && context.currentProjectPath && !context.isSyncingProject) {
+          items.push({ id: "close-workspace", label: "Close Workspace" })
           items.push({ id: "sync", label: "Sync" })
         }
 
@@ -141,6 +149,12 @@ export const ProjectSidebarTreeItem = React.memo(
         switch (action) {
           case "open-project":
             void actions.openProject(project, localPath)
+            break
+          case "relink-project":
+            void actions.relinkProjectWorkspace(project, localPath)
+            break
+          case "close-workspace":
+            void actions.closeProjectWorkspace(project, context.currentProjectPath)
             break
           case "open-folder":
             void actions.openProjectFolder(project, localPath)
@@ -254,7 +268,10 @@ export const ProjectSidebarTreeItem = React.memo(
             activeTileId={selection.activeTileId}
             onOpenLaneWorkbench={(options) => {
               if (!activeLane) return
-              void actions.openLaneWorkbench(project, activeLane.id, options)
+              void actions.openLaneWorkbench(project, activeLane.id, {
+                ...options,
+                projectPath: activeLane.projectPath ?? localPath,
+              })
             }}
           />
         </CollapsibleContent>
@@ -278,4 +295,3 @@ export const ProjectSidebarTreeItem = React.memo(
     )
   },
 )
-

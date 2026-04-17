@@ -24,6 +24,8 @@ import {
   SidebarFooter,
   SidebarRail,
   SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
@@ -57,13 +59,15 @@ import {
   formatProjectRenameError,
 } from "../lib/projectMutationPresentation";
 import {
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
+  selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { primeLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectRenameDialog } from "./ProjectRenameDialog";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
+import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
 
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -125,6 +129,10 @@ export function ProjectSidebar({
   const restoreProject = useMutation(api.projects.restore);
   const deleteProject = useMutation(api.projects.deleteProject);
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath);
+  const {
+    relinkProjectWorkspace,
+    closeProjectWorkspace,
+  } = useProjectWorkspaceActions();
 
   const accessibleProjects = useQuery(
     api.projects.listForCurrentUser,
@@ -225,15 +233,13 @@ export function ProjectSidebar({
   });
   const currentVisibleActiveTileId = useProjectWorkbenchStore(
     React.useMemo(
-      () => (state) => {
-        if (!currentProjectId) return null;
-        const scopeKey = buildWorkbenchScopeKey(currentProjectId, currentActiveLane?.id ?? null);
-        const workbench = state.workbenches[scopeKey] ?? null;
-        if (!workbench?.activeTileId) return null;
-        const activeTile = workbench.tiles[workbench.activeTileId];
-        return activeTile && activeTile.type !== "selection" ? activeTile.id : null;
-      },
-      [currentActiveLane?.id, currentProjectId],
+      () =>
+        selectVisibleActiveWorkbenchTileId(
+          currentProjectId,
+          currentActiveLane?.id ?? null,
+          currentActiveLane?.projectPath ?? currentProjectPath,
+        ),
+      [currentActiveLane?.id, currentActiveLane?.projectPath, currentProjectId, currentProjectPath],
     ),
   );
 
@@ -273,15 +279,22 @@ export function ProjectSidebar({
       options?: {
         openTile?: "assistantChat" | "terminal";
         focusTileId?: string;
+        projectPath?: string | null;
       },
     ) => {
       const workbenchStore = useProjectWorkbenchStore.getState();
-      workbenchStore.actions.ensureWorkbench(project.id, laneId);
+      const workbenchProjectPath =
+        options?.projectPath ??
+        (project.id === currentProjectId
+          ? (currentActiveLane?.projectPath ?? currentProjectPath)
+          : null);
+      workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchProjectPath);
 
-      const ensuredWorkbench =
-        useProjectWorkbenchStore.getState().workbenches[
-          buildWorkbenchScopeKey(project.id, laneId)
-        ] ?? null;
+      const ensuredWorkbench = selectProjectWorkbench(
+        project.id,
+        laneId,
+        workbenchProjectPath,
+      )(useProjectWorkbenchStore.getState());
 
       let nextOptions = options;
       if (!options?.openTile && !options?.focusTileId && ensuredWorkbench) {
@@ -304,7 +317,7 @@ export function ProjectSidebar({
 
       navigate(buildWorkbenchHref(project.id, laneId, nextOptions));
     },
-    [navigate],
+    [currentActiveLane?.projectPath, currentProjectId, currentProjectPath, navigate],
   );
 
   const handleSyncCurrentProject = React.useCallback(async () => {
@@ -362,6 +375,9 @@ export function ProjectSidebar({
   }, [navigate]);
 
   const isOnAppStore = location.pathname === "/projects/store";
+
+  const { isMobile, state, openMobile } = useSidebar();
+  const showInSidebarSidebarTrigger = isMobile ? openMobile : state === "expanded";
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, localPath: string | null) => {
@@ -441,6 +457,20 @@ export function ProjectSidebar({
       }
     },
     [],
+  );
+
+  const handleRelinkProjectWorkspace = React.useCallback(
+    async (project: SidebarProjectItem, localPath: string | null) => {
+      await relinkProjectWorkspace(project, localPath);
+    },
+    [relinkProjectWorkspace],
+  );
+
+  const handleCloseProjectWorkspace = React.useCallback(
+    async (project: SidebarProjectItem, localPath: string | null) => {
+      await closeProjectWorkspace(project, localPath, { replace: true });
+    },
+    [closeProjectWorkspace],
   );
 
   const handleStartRenameProject = React.useCallback((project: SidebarProjectItem) => {
@@ -611,6 +641,16 @@ export function ProjectSidebar({
       <Sidebar
         collapsible="offcanvas"
         windowChromeAware
+        windowChromeEndAddon={
+          showInSidebarSidebarTrigger ? (
+            <SidebarTrigger
+              className={cn(
+                "h-7 w-7 shrink-0 rounded-md",
+                "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
+              )}
+            />
+          ) : null
+        }
         rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
         rootStyle={{ "--sidebar-width": "14rem" } as React.CSSProperties}
         className="h-full min-w-0 z-20 sidebar-glass"
@@ -707,10 +747,12 @@ export function ProjectSidebar({
                     renameProject: handleStartRenameProject,
                     archiveProject: handleArchiveProject,
                     restoreProject: handleRestoreProject,
-                    deleteProject: handleStartDeleteProject,
-                    syncProject: handleSyncProject,
-                    moveProject,
-                    openLaneWorkbench,
+                deleteProject: handleStartDeleteProject,
+                relinkProjectWorkspace: handleRelinkProjectWorkspace,
+                closeProjectWorkspace: handleCloseProjectWorkspace,
+                syncProject: handleSyncProject,
+                moveProject,
+                openLaneWorkbench,
                   }}
                 />
               ))

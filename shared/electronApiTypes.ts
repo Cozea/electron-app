@@ -1276,34 +1276,48 @@ export interface ElectronAPI {
   }
   workbenchSession: {
     ensureSession: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       projectPath?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     activateSession: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       projectPath?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     backgroundSession: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       mode?: Exclude<WorkbenchSessionLifecycle, 'active' | 'closed'>
     }) => Promise<WorkbenchSessionSnapshot | null>
-    closeSession: (options: { projectId: string; laneId: string }) => Promise<{ success: boolean }>
-    getSession: (options: { projectId: string; laneId: string }) => Promise<WorkbenchSessionSnapshot | null>
+    closeSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+    }) => Promise<{ success: boolean }>
+    getSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+    }) => Promise<WorkbenchSessionSnapshot | null>
     listSessions: () => Promise<WorkbenchSessionSnapshot[]>
     setPinned: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       pinned: boolean
     }) => Promise<WorkbenchSessionSnapshot | null>
     getTerminalBinding: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
     }) => Promise<string | null>
     bindTerminal: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
@@ -1311,17 +1325,20 @@ export interface ElectronAPI {
       projectPath?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     releaseTerminal: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
       close?: boolean
     }) => Promise<{ success: boolean; terminalId?: string }>
     getBrowserBinding: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
     }) => Promise<string | null>
     bindBrowser: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
@@ -1329,12 +1346,14 @@ export interface ElectronAPI {
       projectPath?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     releaseBrowser: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
       destroy?: boolean
     }) => Promise<{ success: boolean; browserTileId?: string }>
     setNativePreviewSession: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null

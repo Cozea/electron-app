@@ -28,7 +28,7 @@ import {
   generateRoomKeyBase64,
 } from "@/lib/collab/cipherEnvelope"
 
-interface YjsProjectContextValue {
+export interface YjsProjectContextValue {
   yjsDoc: YjsProjectDoc | null
   awareness: Awareness | null
   isConnected: boolean
@@ -54,13 +54,15 @@ interface RoomEncryptionState {
   keyVersion: number | null
 }
 
-const YjsProjectContext = createContext<YjsProjectContextValue>({
+export const EMPTY_YJS_PROJECT_CONTEXT_VALUE: YjsProjectContextValue = {
   yjsDoc: null,
   awareness: null,
   isConnected: false,
   deleteConflicts: [],
   resolveDeleteConflict: async () => {},
-})
+}
+
+const YjsProjectContext = createContext<YjsProjectContextValue>(EMPTY_YJS_PROJECT_CONTEXT_VALUE)
 
 function generateColor(id: string): string {
   const colors = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9"]
@@ -74,11 +76,16 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return buffer
 }
 
+function randomDebugId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
 interface YjsProjectProviderProps {
   projectId: Id<"projects">
   userId: Id<"users">
   userName: string
   projectPath: string | null
+  gitCwd?: string | null
   enabled?: boolean
   documentScopeId?: string | null
   collaborationEnabled?: boolean
@@ -92,6 +99,7 @@ export function YjsProjectProvider({
   userId,
   userName,
   projectPath,
+  gitCwd = null,
   enabled = true,
   documentScopeId = null,
   collaborationEnabled = true,
@@ -109,6 +117,7 @@ export function YjsProjectProvider({
   const initialKnownSeqRef = useRef(0)
   const wsSessionRef = useRef<CollabSessionDescriptor | null>(null)
   const encryptedLocalStoreRef = useRef<EncryptedLocalSnapshotStore | null>(null)
+  const wsProviderLifecycleIdRef = useRef<string | null>(null)
   const convex = useConvex()
 
   const scopeKey = useMemo(() => {
@@ -130,14 +139,23 @@ export function YjsProjectProvider({
       encryption: collabSession.encryption,
     }
   }, [collabSession, collaborationEnabled])
+  const canRunCollaborationSync = collaborationEnabled && Boolean(wsSession)
 
   useEffect(() => {
     wsSessionRef.current = wsSession
   }, [wsSession])
 
   const destroyTransportProvider = useCallback(() => {
+    if (wsProviderRef.current || wsProviderLifecycleIdRef.current) {
+      console.log("[YjsProjectProvider] Destroying collaboration transport provider", {
+        projectId: String(projectId),
+        lifecycleId: wsProviderLifecycleIdRef.current,
+        hasProvider: Boolean(wsProviderRef.current),
+      })
+    }
     wsProviderRef.current?.destroy()
     wsProviderRef.current = null
+    wsProviderLifecycleIdRef.current = null
   }, [])
 
   const destroyPersistenceForInit = useCallback((args: {
@@ -192,7 +210,7 @@ export function YjsProjectProvider({
       const persistence = new ProjectFilesPersistence(
         doc.files,
         projectId,
-        projectPath,
+        gitCwd,
         convex,
         userId,
         userName,
@@ -243,6 +261,7 @@ export function YjsProjectProvider({
     enabled,
     projectId,
     projectPath,
+    gitCwd,
     scopeKey,
     userId,
     userName,
@@ -493,15 +512,32 @@ export function YjsProjectProvider({
         if (disposed) return
         console.warn("[YjsProjectProvider] Collaboration websocket failed", {
           projectId: String(projectId),
+          lifecycleId: wsProviderLifecycleIdRef.current,
           reason,
         })
         setIsConnected(false)
       },
     })
+    wsProviderLifecycleIdRef.current = randomDebugId("yjs_ws_provider")
+    console.log("[YjsProjectProvider] Created collaboration transport provider", {
+      projectId: String(projectId),
+      lifecycleId: wsProviderLifecycleIdRef.current,
+      roomId: session.roomId,
+      collabWsUrl: session.collabWsUrl,
+      protocolVersion: session.protocolVersion,
+    })
+    console.log("[YjsProjectProvider] Starting collaboration transport provider", {
+      projectId: String(projectId),
+      lifecycleId: wsProviderLifecycleIdRef.current,
+    })
     wsProviderRef.current.start()
 
     return () => {
       disposed = true
+      console.log("[YjsProjectProvider] Cleaning up collaboration transport provider effect", {
+        projectId: String(projectId),
+        lifecycleId: wsProviderLifecycleIdRef.current,
+      })
       destroyTransportProvider()
       setIsConnected(false)
     }
@@ -692,8 +728,8 @@ export function YjsProjectProvider({
   ])
 
   const { deleteConflicts, resolveConflict } = useReconnectionSync(
-    collaborationEnabled ? projectId : null,
-    collaborationEnabled ? yjsDoc : null,
+    canRunCollaborationSync ? projectId : null,
+    canRunCollaborationSync ? yjsDoc : null,
   )
 
   return (
@@ -713,4 +749,14 @@ export function YjsProjectProvider({
 
 export function useYjsProject() {
   return useContext(YjsProjectContext)
+}
+
+export function YjsProjectContextBridgeProvider({
+  children,
+  value,
+}: {
+  children: ReactNode
+  value: YjsProjectContextValue
+}) {
+  return <YjsProjectContext.Provider value={value}>{children}</YjsProjectContext.Provider>
 }

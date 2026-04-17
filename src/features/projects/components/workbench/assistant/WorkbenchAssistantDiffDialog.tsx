@@ -26,7 +26,7 @@ export function WorkbenchAssistantDiffDialog({
   return (
     <Dialog open={Boolean(state)} onOpenChange={onOpenChange}>
       <DialogContent className="h-[min(84vh,56rem)] max-w-[min(72rem,calc(100%-2rem))] overflow-hidden p-0">
-        <DialogHeader className="border-b border-border/70 px-6 py-4">
+        <DialogHeader className="border-b border-border/60 px-6 py-4">
           <DialogTitle>{state?.title ?? "Diff"}</DialogTitle>
           <DialogDescription>
             Review the unified diff captured for this local assistant thread.

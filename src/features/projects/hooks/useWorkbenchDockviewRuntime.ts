@@ -16,7 +16,7 @@ import type {
 
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectWorkbenchStore";
 import {
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
   type WorkbenchProjectState,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
@@ -46,6 +46,7 @@ interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
   activeLaneId: string;
   projectPath: string | null;
+  workbenchSessionKey: string | null;
   projectWorkbench: WorkbenchProjectState | null;
   workbenchScopeKey: string | null;
   isLayoutPersistenceReady: boolean;
@@ -149,12 +150,12 @@ export function useWorkbenchDockviewRuntime(
     if (!input.projectId) {
       return null;
     }
-    return (
-      useProjectWorkbenchStore.getState().workbenches[
-        buildWorkbenchScopeKey(input.projectId, input.activeLaneId)
-      ] ?? null
-    );
-  }, [input.activeLaneId, input.projectId]);
+    return selectProjectWorkbench(
+      input.projectId,
+      input.activeLaneId,
+      input.projectPath,
+    )(useProjectWorkbenchStore.getState());
+  }, [input.activeLaneId, input.projectId, input.projectPath]);
 
   const getSelectionPreviewTile = useCallback((tileId: string): WorkbenchSelectionTile | null => {
     return selectionPreviewTilesRef.current[tileId] ?? null;
@@ -291,10 +292,22 @@ export function useWorkbenchDockviewRuntime(
       }
 
       if (input.projectId) {
-        workbenchActions.removeTile(input.projectId, input.activeLaneId, selectionTileId);
+        workbenchActions.removeTile(
+          input.projectId,
+          input.activeLaneId,
+          selectionTileId,
+          input.projectPath,
+        );
       }
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, updateSelectionPreviewTiles, workbenchActions],
+    [
+      getLiveWorkbench,
+      input.activeLaneId,
+      input.projectId,
+      input.projectPath,
+      updateSelectionPreviewTiles,
+      workbenchActions,
+    ],
   );
 
   useEffect(() => {
@@ -514,7 +527,13 @@ export function useWorkbenchDockviewRuntime(
       const { type } = request
       const tileId =
         type === "devServer" || type === "mobileSimulator"
-          ? workbenchActions.openSingletonTile(input.projectId, input.activeLaneId, type)
+          ? workbenchActions.openSingletonTile(
+              input.projectId,
+              input.activeLaneId,
+              type,
+              undefined,
+              input.projectPath,
+            )
           : workbenchActions.addTile(
               input.projectId,
               input.activeLaneId,
@@ -522,11 +541,9 @@ export function useWorkbenchDockviewRuntime(
               type === "assistantChat" && request.provider
                 ? { provider: request.provider }
                 : undefined,
+              input.projectPath,
             );
-      const nextTile =
-        useProjectWorkbenchStore.getState().workbenches[
-          buildWorkbenchScopeKey(input.projectId, input.activeLaneId)
-        ]?.tiles[tileId];
+      const nextTile = getLiveWorkbench()?.tiles[tileId];
       if (!nextTile) return;
 
       api.addPanel({
@@ -540,12 +557,17 @@ export function useWorkbenchDockviewRuntime(
         },
       });
 
-      workbenchActions.setActiveTile(input.projectId, input.activeLaneId, nextTile.id);
+      workbenchActions.setActiveTile(
+        input.projectId,
+        input.activeLaneId,
+        nextTile.id,
+        input.projectPath,
+      );
       api.getPanel(nextTile.id)?.api.setActive();
       api.getPanel(selectionTileId)?.api.close();
       transientSelectionTileIdRef.current = null;
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, workbenchActions],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
   );
 
   const handleDuplicateAssistantTile = useCallback(
@@ -557,20 +579,23 @@ export function useWorkbenchDockviewRuntime(
       const sourceTile = liveProject?.tiles[sourceTileId];
       if (!liveProject || !sourceTile || sourceTile.type !== "assistantChat") return;
 
-      const nextTileId = workbenchActions.addTile(input.projectId, input.activeLaneId, "assistantChat", {
-        title: `${sourceTile.title} Copy`,
-        assistantProjectId: sourceTile.assistantProjectId,
-        provider: sourceTile.provider,
-        model: sourceTile.model,
-        runtimeMode: sourceTile.runtimeMode,
-        interactionMode: sourceTile.interactionMode,
-        agentLabel: sourceTile.agentLabel,
-        laneBinding: sourceTile.laneBinding,
-      });
-      const nextTile =
-        useProjectWorkbenchStore.getState().workbenches[
-          buildWorkbenchScopeKey(input.projectId, input.activeLaneId)
-        ]?.tiles[nextTileId];
+      const nextTileId = workbenchActions.addTile(
+        input.projectId,
+        input.activeLaneId,
+        "assistantChat",
+        {
+          title: `${sourceTile.title} Copy`,
+          assistantProjectId: sourceTile.assistantProjectId,
+          provider: sourceTile.provider,
+          model: sourceTile.model,
+          runtimeMode: sourceTile.runtimeMode,
+          interactionMode: sourceTile.interactionMode,
+          agentLabel: sourceTile.agentLabel,
+          laneBinding: sourceTile.laneBinding,
+        },
+        input.projectPath,
+      );
+      const nextTile = getLiveWorkbench()?.tiles[nextTileId];
       if (!nextTile || !api) return;
 
       api.addPanel({
@@ -584,10 +609,15 @@ export function useWorkbenchDockviewRuntime(
         },
       });
 
-      workbenchActions.setActiveTile(input.projectId, input.activeLaneId, nextTile.id);
+      workbenchActions.setActiveTile(
+        input.projectId,
+        input.activeLaneId,
+        nextTile.id,
+        input.projectPath,
+      );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, workbenchActions],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
   );
 
   const activateInsertionIntent = useCallback(
@@ -770,6 +800,7 @@ export function useWorkbenchDockviewRuntime(
           input.projectId,
           input.activeLaneId,
           activeId,
+          input.projectPath,
         );
         scheduleInsertionTargetUpdate();
       });
@@ -806,6 +837,7 @@ export function useWorkbenchDockviewRuntime(
         if (removedTile?.type === "browser") {
           void window.electronAPI.workbenchSession
             .releaseBrowser({
+              sessionKey: input.workbenchSessionKey,
               projectId: input.projectId,
               laneId: input.activeLaneId,
               tileId: panel.id,
@@ -820,6 +852,7 @@ export function useWorkbenchDockviewRuntime(
         if (removedTile?.type === "terminal") {
           void window.electronAPI.workbenchSession
             .releaseTerminal({
+              sessionKey: input.workbenchSessionKey,
               projectId: input.projectId,
               laneId: input.activeLaneId,
               tileId: panel.id,
@@ -837,6 +870,7 @@ export function useWorkbenchDockviewRuntime(
         if (removedTile?.type === "devServer" || removedTile?.type === "mobileSimulator") {
           void window.electronAPI.workbenchSession
             .releaseBrowser({
+              sessionKey: input.workbenchSessionKey,
               projectId: input.projectId,
               laneId: input.activeLaneId,
               tileId: panel.id,
@@ -850,6 +884,7 @@ export function useWorkbenchDockviewRuntime(
           if (removedTile.type === "mobileSimulator") {
             void window.electronAPI.workbenchSession
               .setNativePreviewSession({
+                sessionKey: input.workbenchSessionKey,
                 projectId: input.projectId,
                 laneId: input.activeLaneId,
                 locator: null,
@@ -861,6 +896,7 @@ export function useWorkbenchDockviewRuntime(
           }
           void window.electronAPI.workbenchSession
             .releaseTerminal({
+              sessionKey: input.workbenchSessionKey,
               projectId: input.projectId,
               laneId: input.activeLaneId,
               tileId: panel.id,
@@ -876,7 +912,12 @@ export function useWorkbenchDockviewRuntime(
             });
         }
 
-        workbenchActions.removeTile(input.projectId, input.activeLaneId, panel.id);
+        workbenchActions.removeTile(
+          input.projectId,
+          input.activeLaneId,
+          panel.id,
+          input.projectPath,
+        );
         saveLayout();
         scheduleInsertionTargetUpdate();
       });
@@ -885,6 +926,7 @@ export function useWorkbenchDockviewRuntime(
       getLiveWorkbench,
       input.activeLaneId,
       input.projectId,
+      input.projectPath,
       input.workbenchScopeKey,
       saveLayout,
       scheduleInsertionTargetUpdate,

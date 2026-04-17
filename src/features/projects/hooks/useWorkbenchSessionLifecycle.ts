@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
@@ -6,14 +6,19 @@ interface UseWorkbenchSessionLifecycleArgs {
   projectId: string | null
   laneId: string | null
   projectPath: string | null
+  backgroundMode?: "backgroundWarm" | "backgroundFrozen"
   enabled?: boolean
 }
 
 function matchesSession(
   snapshot: WorkbenchSessionSnapshot,
+  sessionKey: string | null,
   projectId: string | null,
   laneId: string | null,
 ): boolean {
+  if (sessionKey) {
+    return snapshot.sessionKey === sessionKey
+  }
   if (!projectId || !laneId) return false
   return snapshot.projectId === projectId && snapshot.laneId === laneId
 }
@@ -22,12 +27,15 @@ export function useWorkbenchSessionLifecycle({
   projectId,
   laneId,
   projectPath,
+  backgroundMode = "backgroundWarm",
   enabled = true,
 }: UseWorkbenchSessionLifecycleArgs): WorkbenchSessionSnapshot | null {
   const [snapshot, setSnapshot] = useState<WorkbenchSessionSnapshot | null>(null)
+  const activeSessionKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!enabled || !projectId || !laneId) {
+      activeSessionKeyRef.current = null
       setSnapshot(null)
       return
     }
@@ -36,7 +44,7 @@ export function useWorkbenchSessionLifecycle({
 
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
-      if (!matchesSession(nextSnapshot, projectId, laneId)) return
+      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId)) return
       setSnapshot(nextSnapshot)
     }
 
@@ -47,8 +55,10 @@ export function useWorkbenchSessionLifecycle({
         projectPath,
       })
       .then((nextSnapshot) => {
+        activeSessionKeyRef.current = nextSnapshot.sessionKey
         applySnapshot(nextSnapshot)
         return window.electronAPI.workbenchSession.activateSession({
+          sessionKey: nextSnapshot.sessionKey,
           projectId,
           laneId,
           projectPath,
@@ -66,19 +76,25 @@ export function useWorkbenchSessionLifecycle({
     })
 
     return () => {
+      const sessionKey = activeSessionKeyRef.current
+      activeSessionKeyRef.current = null
       cancelled = true
       unsubscribe()
+      if (!sessionKey) {
+        return
+      }
       void window.electronAPI.workbenchSession
         .backgroundSession({
+          sessionKey,
           projectId,
           laneId,
-          mode: "backgroundWarm",
+          mode: backgroundMode,
         })
         .catch((error) => {
           console.warn("[WorkbenchSession] Failed to background session", error)
         })
     }
-  }, [enabled, laneId, projectId, projectPath])
+  }, [backgroundMode, enabled, laneId, projectId, projectPath])
 
   return snapshot
 }

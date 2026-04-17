@@ -30,14 +30,14 @@ export function registerWorkbenchSessionHandlers(
 
   ipcMain.handle(
     'workbenchSession:ensureSession',
-    (_event, options: { projectId: string; laneId: string; projectPath?: string | null }) => {
+    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) => {
       return service.ensureSession(options)
     },
   )
 
   ipcMain.handle(
     'workbenchSession:activateSession',
-    (_event, options: { projectId: string; laneId: string; projectPath?: string | null }) => {
+    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) => {
       return service.activateSession(options)
     },
   )
@@ -47,6 +47,7 @@ export function registerWorkbenchSessionHandlers(
     (
       _event,
       options: {
+        sessionKey?: string | null
         projectId: string
         laneId: string
         mode?: 'backgroundWarm' | 'backgroundFrozen'
@@ -58,14 +59,14 @@ export function registerWorkbenchSessionHandlers(
 
   ipcMain.handle(
     'workbenchSession:closeSession',
-    async (_event, options: { projectId: string; laneId: string }) => {
+    async (_event, options: { sessionKey?: string | null; projectId: string; laneId: string }) => {
       return { success: await service.closeSession(options) }
     },
   )
 
   ipcMain.handle(
     'workbenchSession:getSession',
-    (_event, options: { projectId: string; laneId: string }) => {
+    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string }) => {
       return service.getSession(options)
     },
   )
@@ -76,14 +77,14 @@ export function registerWorkbenchSessionHandlers(
 
   ipcMain.handle(
     'workbenchSession:setPinned',
-    (_event, options: { projectId: string; laneId: string; pinned: boolean }) => {
+    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; pinned: boolean }) => {
       return service.setPinned(options)
     },
   )
 
   ipcMain.handle(
     'workbenchSession:getTerminalBinding',
-    (_event, options: { projectId: string; laneId: string; tileId: string }) => {
+    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) => {
       return service.getTerminalBinding(options)
     },
   )
@@ -93,6 +94,7 @@ export function registerWorkbenchSessionHandlers(
     (
       _event,
       options: {
+        sessionKey?: string | null
         projectId: string
         laneId: string
         tileId: string
@@ -109,6 +111,7 @@ export function registerWorkbenchSessionHandlers(
     (
       _event,
       options: {
+        sessionKey?: string | null
         projectId: string
         laneId: string
         tileId: string
@@ -121,7 +124,7 @@ export function registerWorkbenchSessionHandlers(
 
   ipcMain.handle(
     'workbenchSession:getBrowserBinding',
-    (_event, options: { projectId: string; laneId: string; tileId: string }) => {
+    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) => {
       return service.getBrowserBinding(options)
     },
   )
@@ -131,6 +134,7 @@ export function registerWorkbenchSessionHandlers(
     (
       _event,
       options: {
+        sessionKey?: string | null
         projectId: string
         laneId: string
         tileId: string
@@ -147,6 +151,7 @@ export function registerWorkbenchSessionHandlers(
     (
       _event,
       options: {
+        sessionKey?: string | null
         projectId: string
         laneId: string
         tileId: string
@@ -162,6 +167,7 @@ export function registerWorkbenchSessionHandlers(
     (
       _event,
       options: {
+        sessionKey?: string | null
         projectId: string
         laneId: string
         locator: NativePreviewSessionLocator | null

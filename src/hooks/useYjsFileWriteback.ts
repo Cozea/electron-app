@@ -23,6 +23,7 @@ import { extractRemoteYjsOrigin, type RemoteYjsOrigin } from '@/lib/yjs/origins'
 export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
   projectPath: string | null,
+  gitCwd: string | null,
   projectId: Id<'projects'> | null,
   userId: Id<'users'> | null
 ): void {
@@ -61,8 +62,11 @@ export function useYjsFileWriteback(
 
       const timer = setTimeout(() => {
         pendingCheckpointTimers.delete(checkpointGroupId)
+        if (!gitCwd) {
+          return
+        }
         void window.electronAPI.sync.gitCaptureCheckpoint({
-          projectPath,
+          projectPath: gitCwd,
           checkpointId: checkpointGroupId,
           authorName: 'Remote collaborator',
         }).catch((error) => {
@@ -165,12 +169,12 @@ export function useYjsFileWriteback(
     }
 
     // Observe the files map for new files being added
-    const filesMapHandler = (event: Y.YMapEvent<Y.Text>, transaction: Y.Transaction) => {
-      for (const [rawPath, change] of event.changes.keys.entries()) {
+    const filesMapHandler = (event: Y.YEvent<Y.Map<Y.Text>>, transaction: Y.Transaction) => {
+      for (const rawPath of event.keysChanged) {
         const normalizedPath = normalizeFilePath(rawPath)
         if (!normalizedPath) continue
 
-        if (change.action === 'delete') {
+        if (!yjsDoc.files.has(rawPath)) {
           // Stop observing deleted files
           const unobserve = observedFiles.get(normalizedPath)
           if (unobserve) {
@@ -243,22 +247,20 @@ export function useYjsFileWriteback(
     }
 
     // Observe the renames map for remote renames
-    const renamesMapHandler = (event: Y.YMapEvent<RenameEntry>, transaction: Y.Transaction) => {
+    const renamesMapHandler = (event: Y.YEvent<Y.Map<RenameEntry>>, transaction: Y.Transaction) => {
       // Only process remote renames
       const remoteOrigin = extractRemoteYjsOrigin(transaction.origin)
       if (!remoteOrigin) return
 
-      for (const [renameId, change] of event.changes.keys.entries()) {
-        if (change.action === 'add') {
-          const rename = yjsDoc.renames.get(renameId)
-          if (rename) {
-            renameFileToDisk(rename.from, rename.to, rename.isDirectory)
-            scheduleCheckpointCapture(remoteOrigin)
-            // Clear the rename after processing to prevent re-processing
-            // (do this async to not block the observer)
-            setTimeout(() => yjsDoc.clearRename(renameId), 100)
-          }
-        }
+      for (const renameId of event.keysChanged) {
+        const rename = yjsDoc.renames.get(renameId)
+        if (!rename) continue
+
+        renameFileToDisk(rename.from, rename.to, rename.isDirectory)
+        scheduleCheckpointCapture(remoteOrigin)
+        // Clear the rename after processing to prevent re-processing
+        // (do this async to not block the observer)
+        setTimeout(() => yjsDoc.clearRename(renameId), 100)
       }
     }
 
@@ -302,5 +304,5 @@ export function useYjsFileWriteback(
       // Unobserve renames map
       yjsDoc.renames.unobserve(renamesMapHandler)
     }
-  }, [projectId, projectPath, userId, yjsDoc])
+  }, [gitCwd, projectId, projectPath, userId, yjsDoc])
 }

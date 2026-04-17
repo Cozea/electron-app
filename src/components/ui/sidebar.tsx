@@ -221,6 +221,7 @@ function Sidebar({
   variant = "sidebar",
   collapsible = "offcanvas",
   windowChromeAware = false,
+  windowChromeEndAddon = null,
   rootClassName,
   rootStyle,
   className,
@@ -232,6 +233,8 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
   windowChromeAware?: boolean
+  /** Rendered into the macOS window-chrome inset row (top-right), without pushing sidebar content down. */
+  windowChromeEndAddon?: React.ReactNode
   rootClassName?: string
   rootStyle?: React.CSSProperties
 }) {
@@ -241,17 +244,45 @@ function Sidebar({
   const desktopRootWidth =
     collapsible === "offcanvas" && state === "collapsed" ? "0px" : "var(--sidebar-width)"
   const shouldRenderWindowChromeInset = windowChromeAware && !isMobile && windowChrome.isMac
-  const windowChromeInset = shouldRenderWindowChromeInset ? (
-    <div
-      aria-hidden="true"
-      data-slot="sidebar-window-chrome-inset"
-      className="titlebar-drag-region shrink-0 transition-opacity duration-200 ease-out"
-      style={{
-        height: SIDEBAR_MAC_TOP_INSET_PX,
-        opacity: windowChrome.showMacWindowControls ? 1 : 0,
-      }}
-    />
+  const macWindowChromeInset = shouldRenderWindowChromeInset ? (
+    windowChromeEndAddon ? (
+      <div
+        data-slot="sidebar-window-chrome-inset"
+        className="relative shrink-0"
+        style={{ height: SIDEBAR_MAC_TOP_INSET_PX }}
+      >
+        <div
+          aria-hidden="true"
+          className="titlebar-drag-region absolute inset-0 transition-opacity duration-200 ease-out"
+          style={{
+            opacity: windowChrome.showMacWindowControls ? 1 : 0,
+          }}
+        />
+        <div className="titlebar-no-drag absolute inset-y-0 right-1 z-10 flex items-center">
+          {windowChromeEndAddon}
+        </div>
+      </div>
+    ) : (
+      <div
+        aria-hidden="true"
+        data-slot="sidebar-window-chrome-inset"
+        className="titlebar-drag-region shrink-0 transition-opacity duration-200 ease-out"
+        style={{
+          height: SIDEBAR_MAC_TOP_INSET_PX,
+          opacity: windowChrome.showMacWindowControls ? 1 : 0,
+        }}
+      />
+    )
   ) : null
+
+  const desktopNonMacWindowChromeAccessory =
+    windowChromeAware && !isMobile && !windowChrome.isMac && windowChromeEndAddon ? (
+      <div className="flex shrink-0 items-center justify-end px-2 pt-2">
+        <div className="titlebar-no-drag">{windowChromeEndAddon}</div>
+      </div>
+    ) : null
+
+  const windowChromeAccessory = macWindowChromeInset ?? desktopNonMacWindowChromeAccessory
 
   if (collapsible === "none") {
     return (
@@ -267,7 +298,7 @@ function Sidebar({
         style={{ ...rootStyle, ...containerStyle }}
         {...props}
       >
-        {windowChromeInset}
+        {windowChromeAccessory}
         {children}
       </div>
     )
@@ -361,7 +392,7 @@ function Sidebar({
             side === "right" && "border-l border-sidebar-border"
           )}
         >
-          {windowChromeInset}
+          {windowChromeAccessory}
           {children}
         </div>
       </div>

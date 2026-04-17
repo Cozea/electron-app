@@ -1,4 +1,5 @@
 import type { SerializedDockview } from "dockview"
+import { buildWorkbenchScopeKey } from "@/stores/useProjectWorkbenchStore"
 
 const WORKBENCH_LAYOUTS_STORAGE_KEY = "cozea:project-workbench-layouts"
 const LEGACY_WORKBENCH_STORAGE_KEY = "cozea:project-workbench"
@@ -205,6 +206,62 @@ export function clearPersistedWorkbenchLayout(scopeKey: string): void {
 
   const nextLayouts = { ...state.layouts }
   delete nextLayouts[scopeKey]
+
+  writePersistedWorkbenchLayoutsState({
+    ...state,
+    migratedFromLegacy: true,
+    layouts: nextLayouts,
+  })
+}
+
+export function clonePersistedWorkbenchLayoutsForProjectPath(args: {
+  projectId: string
+  fromProjectPath?: string | null
+  toProjectPath?: string | null
+}): void {
+  const normalizedTargetScopeProjectPath = args.toProjectPath?.trim()
+  if (!args.projectId || !normalizedTargetScopeProjectPath) {
+    return
+  }
+
+  ensureLegacyLayoutsMigrated()
+
+  const state = readPersistedWorkbenchLayoutsStateUnsafe()
+  const nextLayouts = { ...state.layouts }
+  let mutated = false
+
+  for (const [scopeKey, entry] of Object.entries(state.layouts)) {
+    const [scopeProjectId, scopeLaneId, ...scopeProjectPathParts] = scopeKey.split("::")
+    if (scopeProjectId !== args.projectId || scopeProjectPathParts.length === 0) {
+      continue
+    }
+
+    const scopeProjectPath = scopeProjectPathParts.join("::")
+    const isSourceMatch = args.fromProjectPath?.trim()
+      ? scopeProjectPath === args.fromProjectPath.trim()
+      : true
+
+    if (!isSourceMatch) {
+      continue
+    }
+
+    const targetScopeKey = buildWorkbenchScopeKey(
+      args.projectId,
+      scopeLaneId,
+      normalizedTargetScopeProjectPath,
+    )
+
+    if (nextLayouts[targetScopeKey]) {
+      continue
+    }
+
+    nextLayouts[targetScopeKey] = entry
+    mutated = true
+  }
+
+  if (!mutated) {
+    return
+  }
 
   writePersistedWorkbenchLayoutsState({
     ...state,

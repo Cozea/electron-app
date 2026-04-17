@@ -143,6 +143,21 @@ export function rememberProjectBranchSession(args: {
   return nextSession
 }
 
+export function clearProjectBranchSession(projectId: string | null | undefined): void {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    return
+  }
+
+  const state = readState()
+  if (!(normalizedProjectId in state.projects)) {
+    return
+  }
+
+  delete state.projects[normalizedProjectId]
+  writeState(state)
+}
+
 export function activateProjectBranchLane(args: {
   projectId: string
   laneId: string

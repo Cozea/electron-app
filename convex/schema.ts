@@ -705,9 +705,8 @@ export default defineSchema({
       v.literal("rename")
     ),
 
-    // Content for diff viewing (stored for history)
-    oldContent: v.optional(v.string()),
-    newContent: v.optional(v.string()),
+    // For renames: the source path before the rename.
+    oldPath: v.optional(v.string()),
 
     // Change statistics
     additions: v.optional(v.number()),

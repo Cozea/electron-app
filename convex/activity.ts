@@ -95,8 +95,6 @@ export const logFileChange = mutation({
       v.literal("delete"),
       v.literal("rename")
     ),
-    oldContent: v.optional(v.string()),
-    newContent: v.optional(v.string()),
     additions: v.optional(v.number()),
     deletions: v.optional(v.number()),
     totalLines: v.optional(v.number()),
@@ -111,7 +109,7 @@ export const logFileChange = mutation({
     oldPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, checkpointGroupId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName, oldPath } = args
+    const { projectId, userId, checkpointGroupId, filePath, changeType, additions, deletions, totalLines, origin, userName, oldPath } = args
     if (shouldExcludeActivityPath(filePath)) {
       return null
     }
@@ -125,8 +123,7 @@ export const logFileChange = mutation({
       checkpointGroupId,
       filePath,
       changeType,
-      oldContent: changeType === "rename" ? oldPath : oldContent,
-      newContent: changeType === "rename" ? filePath : newContent,
+      oldPath: changeType === "rename" ? oldPath : undefined,
       additions,
       deletions,
       totalLines,
@@ -134,7 +131,7 @@ export const logFileChange = mutation({
       userName,
       userColor,
       timestamp: Date.now(),
-    } as any)
+    })
   },
 })
 
@@ -177,8 +174,9 @@ export const getRecentActivity = query({
     const results = visibleChanges.map((change) => ({
       id: change._id,
       userId: change.userId,
-      checkpointGroupId: (change as any).checkpointGroupId,
+      checkpointGroupId: change.checkpointGroupId,
       filePath: change.filePath,
+      oldPath: change.oldPath,
       changeType: change.changeType,
       additions: change.additions,
       deletions: change.deletions,
@@ -237,44 +235,6 @@ export const clearEphemeralChanges = mutation({
       deletedChanges: changes.length,
       deletedComments: comments.length,
       deletedReactions: reactions.reduce((total, commentReactions) => total + commentReactions.length, 0),
-    }
-  },
-})
-
-/**
- * Get a single file change with content for diff viewing.
- */
-export const getChangeWithContent = query({
-  args: {
-    changeId: v.id("fileChanges"),
-  },
-  handler: async (ctx, args) => {
-    const change = await ctx.db.get(args.changeId)
-    if (!change) return null
-    if (shouldExcludeActivityPath(change.filePath)) return null
-
-    // Fetch user image if userId exists
-    let userImage: string | undefined = undefined
-    if (change.userId) {
-      const user = await ctx.db.get(change.userId)
-      userImage = user?.profileImageUrl ?? undefined
-    }
-
-    return {
-      id: change._id,
-      filePath: change.filePath,
-      changeType: change.changeType,
-      oldContent: change.oldContent || "",
-      newContent: change.newContent || "",
-      additions: change.additions,
-      deletions: change.deletions,
-      totalLines: change.totalLines,
-      origin: change.origin,
-      userName: change.userName || "Unknown",
-      userColor: change.userColor || "#6b7280",
-      userImage,
-      isAgent: change.origin === "agent",
-      timestamp: change.timestamp,
     }
   },
 })

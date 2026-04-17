@@ -140,7 +140,7 @@
         "y-indexeddb": "^9.0.12",
         "y-monaco": "^0.1.6",
         "y-protocols": "^1.0.7",
-        "yjs": "^13.6.29",
+        "yjs": "14.0.0-16",
         "zod": "^4.3.6",
         "zustand": "^5.0.10",
       },
@@ -2675,7 +2675,7 @@
 
     "yauzl": ["yauzl@2.10.0", "", { "dependencies": { "buffer-crc32": "~0.2.3", "fd-slicer": "~1.1.0" } }, "sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g=="],
 
-    "yjs": ["yjs@13.6.30", "", { "dependencies": { "lib0": "^0.2.99" } }, "sha512-vv/9h42eCMC81ZHDFswuu/MKzkl/vyq1BhaNGfHyOonwlG4CJbQF4oiBBJPvfdeCt/PlVDWh7Nov9D34YY09uQ=="],
+    "yjs": ["yjs@14.0.0-16", "", { "dependencies": { "lib0": "^0.2.115-6" } }, "sha512-n7jMrQz4pgU/NFnf4qY53K2adR/fu6ViQ79qVIw6Og+BtuDs1hx3DjOi3iREVnA6tsxQXXVG3gvG0I2kpmAwoQ=="],
 
     "yocto-queue": ["yocto-queue@0.1.0", "", {}, "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q=="],
 

@@ -327,25 +327,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   workbenchSession: {
-    ensureSession: (options: { projectId: string; laneId: string; projectPath?: string | null }) =>
+    ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:ensureSession', options),
-    activateSession: (options: { projectId: string; laneId: string; projectPath?: string | null }) =>
+    activateSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:activateSession', options),
     backgroundSession: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       mode?: 'backgroundWarm' | 'backgroundFrozen'
     }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
-    closeSession: (options: { projectId: string; laneId: string }) =>
+    closeSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
       ipcRenderer.invoke('workbenchSession:closeSession', options),
-    getSession: (options: { projectId: string; laneId: string }) =>
+    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),
     listSessions: () => ipcRenderer.invoke('workbenchSession:listSessions'),
-    setPinned: (options: { projectId: string; laneId: string; pinned: boolean }) =>
+    setPinned: (options: { sessionKey?: string | null; projectId: string; laneId: string; pinned: boolean }) =>
       ipcRenderer.invoke('workbenchSession:setPinned', options),
-    getTerminalBinding: (options: { projectId: string; laneId: string; tileId: string }) =>
+    getTerminalBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) =>
       ipcRenderer.invoke('workbenchSession:getTerminalBinding', options),
     bindTerminal: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
@@ -353,14 +355,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath?: string | null
     }) => ipcRenderer.invoke('workbenchSession:bindTerminal', options),
     releaseTerminal: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
       close?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
-    getBrowserBinding: (options: { projectId: string; laneId: string; tileId: string }) =>
+    getBrowserBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) =>
       ipcRenderer.invoke('workbenchSession:getBrowserBinding', options),
     bindBrowser: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
@@ -368,12 +372,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath?: string | null
     }) => ipcRenderer.invoke('workbenchSession:bindBrowser', options),
     releaseBrowser: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       tileId: string
       destroy?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseBrowser', options),
     setNativePreviewSession: (options: {
+      sessionKey?: string | null
       projectId: string
       laneId: string
       locator: import('../shared/nativePreviewTypes').NativePreviewSessionLocator | null

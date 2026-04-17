@@ -5,8 +5,9 @@
  * Used as fallback when metadata isn't stored in Convex.
  */
 
-import type { DevCommandSuggestion } from '@shared/electronApiTypes'
+import type { AppSettings, DevCommandSuggestion } from '@shared/electronApiTypes'
 import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
+import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 
 export type Framework =
   | 'expo'
@@ -127,19 +128,77 @@ function getParentDirectory(pathValue: string): string | null {
   return parent.length > 0 ? parent : null
 }
 
-function buildPackageManagerSearchRoots(projectPath: string): string[] {
-  const roots: string[] = []
-  let current: string | null = projectPath.trim()
+function normalizeComparableAbsolutePath(pathValue: string): string {
+  const trimmed = trimTrailingSeparators(pathValue).replace(/\\/g, '/')
 
-  for (let depth = 0; depth <= MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH && current; depth += 1) {
-    const normalized = trimTrailingSeparators(current)
-    if (normalized && !roots.includes(normalized)) {
-      roots.push(normalized)
+  if (trimmed === '/') {
+    return trimmed
+  }
+
+  if (/^[A-Za-z]:\/$/.test(trimmed)) {
+    return trimmed.toLowerCase()
+  }
+
+  return trimmed.toLowerCase()
+}
+
+function isPathInsideRoot(candidatePath: string, rootPath: string): boolean {
+  const normalizedCandidate = normalizeComparableAbsolutePath(candidatePath)
+  const normalizedRoot = normalizeComparableAbsolutePath(rootPath)
+
+  if (normalizedCandidate === normalizedRoot) {
+    return true
+  }
+
+  return normalizedCandidate.startsWith(`${normalizedRoot}/`)
+}
+
+function getApprovedReadRoots(settings: AppSettings): string[] {
+  const roots = new Set<string>()
+  const projectsDirectory = settings.projectsDirectory?.trim()
+  if (projectsDirectory) {
+    roots.add(trimTrailingSeparators(projectsDirectory))
+  }
+
+  for (const approvedRoot of settings.approvedExternalReadRoots ?? []) {
+    if (typeof approvedRoot !== 'string' || approvedRoot.trim().length === 0) {
+      continue
     }
+    roots.add(trimTrailingSeparators(approvedRoot))
+  }
 
+  return Array.from(roots)
+}
+
+function isPathInsideApprovedRoots(candidatePath: string, approvedRoots: readonly string[]): boolean {
+  return approvedRoots.some((rootPath) => isPathInsideRoot(candidatePath, rootPath))
+}
+
+function buildPackageManagerSearchRoots(
+  projectPath: string,
+  approvedRoots: readonly string[],
+): string[] {
+  const roots: string[] = []
+  const initialRoot = trimTrailingSeparators(projectPath.trim())
+  let current: string | null = initialRoot
+
+  if (initialRoot) {
+    roots.push(initialRoot)
+  }
+
+  for (let depth = 1; depth <= MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH && current; depth += 1) {
+    const normalized = trimTrailingSeparators(current)
     const parent = getParentDirectory(normalized)
     if (!parent || parent === normalized) {
       break
+    }
+
+    if (!isPathInsideApprovedRoots(parent, approvedRoots)) {
+      break
+    }
+
+    if (!roots.includes(parent)) {
+      roots.push(parent)
     }
     current = parent
   }
@@ -194,7 +253,15 @@ async function readPackageManagerFromAbsolutePackageJson(
 }
 
 async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
-  for (const candidateRoot of buildPackageManagerSearchRoots(projectPath)) {
+  let approvedRoots: string[] = []
+
+  try {
+    approvedRoots = getApprovedReadRoots(await settingsDesktopClient.get())
+  } catch {
+    approvedRoots = []
+  }
+
+  for (const candidateRoot of buildPackageManagerSearchRoots(projectPath, approvedRoots)) {
     const packageManagerFromPackageJson =
       await readPackageManagerFromAbsolutePackageJson(candidateRoot)
     if (packageManagerFromPackageJson) {

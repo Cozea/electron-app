@@ -17,6 +17,7 @@ import {
   type VirtualItem,
   useVirtualizer,
 } from "@tanstack/react-virtual";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
 import { deriveTimelineEntries } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";

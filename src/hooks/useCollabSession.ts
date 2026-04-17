@@ -94,7 +94,9 @@ export function useCollabSession({
   const [error, setError] = useState<string | null>(null)
 
   const gatewayBaseUrl = useMemo(
-    () => normalizeGatewayBaseUrl(import.meta.env.VITE_AUTH_SERVER_URL),
+    () =>
+      normalizeGatewayBaseUrl(import.meta.env.VITE_COLLAB_BASE_URL) ??
+      normalizeGatewayBaseUrl(import.meta.env.VITE_AUTH_SERVER_URL),
     []
   )
 
@@ -126,7 +128,6 @@ export function useCollabSession({
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           projectId,
           clientType: 'electron',
@@ -152,22 +153,31 @@ export function useCollabSession({
         !parsedSession?.token ||
         !parsedSession?.roomId ||
         !parsedSession?.deviceId ||
+        !parsedSession?.collabWsUrl ||
+        !parsedSession?.protocolVersion ||
         !parsedSession?.encryption
       ) {
         throw new Error('Collab gateway response is invalid')
       }
 
-      const parsedCapabilities = parsedSession.capabilities as CollabCapabilities
+      const parsedCapabilities = parsedSession.capabilities as CollabCapabilities | undefined
 
       const nextSession: CollabSession = {
         ...parsedSession,
         deviceLabel: deviceIdentity.deviceLabel,
         deviceFingerprint: deviceIdentity.fingerprint,
         devicePublicKeyJwk: deviceIdentity.publicKeyJwk,
-        capabilities: parsedCapabilities,
+        capabilities: parsedCapabilities ?? {
+          execution: 'vm',
+          languageScope: ['typescript', 'javascript', 'json', 'markdown', 'html', 'css', 'yaml', 'shell'],
+          preview: true,
+          terminal: true,
+          deployments: false,
+          yjs: true,
+        },
       }
 
-      setCapabilities(parsedCapabilities)
+      setCapabilities(nextSession.capabilities)
       setSession(nextSession)
       setStatus('ready')
       setError(null)

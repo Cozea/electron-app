@@ -14,6 +14,8 @@ export const projectOpenDesktopClient = {
     window.electronAPI.project.getLocalPath(options),
   rememberLocalPath: (options: { projectId: string; projectPath: string }) =>
     window.electronAPI.project.rememberLocalPath(options),
+  clearLocalPath: (options: { projectId: string }) =>
+    window.electronAPI.project.clearLocalPath(options),
   listFiles: (options: { projectPath: string }) => window.electronAPI.project.listFiles(options),
   openFolder: (options: { projectPath: string }) => window.electronAPI.project.openFolder(options),
   showMessageBox: (options: Parameters<typeof window.electronAPI.dialog.showMessageBox>[0]) =>
