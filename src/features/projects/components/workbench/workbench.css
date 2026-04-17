@@ -25,8 +25,9 @@
   --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-tab-divider-color: transparent;
-  --dv-separator-border: color-mix(in oklch, var(--foreground) 14%, transparent);
-  --dv-paneview-header-border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+  /* Match `UnifiedHeader` / project strip: `border-border/60` */
+  --dv-separator-border: color-mix(in oklch, var(--border) 60%, transparent);
+  --dv-paneview-header-border-color: color-mix(in oklch, var(--border) 60%, transparent);
 }
 
 .cozea-workbench-dockview.dockview-theme-light {

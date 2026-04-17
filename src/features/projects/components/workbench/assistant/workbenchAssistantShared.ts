@@ -18,7 +18,7 @@ import {
 
 import type { Project, Thread } from "@/stores/types"
 import {
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
@@ -108,9 +108,13 @@ export function getLiveAssistantTile(
   projectId: string,
   laneId: string,
   tileId: string,
+  projectPath: string | null,
 ): WorkbenchAssistantChatTileRecord | null {
-  const workbench =
-    useProjectWorkbenchStore.getState().workbenches[buildWorkbenchScopeKey(projectId, laneId)]
+  const workbench = selectProjectWorkbench(
+    projectId,
+    laneId,
+    projectPath,
+  )(useProjectWorkbenchStore.getState())
   const tile = workbench?.tiles[tileId]
   return tile?.type === "assistantChat" ? tile : null
 }

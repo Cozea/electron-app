@@ -12,6 +12,7 @@ import {
   SidebarInput,
   SidebarRail,
   SidebarSeparator,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useSearchParams } from "@/lib/router"
 import { useViewTransitionNavigate } from "@/lib/navigation"
@@ -96,6 +97,14 @@ export function AppStoreSidebar({ user, onLogout, className, ...props }: AppStor
     <Sidebar
       collapsible="offcanvas"
       windowChromeAware
+      windowChromeEndAddon={
+        <SidebarTrigger
+          className={cn(
+            "h-7 w-7 shrink-0 rounded-md",
+            "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
+          )}
+        />
+      }
       rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
       rootStyle={{ "--sidebar-width": "14rem" } as React.CSSProperties}
       className="z-20 h-full min-w-0 sidebar-glass"

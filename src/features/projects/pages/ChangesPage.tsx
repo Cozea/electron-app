@@ -26,6 +26,7 @@ interface ActivityFeedItem {
   checkpointGroupId?: string
   userId?: Id<'users'>
   filePath: string
+  oldPath?: string
   changeType: 'create' | 'modify' | 'delete' | 'rename'
   additions?: number
   deletions?: number
@@ -191,7 +192,7 @@ function ChangeComments(props: {
 
 function ChangeCard(props: {
   item: ActivityFeedItem
-  projectPath: string | null
+  gitCwd: string | null
   previousCheckpointGroupId: string | null
   commentCount: number
   viewerUserId: Id<'users'> | null
@@ -200,7 +201,7 @@ function ChangeCard(props: {
 }) {
   const {
     item,
-    projectPath,
+    gitCwd,
     previousCheckpointGroupId,
     commentCount,
     viewerUserId,
@@ -213,7 +214,7 @@ function ChangeCard(props: {
 
   useEffect(() => {
     if (!expanded) return
-    if (!projectPath || !item.checkpointGroupId) {
+    if (!gitCwd || !item.checkpointGroupId) {
       setPatch(null)
       setPatchError('This change has no local checkpoint available yet.')
       return
@@ -225,7 +226,7 @@ function ChangeCard(props: {
 
     void projectOpenDesktopClient.sync
       .gitDiffCheckpoints({
-        projectPath,
+        projectPath: gitCwd,
         fromCheckpointId: previousCheckpointGroupId ?? undefined,
         toCheckpointId: item.checkpointGroupId,
         filePath: item.filePath,
@@ -253,7 +254,12 @@ function ChangeCard(props: {
     return () => {
       cancelled = true
     }
-  }, [expanded, item.checkpointGroupId, item.filePath, previousCheckpointGroupId, projectPath])
+  }, [expanded, gitCwd, item.checkpointGroupId, item.filePath, previousCheckpointGroupId])
+
+  const titlePath =
+    item.changeType === 'rename' && item.oldPath?.trim()
+      ? `${item.oldPath} -> ${item.filePath}`
+      : item.filePath
 
   return (
     <article className="rounded-2xl border border-border/70 bg-card/50 shadow-sm">
@@ -270,7 +276,7 @@ function ChangeCard(props: {
               <span>{formatRelativeTime(item.timestamp)}</span>
             </div>
             <div className="min-w-0">
-              <p className="truncate font-mono text-[13px] text-foreground">{item.filePath}</p>
+              <p className="truncate font-mono text-[13px] text-foreground">{titlePath}</p>
               <p className="mt-1 text-xs text-muted-foreground">{formatTimestamp(item.timestamp)}</p>
             </div>
           </div>
@@ -330,7 +336,7 @@ function ChangeCard(props: {
 export function ChangesPage({ presentation = 'modal', onRequestClose = null }: ChangesPageProps) {
   const { project, convexUserId } = useAccessibleProject()
   const routeContext = useOptionalProjectRouteContext()
-  const projectPath = routeContext?.localPath ?? null
+  const gitCwd = routeContext?.gitCwd ?? null
   const [expandedChangeId, setExpandedChangeId] = useState<string | null>(null)
 
   const activity = useQuery(
@@ -422,7 +428,7 @@ export function ChangesPage({ presentation = 'modal', onRequestClose = null }: C
                   <ChangeCard
                     key={String(item.id)}
                     item={item}
-                    projectPath={projectPath}
+                    gitCwd={gitCwd}
                     previousCheckpointGroupId={previousCheckpointGroupIds.get(String(item.id)) ?? null}
                     commentCount={commentCount}
                     viewerUserId={convexUserId}

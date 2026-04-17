@@ -29,6 +29,7 @@ import {
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
+import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreVerticalIcon as __EllipsisVerticalHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, Cancel01Icon as __XHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, ChevronDoubleCloseIcon as __ChevronUpHugeIcon, Globe02Icon as __GlobeHugeIcon, LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
@@ -39,6 +40,7 @@ interface WorkbenchBrowserTileProps {
   tile: WorkbenchBrowserTileRecord
   projectPath: string | null
   workspaceId: string | null
+  workbenchSession: WorkbenchSessionSnapshot | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
 }
@@ -77,6 +79,7 @@ export function WorkbenchBrowserTile({
   tile,
   projectPath,
   workspaceId,
+  workbenchSession,
   panelApi,
   containerApi,
 }: WorkbenchBrowserTileProps) {
@@ -100,6 +103,7 @@ export function WorkbenchBrowserTile({
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: tile.url,
+    sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
     projectPath,
@@ -108,20 +112,20 @@ export function WorkbenchBrowserTile({
     workspaceId: workspaceId ?? undefined,
     persistModel: true,
     onUrlObserved: (nextUrl) => {
-      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { url: nextUrl })
+      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { url: nextUrl }, projectPath)
     },
     onTitleObserved: (title) => {
-      workbenchActions.updateTileTitle(projectId, laneId, tile.id, title)
+      workbenchActions.updateTileTitle(projectId, laneId, tile.id, title, projectPath)
     },
     onFaviconObserved: (favicon) => {
-      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { favicon })
+      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { favicon }, projectPath)
     },
     onNewPageRequest: (request) => {
       const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
         url: request.url,
         storageScope: tile.storageScope ?? "workspace",
-      })
-      workbenchActions.setActiveTile(projectId, laneId, nextTileId)
+      }, projectPath)
+      workbenchActions.setActiveTile(projectId, laneId, nextTileId, projectPath)
     },
     onCommand: (command) => {
       if (command.type === "focus-url") {
@@ -162,7 +166,7 @@ export function WorkbenchBrowserTile({
     workbenchActions.updateBrowserTile(projectId, laneId, tile.id, {
       url: normalized,
       title: "Browser",
-    })
+    }, projectPath)
   }
 
   const focusUrlInput = useCallback(() => {
@@ -589,4 +593,3 @@ export function WorkbenchBrowserTile({
     </div>
   )
 }
-

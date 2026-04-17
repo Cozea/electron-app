@@ -11,13 +11,6 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { Button } from "@/components/ui/button"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
@@ -46,7 +39,7 @@ import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ChevronDoubleCloseIcon as __ChevronDownHugeIcon, CommandLineIcon as __SquareTerminalHugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, EyeIcon as __EyeHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon } from '@hugeicons/core-free-icons'
+import { CommandLineIcon as __SquareTerminalHugeIcon, EyeIcon as __EyeHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon } from '@hugeicons/core-free-icons'
 
 const Eye = (props: any) => <HugeiconsIcon icon={__EyeHugeIcon} {...props} />
 
@@ -180,7 +173,7 @@ function WorkbenchRuntimePreviewTile({
     initialSnapshot: workbenchSession?.devServer ?? null,
   })
   const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
-  const nativePreviewScopeKey = workbenchSession?.sessionKey ?? `${projectId}::${laneId}`
+  const nativePreviewScopeKey = workbenchSession?.sessionKey ?? `${projectId}::${laneId}::${projectPath ?? 'unbound'}`
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
     scopeKey: nativePreviewScopeKey,
@@ -212,6 +205,7 @@ function WorkbenchRuntimePreviewTile({
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: showWebEmbeddedPreview ? previewUrl : "",
+    sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
     projectPath,
@@ -223,14 +217,14 @@ function WorkbenchRuntimePreviewTile({
       const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
         url: request.url,
         storageScope: "workspace",
-      })
-      workbenchActions.setActiveTile(projectId, laneId, nextTileId)
+      }, projectPath)
+      workbenchActions.setActiveTile(projectId, laneId, nextTileId, projectPath)
     },
   })
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!projectPath) {
+    if (!projectPath || !workbenchSession?.sessionKey) {
       setTerminalId(null)
       setTerminalError(null)
       return
@@ -241,13 +235,8 @@ function WorkbenchRuntimePreviewTile({
     void (async () => {
       setTerminalError(null)
 
-      await window.electronAPI.workbenchSession.ensureSession({
-        projectId,
-        laneId,
-      })
-      if (cancelled) return
-
       let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
+        sessionKey: workbenchSession.sessionKey,
         projectId,
         laneId,
         tileId: tile.id,
@@ -273,6 +262,7 @@ function WorkbenchRuntimePreviewTile({
 
         nextTerminalId = result.terminalId
         await window.electronAPI.workbenchSession.bindTerminal({
+          sessionKey: workbenchSession.sessionKey,
           projectId,
           laneId,
           tileId: tile.id,
@@ -335,6 +325,7 @@ function WorkbenchRuntimePreviewTile({
     tile.id,
     tile.title,
     updateTerminalDisplay,
+    workbenchSession?.sessionKey,
   ])
 
   useEffect(() => {
@@ -417,6 +408,10 @@ function WorkbenchRuntimePreviewTile({
     if (isMobileSimulatorSurface) {
       return
     }
+    if (previewDestination !== "cozea") {
+      setPreviewDestination("cozea")
+      return
+    }
     try {
       window.localStorage.setItem(PREVIEW_DESTINATION_PREFERENCE_KEY, previewDestination)
     } catch {
@@ -440,6 +435,7 @@ function WorkbenchRuntimePreviewTile({
 
     void window.electronAPI.workbenchSession
       .setNativePreviewSession({
+        sessionKey: workbenchSession?.sessionKey ?? null,
         projectId,
         laneId,
         locator,
@@ -447,7 +443,15 @@ function WorkbenchRuntimePreviewTile({
       .catch((error) => {
         console.warn("[WorkbenchDevServerTile] Failed to sync native preview session", error)
       })
-  }, [isMobileSimulatorSurface, usesNativePreview, laneId, nativePreview.selectedSimulator, projectId, projectPath])
+  }, [
+    isMobileSimulatorSurface,
+    usesNativePreview,
+    laneId,
+    nativePreview.selectedSimulator,
+    projectId,
+    projectPath,
+    workbenchSession?.sessionKey,
+  ])
 
   const visibleBrowsers = useMemo(() => {
     return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
@@ -560,16 +564,6 @@ function WorkbenchRuntimePreviewTile({
     void openPreviewExternally()
   }, [externalPreviewUrl, isMobileSimulatorSurface, openPreviewExternally, previewDestination, viewMode])
 
-  const handlePreviewDestinationChange = useCallback((value: string) => {
-    if (value === "cozea") {
-      setPreviewDestination("cozea")
-      return
-    }
-
-    setSelectedBrowserId(value as ExternalBrowserId)
-    setPreviewDestination("external")
-  }, [])
-
   const chromeControls = isMobileSimulatorSurface ? (
     <div className="flex min-w-0 items-center gap-2">
       <div className="inline-flex h-8 min-w-0 items-center">
@@ -609,47 +603,6 @@ function WorkbenchRuntimePreviewTile({
   ) : (
     <div className="flex min-w-0 items-center gap-2">
       <div className="inline-flex h-8 min-w-0 items-center">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                "group flex h-full w-9 items-center justify-center border-0 bg-transparent text-muted-foreground/80 transition-colors",
-                "hover:text-foreground",
-              )}
-              aria-label="Choose preview destination"
-              title={
-                previewDestination === "cozea"
-                  ? "Choose preview destination"
-                  : `Choose preview destination (currently ${effectiveSelectedBrowser.name})`
-              }
-            >
-              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-4 w-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Preview in</div>
-            <DropdownMenuRadioGroup
-              value={previewDestination === "cozea" ? "cozea" : effectiveBrowserId}
-              onValueChange={handlePreviewDestinationChange}
-            >
-              <DropdownMenuRadioItem value="cozea">
-                <HugeiconsIcon icon={__AppWindowHugeIcon} className="mr-2 h-4 w-4 text-muted-foreground" />
-                Cozea
-              </DropdownMenuRadioItem>
-              {visibleBrowsers.map((browser) => {
-                const BrowserIcon = getExternalBrowserIcon(browser.id)
-                return (
-                  <DropdownMenuRadioItem key={browser.id} value={browser.id}>
-                    {createElement(BrowserIcon, { className: "mr-2 h-4 w-4 text-muted-foreground" })}
-                    {browser.name}
-                  </DropdownMenuRadioItem>
-                )
-              })}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <div className="mx-1 h-4 w-px bg-border/45" aria-hidden />
         <button
           type="button"
           className={cn(

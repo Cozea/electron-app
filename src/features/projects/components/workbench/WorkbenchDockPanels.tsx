@@ -19,7 +19,7 @@ import {
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
@@ -113,10 +113,16 @@ function MissingTilePlaceholder() {
   )
 }
 
-function useWorkbenchTile(projectId: string, laneId: string, tileId: string): WorkbenchTile | null {
-  return useProjectWorkbenchStore(
-    (state) => state.workbenches[buildWorkbenchScopeKey(projectId, laneId)]?.tiles[tileId] ?? null,
-  )
+function useWorkbenchTile(
+  projectId: string,
+  laneId: string,
+  projectPath: string | null,
+  tileId: string,
+): WorkbenchTile | null {
+  return useProjectWorkbenchStore((state) => {
+    const workbench = selectProjectWorkbench(projectId, laneId, projectPath)(state)
+    return workbench?.tiles[tileId] ?? null
+  })
 }
 
 function useSyncPanelTitle(
@@ -131,13 +137,22 @@ function useSyncPanelTitle(
 
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const runtime = useWorkbenchDockRuntime()
-  const storedTile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
+  const storedTile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
   const tile =
     storedTile?.type === "selection"
       ? storedTile
       : runtime.getSelectionPreviewTile(props.params.tileId)
   const singletonEmptyWorkbench = useProjectWorkbenchStore((state) => {
-    const wb = state.workbenches[buildWorkbenchScopeKey(props.params.projectId, props.params.laneId)]
+    const wb = selectProjectWorkbench(
+      props.params.projectId,
+      props.params.laneId,
+      runtime.projectPath,
+    )(state)
     if (!wb || wb.order.length !== 1) return false
     const sole = wb.tiles[wb.order[0]]
     return sole?.type === "selection"
@@ -188,8 +203,13 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
 })
 
 const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -213,6 +233,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         tile={tile as WorkbenchBrowserTileRecord}
         projectPath={runtime.projectPath}
         workspaceId={runtime.workspaceId}
+        workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -221,8 +242,13 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
 })
 
 const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -247,6 +273,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         laneId={props.params.laneId}
         tileId={props.params.tileId}
         projectPath={runtime.projectPath}
+        workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -255,8 +282,13 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
 })
 
 const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -294,8 +326,13 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
 const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   props: IDockviewPanelProps<WorkbenchDockPanelParams>,
 ) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -331,8 +368,13 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
 })
 
 const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 

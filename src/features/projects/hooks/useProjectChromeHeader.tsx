@@ -21,7 +21,7 @@ interface UseProjectChromeHeaderArgs {
 
 /**
  * Feeds the single `UnifiedHeader` from the same sources as the workbench:
- * - Left: `ProjectShellTitleBarLeft` whenever the page did not call `useProjectHeader` (settings, /projects hub, …)
+ * - Left: `ProjectShellTitleBarLeft` (sidebar toggle) whenever the page did not call `useProjectHeader` (settings, /projects hub, …)
  * - Center: page `centerAddon` from the store, or settings title in the workbench center shell
  */
 export function useProjectChromeHeader({
@@ -53,8 +53,7 @@ export function useProjectChromeHeader({
   }, [isSettingsModeRoute, pathname, workspaceScoped]);
 
   return useMemo(() => {
-    const headerResolved =
-      headerFromPage ?? <ProjectShellTitleBarLeft projectPath={editorProjectPath} />;
+    const headerResolved = headerFromPage ?? <ProjectShellTitleBarLeft />;
 
     const centerAddon =
       isSettingsModeRoute && settingsTitle ? (
@@ -73,6 +72,7 @@ export function useProjectChromeHeader({
         projectId,
         projectName,
       },
+      editorProjectPath,
     };
   }, [
     centerFromPage,

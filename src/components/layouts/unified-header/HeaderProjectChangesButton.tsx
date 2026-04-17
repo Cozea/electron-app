@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useConvex, useMutation } from "convex/react";
+import { useCallback, useEffect, useState } from "react";
+import { useConvex } from "convex/react";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -21,13 +21,9 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   const navigate = useViewTransitionNavigate();
   const location = useLocation();
   const convex = useConvex();
-  const clearEphemeralChanges = useMutation(api.activity.clearEphemeralChanges);
   const routeContext = useOptionalProjectRouteContext();
-  const projectPath = routeContext?.localPath ?? null;
+  const gitCwd = routeContext?.gitCwd ?? null;
   const [diffStats, setDiffStats] = useState<{ additions: number; deletions: number } | null>(null);
-  const lastGitStatusRef = useRef<{ clean: boolean; headCommit: string | null } | null>(null);
-  const cleanupInFlightRef = useRef(false);
-  const lastCleanedHeadCommitRef = useRef<string | null>(null);
 
   const prewarmChanges = useCallback(() => {
     if (!projectId) return;
@@ -55,11 +51,8 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   }, [convex, projectId]);
 
   useEffect(() => {
-    if (!projectPath) {
+    if (!gitCwd) {
       setDiffStats(null);
-      lastGitStatusRef.current = null;
-      cleanupInFlightRef.current = false;
-      lastCleanedHeadCommitRef.current = null;
       return;
     }
 
@@ -67,14 +60,9 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
 
     const loadStats = async () => {
       try {
-        const [statsResult, statusResult] = await Promise.all([
-          projectOpenDesktopClient.sync.gitGetHeadDiffStats({
-            projectPath,
-          }),
-          projectOpenDesktopClient.sync.gitStatus({
-            projectPath,
-          }),
-        ]);
+        const statsResult = await projectOpenDesktopClient.sync.gitGetHeadDiffStats({
+          projectPath: gitCwd,
+        });
         if (cancelled) return;
 
         if (statsResult.success) {
@@ -84,47 +72,6 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
           });
         } else {
           setDiffStats(null);
-        }
-
-        if (!statusResult.success || !statusResult.isRepo) {
-          lastGitStatusRef.current = null;
-          return;
-        }
-
-        const nextStatus = {
-          clean: statusResult.clean ?? false,
-          headCommit: statusResult.headCommit ?? null,
-        };
-        const previousStatus = lastGitStatusRef.current;
-        lastGitStatusRef.current = nextStatus;
-
-        const shouldClearEphemeralChanges =
-          Boolean(projectId) &&
-          nextStatus.clean &&
-          Boolean(nextStatus.headCommit) &&
-          previousStatus?.clean === false &&
-          previousStatus.headCommit !== nextStatus.headCommit &&
-          lastCleanedHeadCommitRef.current !== nextStatus.headCommit &&
-          cleanupInFlightRef.current === false;
-
-        if (!shouldClearEphemeralChanges || !projectId) {
-          return;
-        }
-
-        cleanupInFlightRef.current = true;
-        try {
-          await Promise.all([
-            clearEphemeralChanges({ projectId }),
-            projectOpenDesktopClient.sync.gitDeleteAllCheckpointRefs({
-              projectPath,
-            }),
-          ]);
-          lastCleanedHeadCommitRef.current = nextStatus.headCommit;
-          useQueryCache.getState().clear(getProjectChangesActivityCacheKey(projectId));
-        } catch (error) {
-          console.warn("[Changes] Failed to clear ephemeral changes after commit:", error);
-        } finally {
-          cleanupInFlightRef.current = false;
         }
       } catch {
         if (!cancelled) {
@@ -142,7 +89,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [clearEphemeralChanges, projectId, projectPath]);
+  }, [gitCwd]);
 
   if (!projectId) return null;
 
@@ -189,8 +136,9 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
           <HugeiconsIcon icon={__TransactionHistoryHugeIcon} className="size-3 shrink-0" />
           <span className="text-[11px] leading-none">Changes</span>
           {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) ? (
-            <span className="text-[10px] tabular-nums text-muted-foreground/80">
-              +{diffStats.additions} -{diffStats.deletions}
+            <span className="inline-flex items-center gap-1 text-[10px] tabular-nums">
+              <span className="text-success">+{diffStats.additions}</span>
+              <span className="text-destructive">-{diffStats.deletions}</span>
             </span>
           ) : null}
         </Button>

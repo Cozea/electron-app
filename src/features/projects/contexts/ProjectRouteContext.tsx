@@ -24,6 +24,7 @@ export interface ProjectRouteContextValue {
   slugParam: string | null;
   slugResolution?: ProjectRouteSlugResolutionResult;
   localPath: string | null;
+  gitCwd: string | null;
   projectBasePath: string | null;
   projectName: string | null;
   collabBranch: string | null;

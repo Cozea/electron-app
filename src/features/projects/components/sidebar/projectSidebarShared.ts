@@ -85,6 +85,8 @@ export interface SidebarProjectTreeItemContext {
 export interface SidebarProjectTreeItemActions {
   toggleExpanded: (projectId: string) => void
   openProject: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
+  relinkProjectWorkspace: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
+  closeProjectWorkspace: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
   openProjectFolder: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
   openProjectSettings: (project: SidebarProjectItem) => void
   renameProject: (project: SidebarProjectItem) => void
@@ -99,6 +101,7 @@ export interface SidebarProjectTreeItemActions {
     options?: {
       openTile?: "assistantChat" | "terminal"
       focusTileId?: string
+      projectPath?: string | null
     },
   ) => Promise<void>
 }

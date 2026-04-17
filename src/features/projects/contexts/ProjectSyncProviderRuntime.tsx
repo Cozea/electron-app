@@ -19,33 +19,27 @@ import {
   ProjectSyncContext,
   type ProjectSyncProviderProps,
 } from "@/features/projects/contexts/projectSyncShared"
+import { useProjectCheckpointCleanup } from "@/features/projects/hooks/useProjectCheckpointCleanup"
 import type { SyncProgress } from "@/lib/sync/types"
+
+interface ProjectSyncProviderRuntimeProps extends ProjectSyncProviderProps {
+  renderDeleteConflictDialog?: boolean
+}
 
 function AgentFileSyncBridge({
   projectId,
   userId,
   projectPath,
+  gitCwd,
   children,
 }: {
   projectId: Id<"projects"> | null
   userId: Id<"users"> | null
   projectPath: string | null
+  gitCwd: string | null
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
-
-  useEffect(() => {
-    if (!projectPath) return
-    const yjsApi = window.electronAPI?.yjs
-    if (yjsApi?.setInterestRoots) {
-      void yjsApi.setInterestRoots({ roots: [projectPath] })
-    }
-    return () => {
-      if (yjsApi?.setInterestRoots) {
-        void yjsApi.setInterestRoots({ roots: [] })
-      }
-    }
-  }, [projectPath])
 
   useEffect(() => {
     if (!projectPath || !yjsDoc) return
@@ -66,7 +60,7 @@ function AgentFileSyncBridge({
 
   useAgentFileSync(yjsDoc, projectPath, projectId, userId)
   useBinaryFileSync(projectId, projectPath, userId)
-  useYjsFileWriteback(yjsDoc, projectPath, projectId, userId)
+  useYjsFileWriteback(yjsDoc, projectPath, gitCwd, projectId, userId)
 
   return <>{children}</>
 }
@@ -76,8 +70,10 @@ export function ProjectSyncProviderRuntime({
   projectId,
   userId,
   userName,
+  laneId: _laneId = null,
   projectSlug: _projectSlug,
   localPath,
+  gitCwd = null,
   lastSyncAt: initialLastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
@@ -85,12 +81,15 @@ export function ProjectSyncProviderRuntime({
   activeBranch = null,
   sharedBranch = null,
   documentScopeId = null,
-}: ProjectSyncProviderProps) {
+  renderDeleteConflictDialog = true,
+}: ProjectSyncProviderRuntimeProps) {
   const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
   const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
   const resolvedUserName = userName ?? "User"
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
+
+  useProjectCheckpointCleanup(projectId, gitCwd)
 
   useEffect(() => {
     setLastSyncAt(initialLastSyncAt ?? null)
@@ -211,6 +210,7 @@ export function ProjectSyncProviderRuntime({
               cloudSyncBlocked: false,
               lastSyncAt,
               projectPath: localPath,
+              gitCwd,
               collaborationEnabled: sharedCollaborationEnabled,
               collaborationMode,
               activeBranch,
@@ -226,17 +226,19 @@ export function ProjectSyncProviderRuntime({
         userId={resolvedUserId}
         userName={resolvedUserName}
         projectPath={localPath}
+        gitCwd={gitCwd}
         enabled={canSync}
         documentScopeId={documentScopeId}
         collaborationEnabled={sharedCollaborationEnabled}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
       >
-        <DeleteConflictDialog />
+        {renderDeleteConflictDialog ? <DeleteConflictDialog /> : null}
         <AgentFileSyncBridge
           projectId={projectId}
           userId={userId}
           projectPath={localPath}
+          gitCwd={gitCwd}
         >
           {children}
         </AgentFileSyncBridge>

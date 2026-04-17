@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -59,8 +60,34 @@ const FROZEN_EPHEMERAL_BROWSER_IDLE_MS = 60 * 1000
 const LOW_MEMORY_FREE_THRESHOLD_KB = 1_500_000
 const LOW_MEMORY_FREE_RATIO = 0.12
 
-function buildSessionKey(projectId: string, laneId: string): string {
-  return `${projectId.trim()}::${laneId.trim() || 'collab'}`
+function normalizeProjectPath(projectPath?: string | null): string | null {
+  const trimmed = projectPath?.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const normalized = path.normalize(trimmed).replace(/[\\/]+$/, '')
+  if (!normalized) {
+    return null
+  }
+
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+function buildWorkspacePathSegment(projectPath?: string | null): string {
+  const normalizedPath = normalizeProjectPath(projectPath)
+  if (!normalizedPath) {
+    return 'unbound'
+  }
+
+  const basename = path.basename(normalizedPath).replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '')
+  const slug = basename.length > 0 ? basename.slice(0, 48) : 'root'
+  const digest = createHash('sha1').update(normalizedPath).digest('hex').slice(0, 12)
+  return `${slug}-${digest}`
+}
+
+function buildSessionKey(projectId: string, laneId: string, projectPath?: string | null): string {
+  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${buildWorkspacePathSegment(projectPath)}`
 }
 
 function getRegistryPath(): string {
@@ -102,7 +129,7 @@ function dedupePersistedSessionPaths(state: PersistedWorkbenchSessionState): boo
   let changed = false
 
   for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const normalizedPath = record.projectPath?.trim()
+    const normalizedPath = normalizeProjectPath(record.projectPath)
     if (!normalizedPath) {
       continue
     }
@@ -119,7 +146,7 @@ function dedupePersistedSessionPaths(state: PersistedWorkbenchSessionState): boo
   }
 
   for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const normalizedPath = record.projectPath?.trim()
+    const normalizedPath = normalizeProjectPath(record.projectPath)
     if (!normalizedPath) {
       continue
     }
@@ -180,6 +207,35 @@ export class WorkbenchSessionManager extends EventEmitter<{
   private readonly policySweepTimer: NodeJS.Timeout
   private policySweepInFlight = false
 
+  private logLifecycleTransition(
+    sessionKey: string,
+    previousLifecycle: WorkbenchSessionLifecycle,
+    nextLifecycle: WorkbenchSessionLifecycle,
+    reason: string,
+  ): void {
+    if (previousLifecycle === nextLifecycle) {
+      return
+    }
+
+    const record = this.sessions.get(sessionKey)
+    console.info("[WorkbenchSessionManager] Lifecycle transition", {
+      sessionKey,
+      projectId: record?.projectId ?? null,
+      laneId: record?.laneId ?? null,
+      projectPath: record?.projectPath ?? null,
+      from: previousLifecycle,
+      to: nextLifecycle,
+      reason,
+    })
+  }
+
+  private warnOwnershipMismatch(event: string, details: Record<string, unknown>): void {
+    console.warn("[WorkbenchSessionManager] Ownership mismatch", {
+      event,
+      ...details,
+    })
+  }
+
   private constructor(services: WorkbenchSessionManagerServices) {
     super()
     this.browserService = services.browserService
@@ -189,15 +245,25 @@ export class WorkbenchSessionManager extends EventEmitter<{
     if (dedupePersistedSessionPaths(persisted)) {
       writeRegistryState(persisted)
     }
-    for (const [sessionKey, record] of Object.entries(persisted.sessions)) {
-      this.sessions.set(sessionKey, {
+
+    for (const [, record] of Object.entries(persisted.sessions)) {
+      const derivedSessionKey = buildSessionKey(record.projectId, record.laneId, record.projectPath)
+      const nextRecord: LiveWorkbenchSessionRecord = {
         ...record,
+        projectPath: normalizeProjectPath(record.projectPath),
         lifecycle:
           record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
         browserBindings: {},
         nativePreviewLocator: null,
-      })
+      }
+      const existing = this.sessions.get(derivedSessionKey)
+      if (
+        !existing ||
+        Math.max(nextRecord.lastFocusedAt, nextRecord.openedAt) >= Math.max(existing.lastFocusedAt, existing.openedAt)
+      ) {
+        this.sessions.set(derivedSessionKey, nextRecord)
+      }
     }
 
     this.policySweepTimer = setInterval(() => {
@@ -235,7 +301,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return {
       projectId: input.projectId.trim(),
       laneId: input.laneId.trim() || 'collab',
-      projectPath: input.projectPath?.trim() || null,
+      projectPath: normalizeProjectPath(input.projectPath),
       lifecycle: 'backgroundWarm',
       pinned: false,
       openedAt: now,
@@ -248,7 +314,49 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   private normalizeProjectPath(projectPath?: string | null): string | null {
-    return projectPath?.trim() || null
+    return normalizeProjectPath(projectPath)
+  }
+
+  private findLatestSessionKey(input: {
+    projectId: string
+    laneId: string
+  }): string | null {
+    const projectId = input.projectId.trim()
+    const laneId = input.laneId.trim() || 'collab'
+
+    const candidate = Array.from(this.sessions.entries())
+      .filter(([, record]) => record.projectId === projectId && record.laneId === laneId)
+      .sort((left, right) => {
+        const leftRecord = left[1]
+        const rightRecord = right[1]
+        return Math.max(rightRecord.lastFocusedAt, rightRecord.openedAt) - Math.max(leftRecord.lastFocusedAt, leftRecord.openedAt)
+      })[0]
+
+    return candidate?.[0] ?? null
+  }
+
+  private resolveSessionKey(input: {
+    sessionKey?: string | null
+    projectId: string
+    laneId: string
+    projectPath?: string | null
+  }): string | null {
+    const explicitSessionKey = input.sessionKey?.trim()
+    if (explicitSessionKey) {
+      return this.sessions.has(explicitSessionKey) ? explicitSessionKey : null
+    }
+
+    if (input.projectPath !== undefined) {
+      const exactSessionKey = buildSessionKey(input.projectId, input.laneId, input.projectPath)
+      if (this.sessions.has(exactSessionKey)) {
+        return exactSessionKey
+      }
+    }
+
+    return this.findLatestSessionKey({
+      projectId: input.projectId,
+      laneId: input.laneId,
+    })
   }
 
   private async reconcileSessionProjectPath(
@@ -265,20 +373,27 @@ export class WorkbenchSessionManager extends EventEmitter<{
       return
     }
 
-    const previousProjectPath = record.projectPath
-
-    for (const terminalId of Object.values(record.terminalBindings)) {
-      this.terminalService.killTerminal(terminalId)
+    // A live workspace should never be soft-reassigned to another local root.
+    // If the caller wants a different root, they must address a different session key.
+    if (record.projectPath && normalizedNextProjectPath && record.projectPath !== normalizedNextProjectPath) {
+      this.warnOwnershipMismatch("rebind_rejected", {
+        sessionKey,
+        projectId: record.projectId,
+        laneId: record.laneId,
+        currentProjectPath: record.projectPath,
+        requestedProjectPath: normalizedNextProjectPath,
+      })
+      return
     }
-    record.terminalBindings = {}
 
-    if (previousProjectPath) {
-      await this.devServerService.stop(previousProjectPath).catch(() => ({ success: false }))
-    }
-
-    if (record.nativePreviewLocator) {
-      await this.nativePreviewManager.stopSession(record.nativePreviewLocator).catch(() => ({ success: false }))
-      record.nativePreviewLocator = null
+    if (record.projectPath && normalizedNextProjectPath === null) {
+      this.warnOwnershipMismatch("unbind_rejected", {
+        sessionKey,
+        projectId: record.projectId,
+        laneId: record.laneId,
+        currentProjectPath: record.projectPath,
+      })
+      return
     }
 
     record.projectPath = normalizedNextProjectPath
@@ -351,8 +466,15 @@ export class WorkbenchSessionManager extends EventEmitter<{
           !record.pinned &&
           (backgroundAge >= warmIdleLimit || (underMemoryPressure && !hasRetainedPreviewRuntime))
         ) {
+          const previousLifecycle = record.lifecycle
           record.lifecycle = 'backgroundFrozen'
           record.lastBackgroundedAt = record.lastBackgroundedAt ?? now
+          this.logLifecycleTransition(
+            sessionKey,
+            previousLifecycle,
+            record.lifecycle,
+            underMemoryPressure ? 'policy:memory-pressure' : 'policy:idle-timeout',
+          )
           this.emitState(sessionKey, record)
           mutated = true
         }
@@ -393,11 +515,20 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   private getOrCreateSession(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     projectPath?: string | null
   }): { sessionKey: string; record: LiveWorkbenchSessionRecord } {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const providedSessionKey = input.sessionKey?.trim()
+    if (providedSessionKey) {
+      const existingByExplicitKey = this.sessions.get(providedSessionKey)
+      if (existingByExplicitKey) {
+        return { sessionKey: providedSessionKey, record: existingByExplicitKey }
+      }
+    }
+
+    const sessionKey = buildSessionKey(input.projectId, input.laneId, input.projectPath)
     const existing = this.sessions.get(sessionKey)
     if (existing) {
       return { sessionKey, record: existing }
@@ -467,14 +598,22 @@ export class WorkbenchSessionManager extends EventEmitter<{
       warmCount += 1
 
       if (record.lifecycle !== nextLifecycle) {
+        const previousLifecycle = record.lifecycle
         record.lifecycle = nextLifecycle
         record.lastBackgroundedAt = Date.now()
+        this.logLifecycleTransition(
+          sessionKey,
+          previousLifecycle,
+          nextLifecycle,
+          nextLifecycle === 'backgroundWarm' ? 'rebalance:retain-warm' : 'rebalance:freeze-over-cap',
+        )
         this.emitState(sessionKey, record)
       }
     }
   }
 
   async ensureSession(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     projectPath?: string | null
@@ -488,6 +627,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   async activateSession(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     projectPath?: string | null
@@ -495,8 +635,10 @@ export class WorkbenchSessionManager extends EventEmitter<{
     const now = Date.now()
     const { sessionKey, record } = this.getOrCreateSession(input)
     await this.reconcileSessionProjectPath(sessionKey, record, input.projectPath)
+    const previousLifecycle = record.lifecycle
     record.lifecycle = 'active'
     record.lastFocusedAt = now
+    this.logLifecycleTransition(sessionKey, previousLifecycle, record.lifecycle, 'activate-session')
 
     const snapshot = this.emitState(sessionKey, record)
     this.rebalanceBackgroundSessions(sessionKey)
@@ -506,18 +648,22 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   backgroundSession(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     mode?: BackgroundLifecycle
   }): WorkbenchSessionSnapshot | null {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) return null
     const record = this.sessions.get(sessionKey)
     if (!record) return null
 
     const nextLifecycle = input.mode ?? 'backgroundWarm'
     if (record.lifecycle !== nextLifecycle) {
+      const previousLifecycle = record.lifecycle
       record.lifecycle = nextLifecycle
       record.lastBackgroundedAt = Date.now()
+      this.logLifecycleTransition(sessionKey, previousLifecycle, nextLifecycle, 'background-session')
     }
 
     const snapshot = this.emitState(sessionKey, record)
@@ -527,8 +673,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return snapshot
   }
 
-  async closeSession(input: { projectId: string; laneId: string }): Promise<boolean> {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+  async closeSession(input: { sessionKey?: string | null; projectId: string; laneId: string }): Promise<boolean> {
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) {
+      return true
+    }
     const record = this.sessions.get(sessionKey)
     if (!record) {
       return true
@@ -553,16 +702,21 @@ export class WorkbenchSessionManager extends EventEmitter<{
       record.nativePreviewLocator = null
     }
 
+    const previousLifecycle = record.lifecycle
     record.lifecycle = 'closed'
     record.lastBackgroundedAt = Date.now()
+    this.logLifecycleTransition(sessionKey, previousLifecycle, 'closed', 'close-session')
     this.emitState(sessionKey, record)
     this.sessions.delete(sessionKey)
     this.persist()
     return true
   }
 
-  getSession(input: { projectId: string; laneId: string }): WorkbenchSessionSnapshot | null {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+  getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }): WorkbenchSessionSnapshot | null {
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) {
+      return null
+    }
     const record = this.sessions.get(sessionKey)
     return record ? this.buildSnapshot(sessionKey, record) : null
   }
@@ -574,11 +728,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   setPinned(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     pinned: boolean
   }): WorkbenchSessionSnapshot | null {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) return null
     const record = this.sessions.get(sessionKey)
     if (!record) return null
 
@@ -591,11 +747,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   getTerminalBinding(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     tileId: string
   }): string | null {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) return null
     const record = this.sessions.get(sessionKey)
     if (!record) return null
 
@@ -606,6 +764,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     const snapshot = this.terminalService.getTerminalSnapshot(terminalId)
     if (!snapshot || !this.terminalService.hasTerminal(terminalId) && snapshot.running) {
+      this.warnOwnershipMismatch("terminal_binding_stale", {
+        sessionKey,
+        tileId: input.tileId,
+        terminalId,
+        snapshotExists: Boolean(snapshot),
+        terminalExists: this.terminalService.hasTerminal(terminalId),
+      })
       delete record.terminalBindings[input.tileId]
       this.persist()
       this.emitState(sessionKey, record)
@@ -613,6 +778,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
 
     if (record.projectPath && snapshot.projectPath !== record.projectPath) {
+      this.warnOwnershipMismatch("terminal_path_mismatch", {
+        sessionKey,
+        tileId: input.tileId,
+        terminalId,
+        expectedProjectPath: record.projectPath,
+        actualProjectPath: snapshot.projectPath,
+      })
       delete record.terminalBindings[input.tileId]
       this.persist()
       this.emitState(sessionKey, record)
@@ -623,6 +795,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   async bindTerminal(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     tileId: string
@@ -631,18 +804,32 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }): Promise<WorkbenchSessionSnapshot> {
     const { sessionKey, record } = this.getOrCreateSession(input)
     await this.reconcileSessionProjectPath(sessionKey, record, input.projectPath)
+    const snapshot = this.terminalService.getTerminalSnapshot(input.terminalId)
+    if (record.projectPath && snapshot?.projectPath && snapshot.projectPath !== record.projectPath) {
+      this.warnOwnershipMismatch("bind_terminal_rejected", {
+        sessionKey,
+        tileId: input.tileId,
+        terminalId: input.terminalId,
+        expectedProjectPath: record.projectPath,
+        actualProjectPath: snapshot.projectPath,
+      })
+    }
     record.terminalBindings[input.tileId] = input.terminalId
     this.persist()
     return this.emitState(sessionKey, record)
   }
 
   releaseTerminal(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     tileId: string
     close?: boolean
   }): { success: boolean; terminalId?: string } {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) {
+      return { success: true }
+    }
     const record = this.sessions.get(sessionKey)
     if (!record) {
       return { success: true }
@@ -663,11 +850,15 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   getBrowserBinding(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     tileId: string
   }): string | null {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) {
+      return null
+    }
     const record = this.sessions.get(sessionKey)
     if (!record) {
       return null
@@ -679,6 +870,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
 
     if (!this.browserService.getState(browserTileId)) {
+      this.warnOwnershipMismatch("browser_binding_stale", {
+        sessionKey,
+        tileId: input.tileId,
+        browserTileId,
+      })
       delete record.browserBindings[input.tileId]
       this.persist()
       this.emitState(sessionKey, record)
@@ -689,6 +885,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   bindBrowser(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     tileId: string
@@ -702,12 +899,16 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   releaseBrowser(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     tileId: string
     destroy?: boolean
   }): { success: boolean; browserTileId?: string } {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) {
+      return { success: true }
+    }
     const record = this.sessions.get(sessionKey)
     if (!record) {
       return { success: true }
@@ -728,12 +929,16 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   async setNativePreviewSession(input: {
+    sessionKey?: string | null
     projectId: string
     laneId: string
     locator: NativePreviewSessionLocator | null
     stopPrevious?: boolean
   }): Promise<WorkbenchSessionSnapshot | null> {
-    const sessionKey = buildSessionKey(input.projectId, input.laneId)
+    const sessionKey = this.resolveSessionKey(input)
+    if (!sessionKey) {
+      return null
+    }
     const record = this.sessions.get(sessionKey)
     if (!record) {
       return null

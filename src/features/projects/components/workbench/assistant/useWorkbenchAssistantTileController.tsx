@@ -231,8 +231,8 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch)
-  }, [input.laneId, input.projectId, input.tile, thread, updateAssistantTile])
+    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
+  }, [input.laneId, input.projectId, input.projectPath, input.tile, thread, updateAssistantTile])
 
   useEffect(() => {
     const timeline = timelineRef.current
@@ -270,7 +270,7 @@ export function useWorkbenchAssistantTileController(
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>
-            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id) ?? input.tile
+            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.projectPath) ?? input.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
 
           await refreshAssistantRuntimeSnapshot()
@@ -368,7 +368,7 @@ export function useWorkbenchAssistantTileController(
           }
 
           if (!cancelled && Object.keys(patch).length > 0) {
-            updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch)
+            updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
           }
 
           if (!cancelled) {
@@ -454,7 +454,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
-    })
+    }, input.projectPath)
 
     if (!thread) {
       return
@@ -482,7 +482,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
-    })
+    }, input.projectPath)
 
     if (!thread) {
       return
@@ -503,7 +503,7 @@ export function useWorkbenchAssistantTileController(
     const nextRuntimeMode = nextValue as RuntimeMode
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       runtimeMode: nextRuntimeMode,
-    })
+    }, input.projectPath)
 
     if (!thread) {
       return
@@ -525,7 +525,7 @@ export function useWorkbenchAssistantTileController(
     const nextInteractionMode = nextValue as ProviderInteractionMode
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       interactionMode: nextInteractionMode,
-    })
+    }, input.projectPath)
 
     if (!thread) {
       return
@@ -571,7 +571,7 @@ export function useWorkbenchAssistantTileController(
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           title: nextThreadTitle,
-        })
+        }, input.projectPath)
 
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
@@ -882,7 +882,7 @@ export function useWorkbenchAssistantTileController(
 
     if (configError && !config) {
       return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/70 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
           {configError}
         </div>
       )
@@ -958,4 +958,3 @@ export function useWorkbenchAssistantTileController(
     },
   }
 }
-

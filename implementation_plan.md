@@ -44,8 +44,9 @@ Implemented changes:
 - `convex/activity.ts` includes `clearEphemeralChanges(projectId)`
 
 Current state:
-- `oldContent` and `newContent` are still present in the schema for compatibility
-- new writes from the Yjs persistence path no longer rely on them for diff rendering
+- legacy stored diff-content fields have been removed from the activity schema
+- rename rows carry `oldPath` explicitly instead of overloading content fields
+- the Yjs persistence path no longer relies on any stored file content for diff rendering
 
 ### 3. Remote replication now carries checkpoint identity
 
@@ -96,11 +97,31 @@ New rendering pieces:
 
 The visual model is now intentionally much closer to T3 Code than the previous heavy inspector layout.
 
-### 6. Header stats are local Git-backed, and commit cleanup is automatic
+### 6. Git-backed UI now uses a canonical project Git cwd
+
+To match the T3-style model more closely, Git-backed UI concerns now use a dedicated canonical `gitCwd` instead of implicitly reusing the project file root everywhere.
+
+Current behavior:
+- `localPath` remains the project filesystem/Yjs root
+- `gitCwd` is resolved separately for Git-only features
+- the app only enables Git-backed change UI when the project's own local path is the repo root
+- nested folders no longer inherit diff stats from some ancestor checkout
+
+This separation now drives:
+- header diff stats
+- inline checkpoint diff loading
+- checkpoint cleanup after real commits
+- local checkpoint capture for replicated remote edits
+
+### 7. Header stats are local Git-backed, and commit cleanup is automatic
 
 `src/components/layouts/unified-header/HeaderProjectChangesButton.tsx` now:
 - polls local Git diff stats for `+X -Y`
-- polls local git status alongside those stats
+- colors additions and deletions independently
+- reads those stats from canonical `gitCwd`, not the broader project file root
+
+`src/features/projects/hooks/useProjectCheckpointCleanup.ts` now:
+- polls local git status at the project-layout level
 - detects the repo transitioning from dirty to clean with a new `HEAD`
 - clears Convex ephemeral change rows on that transition
 - deletes all local checkpoint refs on that transition
@@ -115,20 +136,23 @@ In short:
 - Convex stores the shared social layer
 - local Git stores the actual diff snapshots
 - Yjs transport metadata keeps checkpoint identity stable across collaborators
+- `localPath` continues to own filesystem sync, while `gitCwd` owns Git-backed review state
 - the UI renders a one-column feed of lightweight shared events backed by local patches
+
+## Production Migration
+
+The backend rollout is complete, including cleanup of legacy Convex rows that previously blocked strict schema validation:
+- legacy `fileChanges.oldContent` / `newContent` fields were removed from production historical rows
+- legacy `organizationId` fields were removed from the remaining workspace-era rows in `projectStorageUsage`, `projectTasks`, and `projectTaskNotifications`
+- no legacy project rows needed deletion during the final cleanup pass
+- strict Convex schema validation was restored after migration and the final production deploy succeeded
 
 ## Remaining Follow-Up
 
-The core migration is done, but a few cleanup tasks remain:
+No implementation work remains for the architecture described here.
 
-1. Remove old compatibility paths that still assume DB-backed diff content.
-   Examples: `getChangeWithContent`, the old diff panel components, and any stale query-cache prewarm behavior tied to selected change content.
-
-2. Fully slim the Convex schema if we want to permanently drop legacy content fields.
-   Right now the runtime has stopped depending on them, but the schema still carries them for compatibility.
-
-3. Decide whether checkpoint cleanup should also be triggered from any future non-header commit surfaces.
-   The current automatic cleanup works for the existing manual commit flow while the app is open, which matches the current product expectation.
+Optional product QA:
+1. Exercise the full workflow interactively with multi-user edits and a real commit to confirm the expected UX in production-like conditions.
 
 ## Verification Checklist
 

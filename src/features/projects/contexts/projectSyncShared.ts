@@ -8,6 +8,7 @@ export interface ProjectSyncContextValue {
   cloudSyncBlocked: boolean;
   lastSyncAt: number | null;
   projectPath: string | null;
+  gitCwd: string | null;
   collaborationEnabled: boolean;
   collaborationMode: "shared" | "local";
   activeBranch: string | null;
@@ -43,8 +44,10 @@ export interface ProjectSyncProviderProps {
   projectId: Id<"projects"> | null;
   userId: Id<"users"> | null;
   userName: string | null;
+  laneId?: string | null;
   projectSlug: string | null;
   localPath: string | null;
+  gitCwd?: string | null;
   lastSyncAt?: number;
   skipInitialSyncCheck?: boolean;
   onFilesChanged?: () => void;

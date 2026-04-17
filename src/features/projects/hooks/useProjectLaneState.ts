@@ -39,6 +39,19 @@ function buildLaneIdentityKey(projectId: string | null, collabBranch: string | n
 
 const laneStateCache = new Map<string, ProjectLaneState>()
 
+export function clearCachedProjectLaneState(projectId: string | null | undefined): void {
+  const trimmedProjectId = projectId?.trim()
+  if (!trimmedProjectId) {
+    return
+  }
+
+  for (const cacheKey of Array.from(laneStateCache.keys())) {
+    if (cacheKey.startsWith(`${trimmedProjectId}::`)) {
+      laneStateCache.delete(cacheKey)
+    }
+  }
+}
+
 export function useProjectLaneState({
   projectId,
   projectPath,

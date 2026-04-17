@@ -27,6 +27,7 @@ import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRou
 import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
+import { useProjectGitCwd } from "@/features/projects/hooks/useProjectGitCwd";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import {
   ProjectRouteContext,
@@ -153,6 +154,8 @@ export function ProjectLayout({
     setEffectiveLocalPath(normalizeProjectPath(candidateLocalPath));
   }, [candidateLocalPath, trustedNavigationPath]);
 
+  const gitCwd = useProjectGitCwd(effectiveLocalPath);
+
   const pendingTeamSetup = useMemo(
     () => locationState?.pendingTeamSetup ?? [],
     [locationState?.pendingTeamSetup],
@@ -277,8 +280,8 @@ export function ProjectLayout({
     location.pathname.startsWith("/projects/settings/") ||
     location.pathname.startsWith("/projects/workspace/") ||
     location.pathname.startsWith("/projects/teams");
-  const shouldEnableProjectRuntime = Boolean(effectiveLocalPath && (isWorkbenchView || isChangesView));
-  const runtimeProjectPath = shouldEnableProjectRuntime ? effectiveLocalPath : null;
+  const shouldEnableProjectRuntime = Boolean(effectiveLocalPath);
+  const runtimeProjectPath = effectiveLocalPath;
   const collabBranch = useMemo(
     () => resolveProjectSharedBranch(project),
     [project],
@@ -399,15 +402,10 @@ export function ProjectLayout({
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
           >
             <UnifiedHeader
-              className="border-b-0 bg-transparent"
-              layoutMode="fixed"
+              layoutMode="embedded"
               leftWindowControlsInset
               compactHeaderActions
               {...chromeHeader}
-            />
-            <div
-              className="h-10 shrink-0 border-b border-border/60 bg-background"
-              aria-hidden="true"
             />
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
@@ -438,6 +436,7 @@ export function ProjectLayout({
         | ProjectRouteSlugResolutionResult
         | undefined,
       localPath: effectiveLocalPath ?? null,
+      gitCwd,
       projectBasePath,
       projectName: effectiveProjectName,
       collabBranch,
@@ -453,6 +452,7 @@ export function ProjectLayout({
       collabLane,
       collaborationEnabled,
       effectiveProjectName,
+      gitCwd,
       effectiveLocalPath,
       freshProjectBySlug,
       laneState,
@@ -470,8 +470,10 @@ export function ProjectLayout({
         projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
         userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
         userName={user?.firstName || user?.email || "User"}
+        laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
         projectSlug={projectSlug}
         localPath={runtimeProjectPath}
+        gitCwd={shouldEnableProjectRuntime ? gitCwd : null}
         lastSyncAt={project?.lastSyncAt}
         collaborationEnabled={collaborationEnabled}
         activeBranch={activeBranch}

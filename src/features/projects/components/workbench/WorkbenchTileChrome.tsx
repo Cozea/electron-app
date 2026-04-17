@@ -139,7 +139,7 @@ export function WorkbenchTileChrome({
           "flex h-9 shrink-0 items-center gap-2 text-xs shadow-none",
           chromeVariant === "pill"
             ? "bg-transparent px-1.5 pt-0.5"
-            : "border-b border-border/70 bg-content-surface px-2",
+            : "border-b border-border/60 bg-content-surface px-2",
         )}
         data-workbench-chrome="true"
       >

@@ -33,7 +33,7 @@ export function SidebarInsetToggle() {
     const sidebarToggleInProjectSettingsHeader = /\/projects\/(?:p\/[^/]+|[^/]+)\/settings(?:\/|$)/.test(
         pathname,
     )
-    /** `ProjectShellTitleBarLeft` already includes `SidebarTrigger` */
+    /** Workbench header includes a `SidebarTrigger` via `ProjectShellTitleBarLeft` (collapsed desktop + closed mobile). */
     const sidebarToggleInSharedShellLeft =
         /^\/projects\/(?:settings|workspace|teams|store)(\/|$)/.test(pathname) ||
         /^\/projects\/?$/.test(pathname)

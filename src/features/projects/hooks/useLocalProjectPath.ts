@@ -21,6 +21,12 @@ interface ScopedLocalProjectPathState {
 }
 
 const projectPathCache = new Map<string, string>()
+const SUPPRESSED_PROJECT_PATHS_STORAGE_KEY = "cozea:suppressed-project-paths:v1"
+
+interface SuppressedProjectPathState {
+  version: 1
+  paths: Record<string, string>
+}
 
 function normalizeProjectPath(projectPath: string): string {
   return projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -55,10 +61,112 @@ function getProjectPathCacheKeys(projectId?: string | null, projectSlug?: string
   return keys
 }
 
+function readSuppressedProjectPathState(): SuppressedProjectPathState {
+  if (typeof window === "undefined") {
+    return { version: 1, paths: {} }
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(SUPPRESSED_PROJECT_PATHS_STORAGE_KEY)
+    if (!rawValue) {
+      return { version: 1, paths: {} }
+    }
+
+    const parsedValue = JSON.parse(rawValue) as Partial<SuppressedProjectPathState>
+    return {
+      version: 1,
+      paths:
+        parsedValue.version === 1 && parsedValue.paths && typeof parsedValue.paths === "object"
+          ? parsedValue.paths
+          : {},
+    }
+  } catch {
+    return { version: 1, paths: {} }
+  }
+}
+
+function writeSuppressedProjectPathState(state: SuppressedProjectPathState): void {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(
+    SUPPRESSED_PROJECT_PATHS_STORAGE_KEY,
+    JSON.stringify(state),
+  )
+}
+
+function readSuppressedProjectPath(projectId?: string | null, projectSlug?: string | null): string | null {
+  const state = readSuppressedProjectPathState()
+  for (const key of getProjectPathCacheKeys(projectId, projectSlug)) {
+    const suppressedPath = state.paths[key]
+    if (suppressedPath) {
+      return suppressedPath
+    }
+  }
+  return null
+}
+
+function clearSuppressedProjectPath(projectId?: string | null, projectSlug?: string | null): void {
+  const keys = getProjectPathCacheKeys(projectId, projectSlug)
+  if (keys.length === 0) {
+    return
+  }
+
+  const state = readSuppressedProjectPathState()
+  let mutated = false
+  for (const key of keys) {
+    if (!(key in state.paths)) {
+      continue
+    }
+    delete state.paths[key]
+    mutated = true
+  }
+
+  if (mutated) {
+    writeSuppressedProjectPathState(state)
+  }
+}
+
+function writeSuppressedProjectPath(
+  projectPath: string | null,
+  projectId?: string | null,
+  projectSlug?: string | null,
+): void {
+  const keys = getProjectPathCacheKeys(projectId, projectSlug)
+  if (keys.length === 0) {
+    return
+  }
+
+  const state = readSuppressedProjectPathState()
+  const normalizedProjectPath = projectPath ? normalizeProjectPath(projectPath) : null
+
+  let mutated = false
+  for (const key of keys) {
+    if (!normalizedProjectPath) {
+      if (key in state.paths) {
+        delete state.paths[key]
+        mutated = true
+      }
+      continue
+    }
+
+    if (state.paths[key] !== normalizedProjectPath) {
+      state.paths[key] = normalizedProjectPath
+      mutated = true
+    }
+  }
+
+  if (mutated) {
+    writeSuppressedProjectPathState(state)
+  }
+}
+
 function readCachedProjectPath(projectId?: string | null, projectSlug?: string | null): string | null {
+  const suppressedPath = readSuppressedProjectPath(projectId, projectSlug)
   for (const key of getProjectPathCacheKeys(projectId, projectSlug)) {
     const cachedValue = projectPathCache.get(key)
-    if (cachedValue) {
+    if (cachedValue && cachedValue !== suppressedPath) {
       return cachedValue
     }
   }
@@ -83,6 +191,7 @@ function writeCachedProjectPath(
   }
 
   const normalizedPath = normalizeProjectPath(projectPath)
+  clearSuppressedProjectPath(projectId, projectSlug)
   for (const key of keys) {
     projectPathCache.set(key, normalizedPath)
   }
@@ -137,7 +246,11 @@ async function loadLocalProjectPath(
       attachedPathHint: attachedPathHint ?? undefined,
     })
 
-    return resolvedPath ? normalizeProjectPath(resolvedPath) : null
+    const normalizedResolvedPath = resolvedPath ? normalizeProjectPath(resolvedPath) : null
+    const suppressedPath = readSuppressedProjectPath(projectId, projectSlug)
+    return normalizedResolvedPath && normalizedResolvedPath === suppressedPath
+      ? null
+      : normalizedResolvedPath
   } catch {
     return null
   }
@@ -149,6 +262,20 @@ export function primeLocalProjectPath(
   projectSlug?: string | null
 ): void {
   writeCachedProjectPath(projectPath ?? null, projectId ?? null, projectSlug)
+}
+
+export function suppressLocalProjectPath(
+  projectId: string | null | undefined,
+  projectPath: string | null | undefined,
+  projectSlug?: string | null,
+): void {
+  if (!projectPath) {
+    clearSuppressedProjectPath(projectId ?? null, projectSlug)
+    return
+  }
+
+  writeSuppressedProjectPath(projectPath, projectId ?? null, projectSlug)
+  writeCachedProjectPath(null, projectId ?? null, projectSlug)
 }
 
 export function useLocalProjectPath({

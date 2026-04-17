@@ -82,7 +82,7 @@ function shouldExcludeActivityPath(path: string): boolean {
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
-  private projectPath: string | null
+  private gitProjectPath: string | null
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
@@ -95,14 +95,14 @@ export class ProjectFilesPersistence {
   constructor(
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
-    projectPath: string | null,
+    gitProjectPath: string | null,
     convex: ConvexReactClient,
     userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
-    this.projectPath = projectPath
+    this.gitProjectPath = gitProjectPath
     this.convex = convex
     this.userId = userId
     this.userName = userName
@@ -116,7 +116,7 @@ export class ProjectFilesPersistence {
     this.filesMap.observeDeep(this.handleFilesChange)
   }
 
-  private handleFilesChange = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
+  private handleFilesChange = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
     // Skip non-user-edit transactions (remote sync, snapshot/state-vector hydration, local init hydration).
     // These are already persisted on the server - no need to re-persist
     // and doing so would update timestamps causing sync to see "changes"
@@ -142,8 +142,8 @@ export class ProjectFilesPersistence {
     for (const event of events) {
       if (event.target === this.filesMap) {
         // Handle file deletions from the map
-        for (const [path, change] of event.changes.keys.entries()) {
-          if (change.action !== 'delete') continue
+        for (const path of event.keysChanged) {
+          if (this.filesMap.has(path)) continue
 
           const previousContent = this.previousContents.get(path) || ''
           const previousLineCount = this.countLines(previousContent)
@@ -302,11 +302,11 @@ export class ProjectFilesPersistence {
       if (
         loggedActivity &&
         checkpointGroupId &&
-        this.projectPath &&
+        this.gitProjectPath &&
         window.electronAPI?.sync?.gitCaptureCheckpoint
       ) {
         const captureResult = await window.electronAPI.sync.gitCaptureCheckpoint({
-          projectPath: this.projectPath,
+          projectPath: this.gitProjectPath,
           checkpointId: checkpointGroupId,
           authorName: this.userName,
         })

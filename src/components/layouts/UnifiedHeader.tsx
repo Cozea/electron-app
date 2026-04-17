@@ -11,6 +11,8 @@ import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControl
 import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
 import { HeaderProjectShareButton } from "./unified-header/HeaderProjectShareButton";
+import { WorkbenchHeaderEditorControl } from "@/features/projects/components/workbench/WorkbenchHeaderEditorControl";
+import { useOptionalSidebar } from "@/components/ui/sidebar";
 
 interface UnifiedHeaderProps {
   header?: ReactNode;
@@ -18,7 +20,8 @@ interface UnifiedHeaderProps {
   preSearchAddon?: ReactNode;
   rightAddon?: ReactNode;
   className?: string;
-  layoutMode?: "fixed" | "inset";
+  /** `fixed` spans the viewport (legacy). `embedded` stays in layout flow (e.g. inside `SidebarInset`) so it clears the sidebar. */
+  layoutMode?: "fixed" | "inset" | "embedded";
   leftWindowControlsInset?: boolean;
   contentInsetLeft?: number;
   contentInsetRight?: number;
@@ -28,6 +31,8 @@ interface UnifiedHeaderProps {
     projectId: Id<"projects"> | null;
     projectName?: string | null;
   } | null;
+  /** Local project path for “Open in editor” (shown beside Changes / Share). */
+  editorProjectPath?: string | null;
 }
 
 export function UnifiedHeader({
@@ -43,25 +48,45 @@ export function UnifiedHeader({
   compactHeaderActions = true,
   hideInbox = false,
   projectInviteContext = null,
+  editorProjectPath = null,
 }: UnifiedHeaderProps) {
   const { user } = useAuth();
   const windowChrome = useWindowChrome();
+  const sidebar = useOptionalSidebar();
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows;
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth();
   const shouldApplyLeftWindowControlsInset = leftWindowControlsInset && windowChrome.isMac;
+  /** Inset is for viewport-fixed titlebars under traffic lights; embedded shell already clears the sidebar. */
+  const relaxMacTitlebarLeadingPadding =
+    layoutMode === "embedded" &&
+    shouldApplyLeftWindowControlsInset &&
+    sidebar != null &&
+    !sidebar.isMobile &&
+    sidebar.state === "expanded";
   const headerSurfaceClassName = "border-b border-border/60 bg-background";
   const headerLayoutClassName =
-    layoutMode === "inset" ? "relative z-10 w-full shrink-0" : "fixed top-0 left-0 right-0 z-40";
-  const macHeaderControlsBuffer = shouldApplyLeftWindowControlsInset ? 16 : 0;
+    layoutMode === "inset"
+      ? "relative z-10 w-full shrink-0"
+      : layoutMode === "embedded"
+        ? "relative z-40 w-full shrink-0"
+        : "fixed top-0 left-0 right-0 z-40";
+  const macHeaderControlsBuffer =
+    shouldApplyLeftWindowControlsInset && !relaxMacTitlebarLeadingPadding ? 16 : 0;
 
-  const windowControlsInsetPadding = shouldApplyLeftWindowControlsInset
-    ? windowChrome.compactLeftInset
-    : 0;
+  const windowControlsInsetPadding =
+    shouldApplyLeftWindowControlsInset && !relaxMacTitlebarLeadingPadding
+      ? windowChrome.compactLeftInset
+      : 0;
   const rightFrameInset = shouldShowWindowsCaptionSpacer ? 0 : contentInsetRight;
   const headerContentStyle = {
     paddingLeft: contentInsetLeft + windowControlsInsetPadding + macHeaderControlsBuffer,
     paddingRight: rightFrameInset,
   };
+  /** Embedded shell: tighter trailing edge so header actions sit nearer the window border. */
+  const shellHorizontalPadding =
+    layoutMode === "embedded"
+      ? cn(relaxMacTitlebarLeadingPadding ? "pl-2" : "pl-4", "pr-1")
+      : "pl-4 pr-2";
   const hasLocalDeviceProfile = Boolean(
     user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
   );
@@ -73,6 +98,11 @@ export function UnifiedHeader({
     <div className="flex items-center gap-1.5">
       {(() => {
         const parts: ReactNode[] = [];
+        if (editorProjectPath) {
+          parts.push(
+            <WorkbenchHeaderEditorControl key="open-in-editor" projectPath={editorProjectPath} />,
+          );
+        }
         if (projectInviteContext.projectId) {
           parts.push(
             <HeaderProjectChangesButton key="changes" projectId={projectInviteContext.projectId} />,
@@ -168,7 +198,8 @@ export function UnifiedHeader({
     <div
       className={cn(
         headerLayoutClassName,
-        "h-10 flex items-center pl-4 pr-2 titlebar-drag-region transition-[padding] duration-200 ease-out",
+        "h-10 flex items-center titlebar-drag-region transition-[padding] duration-200 ease-out",
+        shellHorizontalPadding,
         headerSurfaceClassName,
         className,
       )}

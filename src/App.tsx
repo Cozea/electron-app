@@ -12,6 +12,7 @@ import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/set
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
 import { Login } from './pages/Login'
 import { Onboarding } from './components/Onboarding'
+import { WorkspaceRuntimeHosts } from '@/features/projects/workspaces/WorkspaceRuntimeHosts'
 
 function FullscreenLoading() {
   return (
@@ -188,6 +189,7 @@ function AppContent() {
       <ElectronSettingsBridge />
       {!isSettingsWindow && <UpdateMenu />}
       <Outlet />
+      <WorkspaceRuntimeHosts />
       <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       {!isSettingsWindow && <SettingsDrawer />}

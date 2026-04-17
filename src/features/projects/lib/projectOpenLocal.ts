@@ -38,6 +38,31 @@ async function mirrorProjectPath(args: {
   }
 }
 
+export async function rememberLocalProjectPath(args: {
+  projectId: string
+  projectPath: string
+  userId?: Id<"users"> | null
+  updateMemberLocalPath?: (args: {
+    projectId: Id<"projects">
+    userId: Id<"users">
+    localPath: string
+  }) => Promise<unknown>
+}): Promise<void> {
+  await mirrorProjectPath(args)
+}
+
+export async function clearRememberedLocalProjectPath(args: {
+  projectId: string
+}): Promise<void> {
+  const result = await projectOpenDesktopClient.clearLocalPath({
+    projectId: args.projectId,
+  })
+
+  if (!result.success) {
+    console.warn("[ProjectOpenLocal] Failed to clear local project path")
+  }
+}
+
 export async function prepareLocalProjectForOpen(args: {
   project: ProjectOpenGitProjectLike
   localPath: string | null

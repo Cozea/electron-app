@@ -34,6 +34,7 @@ export interface WorkbenchBrowserViewState {
 interface UseWorkbenchBrowserViewOptions {
   tileId: string
   url: string
+  sessionKey?: string | null
   projectId: string
   laneId: string
   projectPath?: string | null
@@ -91,6 +92,7 @@ export function useWorkbenchBrowserView(
   const {
     tileId,
     url,
+    sessionKey = null,
     projectId,
     laneId,
     visible = true,
@@ -140,23 +142,22 @@ export function useWorkbenchBrowserView(
   const lastRequestedUrlRef = useRef<string>(url)
 
   useEffect(() => {
+    if (!sessionKey) {
+      return
+    }
+
     void window.electronAPI.workbenchSession
-      .ensureSession({
+      .bindBrowser({
+        sessionKey,
         projectId,
         laneId,
+        tileId,
+        browserTileId: tileId,
       })
-      .then(() =>
-        window.electronAPI.workbenchSession.bindBrowser({
-          projectId,
-          laneId,
-          tileId,
-          browserTileId: tileId,
-        }),
-      )
       .catch((error) => {
         console.warn("[WorkbenchBrowser] Failed to bind browser tile to session", error)
       })
-  }, [laneId, projectId, tileId])
+  }, [laneId, projectId, sessionKey, tileId])
 
   useEffect(() => {
     setState((current) => {

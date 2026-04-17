@@ -34,7 +34,7 @@ export interface CollabSessionDescriptor {
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'
 
 interface SyncDeltaMessage {
-  type: 'sync_delta'
+  type: 'sync.delta'
   payload: {
     roomId: string
     fromSeq: number
@@ -44,11 +44,11 @@ interface SyncDeltaMessage {
 }
 
 interface UpdatePushMessage {
-  type: 'update_push'
+  type: 'update.push'
   payload: {
-    roomId: string
-    seq: number
-    idempotencyKey?: string
+    roomId?: string
+    seq?: number
+    idempotencyKey: string
     updateBinary: string
     authorType: 'user' | 'agent'
     authorId: string
@@ -56,21 +56,42 @@ interface UpdatePushMessage {
   }
 }
 
-interface AwarenessPushMessage {
-  type: 'awareness_push'
+interface PresenceSnapshotMessage {
+  type: 'presence.snapshot'
   payload: {
     roomId: string
-    clientId: string
-    awarenessBinary: string
-    ttlMs: number
+    entries: Array<{
+      clientId: string
+      awarenessBinary: string
+      expiresAt: number
+    }>
   }
 }
 
-interface AckMessage {
-  type: 'ack'
+interface PresenceRemoveMessage {
+  type: 'presence.remove'
+  payload: {
+    roomId: string
+    clientIds: string[]
+  }
+}
+
+interface ReadyMessage {
+  type: 'ready'
+  payload: {
+    roomId: string
+    serverTime: number
+    headSeq: number
+    resyncRequired: boolean
+  }
+}
+
+interface UpdateAckMessage {
+  type: 'update.ack'
   payload: {
     roomId: string
     seq: number
+    idempotencyKey: string
     persisted: boolean
   }
 }
@@ -86,10 +107,12 @@ interface ErrorMessage {
 }
 
 type IncomingWireMessage =
+  | ReadyMessage
   | SyncDeltaMessage
   | UpdatePushMessage
-  | AwarenessPushMessage
-  | AckMessage
+  | PresenceSnapshotMessage
+  | PresenceRemoveMessage
+  | UpdateAckMessage
   | ErrorMessage
 
 const RECONNECT_BASE_MS = 500
@@ -169,6 +192,7 @@ export class CollabWsProvider {
   private readonly onPermanentFailure?: (reason: string) => void
   private readonly refreshSession?: () => Promise<CollabSessionDescriptor | null>
   private readonly encryption?: { roomKeyBase64: string; keyVersion: number } | null
+  private readonly providerInstanceId = randomId('collab_provider')
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
   private reconnectAttempt = 0
@@ -181,11 +205,13 @@ export class CollabWsProvider {
   private lastServerErrorMessage: string | null = null
   private sessionRefreshInFlight: Promise<boolean> | null = null
   private hasHandshakeAcknowledged = false
+  private activeSocketInstanceId: string | null = null
   private readonly pendingUpdates: Array<{
     updateBinary: string
     idempotencyKey: string
     timestamp: number
   }> = []
+  private hasPendingAwarenessPublish = false
 
   constructor(args: {
     doc: Y.Doc
@@ -222,6 +248,7 @@ export class CollabWsProvider {
   destroy(): void {
     this.isDestroyed = true
     this.hasHandshakeAcknowledged = false
+    this.hasPendingAwarenessPublish = false
     this.doc.off('update', this.handleLocalUpdate)
     this.awareness.off('update', this.handleAwarenessUpdate)
     this.clearReconnectTimer()
@@ -262,6 +289,22 @@ export class CollabWsProvider {
       window.clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
+  }
+
+  private log(event: string, details?: Record<string, unknown>): void {
+    console.log('[CollabWsProvider]', {
+      event,
+      providerInstanceId: this.providerInstanceId,
+      projectId: this.session.projectId,
+      roomId: this.session.roomId,
+      clientId: this.clientId,
+      activeSocketInstanceId: this.activeSocketInstanceId,
+      ...details,
+    })
+  }
+
+  private isCurrentSocket(socket: WebSocket, socketInstanceId: string): boolean {
+    return this.socket === socket && this.activeSocketInstanceId === socketInstanceId && !this.isDestroyed
   }
 
   private scheduleReconnect(errorMessage?: string): void {
@@ -354,12 +397,16 @@ export class CollabWsProvider {
 
     this.currentConnectStartedAt = Date.now()
     this.hasHandshakeAcknowledged = false
+    this.hasPendingAwarenessPublish = false
     this.lastServerErrorCode = null
     this.lastServerErrorMessage = null
     this.onStateChange?.('connecting', null)
 
     const socket = new WebSocket(resolveWsUrl(this.session.collabWsUrl))
+    const socketInstanceId = randomId('collab_socket')
     this.socket = socket
+    this.activeSocketInstanceId = socketInstanceId
+    this.log('connect-start', { socketInstanceId })
 
     // console.info('[CollabWsProvider] Opening collaboration websocket', {
     //   projectId: this.session.projectId,
@@ -368,6 +415,12 @@ export class CollabWsProvider {
     // })
 
     socket.onopen = () => {
+      if (!this.isCurrentSocket(socket, socketInstanceId)) {
+        this.log('stale-socket-open-ignored', { socketInstanceId })
+        socket.close(1000, 'Stale socket')
+        return
+      }
+      this.log('hello-send', { socketInstanceId })
       socket.send(
         JSON.stringify({
           type: 'hello',
@@ -375,18 +428,27 @@ export class CollabWsProvider {
             protocolVersion: this.session.protocolVersion,
             clientType: this.clientType,
             projectId: this.session.projectId,
+            roomId: this.session.roomId,
             sessionToken: this.session.token,
             clientId: this.clientId,
+            knownSeq: this.knownSeq,
           },
         })
       )
     }
 
     socket.onmessage = (event) => {
+      if (!this.isCurrentSocket(socket, socketInstanceId)) {
+        this.log('stale-socket-message-ignored', { socketInstanceId })
+        return
+      }
       this.handleIncoming(event.data)
     }
 
     socket.onerror = () => {
+      if (!this.isCurrentSocket(socket, socketInstanceId)) {
+        return
+      }
       console.warn('[CollabWsProvider] Collaboration websocket transport error', {
         projectId: this.session.projectId,
         roomId: this.session.roomId,
@@ -395,9 +457,18 @@ export class CollabWsProvider {
     }
 
     socket.onclose = (event) => {
+      if (this.socket !== socket || this.activeSocketInstanceId !== socketInstanceId) {
+        this.log('stale-socket-close-ignored', {
+          socketInstanceId,
+          code: event.code,
+          reason: event.reason || null,
+        })
+        return
+      }
       if (this.isDestroyed) return
       if (this.socket === socket) {
         this.socket = null
+        this.activeSocketInstanceId = null
       }
       this.hasHandshakeAcknowledged = false
 
@@ -452,7 +523,7 @@ export class CollabWsProvider {
 
   private sendUpdate(updateBinary: string, idempotencyKey: string, timestamp: number): void {
     const payload = {
-      type: 'update_push',
+      type: 'update.push',
       payload: {
         roomId: this.session.roomId,
         idempotencyKey,
@@ -464,6 +535,11 @@ export class CollabWsProvider {
     }
 
     if (this.socket?.readyState === WebSocket.OPEN && this.hasHandshakeAcknowledged) {
+      this.log('update-push-send', {
+        idempotencyKey,
+        timestamp,
+        socketInstanceId: this.activeSocketInstanceId,
+      })
       this.socket.send(JSON.stringify(payload))
       return
     }
@@ -566,23 +642,48 @@ export class CollabWsProvider {
   private readonly handleAwarenessUpdate = ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }) => {
     const changed = [...added, ...updated, ...removed]
     if (changed.length === 0) return
+    if (!this.hasHandshakeAcknowledged || this.socket?.readyState !== WebSocket.OPEN) {
+      this.hasPendingAwarenessPublish = true
+      return
+    }
     this.publishLocalAwareness()
   }
 
   private publishLocalAwareness(): void {
-    if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) {
+      this.hasPendingAwarenessPublish = true
+      return
+    }
+    this.hasPendingAwarenessPublish = false
     try {
       const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
+      const targetSocket = this.socket
+      const targetSocketInstanceId = this.activeSocketInstanceId
       void this.encodeOutboundBytes(update, 'yjs_awareness', {
         projectId: this.session.projectId,
         roomId: this.session.roomId,
         clientId: this.clientId,
-      })
+        })
         .then((encoded) => {
-          if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
+          if (
+            this.socket !== targetSocket ||
+            this.activeSocketInstanceId !== targetSocketInstanceId ||
+            targetSocket?.readyState !== WebSocket.OPEN ||
+            !this.hasHandshakeAcknowledged
+          ) {
+            this.hasPendingAwarenessPublish = true
+            this.log('presence-push-deferred', {
+              targetSocketInstanceId,
+              currentSocketInstanceId: this.activeSocketInstanceId,
+              handshakeAcknowledged: this.hasHandshakeAcknowledged,
+              targetSocketReadyState: targetSocket?.readyState ?? null,
+            })
+            return
+          }
+          this.log('presence-push-send', { socketInstanceId: targetSocketInstanceId })
           this.socket.send(
             JSON.stringify({
-              type: 'awareness_push',
+              type: 'presence.push',
               payload: {
                 roomId: this.session.roomId,
                 clientId: this.clientId,
@@ -602,9 +703,10 @@ export class CollabWsProvider {
 
   private requestInitialSync(): void {
     if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
+    this.log('sync-request-send', { socketInstanceId: this.activeSocketInstanceId, knownSeq: this.knownSeq })
     this.socket.send(
       JSON.stringify({
-        type: 'sync_request',
+        type: 'sync.request',
         payload: {
           roomId: this.session.roomId,
           knownSeq: this.knownSeq,
@@ -623,7 +725,28 @@ export class CollabWsProvider {
     }
 
     if (!message || typeof message !== 'object' || !('type' in message)) return
-    if (message.type === 'sync_delta') {
+    if (message.type === 'ready') {
+      this.log('ready-received', { socketInstanceId: this.activeSocketInstanceId })
+      const headSeq = Number(message.payload?.headSeq)
+      if (Number.isFinite(headSeq)) {
+        this.knownSeq = Math.max(this.knownSeq, headSeq)
+      }
+      if (!this.hasHandshakeAcknowledged) {
+        this.hasHandshakeAcknowledged = true
+        this.reconnectAttempt = 0
+        this.hasConnectedOnce = true
+        this.consecutiveInitialFailures = 0
+        this.onStateChange?.('connected', null)
+        this.requestInitialSync()
+        this.flushPendingUpdates()
+        if (this.hasPendingAwarenessPublish) {
+          this.publishLocalAwareness()
+        }
+      }
+      return
+    }
+
+    if (message.type === 'sync.delta') {
       const updates = Array.isArray(message.payload?.updatesBinary) ? message.payload.updatesBinary : []
       void (async () => {
         for (const encoded of updates) {
@@ -640,7 +763,7 @@ export class CollabWsProvider {
       return
     }
 
-    if (message.type === 'update_push') {
+    if (message.type === 'update.push') {
       const seq = Number(message.payload?.seq)
       if (Number.isFinite(seq)) {
         this.knownSeq = Math.max(this.knownSeq, seq)
@@ -661,38 +784,37 @@ export class CollabWsProvider {
       return
     }
 
-    if (message.type === 'awareness_push') {
-      const encoded = message.payload?.awarenessBinary
-      if (typeof encoded !== 'string' || encoded.length === 0) return
-      void this.decodeInboundBytes(encoded, 'yjs_awareness')
-        .then((decoded) => {
+    if (message.type === 'presence.snapshot') {
+      const entries = Array.isArray(message.payload?.entries) ? message.payload.entries : []
+      void (async () => {
+        for (const entry of entries) {
+          const encoded = entry?.awarenessBinary
+          if (typeof encoded !== 'string' || encoded.length === 0) continue
+          const decoded = await this.decodeInboundBytes(encoded, 'yjs_awareness')
           applyAwarenessUpdate(this.awareness, decoded.bytes, 'remote')
-        })
-        .catch((error) => {
-          console.warn('[CollabWsProvider] Failed to apply awareness update:', error)
-        })
+        }
+      })().catch((error) => {
+        console.warn('[CollabWsProvider] Failed to apply presence snapshot:', error)
+      })
       return
     }
 
-    if (message.type === 'ack') {
+    if (message.type === 'presence.remove') {
+      const clientIds = Array.isArray(message.payload?.clientIds)
+        ? message.payload.clientIds
+            .map((clientId) => Number(clientId))
+            .filter((clientId) => Number.isFinite(clientId))
+        : []
+      if (clientIds.length > 0) {
+        applyAwarenessUpdate(this.awareness, encodeAwarenessUpdate(this.awareness, clientIds, new Map()), 'remote')
+      }
+      return
+    }
+
+    if (message.type === 'update.ack') {
       const seq = Number(message.payload?.seq)
       if (Number.isFinite(seq)) {
         this.knownSeq = Math.max(this.knownSeq, seq)
-      }
-
-      if (!this.hasHandshakeAcknowledged) {
-        this.hasHandshakeAcknowledged = true
-        this.reconnectAttempt = 0
-        this.hasConnectedOnce = true
-        this.consecutiveInitialFailures = 0
-        this.onStateChange?.('connected', null)
-        // console.info('[CollabWsProvider] Collaboration websocket handshake acknowledged', {
-        //   projectId: this.session.projectId,
-        //   roomId: this.session.roomId,
-        // })
-        this.requestInitialSync()
-        this.flushPendingUpdates()
-        this.publishLocalAwareness()
       }
       return
     }
