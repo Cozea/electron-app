@@ -2,6 +2,8 @@ import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { api } from '../../../convex/_generated/api'
+import { clearActiveCheckpointGroup, ensureActiveCheckpointGroup } from './checkpointGroups'
+import { isRemoteYjsOrigin, resolveYjsOriginKind } from './origins'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
 
@@ -80,6 +82,7 @@ function shouldExcludeActivityPath(path: string): boolean {
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
+  private projectPath: string | null
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
@@ -92,13 +95,14 @@ export class ProjectFilesPersistence {
   constructor(
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
-    _projectPath: string | null,
+    projectPath: string | null,
     convex: ConvexReactClient,
     userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
+    this.projectPath = projectPath
     this.convex = convex
     this.userId = userId
     this.userName = userName
@@ -118,7 +122,7 @@ export class ProjectFilesPersistence {
     // and doing so would update timestamps causing sync to see "changes"
     const origin = transaction.origin
     if (
-      origin === 'remote' ||
+      isRemoteYjsOrigin(origin) ||
       origin === 'snapshot' ||
       origin === 'sync' ||
       origin === 'state-vector' ||
@@ -129,7 +133,11 @@ export class ProjectFilesPersistence {
 
     // Determine the change origin type
     const changeOrigin: ChangeOrigin =
-      origin === 'agent' ? 'agent' : origin === 'init' ? 'init' : 'user'
+      resolveYjsOriginKind(origin) === 'agent'
+        ? 'agent'
+        : resolveYjsOriginKind(origin) === 'init'
+          ? 'init'
+          : 'user'
 
     for (const event of events) {
       if (event.target === this.filesMap) {
@@ -175,6 +183,7 @@ export class ProjectFilesPersistence {
 
     // Only schedule persist if there are actual local changes/deletes
     if (this.pendingChanges.size > 0 || this.pendingDeletes.size > 0) {
+      ensureActiveCheckpointGroup(String(this.projectId))
       this.schedulePersist()
     }
   }
@@ -201,87 +210,113 @@ export class ProjectFilesPersistence {
     this.pendingChanges.clear()
     const deletes = new Map(this.pendingDeletes)
     this.pendingDeletes.clear()
+    const checkpointGroupId =
+      changes.size > 0 || deletes.size > 0
+        ? ensureActiveCheckpointGroup(String(this.projectId))
+        : null
+    let loggedActivity = false
 
-    // Persist deletions first
-    if (deletes.size > 0) {
-      for (const [path, info] of deletes) {
-        if (shouldExcludeActivityPath(path)) {
+    try {
+      // Persist deletions first
+      if (deletes.size > 0) {
+        for (const [path, info] of deletes) {
+          if (shouldExcludeActivityPath(path)) {
+            this.previousContents.delete(path)
+            continue
+          }
+
+          const { origin, previousLineCount } = info
+          try {
+            await this.convex.mutation(api.activity.logFileChange, {
+              projectId: this.projectId,
+              userId: this.userId,
+              filePath: path,
+              changeType: 'delete',
+              additions: 0,
+              deletions: previousLineCount,
+              totalLines: 0,
+              origin,
+              userName: this.userName,
+              checkpointGroupId: checkpointGroupId ?? undefined,
+            })
+            loggedActivity = true
+            await this.convex.mutation(api.fileTombstones.createTombstone, {
+              projectId: this.projectId,
+              filePath: path,
+              deletedBy: this.userId,
+              deletedByAgent: origin === 'agent' ? this.userName : undefined,
+            })
+          } catch (error) {
+            console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
+          }
+
           this.previousContents.delete(path)
+        }
+      }
+
+      for (const [path, change] of changes) {
+        // A delete may have happened after we captured `changes`
+        if (deletes.has(path)) continue
+        if (shouldExcludeActivityPath(path)) {
+          this.previousContents.set(path, change.content)
           continue
         }
 
-        const { previousContent, origin, previousLineCount } = info
+        const { content, previousContent, origin, previousLineCount } = change
+        // Ignore no-op writes to avoid noisy feed events and redundant uploads.
+        if (content === previousContent) continue
+
+        const currentLineCount = this.countLines(content)
+
+        // Calculate additions and deletions
+        const isNewFile = previousLineCount === 0
+        const additions = isNewFile ? currentLineCount : Math.max(0, currentLineCount - previousLineCount)
+        const deletions = isNewFile ? 0 : Math.max(0, previousLineCount - currentLineCount)
+
         try {
           await this.convex.mutation(api.activity.logFileChange, {
             projectId: this.projectId,
             userId: this.userId,
             filePath: path,
-            changeType: 'delete',
-            oldContent: previousContent,
-            newContent: '',
-            additions: 0,
-            deletions: previousLineCount,
-            totalLines: 0,
+            changeType: isNewFile ? 'create' : 'modify',
+            additions,
+            deletions,
+            totalLines: currentLineCount,
             origin,
             userName: this.userName,
+            checkpointGroupId: checkpointGroupId ?? undefined,
           })
-          await this.convex.mutation(api.fileTombstones.createTombstone, {
+          loggedActivity = true
+          await this.convex.mutation(api.fileTombstones.removeTombstone, {
             projectId: this.projectId,
             filePath: path,
-            deletedBy: this.userId,
-            deletedByAgent: origin === 'agent' ? this.userName : undefined,
           })
+
+          // Update previous content for next diff
+          this.previousContents.set(path, content)
         } catch (error) {
-          console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
+          console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
         }
-
-        this.previousContents.delete(path)
-      }
-    }
-
-    for (const [path, change] of changes) {
-      // A delete may have happened after we captured `changes`
-      if (deletes.has(path)) continue
-      if (shouldExcludeActivityPath(path)) {
-        this.previousContents.set(path, change.content)
-        continue
       }
 
-      const { content, previousContent, origin, previousLineCount } = change
-      // Ignore no-op writes to avoid noisy feed events and redundant uploads.
-      if (content === previousContent) continue
-
-      const currentLineCount = this.countLines(content)
-
-      // Calculate additions and deletions
-      const isNewFile = previousLineCount === 0
-      const additions = isNewFile ? currentLineCount : Math.max(0, currentLineCount - previousLineCount)
-      const deletions = isNewFile ? 0 : Math.max(0, previousLineCount - currentLineCount)
-
-      try {
-        // Log the activity with content for diff viewing
-        await this.convex.mutation(api.activity.logFileChange, {
-          projectId: this.projectId,
-          userId: this.userId,
-          filePath: path,
-          changeType: isNewFile ? 'create' : 'modify',
-          oldContent: previousContent,
-          newContent: content,
-          additions,
-          deletions,
-          totalLines: currentLineCount,
-          origin,
-          userName: this.userName,
+      if (
+        loggedActivity &&
+        checkpointGroupId &&
+        this.projectPath &&
+        window.electronAPI?.sync?.gitCaptureCheckpoint
+      ) {
+        const captureResult = await window.electronAPI.sync.gitCaptureCheckpoint({
+          projectPath: this.projectPath,
+          checkpointId: checkpointGroupId,
+          authorName: this.userName,
         })
-        await this.convex.mutation(api.fileTombstones.removeTombstone, {
-          projectId: this.projectId,
-          filePath: path,
-        })
-
-        // Update previous content for next diff
-        this.previousContents.set(path, content)
-      } catch (error) {
-        console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
+        if (!captureResult.success) {
+          console.error('[ProjectFilesPersistence] Failed to capture checkpoint:', captureResult.error)
+        }
+      }
+    } finally {
+      if (checkpointGroupId) {
+        clearActiveCheckpointGroup(String(this.projectId), checkpointGroupId)
       }
     }
   }

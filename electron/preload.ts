@@ -711,6 +711,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
     }) => ipcRenderer.invoke('sync:gitCommitAndPush', options),
+    gitCaptureCheckpoint: (options: {
+      projectPath: string
+      checkpointId: string
+      authorName: string
+      authorEmail?: string
+    }) => ipcRenderer.invoke('sync:gitCaptureCheckpoint', options),
+    gitDiffCheckpoints: (options: {
+      projectPath: string
+      fromCheckpointId?: string | null
+      toCheckpointId: string
+      filePath?: string
+    }) => ipcRenderer.invoke('sync:gitDiffCheckpoints', options),
+    gitReadCheckpointFilePair: (options: {
+      projectPath: string
+      fromCheckpointId?: string | null
+      toCheckpointId: string
+      filePath: string
+    }) => ipcRenderer.invoke('sync:gitReadCheckpointFilePair', options),
+    gitDeleteCheckpointRefs: (options: {
+      projectPath: string
+      checkpointIds: string[]
+    }) => ipcRenderer.invoke('sync:gitDeleteCheckpointRefs', options),
+    gitDeleteAllCheckpointRefs: (options: {
+      projectPath: string
+    }) => ipcRenderer.invoke('sync:gitDeleteAllCheckpointRefs', options),
+    gitGetHeadDiffStats: (options: {
+      projectPath: string
+      authorName?: string
+    }) => ipcRenderer.invoke('sync:gitGetHeadDiffStats', options),
     mergePreview: (options: {
       baseContent: string
       localContent: string

@@ -43,6 +43,24 @@ export const projectOpenDesktopClient = {
       window.electronAPI.sync.gitPushMain(options),
     gitCommitAll: (options: Parameters<typeof window.electronAPI.sync.gitCommitAll>[0]) =>
       window.electronAPI.sync.gitCommitAll(options),
+    gitCaptureCheckpoint: (
+      options: Parameters<typeof window.electronAPI.sync.gitCaptureCheckpoint>[0],
+    ) => window.electronAPI.sync.gitCaptureCheckpoint(options),
+    gitDiffCheckpoints: (
+      options: Parameters<typeof window.electronAPI.sync.gitDiffCheckpoints>[0],
+    ) => window.electronAPI.sync.gitDiffCheckpoints(options),
+    gitReadCheckpointFilePair: (
+      options: Parameters<typeof window.electronAPI.sync.gitReadCheckpointFilePair>[0],
+    ) => window.electronAPI.sync.gitReadCheckpointFilePair(options),
+    gitDeleteCheckpointRefs: (
+      options: Parameters<typeof window.electronAPI.sync.gitDeleteCheckpointRefs>[0],
+    ) => window.electronAPI.sync.gitDeleteCheckpointRefs(options),
+    gitDeleteAllCheckpointRefs: (
+      options: Parameters<typeof window.electronAPI.sync.gitDeleteAllCheckpointRefs>[0],
+    ) => window.electronAPI.sync.gitDeleteAllCheckpointRefs(options),
+    gitGetHeadDiffStats: (
+      options: Parameters<typeof window.electronAPI.sync.gitGetHeadDiffStats>[0],
+    ) => window.electronAPI.sync.gitGetHeadDiffStats(options),
     gitRestoreMain: (options: Parameters<typeof window.electronAPI.sync.gitRestoreMain>[0]) =>
       window.electronAPI.sync.gitRestoreMain(options),
     gitReplayLocalCommits: (

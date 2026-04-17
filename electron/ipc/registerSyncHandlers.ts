@@ -4,6 +4,14 @@ import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit } from '../gitRuntime'
+import {
+  captureCheckpoint,
+  deleteAllCheckpointRefs,
+  deleteCheckpointRefs,
+  diffCheckpoints,
+  getHeadDiffStats,
+  readCheckpointFilePair,
+} from '../gitCheckpoints'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { markInternalFsChange } from '../projectWatcher'
 import {
@@ -443,6 +451,99 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
       }
     ) => gitSyncService.commitAndPush(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitCaptureCheckpoint',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        checkpointId: string
+        authorName: string
+        authorEmail?: string
+      }
+    ) =>
+      captureCheckpoint(
+        options.projectPath,
+        options.checkpointId,
+        options.authorName,
+        options.authorEmail,
+      )
+  )
+
+  ipcMain.handle(
+    'sync:gitDiffCheckpoints',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        fromCheckpointId?: string | null
+        toCheckpointId: string
+        filePath?: string
+      }
+    ) =>
+      diffCheckpoints({
+        cwd: options.projectPath,
+        fromCheckpointId: options.fromCheckpointId,
+        toCheckpointId: options.toCheckpointId,
+        filePath: options.filePath,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitReadCheckpointFilePair',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        fromCheckpointId?: string | null
+        toCheckpointId: string
+        filePath: string
+      }
+    ) =>
+      readCheckpointFilePair({
+        cwd: options.projectPath,
+        fromCheckpointId: options.fromCheckpointId,
+        toCheckpointId: options.toCheckpointId,
+        filePath: options.filePath,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitDeleteCheckpointRefs',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        checkpointIds: string[]
+      }
+    ) =>
+      deleteCheckpointRefs({
+        cwd: options.projectPath,
+        checkpointIds: options.checkpointIds,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitDeleteAllCheckpointRefs',
+    async (
+      _event,
+      options: {
+        projectPath: string
+      }
+    ) => deleteAllCheckpointRefs(options.projectPath)
+  )
+
+  ipcMain.handle(
+    'sync:gitGetHeadDiffStats',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        authorName?: string
+      }
+    ) => getHeadDiffStats(options.projectPath, options.authorName)
   )
 
   ipcMain.handle(

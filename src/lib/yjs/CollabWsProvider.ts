@@ -8,6 +8,8 @@ import {
   envelopeToBytes,
 } from '@/lib/collab/cipherEnvelope'
 import { invalidateCollabSession } from '@/hooks/useCollabSession'
+import { ensureActiveCheckpointGroup } from './checkpointGroups'
+import { isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
 
 export interface CollabSessionDescriptor {
   projectId: string
@@ -118,6 +120,16 @@ function fromBase64(base64: string): Uint8Array {
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function parseEnvelopeMetadata(envelope: { aad: string }): Record<string, unknown> {
+  try {
+    const decoded = new TextDecoder().decode(fromBase64(envelope.aad))
+    const parsed = JSON.parse(decoded)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
 }
 
 function resolveWsUrl(base: string): string {
@@ -480,18 +492,39 @@ export class CollabWsProvider {
   private async decodeInboundBytes(
     encoded: string,
     kind: 'yjs_update' | 'yjs_awareness',
-  ): Promise<Uint8Array> {
+  ): Promise<{ bytes: Uint8Array; metadata: Record<string, unknown> }> {
     if (!this.encryption) {
       throw new Error('Encrypted collaboration transport requires a room key')
     }
 
     const bytes = fromBase64(encoded)
     const envelope = bytesToEnvelope(bytes)
-    return await decryptPayload({
-      roomKeyBase64: this.encryption.roomKeyBase64,
-      envelope,
-      expectedKind: kind,
-    })
+    return {
+      bytes: await decryptPayload({
+        roomKeyBase64: this.encryption.roomKeyBase64,
+        envelope,
+        expectedKind: kind,
+      }),
+      metadata: parseEnvelopeMetadata(envelope),
+    }
+  }
+
+  private applyRemoteUpdate(
+    bytes: Uint8Array,
+    metadata: Record<string, unknown>,
+    timestamp: number | null,
+  ): void {
+    Y.applyUpdate(
+      this.doc,
+      bytes,
+      makeRemoteYjsOrigin({
+        checkpointGroupId:
+          typeof metadata.checkpointGroupId === 'string' ? metadata.checkpointGroupId : null,
+        clientId: typeof metadata.clientId === 'string' ? metadata.clientId : null,
+        sourceOrigin: typeof metadata.origin === 'string' ? metadata.origin : 'remote',
+        timestamp,
+      }),
+    )
   }
 
   private flushPendingUpdates(): void {
@@ -504,15 +537,23 @@ export class CollabWsProvider {
   }
 
   private readonly handleLocalUpdate = (update: Uint8Array, origin: unknown): void => {
-    if (origin === 'remote' || origin === 'snapshot' || origin === 'state-vector' || origin === 'reconnect') {
+    if (
+      isRemoteYjsOrigin(origin) ||
+      origin === 'snapshot' ||
+      origin === 'state-vector' ||
+      origin === 'reconnect'
+    ) {
       return
     }
     const idempotencyKey = randomId(`upd_${this.clientId}`)
+    const checkpointGroupId = ensureActiveCheckpointGroup(this.session.projectId)
     void this.encodeOutboundBytes(update, 'yjs_update', {
       projectId: this.session.projectId,
       roomId: this.session.roomId,
       clientId: this.clientId,
       idempotencyKey,
+      checkpointGroupId,
+      origin: typeof origin === 'string' ? origin : 'user',
     })
       .then((encoded) => {
         this.sendUpdate(encoded, idempotencyKey, Date.now())
@@ -586,8 +627,8 @@ export class CollabWsProvider {
       const updates = Array.isArray(message.payload?.updatesBinary) ? message.payload.updatesBinary : []
       void (async () => {
         for (const encoded of updates) {
-          const bytes = await this.decodeInboundBytes(encoded, 'yjs_update')
-          Y.applyUpdate(this.doc, bytes, 'remote')
+          const decoded = await this.decodeInboundBytes(encoded, 'yjs_update')
+          this.applyRemoteUpdate(decoded.bytes, decoded.metadata, null)
         }
       })().catch((error) => {
         console.warn('[CollabWsProvider] Failed to apply sync delta update:', error)
@@ -607,8 +648,12 @@ export class CollabWsProvider {
       const encoded = message.payload?.updateBinary
       if (typeof encoded !== 'string' || encoded.length === 0) return
       void this.decodeInboundBytes(encoded, 'yjs_update')
-        .then((bytes) => {
-          Y.applyUpdate(this.doc, bytes, 'remote')
+        .then((decoded) => {
+          this.applyRemoteUpdate(
+            decoded.bytes,
+            decoded.metadata,
+            Number.isFinite(message.payload?.timestamp) ? Number(message.payload.timestamp) : null,
+          )
         })
         .catch((error) => {
           console.warn('[CollabWsProvider] Failed to apply update_push:', error)
@@ -620,8 +665,8 @@ export class CollabWsProvider {
       const encoded = message.payload?.awarenessBinary
       if (typeof encoded !== 'string' || encoded.length === 0) return
       void this.decodeInboundBytes(encoded, 'yjs_awareness')
-        .then((bytes) => {
-          applyAwarenessUpdate(this.awareness, bytes, 'remote')
+        .then((decoded) => {
+          applyAwarenessUpdate(this.awareness, decoded.bytes, 'remote')
         })
         .catch((error) => {
           console.warn('[CollabWsProvider] Failed to apply awareness update:', error)

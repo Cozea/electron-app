@@ -757,6 +757,40 @@ export interface GitSyncCommitPushResult {
   error?: string
 }
 
+export interface GitCheckpointCaptureResult {
+  success: boolean
+  ref?: string
+  commitOid?: string
+  error?: string
+}
+
+export interface GitCheckpointDiffResult {
+  success: boolean
+  diff?: string
+  error?: string
+}
+
+export interface GitCheckpointFilePairResult {
+  success: boolean
+  previousContent?: string
+  nextContent?: string
+  error?: string
+}
+
+export interface GitCheckpointDeleteResult {
+  success: boolean
+  deletedRefs?: string[]
+  error?: string
+}
+
+export interface GitCheckpointHeadStatsResult {
+  success: boolean
+  additions: number
+  deletions: number
+  changedFiles: number
+  error?: string
+}
+
 export interface SyncOp {
   opId: string
   idempotencyKey: string
@@ -1573,6 +1607,35 @@ export interface ElectronAPI {
       encryptedCredentials?: string
       keyId?: string
     }) => Promise<GitSyncCommitPushResult>
+    gitCaptureCheckpoint: (options: {
+      projectPath: string
+      checkpointId: string
+      authorName: string
+      authorEmail?: string
+    }) => Promise<GitCheckpointCaptureResult>
+    gitDiffCheckpoints: (options: {
+      projectPath: string
+      fromCheckpointId?: string | null
+      toCheckpointId: string
+      filePath?: string
+    }) => Promise<GitCheckpointDiffResult>
+    gitReadCheckpointFilePair: (options: {
+      projectPath: string
+      fromCheckpointId?: string | null
+      toCheckpointId: string
+      filePath: string
+    }) => Promise<GitCheckpointFilePairResult>
+    gitDeleteCheckpointRefs: (options: {
+      projectPath: string
+      checkpointIds: string[]
+    }) => Promise<GitCheckpointDeleteResult>
+    gitDeleteAllCheckpointRefs: (options: {
+      projectPath: string
+    }) => Promise<GitCheckpointDeleteResult>
+    gitGetHeadDiffStats: (options: {
+      projectPath: string
+      authorName?: string
+    }) => Promise<GitCheckpointHeadStatsResult>
     mergePreview: (options: {
       baseContent: string
       localContent: string

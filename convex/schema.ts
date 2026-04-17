@@ -694,6 +694,7 @@ export default defineSchema({
   fileChanges: defineTable({
     projectId: v.id("projects"),
     userId: v.optional(v.id("users")), // Optional for agent changes
+    checkpointGroupId: v.optional(v.string()),
 
     // File info
     filePath: v.string(),
