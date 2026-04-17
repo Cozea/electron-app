@@ -1,0 +1,65 @@
+import { WorkerPoolContextProvider, useWorkerPool } from '@pierre/diffs/react'
+import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
+import { useEffect, useMemo, type ReactNode } from 'react'
+import { useTheme } from '@/contexts/ThemeContext'
+import { resolveDiffThemeName, type DiffThemeName } from '@/features/projects/components/assistant/lib/diffRendering'
+
+function resolveThemeMode(theme: ReturnType<typeof useTheme>['theme']): 'light' | 'dark' {
+  if (theme === 'light' || theme === 'dark') {
+    return theme
+  }
+  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark'
+  }
+  return 'light'
+}
+
+function DiffWorkerThemeSync({ themeName }: { themeName: DiffThemeName }) {
+  const workerPool = useWorkerPool()
+
+  useEffect(() => {
+    if (!workerPool) {
+      return
+    }
+
+    const current = workerPool.getDiffRenderOptions()
+    if (current.theme === themeName) {
+      return
+    }
+
+    void workerPool.setRenderOptions({
+      ...current,
+      theme: themeName,
+    }).catch(() => undefined)
+  }, [themeName, workerPool])
+
+  return null
+}
+
+export function CheckpointDiffWorkerProvider({ children }: { children?: ReactNode }) {
+  const { theme } = useTheme()
+  const resolvedTheme = resolveThemeMode(theme)
+  const diffThemeName = resolveDiffThemeName(resolvedTheme)
+  const workerPoolSize = useMemo(() => {
+    const cores =
+      typeof navigator === 'undefined' ? 4 : Math.max(1, navigator.hardwareConcurrency || 4)
+    return Math.max(2, Math.min(6, Math.floor(cores / 2)))
+  }, [])
+
+  return (
+    <WorkerPoolContextProvider
+      poolOptions={{
+        workerFactory: () => new DiffsWorker(),
+        poolSize: workerPoolSize,
+        totalASTLRUCacheSize: 240,
+      }}
+      highlighterOptions={{
+        theme: diffThemeName,
+        tokenizeMaxLineLength: 1000,
+      }}
+    >
+      <DiffWorkerThemeSync themeName={diffThemeName} />
+      {children}
+    </WorkerPoolContextProvider>
+  )
+}

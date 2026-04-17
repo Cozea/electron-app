@@ -87,6 +87,7 @@ export const logFileChange = mutation({
   args: {
     projectId: v.id("projects"),
     userId: v.optional(v.id("users")),
+    checkpointGroupId: v.optional(v.string()),
     filePath: v.string(),
     changeType: v.union(
       v.literal("create"),
@@ -110,7 +111,7 @@ export const logFileChange = mutation({
     oldPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName, oldPath } = args
+    const { projectId, userId, checkpointGroupId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName, oldPath } = args
     if (shouldExcludeActivityPath(filePath)) {
       return null
     }
@@ -118,9 +119,10 @@ export const logFileChange = mutation({
     // Generate color for user
     const userColor = userId ? generateColor(userId) : "#6b7280"
 
-    await ctx.db.insert("fileChanges", {
+    return await ctx.db.insert("fileChanges", {
       projectId,
       userId,
+      checkpointGroupId,
       filePath,
       changeType,
       oldContent: changeType === "rename" ? oldPath : oldContent,
@@ -132,7 +134,7 @@ export const logFileChange = mutation({
       userName,
       userColor,
       timestamp: Date.now(),
-    })
+    } as any)
   },
 })
 
@@ -175,6 +177,7 @@ export const getRecentActivity = query({
     const results = visibleChanges.map((change) => ({
       id: change._id,
       userId: change.userId,
+      checkpointGroupId: (change as any).checkpointGroupId,
       filePath: change.filePath,
       changeType: change.changeType,
       additions: change.additions,
@@ -189,6 +192,52 @@ export const getRecentActivity = query({
     }))
 
     return results
+  },
+})
+
+export const clearEphemeralChanges = mutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const changes = await ctx.db
+      .query("fileChanges")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect()
+
+    const comments = await ctx.db
+      .query("changeComments")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect()
+
+    const reactions = await Promise.all(
+      comments.map((comment) =>
+        ctx.db
+          .query("changeCommentReactions")
+          .withIndex("by_comment", (q) => q.eq("commentId", comment._id))
+          .collect()
+      )
+    )
+
+    for (const commentReactions of reactions) {
+      for (const reaction of commentReactions) {
+        await ctx.db.delete(reaction._id)
+      }
+    }
+
+    for (const comment of comments) {
+      await ctx.db.delete(comment._id)
+    }
+
+    for (const change of changes) {
+      await ctx.db.delete(change._id)
+    }
+
+    return {
+      deletedChanges: changes.length,
+      deletedComments: comments.length,
+      deletedReactions: reactions.reduce((total, commentReactions) => total + commentReactions.length, 0),
+    }
   },
 })
 
