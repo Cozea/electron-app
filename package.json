@@ -87,7 +87,7 @@
     "@mako10k/mcp-shell-server": "^2.7.1",
     "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "@monaco-editor/react": "^4.7.0",
-    "@pierre/diffs": "^1.1.6",
+    "@pierre/diffs": "^1.1.15",
     "@playwright/mcp": "^0.0.68",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",

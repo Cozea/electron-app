@@ -205,7 +205,9 @@ export const ProjectSidebarTreeItem = React.memo(
           className={cn(
             "group/project-item flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-sidebar-foreground/70",
             SIDEBAR_PILL_HOVER_CLASS,
-            selection.activeSelectionLevel === "project" && SIDEBAR_PILL_ACTIVE_CLASS,
+            (selection.activeSelectionLevel === "project" ||
+              (!selection.isExpanded && context.isCurrentProject)) &&
+              SIDEBAR_PILL_ACTIVE_CLASS,
           )}
         >
           <div

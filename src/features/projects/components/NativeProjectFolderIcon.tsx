@@ -30,10 +30,16 @@ export function NativeProjectFolderIcon({
 }: NativeProjectFolderIconProps) {
   return (
     <span className={cn("inline-flex shrink-0 items-center justify-center", className)}>
-      <HugeiconsIcon
-        icon={isOpen ? __FolderOpenIconHugeIcon : __FolderClosedIconHugeIcon}
-        className={fallbackClassName}
-      />
+      {isOpen ? (
+        <svg viewBox="0 0 24 24" className={cn("fill-current", fallbackClassName)}>
+          <path d="M2 7l10 10 10-10z" />
+        </svg>
+      ) : (
+        <HugeiconsIcon
+          icon={__FolderClosedIconHugeIcon}
+          className={fallbackClassName}
+        />
+      )}
     </span>
   )
 }

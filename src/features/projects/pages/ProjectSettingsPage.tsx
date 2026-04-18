@@ -717,7 +717,7 @@ export function ProjectSettingsPage({
         <button
           type="button"
           onClick={closeSettingsModal}
-          className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+          className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
           aria-label="Close settings"
         >
           <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
@@ -827,10 +827,10 @@ export function ProjectSettingsPage({
                       ) : null}
                       {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
                             <Label className="text-xs font-medium text-foreground">Trusted-device recovery</Label>
-                            <p className="text-[11px] text-muted-foreground">
-                              Approve waiting devices from a device that already has the shared room key.
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Authorize pending devices from a currently trusted device.
                             </p>
                           </div>
                           <Button
@@ -850,10 +850,10 @@ export function ProjectSettingsPage({
                       ) : null}
                       {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
                             <Label className="text-xs font-medium text-foreground">Recovery code</Label>
-                            <p className="text-[11px] text-muted-foreground">
-                              Save an offline recovery code so a new device can restore shared-room access without another trusted device.
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Save an offline code to restore access without a trusted device.
                             </p>
                           </div>
                           <Button
@@ -873,10 +873,10 @@ export function ProjectSettingsPage({
                       ) : null}
                       {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
                             <Label className="text-xs font-medium text-foreground">Rotate room key</Label>
-                            <p className="text-[11px] text-muted-foreground">
-                              Re-wrap the shared room for currently trusted devices and retire the previous room key.
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Issue a new room key for trusted devices and retire the old one.
                             </p>
                           </div>
                           <Button
@@ -896,10 +896,10 @@ export function ProjectSettingsPage({
                       ) : null}
                       {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
                             <Label className="text-xs font-medium text-foreground">Room recovery</Label>
-                            <p className="text-[11px] text-muted-foreground">
-                              If no currently-authorized device can approve this room, reset the encrypted shared room and start fresh.
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Start fresh if no authorized devices are available to approve access.
                             </p>
                           </div>
                           <Button
@@ -916,10 +916,10 @@ export function ProjectSettingsPage({
                       ) : null}
                       {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
                         <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
                             <Label className="text-xs font-medium text-foreground">Recover with code</Label>
-                            <p className="text-[11px] text-muted-foreground">
-                              Enter a saved recovery code to authorize this device without another trusted device.
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Authorize this device using an offline recovery code.
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1003,9 +1003,9 @@ export function ProjectSettingsPage({
                     </h3>
                     <div className="flex flex-col overflow-hidden rounded-[14px] bg-destructive/15 dark:bg-destructive/20">
                       <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex min-w-0 flex-col gap-0.5">
                           <Label className="text-xs font-medium text-foreground">Archive Project</Label>
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="truncate text-[11px] text-muted-foreground">
                             Archive this project. It can be restored later.
                           </p>
                         </div>
@@ -1018,15 +1018,15 @@ export function ProjectSettingsPage({
                             setArchiveError(null)
                           }}
                         >
-                          {project.status === 'archived' ? 'Archived' : 'Archive Project'}
+                          {project.status === 'archived' ? 'Archived' : 'Archive'}
                         </Button>
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-destructive/20 px-4 py-2">
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex min-w-0 flex-col gap-0.5">
                           <Label className="text-xs font-medium text-foreground">Delete Project</Label>
-                          <p className="text-[11px] text-muted-foreground">
-                            Permanently delete this project and all its data. This action cannot be undone.
-                          </p>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Permanently delete this project and all its data. Cannot be undone.
+                            </p>
                         </div>
                         <Button
                           variant="destructive"
@@ -1037,8 +1037,8 @@ export function ProjectSettingsPage({
                             setDeleteError(null)
                           }}
                         >
-                          <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-4 w-4" />
-                          Delete Project
+                          <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
+                          Delete
                         </Button>
                       </div>
                     </div>
