@@ -1,5 +1,5 @@
 import { WebglAddon } from '@xterm/addon-webgl'
-import type { ITheme, Terminal } from '@xterm/xterm'
+import type { Terminal } from '@xterm/xterm'
 
 const ROOT_THEME_SELECTOR = '.dark, .navy, .wine, .clay, .forest'
 
