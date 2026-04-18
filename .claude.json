@@ -10,6 +10,11 @@
       "command": "npx",
       "args": ["-y", "@anthropic-ai/mcp-server-filesystem"],
       "description": "File system access for reading and writing files"
+    },
+    "electron-devtools": {
+      "command": "bunx",
+      "args": ["chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"],
+      "description": "Inspects and debugs the live Electron Chromium instance"
     }
   },
   "settings": {

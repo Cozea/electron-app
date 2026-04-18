@@ -45,6 +45,7 @@ export interface WorkbenchRuntimeErrorResponse {
 export type WorkbenchRuntimeResponse = WorkbenchRuntimeSuccessResponse | WorkbenchRuntimeErrorResponse
 
 export type WorkbenchRuntimeEventName = 'terminal.output' | 'terminal.exit' | 'terminal.activity'
+  | 'terminal.provenance'
 
 export interface WorkbenchRuntimeTerminalCreateResult {
   success: boolean
@@ -63,6 +64,21 @@ export interface WorkbenchRuntimeTerminalOutputPayload extends TerminalOutputEve
 
 export interface WorkbenchRuntimeTerminalActivityPayload extends TerminalActivityEvent {}
 
+export interface WorkbenchRuntimeTerminalProvenancePayload {
+  terminalId: string
+  projectPath: string
+  gitCwd: string
+  title: string
+  terminalKind: string
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  runId?: string
+  commandId?: string
+  commandText?: string
+  timestamp: number
+}
+
 export interface WorkbenchRuntimeEventMessage {
   type: 'event'
   event: WorkbenchRuntimeEventName
@@ -70,6 +86,7 @@ export interface WorkbenchRuntimeEventMessage {
     | WorkbenchRuntimeTerminalOutputPayload
     | WorkbenchRuntimeTerminalExitPayload
     | WorkbenchRuntimeTerminalActivityPayload
+    | WorkbenchRuntimeTerminalProvenancePayload
 }
 
 export interface WorkbenchRuntimeTerminalInputParams {

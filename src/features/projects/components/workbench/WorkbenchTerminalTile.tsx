@@ -82,6 +82,10 @@ export function WorkbenchTerminalTile({
         const result = await window.electronAPI.terminal.create({
           projectPath,
           cwd: projectPath,
+          gitCwd: projectPath,
+          sessionKey: workbenchSession.sessionKey,
+          laneId,
+          terminalKind: "shell",
           activityTracking: "off",
         })
 

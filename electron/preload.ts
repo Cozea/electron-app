@@ -502,7 +502,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
     }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { projectPath: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { projectPath: string; filePath: string }) =>
@@ -512,10 +512,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath: string
       oldPath: string
       newPath: string
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
     }) =>
       ipcRenderer.invoke('project:renameFile', options),
-    deletePath: (options: { projectPath: string; targetPath: string }) =>
+    deletePath: (options: {
+      projectPath: string
+      targetPath: string
+      origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
+    }) =>
       ipcRenderer.invoke('project:deletePath', options),
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) =>
       ipcRenderer.invoke('project:copyPath', options),
@@ -746,6 +750,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath: string
       authorName?: string
     }) => ipcRenderer.invoke('sync:gitGetHeadDiffStats', options),
+    subscribeGitDirtyState: (options: {
+      projectPath: string
+      authorName?: string
+    }) => ipcRenderer.invoke('sync:subscribeGitDirtyState', options),
+    unsubscribeGitDirtyState: (options: {
+      projectPath: string
+    }) => ipcRenderer.invoke('sync:unsubscribeGitDirtyState', options),
+    onGitDirtyStateChange: (
+      callback: (snapshot: import('../shared/electronApiTypes').GitDirtyStateSnapshot) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: import('../shared/electronApiTypes').GitDirtyStateSnapshot,
+      ) => callback(snapshot)
+      ipcRenderer.on('sync:gitDirtyStateChanged', handler)
+      return () => ipcRenderer.removeListener('sync:gitDirtyStateChanged', handler)
+    },
     mergePreview: (options: {
       baseContent: string
       localContent: string
@@ -770,17 +791,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   yjs: {
     setInterestRoots: (options: { roots: string[] }) =>
       ipcRenderer.invoke('yjs:setInterestRoots', options),
-    onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {
+    onExternalFileChange: (callback: (data: {
+      filePath: string
+      content: string
+      origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+    }) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        data: { filePath: string; content: string; origin?: string }
+        data: {
+          filePath: string
+          content: string
+          origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+        }
       ) => callback(data)
       ipcRenderer.on('yjs:external-file-change', handler)
       return () => ipcRenderer.removeListener('yjs:external-file-change', handler)
     },
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
-      origin?: string
+      origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
       sizeBytes: number
@@ -788,7 +817,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         filePath: string
-        origin?: string
+        origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
         isBinary: boolean
         isDirectory?: boolean
         sizeBytes: number
@@ -797,8 +826,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('yjs:external-file-meta-change', handler)
       return () => ipcRenderer.removeListener('yjs:external-file-meta-change', handler)
     },
-    onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { filePath: string; origin?: string }) =>
+    onExternalFileDelete: (callback: (data: {
+      filePath: string
+      origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        filePath: string
+        origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+      }) =>
         callback(data)
       ipcRenderer.on('yjs:external-file-delete', handler)
       return () => ipcRenderer.removeListener('yjs:external-file-delete', handler)

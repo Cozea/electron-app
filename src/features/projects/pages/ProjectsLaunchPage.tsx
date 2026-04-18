@@ -107,12 +107,18 @@ export function ProjectsLaunchPage() {
                 Choose a project from the sidebar to continue in its workbench.
               </EmptyDescription>
             </EmptyHeader>
-          ) : null}
-          {!hasProjects ? (
-            <EmptyContent className="w-full max-w-xs">
-              <div className="w-full space-y-2 rounded-lg p-3">
-                {shortcutRows.map((row) => (
-                  <div key={row.label} className="flex items-center justify-between gap-3">
+          ) : (
+            <EmptyHeader>
+              <EmptyTitle>Welcome to Cozea</EmptyTitle>
+              <EmptyDescription>
+                Create a new project from the sidebar to get started.
+              </EmptyDescription>
+            </EmptyHeader>
+          )}
+          <EmptyContent className="w-full max-w-xs">
+            <div className="w-full space-y-2 rounded-lg p-3">
+              {shortcutRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3">
                     <span className="text-sm text-muted-foreground">{row.label}</span>
                     <KbdGroup className="gap-1">
                       {row.keys.map((key) => (
@@ -128,7 +134,6 @@ export function ProjectsLaunchPage() {
                 ))}
               </div>
             </EmptyContent>
-          ) : null}
         </Empty>
       </div>
     </div>

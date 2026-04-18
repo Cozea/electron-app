@@ -21,6 +21,7 @@ import {
   normalizeSyncPath,
   type SyncOpRecord,
 } from '../services/syncJournalStore'
+import { GitDirtyStateService } from '../services/GitDirtyStateService'
 import { GitSyncService } from '../services/gitSyncService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
@@ -30,6 +31,7 @@ function sha256Hex(content: Buffer | Uint8Array): string {
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
   const gitSyncService = GitSyncService.getInstance()
+  const gitDirtyStateService = GitDirtyStateService.getInstance()
 
   ipcMain.handle(
     'sync:hashFile',
@@ -297,7 +299,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
         debug?: boolean
       }
-    ) => gitSyncService.pullMain(options)
+    ) => gitSyncService.pullMain(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -316,7 +320,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
         debug?: boolean
       }
-    ) => gitSyncService.replayLocalCommits(options)
+    ) => gitSyncService.replayLocalCommits(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -389,7 +395,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
         debug?: boolean
       }
-    ) => gitSyncService.restoreMain(options)
+    ) => gitSyncService.restoreMain(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -402,7 +410,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         repoUrl?: string
         debug?: boolean
       }
-    ) => gitSyncService.adoptWorkspace(options)
+    ) => gitSyncService.adoptWorkspace(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -414,7 +424,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         message: string
         addAll?: boolean
       }
-    ) => gitSyncService.commitAll(options)
+    ) => gitSyncService.commitAll(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -450,7 +462,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         encryptedCredentials?: string
         keyId?: string
       }
-    ) => gitSyncService.commitAndPush(options)
+    ) => gitSyncService.commitAndPush(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(

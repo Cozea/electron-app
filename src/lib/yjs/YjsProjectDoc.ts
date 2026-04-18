@@ -136,11 +136,12 @@ export class YjsProjectDoc {
    * This preserves CRDT history and allows concurrent edits to merge properly,
    * instead of nuking all content and replacing it.
    */
-  applyExternalChange(path: string, newContent: string, origin: string = 'agent'): void {
+  applyExternalChange(path: string, newContent: string | Uint8Array, origin: unknown = 'agent'): void {
     const normalizedPath = this.normalizePath(path)
     if (!normalizedPath) return
     const yText = this.getFileText(normalizedPath)
     if (!yText) return
+    if (typeof newContent !== 'string') return
     const currentContent = yText.toString()
     if (currentContent === newContent) return
 
@@ -170,7 +171,7 @@ export class YjsProjectDoc {
    * Delete a file or directory path.
    * Marks the path as deleted to prevent resurrection from late-arriving edits.
    */
-  deletePath(path: string, origin: string = 'agent'): void {
+  deletePath(path: string, origin: unknown = 'agent'): void {
     const normalizedPath = this.normalizePath(path)
     if (!normalizedPath) return
 
@@ -205,7 +206,7 @@ export class YjsProjectDoc {
    * - No conflict if someone is editing the file
    * - Activity log can track the rename
    */
-  renamePath(oldPath: string, newPath: string, origin: string = 'user'): boolean {
+  renamePath(oldPath: string, newPath: string, origin: unknown = 'user'): boolean {
     const fromPath = this.normalizePath(oldPath)
     const targetPath = this.normalizePath(newPath)
     if (!fromPath || !targetPath) return false
@@ -242,7 +243,7 @@ export class YjsProjectDoc {
    * Rename a directory, moving all files under it.
    * Preserves Y.Text instances for each file.
    */
-  renameDirectory(oldPath: string, newPath: string, origin: string = 'user'): boolean {
+  renameDirectory(oldPath: string, newPath: string, origin: unknown = 'user'): boolean {
     const fromPath = this.normalizePath(oldPath)
     const targetPath = this.normalizePath(newPath)
     if (!fromPath || !targetPath) return false

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Id } from '../../convex/_generated/dataModel'
+import type { FileChangeAttribution } from '../../shared/electronApiTypes'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 import { requestEditorDiagnosticsRefresh } from '@/lib/editor/diagnosticsRefresh'
@@ -38,11 +39,33 @@ export function useAgentFileSync(
 
     const cleanups: Array<() => void> = []
 
-    const mapOrigin = (origin?: string): {
+    const mapOrigin = (origin?: string | FileChangeAttribution): {
       source: 'agent' | 'watcher' | 'remote'
       actorType: 'agent' | 'user' | 'system'
       actorId: string
     } => {
+      if (origin && typeof origin === 'object') {
+        return {
+          source:
+            origin.sourceOrigin === 'agent' || origin.origin === 'agent'
+              ? 'agent'
+              : origin.origin === 'remote'
+                ? 'remote'
+                : 'watcher',
+          actorType:
+            origin.actorType === 'agent' || origin.actorType === 'system'
+              ? origin.actorType
+              : origin.origin === 'remote'
+                ? 'system'
+                : 'user',
+          actorId:
+            origin.actorId?.trim() ||
+            origin.terminalId?.trim() ||
+            origin.runId?.trim() ||
+            (userId ? String(userId) : 'watcher'),
+        }
+      }
+
       if (origin === 'agent') {
         return { source: 'agent', actorType: 'agent', actorId: 'agent' }
       }
@@ -56,7 +79,11 @@ export function useAgentFileSync(
       }
     }
 
-    const enqueueUpsertOp = async (path: string, content: string, origin?: string) => {
+    const enqueueUpsertOp = async (
+      path: string,
+      content: string,
+      origin?: string | FileChangeAttribution,
+    ) => {
       const coordinator = coordinatorRef.current
       if (!coordinator) return
       const meta = mapOrigin(origin)
@@ -79,7 +106,7 @@ export function useAgentFileSync(
       })
     }
 
-    const enqueueDeleteOp = async (path: string, origin?: string) => {
+    const enqueueDeleteOp = async (path: string, origin?: string | FileChangeAttribution) => {
       const coordinator = coordinatorRef.current
       if (!coordinator) return
       const meta = mapOrigin(origin)
@@ -114,7 +141,7 @@ export function useAgentFileSync(
         requestEditorDiagnosticsRefresh()
         // Only enqueue directly for remote/sync origins because local/agent/external
         // writes are persisted (and enqueued) by ProjectFilesPersistence.
-        if (origin === 'sync' || origin === 'remote') {
+        if (origin === 'sync' || origin === 'remote' || (origin && typeof origin === 'object' && origin.origin === 'remote')) {
           void enqueueUpsertOp(normalizedPath, content, origin).catch((error) => {
             console.warn(`[AgentSync] Failed to enqueue upsert op for ${normalizedPath}:`, error)
           })
@@ -136,7 +163,7 @@ export function useAgentFileSync(
         // console.log(`[AgentSync] External file delete: ${normalizedPath}`)
         yjsDoc.deletePath(normalizedPath, origin ?? 'agent')
         requestEditorDiagnosticsRefresh()
-        if (origin === 'sync' || origin === 'remote') {
+        if (origin === 'sync' || origin === 'remote' || (origin && typeof origin === 'object' && origin.origin === 'remote')) {
           void enqueueDeleteOp(normalizedPath, origin).catch((error) => {
             console.warn(`[AgentSync] Failed to enqueue delete op for ${normalizedPath}:`, error)
           })

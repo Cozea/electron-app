@@ -720,6 +720,26 @@ export default defineSchema({
       v.literal("remote"),
       v.literal("init")
     ),
+    sourceOrigin: v.optional(v.string()),
+    actorType: v.optional(
+      v.union(
+        v.literal("user"),
+        v.literal("agent"),
+        v.literal("system"),
+      )
+    ),
+    actorId: v.optional(v.string()),
+    terminalId: v.optional(v.string()),
+    terminalTitle: v.optional(v.string()),
+    terminalKind: v.optional(v.string()),
+    commandId: v.optional(v.string()),
+    commandText: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    sessionKey: v.optional(v.string()),
+    laneId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    gitCwd: v.optional(v.string()),
+    changeTimestamp: v.optional(v.number()),
 
     // User display info (denormalized for fast reads)
     userName: v.optional(v.string()),

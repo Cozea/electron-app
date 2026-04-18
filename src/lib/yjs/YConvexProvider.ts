@@ -3,7 +3,7 @@ import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { YjsOfflineQueue } from './OfflineQueue'
-import { isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
+import { extractAttributionOrigin, isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
 
 /**
  * YConvexProvider - Syncs Y.Doc updates via Convex real-time subscriptions.
@@ -76,7 +76,7 @@ export class YConvexProvider {
       return
     }
 
-    const originStr = typeof origin === 'string' ? origin : 'user'
+    const originStr = extractAttributionOrigin(origin)?.origin ?? (typeof origin === 'string' ? origin : 'user')
 
     // If offline, queue immediately
     if (!this._isOnline) {
