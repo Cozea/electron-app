@@ -29,6 +29,7 @@
   --table-row-hover: color-mix(in oklch, var(--secondary) 90%, var(--foreground) 10%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 88%, var(--foreground) 12%);
   --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.627 0.194 149.214);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -665,6 +666,7 @@ body {
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -702,6 +704,7 @@ body {
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
   --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.723 0.167 149.214);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -742,6 +745,7 @@ body {
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
   --destructive: hsl(0 65% 54%);
+  --success: hsl(152 65% 54%);
   --border: hsl(222 24% 30%);
   --input: hsl(222 24% 14%);
   --ring: hsl(210 78% 62%);
@@ -780,6 +784,7 @@ body {
   --accent: hsl(340 30% 15%);
   --accent-foreground: hsl(330 22% 94%);
   --destructive: hsl(0 70% 48%);
+  --success: hsl(152 70% 48%);
   --border: hsl(340 24% 32%);
   --input: hsl(340 24% 16%);
   --ring: hsl(345 72% 50%);
@@ -818,6 +823,7 @@ body {
   --accent: hsl(25 24% 18%);
   --accent-foreground: hsl(35 25% 94%);
   --destructive: hsl(0 65% 55%);
+  --success: hsl(152 65% 55%);
   --border: hsl(25 22% 28%);
   --input: hsl(25 20% 18%);
   --ring: hsl(28 65% 52%);
@@ -867,6 +873,7 @@ body {
   --accent: hsl(150 24% 15%);
   --accent-foreground: hsl(148 18% 94%);
   --destructive: hsl(0 68% 45%);
+  --success: hsl(152 68% 45%);
   --border: hsl(150 18% 30%);
   --input: hsl(150 20% 17%);
   --ring: hsl(150 42% 34%);

@@ -58,7 +58,7 @@ export function useProjectGitCwd(projectPath: string | null): string | null {
     void loadGitCwd();
     const interval = window.setInterval(() => {
       void loadGitCwd();
-    }, 2000);
+    }, 15000);
 
     return () => {
       cancelled = true;

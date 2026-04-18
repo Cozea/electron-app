@@ -1359,34 +1359,46 @@ export class GitSyncService {
     })
   }
 
+  private repoMetadataCache = new Map<string, { ts: number; data: Promise<RepoMetadata> }>()
+
   private async getRepoMetadata(projectPath: string): Promise<RepoMetadata> {
-    if (!fs.existsSync(projectPath)) {
-      return { repoExists: false, isRepo: false }
+    const cached = this.repoMetadataCache.get(projectPath)
+    if (cached && Date.now() - cached.ts < 500) {
+      return cached.data
     }
 
-    const inside = await this.runGit(['rev-parse', '--is-inside-work-tree'], {
-      cwd: projectPath,
-      timeoutMs: 10_000,
-    })
-    if (!inside.success || inside.stdout.trim() !== 'true') {
-      return { repoExists: true, isRepo: false }
-    }
+    const promise = (async () => {
+      if (!fs.existsSync(projectPath)) {
+        return { repoExists: false, isRepo: false }
+      }
 
-    const [gitDir, topLevelPath, currentBranch, headCommit] = await Promise.all([
-      this.getSingleValue(projectPath, ['rev-parse', '--git-dir']),
-      this.getSingleValue(projectPath, ['rev-parse', '--show-toplevel']),
-      this.getCurrentBranch(projectPath),
-      this.getRevision(projectPath, 'HEAD'),
-    ])
+      const inside = await this.runGit(['rev-parse', '--is-inside-work-tree'], {
+        cwd: projectPath,
+        timeoutMs: 10_000,
+      })
+      if (!inside.success || inside.stdout.trim() !== 'true') {
+        return { repoExists: true, isRepo: false }
+      }
 
-    return {
-      repoExists: true,
-      isRepo: true,
-      gitDir: gitDir ?? undefined,
-      topLevelPath: topLevelPath ?? undefined,
-      currentBranch: currentBranch ?? undefined,
-      headCommit: headCommit ?? undefined,
-    }
+      const [gitDir, topLevelPath, currentBranch, headCommit] = await Promise.all([
+        this.getSingleValue(projectPath, ['rev-parse', '--git-dir']),
+        this.getSingleValue(projectPath, ['rev-parse', '--show-toplevel']),
+        this.getCurrentBranch(projectPath),
+        this.getRevision(projectPath, 'HEAD'),
+      ])
+
+      return {
+        repoExists: true,
+        isRepo: true,
+        gitDir: gitDir ?? undefined,
+        topLevelPath: topLevelPath ?? undefined,
+        currentBranch: currentBranch ?? undefined,
+        headCommit: headCommit ?? undefined,
+      }
+    })();
+
+    this.repoMetadataCache.set(projectPath, { ts: Date.now(), data: promise })
+    return promise
   }
 
   private async getCurrentBranch(projectPath: string): Promise<string | null> {
