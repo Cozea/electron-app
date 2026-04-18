@@ -4,13 +4,17 @@ import {
   BubbleChatIcon as __MessageSquareHugeIcon,
   Clock01Icon as __ClockHugeIcon,
   TransactionHistoryIcon as __ChangesHugeIcon,
+  PlusSignIcon as __PlusHugeIcon,
+  MinusSignIcon as __MinusHugeIcon,
+  LayoutTwoColumnIcon as __SplitViewHugeIcon,
+  LayoutTwoRowIcon as __StackedViewHugeIcon,
+  PanelLeftIcon as __SidebarHugeIcon,
 } from '@hugeicons/core-free-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { CommentRichText } from '@/components/comments/CommentRichText'
@@ -19,9 +23,12 @@ import { useOptionalProjectRouteContext } from '@/features/projects/contexts/Pro
 import { projectOpenDesktopClient } from '@/features/projects/lib/projectOpenDesktopClient'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDiffWorkerProvider'
-import { CheckpointPatchView } from '../components/changes/CheckpointPatchView'
 
-interface ActivityFeedItem {
+import { parsePatchFiles } from "@pierre/diffs";
+import { FileDiff, type FileDiffMetadata } from "@pierre/diffs/react";
+import { ChangedFilesTree } from '../components/changes/ChangedFilesTree'
+
+export interface ActivityFeedItem {
   id: Id<'fileChanges'>
   checkpointGroupId?: string
   userId?: Id<'users'>
@@ -69,38 +76,50 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString()
 }
 
-function formatTimestamp(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
+interface ChangeGroup {
+  groupId: string;
+  items: ActivityFeedItem[];
+  timestamp: number;
+  userName: string;
+  userColor: string;
+  totalAdditions: number;
+  totalDeletions: number;
 }
 
-function resolvePreviousCheckpointGroupIds(items: readonly ActivityFeedItem[]): Map<string, string | null> {
-  const uniqueGroups: string[] = []
-  const seen = new Set<string>()
+function groupActivityItems(items: readonly ActivityFeedItem[]): ChangeGroup[] {
+  const groupsMap = new Map<string, ChangeGroup>();
+  const orderedGroups: ChangeGroup[] = [];
 
   for (const item of items) {
-    if (!item.checkpointGroupId || seen.has(item.checkpointGroupId)) continue
-    seen.add(item.checkpointGroupId)
-    uniqueGroups.push(item.checkpointGroupId)
+    if (!item.checkpointGroupId) continue;
+    let group = groupsMap.get(item.checkpointGroupId);
+    if (!group) {
+      group = {
+        groupId: item.checkpointGroupId,
+        items: [],
+        timestamp: item.timestamp,
+        userName: item.userName,
+        userColor: item.userColor,
+        totalAdditions: 0,
+        totalDeletions: 0,
+      };
+      groupsMap.set(item.checkpointGroupId, group);
+      orderedGroups.push(group);
+    }
+    group.items.push(item);
+    group.totalAdditions += (item.additions ?? 0);
+    group.totalDeletions += (item.deletions ?? 0);
   }
 
+  return orderedGroups;
+}
+
+function resolvePreviousCheckpointGroupIds(groups: ChangeGroup[]): Map<string, string | null> {
   const previousByGroup = new Map<string, string | null>()
-  for (let index = 0; index < uniqueGroups.length; index += 1) {
-    previousByGroup.set(uniqueGroups[index], uniqueGroups[index + 1] ?? null)
+  for (let index = 0; index < groups.length; index += 1) {
+    previousByGroup.set(groups[index].groupId, groups[index + 1]?.groupId ?? null)
   }
-
-  const previousByChangeId = new Map<string, string | null>()
-  for (const item of items) {
-    previousByChangeId.set(
-      String(item.id),
-      item.checkpointGroupId ? (previousByGroup.get(item.checkpointGroupId) ?? null) : null,
-    )
-  }
-  return previousByChangeId
+  return previousByGroup
 }
 
 function ChangeComments(props: {
@@ -140,48 +159,80 @@ function ChangeComments(props: {
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/70 bg-background/55 p-3">
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-3.5" />
-        <span>{count} comments</span>
-      </div>
+    <div className="mt-4 pt-4 border-t border-border/70">
+      {count > 0 && (
+        <div className="mb-4 flex items-center gap-2 text-[15px] font-bold text-foreground px-2">
+          <span>Comments ({count})</span>
+        </div>
+      )}
 
-      <div className="space-y-3">
-        {(comments ?? []).map((comment) => (
-          <div key={String(comment.id)} className="rounded-lg border border-border/60 bg-card/55 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
+      <div className="flex flex-col px-2">
+        {(comments ?? []).map((comment, i) => {
+          const isLast = i === (comments?.length ?? 0) - 1;
+          const hasReplyBox = expanded && viewerUserId;
+          const showLine = !isLast || hasReplyBox;
+          
+          return (
+            <div key={String(comment.id)} className="flex gap-3">
+              {/* Left column (Avatar + Thread line) */}
+              <div className="flex flex-col items-center shrink-0">
                 <span
-                  className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: comment.userColor }}
-                />
-                <span className="truncate text-xs font-medium text-foreground">{comment.userName}</span>
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-sm z-10"
+                  style={{ backgroundColor: comment.userColor || '#666' }}
+                >
+                  {comment.userName.charAt(0).toUpperCase()}
+                </span>
+                {showLine && (
+                  <div className="w-[2px] bg-border/60 grow my-1.5" />
+                )}
               </div>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {formatRelativeTime(comment.createdAt)}
-              </span>
+              
+              {/* Right column (Content) */}
+              <div className="flex min-w-0 flex-1 flex-col pb-5">
+                <div className="flex items-center gap-1.5 text-[14px] leading-none mb-1 mt-1">
+                  <span className="font-bold text-foreground truncate hover:underline cursor-pointer">{comment.userName}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground hover:underline cursor-pointer">{formatRelativeTime(comment.createdAt)}</span>
+                </div>
+                <div className="text-[14px] text-foreground mt-0.5 leading-relaxed">
+                  <CommentRichText content={comment.content} />
+                </div>
+              </div>
             </div>
-            <CommentRichText content={comment.content} />
-          </div>
-        ))}
+          )
+        })}
 
         {expanded && viewerUserId ? (
-          <div className="space-y-2">
-            <Textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Add a comment about this change"
-              className="min-h-[92px] resize-y border-border/70 bg-background"
-            />
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void handleSubmit()}
-                disabled={isSubmitting || draft.trim().length === 0}
+          <div className="flex gap-3 pt-1">
+            {/* Left column */}
+            <div className="flex flex-col items-center shrink-0">
+              <span
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm text-sm z-10"
               >
-                {isSubmitting ? 'Posting…' : 'Post Comment'}
-              </Button>
+                <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-4.5" />
+              </span>
+            </div>
+            
+            {/* Right column */}
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Post a reply"
+                className="min-h-[40px] resize-y border-transparent bg-transparent px-0 py-2 shadow-none focus-visible:ring-0 text-[14px] text-foreground placeholder:text-muted-foreground/60"
+              />
+              <div className="flex justify-between items-center pt-2">
+                <div className="text-[12px] text-muted-foreground/60">Markdown supported</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-full px-5 h-8 font-bold"
+                  onClick={() => void handleSubmit()}
+                  disabled={isSubmitting || draft.trim().length === 0}
+                >
+                  {isSubmitting ? 'Posting…' : 'Reply'}
+                </Button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -190,33 +241,43 @@ function ChangeComments(props: {
   )
 }
 
-function ChangeCard(props: {
-  item: ActivityFeedItem
+function resolveFileDiffPath(fileDiff: FileDiffMetadata): string {
+  const raw = fileDiff.name ?? fileDiff.prevName ?? "";
+  if (raw.startsWith("a/") || raw.startsWith("b/")) {
+    return raw.slice(2);
+  }
+  return raw;
+}
+
+function ChangeGroupCard(props: {
+  group: ChangeGroup
   gitCwd: string | null
   previousCheckpointGroupId: string | null
-  commentCount: number
+  commentCounts: Record<string, number>
   viewerUserId: Id<'users'> | null
-  expanded: boolean
-  onToggle: () => void
 }) {
   const {
-    item,
+    group,
     gitCwd,
     previousCheckpointGroupId,
-    commentCount,
+    commentCounts,
     viewerUserId,
-    expanded,
-    onToggle,
   } = props
+  
   const [patch, setPatch] = useState<string | null>(null)
   const [isLoadingPatch, setIsLoadingPatch] = useState(false)
   const [patchError, setPatchError] = useState<string | null>(null)
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  const [showComments, setShowComments] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
+  const [diffStyle, setDiffStyle] = useState<"split" | "unified">("split")
+
+  const totalComments = group.items.reduce((acc, item) => acc + (commentCounts[String(item.id)] ?? 0), 0);
 
   useEffect(() => {
-    if (!expanded) return
-    if (!gitCwd || !item.checkpointGroupId) {
+    if (!gitCwd || !group.groupId) {
       setPatch(null)
-      setPatchError('This change has no local checkpoint available yet.')
+      setPatchError('This change group has no local checkpoint available yet.')
       return
     }
 
@@ -224,12 +285,12 @@ function ChangeCard(props: {
     setIsLoadingPatch(true)
     setPatchError(null)
 
+    // Omit filePath to get the full patch for the checkpoint
     void projectOpenDesktopClient.sync
       .gitDiffCheckpoints({
         projectPath: gitCwd,
         fromCheckpointId: previousCheckpointGroupId ?? undefined,
-        toCheckpointId: item.checkpointGroupId,
-        filePath: item.filePath,
+        toCheckpointId: group.groupId,
       })
       .then((result) => {
         if (cancelled) return
@@ -254,108 +315,194 @@ function ChangeCard(props: {
     return () => {
       cancelled = true
     }
-  }, [expanded, gitCwd, item.checkpointGroupId, item.filePath, previousCheckpointGroupId])
+  }, [gitCwd, group.groupId, previousCheckpointGroupId])
 
-  const titlePath =
-    item.changeType === 'rename' && item.oldPath?.trim()
-      ? `${item.oldPath} -> ${item.filePath}`
-      : item.filePath
+  // Automatically select the first file when opening
+  useEffect(() => {
+    if (group.items.length > 0 && !selectedFilePath) {
+      setSelectedFilePath(group.items[0].filePath);
+    }
+  }, [group.items, selectedFilePath]);
+
+  const parsedFiles = useMemo(() => {
+    if (!patch) return [];
+    try {
+      const parsedPatches = parsePatchFiles(patch.trim(), `cache-${group.groupId}`);
+      return parsedPatches.flatMap((parsedPatch) => parsedPatch.files);
+    } catch {
+      return [];
+    }
+  }, [patch, group.groupId]);
+
+  const selectedFileDiff = useMemo(() => {
+    if (!selectedFilePath || parsedFiles.length === 0) return null;
+    return parsedFiles.find((f) => resolveFileDiffPath(f) === selectedFilePath) ?? null;
+  }, [parsedFiles, selectedFilePath]);
+
+  const selectedItem = useMemo(() => {
+    if (!selectedFilePath) return null;
+    return group.items.find(item => item.filePath === selectedFilePath) ?? null;
+  }, [group.items, selectedFilePath]);
 
   return (
-    <article className="rounded-2xl border border-border/70 bg-card/50 shadow-sm">
-      <button
-        type="button"
-        className="flex w-full flex-col gap-3 p-4 text-left"
-        onClick={onToggle}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 space-y-2">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground/80">
-              <span className="font-medium text-foreground">{item.userName}</span>
-              <span className="text-muted-foreground/40">•</span>
-              <span>{formatRelativeTime(item.timestamp)}</span>
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-mono text-[13px] text-foreground">{titlePath}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{formatTimestamp(item.timestamp)}</p>
-            </div>
-          </div>
+    <article className="flex border-b border-border/70 p-4 sm:p-6 last:border-0 hover:bg-muted/5 transition-colors">
+      <div className="mr-3 sm:mr-4 shrink-0">
+        <span
+          className="flex h-12 w-12 items-center justify-center rounded-full text-white font-bold shadow-sm text-base"
+          style={{ backgroundColor: group.userColor || '#666' }}
+        >
+          {group.userName.charAt(0).toUpperCase()}
+        </span>
+      </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline" className="border-border/70 bg-background/70 capitalize">
-              {item.changeType}
-            </Badge>
-            {(item.additions ?? 0) > 0 ? (
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600">
-                +{item.additions}
-              </Badge>
-            ) : null}
-            {(item.deletions ?? 0) > 0 ? (
-              <Badge variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-600">
-                -{item.deletions}
-              </Badge>
-            ) : null}
-            {commentCount > 0 ? (
-              <Badge variant="secondary" className="gap-1">
-                <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-3" />
-                {commentCount}
-              </Badge>
-            ) : null}
-          </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-1.5 text-[15px] mb-1">
+          <span className="font-bold text-foreground hover:underline cursor-pointer">{group.userName}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground hover:underline cursor-pointer">{formatRelativeTime(group.timestamp)}</span>
         </div>
-      </button>
 
-      {expanded ? (
-        <div className="space-y-3 border-t border-border/70 px-4 pb-4 pt-3">
-          {patchError ? (
-            <div className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              {patchError}
-            </div>
-          ) : null}
+        <div className="mb-3">
+          <p className="text-[15px] text-foreground leading-snug">
+            Updated {group.items.length} file{group.items.length !== 1 ? 's' : ''}.
+          </p>
+        </div>
 
-          {isLoadingPatch ? (
-            <div className="rounded-xl border border-border/70 bg-background/55 px-3 py-4 text-xs text-muted-foreground">
-              Loading patch…
+        <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all">
+          {showSidebar && (
+            <div className="w-[30%] min-w-[200px] max-w-[260px] border-r border-border/70 bg-muted/10 overflow-y-auto p-2">
+               <ChangedFilesTree 
+                 files={group.items}
+                 allDirectoriesExpanded={true}
+                 onOpenFile={(filePath) => setSelectedFilePath(filePath)}
+               />
             </div>
-          ) : (
-            <CheckpointPatchView patch={patch} />
           )}
-
-          <ChangeComments
-            changeId={item.id}
-            viewerUserId={viewerUserId}
-            count={commentCount}
-            expanded={expanded}
-          />
+          <div className="flex-1 overflow-y-auto bg-card">
+            {patchError ? (
+              <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                {patchError}
+              </div>
+            ) : isLoadingPatch ? (
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                Loading diffs...
+              </div>
+            ) : selectedFileDiff ? (
+              <div className="flex flex-col min-h-full">
+                <FileDiff
+                  fileDiff={selectedFileDiff}
+                  options={{
+                    diffStyle: diffStyle,
+                    lineDiffType: "none",
+                    overflow: "wrap",
+                    themeType: "dark", 
+                    unsafeCSS: `
+                      [data-diffs-header],
+                      [data-diff],
+                      [data-file] {
+                        --diffs-bg: transparent !important;
+                        --diffs-light-bg: transparent !important;
+                        --diffs-dark-bg: transparent !important;
+                        background-color: transparent !important;
+                      }
+                      [data-file-info] {
+                        background-color: color-mix(in srgb, var(--card) 94%, var(--foreground)) !important;
+                        border-block-color: var(--border) !important;
+                        color: var(--foreground) !important;
+                      }
+                    `
+                  }}
+                />
+              </div>
+            ) : patch ? (
+               <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                 Select a file from the sidebar to view its diff.
+               </div>
+            ) : null}
+          </div>
         </div>
-      ) : null}
+
+        {/* Action Buttons (Twitter style) */}
+        <div className="flex items-center justify-between text-muted-foreground mb-1 ml-1 pr-2">
+          <div className="flex items-center gap-6">
+            <button 
+              className="flex items-center gap-1.5 text-[15px] hover:text-blue-500 transition-colors group"
+              onClick={() => setShowComments((prev) => !prev)}
+            >
+              <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-5" />
+              {totalComments > 0 && <span className="font-medium">{totalComments}</span>}
+            </button>
+            
+            <div className="flex items-center gap-1 text-[15px] group text-emerald-500 font-medium">
+              <HugeiconsIcon icon={__PlusHugeIcon} className="size-4 stroke-[2.5px]" />
+              <span>{group.totalAdditions}</span>
+            </div>
+
+            <div className="flex items-center gap-1 text-[15px] group text-rose-500 font-medium">
+              <HugeiconsIcon icon={__MinusHugeIcon} className="size-4 stroke-[2.5px]" />
+              <span>{group.totalDeletions}</span>
+            </div>
+          </div>
+
+          {/* View Toggles */}
+          <div className="flex items-center gap-3">
+            <button 
+              className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
+              onClick={() => setShowSidebar((prev) => !prev)}
+              title="Toggle File Tree"
+            >
+              <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4.5" />
+            </button>
+            <div className="h-4 w-px bg-border/70" />
+            <button 
+              className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
+              onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
+              title={diffStyle === "split" ? "Switch to Stacked View" : "Switch to Split View"}
+            >
+              <HugeiconsIcon icon={diffStyle === "split" ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Selected File Comments Thread */}
+        {showComments && selectedItem ? (
+          <ChangeComments
+            changeId={selectedItem.id}
+            viewerUserId={viewerUserId}
+            count={commentCounts[String(selectedItem.id)] ?? 0}
+            expanded={true}
+          />
+        ) : null}
+      </div>
     </article>
   )
 }
 
-export function ChangesPage({ presentation = 'modal', onRequestClose = null }: ChangesPageProps) {
+export function ChangesPage(_props: ChangesPageProps) {
   const { project, convexUserId } = useAccessibleProject()
   const routeContext = useOptionalProjectRouteContext()
   const gitCwd = routeContext?.gitCwd ?? null
-  const [expandedChangeId, setExpandedChangeId] = useState<string | null>(null)
 
   const activity = useQuery(
     api.activity.getRecentActivity,
     project?._id ? { projectId: project._id, limit: 200 } : 'skip',
   ) as ActivityFeedItem[] | undefined
 
+  const groups = useMemo(() => groupActivityItems(activity ?? []), [activity]);
+
   const changeIds = useMemo(
     () => activity?.map((item) => item.id as Id<'fileChanges'>) ?? [],
     [activity],
   )
+  
   const commentCounts = useQuery(
     api.activity.getCommentCountsForChanges,
     project?._id && changeIds.length > 0 ? { projectId: project._id, changeIds } : 'skip',
   ) as Record<string, number> | undefined
 
   const previousCheckpointGroupIds = useMemo(
-    () => resolvePreviousCheckpointGroupIds(activity ?? []),
-    [activity],
+    () => resolvePreviousCheckpointGroupIds(groups),
+    [groups],
   )
 
   useEffect(() => {
@@ -363,43 +510,9 @@ export function ChangesPage({ presentation = 'modal', onRequestClose = null }: C
     markSyncFeedAsSeen(project.slug)
   }, [project?.slug])
 
-  useEffect(() => {
-    if (!activity?.length) {
-      setExpandedChangeId(null)
-      return
-    }
-    if (!expandedChangeId) {
-      setExpandedChangeId(String(activity[0].id))
-      return
-    }
-    const stillVisible = activity.some((item) => String(item.id) === expandedChangeId)
-    if (!stillVisible) {
-      setExpandedChangeId(String(activity[0].id))
-    }
-  }, [activity, expandedChangeId])
-
   return (
     <CheckpointDiffWorkerProvider>
       <div className="flex h-full min-h-0 flex-col bg-background">
-        <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <HugeiconsIcon icon={__ChangesHugeIcon} className="size-4 text-muted-foreground" />
-              <span>Changes</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              T3-style inline diffs backed by local Git checkpoints.
-            </p>
-          </div>
-
-          {presentation === 'embedded' && onRequestClose ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onRequestClose}>
-              <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="mr-1 size-4" />
-              Back
-            </Button>
-          ) : null}
-        </div>
-
         <div className="min-h-0 flex-1 overflow-auto">
           {!project ? (
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
@@ -409,7 +522,7 @@ export function ChangesPage({ presentation = 'modal', onRequestClose = null }: C
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
               Loading changes…
             </div>
-          ) : activity.length === 0 ? (
+          ) : groups.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <HugeiconsIcon icon={__ClockHugeIcon} className="size-8 text-muted-foreground/35" />
               <div className="space-y-1">
@@ -420,24 +533,16 @@ export function ChangesPage({ presentation = 'modal', onRequestClose = null }: C
               </div>
             </div>
           ) : (
-            <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4">
-              {activity.map((item) => {
-                const commentCount = commentCounts?.[String(item.id)] ?? 0
-                const isExpanded = expandedChangeId === String(item.id)
+            <div className="flex w-full flex-col">
+              {groups.map((group) => {
                 return (
-                  <ChangeCard
-                    key={String(item.id)}
-                    item={item}
+                  <ChangeGroupCard
+                    key={group.groupId}
+                    group={group}
                     gitCwd={gitCwd}
-                    previousCheckpointGroupId={previousCheckpointGroupIds.get(String(item.id)) ?? null}
-                    commentCount={commentCount}
+                    previousCheckpointGroupId={previousCheckpointGroupIds.get(group.groupId) ?? null}
+                    commentCounts={commentCounts ?? {}}
                     viewerUserId={convexUserId}
-                    expanded={isExpanded}
-                    onToggle={() =>
-                      setExpandedChangeId((current) =>
-                        current === String(item.id) ? null : String(item.id),
-                      )
-                    }
                   />
                 )
               })}

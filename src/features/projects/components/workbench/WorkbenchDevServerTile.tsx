@@ -10,6 +10,7 @@ import type {
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
@@ -39,7 +40,7 @@ import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { CommandLineIcon as __SquareTerminalHugeIcon, EyeIcon as __EyeHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon } from '@hugeicons/core-free-icons'
+import { CommandLineIcon as __SquareTerminalHugeIcon, EyeIcon as __EyeHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon, LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
 
 const Eye = (props: any) => <HugeiconsIcon icon={__EyeHugeIcon} {...props} />
 
@@ -159,6 +160,8 @@ function WorkbenchRuntimePreviewTile({
   const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
   const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() => readStoredPreviewDestinationPreference())
   const terminalIdRef = useRef<string | null>(null)
+  const [internalUrl, setInternalUrl] = useState<string | null>(null)
+  const [draftUrl, setDraftUrl] = useState<string>("")
   const devServer = useDevServerManager({
     projectPath,
     sessionKey: workbenchSession?.sessionKey ?? null,
@@ -186,6 +189,12 @@ function WorkbenchRuntimePreviewTile({
   const previewServerActive =
     devServer.status === "ready" || devServer.status === "unhealthy" || devServer.status === "starting"
 
+  const displayUrl = internalUrl ?? previewUrl ?? ""
+
+  useEffect(() => {
+    setDraftUrl(displayUrl)
+  }, [displayUrl])
+
   const terminalShell = (
     <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
       <div
@@ -204,7 +213,7 @@ function WorkbenchRuntimePreviewTile({
     boundsReady,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
-    url: showWebEmbeddedPreview ? previewUrl : "",
+    url: showWebEmbeddedPreview ? displayUrl : "",
     sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
@@ -213,6 +222,9 @@ function WorkbenchRuntimePreviewTile({
     storageScope: "ephemeral",
     workspaceId: workspaceId ?? undefined,
     persistModel: true,
+    onUrlObserved: (nextUrl) => {
+      setInternalUrl(nextUrl)
+    },
     onNewPageRequest: (request) => {
       const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
         url: request.url,
@@ -606,8 +618,8 @@ function WorkbenchRuntimePreviewTile({
       </div>
     </div>
   ) : (
-    <div className="flex min-w-0 items-center gap-2">
-      <div className="inline-flex h-8 min-w-0 items-center">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="inline-flex h-8 min-w-0 shrink-0 items-center">
         <button
           type="button"
           className={cn(
@@ -645,6 +657,38 @@ function WorkbenchRuntimePreviewTile({
           <HugeiconsIcon icon={__SquareTerminalHugeIcon} className="h-4 w-4" />
         </button>
       </div>
+      {previewUrl && previewDestination === "cozea" ? (
+        <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-secondary px-2">
+          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
+          <Input
+            value={draftUrl}
+            onChange={(e) => setDraftUrl(e.target.value)}
+            onBlur={() => setDraftUrl(displayUrl)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                const trimmed = draftUrl.trim()
+                if (trimmed) {
+                  let next = trimmed
+                  if (!next.startsWith("http://") && !next.startsWith("https://")) {
+                    if (next.startsWith("localhost") || /^[\w.-]+:\d+/.test(next)) {
+                      next = `http://${next}`
+                    } else {
+                      next = `https://${next}`
+                    }
+                  }
+                  setInternalUrl(next)
+                }
+                e.currentTarget.blur()
+              }
+            }}
+            className={cn(
+              "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none",
+              "placeholder:text-muted-foreground/45 focus-visible:ring-0",
+            )}
+          />
+        </div>
+      ) : null}
     </div>
   )
 

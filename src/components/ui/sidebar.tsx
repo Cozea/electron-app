@@ -388,8 +388,8 @@ function Sidebar({
           data-slot="sidebar-inner"
           className={cn(
             "bg-content-surface flex h-full w-full flex-col relative group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar",
-            side === "left" && "border-r border-sidebar-border",
-            side === "right" && "border-l border-sidebar-border"
+            side === "left" && "border-r border-border/60",
+            side === "right" && "border-l border-border/60"
           )}
         >
           {windowChromeAccessory}
