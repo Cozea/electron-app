@@ -9,6 +9,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { cn } from '@/lib/utils'
 
 import { useTerminalActions, useTerminalStore } from '@/stores/useTerminalStore'
+import { useTheme } from '@/contexts/ThemeContext'
 import {
   buildAnsiPalette,
   compositeColorToHex,
@@ -16,7 +17,6 @@ import {
   loadXtermWebglAddon,
   relativeLuminance,
   resolveThemeColor,
-  syncTerminalTheme,
   XTERM_CUSTOM_GLYPHS,
   XTERM_FONT_FAMILY,
   XTERM_LINE_HEIGHT,
@@ -115,6 +115,7 @@ export function TerminalInstance({
   const [initRetry, setInitRetry] = useState(0)
   const [gpuDiagnostics, setGpuDiagnostics] = useState<GpuAccelerationDiagnostics | null>(null)
   const eventClientPosRef = useRef({ x: 0, y: 0 })
+  const { theme } = useTheme()
   
 
   // Bypass React renders for output streaming
@@ -282,7 +283,7 @@ export function TerminalInstance({
       return () => clearTimeout(timeoutId)
     }
 
-    const fontSize = 12
+    const fontSize = 13
 
     const term = new Terminal({
       theme: buildProjectTerminalTheme(container),
@@ -513,8 +514,21 @@ export function TerminalInstance({
     const term = xtermRef.current
     if (!container || !term) return
 
-    return syncTerminalTheme(term, () => buildProjectTerminalTheme(container))
-  }, [terminalId, initRetry])
+    const nextTheme = buildProjectTerminalTheme(container)
+    const nextThemeStr = JSON.stringify(nextTheme)
+    const currentThemeStr = JSON.stringify(term.options.theme || {})
+
+    if (currentThemeStr === nextThemeStr) {
+      return
+    }
+
+    term.options.theme = nextTheme
+    try {
+      term.refresh(0, Math.max(term.rows - 1, 0))
+    } catch {
+      // Ignore refresh errors after disposal or while dimensions settle
+    }
+  }, [terminalId, initRetry, theme])
 
   useEffect(() => {
     if (!shouldAutoFocus || readOnly) return
@@ -539,20 +553,27 @@ export function TerminalInstance({
   }, [disposeWebglRenderer, shouldUseGpuRenderer])
 
   const handleResize = useCallback(() => {
-    if (!fitAddonRef.current || !xtermRef.current) return
+    if (!fitAddonRef.current || !xtermRef.current || !containerRef.current) return
 
-    try {
-      const term = xtermRef.current
-      const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY
-      fitAddonRef.current.fit()
-      if (wasAtBottom) {
-        term.scrollToBottom()
+    const rect = containerRef.current.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+
+    window.requestAnimationFrame(() => {
+      if (!fitAddonRef.current || !xtermRef.current) return
+
+      try {
+        const term = xtermRef.current
+        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY
+        fitAddonRef.current.fit()
+        if (wasAtBottom) {
+          term.scrollToBottom()
+        }
+        const { cols, rows } = term
+        void window.electronAPI.terminal.resize({ terminalId, cols, rows })
+      } catch (error) {
+        console.error('[Terminal] Resize failed:', error)
       }
-      const { cols, rows } = term
-      void window.electronAPI.terminal.resize({ terminalId, cols, rows })
-    } catch (error) {
-      console.error('[Terminal] Resize failed:', error)
-    }
+    })
   }, [terminalId])
 
   useEffect(() => {

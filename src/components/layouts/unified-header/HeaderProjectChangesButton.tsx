@@ -83,7 +83,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
     void loadStats();
     const interval = window.setInterval(() => {
       void loadStats();
-    }, 2000);
+    }, 15000);
 
     return () => {
       cancelled = true;
