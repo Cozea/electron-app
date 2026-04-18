@@ -15,12 +15,19 @@ function matchesSession(
   sessionKey: string | null,
   projectId: string | null,
   laneId: string | null,
+  projectPath: string | null,
 ): boolean {
   if (sessionKey) {
     return snapshot.sessionKey === sessionKey
   }
   if (!projectId || !laneId) return false
-  return snapshot.projectId === projectId && snapshot.laneId === laneId
+  if (snapshot.projectId !== projectId || snapshot.laneId !== laneId) {
+    return false
+  }
+  if (projectPath) {
+    return snapshot.projectPath === projectPath
+  }
+  return true
 }
 
 export function useWorkbenchSessionLifecycle({
@@ -44,7 +51,7 @@ export function useWorkbenchSessionLifecycle({
 
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
-      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId)) return
+      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, projectPath)) return
       setSnapshot(nextSnapshot)
     }
 

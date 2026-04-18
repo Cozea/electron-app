@@ -126,7 +126,7 @@ export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
   agentLabel?: string | null
-  laneBinding?: "activeProjectPath" | "threadWorktree"
+  laneBinding?: "sessionProjectPath" | "threadWorktree"
 }
 
 export type WorkbenchTile =
@@ -190,7 +190,7 @@ interface CreateTileOptions {
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
   agentLabel?: string | null
-  laneBinding?: "activeProjectPath" | "threadWorktree"
+  laneBinding?: "sessionProjectPath" | "threadWorktree"
 }
 
 interface PersistedWorkbenchState {
@@ -491,7 +491,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         runtimeMode: options.runtimeMode ?? "full-access",
         interactionMode: options.interactionMode ?? "default",
         agentLabel: options.agentLabel ?? null,
-        laneBinding: options.laneBinding ?? "activeProjectPath",
+        laneBinding: options.laneBinding ?? "sessionProjectPath",
       }
     default:
       return { id, type, title, createdAt }
@@ -564,6 +564,10 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
     }
 
     if (tile.type === "assistantChat") {
+      const normalizedLaneBinding =
+        tile.laneBinding === "threadWorktree"
+          ? "threadWorktree"
+          : "sessionProjectPath"
       sanitizedTiles[tileId] = {
         ...tile,
         assistantProjectId: tile.assistantProjectId ?? null,
@@ -572,7 +576,7 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
         runtimeMode: tile.runtimeMode ?? "full-access",
         interactionMode: tile.interactionMode ?? "default",
         agentLabel: tile.agentLabel ?? null,
-        laneBinding: tile.laneBinding ?? "activeProjectPath",
+        laneBinding: normalizedLaneBinding,
       }
       continue
     }

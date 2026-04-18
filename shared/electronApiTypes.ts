@@ -861,6 +861,8 @@ export interface TerminalSnapshot {
   cancelled: boolean
 }
 
+export type TerminalActivityTrackingMode = 'off' | 'subprocess'
+
 export interface TerminalCreateOptions {
   projectPath: string
   profileId?: string
@@ -869,6 +871,7 @@ export interface TerminalCreateOptions {
   rows?: number
   runId?: string
   env?: Record<string, string>
+  activityTracking?: TerminalActivityTrackingMode
 }
 
 export interface TerminalOutputEvent {

@@ -82,6 +82,7 @@ export function WorkbenchTerminalTile({
         const result = await window.electronAPI.terminal.create({
           projectPath,
           cwd: projectPath,
+          activityTracking: "off",
         })
 
         if (cancelled) {

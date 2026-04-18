@@ -13,8 +13,8 @@ interface StoredProjectBranchSession {
 }
 
 interface StoredProjectBranchSessionState {
-  version: 1
-  projects: Record<string, StoredProjectBranchSession>
+  version: 2
+  sessions: Record<string, StoredProjectBranchSession>
 }
 
 function normalizeProjectId(projectId: string | null | undefined): string | null {
@@ -34,9 +34,22 @@ function normalizeProjectPath(projectPath: string | null | undefined): string | 
 
 function buildInitialState(): StoredProjectBranchSessionState {
   return {
-    version: 1,
-    projects: {},
+    version: 2,
+    sessions: {},
   }
+}
+
+function buildSessionStorageKey(
+  projectId: string,
+  projectPath: string | null | undefined,
+): string {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    throw new Error("projectId is required")
+  }
+
+  const normalizedProjectPath = normalizeProjectPath(projectPath)
+  return `${normalizedProjectId}::${normalizedProjectPath ?? "unbound"}`
 }
 
 function readState(): StoredProjectBranchSessionState {
@@ -50,15 +63,55 @@ function readState(): StoredProjectBranchSessionState {
       return buildInitialState()
     }
 
-    const parsed = JSON.parse(raw) as Partial<StoredProjectBranchSessionState> | null
-    if (!parsed || parsed.version !== 1 || !parsed.projects || typeof parsed.projects !== "object") {
+    const parsed = JSON.parse(raw) as {
+      version?: number
+      sessions?: unknown
+      projects?: unknown
+    } | null
+    if (!parsed || typeof parsed !== "object") {
       return buildInitialState()
     }
 
-    return {
-      version: 1,
-      projects: parsed.projects as Record<string, StoredProjectBranchSession>,
+    if (
+      parsed.version === 2 &&
+      parsed.sessions &&
+      typeof parsed.sessions === "object"
+    ) {
+      return {
+        version: 2,
+        sessions: parsed.sessions as Record<string, StoredProjectBranchSession>,
+      }
     }
+
+    const legacyProjects =
+      parsed.version === 1 &&
+      "projects" in parsed &&
+      parsed.projects &&
+      typeof parsed.projects === "object"
+        ? (parsed.projects as Record<string, StoredProjectBranchSession>)
+        : null
+
+    if (!legacyProjects) {
+      return buildInitialState()
+    }
+
+    const nextState = buildInitialState()
+    for (const session of Object.values(legacyProjects)) {
+      const normalizedProjectId = normalizeProjectId(session.projectId)
+      if (!normalizedProjectId) {
+        continue
+      }
+
+      nextState.sessions[
+        buildSessionStorageKey(normalizedProjectId, session.projectPath)
+      ] = {
+        ...session,
+        projectId: normalizedProjectId,
+        projectPath: normalizeProjectPath(session.projectPath),
+      }
+    }
+
+    return nextState
   } catch {
     return buildInitialState()
   }
@@ -115,7 +168,27 @@ export function readProjectBranchSession(projectId: string | null | undefined): 
     return null
   }
 
-  return readState().projects[normalizedProjectId] ?? null
+  const matchingSessions = Object.values(readState().sessions)
+    .filter((session) => session.projectId === normalizedProjectId)
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+
+  return matchingSessions[0] ?? null
+}
+
+export function readScopedProjectBranchSession(
+  projectId: string | null | undefined,
+  projectPath: string | null | undefined,
+): StoredProjectBranchSession | null {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    return null
+  }
+
+  return (
+    readState().sessions[
+      buildSessionStorageKey(normalizedProjectId, projectPath)
+    ] ?? null
+  )
 }
 
 export function rememberProjectBranchSession(args: {
@@ -138,23 +211,49 @@ export function rememberProjectBranchSession(args: {
   }
 
   const state = readState()
-  state.projects[normalizedProjectId] = nextSession
+  state.sessions[
+    buildSessionStorageKey(normalizedProjectId, nextSession.projectPath)
+  ] = nextSession
   writeState(state)
   return nextSession
 }
 
-export function clearProjectBranchSession(projectId: string | null | undefined): void {
+export function clearProjectBranchSession(
+  projectId: string | null | undefined,
+  projectPath?: string | null,
+): void {
   const normalizedProjectId = normalizeProjectId(projectId)
   if (!normalizedProjectId) {
     return
   }
 
   const state = readState()
-  if (!(normalizedProjectId in state.projects)) {
+  const normalizedProjectPath = normalizeProjectPath(projectPath)
+
+  if (normalizedProjectPath) {
+    const scopedKey = buildSessionStorageKey(normalizedProjectId, normalizedProjectPath)
+    if (!(scopedKey in state.sessions)) {
+      return
+    }
+    delete state.sessions[scopedKey]
+    writeState(state)
     return
   }
 
-  delete state.projects[normalizedProjectId]
+  let changed = false
+  for (const [storageKey, session] of Object.entries(state.sessions)) {
+    if (session.projectId !== normalizedProjectId) {
+      continue
+    }
+
+    delete state.sessions[storageKey]
+    changed = true
+  }
+
+  if (!changed) {
+    return
+  }
+
   writeState(state)
 }
 
