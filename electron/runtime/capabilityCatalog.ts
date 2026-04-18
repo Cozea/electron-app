@@ -83,7 +83,7 @@ let refreshInFlight: Promise<void> | null = null
 let cachedCatalog: { value: CapabilityCatalog; loadedAt: number } | null = null
 
 function getRuntimeMetaDir(): string {
-  if (app.isReady()) {
+  if (app && typeof app.isReady === 'function' && app.isReady()) {
     return path.join(app.getPath('userData'), 'runtimes', '_meta')
   }
   return path.join(os.homedir(), '.cozea', 'runtimes', '_meta')
@@ -117,8 +117,10 @@ function getRuntimeReleaseTag(): string | null {
   const explicitTag = process.env.COZEA_RUNTIME_RELEASE_TAG?.trim()
   if (explicitTag) return explicitTag
   try {
-    const version = app.getVersion()
-    if (version) return `v${version}`
+    if (app && typeof app.getVersion === 'function') {
+      const version = app.getVersion()
+      if (version) return `v${version}`
+    }
   } catch {
     // Ignore when app version is unavailable.
   }

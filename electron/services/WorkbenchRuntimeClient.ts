@@ -81,7 +81,7 @@ export class WorkbenchRuntimeClient {
       return this.childProcess
     }
 
-    const entryPath = path.join(__dirname, '..', 'workbench-runtime.js')
+    const entryPath = path.join(__dirname, 'workbench-runtime.js')
     const child = fork(entryPath, [], {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: {

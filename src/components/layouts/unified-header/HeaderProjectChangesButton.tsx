@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useConvex } from "convex/react";
 
 import { api } from "../../../../convex/_generated/api";
@@ -8,11 +8,11 @@ import { scheduleTask } from "@/lib/scheduler";
 import { useLocation } from "@/lib/router";
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
-import { projectOpenDesktopClient } from "@/features/projects/lib/projectOpenDesktopClient";
 import { getProjectChangesActivityCacheKey } from "@/features/projects/lib/changesQueryCache";
 import { useQueryCache } from "@/stores/useQueryCache";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useGitDirtySnapshot } from "@/hooks/useGitDirtySnapshot";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { TransactionHistoryIcon as __TransactionHistoryHugeIcon } from '@hugeicons/core-free-icons'
@@ -23,7 +23,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   const convex = useConvex();
   const routeContext = useOptionalProjectRouteContext();
   const gitCwd = routeContext?.gitCwd ?? null;
-  const [diffStats, setDiffStats] = useState<{ additions: number; deletions: number } | null>(null);
+  const diffStats = useGitDirtySnapshot(gitCwd);
 
   const prewarmChanges = useCallback(() => {
     if (!projectId) return;
@@ -49,47 +49,6 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
       }
     }, "background");
   }, [convex, projectId]);
-
-  useEffect(() => {
-    if (!gitCwd) {
-      setDiffStats(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadStats = async () => {
-      try {
-        const statsResult = await projectOpenDesktopClient.sync.gitGetHeadDiffStats({
-          projectPath: gitCwd,
-        });
-        if (cancelled) return;
-
-        if (statsResult.success) {
-          setDiffStats({
-            additions: statsResult.additions,
-            deletions: statsResult.deletions,
-          });
-        } else {
-          setDiffStats(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setDiffStats(null);
-        }
-      }
-    };
-
-    void loadStats();
-    const interval = window.setInterval(() => {
-      void loadStats();
-    }, 15000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [gitCwd]);
 
   if (!projectId) return null;
 

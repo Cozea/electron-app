@@ -62,7 +62,10 @@ export const getForProject = query({
       return null
     }
 
-    await getProjectShareScope(ctx, args.projectId)
+    const scope = await getProjectShareScope(ctx, args.projectId).catch(() => null)
+    if (!scope) {
+      return null
+    }
     const canManage = membership.role === "project_manager"
     const activeLinks = await ctx.db
       .query("projectJoinLinks")

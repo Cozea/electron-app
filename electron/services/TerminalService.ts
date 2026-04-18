@@ -10,10 +10,12 @@ import type {
   TerminalSnapshot,
 } from '../../shared/electronApiTypes'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
+import { TerminalProvenanceService } from './TerminalProvenanceService'
 import type {
   WorkbenchRuntimeEventMessage,
   WorkbenchRuntimeTerminalCreateResult,
   WorkbenchRuntimeTerminalExitPayload,
+  WorkbenchRuntimeTerminalProvenancePayload,
 } from '../workbench-runtime/protocol'
 import { WorkbenchRuntimeClient } from './WorkbenchRuntimeClient'
 
@@ -40,6 +42,7 @@ export class TerminalService {
   private static instance: TerminalService
 
   private readonly runtimeClient = WorkbenchRuntimeClient.getInstance()
+  private readonly terminalProvenanceService = TerminalProvenanceService.getInstance()
   private readonly terminalObservers = new Map<string, Set<TerminalObserver>>()
   private readonly outputTargets = new Set<WebContents>()
   private readonly terminalSnapshots = new Map<string, TerminalSnapshot>()
@@ -211,6 +214,11 @@ export class TerminalService {
   }
 
   private handleRuntimeActivity(event: TerminalActivityEvent): void {
+    this.terminalProvenanceService.updateActivity({
+      terminalId: event.terminalId,
+      hasRunningSubprocess: event.hasRunningSubprocess,
+      runId: event.runId,
+    })
     const projectPath = this.getProjectPathForTerminal(event.terminalId)
     this.broadcastActivity(event)
     this.emitObserverActivity(event.terminalId, {
@@ -250,6 +258,18 @@ export class TerminalService {
       ...publicEvent,
       projectPath,
     })
+    this.terminalProvenanceService.closeTerminal(event.terminalId)
+  }
+
+  private handleRuntimeTerminalProvenance(event: WorkbenchRuntimeTerminalProvenancePayload): void {
+    this.terminalProvenanceService.recordCommand({
+      terminalId: event.terminalId,
+      title: event.title,
+      commandId: event.commandId,
+      commandText: event.commandText,
+      runId: event.runId,
+      timestamp: event.timestamp,
+    })
   }
 
   private handleRuntimeEvent(message: WorkbenchRuntimeEventMessage): void {
@@ -262,6 +282,9 @@ export class TerminalService {
         return
       case 'terminal.exit':
         this.handleRuntimeTerminalExit(message.payload)
+        return
+      case 'terminal.provenance':
+        this.handleRuntimeTerminalProvenance(message.payload)
         return
       default:
         return
@@ -277,6 +300,7 @@ export class TerminalService {
     this.projectTerminals.clear()
 
     for (const snapshot of activeSnapshots) {
+      this.terminalProvenanceService.closeTerminal(snapshot.id)
       const nextSnapshot: TerminalSnapshot = {
         ...snapshot,
         running: false,
@@ -335,6 +359,11 @@ export class TerminalService {
     const result = await this.runtimeClient.request<WorkbenchRuntimeTerminalCreateResult>('terminal.create', options)
     if (result.success && result.snapshot) {
       this.syncCacheFromSnapshot(result.snapshot, result.info)
+      this.terminalProvenanceService.registerTerminal(
+        result.snapshot.id,
+        options,
+        result.info?.title ?? result.snapshot.id,
+      )
     }
     return result
   }

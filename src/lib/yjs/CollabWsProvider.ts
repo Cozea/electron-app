@@ -9,7 +9,7 @@ import {
 } from '@/lib/collab/cipherEnvelope'
 import { invalidateCollabSession } from '@/hooks/useCollabSession'
 import { ensureActiveCheckpointGroup } from './checkpointGroups'
-import { isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
+import { extractAttributionOrigin, isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
 
 export interface CollabSessionDescriptor {
   projectId: string
@@ -594,10 +594,36 @@ export class CollabWsProvider {
       this.doc,
       bytes,
       makeRemoteYjsOrigin({
+        origin:
+          metadata.origin === 'agent' ||
+          metadata.origin === 'init' ||
+          metadata.origin === 'user' ||
+          metadata.origin === 'remote'
+            ? metadata.origin
+            : 'remote',
+        sourceOrigin: typeof metadata.sourceOrigin === 'string' ? metadata.sourceOrigin : (
+          typeof metadata.origin === 'string' ? metadata.origin : 'remote'
+        ),
+        actorType:
+          metadata.actorType === 'user' || metadata.actorType === 'agent' || metadata.actorType === 'system'
+            ? metadata.actorType
+            : undefined,
+        actorId: typeof metadata.actorId === 'string' ? metadata.actorId : null,
+        userId: typeof metadata.userId === 'string' ? metadata.userId : null,
+        userName: typeof metadata.userName === 'string' ? metadata.userName : null,
         checkpointGroupId:
           typeof metadata.checkpointGroupId === 'string' ? metadata.checkpointGroupId : null,
         clientId: typeof metadata.clientId === 'string' ? metadata.clientId : null,
-        sourceOrigin: typeof metadata.origin === 'string' ? metadata.origin : 'remote',
+        terminalId: typeof metadata.terminalId === 'string' ? metadata.terminalId : null,
+        terminalTitle: typeof metadata.terminalTitle === 'string' ? metadata.terminalTitle : null,
+        terminalKind: typeof metadata.terminalKind === 'string' ? metadata.terminalKind : null,
+        commandId: typeof metadata.commandId === 'string' ? metadata.commandId : null,
+        commandText: typeof metadata.commandText === 'string' ? metadata.commandText : null,
+        runId: typeof metadata.runId === 'string' ? metadata.runId : null,
+        sessionKey: typeof metadata.sessionKey === 'string' ? metadata.sessionKey : null,
+        laneId: typeof metadata.laneId === 'string' ? metadata.laneId : null,
+        workspaceId: typeof metadata.workspaceId === 'string' ? metadata.workspaceId : null,
+        gitCwd: typeof metadata.gitCwd === 'string' ? metadata.gitCwd : null,
         timestamp,
       }),
     )
@@ -623,13 +649,31 @@ export class CollabWsProvider {
     }
     const idempotencyKey = randomId(`upd_${this.clientId}`)
     const checkpointGroupId = ensureActiveCheckpointGroup(this.session.projectId)
+    const attribution = extractAttributionOrigin(origin)
     void this.encodeOutboundBytes(update, 'yjs_update', {
       projectId: this.session.projectId,
       roomId: this.session.roomId,
       clientId: this.clientId,
       idempotencyKey,
       checkpointGroupId,
-      origin: typeof origin === 'string' ? origin : 'user',
+      origin:
+        attribution?.origin ??
+        (typeof origin === 'string' ? origin : 'user'),
+      sourceOrigin: attribution?.sourceOrigin,
+      actorType: attribution?.actorType,
+      actorId: attribution?.actorId,
+      userId: attribution?.userId,
+      userName: attribution?.userName,
+      terminalId: attribution?.terminalId,
+      terminalTitle: attribution?.terminalTitle,
+      terminalKind: attribution?.terminalKind,
+      commandId: attribution?.commandId,
+      commandText: attribution?.commandText,
+      runId: attribution?.runId,
+      sessionKey: attribution?.sessionKey,
+      laneId: attribution?.laneId,
+      workspaceId: attribution?.workspaceId,
+      gitCwd: attribution?.gitCwd,
     })
       .then((encoded) => {
         this.sendUpdate(encoded, idempotencyKey, Date.now())

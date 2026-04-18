@@ -1,0 +1,4 @@
+Script ran on page and returned:
+```json
+"Toggle Sidebar\nNew project\nDevApps Store\nProjects\nIntercom Website\nIntercom Mobile React Native\nRadonPreviewSmokeTest\nThis MacBookPro\nIntercom Website\n/\nmain\nOpen\nChanges\nShare\nMobile Simulator\nNo mobile simulator available\nThis project does not expose an iOS simulator preview yet."
+```

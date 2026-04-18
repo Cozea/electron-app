@@ -36,7 +36,12 @@ function getLoginShellArgs(shellPath: string): string[] | undefined {
 interface ManagedTerminal {
   id: string
   projectPath: string
+  gitCwd: string
   runId?: string
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  terminalKind: string
   activityTracking: TerminalActivityTrackingMode
   ptyProcess: pty.NativePty
   profile: TerminalProfile
@@ -48,6 +53,9 @@ interface ManagedTerminal {
   cancelled?: boolean
   timedOut?: boolean
   lastInput?: string
+  pendingInputBuffer: string
+  lastCommandId?: string
+  lastCommandAt?: number
   hasRunningSubprocess?: boolean
   activityPollTimer?: NodeJS.Timeout
 }
@@ -189,6 +197,41 @@ function checkTerminalSubprocessActivity(terminalPid: number): boolean {
   }
 
   return checkPosixSubprocessActivity(terminalPid)
+}
+
+function extractCompletedCommands(
+  pendingBuffer: string,
+  chunk: string,
+): { nextBuffer: string; commands: string[] } {
+  const commands: string[] = []
+  let nextBuffer = pendingBuffer
+
+  for (const char of chunk) {
+    if (char === '\r' || char === '\n') {
+      const completed = nextBuffer.trim()
+      if (completed) {
+        commands.push(completed)
+      }
+      nextBuffer = ''
+      continue
+    }
+
+    if (char === '\b' || char === '\u007f') {
+      nextBuffer = nextBuffer.slice(0, -1)
+      continue
+    }
+
+    if (char < ' ' || char === '\u001b') {
+      continue
+    }
+
+    nextBuffer += char
+    if (nextBuffer.length > 2048) {
+      nextBuffer = nextBuffer.slice(-2048)
+    }
+  }
+
+  return { nextBuffer, commands }
 }
 
 export class TerminalRuntimeHost extends EventEmitter {
@@ -345,6 +388,34 @@ export class TerminalRuntimeHost extends EventEmitter {
     this.emit('event', message)
   }
 
+  private emitTerminalProvenance(
+    terminal: ManagedTerminal,
+    payload?: {
+      commandId?: string
+      commandText?: string
+      timestamp?: number
+    },
+  ): void {
+    this.emitRuntimeEvent({
+      type: 'event',
+      event: 'terminal.provenance',
+      payload: {
+        terminalId: terminal.id,
+        projectPath: terminal.projectPath,
+        gitCwd: terminal.gitCwd,
+        title: terminal.title,
+        terminalKind: terminal.terminalKind,
+        sessionKey: terminal.sessionKey,
+        laneId: terminal.laneId,
+        workspaceId: terminal.workspaceId,
+        runId: terminal.runId,
+        commandId: payload?.commandId,
+        commandText: payload?.commandText,
+        timestamp: payload?.timestamp ?? Date.now(),
+      },
+    })
+  }
+
   private startActivityPolling(terminal: ManagedTerminal): void {
     if (terminal.activityTracking !== 'subprocess') {
       if (terminal.activityPollTimer) {
@@ -438,11 +509,17 @@ export class TerminalRuntimeHost extends EventEmitter {
       const terminal: Partial<ManagedTerminal> = {
         id: terminalId,
         projectPath: options.projectPath,
+        gitCwd: options.gitCwd || options.projectPath,
         runId: options.runId,
+        sessionKey: options.sessionKey,
+        laneId: options.laneId,
+        workspaceId: options.workspaceId,
+        terminalKind: options.terminalKind ?? 'shell',
         activityTracking: this.normalizeActivityTracking(options.activityTracking),
         title: '',
         startedAt: Date.now(),
         output: '',
+        pendingInputBuffer: '',
       }
 
       let spawnError: unknown = null
@@ -523,6 +600,7 @@ export class TerminalRuntimeHost extends EventEmitter {
       const managedTerminal = terminal as ManagedTerminal
       this.terminals.set(terminalId, managedTerminal)
       this.startActivityPolling(managedTerminal)
+      this.emitTerminalProvenance(managedTerminal)
 
       const projectTerminals = this.projectTerminals.get(options.projectPath) || []
       projectTerminals.push(terminalId)
@@ -552,6 +630,21 @@ export class TerminalRuntimeHost extends EventEmitter {
     const normalized = data.replace(/\r?\n/g, '').trim()
     if (normalized) {
       terminal.lastInput = normalized
+    }
+
+    const { nextBuffer, commands } = extractCompletedCommands(terminal.pendingInputBuffer, data)
+    terminal.pendingInputBuffer = nextBuffer
+    for (const commandText of commands) {
+      const timestamp = Date.now()
+      const commandId = `cmd_${Math.random().toString(36).slice(2, 10)}_${timestamp.toString(36)}`
+      terminal.lastCommandId = commandId
+      terminal.lastCommandAt = timestamp
+      terminal.lastInput = commandText
+      this.emitTerminalProvenance(terminal, {
+        commandId,
+        commandText,
+        timestamp,
+      })
     }
 
     terminal.ptyProcess.write(data)

@@ -862,6 +862,40 @@ export interface TerminalSnapshot {
 }
 
 export type TerminalActivityTrackingMode = 'off' | 'subprocess'
+export type TerminalKind = 'shell' | 'dev-server' | 'agent' | 'task'
+export type FileChangeActorType = 'user' | 'agent' | 'system'
+export type FileChangeOriginKind = 'user' | 'agent' | 'remote' | 'init'
+
+export interface FileChangeAttribution {
+  origin: FileChangeOriginKind
+  sourceOrigin?: string
+  actorType?: FileChangeActorType
+  actorId?: string
+  userId?: string
+  userName?: string
+  clientId?: string
+  terminalId?: string
+  terminalTitle?: string
+  terminalKind?: TerminalKind | string
+  commandId?: string
+  commandText?: string
+  runId?: string
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  gitCwd?: string
+  checkpointGroupId?: string
+  timestamp?: number
+}
+
+export interface GitDirtyStateSnapshot {
+  projectPath: string
+  additions: number
+  deletions: number
+  changedFiles: number
+  computedAt: number
+  error?: string
+}
 
 export interface TerminalCreateOptions {
   projectPath: string
@@ -872,6 +906,11 @@ export interface TerminalCreateOptions {
   runId?: string
   env?: Record<string, string>
   activityTracking?: TerminalActivityTrackingMode
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  gitCwd?: string
+  terminalKind?: TerminalKind
 }
 
 export interface TerminalOutputEvent {
@@ -1429,7 +1468,7 @@ export interface ElectronAPI {
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
@@ -1438,12 +1477,12 @@ export interface ElectronAPI {
       projectPath: string
       oldPath: string
       newPath: string
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<RenameFileResult>
     deletePath: (options: {
       projectPath: string
       targetPath: string
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<{ success: boolean; error?: string }>
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
     copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>
@@ -1658,6 +1697,14 @@ export interface ElectronAPI {
       projectPath: string
       authorName?: string
     }) => Promise<GitCheckpointHeadStatsResult>
+    subscribeGitDirtyState: (options: {
+      projectPath: string
+      authorName?: string
+    }) => Promise<GitDirtyStateSnapshot>
+    unsubscribeGitDirtyState: (options: {
+      projectPath: string
+    }) => Promise<{ success: boolean }>
+    onGitDirtyStateChange: (callback: (snapshot: GitDirtyStateSnapshot) => void) => () => void
     mergePreview: (options: {
       baseContent: string
       localContent: string
@@ -1680,16 +1727,23 @@ export interface ElectronAPI {
   }
   yjs: {
     setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>
-    onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
+    onExternalFileChange: (callback: (data: {
+      filePath: string
+      content: string
+      origin?: string | FileChangeAttribution
+    }) => void) => () => void
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
-      origin?: string
+      origin?: string | FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
       sizeBytes: number
       content?: string
     }) => void) => () => void
-    onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => () => void
+    onExternalFileDelete: (callback: (data: {
+      filePath: string
+      origin?: string | FileChangeAttribution
+    }) => void) => () => void
   }
   devServer: {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>

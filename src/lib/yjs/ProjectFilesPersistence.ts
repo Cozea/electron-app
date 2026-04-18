@@ -3,20 +3,38 @@ import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { api } from '../../../convex/_generated/api'
 import { clearActiveCheckpointGroup, ensureActiveCheckpointGroup } from './checkpointGroups'
-import { isRemoteYjsOrigin, resolveYjsOriginKind } from './origins'
+import { extractAttributionOrigin, isRemoteYjsOrigin, resolveYjsOriginKind } from './origins'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
+
+interface ChangeAttributionMetadata {
+  origin: ChangeOrigin
+  sourceOrigin?: string
+  actorType?: 'user' | 'agent' | 'system'
+  actorId?: string
+  terminalId?: string
+  terminalTitle?: string
+  terminalKind?: string
+  commandId?: string
+  commandText?: string
+  runId?: string
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  gitCwd?: string
+  timestamp?: number
+}
 
 interface PendingChange {
   content: string
   previousContent: string
-  origin: ChangeOrigin
+  attribution: ChangeAttributionMetadata
   previousLineCount: number
 }
 
 interface PendingDelete {
   previousContent: string
-  origin: ChangeOrigin
+  attribution: ChangeAttributionMetadata
   previousLineCount: number
 }
 
@@ -132,12 +150,32 @@ export class ProjectFilesPersistence {
     }
 
     // Determine the change origin type
-    const changeOrigin: ChangeOrigin =
-      resolveYjsOriginKind(origin) === 'agent'
-        ? 'agent'
-        : resolveYjsOriginKind(origin) === 'init'
-          ? 'init'
-          : 'user'
+    const extractedAttribution = extractAttributionOrigin(origin)
+    const resolvedOriginKind = resolveYjsOriginKind(origin)
+    const changeAttribution: ChangeAttributionMetadata = {
+      origin:
+        resolvedOriginKind === 'agent'
+          ? 'agent'
+          : resolvedOriginKind === 'init'
+            ? 'init'
+            : resolvedOriginKind === 'remote'
+              ? 'remote'
+              : 'user',
+      sourceOrigin: extractedAttribution?.sourceOrigin,
+      actorType: extractedAttribution?.actorType,
+      actorId: extractedAttribution?.actorId,
+      terminalId: extractedAttribution?.terminalId,
+      terminalTitle: extractedAttribution?.terminalTitle,
+      terminalKind: extractedAttribution?.terminalKind,
+      commandId: extractedAttribution?.commandId,
+      commandText: extractedAttribution?.commandText,
+      runId: extractedAttribution?.runId,
+      sessionKey: extractedAttribution?.sessionKey,
+      laneId: extractedAttribution?.laneId,
+      workspaceId: extractedAttribution?.workspaceId,
+      gitCwd: extractedAttribution?.gitCwd,
+      timestamp: extractedAttribution?.timestamp,
+    }
 
     for (const event of events) {
       if (event.target === this.filesMap) {
@@ -153,7 +191,7 @@ export class ProjectFilesPersistence {
 
           this.pendingDeletes.set(path, {
             previousContent,
-            origin: changeOrigin,
+            attribution: changeAttribution,
             previousLineCount,
           })
         }
@@ -174,7 +212,7 @@ export class ProjectFilesPersistence {
           this.pendingChanges.set(path, {
             content: nextContent,
             previousContent: previousContent,
-            origin: changeOrigin,
+            attribution: changeAttribution,
             previousLineCount,
           })
         }
@@ -225,7 +263,7 @@ export class ProjectFilesPersistence {
             continue
           }
 
-          const { origin, previousLineCount } = info
+          const { attribution, previousLineCount } = info
           try {
             await this.convex.mutation(api.activity.logFileChange, {
               projectId: this.projectId,
@@ -235,8 +273,22 @@ export class ProjectFilesPersistence {
               additions: 0,
               deletions: previousLineCount,
               totalLines: 0,
-              origin,
+              origin: attribution.origin,
+              sourceOrigin: attribution.sourceOrigin,
+              actorType: attribution.actorType,
+              actorId: attribution.actorId,
               userName: this.userName,
+              terminalId: attribution.terminalId,
+              terminalTitle: attribution.terminalTitle,
+              terminalKind: attribution.terminalKind,
+              commandId: attribution.commandId,
+              commandText: attribution.commandText,
+              runId: attribution.runId,
+              sessionKey: attribution.sessionKey,
+              laneId: attribution.laneId,
+              workspaceId: attribution.workspaceId,
+              gitCwd: attribution.gitCwd,
+              changeTimestamp: attribution.timestamp,
               checkpointGroupId: checkpointGroupId ?? undefined,
             })
             loggedActivity = true
@@ -244,7 +296,7 @@ export class ProjectFilesPersistence {
               projectId: this.projectId,
               filePath: path,
               deletedBy: this.userId,
-              deletedByAgent: origin === 'agent' ? this.userName : undefined,
+              deletedByAgent: attribution.origin === 'agent' ? this.userName : undefined,
             })
           } catch (error) {
             console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
@@ -262,7 +314,7 @@ export class ProjectFilesPersistence {
           continue
         }
 
-        const { content, previousContent, origin, previousLineCount } = change
+        const { content, previousContent, attribution, previousLineCount } = change
         // Ignore no-op writes to avoid noisy feed events and redundant uploads.
         if (content === previousContent) continue
 
@@ -282,8 +334,22 @@ export class ProjectFilesPersistence {
             additions,
             deletions,
             totalLines: currentLineCount,
-            origin,
+            origin: attribution.origin,
+            sourceOrigin: attribution.sourceOrigin,
+            actorType: attribution.actorType,
+            actorId: attribution.actorId,
             userName: this.userName,
+            terminalId: attribution.terminalId,
+            terminalTitle: attribution.terminalTitle,
+            terminalKind: attribution.terminalKind,
+            commandId: attribution.commandId,
+            commandText: attribution.commandText,
+            runId: attribution.runId,
+            sessionKey: attribution.sessionKey,
+            laneId: attribution.laneId,
+            workspaceId: attribution.workspaceId,
+            gitCwd: attribution.gitCwd,
+            changeTimestamp: attribution.timestamp,
             checkpointGroupId: checkpointGroupId ?? undefined,
           })
           loggedActivity = true

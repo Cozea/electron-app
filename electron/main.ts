@@ -18,6 +18,7 @@ import { IntegrationService } from './services/IntegrationService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { AgentToolService } from './services/AgentToolService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
+import { GitDirtyStateService } from './services/GitDirtyStateService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
@@ -1371,6 +1372,7 @@ IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
+GitDirtyStateService.getInstance().registerIpcHandlers(ipcMain)
 
 registerCoreHandlers(ipcMain, {
   

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useConvex } from 'convex/react'
 import type { Id } from '../../convex/_generated/dataModel'
+import type { FileChangeAttribution } from '../../shared/electronApiTypes'
 import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
 
 /**
@@ -49,7 +50,7 @@ export function useBinaryFileSync(
 
     const handleExternalFileChange = (data: {
       filePath: string
-      origin?: string
+      origin?: string | FileChangeAttribution
       isBinary: boolean
       sizeBytes: number
       isDirectory?: boolean
@@ -65,7 +66,13 @@ export function useBinaryFileSync(
       if (!data.isBinary && !isBinaryFile(relativePath)) return
 
       // Don't re-upload files we just downloaded
-      if (data.origin === 'remote' || data.origin === 'sync') return
+      if (
+        data.origin === 'remote' ||
+        data.origin === 'sync' ||
+        (data.origin && typeof data.origin === 'object' && data.origin.origin === 'remote')
+      ) {
+        return
+      }
 
       console.log(`[BinaryFileSync] Local binary file changed: ${relativePath}`)
       binarySyncRef.current?.uploadBinaryFile(relativePath)

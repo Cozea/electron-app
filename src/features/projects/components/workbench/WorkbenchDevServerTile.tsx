@@ -251,6 +251,10 @@ function WorkbenchRuntimePreviewTile({
         const result = await window.electronAPI.terminal.create({
           projectPath,
           cwd: projectPath,
+          gitCwd: projectPath,
+          sessionKey: workbenchSession.sessionKey,
+          laneId,
+          terminalKind: "dev-server",
           activityTracking: "off",
         })
 
