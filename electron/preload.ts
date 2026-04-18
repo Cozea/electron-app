@@ -841,7 +841,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   terminal: {
-    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string; env?: Record<string, string> }) =>
+    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string; env?: Record<string, string>; activityTracking?: import('../shared/electronApiTypes').TerminalActivityTrackingMode }) =>
       ipcRenderer.invoke('terminal:create', options),
     input: (options: { terminalId: string; data: string }) =>
       ipcRenderer.invoke('terminal:input', options),

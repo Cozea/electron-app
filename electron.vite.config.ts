@@ -86,6 +86,7 @@ export default defineConfig({
       lib: {
         entry: {
           index: 'electron/main.ts',
+          'workbench-runtime': 'electron/workbench-runtime/child.ts',
         },
       },
       rollupOptions: {

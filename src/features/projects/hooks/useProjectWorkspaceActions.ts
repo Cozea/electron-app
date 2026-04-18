@@ -146,8 +146,8 @@ export function useProjectWorkspaceActions() {
         projectId: project.id,
       })
 
-      clearProjectBranchSession(project.id)
-      clearCachedProjectLaneState(project.id)
+      clearProjectBranchSession(project.id, normalizedProjectPath)
+      clearCachedProjectLaneState(project.id, normalizedProjectPath)
       suppressLocalProjectPath(project.id, normalizedProjectPath, project.slug)
 
       navigate(buildProjectPath(project.id, "workbench"), {

@@ -120,6 +120,8 @@ export class DevServerService {
     }
 
     try {
+      this.terminalService.setActivityTracking(terminalId, 'subprocess')
+
       const normalizedSessionKey = sessionKey?.trim() || projectPath
       const portLease = await this.portBroker.acquirePort({
         sessionKey: normalizedSessionKey,
@@ -290,6 +292,9 @@ export class DevServerService {
       onOutput(`[DevServer] Ready on port ${reachablePort}\n`, 'stdout')
       return { success: true, port: reachablePort, runId }
     } catch (error) {
+      if (!this.processes.has(projectPath)) {
+        this.terminalService.setActivityTracking(terminalId, 'off')
+      }
       this.disposeRun(projectPath, null)
       return {
         success: false,
@@ -376,6 +381,7 @@ export class DevServerService {
     entry.disposed = true
     entry.unsubscribeTerminal?.()
     entry.unsubscribeTerminal = null
+    this.terminalService.setActivityTracking(entry.terminalId, 'off')
     this.processes.delete(projectPath)
     this.portBroker.releasePort(entry.sessionKey, entry.projectPath)
   }
@@ -389,6 +395,7 @@ export class DevServerService {
     entry.disposed = true
     entry.unsubscribeTerminal?.()
     entry.unsubscribeTerminal = null
+    this.terminalService.setActivityTracking(entry.terminalId, 'off')
     this.processes.delete(projectPath)
     this.portBroker.releasePort(entry.sessionKey, entry.projectPath)
     entry.onExit(exitCode)
