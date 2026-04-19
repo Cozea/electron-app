@@ -213,20 +213,10 @@ export class WorkbenchSessionManager extends EventEmitter<{
     nextLifecycle: WorkbenchSessionLifecycle,
     reason: string,
   ): void {
+    void reason
     if (previousLifecycle === nextLifecycle) {
       return
     }
-
-    const record = this.sessions.get(sessionKey)
-    console.info("[WorkbenchSessionManager] Lifecycle transition", {
-      sessionKey,
-      projectId: record?.projectId ?? null,
-      laneId: record?.laneId ?? null,
-      projectPath: record?.projectPath ?? null,
-      from: previousLifecycle,
-      to: nextLifecycle,
-      reason,
-    })
   }
 
   private warnOwnershipMismatch(event: string, details: Record<string, unknown>): void {

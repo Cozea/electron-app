@@ -144,6 +144,20 @@ export function useWorkbenchBrowserView(
   const overlayPausedRef = useRef(overlayPaused)
   const scheduleBoundsSyncRef = useRef<(() => void) | null>(null)
 
+  const onUrlObservedRef = useRef(onUrlObserved)
+  const onTitleObservedRef = useRef(onTitleObserved)
+  const onFaviconObservedRef = useRef(onFaviconObserved)
+  const onNewPageRequestRef = useRef(onNewPageRequest)
+  const onCommandRef = useRef(onCommand)
+
+  useEffect(() => {
+    onUrlObservedRef.current = onUrlObserved
+    onTitleObservedRef.current = onTitleObserved
+    onFaviconObservedRef.current = onFaviconObserved
+    onNewPageRequestRef.current = onNewPageRequest
+    onCommandRef.current = onCommand
+  })
+
   useEffect(() => {
     overlayPausedRef.current = overlayPaused
     scheduleBoundsSyncRef.current?.()
@@ -206,12 +220,12 @@ export function useWorkbenchBrowserView(
       setState(nextState)
       if (nextState.url && nextState.url !== url) {
         lastRequestedUrlRef.current = nextState.url
-        onUrlObserved?.(nextState.url)
+        onUrlObservedRef.current?.(nextState.url)
       }
       if (nextState.title && nextState.title !== "Browser") {
-        onTitleObserved?.(nextState.title)
+        onTitleObservedRef.current?.(nextState.title)
       }
-      onFaviconObserved?.(nextState.favicon ?? null)
+      onFaviconObservedRef.current?.(nextState.favicon ?? null)
     })
 
     void model.initialize({
@@ -221,16 +235,15 @@ export function useWorkbenchBrowserView(
     })
 
     return unsubscribe
-  }, [onFaviconObserved, onTitleObserved, onUrlObserved, persistModel, storageScope, tileId, url, workspaceId])
+  }, [persistModel, storageScope, tileId, url, workspaceId])
 
   useEffect(() => {
-    if (!onNewPageRequest) return
     const unsubscribe = window.electronAPI.workbenchBrowser.onNewPageRequest((request) => {
       if (request.sourceTileId !== tileId) return
-      onNewPageRequest(request)
+      onNewPageRequestRef.current?.(request)
     })
     return unsubscribe
-  }, [onNewPageRequest, tileId])
+  }, [tileId])
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.workbenchBrowser.onCommand((command) => {
@@ -241,11 +254,10 @@ export function useWorkbenchBrowserView(
         return
       }
 
-      if (!onCommand) return
-      onCommand(command)
+      onCommandRef.current?.(command)
     })
     return () => unsubscribe()
-  }, [onCommand, tileId])
+  }, [tileId])
 
   useEffect(() => {
     const model = modelRef.current

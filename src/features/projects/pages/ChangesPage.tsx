@@ -265,7 +265,6 @@ function ChangeGroupCard(props: {
   } = props
   
   const [patch, setPatch] = useState<string | null>(null)
-  const [isLoadingPatch, setIsLoadingPatch] = useState(false)
   const [patchError, setPatchError] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [showComments, setShowComments] = useState(false)
@@ -282,7 +281,6 @@ function ChangeGroupCard(props: {
     }
 
     let cancelled = false
-    setIsLoadingPatch(true)
     setPatchError(null)
 
     // Omit filePath to get the full patch for the checkpoint
@@ -305,11 +303,6 @@ function ChangeGroupCard(props: {
         if (cancelled) return
         setPatch(null)
         setPatchError(error instanceof Error ? error.message : 'Failed to load patch.')
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingPatch(false)
-        }
       })
 
     return () => {
@@ -382,10 +375,6 @@ function ChangeGroupCard(props: {
             {patchError ? (
               <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                 {patchError}
-              </div>
-            ) : isLoadingPatch ? (
-              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                Loading diffs...
               </div>
             ) : selectedFileDiff ? (
               <div className="flex flex-col min-h-full">
@@ -518,11 +507,7 @@ export function ChangesPage(_props: ChangesPageProps) {
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
               Project unavailable.
             </div>
-          ) : activity === undefined ? (
-            <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
-              Loading changes…
-            </div>
-          ) : groups.length === 0 ? (
+          ) : activity === undefined ? null : groups.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <HugeiconsIcon icon={__ClockHugeIcon} className="size-8 text-muted-foreground/35" />
               <div className="space-y-1">

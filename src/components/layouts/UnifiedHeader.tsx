@@ -85,7 +85,7 @@ export function UnifiedHeader({
   /** Embedded shell: tighter trailing edge so header actions sit nearer the window border. */
   const shellHorizontalPadding =
     layoutMode === "embedded"
-      ? cn(relaxMacTitlebarLeadingPadding ? "pl-2" : "pl-4", "pr-1")
+      ? cn(relaxMacTitlebarLeadingPadding ? "pl-2" : "pl-4", "pr-1.5")
       : "pl-4 pr-2";
   const hasLocalDeviceProfile = Boolean(
     user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),

@@ -146,13 +146,6 @@ export function YjsProjectProvider({
   }, [wsSession])
 
   const destroyTransportProvider = useCallback(() => {
-    if (wsProviderRef.current || wsProviderLifecycleIdRef.current) {
-      console.log("[YjsProjectProvider] Destroying collaboration transport provider", {
-        projectId: String(projectId),
-        lifecycleId: wsProviderLifecycleIdRef.current,
-        hasProvider: Boolean(wsProviderRef.current),
-      })
-    }
     wsProviderRef.current?.destroy()
     wsProviderRef.current = null
     wsProviderLifecycleIdRef.current = null
@@ -519,25 +512,10 @@ export function YjsProjectProvider({
       },
     })
     wsProviderLifecycleIdRef.current = randomDebugId("yjs_ws_provider")
-    console.log("[YjsProjectProvider] Created collaboration transport provider", {
-      projectId: String(projectId),
-      lifecycleId: wsProviderLifecycleIdRef.current,
-      roomId: session.roomId,
-      collabWsUrl: session.collabWsUrl,
-      protocolVersion: session.protocolVersion,
-    })
-    console.log("[YjsProjectProvider] Starting collaboration transport provider", {
-      projectId: String(projectId),
-      lifecycleId: wsProviderLifecycleIdRef.current,
-    })
     wsProviderRef.current.start()
 
     return () => {
       disposed = true
-      console.log("[YjsProjectProvider] Cleaning up collaboration transport provider effect", {
-        projectId: String(projectId),
-        lifecycleId: wsProviderLifecycleIdRef.current,
-      })
       destroyTransportProvider()
       setIsConnected(false)
     }

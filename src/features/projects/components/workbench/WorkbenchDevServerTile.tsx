@@ -1,4 +1,4 @@
-import { Activity, createElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Activity, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 import type {
 
@@ -11,6 +11,8 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Toggle } from "@/components/ui/toggle"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { normalizeUrlInput } from "@/features/projects/components/workbench/WorkbenchBrowserTile"
@@ -20,7 +22,6 @@ import { useWorkbenchPanelActivityMode } from "@/features/projects/components/wo
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import {
   getEffectiveExternalBrowserId,
-  getExternalBrowserIcon,
   getVisibleExternalBrowsers,
   PREVIEW_BROWSER_PREFERENCE_KEY,
   PREVIEW_DESTINATION_PREFERENCE_KEY,
@@ -41,9 +42,7 @@ import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { CommandLineIcon as __SquareTerminalHugeIcon, EyeIcon as __EyeHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon, LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
-
-const Eye = (props: any) => <HugeiconsIcon icon={__EyeHugeIcon} {...props} />
+import { CommandLineIcon as __SquareTerminalHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon, LockIcon as __LockHugeIcon, ComputerVideoIcon as __ComputerVideoHugeIcon } from '@hugeicons/core-free-icons'
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   switch (status) {
@@ -491,10 +490,6 @@ function WorkbenchRuntimePreviewTile({
     )
   }, [availableBrowsers, effectiveBrowserId, visibleBrowsers])
 
-  const PreviewIcon = previewDestination === "cozea"
-    ? Eye
-    : getExternalBrowserIcon(effectiveBrowserId)
-
   const externalPreviewUrl = usesNativePreview ? nativeStreamUrl ?? previewUrl : previewUrl
 
   const openPreviewExternally = useCallback(
@@ -588,84 +583,43 @@ function WorkbenchRuntimePreviewTile({
   const chromeControls = isMobileSimulatorSurface ? (
     <div className="flex min-w-0 items-center gap-2">
       <div className="inline-flex h-8 min-w-0 items-center">
-        <button
-          type="button"
-          className={cn(
-            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
-            "hover:text-foreground",
-            viewMode === "preview" &&
-              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
-          )}
-          onClick={() => setViewMode("preview")}
-          aria-pressed={viewMode === "preview"}
-          aria-label="Simulator preview"
-          title="Simulator preview"
+        <Toggle
+          variant="default"
+          size="sm"
+          pressed={viewMode === "code"}
+          onPressedChange={(pressed) => setViewMode(pressed ? "code" : "preview")}
+          aria-label={viewMode === "code" ? "Switch to preview" : "Switch to code"}
+          className="h-7 w-7 p-0"
         >
-          <Eye className="h-4 w-4" />
-        </button>
-        <div className="mx-1 h-4 w-px bg-border/45" aria-hidden />
-        <button
-          type="button"
-          className={cn(
-            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
-            "hover:text-foreground",
-            viewMode === "code" &&
-              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
-          )}
-          onClick={() => setViewMode("code")}
-          aria-pressed={viewMode === "code"}
-          aria-label="Code"
-          title="Code"
-        >
-          <HugeiconsIcon icon={__SquareTerminalHugeIcon} className="h-4 w-4" />
-        </button>
+          <HugeiconsIcon icon={viewMode === "code" ? __ComputerVideoHugeIcon : __SquareTerminalHugeIcon} className="h-4 w-4" />
+        </Toggle>
       </div>
     </div>
   ) : (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <div className="inline-flex h-8 min-w-0 shrink-0 items-center">
-        <button
-          type="button"
-          className={cn(
-            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
-            "hover:text-foreground",
-            viewMode === "preview" &&
-              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
-          )}
-          onClick={() => {
-            setViewMode("preview")
-            if (previewDestination === "external") {
+        <Toggle
+          variant="default"
+          size="sm"
+          pressed={viewMode === "code"}
+          onPressedChange={(pressed) => {
+            setViewMode(pressed ? "code" : "preview")
+            if (!pressed && previewDestination === "external") {
               void openPreviewExternally(true)
             }
           }}
-          aria-pressed={viewMode === "preview"}
-          aria-label={previewDestination === "cozea" ? "Preview in Cozea" : `Preview in ${effectiveSelectedBrowser.name}`}
-          title={previewDestination === "cozea" ? "Preview in Cozea" : `Preview in ${effectiveSelectedBrowser.name}`}
+          aria-label={viewMode === "code" ? "Switch to preview" : "Switch to code"}
+          className="h-7 w-7 p-0"
         >
-          {createElement(PreviewIcon, { className: "h-4 w-4" })}
-        </button>
-        <div className="mx-1 h-4 w-px bg-border/45" aria-hidden />
-        <button
-          type="button"
-          className={cn(
-            "relative flex h-full min-w-11 items-center justify-center border-0 bg-transparent px-3 text-muted-foreground/75 transition-colors",
-            "hover:text-foreground",
-            viewMode === "code" &&
-              "text-foreground after:absolute after:bottom-1 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-foreground",
-          )}
-          onClick={() => setViewMode("code")}
-          aria-pressed={viewMode === "code"}
-          aria-label="Code"
-          title="Code"
-        >
-          <HugeiconsIcon icon={__SquareTerminalHugeIcon} className="h-4 w-4" />
-        </button>
+          <HugeiconsIcon icon={viewMode === "code" ? __ComputerVideoHugeIcon : __SquareTerminalHugeIcon} className="h-4 w-4" />
+        </Toggle>
       </div>
-      {previewUrl && previewDestination === "cozea" ? (
+      {previewDestination === "cozea" ? (
         <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-secondary px-2">
           <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
           <Input
             value={draftUrl}
+            placeholder="Search or enter address"
             onChange={(e) => setDraftUrl(e.target.value)}
             onBlur={() => setDraftUrl(displayUrl)}
             onKeyDown={(e) => {
@@ -800,16 +754,26 @@ function WorkbenchRuntimePreviewTile({
     <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
       {!previewUrl ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] flex items-center justify-center bg-content-surface p-6 text-center">
-          <div className="max-w-sm space-y-1">
-            <div className="text-sm text-foreground">
-              {devServer.status === "starting" ? "Local preview will attach here." : "No preview yet"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {devServer.status === "starting"
-                ? "The browser shell is ready. As soon as the dev server exposes a URL, the page will appear here."
-                : "Start the dev server to load the local preview here."}
-            </div>
-          </div>
+          <Empty className="w-full max-w-md py-8">
+            <EmptyHeader>
+              <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
+                <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-7 w-7" />
+              </EmptyMedia>
+              <EmptyTitle className="text-base font-medium">
+                {devServer.status === "starting" ? "Local preview will attach here." : "No preview yet"}
+              </EmptyTitle>
+              <EmptyDescription>
+                {devServer.status === "starting"
+                  ? "The browser shell is ready. As soon as the dev server exposes a URL, the page will appear here."
+                  : "Start the dev server to load the local preview here."}
+              </EmptyDescription>
+              {devServer.status === "starting" ? (
+                <div className="flex justify-center pt-2">
+                  <div className="cozea-loader" />
+                </div>
+              ) : null}
+            </EmptyHeader>
+          </Empty>
         </div>
       ) : null}
       {previewUrl && previewState.loadError ? (
