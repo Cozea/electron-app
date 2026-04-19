@@ -22,6 +22,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useLayoutEffect(() => {
     applyThemeClass(theme)
+    if (window.electronAPI) {
+      let source: 'system' | 'light' | 'dark' = 'system'
+      if (theme !== 'system') {
+        source = theme === 'light' ? 'light' : 'dark'
+      }
+      window.electronAPI.app.setNativeThemeSource(source).catch(console.error)
+    }
   }, [theme])
 
   useEffect(() => {

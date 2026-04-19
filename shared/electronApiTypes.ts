@@ -1248,6 +1248,7 @@ export interface ElectronAPI {
     onNavigate: (callback: (path: string) => void) => () => void
     onOpenSettings: (callback: (route: string) => void) => () => void
     getGpuDiagnostics: () => Promise<GpuAccelerationDiagnostics>
+    setNativeThemeSource: (source: 'system' | 'light' | 'dark') => Promise<void>
   }
   settings: {
     get: () => Promise<AppSettings>

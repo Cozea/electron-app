@@ -1401,6 +1401,9 @@ registerCoreHandlers(ipcMain, {
     return openFileInExternalEditor({ editorId, filePath, line, column })
   },
   getGpuDiagnostics: () => gpuDiagnostics,
+  setNativeThemeSource: async (source) => {
+    nativeTheme.themeSource = source
+  },
   isWindowFullScreen: () => win?.isFullScreen() ?? false,
   openSettingsWindow,
 })

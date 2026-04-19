@@ -77,8 +77,8 @@ export function WorkbenchJunctionInsertion({
           >
             <div
               aria-hidden="true"
-              data-workbench-browser-overlay="true"
-              data-workbench-browser-overlay-reason="Add Tile controls"
+              data-workbench-browser-overlay={isHovered ? "true" : undefined}
+              data-workbench-browser-overlay-reason={isHovered ? "Add Tile controls" : undefined}
               className={cn("pointer-events-none absolute z-[90]", getHandleClasses(target.edge, isHovered))}
             >
               {isHovered ? <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" /> : null}

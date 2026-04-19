@@ -197,6 +197,8 @@ export function computeWorkbenchEdgeTargetsFromGeometry(
     const centerY = geometry.relTop + (geometry.relBottom - geometry.relTop) / 2
 
     if (geometry.relLeft <= SEAM_INTERIOR_TOLERANCE) {
+      const edgeHeight = geometry.relBottom - geometry.relTop
+      const triggerHeight = Math.min(edgeHeight, SEAM_TRIGGER_SEGMENT_LENGTH)
       targets.push({
         id: `edge-${geometry.referenceTileId}-left`,
         kind: "edge",
@@ -204,9 +206,9 @@ export function computeWorkbenchEdgeTargetsFromGeometry(
         edge: "left",
         triggerRect: {
           x: 0,
-          y: geometry.relTop,
+          y: geometry.relTop + (edgeHeight - triggerHeight) / 2,
           width: OUTER_EDGE_TRIGGER_THICKNESS,
-          height: geometry.relBottom - geometry.relTop,
+          height: triggerHeight,
         },
         anchorPoint: { x: 0, y: centerY },
         scope: isFullHeight ? "full-span" : "local",
@@ -214,6 +216,8 @@ export function computeWorkbenchEdgeTargetsFromGeometry(
     }
 
     if (containerWidth - geometry.relRight <= SEAM_INTERIOR_TOLERANCE) {
+      const edgeHeight = geometry.relBottom - geometry.relTop
+      const triggerHeight = Math.min(edgeHeight, SEAM_TRIGGER_SEGMENT_LENGTH)
       targets.push({
         id: `edge-${geometry.referenceTileId}-right`,
         kind: "edge",
@@ -221,9 +225,9 @@ export function computeWorkbenchEdgeTargetsFromGeometry(
         edge: "right",
         triggerRect: {
           x: Math.max(0, containerWidth - OUTER_EDGE_TRIGGER_THICKNESS),
-          y: geometry.relTop,
+          y: geometry.relTop + (edgeHeight - triggerHeight) / 2,
           width: OUTER_EDGE_TRIGGER_THICKNESS,
-          height: geometry.relBottom - geometry.relTop,
+          height: triggerHeight,
         },
         anchorPoint: { x: containerWidth, y: centerY },
         scope: isFullHeight ? "full-span" : "local",
@@ -231,15 +235,17 @@ export function computeWorkbenchEdgeTargetsFromGeometry(
     }
 
     if (geometry.relTop <= SEAM_INTERIOR_TOLERANCE) {
+      const edgeWidth = geometry.relRight - geometry.relLeft
+      const triggerWidth = Math.min(edgeWidth, SEAM_TRIGGER_SEGMENT_LENGTH)
       targets.push({
         id: `edge-${geometry.referenceTileId}-top`,
         kind: "edge",
         referenceTileId: geometry.referenceTileId,
         edge: "top",
         triggerRect: {
-          x: geometry.relLeft,
+          x: geometry.relLeft + (edgeWidth - triggerWidth) / 2,
           y: 0,
-          width: geometry.relRight - geometry.relLeft,
+          width: triggerWidth,
           height: OUTER_EDGE_TRIGGER_THICKNESS,
         },
         anchorPoint: { x: centerX, y: 0 },
@@ -248,15 +254,17 @@ export function computeWorkbenchEdgeTargetsFromGeometry(
     }
 
     if (containerHeight - geometry.relBottom <= SEAM_INTERIOR_TOLERANCE) {
+      const edgeWidth = geometry.relRight - geometry.relLeft
+      const triggerWidth = Math.min(edgeWidth, SEAM_TRIGGER_SEGMENT_LENGTH)
       targets.push({
         id: `edge-${geometry.referenceTileId}-bottom`,
         kind: "edge",
         referenceTileId: geometry.referenceTileId,
         edge: "bottom",
         triggerRect: {
-          x: geometry.relLeft,
+          x: geometry.relLeft + (edgeWidth - triggerWidth) / 2,
           y: Math.max(0, containerHeight - OUTER_EDGE_TRIGGER_THICKNESS),
-          width: geometry.relRight - geometry.relLeft,
+          width: triggerWidth,
           height: OUTER_EDGE_TRIGGER_THICKNESS,
         },
         anchorPoint: { x: centerX, y: containerHeight },

@@ -35,6 +35,7 @@ interface RegisterCoreHandlersDeps {
     column?: number
   }) => Promise<void>
   getGpuDiagnostics: () => GpuAccelerationDiagnostics
+  setNativeThemeSource: (source: 'system' | 'light' | 'dark') => Promise<void>
   isWindowFullScreen: () => boolean
   openSettingsWindow: (route?: string) => Promise<{ success: boolean; error?: string }>
 }
@@ -115,6 +116,10 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
 
   ipcMain.handle('app:getGpuDiagnostics', () => {
     return deps.getGpuDiagnostics()
+  })
+
+  ipcMain.handle('app:setNativeThemeSource', async (_event, source: 'system' | 'light' | 'dark') => {
+    return deps.setNativeThemeSource(source)
   })
 
   ipcMain.handle(
