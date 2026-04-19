@@ -72,5 +72,5 @@ export function SidebarInsetToggle() {
 
 /** Reserved for additional layout controls; sidebar toggle is rendered in `UnifiedHeader` (left cluster). */
 export function LayoutToggles() {
-    return <div className="flex items-center gap-0.5" />
+    return null
 }

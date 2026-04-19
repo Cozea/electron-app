@@ -15,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useGitDirtySnapshot } from "@/hooks/useGitDirtySnapshot";
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { TransactionHistoryIcon as __TransactionHistoryHugeIcon } from '@hugeicons/core-free-icons'
+import { GitCompareIcon as __GitCompareHugeIcon } from '@hugeicons/core-free-icons'
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();
@@ -92,8 +92,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             });
           }}
         >
-          <HugeiconsIcon icon={__TransactionHistoryHugeIcon} className="size-3 shrink-0" />
-          <span className="text-[11px] leading-none">Changes</span>
+          <HugeiconsIcon icon={__GitCompareHugeIcon} className="size-3 shrink-0" />
           {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) ? (
             <span className="inline-flex items-center gap-1 text-[10px] tabular-nums">
               <span className="text-success">+{diffStats.additions}</span>

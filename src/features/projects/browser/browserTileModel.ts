@@ -156,6 +156,7 @@ export class BrowserTileModel {
   }
 
   async setVisible(visible: boolean): Promise<void> {
+    await this.initialize()
     await window.electronAPI.workbenchBrowser.setBounds(
       visible
         ? { tileId: this.id, visible: true as const }
@@ -164,6 +165,7 @@ export class BrowserTileModel {
   }
 
   async layout(bounds: BrowserHostBounds): Promise<void> {
+    await this.initialize()
     await window.electronAPI.workbenchBrowser.setBounds({
       tileId: this.id,
       visible: true as const,

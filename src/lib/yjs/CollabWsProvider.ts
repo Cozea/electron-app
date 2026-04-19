@@ -292,15 +292,9 @@ export class CollabWsProvider {
   }
 
   private log(event: string, details?: Record<string, unknown>): void {
-    console.log('[CollabWsProvider]', {
-      event,
-      providerInstanceId: this.providerInstanceId,
-      projectId: this.session.projectId,
-      roomId: this.session.roomId,
-      clientId: this.clientId,
-      activeSocketInstanceId: this.activeSocketInstanceId,
-      ...details,
-    })
+    void event
+    void details
+    void this.providerInstanceId
   }
 
   private isCurrentSocket(socket: WebSocket, socketInstanceId: string): boolean {
