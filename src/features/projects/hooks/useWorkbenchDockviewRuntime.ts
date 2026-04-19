@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent,
 } from "react";
 import type {
   DockviewApi,
@@ -24,20 +23,12 @@ import { useTerminalStore } from "@/stores/useTerminalStore";
 import { disposeBrowserTileModel } from "@/features/projects/browser/browserTileModel";
 import {
   buildDefaultDockview,
-  computeWorkbenchEdgeTargets,
-  computeWorkbenchJunctionTargetsFromSeamTargets,
-  computeWorkbenchSeamTargets,
   getDockComponentName,
   getPanelParams,
   isObsoleteWorkbenchTile,
   isSelectionTile,
   reconcilePanels,
-  resolveWorkbenchInsertionIntent,
   syncPanelTitles,
-  type WorkbenchEdgeTarget,
-  type WorkbenchInsertionIntent,
-  type WorkbenchJunctionTarget,
-  type WorkbenchSeamTarget,
 } from "@/features/projects/lib/workbenchDockview";
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
@@ -55,45 +46,14 @@ interface UseWorkbenchDockviewRuntimeInput {
 
 interface UseWorkbenchDockviewRuntimeResult {
   dockviewHostRef: React.RefObject<HTMLDivElement | null>;
-  edgeInsertionArmed: boolean;
-  edgeTargets: WorkbenchEdgeTarget[];
-  junctionTargets: WorkbenchJunctionTarget[];
-  seamTargets: WorkbenchSeamTarget[];
   getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTile | null;
-  handleWorkbenchPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
-  handleWorkbenchPointerLeave: () => void;
   handleResolveSelectionTile: (
     selectionTileId: string,
     request: WorkbenchSelectionLaunchRequest,
   ) => void;
   handleDuplicateAssistantTile: (sourceTileId: string) => void;
-  handleEdgeActivate: (targetId: string) => void;
-  handleJunctionActivate: (targetId: string) => void;
-  handleSeamActivate: (targetId: string) => void;
+  handleSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void;
   handleDockviewReady: (event: DockviewReadyEvent) => void;
-}
-
-function createRuntimeSelectionPreviewTile(input: {
-  intent: WorkbenchInsertionIntent;
-}): WorkbenchSelectionTile {
-  const id =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? `selection-preview-${crypto.randomUUID()}`
-      : `selection-preview-${Date.now()}-${Math.round(Math.random() * 100_000)}`;
-
-  return {
-    id,
-    type: "selection",
-    title: "Add DevApp",
-    createdAt: Date.now(),
-    mode: input.intent.previewMode,
-    edge: input.intent.edge ?? null,
-    referenceTileId: input.intent.referenceTileId ?? null,
-    adjacentTileId: input.intent.adjacentTileId ?? null,
-    previewScope: input.intent.scope,
-    previewTargetKind: input.intent.targetKind,
-    previewTargetId: input.intent.targetId,
-  };
 }
 
 export function useWorkbenchDockviewRuntime(
@@ -109,19 +69,10 @@ export function useWorkbenchDockviewRuntime(
   const transientSelectionTileIdRef = useRef<string | null>(null);
   const lastReconciledOrderRef = useRef<string[] | null>(null);
   const lastReconciledTilesRef = useRef<Record<string, WorkbenchTile> | null>(null);
-  const edgeInsertionArmedRef = useRef(false);
-  const seamZoneRafRef = useRef<number | null>(null);
   const isDestroyingRef = useRef(false);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
   const selectionPreviewTilesRef = useRef<Record<string, WorkbenchSelectionTile>>({});
-  const edgeTargetsRef = useRef<WorkbenchEdgeTarget[]>([]);
-  const junctionTargetsRef = useRef<WorkbenchJunctionTarget[]>([]);
-  const seamTargetsRef = useRef<WorkbenchSeamTarget[]>([]);
-  const [edgeInsertionArmed, setEdgeInsertionArmed] = useState(false);
-  const [edgeTargets, setEdgeTargets] = useState<WorkbenchEdgeTarget[]>([]);
-  const [junctionTargets, setJunctionTargets] = useState<WorkbenchJunctionTarget[]>([]);
-  const [seamTargets, setSeamTargets] = useState<WorkbenchSeamTarget[]>([]);
   const [dockviewReadyScopeKey, setDockviewReadyScopeKey] = useState<string | null>(null);
   const [selectionPreviewTiles, setSelectionPreviewTiles] = useState<
     Record<string, WorkbenchSelectionTile>
@@ -161,38 +112,6 @@ export function useWorkbenchDockviewRuntime(
     return selectionPreviewTilesRef.current[tileId] ?? null;
   }, []);
 
-  const scheduleInsertionTargetUpdate = useCallback(() => {
-    if (seamZoneRafRef.current !== null) {
-      cancelAnimationFrame(seamZoneRafRef.current);
-    }
-    seamZoneRafRef.current = requestAnimationFrame(() => {
-      seamZoneRafRef.current = null;
-      const container = dockviewHostRef.current;
-      const api = dockviewApiRef.current;
-      if (!container || !api) {
-        edgeTargetsRef.current = [];
-        junctionTargetsRef.current = [];
-        seamTargetsRef.current = [];
-        setEdgeTargets([]);
-        setJunctionTargets([]);
-        setSeamTargets([]);
-        return;
-      }
-      const nextEdgeTargets = computeWorkbenchEdgeTargets(api, container);
-      const nextSeamTargets = computeWorkbenchSeamTargets(api, container);
-      const nextJunctionTargets = computeWorkbenchJunctionTargetsFromSeamTargets(nextSeamTargets, {
-        width: container.getBoundingClientRect().width,
-        height: container.getBoundingClientRect().height,
-      });
-      edgeTargetsRef.current = nextEdgeTargets;
-      junctionTargetsRef.current = nextJunctionTargets;
-      seamTargetsRef.current = nextSeamTargets;
-      setEdgeTargets(nextEdgeTargets);
-      setJunctionTargets(nextJunctionTargets);
-      setSeamTargets(nextSeamTargets);
-    });
-  }, []);
-
   const hydrateDockviewPanels = useCallback(
     (api: DockviewApi) => {
       if (!input.projectId || !input.projectWorkbench) {
@@ -219,14 +138,12 @@ export function useWorkbenchDockviewRuntime(
       }
 
       syncPanelTitles(api, input.projectWorkbench);
-      scheduleInsertionTargetUpdate();
     },
     [
       input.activeLaneId,
       input.persistedLayout,
       input.projectId,
       input.projectWorkbench,
-      scheduleInsertionTargetUpdate,
     ],
   );
 
@@ -250,66 +167,6 @@ export function useWorkbenchDockviewRuntime(
     });
   }, [input.projectId]);
 
-  const retractSelectionTile = useCallback(
-    (selectionTileId: string) => {
-      const selectionTile =
-        selectionPreviewTilesRef.current[selectionTileId] ??
-        getLiveWorkbench()?.tiles[selectionTileId] ??
-        null;
-
-      if (
-        !isSelectionTile(selectionTile) ||
-        (
-          selectionTile.mode !== "edgePreview" &&
-          selectionTile.mode !== "seamPreview" &&
-          selectionTile.mode !== "junctionPreview"
-        )
-      ) {
-        return;
-      }
-
-      if ((dockviewApiRef.current?.totalPanels ?? 0) <= 1) {
-        return;
-      }
-
-      if (transientSelectionTileIdRef.current === selectionTileId) {
-        transientSelectionTileIdRef.current = null;
-      }
-
-      const panel = dockviewApiRef.current?.getPanel(selectionTileId);
-      if (panel) {
-        panel.api.close();
-        return;
-      }
-
-      if (selectionPreviewTilesRef.current[selectionTileId]) {
-        updateSelectionPreviewTiles((current) => {
-          const next = { ...current };
-          delete next[selectionTileId];
-          return next;
-        });
-        return;
-      }
-
-      if (input.projectId) {
-        workbenchActions.removeTile(
-          input.projectId,
-          input.activeLaneId,
-          selectionTileId,
-          input.projectPath,
-        );
-      }
-    },
-    [
-      getLiveWorkbench,
-      input.activeLaneId,
-      input.projectId,
-      input.projectPath,
-      updateSelectionPreviewTiles,
-      workbenchActions,
-    ],
-  );
-
   useEffect(() => {
     layoutResetKeyRef.current = input.projectWorkbench?.layoutResetKey ?? 0;
     workbenchScopeKeyRef.current = input.workbenchScopeKey;
@@ -332,15 +189,7 @@ export function useWorkbenchDockviewRuntime(
       lastReconciledTilesRef.current = null;
       transientSelectionTileIdRef.current = null;
       selectionPreviewTilesRef.current = {};
-      edgeInsertionArmedRef.current = false;
-      edgeTargetsRef.current = [];
-      junctionTargetsRef.current = [];
       setSelectionPreviewTiles({});
-      seamTargetsRef.current = [];
-      setEdgeTargets([]);
-      setJunctionTargets([]);
-      setSeamTargets([]);
-      setEdgeInsertionArmed(false);
       setDockviewReadyScopeKey(null);
     };
   }, [input.workbenchScopeKey]);
@@ -372,7 +221,6 @@ export function useWorkbenchDockviewRuntime(
     input.projectWorkbench,
     input.workbenchScopeKey,
     hydrateDockviewPanels,
-    scheduleInsertionTargetUpdate,
   ]);
 
   useEffect(() => {
@@ -414,7 +262,6 @@ export function useWorkbenchDockviewRuntime(
     if (input.projectWorkbench.activeTileId) {
       api.getPanel(input.projectWorkbench.activeTileId)?.api.setActive();
     }
-    scheduleInsertionTargetUpdate();
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
@@ -422,7 +269,6 @@ export function useWorkbenchDockviewRuntime(
     input.projectWorkbench,
     input.workbenchScopeKey,
     previewTileIds,
-    scheduleInsertionTargetUpdate,
   ]);
 
   useEffect(() => {
@@ -467,9 +313,6 @@ export function useWorkbenchDockviewRuntime(
       if (layoutSaveFrameRef.current !== null) {
         cancelAnimationFrame(layoutSaveFrameRef.current);
       }
-      if (seamZoneRafRef.current !== null) {
-        cancelAnimationFrame(seamZoneRafRef.current);
-      }
       layoutSnapshotDebouncerRef.current?.flush();
     };
   }, []);
@@ -495,25 +338,6 @@ export function useWorkbenchDockviewRuntime(
     requestAnimationFrame(syncLayout);
     return () => ro.disconnect();
   }, [dockviewReadyScopeKey, input.workbenchScopeKey]);
-
-  const handleWorkbenchPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement | null;
-
-    if (target?.closest("[data-workbench-chrome='true']")) {
-      edgeInsertionArmedRef.current = false;
-      setEdgeInsertionArmed(false);
-      return;
-    }
-
-    if (target?.closest("[data-workbench-browser-content='true']")) {
-      edgeInsertionArmedRef.current = false;
-      setEdgeInsertionArmed(false);
-      return;
-    }
-
-    edgeInsertionArmedRef.current = true;
-    setEdgeInsertionArmed(true);
-  }, []);
 
   const handleResolveSelectionTile = useCallback(
     (
@@ -626,149 +450,53 @@ export function useWorkbenchDockviewRuntime(
     [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
   );
 
-  const activateInsertionIntent = useCallback(
-    (
-      targetId: string,
-      intent: WorkbenchInsertionIntent,
-      options?: {
-        allowEmptyWorkbench?: boolean;
-      },
-    ) => {
+  const handleSplitTile = useCallback(
+    (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => {
       if (!input.projectId) return;
-      if (!edgeInsertionArmedRef.current) return;
-
-      const liveProject = getLiveWorkbench();
-      if (!liveProject) return;
-
-      const existingSelectionId = transientSelectionTileIdRef.current;
-      const existingSelectionTile = existingSelectionId
-        ? selectionPreviewTilesRef.current[existingSelectionId] ??
-          liveProject.tiles[existingSelectionId] ??
-          null
-        : null;
-
-      if (isSelectionTile(existingSelectionTile) && existingSelectionTile.previewTargetId === targetId) {
-        retractSelectionTile(existingSelectionTile.id);
-        return;
-      }
-
-      if (
-        isSelectionTile(existingSelectionTile) &&
-        (
-          existingSelectionTile.mode === "edgePreview" ||
-          existingSelectionTile.mode === "seamPreview" ||
-          existingSelectionTile.mode === "junctionPreview"
-        )
-      ) {
-        retractSelectionTile(existingSelectionTile.id);
-      }
 
       const api = dockviewApiRef.current;
-      const nextTile = createRuntimeSelectionPreviewTile({
-        intent,
-      });
+      const liveProject = getLiveWorkbench();
+      const sourceTile = liveProject?.tiles[sourceTileId];
+      if (!liveProject || !sourceTile || !api) return;
 
-      if (!api) return;
-      if (!options?.allowEmptyWorkbench && !api.getPanel(intent.referenceTileId)) return;
-      if (options?.allowEmptyWorkbench && api.totalPanels > 0 && !api.getPanel(intent.referenceTileId)) return;
+      const nextTileId = workbenchActions.addTile(
+        input.projectId,
+        input.activeLaneId,
+        "selection",
+        {
+          title: "Add DevApp",
+        },
+        input.projectPath,
+      );
+      
+      const nextTile = getLiveWorkbench()?.tiles[nextTileId];
+      if (!nextTile) return;
 
-      updateSelectionPreviewTiles((current) => ({
-        ...current,
-        [nextTile.id]: nextTile,
-      }));
+      const dockDirection =
+        direction === "right" ? "right" :
+        direction === "bottom" ? "below" :
+        direction === "left" ? "left" : "above";
 
       api.addPanel({
         id: nextTile.id,
         title: nextTile.title,
         component: getDockComponentName(nextTile.type),
         params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
-        position:
-          api.totalPanels > 0
-            ? intent.referenceGroupId
-              ? {
-                  referenceGroup: intent.referenceGroupId,
-                  direction: intent.dockDirection,
-                }
-              : {
-                  referencePanel: intent.referenceTileId,
-                  direction: intent.dockDirection,
-                }
-            : undefined,
+        position: {
+          referencePanel: sourceTileId,
+          direction: dockDirection,
+        },
       });
 
-      transientSelectionTileIdRef.current = nextTile.id;
+      workbenchActions.setActiveTile(
+        input.projectId,
+        input.activeLaneId,
+        nextTile.id,
+        input.projectPath,
+      );
       api.getPanel(nextTile.id)?.api.setActive();
-      scheduleInsertionTargetUpdate();
     },
-    [
-      getLiveWorkbench,
-      input.activeLaneId,
-      input.projectId,
-      retractSelectionTile,
-      scheduleInsertionTargetUpdate,
-      updateSelectionPreviewTiles,
-    ],
-  );
-
-  const handleEdgeActivate = useCallback(
-    (targetId: string) => {
-      if (!input.projectId) return;
-      if (!edgeInsertionArmedRef.current) return;
-      const target = edgeTargetsRef.current.find((candidate) => candidate.id === targetId);
-      if (!target) return;
-
-      const liveProject = getLiveWorkbench();
-      if (!liveProject) return;
-
-      const nonObsoleteTiles = liveProject.order.filter((tileId) => {
-        const tile = liveProject.tiles[tileId];
-        return !isObsoleteWorkbenchTile(tile);
-      });
-      const loneVisibleTile =
-        nonObsoleteTiles.length === 1 ? liveProject.tiles[nonObsoleteTiles[0]] : null;
-
-      if (
-        nonObsoleteTiles.length === 1 &&
-        isSelectionTile(loneVisibleTile) &&
-        loneVisibleTile.mode === "emptyState"
-      ) {
-        return;
-      }
-      const intent = resolveWorkbenchInsertionIntent(target);
-      activateInsertionIntent(target.id, intent, { allowEmptyWorkbench: true });
-    },
-    [activateInsertionIntent, getLiveWorkbench, input.projectId],
-  );
-
-  const handleSeamActivate = useCallback(
-    (targetId: string) => {
-      if (!input.projectId) return;
-      if (!edgeInsertionArmedRef.current) return;
-      const target = seamTargetsRef.current.find((candidate) => candidate.id === targetId);
-      if (!target) return;
-
-      const liveProject = getLiveWorkbench();
-      if (!liveProject) return;
-      const intent = resolveWorkbenchInsertionIntent(target);
-      activateInsertionIntent(target.id, intent);
-    },
-    [activateInsertionIntent, getLiveWorkbench, input.projectId],
-  );
-
-  const handleJunctionActivate = useCallback(
-    (targetId: string) => {
-      if (!input.projectId) return;
-      if (!edgeInsertionArmedRef.current) return;
-      const target = junctionTargetsRef.current.find((candidate) => candidate.id === targetId);
-      if (!target) return;
-
-      const liveProject = getLiveWorkbench();
-      if (!liveProject) return;
-
-      const intent = resolveWorkbenchInsertionIntent(target);
-      activateInsertionIntent(target.id, intent);
-    },
-    [activateInsertionIntent, getLiveWorkbench, input.projectId],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
   );
 
   const handleDockviewReady = useCallback(
@@ -788,7 +516,6 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onDidLayoutChange(() => {
         saveLayout();
-        scheduleInsertionTargetUpdate();
       });
 
       event.api.onDidActivePanelChange((activePanel) => {
@@ -798,7 +525,6 @@ export function useWorkbenchDockviewRuntime(
 
         const activeId = activePanel?.id ?? null;
         if (activeId && selectionPreviewTilesRef.current[activeId]) {
-          scheduleInsertionTargetUpdate();
           return;
         }
 
@@ -808,7 +534,6 @@ export function useWorkbenchDockviewRuntime(
           activeId,
           input.projectPath,
         );
-        scheduleInsertionTargetUpdate();
       });
 
       event.api.onDidRemovePanel((panel) => {
@@ -834,7 +559,6 @@ export function useWorkbenchDockviewRuntime(
             return next;
           });
           saveLayout();
-          scheduleInsertionTargetUpdate();
           return;
         }
 
@@ -925,7 +649,6 @@ export function useWorkbenchDockviewRuntime(
           input.projectPath,
         );
         saveLayout();
-        scheduleInsertionTargetUpdate();
       });
     },
     [
@@ -935,7 +658,6 @@ export function useWorkbenchDockviewRuntime(
       input.projectPath,
       input.workbenchScopeKey,
       saveLayout,
-      scheduleInsertionTargetUpdate,
       updateSelectionPreviewTiles,
       workbenchActions,
     ],
@@ -943,21 +665,10 @@ export function useWorkbenchDockviewRuntime(
 
   return {
     dockviewHostRef,
-    edgeInsertionArmed,
-    edgeTargets,
-    junctionTargets,
-    seamTargets,
     getSelectionPreviewTile,
-    handleWorkbenchPointerMove,
-    handleWorkbenchPointerLeave: () => {
-      edgeInsertionArmedRef.current = false;
-      setEdgeInsertionArmed(false);
-    },
     handleResolveSelectionTile,
     handleDuplicateAssistantTile,
-    handleEdgeActivate,
-    handleJunctionActivate,
-    handleSeamActivate,
+    handleSplitTile,
     handleDockviewReady,
   };
 }

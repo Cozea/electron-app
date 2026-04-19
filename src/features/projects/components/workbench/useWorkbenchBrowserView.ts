@@ -56,6 +56,7 @@ interface UseWorkbenchBrowserViewResult {
   boundsReady: boolean
   overlayPaused: boolean
   overlayPauseReason: string | null
+  placeholderScreenshot: string | null
   actions: {
     goBack: () => Promise<void>
     goForward: () => Promise<void>
@@ -136,6 +137,7 @@ export function useWorkbenchBrowserView(
   const [hasOverlappingOverlay, setHasOverlappingOverlay] = useState(false)
   const [overlayPauseReason, setOverlayPauseReason] = useState<string | null>(null)
   const [overlayPaused, setOverlayPaused] = useState(false)
+  const [placeholderScreenshot, setPlaceholderScreenshot] = useState<string | null>(null)
   const lastSentBoundsRef = useRef<{ x: number; y: number; w: number; h: number; v: boolean } | null>(null)
   const lastRequestedUrlRef = useRef<string>(url)
 
@@ -231,12 +233,18 @@ export function useWorkbenchBrowserView(
   }, [onNewPageRequest, tileId])
 
   useEffect(() => {
-    if (!onCommand) return
     const unsubscribe = window.electronAPI.workbenchBrowser.onCommand((command) => {
       if (command.tileId !== tileId) return
+      
+      if (command.type.startsWith('split-control-')) {
+        window.dispatchEvent(new CustomEvent('cozea:split-control', { detail: command }))
+        return
+      }
+
+      if (!onCommand) return
       onCommand(command)
     })
-    return unsubscribe
+    return () => unsubscribe()
   }, [onCommand, tileId])
 
   useEffect(() => {
@@ -327,22 +335,57 @@ export function useWorkbenchBrowserView(
       window.removeEventListener("resize", schedule)
       window.removeEventListener("scroll", schedule, true)
     }
-  }, [overlaySelector])
+  }, [overlaySelector, url, visible])
 
   useEffect(() => {
     if (!url) {
       setOverlayPaused(false)
       setOverlayPauseReason(null)
+      setPlaceholderScreenshot(null)
     }
   }, [url])
 
   useEffect(() => {
+    const model = modelRef.current
+    if (!model) return
+
+    let cancelled = false
+    let frame = 0
+
     if (!hasOverlappingOverlay || !url || state.loadError) {
       setOverlayPaused(false)
+      // Do NOT set placeholderScreenshot(null) here so it stays mounted and prevents un-pause flicker.
+      return () => {
+        cancelled = true
+        cancelAnimationFrame(frame)
+      }
+    }
+
+    if (overlayPauseReason === "Split controls") {
+      const captureAndPause = async () => {
+        const screenshot = await model.captureScreenshot().catch(() => null)
+        if (cancelled) return
+        if (screenshot) {
+          setPlaceholderScreenshot(screenshot)
+          // Use requestAnimationFrame to delay pausing by one frame so the DOM updates first
+          frame = requestAnimationFrame(() => {
+            if (cancelled) return
+            setOverlayPaused(true)
+          })
+        } else {
+          setOverlayPaused(true)
+        }
+      }
+      void captureAndPause()
     } else {
       setOverlayPaused(true)
     }
-  }, [hasOverlappingOverlay, state.loadError, url])
+
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+    }
+  }, [hasOverlappingOverlay, overlayPauseReason, state.loadError, url])
 
   useEffect(() => {
     const element = hostRef.current
@@ -487,6 +530,7 @@ export function useWorkbenchBrowserView(
     boundsReady,
     overlayPaused,
     overlayPauseReason,
+    placeholderScreenshot,
     actions,
   }
 }

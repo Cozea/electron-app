@@ -28,8 +28,9 @@ export interface BrowserFindState {
 
 export interface BrowserUiCommand {
   tileId: string
-  type: 'focus-url' | 'show-find' | 'hide-find'
+  type: 'focus-url' | 'show-find' | 'hide-find' | 'split-control-activate' | 'split-control-deactivate' | 'split-control-key'
   query?: string
+  key?: string
 }
 
 export interface BrowserState {

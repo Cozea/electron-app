@@ -1,18 +1,20 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
+import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import { Button } from "@/components/ui/button"
 import {
-
   ClaudeAI,
   Gemini,
   OpenAI,
   OpenCodeIcon,
 } from "@/features/projects/components/assistant/Icons"
+import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockPanels"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, SquareArrowDownRightIcon as __Maximize2HugeIcon, SquareArrowUpLeftIcon as __Minimize2HugeIcon } from '@hugeicons/core-free-icons'
+import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, Layout04Icon as __Layout04HugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon } from '@hugeicons/core-free-icons'
 
 const DevServer = (props: any) => <HugeiconsIcon icon={__DevServerHugeIcon} {...props} />
 const Messages = (props: any) => <HugeiconsIcon icon={__MessagesHugeIcon} {...props} />
@@ -104,6 +106,13 @@ export function WorkbenchTileChrome({
   contentClassName,
 }: WorkbenchTileChromeProps) {
   const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
+  const [isHovered, setIsHovered] = useState(false)
+  const [splitOverlayActive, setSplitOverlayActive] = useState(false)
+  const [splitDirection, setSplitDirection] = useState<"top" | "bottom" | "left" | "right" | null>(null)
+  
+  const runtime = useWorkbenchDockRuntime()
+  const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
+
   const TileIcon = resolveTileIcon(tileType, assistantProvider)
   const tileIconClassName = cn(
     "h-3.5 w-3.5 shrink-0",
@@ -132,8 +141,104 @@ export function WorkbenchTileChrome({
     }
   }, [containerApi, panelApi])
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // For DOM focus, we only want to act if this tile is hovered
+      if (!isHovered) return
+
+      if (e.altKey && e.shiftKey) {
+        if (!splitStateRef.current.active) {
+          splitStateRef.current.active = true
+          setSplitOverlayActive(true)
+        }
+        let dir = splitStateRef.current.direction
+        if (e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); dir = "top" }
+        if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); dir = "bottom" }
+        if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); dir = "left" }
+        if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); dir = "right" }
+        
+        if (dir !== splitStateRef.current.direction) {
+          splitStateRef.current.direction = dir
+          setSplitDirection(dir)
+        }
+      }
+    }
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.altKey || !e.shiftKey) {
+        if (splitStateRef.current.active) {
+          const dir = splitStateRef.current.direction
+          if (dir) {
+            runtime.onSplitTile(panelApi.id, dir)
+          }
+        }
+        splitStateRef.current = { active: false, direction: null }
+        setSplitOverlayActive(false)
+        setSplitDirection(null)
+      }
+    }
+
+    const handleSplitControlEvent = (e: Event) => {
+      const command = (e as CustomEvent).detail
+      
+      // Removed the early return so the focused browser can trigger splits
+      // for WHATEVER tile is currently being hovered over, not just itself.
+
+      if (!isHovered) return
+
+      if (command.type === 'split-control-activate') {
+        if (!splitStateRef.current.active) {
+          splitStateRef.current.active = true
+          setSplitOverlayActive(true)
+        }
+      } else if (command.type === 'split-control-deactivate') {
+        if (splitStateRef.current.active) {
+          const dir = splitStateRef.current.direction
+          if (dir) {
+            runtime.onSplitTile(panelApi.id, dir)
+          }
+        }
+        splitStateRef.current = { active: false, direction: null }
+        setSplitOverlayActive(false)
+        setSplitDirection(null)
+      } else if (command.type === 'split-control-key') {
+        let dir = splitStateRef.current.direction
+        if (command.key === "ArrowUp") { dir = "top" }
+        if (command.key === "ArrowDown") { dir = "bottom" }
+        if (command.key === "ArrowLeft") { dir = "left" }
+        if (command.key === "ArrowRight") { dir = "right" }
+        
+        if (dir !== splitStateRef.current.direction) {
+          splitStateRef.current.direction = dir
+          setSplitDirection(dir)
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true })
+    window.addEventListener("keyup", handleKeyUp, { capture: true })
+    window.addEventListener("cozea:split-control", handleSplitControlEvent)
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true })
+      window.removeEventListener("keyup", handleKeyUp, { capture: true })
+      window.removeEventListener("cozea:split-control", handleSplitControlEvent)
+      
+      // Cleanup if component unmounts while active
+      if (splitStateRef.current.active) {
+        splitStateRef.current = { active: false, direction: null }
+        setSplitOverlayActive(false)
+        setSplitDirection(null)
+      }
+    }
+  }, [isHovered, panelApi.id, runtime])
+
   return (
-    <div className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
+    <div 
+      className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface relative", className)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div
         className={cn(
           "flex h-9 shrink-0 items-center gap-2 text-xs shadow-none",
@@ -182,18 +287,69 @@ export function WorkbenchTileChrome({
                   ? pillControlHoverClasses
                   : "hover:bg-accent",
               )}
-              onClick={() => {
-                if (panelApi.isMaximized()) {
-                  panelApi.exitMaximized()
-                  setIsMaximized(false)
-                  return
+              onClick={async (event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                const rect = event.currentTarget.getBoundingClientRect()
+                const position = {
+                  x: Math.round(rect.left + rect.width / 2),
+                  y: Math.round(rect.bottom),
                 }
-                panelApi.maximize()
-                setIsMaximized(true)
+
+                const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
+                  {
+                    id: isMaximized ? "restore" : "maximize",
+                    label: isMaximized ? "Restore Tile" : "Maximize Tile",
+                  },
+                  { type: "separator", id: "sep1" as any },
+                  {
+                    id: "splitRight",
+                    label: "Split Right",
+                  },
+                  {
+                    id: "splitLeft",
+                    label: "Split Left",
+                  },
+                  { type: "separator", id: "sep2" as any },
+                  {
+                    id: "splitDown",
+                    label: "Split Down",
+                  },
+                  {
+                    id: "splitUp",
+                    label: "Split Up",
+                  },
+                ]
+
+                const action = await showDesktopContextMenu(items, position)
+                if (!action) return
+
+                switch (action) {
+                  case "maximize":
+                    panelApi.maximize()
+                    setIsMaximized(true)
+                    break
+                  case "restore":
+                    panelApi.exitMaximized()
+                    setIsMaximized(false)
+                    break
+                  case "splitRight":
+                    runtime.onSplitTile(panelApi.id, "right")
+                    break
+                  case "splitLeft":
+                    runtime.onSplitTile(panelApi.id, "left")
+                    break
+                  case "splitDown":
+                    runtime.onSplitTile(panelApi.id, "bottom")
+                    break
+                  case "splitUp":
+                    runtime.onSplitTile(panelApi.id, "top")
+                    break
+                }
               }}
-              aria-label={isMaximized ? "Restore tile" : "Maximize tile"}
+              aria-label="Layout options"
             >
-              {isMaximized ? <HugeiconsIcon icon={__Minimize2HugeIcon} className="h-3.5 w-3.5" /> : <HugeiconsIcon icon={__Maximize2HugeIcon} className="h-3.5 w-3.5" />}
+              <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
             </Button>
 
             <Button
@@ -218,6 +374,68 @@ export function WorkbenchTileChrome({
       <div className={cn("min-h-0 flex-1", contentClassName)}>
         {children}
       </div>
+
+      {splitOverlayActive ? (
+        <div
+          className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none rounded-[inherit]"
+          data-workbench-browser-overlay="true"
+          data-workbench-browser-overlay-reason="Split controls"
+        >
+          <div className="grid grid-cols-3 grid-rows-3 gap-2 p-4 pointer-events-auto">
+            <div
+              className={cn("col-start-2 row-start-1 flex h-12 w-12 items-center justify-center rounded-xl border-2 transition-colors cursor-pointer", splitDirection === "top" ? "border-primary bg-primary/20 text-primary" : "border-border bg-background/50 text-muted-foreground")}
+              onMouseEnter={() => { splitStateRef.current.direction = "top"; setSplitDirection("top") }}
+              onClick={() => {
+                runtime.onSplitTile(panelApi.id, "top")
+                splitStateRef.current = { active: false, direction: null }
+                setSplitOverlayActive(false)
+                setSplitDirection(null)
+              }}
+            >
+              <HugeiconsIcon icon={__ArrowUpHugeIcon} className="h-6 w-6" />
+            </div>
+            <div
+              className={cn("col-start-1 row-start-2 flex h-12 w-12 items-center justify-center rounded-xl border-2 transition-colors cursor-pointer", splitDirection === "left" ? "border-primary bg-primary/20 text-primary" : "border-border bg-background/50 text-muted-foreground")}
+              onMouseEnter={() => { splitStateRef.current.direction = "left"; setSplitDirection("left") }}
+              onClick={() => {
+                runtime.onSplitTile(panelApi.id, "left")
+                splitStateRef.current = { active: false, direction: null }
+                setSplitOverlayActive(false)
+                setSplitDirection(null)
+              }}
+            >
+              <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-6 w-6" />
+            </div>
+            <div className="col-start-2 row-start-2 flex h-12 w-12 items-center justify-center rounded-xl border-2 border-primary/50 bg-primary/10 text-primary">
+              {TileIcon ? <TileIcon className="h-6 w-6" /> : null}
+            </div>
+            <div
+              className={cn("col-start-3 row-start-2 flex h-12 w-12 items-center justify-center rounded-xl border-2 transition-colors cursor-pointer", splitDirection === "right" ? "border-primary bg-primary/20 text-primary" : "border-border bg-background/50 text-muted-foreground")}
+              onMouseEnter={() => { splitStateRef.current.direction = "right"; setSplitDirection("right") }}
+              onClick={() => {
+                runtime.onSplitTile(panelApi.id, "right")
+                splitStateRef.current = { active: false, direction: null }
+                setSplitOverlayActive(false)
+                setSplitDirection(null)
+              }}
+            >
+              <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-6 w-6" />
+            </div>
+            <div
+              className={cn("col-start-2 row-start-3 flex h-12 w-12 items-center justify-center rounded-xl border-2 transition-colors cursor-pointer", splitDirection === "bottom" ? "border-primary bg-primary/20 text-primary" : "border-border bg-background/50 text-muted-foreground")}
+              onMouseEnter={() => { splitStateRef.current.direction = "bottom"; setSplitDirection("bottom") }}
+              onClick={() => {
+                runtime.onSplitTile(panelApi.id, "bottom")
+                splitStateRef.current = { active: false, direction: null }
+                setSplitOverlayActive(false)
+                setSplitDirection(null)
+              }}
+            >
+              <HugeiconsIcon icon={__ArrowDownHugeIcon} className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

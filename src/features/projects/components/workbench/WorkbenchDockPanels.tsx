@@ -46,6 +46,7 @@ interface WorkbenchDockRuntimeValue {
     selectionTileId: string,
     request: WorkbenchSelectionLaunchRequest,
   ) => void
+  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
 }
 
 const WorkbenchDockRuntimeContext = createContext<WorkbenchDockRuntimeValue | null>(null)
@@ -85,7 +86,7 @@ const LazyWorkbenchTerminalTile = lazy(() =>
   })),
 )
 
-function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
+export function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
   const value = useContext(WorkbenchDockRuntimeContext)
   if (!value) {
     throw new Error("Workbench dock panel rendered outside runtime provider")
@@ -432,6 +433,7 @@ export function WorkbenchDockRuntimeProvider(props: {
     selectionTileId: string,
     request: WorkbenchSelectionLaunchRequest,
   ) => void
+  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
   children: ReactNode
 }) {
   const value = useMemo<WorkbenchDockRuntimeValue>(
@@ -448,6 +450,7 @@ export function WorkbenchDockRuntimeProvider(props: {
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
       onResolveSelectionTile: props.onResolveSelectionTile,
+      onSplitTile: props.onSplitTile,
     }),
     [
       props.projectId,
@@ -462,6 +465,7 @@ export function WorkbenchDockRuntimeProvider(props: {
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,
       props.onResolveSelectionTile,
+      props.onSplitTile,
     ],
   )
 
