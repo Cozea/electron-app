@@ -97,8 +97,6 @@ export function WorkbenchBrowserTile({
     state,
     boundsReady,
     overlayPaused,
-    overlayPauseReason,
-    placeholderScreenshot,
     actions,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
@@ -519,7 +517,7 @@ export function WorkbenchBrowserTile({
   )
 
   return (
-    <div className="h-full min-h-0" onKeyDownCapture={handleKeyDownCapture}>
+    <div className="h-full min-h-0" data-workbench-browser-tile="true" onKeyDownCapture={handleKeyDownCapture}>
       <WorkbenchTileChrome
         title={state.title || "Browser"}
         panelApi={panelApi}
@@ -529,7 +527,7 @@ export function WorkbenchBrowserTile({
         controls={browserHeaderControls}
         actions={browserHeaderActions}
       >
-        <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-content-surface p-px">
+        <div data-workbench-browser-content="true" className="relative flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
           <div className="relative min-h-0 flex-1 overflow-hidden bg-content-surface">
             {!tile.url ? (
               <div className="flex h-full w-full items-center justify-center p-6">
@@ -547,7 +545,7 @@ export function WorkbenchBrowserTile({
               </div>
             ) : null}
             {tile.url && state.loadError ? (
-              <div className="absolute inset-px z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
+              <div className="absolute top-0 bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
                 <div className="max-w-md space-y-2">
                   <div className="text-sm font-medium text-foreground">
                     This page could not be loaded.
@@ -557,32 +555,15 @@ export function WorkbenchBrowserTile({
               </div>
             ) : null}
             {tile.url && overlayPaused && !state.loadError ? (
-              <div className="absolute inset-px z-[90] overflow-hidden rounded-[inherit] border border-border/40 bg-content-surface">
-                {placeholderScreenshot ? (
-                  <div
-                    className="absolute inset-0 bg-cover bg-top bg-no-repeat"
-                    style={{ backgroundImage: `url("${placeholderScreenshot}")` }}
-                    aria-hidden
-                  />
-                ) : null}
+              <div className="absolute top-0 bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface">
                 <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
-                <div className="absolute inset-x-4 bottom-4">
-                  <div className="mx-auto max-w-sm rounded-2xl border border-border/60 bg-background/88 px-3 py-2 text-center shadow-sm">
-                    <div className="text-xs font-medium text-foreground">Browser paused</div>
-                    <div className="mt-1 text-[11px] leading-normal text-muted-foreground">
-                      {overlayPauseReason
-                        ? `Hidden while ${overlayPauseReason} is open.`
-                        : "Hidden while a workbench overlay is open."}
-                    </div>
-                  </div>
-                </div>
               </div>
             ) : null}
             {tile.url ? (
               <div
                 ref={hostRef}
                 className={cn(
-                  "absolute inset-px overflow-hidden bg-content-surface",
+                  "absolute top-0 bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
                   (!boundsReady || state.loadError) ? "pointer-events-none opacity-0" : "opacity-100",
                 )}
               />

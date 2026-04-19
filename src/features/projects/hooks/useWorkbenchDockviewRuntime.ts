@@ -505,6 +505,12 @@ export function useWorkbenchDockviewRuntime(
       return;
     }
 
+    if (target?.closest("[data-workbench-browser-content='true']")) {
+      edgeInsertionArmedRef.current = false;
+      setEdgeInsertionArmed(false);
+      return;
+    }
+
     edgeInsertionArmedRef.current = true;
     setEdgeInsertionArmed(true);
   }, []);

@@ -56,7 +56,6 @@ interface UseWorkbenchBrowserViewResult {
   boundsReady: boolean
   overlayPaused: boolean
   overlayPauseReason: string | null
-  placeholderScreenshot: string | null
   actions: {
     goBack: () => Promise<void>
     goForward: () => Promise<void>
@@ -137,9 +136,16 @@ export function useWorkbenchBrowserView(
   const [hasOverlappingOverlay, setHasOverlappingOverlay] = useState(false)
   const [overlayPauseReason, setOverlayPauseReason] = useState<string | null>(null)
   const [overlayPaused, setOverlayPaused] = useState(false)
-  const [placeholderScreenshot, setPlaceholderScreenshot] = useState<string | null>(null)
   const lastSentBoundsRef = useRef<{ x: number; y: number; w: number; h: number; v: boolean } | null>(null)
   const lastRequestedUrlRef = useRef<string>(url)
+
+  const overlayPausedRef = useRef(overlayPaused)
+  const scheduleBoundsSyncRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    overlayPausedRef.current = overlayPaused
+    scheduleBoundsSyncRef.current?.()
+  }, [overlayPaused])
 
   useEffect(() => {
     if (!sessionKey) {
@@ -281,7 +287,7 @@ export function useWorkbenchBrowserView(
           return false
         }
         const style = window.getComputedStyle(candidate)
-        if (style.display === "none" || style.visibility === "hidden" || style.pointerEvents === "none") {
+        if (style.display === "none" || style.visibility === "hidden") {
           return false
         }
         const overlayRect = candidate.getBoundingClientRect()
@@ -327,46 +333,16 @@ export function useWorkbenchBrowserView(
     if (!url) {
       setOverlayPaused(false)
       setOverlayPauseReason(null)
-      setPlaceholderScreenshot(null)
     }
   }, [url])
 
   useEffect(() => {
-    if (!overlayPaused && boundsReady) {
-      setPlaceholderScreenshot(null)
-    }
-  }, [boundsReady, overlayPaused])
-
-  useEffect(() => {
-    const model = modelRef.current
-    if (!model) return
-
-    let cancelled = false
-
-    if (!hasOverlappingOverlay || !url || state.loadError || !boundsReady || state.isLoading) {
+    if (!hasOverlappingOverlay || !url || state.loadError) {
       setOverlayPaused(false)
-      return () => {
-        cancelled = true
-      }
+    } else {
+      setOverlayPaused(true)
     }
-
-    const capturePauseScreenshot = async () => {
-      const screenshot = await model.captureScreenshot().catch(() => null)
-      if (cancelled) return
-      if (screenshot) {
-        setPlaceholderScreenshot(screenshot)
-        setOverlayPaused(true)
-        return
-      }
-      setOverlayPaused(false)
-    }
-
-    void capturePauseScreenshot()
-
-    return () => {
-      cancelled = true
-    }
-  }, [boundsReady, hasOverlappingOverlay, state.isLoading, state.loadError, url])
+  }, [hasOverlappingOverlay, state.loadError, url])
 
   useEffect(() => {
     const element = hostRef.current
@@ -387,20 +363,20 @@ export function useWorkbenchBrowserView(
     const syncBounds = () => {
       const rect = element.getBoundingClientRect()
 
-      const inset = 1
-      const x = Math.ceil(rect.left) + inset
-      const y = Math.ceil(rect.top) + inset
-      const width = Math.max(0, Math.floor(rect.right) - Math.ceil(rect.left) - inset * 2)
-      const height = Math.max(0, Math.floor(rect.bottom) - Math.ceil(rect.top) - inset * 2)
+      const x = Math.round(rect.left)
+      const y = Math.round(rect.top)
+      const width = Math.max(0, Math.round(rect.right) - x)
+      const height = Math.max(0, Math.round(rect.bottom) - y)
 
       const stateLoadError = state.loadError
-      const nextVisible =
+      const nextBoundsReady =
         visible &&
-        !overlayPaused &&
         Boolean(url) &&
         !stateLoadError &&
         width > 0 &&
         height > 0
+
+      const nextVisible = nextBoundsReady && !overlayPausedRef.current
       const last = lastSentBoundsRef.current
       if (
         last &&
@@ -418,13 +394,15 @@ export function useWorkbenchBrowserView(
       } else {
         void model.setVisible(false)
       }
-      setBoundsReady(nextVisible)
+      setBoundsReady(nextBoundsReady)
     }
 
     const schedule = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(syncBounds)
     }
+
+    scheduleBoundsSyncRef.current = schedule
 
     const resizeObserver = new ResizeObserver(schedule)
     resizeObserver.observe(element)
@@ -435,6 +413,7 @@ export function useWorkbenchBrowserView(
     schedule()
 
     return () => {
+      scheduleBoundsSyncRef.current = null
       cancelAnimationFrame(frame)
       resizeObserver.disconnect()
       window.removeEventListener("resize", schedule)
@@ -444,7 +423,7 @@ export function useWorkbenchBrowserView(
       void model.setVisible(false)
       setBoundsReady(false)
     }
-  }, [overlayPaused, tileId, url, visible, state.loadError])
+  }, [tileId, url, visible, state.loadError])
 
   useEffect(() => {
     return () => {
@@ -508,7 +487,6 @@ export function useWorkbenchBrowserView(
     boundsReady,
     overlayPaused,
     overlayPauseReason,
-    placeholderScreenshot,
     actions,
   }
 }

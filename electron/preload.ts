@@ -217,6 +217,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('settings:open', handler)
     },
     getGpuDiagnostics: () => ipcRenderer.invoke('app:getGpuDiagnostics') as Promise<GpuAccelerationDiagnostics>,
+    setNativeThemeSource: (source) => ipcRenderer.invoke('app:setNativeThemeSource', source),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
