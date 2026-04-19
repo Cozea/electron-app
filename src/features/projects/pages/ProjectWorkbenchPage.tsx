@@ -28,9 +28,6 @@ import { useLocation, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ChangesPage } from "@/features/projects/pages/ChangesPage";
-import { WorkbenchEdgeInsertion } from "@/features/projects/components/workbench/WorkbenchEdgeInsertion";
-import { WorkbenchJunctionInsertion } from "@/features/projects/components/workbench/WorkbenchJunctionInsertion";
-import { WorkbenchSeamInsertion } from "@/features/projects/components/workbench/WorkbenchSeamInsertion";
 import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
@@ -145,18 +142,10 @@ export function ProjectWorkbenchPage() {
   }, [legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey]);
   const {
     dockviewHostRef,
-    edgeInsertionArmed,
-    edgeTargets,
-    junctionTargets,
-    seamTargets,
     getSelectionPreviewTile,
-    handleWorkbenchPointerMove,
-    handleWorkbenchPointerLeave,
     handleResolveSelectionTile,
     handleDuplicateAssistantTile,
-    handleEdgeActivate,
-    handleJunctionActivate,
-    handleSeamActivate,
+    handleSplitTile,
     handleDockviewReady,
   } = useWorkbenchDockviewRuntime({
     projectId,
@@ -369,6 +358,7 @@ export function ProjectWorkbenchPage() {
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
       onResolveSelectionTile={handleResolveSelectionTile}
+      onSplitTile={handleSplitTile}
     >
       <div
         className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
@@ -379,25 +369,7 @@ export function ProjectWorkbenchPage() {
           <div className="relative flex h-full min-h-0 min-w-0">
             <div
               className="relative min-w-0 flex-1 overflow-hidden bg-content-surface"
-              onPointerMove={handleWorkbenchPointerMove}
-              onPointerLeave={handleWorkbenchPointerLeave}
             >
-              <WorkbenchEdgeInsertion
-                armed={edgeInsertionArmed}
-                targets={edgeTargets}
-                disabledEdges={isChangesOpen ? ["top", "right"] : ["top"]}
-                onEdgeActivate={handleEdgeActivate}
-              />
-              <WorkbenchJunctionInsertion
-                armed={edgeInsertionArmed}
-                targets={junctionTargets}
-                onJunctionActivate={handleJunctionActivate}
-              />
-              <WorkbenchSeamInsertion
-                armed={edgeInsertionArmed}
-                targets={seamTargets}
-                onSeamActivate={handleSeamActivate}
-              />
               <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">
                 <DockviewReact
                   key={workbenchScopeKey ?? "workbench"}

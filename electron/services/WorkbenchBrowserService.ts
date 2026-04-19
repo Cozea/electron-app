@@ -304,12 +304,32 @@ export class WorkbenchBrowserService {
     })
 
     view.webContents.on('before-input-event', (event, input) => {
+      const record = this.records.get(tileId)
+      if (!record) return
+
+      // Forward Alt+Shift and Arrow keys for split controls
+      if (input.type === 'keyDown' || input.type === 'rawKeyDown') {
+        if (input.alt && input.shift) {
+          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(input.key)) {
+            event.preventDefault()
+            this.emitCommand({ tileId, type: 'split-control-key', key: input.key })
+            return
+          }
+          if (input.key === 'Alt' || input.key === 'Shift') {
+            this.emitCommand({ tileId, type: 'split-control-activate' })
+          }
+        }
+      }
+
+      if (input.type === 'keyUp') {
+        if (input.key === 'Alt' || input.key === 'Shift') {
+          this.emitCommand({ tileId, type: 'split-control-deactivate' })
+        }
+      }
+
       if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') {
         return
       }
-
-      const record = this.records.get(tileId)
-      if (!record) return
 
       const primaryModifier = this.isPrimaryModifier(input)
       const code = input.code
@@ -677,7 +697,8 @@ export class WorkbenchBrowserService {
 
     try {
       const image = await record.view.webContents.capturePage(undefined, { stayHidden: true })
-      return image.toDataURL()
+      const buffer = image.toJPEG(100)
+      return `data:image/jpeg;base64,${buffer.toString('base64')}`
     } catch {
       return null
     }

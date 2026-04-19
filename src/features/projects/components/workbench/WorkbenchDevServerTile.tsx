@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
+import { normalizeUrlInput } from "@/features/projects/components/workbench/WorkbenchBrowserTile"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
@@ -211,6 +212,9 @@ function WorkbenchRuntimePreviewTile({
     hostRef,
     state: previewState,
     boundsReady,
+    overlayPaused,
+    overlayPauseReason,
+    placeholderScreenshot,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: showWebEmbeddedPreview ? displayUrl : "",
@@ -667,16 +671,8 @@ function WorkbenchRuntimePreviewTile({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault()
-                const trimmed = draftUrl.trim()
-                if (trimmed) {
-                  let next = trimmed
-                  if (!next.startsWith("http://") && !next.startsWith("https://")) {
-                    if (next.startsWith("localhost") || /^[\w.-]+:\d+/.test(next)) {
-                      next = `http://${next}`
-                    } else {
-                      next = `https://${next}`
-                    }
-                  }
+                const next = normalizeUrlInput(draftUrl)
+                if (next) {
                   setInternalUrl(next)
                 }
                 e.currentTarget.blur()
@@ -801,9 +797,9 @@ function WorkbenchRuntimePreviewTile({
   )
 
   const webEmbeddedPreviewBody = (
-    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface p-px">
+    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
       {!previewUrl ? (
-        <div className="absolute inset-px flex items-center justify-center bg-content-surface p-6 text-center">
+        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] flex items-center justify-center bg-content-surface p-6 text-center">
           <div className="max-w-sm space-y-1">
             <div className="text-sm text-foreground">
               {devServer.status === "starting" ? "Local preview will attach here." : "No preview yet"}
@@ -817,7 +813,7 @@ function WorkbenchRuntimePreviewTile({
         </div>
       ) : null}
       {previewUrl && previewState.loadError ? (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-content-surface/92 p-6 text-center">
+        <div className="pointer-events-none absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
           <div className="max-w-md space-y-2">
             <div className="text-sm font-medium text-foreground">
               This preview could not be loaded.
@@ -826,12 +822,26 @@ function WorkbenchRuntimePreviewTile({
           </div>
         </div>
       ) : null}
+      {previewUrl && placeholderScreenshot && !previewState.loadError ? (
+        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
+          <div
+            className="absolute inset-0 bg-no-repeat"
+            style={{ backgroundImage: `url("${placeholderScreenshot}")`, backgroundSize: '100% 100%' }}
+            aria-hidden
+          />
+        </div>
+      ) : null}
+      {previewUrl && overlayPaused && overlayPauseReason !== "Split controls" && !previewState.loadError ? (
+        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
+          <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
+        </div>
+      ) : null}
       {previewUrl ? (
         <div
           ref={hostRef}
           className={cn(
-            "absolute inset-px overflow-hidden bg-content-surface",
-            !boundsReady ? "opacity-70" : "opacity-100",
+            "absolute top-[1px] bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
+            (!boundsReady || previewState.loadError) ? "pointer-events-none opacity-0" : "opacity-100",
           )}
         />
       ) : null}
@@ -894,16 +904,19 @@ function WorkbenchRuntimePreviewTile({
   )
 
   return (
-    <WorkbenchTileChrome
-      title={tile.title}
-      panelApi={panelApi}
-      containerApi={containerApi}
-      tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
-      controls={chromeControls}
-      actions={chromeActions}
-    >
-      <div className="h-full min-h-0 bg-content-surface">{body}</div>
-    </WorkbenchTileChrome>
+    <div className="h-full min-h-0" data-workbench-browser-tile="true">
+      <WorkbenchTileChrome
+        title={tile.title}
+        panelApi={panelApi}
+        containerApi={containerApi}
+        hideTitlePill
+        tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
+        controls={chromeControls}
+        actions={chromeActions}
+      >
+        <div data-workbench-browser-content="true" className="h-full min-h-0 bg-content-surface">{body}</div>
+      </WorkbenchTileChrome>
+    </div>
   )
 }
 

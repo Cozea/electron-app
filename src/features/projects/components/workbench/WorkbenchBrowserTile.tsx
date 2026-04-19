@@ -45,15 +45,32 @@ interface WorkbenchBrowserTileProps {
   containerApi: DockviewApi
 }
 
-function normalizeUrlInput(value: string): string {
+export function normalizeUrlInput(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return ""
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed
-  if (trimmed.startsWith("localhost") || /^[\w.-]+:\d+/.test(trimmed)) {
+
+  // If it's explicitly a URL scheme (e.g., http://, https://, file://)
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return trimmed
+  }
+
+  // If it contains spaces, it's definitely a search query
+  if (trimmed.includes(" ")) {
+    return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
+  }
+
+  // If it's localhost or an IP with a port
+  if (/^localhost(:|\/|$)/i.test(trimmed) || /^[\w.-]+:\d+/.test(trimmed)) {
     return `http://${trimmed}`
   }
-  if (trimmed.includes(" ")) return ""
-  return `https://${trimmed}`
+
+  // If it looks like a domain name or IP address (has a dot)
+  if (trimmed.includes(".")) {
+    return `https://${trimmed}`
+  }
+
+  // Otherwise, treat it as a search query
+  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
 }
 
 async function showNativeBrowserHeaderMenu<T extends string>(
@@ -97,6 +114,8 @@ export function WorkbenchBrowserTile({
     state,
     boundsReady,
     overlayPaused,
+    overlayPauseReason,
+    placeholderScreenshot,
     actions,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
@@ -545,7 +564,7 @@ export function WorkbenchBrowserTile({
               </div>
             ) : null}
             {tile.url && state.loadError ? (
-              <div className="absolute top-0 bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
+              <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
                 <div className="max-w-md space-y-2">
                   <div className="text-sm font-medium text-foreground">
                     This page could not be loaded.
@@ -554,8 +573,17 @@ export function WorkbenchBrowserTile({
                 </div>
               </div>
             ) : null}
-            {tile.url && overlayPaused && !state.loadError ? (
-              <div className="absolute top-0 bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface">
+            {tile.url && placeholderScreenshot && !state.loadError ? (
+              <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
+                <div
+                  className="absolute inset-0 bg-no-repeat"
+                  style={{ backgroundImage: `url("${placeholderScreenshot}")`, backgroundSize: '100% 100%' }}
+                  aria-hidden
+                />
+              </div>
+            ) : null}
+            {tile.url && overlayPaused && overlayPauseReason !== "Split controls" && !state.loadError ? (
+              <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
                 <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
               </div>
             ) : null}
@@ -563,7 +591,7 @@ export function WorkbenchBrowserTile({
               <div
                 ref={hostRef}
                 className={cn(
-                  "absolute top-0 bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
+                  "absolute top-[1px] bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
                   (!boundsReady || state.loadError) ? "pointer-events-none opacity-0" : "opacity-100",
                 )}
               />
