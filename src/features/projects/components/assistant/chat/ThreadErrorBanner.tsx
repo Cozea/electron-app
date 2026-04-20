@@ -1,11 +1,11 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __CircleAlertIconHugeIcon, Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
+import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
 
 // @ts-nocheck
 import { memo } from "react";
-import { Alert, AlertAction, AlertDescription } from "../ui/alert";
+import { Button } from "@/components/ui/button";
 
 export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
@@ -16,25 +16,21 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
 }) {
   if (!error) return null;
   return (
-    <div className="w-full">
-      <Alert variant="error" className="rounded-none border-x-0 border-t-0">
-        <HugeiconsIcon icon={__CircleAlertIconHugeIcon} />
-        <AlertDescription title={error}>
-          <span className="line-clamp-2 block min-w-0">{error}</span>
-        </AlertDescription>
-        {onDismiss && (
-          <AlertAction>
-            <button
-              type="button"
-              aria-label="Dismiss error"
-              className="inline-flex size-6 items-center justify-center rounded-md text-destructive/60 transition-colors hover:text-destructive"
-              onClick={onDismiss}
-            >
-              <HugeiconsIcon icon={__XIconHugeIcon} className="size-3.5" />
-            </button>
-          </AlertAction>
-        )}
-      </Alert>
+    <div className="flex max-w-sm flex-col items-center justify-center gap-4 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <HugeiconsIcon icon={__CircleAlertIconHugeIcon} className="h-6 w-6" />
+      </div>
+      <div className="space-y-1">
+        <h3 className="text-sm font-medium">An error occurred</h3>
+        <p className="text-sm text-muted-foreground">
+          {error}
+        </p>
+      </div>
+      {onDismiss && (
+        <Button variant="outline" size="sm" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      )}
     </div>
   );
 });

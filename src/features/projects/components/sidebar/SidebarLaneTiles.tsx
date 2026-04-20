@@ -148,8 +148,8 @@ function resolveAgentStatusPill(input: {
   if (thread.session?.status === "running") {
     return {
       label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground",
       pulse: true,
     }
   }
@@ -157,8 +157,8 @@ function resolveAgentStatusPill(input: {
   if (thread.session?.status === "connecting") {
     return {
       label: "Connecting",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground",
       pulse: true,
     }
   }
@@ -210,15 +210,18 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   if (!statusPill) return null
 
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[10px]", statusPill.colorClass)}>
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          statusPill.dotClass,
-          statusPill.pulse && "animate-pulse",
-        )}
-      />
-      <span className="hidden md:inline">{statusPill.label}</span>
+    <span className={cn("inline-flex items-center gap-1 text-[10px]", statusPill.colorClass)} title={statusPill.label}>
+      {statusPill.label === "Working" || statusPill.label === "Connecting" ? (
+        <div className="loader" />
+      ) : (
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full",
+            statusPill.dotClass,
+            statusPill.pulse && "animate-pulse",
+          )}
+        />
+      )}
     </span>
   )
 }
