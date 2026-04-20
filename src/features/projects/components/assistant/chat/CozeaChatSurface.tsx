@@ -823,11 +823,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     </form>
   )
 
+  const hasProviderBanner = props.providerSnapshot && props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled";
+  const showBannersContainer = threadError || hasProviderBanner;
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background">
-      <ProviderStatusBanner status={props.providerSnapshot} />
-      <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
-
       <div
         className={cn(
           "relative flex min-h-0 flex-1 flex-col",
@@ -853,6 +853,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">
               This agent tile needs a local project path before it can start a thread.
             </div>
+          </div>
+        ) : showBannersContainer ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8">
+            <ProviderStatusBanner status={props.providerSnapshot} />
+            <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
           </div>
         ) : (
           <div
