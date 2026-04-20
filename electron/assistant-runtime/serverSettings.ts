@@ -40,6 +40,7 @@ import * as Semaphore from "effect/Semaphore";
 import { ServerConfig } from "./config";
 import { type DeepPartial, deepMerge } from "@cozea/assistant-shared/Struct";
 import { fromLenientJson } from "@cozea/assistant-shared/schemaJson";
+import { applyServerSettingsPatch } from "@cozea/assistant-shared/serverSettings";
 
 export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsError>()(
   "ServerSettingsError",
@@ -91,7 +92,20 @@ export class ServerSettingsService extends ServiceMap.Service<
           getSettings: Ref.get(currentSettingsRef),
           updateSettings: (patch) =>
             Ref.get(currentSettingsRef).pipe(
-              Effect.map((currentSettings) => deepMerge(currentSettings, patch)),
+              Effect.flatMap((currentSettings) =>
+                Schema.decodeEffect(ServerSettings)(
+                  applyServerSettingsPatch(currentSettings, patch),
+                ).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ServerSettingsError({
+                        settingsPath: "<memory>",
+                        detail: `failed to normalize server settings: ${SchemaIssue.makeFormatterDefault()(cause.issue)}`,
+                        cause,
+                      }),
+                  ),
+                ),
+              ),
               Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
             ),
           streamChanges: Stream.empty,
@@ -102,7 +116,7 @@ export class ServerSettingsService extends ServiceMap.Service<
 
 const ServerSettingsJson = fromLenientJson(ServerSettings);
 
-const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent"];
+const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent", "opencode", "cursor"];
 
 /**
  * Ensure the `textGenerationModelSelection` points to an enabled provider.
@@ -131,6 +145,8 @@ function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings
   };
 }
 
+const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set(["textGenerationModelSelection"]);
+
 function stripDefaultServerSettings(current: unknown, defaults: unknown): unknown | undefined {
   if (Array.isArray(current) || Array.isArray(defaults)) {
     return JSON.stringify(current) === JSON.stringify(defaults) ? undefined : current;
@@ -147,9 +163,15 @@ function stripDefaultServerSettings(current: unknown, defaults: unknown): unknow
     const next: Record<string, unknown> = {};
 
     for (const key of Object.keys(currentRecord)) {
-      const stripped = stripDefaultServerSettings(currentRecord[key], defaultsRecord[key]);
-      if (stripped !== undefined) {
-        next[key] = stripped;
+      if (ATOMIC_SETTINGS_KEYS.has(key)) {
+        if (JSON.stringify(currentRecord[key]) !== JSON.stringify(defaultsRecord[key])) {
+          next[key] = currentRecord[key];
+        }
+      } else {
+        const stripped = stripDefaultServerSettings(currentRecord[key], defaultsRecord[key]);
+        if (stripped !== undefined) {
+          next[key] = stripped;
+        }
       }
     }
 
@@ -315,7 +337,9 @@ const makeServerSettings = Effect.gen(function* () {
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
-          const next = yield* Schema.decodeEffect(ServerSettings)(deepMerge(current, patch)).pipe(
+          const next = yield* Schema.decodeEffect(ServerSettings)(
+            applyServerSettingsPatch(current, patch),
+          ).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({

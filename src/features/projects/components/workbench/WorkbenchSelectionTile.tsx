@@ -9,7 +9,7 @@ import type {
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
-import { ClaudeAI, OpenAI } from "@/features/projects/components/assistant/Icons"
+import { ClaudeAI, CursorIcon, OpenAI, OpenCodeIcon } from "@/features/projects/components/assistant/Icons"
 import { useAssistantServerConfig } from "@/features/projects/components/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import { useViewTransitionNavigate } from "@/lib/navigation"
@@ -117,7 +117,7 @@ const DEVELOPMENT_SELECTION_OPTIONS: SelectionOption[] = [
   },
 ]
 
-const SUPPORTED_ASSISTANT_PROVIDER_OPTIONS: ReadonlyArray<SelectionOption> = [
+const SUPPORTED_ASSISTANT_PROVIDER_OPTIONS: ReadonlyArray<SelectionOption & { provider: ProviderKind }> = [
   {
     id: "assistant-codex",
     label: "Codex",
@@ -140,11 +140,29 @@ const SUPPORTED_ASSISTANT_PROVIDER_OPTIONS: ReadonlyArray<SelectionOption> = [
     provider: "claudeAgent",
     icon: ClaudeAI,
   },
+  {
+    id: "assistant-cursor",
+    label: "Cursor",
+    description: "AI agent",
+    iconBgClass: "bg-zinc-100",
+    iconColorClass: "text-zinc-700",
+    category: "Assistant",
+    type: "assistantChat",
+    provider: "cursor",
+    icon: CursorIcon,
+  },
+  {
+    id: "assistant-opencode",
+    label: "OpenCode",
+    description: "AI agent",
+    iconBgClass: "bg-zinc-900",
+    iconColorClass: "text-white",
+    category: "Assistant",
+    type: "assistantChat",
+    provider: "opencode",
+    icon: OpenCodeIcon,
+  },
 ]
-
-function isSupportedAssistantProvider(provider: ProviderKind): provider is "codex" | "claudeAgent" {
-  return provider === "codex" || provider === "claudeAgent"
-}
 
 const CATEGORY_TABS: CategoryTab[] = ["All", "Development", "Assistant", "Explore DevApps Store"]
 
@@ -466,23 +484,21 @@ export function WorkbenchSelectionTile({
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
 
   const assistantOptions = useMemo(() => {
+    const optionByProvider = new Map(
+      SUPPORTED_ASSISTANT_PROVIDER_OPTIONS.map((option) => [option.provider, option]),
+    )
     const configuredProviders =
       config?.providers
-        .filter((provider) => isSupportedAssistantProvider(provider.provider))
         .filter((provider) => provider.enabled)
-        .map((provider) => provider.provider) ?? []
+        .map((provider) => optionByProvider.get(provider.provider))
+        .filter(
+          (option): option is SelectionOption & { provider: ProviderKind } => option !== undefined,
+        ) ?? []
 
     if (configuredProviders.length <= 0) {
       return [...SUPPORTED_ASSISTANT_PROVIDER_OPTIONS]
     }
-
-    const optionByProvider = new Map(
-      SUPPORTED_ASSISTANT_PROVIDER_OPTIONS.map((option) => [option.provider, option]),
-    )
-
     return configuredProviders
-      .map((provider) => optionByProvider.get(provider))
-      .filter((option): option is SelectionOption => Boolean(option))
   }, [config])
 
   const filteredOptions = useMemo(() => {

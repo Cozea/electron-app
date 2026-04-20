@@ -30,6 +30,7 @@
         "@codingame/monaco-vscode-theme-service-override": "^26.2.1",
         "@codingame/monaco-vscode-typescript-basics-default-extension": "^26.2.1",
         "@codingame/monaco-vscode-typescript-language-features-default-extension": "^26.2.1",
+        "@cozea/effect-acp": "file:packages/effect-acp",
         "@cozea/pty": "file:packages/pty",
         "@cyanheads/git-mcp-server": "^2.8.5",
         "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b",
@@ -51,6 +52,7 @@
         "@mako10k/mcp-shell-server": "^2.7.1",
         "@modelcontextprotocol/server-filesystem": "^2026.1.14",
         "@monaco-editor/react": "^4.7.0",
+        "@opencode-ai/sdk": "^1.14.18",
         "@pierre/diffs": "^1.1.15",
         "@playwright/mcp": "^0.0.68",
         "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -315,6 +317,8 @@
     "@codingame/monaco-vscode-typescript-basics-default-extension": ["@codingame/monaco-vscode-typescript-basics-default-extension@26.2.2", "", { "dependencies": { "@codingame/monaco-vscode-api": "26.2.2" } }, "sha512-lSCu8eBn7fcUPYWS3qmEwqdC2nm8Qyva7FaSNt4aX4lCB2+Ax7/xFUDNE97ibk4Q7lTBLrwDOY7BZSe3kyvn1Q=="],
 
     "@codingame/monaco-vscode-typescript-language-features-default-extension": ["@codingame/monaco-vscode-typescript-language-features-default-extension@26.2.2", "", { "dependencies": { "@codingame/monaco-vscode-api": "26.2.2" } }, "sha512-SXTxeHU/l615wiyWMirSgqrdcd14P/ipp4psEsGuxKYP8K9AainCP2wls7+AQZmTrj90eI6YtlkWgYmwh9LLtA=="],
+
+    "@cozea/effect-acp": ["@cozea/effect-acp@file:packages/effect-acp", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" }, "devDependencies": { "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b", "@effect/vitest": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/vitest@8881a9b", "typescript": "~5.9.3", "vitest": "^4.0.18" } }],
 
     "@cozea/pty": ["@cozea/pty@file:packages/pty", { "dependencies": { "@node-rs/helper": "^1.6.0" }, "devDependencies": { "@napi-rs/cli": "^2.14.7", "typescript": "^5.3.3" } }],
 
@@ -641,6 +645,8 @@
     "@octokit/webhooks": ["@octokit/webhooks@14.2.0", "", { "dependencies": { "@octokit/openapi-webhooks-types": "12.1.0", "@octokit/request-error": "^7.0.0", "@octokit/webhooks-methods": "^6.0.0" } }, "sha512-da6KbdNCV5sr1/txD896V+6W0iamFWrvVl8cHkBSPT+YlvmT3DwXa4jxZnQc+gnuTEqSWbBeoSZYTayXH9wXcw=="],
 
     "@octokit/webhooks-methods": ["@octokit/webhooks-methods@6.0.0", "", {}, "sha512-MFlzzoDJVw/GcbfzVC1RLR36QqkTLUf79vLVO3D+xn7r0QgxnFoLZgtrzxiQErAjFUOdH6fas2KeQJ1yr/qaXQ=="],
+
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.14.18", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-E0QiiB+9rv/TPH0a1GunKl6LnuXDRHDiJaIFHOPaBL364rQx+3ClHwHkz78/KBsjhjeLrC2CaLgK+CoxV/XUIQ=="],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.42.0", "", { "os": "android", "cpu": "arm" }, "sha512-dsqPTYsozeokRjlrt/b4E7Pj0z3eS3Eg74TWQuuKbjY4VttBmA88rB7d50Xrd+TZ986qdXCNeZRPEzZHAe+jow=="],
 

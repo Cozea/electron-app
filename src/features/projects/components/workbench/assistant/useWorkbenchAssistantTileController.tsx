@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEventHandler, type 
 import {
 
   ApprovalRequestId,
-  type ModelSelection,
   type OrchestrationGetTurnDiffResult,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
@@ -61,6 +60,7 @@ import {
   toErrorMessage,
   truncateTitle,
   withWorkspaceBindingLock,
+  withModelSelectionModel,
 } from "./workbenchAssistantShared"
 
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -131,6 +131,10 @@ export function useWorkbenchAssistantTileController(
       })
     )
   }, [assistantProject?.defaultModelSelection, config, input.tile, thread?.modelSelection])
+  const selectedDispatchModelSelection = useMemo(
+    () => withModelSelectionModel(selectedModelSelection, selectedModelSelection.model),
+    [selectedModelSelection],
+  )
 
   const selectedRuntimeMode = thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
   const selectedInteractionMode =
@@ -141,6 +145,8 @@ export function useWorkbenchAssistantTileController(
     () => ({
       codex: getProviderModelOptions(config, "codex"),
       claudeAgent: getProviderModelOptions(config, "claudeAgent"),
+      cursor: getProviderModelOptions(config, "cursor"),
+      opencode: getProviderModelOptions(config, "opencode"),
     }),
     [config],
   )
@@ -439,17 +445,16 @@ export function useWorkbenchAssistantTileController(
       projectModelSelection: assistantProject?.defaultModelSelection,
       provider: nextProvider,
     })
-    const nextModelSelection = {
-      ...preferredModelSelection,
-      model:
-        (nextModelValue
-          ? resolveSelectableModel(
-              nextProvider,
-              nextModelValue,
-              getProviderModelOptions(config, nextProvider),
-            ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue)
-          : null) ?? preferredModelSelection.model,
-    } satisfies ModelSelection
+    const nextModelSelection = withModelSelectionModel(
+      preferredModelSelection,
+      (nextModelValue
+        ? resolveSelectableModel(
+            nextProvider,
+            nextModelValue,
+            getProviderModelOptions(config, nextProvider),
+          ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue)
+        : null) ?? preferredModelSelection.model,
+    )
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
@@ -472,12 +477,11 @@ export function useWorkbenchAssistantTileController(
   }
 
   const handleModelChange = async (nextModel: string) => {
-    const nextModelSelection = {
-      provider: selectedProvider,
-      model:
-        resolveSelectableModel(selectedProvider, nextModel, providerModelOptions) ??
+    const nextModelSelection = withModelSelectionModel(
+      selectedModelSelection,
+      resolveSelectableModel(selectedProvider, nextModel, providerModelOptions) ??
         resolveModelSlugForProvider(selectedProvider, nextModel),
-    } satisfies ModelSelection
+    )
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
@@ -581,6 +585,10 @@ export function useWorkbenchAssistantTileController(
         })
       }
 
+      const SKILL_TOKEN_REGEX = /(^|\\s)\\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\\s|$)/g
+      const extractedSkillNames = Array.from(nextPrompt.matchAll(SKILL_TOKEN_REGEX)).map((m) => m[2])
+      const skills = providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? []
+
       await api.orchestration.dispatchCommand({
         type: "thread.turn.start",
         commandId: newCommandId(),
@@ -591,9 +599,11 @@ export function useWorkbenchAssistantTileController(
           text: nextPrompt,
           attachments: [],
         },
-        modelSelection: selectedModelSelection,
+        modelSelection: selectedDispatchModelSelection,
         runtimeMode: selectedRuntimeMode,
         interactionMode: selectedInteractionMode,
+        ...(isFirstUserMessage && nextThreadTitle ? { titleSeed: nextThreadTitle } : {}),
+        skills,
         createdAt: new Date().toISOString(),
       })
       await refreshAssistantRuntimeSnapshot()

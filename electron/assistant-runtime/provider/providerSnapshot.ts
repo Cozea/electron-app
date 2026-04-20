@@ -1,11 +1,15 @@
 // @ts-nocheck
 import type {
+  ModelCapabilities,
   ServerProvider,
-  ServerProviderAuthStatus,
+  ServerProviderAuth,
   ServerProviderModel,
+  ServerProviderSkill,
+  ServerProviderSlashCommand,
   ServerProviderState,
 } from "@cozea/assistant-contracts";
 import { Effect, Stream } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { normalizeModelSlug } from "@cozea/assistant-shared/model";
 
 export const DEFAULT_TIMEOUT_MS = 4_000;
@@ -20,7 +24,7 @@ export interface ProviderProbeResult {
   readonly installed: boolean;
   readonly version: string | null;
   readonly status: Exclude<ServerProviderState, "disabled">;
-  readonly authStatus: ServerProviderAuthStatus;
+  readonly auth: ServerProviderAuth;
   readonly message?: string;
 }
 
@@ -77,10 +81,37 @@ export function parseGenericCliVersion(output: string): string | null {
   return match?.[1] ?? null;
 }
 
+function isWindowsCommandNotFound(code: number, stderr: string): boolean {
+  if (process.platform !== "win32") return false;
+  if (code === 9009) return true;
+  return /is not recognized as an internal or external command/i.test(stderr);
+}
+
+export const spawnAndCollect = (binaryPath: string, command: ChildProcess.Command) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const child = yield* spawner.spawn(command);
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    const result: CommandResult = { stdout, stderr, code: exitCode };
+    if (isWindowsCommandNotFound(exitCode, stderr)) {
+      return yield* Effect.fail(new Error(`spawn ${binaryPath} ENOENT`));
+    }
+    return result;
+  }).pipe(Effect.scoped);
+
 export function providerModelsFromSettings(
   builtInModels: ReadonlyArray<ServerProviderModel>,
   provider: ServerProvider["provider"],
   customModels: ReadonlyArray<string>,
+  customModelCapabilities: ModelCapabilities | null,
 ): ReadonlyArray<ServerProviderModel> {
   const resolvedBuiltInModels = [...builtInModels];
   const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
@@ -96,7 +127,7 @@ export function providerModelsFromSettings(
       slug: normalized,
       name: normalized,
       isCustom: true,
-      capabilities: null,
+      capabilities: customModelCapabilities,
     });
   }
 
@@ -108,6 +139,8 @@ export function buildServerProvider(input: {
   enabled: boolean;
   checkedAt: string;
   models: ReadonlyArray<ServerProviderModel>;
+  slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
+  skills?: ReadonlyArray<ServerProviderSkill>;
   probe: ProviderProbeResult;
 }): ServerProvider {
   return {
@@ -116,10 +149,12 @@ export function buildServerProvider(input: {
     installed: input.probe.installed,
     version: input.probe.version,
     status: input.enabled ? input.probe.status : "disabled",
-    authStatus: input.probe.authStatus,
+    auth: input.probe.auth,
     checkedAt: input.checkedAt,
     ...(input.probe.message ? { message: input.probe.message } : {}),
     models: input.models,
+    slashCommands: [...(input.slashCommands ?? [])],
+    skills: [...(input.skills ?? [])],
   };
 }
 

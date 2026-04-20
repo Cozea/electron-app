@@ -3,6 +3,7 @@
 import {
 
   ClaudeAI,
+  CursorIcon,
   Gemini,
   OpenAI,
   OpenCodeIcon,
@@ -80,9 +81,11 @@ function ProviderGlyph(props: { provider?: string | null; className?: string }) 
   switch (props.provider) {
     case "claudeAgent":
       return <ClaudeAI className={className} />
+    case "cursor":
+      return <CursorIcon className={className} />
     case "gemini":
       return <Gemini className={className} />
-    case "openCode":
+    case "opencode":
       return <OpenCodeIcon className={className} />
     case "codex":
     default:
@@ -97,10 +100,12 @@ function providerGlyphColorClass(
   switch (provider) {
     case "claudeAgent":
       return isActive ? "text-[#d97757]" : "text-[#d97757]/90"
+    case "cursor":
+      return isActive ? "text-zinc-600" : "text-zinc-500"
     case "codex":
       return isActive ? "text-foreground" : "text-muted-foreground/90"
     case "gemini":
-    case "openCode":
+    case "opencode":
       return ""
     default:
       return isActive ? "text-[var(--sidebar-pill-hover-fg)]" : "text-muted-foreground/75"

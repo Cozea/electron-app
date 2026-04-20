@@ -248,4 +248,32 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGenerationLive", (it) => {
       }),
     ),
   );
+
+  it.effect("generates and sanitizes thread titles", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({
+          structured_output: {
+            title:
+              '  "This is a very long generated title that should be trimmed for the sidebar safely"  ',
+          },
+        }),
+        stdinMustContain: "coding conversations",
+      },
+      Effect.gen(function* () {
+        const textGeneration = yield* TextGeneration;
+
+        const generated = yield* textGeneration.generateThreadTitle({
+          cwd: process.cwd(),
+          message: "Please investigate reconnect failures after restarting the session.",
+          modelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-5",
+          },
+        });
+
+        expect(generated.title).toBe("This is a very long generated title that should...");
+      }),
+    ),
+  );
 });

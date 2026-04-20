@@ -1,4 +1,5 @@
-import type {
+import { Schema } from "effect";
+import {
   OrchestrationReadModel,
   OrchestrationSessionStatus,
   ProviderKind,
@@ -9,7 +10,7 @@ import type { ThreadSession } from "./types";
 function normalizeThreadSessionProvider(
   providerName: string | null | undefined,
 ): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
+  if (Schema.is(ProviderKind)(providerName)) {
     return providerName;
   }
 

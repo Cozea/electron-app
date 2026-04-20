@@ -1,12 +1,10 @@
 // @ts-nocheck
 /**
- * RoutingTextGeneration – Dispatches text generation requests to either the
- * Codex CLI or Claude CLI implementation based on the provider in each
- * request input.
+ * RoutingTextGeneration – Dispatches text generation requests to the concrete
+ * provider-specific implementation based on the provider in each request input.
  *
- * When `modelSelection.provider` is `"claudeAgent"` the request is forwarded to
- * the Claude layer; for any other value (including the default `undefined`) it
- * falls through to the Codex layer.
+ * Known providers map to Codex, Claude, Cursor, or OpenCode. Unknown or
+ * absent providers fall back to Codex.
  *
  * @module RoutingTextGeneration
  */
@@ -19,6 +17,8 @@ import {
 } from "../Services/TextGeneration.ts";
 import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
 import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
+import { CursorTextGenerationLive } from "./CursorTextGeneration.ts";
+import { OpenCodeTextGenerationLive } from "./OpenCodeTextGeneration.ts";
 
 // ---------------------------------------------------------------------------
 // Internal service tags so both concrete layers can coexist.
@@ -32,6 +32,14 @@ class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShap
   "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/ClaudeTextGen",
 ) {}
 
+class CursorTextGen extends ServiceMap.Service<CursorTextGen, TextGenerationShape>()(
+  "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/CursorTextGen",
+) {}
+
+class OpenCodeTextGen extends ServiceMap.Service<OpenCodeTextGen, TextGenerationShape>()(
+  "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/OpenCodeTextGen",
+) {}
+
 // ---------------------------------------------------------------------------
 // Routing implementation
 // ---------------------------------------------------------------------------
@@ -39,15 +47,25 @@ class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShap
 const makeRoutingTextGeneration = Effect.gen(function* () {
   const codex = yield* CodexTextGen;
   const claude = yield* ClaudeTextGen;
+  const cursor = yield* CursorTextGen;
+  const openCode = yield* OpenCodeTextGen;
 
   const route = (provider?: TextGenerationProvider): TextGenerationShape =>
-    provider === "claudeAgent" ? claude : codex;
+    provider === "claudeAgent"
+      ? claude
+      : provider === "opencode"
+        ? openCode
+        : provider === "cursor"
+          ? cursor
+          : codex;
 
   return {
     generateCommitMessage: (input) =>
       route(input.modelSelection.provider).generateCommitMessage(input),
     generatePrContent: (input) => route(input.modelSelection.provider).generatePrContent(input),
     generateBranchName: (input) => route(input.modelSelection.provider).generateBranchName(input),
+    generateThreadTitle: (input) =>
+      route(input.modelSelection.provider).generateThreadTitle(input),
   } satisfies TextGenerationShape;
 });
 
@@ -67,7 +85,28 @@ const InternalClaudeLayer = Layer.effect(
   }),
 ).pipe(Layer.provide(ClaudeTextGenerationLive));
 
+const InternalCursorLayer = Layer.effect(
+  CursorTextGen,
+  Effect.gen(function* () {
+    const svc = yield* TextGeneration;
+    return svc;
+  }),
+).pipe(Layer.provide(CursorTextGenerationLive));
+
+const InternalOpenCodeLayer = Layer.effect(
+  OpenCodeTextGen,
+  Effect.gen(function* () {
+    const svc = yield* TextGeneration;
+    return svc;
+  }),
+).pipe(Layer.provide(OpenCodeTextGenerationLive));
+
 export const RoutingTextGenerationLive = Layer.effect(
   TextGeneration,
   makeRoutingTextGeneration,
-).pipe(Layer.provide(InternalCodexLayer), Layer.provide(InternalClaudeLayer));
+).pipe(
+  Layer.provide(InternalCodexLayer),
+  Layer.provide(InternalClaudeLayer),
+  Layer.provide(InternalCursorLayer),
+  Layer.provide(InternalOpenCodeLayer),
+);

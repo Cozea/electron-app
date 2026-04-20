@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Option, Schema, SchemaIssue } from "effect";
 
-import { ClaudeModelOptions, CodexModelOptions } from "./model";
+import { ClaudeModelOptions, CodexModelOptions, CursorModelOptions, OpenCodeModelOptions } from "./model";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -29,7 +29,7 @@ export const ORCHESTRATION_WS_CHANNELS = {
   domainEvent: "orchestration.domainEvent",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "claudeAgent"]);
+export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "cursor", "opencode"]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -49,19 +49,58 @@ export const DEFAULT_PROVIDER_KIND: ProviderKind = "codex";
 export const CodexModelSelection = Schema.Struct({
   provider: Schema.Literal("codex"),
   model: TrimmedNonEmptyString,
-  options: Schema.optional(CodexModelOptions) as any,
+  options: Schema.optional(CodexModelOptions),
 });
-export type CodexModelSelection = typeof CodexModelSelection.Type;
+export interface CodexModelSelection {
+  provider: "codex";
+  model: string;
+  options?: CodexModelOptions;
+}
 
 export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
   model: TrimmedNonEmptyString,
-  options: Schema.optional(ClaudeModelOptions) as any,
+  options: Schema.optional(ClaudeModelOptions),
 });
-export type ClaudeModelSelection = typeof ClaudeModelSelection.Type;
+export interface ClaudeModelSelection {
+  provider: "claudeAgent";
+  model: string;
+  options?: ClaudeModelOptions;
+}
 
-export const ModelSelection = Schema.Union([CodexModelSelection, ClaudeModelSelection]);
-export type ModelSelection = typeof ModelSelection.Type;
+export const CursorModelSelection = Schema.Struct({
+  provider: Schema.Literal("cursor"),
+  model: TrimmedNonEmptyString,
+  options: CursorModelOptions.pipe(Schema.withDecodingDefault(() => ({}))),
+});
+export interface CursorModelSelection {
+  provider: "cursor";
+  model: string;
+  options?: CursorModelOptions;
+}
+
+export const OpenCodeModelSelection = Schema.Struct({
+  provider: Schema.Literal("opencode"),
+  model: TrimmedNonEmptyString,
+  options: OpenCodeModelOptions.pipe(Schema.withDecodingDefault(() => ({}))),
+});
+export interface OpenCodeModelSelection {
+  provider: "opencode";
+  model: string;
+  options?: OpenCodeModelOptions;
+}
+
+export const ModelSelection = Schema.Union([
+  CodexModelSelection,
+  ClaudeModelSelection,
+  CursorModelSelection,
+  OpenCodeModelSelection,
+]);
+export type ModelSelection =
+  | CodexModelSelection
+  | ClaudeModelSelection
+  | CursorModelSelection
+  | OpenCodeModelSelection;
 
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
@@ -318,7 +357,7 @@ export const ProjectCreateCommand = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
-  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection) as any),
+  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   createdAt: IsoDateTime,
 });
 
@@ -328,7 +367,7 @@ const ProjectMetaUpdateCommand = Schema.Struct({
   projectId: ProjectId,
   title: Schema.optional(TrimmedNonEmptyString) as any,
   workspaceRoot: Schema.optional(TrimmedNonEmptyString) as any,
-  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection) as any),
+  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript) as any),
 });
 
@@ -365,7 +404,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString) as any,
-  modelSelection: Schema.optional(ModelSelection) as any,
+  modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString) as any),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString) as any),
 });
@@ -396,12 +435,14 @@ export const ThreadTurnStartCommand = Schema.Struct({
     text: Schema.String,
     attachments: Schema.Array(ChatAttachment),
   }),
-  modelSelection: Schema.optional(ModelSelection) as any,
+  modelSelection: Schema.optional(ModelSelection),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
   ),
+  titleSeed: Schema.optional(TrimmedNonEmptyString),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference) as any,
+  skills: Schema.optional(Schema.Array(Schema.Any)) as any,
   createdAt: IsoDateTime,
 });
 
@@ -415,10 +456,12 @@ const ClientThreadTurnStartCommand = Schema.Struct({
     text: Schema.String,
     attachments: Schema.Array(UploadChatAttachment),
   }),
-  modelSelection: Schema.optional(ModelSelection) as any,
+  modelSelection: Schema.optional(ModelSelection),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
+  titleSeed: Schema.optional(TrimmedNonEmptyString),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference) as any,
+  skills: Schema.optional(Schema.Array(Schema.Any)) as any,
   createdAt: IsoDateTime,
 });
 
@@ -624,7 +667,7 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
   projectId: ProjectId,
   title: Schema.optional(TrimmedNonEmptyString) as any,
   workspaceRoot: Schema.optional(TrimmedNonEmptyString) as any,
-  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection) as any),
+  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript) as any),
   updatedAt: IsoDateTime,
 });
@@ -657,7 +700,7 @@ export const ThreadDeletedPayload = Schema.Struct({
 export const ThreadMetaUpdatedPayload = Schema.Struct({
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString) as any,
-  modelSelection: Schema.optional(ModelSelection) as any,
+  modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString) as any),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString) as any),
   updatedAt: IsoDateTime,
@@ -692,13 +735,15 @@ export const ThreadMessageSentPayload = Schema.Struct({
 export const ThreadTurnStartRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   messageId: MessageId,
-  modelSelection: Schema.optional(ModelSelection) as any,
+  modelSelection: Schema.optional(ModelSelection),
   assistantDeliveryMode: Schema.optional(AssistantDeliveryMode) as any,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
   ),
+  titleSeed: Schema.optional(TrimmedNonEmptyString),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference) as any,
+  skills: Schema.optional(Schema.Array(Schema.Any)) as any,
   createdAt: IsoDateTime,
 });
 

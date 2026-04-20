@@ -21,6 +21,8 @@
       "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
       "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
       "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
+      "@cozea/effect-acp": ["./packages/effect-acp/src/client.ts"],
+      "@cozea/effect-acp/*": ["./packages/effect-acp/src/*"],
       "@/*": ["./src/*"],
       "@shared/*": ["./shared/*"]
     }

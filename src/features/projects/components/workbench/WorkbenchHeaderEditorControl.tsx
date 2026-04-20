@@ -219,14 +219,16 @@ export function WorkbenchHeaderEditorControl({
         <div className={cn("group inline-flex h-6 items-center rounded-md border bg-transparent shadow-none overflow-hidden", adjacentOpenSidebar ? "border-sidebar-foreground/20" : "border-border/60")}>
           <Button
             variant="ghost"
-            className={cn("h-full shrink-0 gap-1 rounded-none bg-transparent !px-3 shadow-none", chromeButtonClass)}
+            className={cn("h-full shrink-0 rounded-none bg-transparent !px-2 shadow-none", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
             disabled={!projectPath || !selectedEditorOption}
+            aria-label={
+              selectedEditorOption
+                ? `Open in ${selectedEditorOption.editor.name}`
+                : "No supported external editor detected"
+            }
           >
             <SelectedEditorIcon className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
-            <span className="text-[11px] leading-none text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground">
-              Open
-            </span>
           </Button>
 
           {orderedEditors.length > 1 ? (
