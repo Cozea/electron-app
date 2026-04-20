@@ -228,7 +228,7 @@ export function WorkbenchHeaderEditorControl({
                 : "No supported external editor detected"
             }
           >
-            <SelectedEditorIcon className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+            <SelectedEditorIcon className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
           </Button>
 
           {orderedEditors.length > 1 ? (
@@ -240,12 +240,12 @@ export function WorkbenchHeaderEditorControl({
               <Button
                 type="button"
                 variant="ghost"
-                className={cn("h-full w-8 shrink-0 rounded-none bg-transparent px-0 shadow-none inline-flex", chromeButtonClass)}
+                className={cn("h-full w-7 shrink-0 rounded-none bg-transparent px-0 shadow-none inline-flex", chromeButtonClass)}
                 aria-label="Choose editor"
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
               >
-                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
               </Button>
             </>
           ) : null}

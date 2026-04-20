@@ -326,7 +326,7 @@ export function ProjectTeamPage() {
       <div className="flex items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
+            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
               <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
               {roleFilter === 'all' ? 'All Roles' : getRoleLabel(roleFilter)}
             </Button>
@@ -343,7 +343,7 @@ export function ProjectTeamPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
+            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
               <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
               {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
             </Button>
@@ -357,7 +357,7 @@ export function ProjectTeamPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
+            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
               {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
             </Button>
           </DropdownMenuTrigger>

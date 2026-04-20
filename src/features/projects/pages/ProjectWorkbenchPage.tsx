@@ -180,7 +180,7 @@ export function ProjectWorkbenchPage() {
         <ProjectShellTitleBarLeft />
         <div className="flex min-w-0 items-center gap-2">
           <div
-            className="flex h-6 min-w-0 max-w-[min(320px,42vw)] items-center text-xs font-normal text-foreground"
+            className="flex h-6 min-w-0 max-w-[min(320px,42vw)] items-center text-[11px] font-normal text-foreground"
             title={projectName}
           >
             <span className="truncate">{projectName}</span>

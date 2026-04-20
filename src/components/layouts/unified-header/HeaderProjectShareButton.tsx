@@ -566,11 +566,11 @@ export function HeaderProjectShareButton({
               onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="size-4 shrink-0 animate-spin" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="size-3 shrink-0 animate-spin" />
               ) : (
-                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
+                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-3 shrink-0" />
               )}
-              <span className="text-[11px] leading-none">Share</span>
+              <span className="text-[10px] leading-none">Share</span>
             </Button>
           </DialogTrigger>
         </TooltipTrigger>

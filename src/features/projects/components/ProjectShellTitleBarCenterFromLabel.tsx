@@ -13,7 +13,7 @@ export function ProjectShellTitleBarCenterFromLabel({ label }: ProjectShellTitle
     <div className="flex min-w-0 max-w-[52vw] items-center justify-center gap-2">
       <div className="flex h-6 min-w-0 max-w-full items-center">
         <div
-          className="flex h-6 min-w-0 max-w-[320px] items-center px-2.5 text-xs font-medium text-foreground"
+          className="flex h-6 min-w-0 max-w-[320px] items-center px-2.5 text-[11px] font-medium text-foreground"
           title={label}
         >
           <span className="block truncate">{label}</span>

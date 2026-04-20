@@ -25,7 +25,7 @@ import {
 } from "@/stores/useProjectWorkbenchStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ChevronDoubleCloseIcon as __ChevronRightHugeIcon, MoreVerticalIcon as __EllipsisVerticalHugeIcon } from '@hugeicons/core-free-icons'
+import { MoreVerticalIcon as __EllipsisVerticalHugeIcon } from '@hugeicons/core-free-icons'
 
 async function showNativeSidebarMenu<T extends string>(
   event: React.MouseEvent<HTMLElement>,
@@ -89,6 +89,20 @@ export const ProjectSidebarTreeItem = React.memo(
       () => (activeLaneWorkbench ? buildWorkbenchLaneSidebarSummary(activeLaneWorkbench) : null),
       [activeLaneWorkbench],
     )
+
+    /** Matches `SidebarLaneTiles`: no assistant/surface rows — row click should open the workbench instead of toggling. */
+    const rowClickOpensProject = React.useMemo(() => {
+      if (!activeLaneSummary) return false
+      return activeLaneSummary.agents.length === 0 && activeLaneSummary.surfaces.length === 0
+    }, [activeLaneSummary])
+
+    const handleProjectRowClick = React.useCallback(() => {
+      if (rowClickOpensProject) {
+        void actions.openProject(project, localPath)
+        return
+      }
+      actions.toggleExpanded(project.id)
+    }, [actions, localPath, project, rowClickOpensProject])
 
     const handleProjectMenuClick = React.useCallback(
       async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -210,47 +224,27 @@ export const ProjectSidebarTreeItem = React.memo(
               SIDEBAR_PILL_ACTIVE_CLASS,
           )}
         >
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
+            aria-expanded={rowClickOpensProject ? undefined : selection.isExpanded}
+            aria-label={
+              rowClickOpensProject
+                ? `Open ${project.name}`
+                : selection.isExpanded
+                  ? `${project.name}, lanes expanded. Press to collapse.`
+                  : `${project.name}, lanes collapsed. Press to expand.`
+            }
             className={cn(
-              "group flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "group flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             )}
-            onClick={() => {
-              void actions.openProject(project, localPath)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault()
-                void actions.openProject(project, localPath)
-              }
-            }}
+            onClick={handleProjectRowClick}
           >
-            <NativeProjectFolderIcon folderPath={localPath} isOpen={selection.isExpanded} />
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-              <span className="min-w-0 truncate font-normal text-muted-foreground">
-                {project.name}
-              </span>
-              <button
-                type="button"
-                className="ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  actions.toggleExpanded(project.id)
-                }}
-                aria-label={
-                  selection.isExpanded ? "Collapse project lanes" : "Expand project lanes"
-                }
-              >
-                <HugeiconsIcon icon={__ChevronRightHugeIcon}
-                  className={cn(
-                    "size-4 shrink-0 text-muted-foreground/75 transition-[transform,opacity] duration-150 group-hover/project-item:opacity-100 group-focus-visible:opacity-100 opacity-0",
-                    selection.isExpanded && "rotate-90",
-                  )}
-                />
-              </button>
-            </div>
-          </div>
+            <NativeProjectFolderIcon
+              folderPath={localPath}
+              isOpen={rowClickOpensProject ? false : selection.isExpanded}
+            />
+            <span className="min-w-0 flex-1 truncate font-normal">{project.name}</span>
+          </button>
           <Button
             type="button"
             variant="ghost"
