@@ -1,5 +1,10 @@
 import type {
+  ClaudeModelOptions,
+  ClientOrchestrationCommand,
+  CodexModelOptions,
+  CursorModelOptions,
   ModelSelection,
+  OpenCodeModelOptions,
   ProviderInteractionMode,
   ProviderKind,
   RuntimeMode,
@@ -29,6 +34,11 @@ export interface DiffDialogState {
   error: string | null
   isLoading: boolean
 }
+
+type StrictModelSelection = Extract<
+  ClientOrchestrationCommand,
+  { type: "thread.create" }
+>["modelSelection"]
 
 const workspaceBindingQueue = new Map<string, Promise<void>>()
 
@@ -124,6 +134,8 @@ export function resolvePreferredProvider(input: {
   tile: WorkbenchAssistantChatTileRecord
   projectModelSelection: ModelSelection | null | undefined
 }): ProviderKind {
+  const defaultModelSelection = input.config?.settings.textGenerationModelSelection
+
   if (input.tile.provider) {
     return input.tile.provider
   }
@@ -132,8 +144,8 @@ export function resolvePreferredProvider(input: {
     return input.projectModelSelection.provider
   }
 
-  if (input.config?.settings.textGenerationModelSelection.provider) {
-    return input.config.settings.textGenerationModelSelection.provider
+  if (defaultModelSelection?.provider) {
+    return defaultModelSelection.provider
   }
 
   return "codex"
@@ -144,7 +156,8 @@ export function resolvePreferredModelSelection(input: {
   tile: WorkbenchAssistantChatTileRecord
   projectModelSelection: ModelSelection | null | undefined
   provider?: ProviderKind
-}): ModelSelection {
+}): StrictModelSelection {
+  const defaultModelSelection = input.config?.settings.textGenerationModelSelection
   const provider =
     input.provider ??
     resolvePreferredProvider({
@@ -158,8 +171,8 @@ export function resolvePreferredModelSelection(input: {
     (input.projectModelSelection?.provider === provider
       ? input.projectModelSelection.model
       : null) ??
-    (input.config?.settings.textGenerationModelSelection.provider === provider
-      ? input.config.settings.textGenerationModelSelection.model
+    (defaultModelSelection?.provider === provider
+      ? defaultModelSelection.model
       : null)
   const resolvedModel =
     resolveSelectableModel(provider, candidateModel, providerModelOptions) ??
@@ -167,9 +180,154 @@ export function resolvePreferredModelSelection(input: {
     resolveModelSlugForProvider(provider, candidateModel) ??
     DEFAULT_MODEL_BY_PROVIDER[provider]
 
-  return {
-    provider,
-    model: resolvedModel,
+  switch (provider) {
+    case "codex":
+      return normalizeModelSelection({
+        provider: "codex",
+        model: resolvedModel,
+        options:
+          input.tile.provider === "codex"
+            ? undefined
+            : input.projectModelSelection?.provider === "codex"
+              ? input.projectModelSelection.options
+              : defaultModelSelection?.provider === "codex"
+                ? defaultModelSelection.options
+                : undefined,
+      })
+    case "claudeAgent":
+      return normalizeModelSelection({
+        provider: "claudeAgent",
+        model: resolvedModel,
+        options:
+          input.tile.provider === "claudeAgent"
+            ? undefined
+            : input.projectModelSelection?.provider === "claudeAgent"
+              ? input.projectModelSelection.options
+              : defaultModelSelection?.provider === "claudeAgent"
+                ? defaultModelSelection.options
+                : undefined,
+      })
+    case "cursor":
+      return normalizeModelSelection({
+        provider: "cursor",
+        model: resolvedModel,
+        options:
+          input.tile.provider === "cursor"
+            ? undefined
+            : input.projectModelSelection?.provider === "cursor"
+              ? input.projectModelSelection.options
+              : defaultModelSelection?.provider === "cursor"
+                ? defaultModelSelection.options
+                : undefined,
+      })
+    case "opencode":
+      return normalizeModelSelection({
+        provider: "opencode",
+        model: resolvedModel,
+        options:
+          input.tile.provider === "opencode"
+            ? undefined
+            : input.projectModelSelection?.provider === "opencode"
+              ? input.projectModelSelection.options
+              : defaultModelSelection?.provider === "opencode"
+                ? defaultModelSelection.options
+                : undefined,
+      })
+  }
+}
+
+export function normalizeModelSelection(input: {
+  provider: "codex"
+  model: string
+  options?: CodexModelOptions
+}): StrictModelSelection
+export function normalizeModelSelection(input: {
+  provider: "claudeAgent"
+  model: string
+  options?: ClaudeModelOptions
+}): StrictModelSelection
+export function normalizeModelSelection(input: {
+  provider: "cursor"
+  model: string
+  options?: CursorModelOptions
+}): StrictModelSelection
+export function normalizeModelSelection(input: {
+  provider: "opencode"
+  model: string
+  options?: OpenCodeModelOptions
+}): StrictModelSelection
+export function normalizeModelSelection(input: {
+  provider: ProviderKind
+  model: string
+  options?:
+    | CodexModelOptions
+    | ClaudeModelOptions
+    | CursorModelOptions
+    | OpenCodeModelOptions
+}): StrictModelSelection {
+  switch (input.provider) {
+    case "codex":
+      return input.options
+        ? { provider: "codex", model: input.model, options: input.options as CodexModelOptions }
+        : { provider: "codex", model: input.model }
+    case "claudeAgent":
+      return input.options
+        ? {
+            provider: "claudeAgent",
+            model: input.model,
+            options: input.options as ClaudeModelOptions,
+          }
+        : { provider: "claudeAgent", model: input.model }
+    case "cursor":
+      return {
+        provider: "cursor",
+        model: input.model,
+        options:
+          input.options && typeof input.options === "object"
+            ? (input.options as CursorModelOptions)
+            : {},
+      }
+    case "opencode":
+      return {
+        provider: "opencode",
+        model: input.model,
+        options:
+          input.options && typeof input.options === "object"
+            ? (input.options as OpenCodeModelOptions)
+            : {},
+      }
+  }
+}
+
+export function withModelSelectionModel(
+  selection: ModelSelection,
+  model: string,
+): StrictModelSelection {
+  switch (selection.provider) {
+    case "codex":
+      return normalizeModelSelection({
+        provider: "codex",
+        model,
+        options: selection.options,
+      })
+    case "claudeAgent":
+      return normalizeModelSelection({
+        provider: "claudeAgent",
+        model,
+        options: selection.options,
+      })
+    case "cursor":
+      return normalizeModelSelection({
+        provider: "cursor",
+        model,
+        options: selection.options,
+      })
+    case "opencode":
+      return normalizeModelSelection({
+        provider: "opencode",
+        model,
+        options: selection.options,
+      })
   }
 }
 

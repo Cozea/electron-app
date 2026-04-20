@@ -5,6 +5,7 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { Button } from "@/components/ui/button"
 import {
   ClaudeAI,
+  CursorIcon,
   Gemini,
   OpenAI,
   OpenCodeIcon,
@@ -43,9 +44,11 @@ function resolveAssistantProviderIcon(provider: string | null | undefined) {
   switch (provider) {
     case "claudeAgent":
       return ClaudeAI
+    case "cursor":
+      return CursorIcon
     case "gemini":
       return Gemini
-    case "openCode":
+    case "opencode":
       return OpenCodeIcon
     case "codex":
       return OpenAI
@@ -58,10 +61,12 @@ function resolveAssistantProviderIconClass(provider: string | null | undefined) 
   switch (provider) {
     case "claudeAgent":
       return "text-[#d97757]"
+    case "cursor":
+      return "text-zinc-600"
     case "codex":
       return "text-foreground"
     case "gemini":
-    case "openCode":
+    case "opencode":
       return ""
     default:
       return "text-muted-foreground"
@@ -439,4 +444,3 @@ export function WorkbenchTileChrome({
     </div>
   )
 }
-

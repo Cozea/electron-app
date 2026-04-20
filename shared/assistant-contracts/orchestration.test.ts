@@ -283,6 +283,25 @@ it.effect("accepts a source proposed plan reference in thread.turn.start", () =>
   }),
 );
 
+it.effect("accepts a title seed in thread.turn.start", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: "thread.turn.start",
+      commandId: "cmd-turn-title-seed",
+      threadId: "thread-2",
+      message: {
+        messageId: "msg-title-seed",
+        role: "user",
+        text: "implement this",
+        attachments: [],
+      },
+      titleSeed: "Investigate reconnect failures",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.titleSeed, "Investigate reconnect failures");
+  }),
+);
+
 it.effect(
   "decodes thread.turn-start-requested defaults for provider, runtime mode, and interaction mode",
   () =>
@@ -314,6 +333,18 @@ it.effect("decodes thread.turn-start-requested source proposed plan metadata whe
       threadId: "thread-1",
       planId: "plan-1",
     });
+  }),
+);
+
+it.effect("decodes thread.turn-start-requested title seed when present", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartRequestedPayload({
+      threadId: "thread-2",
+      messageId: "msg-2",
+      titleSeed: "Investigate reconnect failures",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.titleSeed, "Investigate reconnect failures");
   }),
 );
 

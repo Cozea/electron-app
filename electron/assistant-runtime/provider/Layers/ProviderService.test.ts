@@ -505,9 +505,10 @@ it.effect(
 );
 
 routing.layer("ProviderServiceLive routing", (it) => {
-  it.effect("routes provider operations and rollback conversation", () =>
+  it.effect("routes provider operations, preserves stopped bindings, and recovers sendTurn", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
 
       const session = yield* provider.startSession(asThreadId("thread-1"), {
         provider: "codex",
@@ -562,20 +563,24 @@ routing.layer("ProviderServiceLive routing", (it) => {
       });
 
       yield* provider.stopSession({ threadId: session.threadId });
-      const sendAfterStop = yield* Effect.result(
-        provider.sendTurn({
-          threadId: session.threadId,
-          input: "after-stop",
-          attachments: [],
-        }),
-      );
-      assertFailure(
-        sendAfterStop,
-        new ProviderValidationError({
-          operation: "ProviderService.sendTurn",
-          issue: `Cannot route thread '${session.threadId}' because no persisted provider binding exists.`,
-        }),
-      );
+      const persistedBinding = yield* directory.getBinding(session.threadId);
+      assert.equal(Option.isSome(persistedBinding), true);
+      if (Option.isSome(persistedBinding)) {
+        assert.equal(persistedBinding.value.provider, "codex");
+        assert.equal(persistedBinding.value.status, "stopped");
+      }
+
+      routing.codex.startSession.mockClear();
+      routing.codex.sendTurn.mockClear();
+
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "after-stop",
+        attachments: [],
+      });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
     }),
   );
 
@@ -639,6 +644,43 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(startPayload.provider, "claudeAgent");
         assert.equal(startPayload.cwd, "/tmp/project-claude");
       }
+    }),
+  );
+
+  it.effect("stops stale sessions in other providers after a successful replacement start", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const threadId = asThreadId("thread-provider-replacement");
+
+      const codexSession = yield* provider.startSession(threadId, {
+        provider: "codex",
+        threadId,
+        cwd: "/tmp/project-provider-replacement",
+        runtimeMode: "full-access",
+      });
+
+      routing.codex.stopSession.mockClear();
+      routing.claude.stopSession.mockClear();
+
+      const claudeSession = yield* provider.startSession(threadId, {
+        provider: "claudeAgent",
+        threadId,
+        cwd: "/tmp/project-provider-replacement",
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(codexSession.provider, "codex");
+      assert.equal(claudeSession.provider, "claudeAgent");
+      assert.deepEqual(routing.codex.stopSession.mock.calls, [[threadId]]);
+      assert.equal(routing.claude.stopSession.mock.calls.length, 0);
+
+      const sessions = yield* provider.listSessions();
+      assert.deepEqual(
+        sessions
+          .filter((session) => session.threadId === threadId)
+          .map((session) => session.provider),
+        ["claudeAgent"],
+      );
     }),
   );
 

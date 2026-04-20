@@ -54,7 +54,7 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
-import { ClaudeAI, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
 
 const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
 const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
@@ -99,9 +99,11 @@ function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined)
   switch (provider) {
     case "claudeAgent":
       return ClaudeAI
+    case "cursor":
+      return CursorIcon
     case "gemini":
       return Gemini
-    case "openCode":
+    case "opencode":
       return OpenCodeIcon
     case "codex":
       return OpenAI

@@ -134,6 +134,63 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
       }
     }));
 
+  it("rehydrates persisted bindings for every supported provider kind", () =>
+    Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory;
+      const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+
+      const opencodeThreadId = ThreadId.makeUnsafe("thread-opencode");
+      const cursorThreadId = ThreadId.makeUnsafe("thread-cursor");
+
+      yield* runtimeRepository.upsert({
+        threadId: opencodeThreadId,
+        providerName: "opencode",
+        adapterKey: "opencode",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-20T10:00:00.000Z",
+        resumeCursor: null,
+        runtimePayload: {
+          providerThreadId: "opencode-thread-1",
+        },
+      });
+
+      yield* runtimeRepository.upsert({
+        threadId: cursorThreadId,
+        providerName: "cursor",
+        adapterKey: "cursor",
+        runtimeMode: "approval-required",
+        status: "starting",
+        lastSeenAt: "2026-04-20T10:05:00.000Z",
+        resumeCursor: null,
+        runtimePayload: {
+          providerThreadId: "cursor-thread-1",
+        },
+      });
+
+      const opencodeBinding = yield* directory.getBinding(opencodeThreadId);
+      assertSome(opencodeBinding, {
+        threadId: opencodeThreadId,
+        provider: "opencode",
+      });
+
+      const cursorBinding = yield* directory.getBinding(cursorThreadId);
+      assertSome(cursorBinding, {
+        threadId: cursorThreadId,
+        provider: "cursor",
+      });
+
+      const bindings = yield* directory.listBindings();
+      assert.equal(bindings.length, 2);
+      assert.deepEqual(
+        bindings.map((binding) => [binding.threadId, binding.provider, binding.lastSeenAt]),
+        [
+          [opencodeThreadId, "opencode", "2026-04-20T10:00:00.000Z"],
+          [cursorThreadId, "cursor", "2026-04-20T10:05:00.000Z"],
+        ],
+      );
+    }));
+
   it("resets adapterKey to the new provider when provider changes without an explicit adapter key", () =>
     Effect.gen(function* () {
       const directory = yield* ProviderSessionDirectory;

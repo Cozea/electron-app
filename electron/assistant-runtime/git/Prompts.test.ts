@@ -5,8 +5,9 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildThreadTitlePrompt,
 } from "./Prompts.ts";
-import { normalizeCliError } from "./Utils.ts";
+import { normalizeCliError, sanitizeThreadTitle } from "./Utils.ts";
 import { TextGenerationError } from "./Errors.ts";
 
 describe("buildCommitMessagePrompt", () => {
@@ -101,6 +102,58 @@ describe("buildBranchNamePrompt", () => {
     expect(result.prompt).toContain("screenshot.png");
     expect(result.prompt).toContain("image/png");
     expect(result.prompt).toContain("12345 bytes");
+  });
+});
+
+describe("buildThreadTitlePrompt", () => {
+  it("includes the user message in the prompt", () => {
+    const result = buildThreadTitlePrompt({
+      message: "Fix the login timeout bug",
+    });
+
+    expect(result.prompt).toContain("User message:");
+    expect(result.prompt).toContain("Fix the login timeout bug");
+    expect(result.prompt).not.toContain("Attachment metadata:");
+  });
+
+  it("includes attachment metadata when attachments are provided", () => {
+    const result = buildThreadTitlePrompt({
+      message: "Fix the layout from screenshot",
+      attachments: [
+        {
+          type: "image" as const,
+          id: "att-123",
+          name: "screenshot.png",
+          mimeType: "image/png",
+          sizeBytes: 12345,
+        },
+      ],
+    });
+
+    expect(result.prompt).toContain("Attachment metadata:");
+    expect(result.prompt).toContain("screenshot.png");
+    expect(result.prompt).toContain("image/png");
+    expect(result.prompt).toContain("12345 bytes");
+  });
+});
+
+describe("sanitizeThreadTitle", () => {
+  it("falls back when the title is empty", () => {
+    expect(sanitizeThreadTitle("   ")).toBe("New thread");
+  });
+
+  it("normalizes quotes and whitespace", () => {
+    expect(sanitizeThreadTitle('  "Fix reconnect spinner"  \nsecond line')).toBe(
+      "Fix reconnect spinner",
+    );
+  });
+
+  it("truncates long titles to a sidebar-safe length", () => {
+    expect(
+      sanitizeThreadTitle(
+        "This is a very long generated title that should be trimmed for the sidebar safely",
+      ),
+    ).toBe("This is a very long generated title that should...");
   });
 });
 

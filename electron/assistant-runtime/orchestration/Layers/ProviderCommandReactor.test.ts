@@ -185,6 +185,14 @@ describe("ProviderCommandReactor", () => {
         }),
       ),
     );
+    const generateThreadTitle = vi.fn(() =>
+      Effect.fail(
+        new TextGenerationError({
+          operation: "generateThreadTitle",
+          detail: "disabled in test harness",
+        }),
+      ),
+    );
 
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
     const service: ProviderServiceShape = {
@@ -214,7 +222,10 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(Layer.succeed(GitCore, { renameBranch } as unknown as GitCoreShape)),
       Layer.provideMerge(
-        Layer.succeed(TextGeneration, { generateBranchName } as unknown as TextGenerationShape),
+        Layer.succeed(
+          TextGeneration,
+          { generateBranchName, generateThreadTitle } as unknown as TextGenerationShape,
+        ),
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
@@ -245,7 +256,7 @@ describe("ProviderCommandReactor", () => {
         commandId: CommandId.makeUnsafe("cmd-thread-create"),
         threadId: ThreadId.makeUnsafe("thread-1"),
         projectId: asProjectId("project-1"),
-        title: "Thread",
+        title: "New thread",
         modelSelection: modelSelection,
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
@@ -265,6 +276,7 @@ describe("ProviderCommandReactor", () => {
       stopSession,
       renameBranch,
       generateBranchName,
+      generateThreadTitle,
       stateDir,
       drain,
     };
@@ -1372,5 +1384,95 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.status).toBe("stopped");
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.activeTurnId).toBeNull();
+  });
+
+  it("generates a thread title on the first turn when the seeded title still matches", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const seededTitle = "Please investigate reconnect failures after restar...";
+    harness.generateThreadTitle.mockReturnValue(Effect.succeed({ title: "Generated title" }));
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.makeUnsafe("cmd-thread-title-seed"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        title: seededTitle,
+        worktreePath: "/tmp/provider-project",
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-title"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-title"),
+          role: "user",
+          text: "Please investigate reconnect failures after restarting the session.",
+          attachments: [],
+        },
+        titleSeed: seededTitle,
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.generateThreadTitle.mock.calls.length === 1);
+    expect(harness.generateThreadTitle.mock.calls[0]?.[0]).toMatchObject({
+      cwd: "/tmp/provider-project",
+      message: "Please investigate reconnect failures after restarting the session.",
+    });
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      return (
+        readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"))?.title ===
+        "Generated title"
+      );
+    });
+  });
+
+  it("does not overwrite a custom thread title on the first turn", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const seededTitle = "Please investigate reconnect failures after restar...";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.makeUnsafe("cmd-thread-title-custom"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        title: "Keep this custom title",
+        worktreePath: "/tmp/provider-project",
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-title-preserve"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-title-preserve"),
+          role: "user",
+          text: "Please investigate reconnect failures after restarting the session.",
+          attachments: [],
+        },
+        titleSeed: seededTitle,
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.generateThreadTitle).not.toHaveBeenCalled();
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
+    expect(thread?.title).toBe("Keep this custom title");
   });
 });

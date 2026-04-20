@@ -74,6 +74,19 @@ const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
 const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const WORKTREE_BRANCH_PREFIX = "t3code";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
+const DEFAULT_THREAD_TITLE = "New thread";
+
+function canReplaceThreadTitle(currentTitle: string, titleSeed?: string): boolean {
+  const trimmedCurrentTitle = currentTitle.trim();
+  if (trimmedCurrentTitle === DEFAULT_THREAD_TITLE) {
+    return true;
+  }
+
+  const trimmedTitleSeed = titleSeed?.trim();
+  return trimmedTitleSeed !== undefined && trimmedTitleSeed.length > 0
+    ? trimmedCurrentTitle === trimmedTitleSeed
+    : false;
+}
 
 function isUnknownPendingApprovalRequestError(cause: Cause.Cause<ProviderServiceError>): boolean {
   const error = Cause.squash(cause);
@@ -351,6 +364,7 @@ const make = Effect.gen(function* () {
     readonly attachments?: ReadonlyArray<ChatAttachment>;
     readonly modelSelection?: ModelSelection;
     readonly interactionMode?: "default" | "plan";
+    readonly skills?: ReadonlyArray<any>;
     readonly createdAt: string;
   }) {
     const thread = yield* resolveThread(input.threadId);
@@ -394,6 +408,7 @@ const make = Effect.gen(function* () {
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+      ...(input.skills !== undefined ? { skills: input.skills } : {}),
     });
   });
 
@@ -460,6 +475,53 @@ const make = Effect.gen(function* () {
     );
   });
 
+  const maybeGenerateThreadTitleForFirstTurn = Effect.fnUntraced(function* (input: {
+    readonly threadId: ThreadId;
+    readonly cwd: string;
+    readonly messageText: string;
+    readonly attachments?: ReadonlyArray<ChatAttachment>;
+    readonly titleSeed?: string;
+  }) {
+    const attachments = input.attachments ?? [];
+    yield* Effect.gen(function* () {
+      const { textGenerationModelSelection: modelSelection } =
+        yield* serverSettingsService.getSettings;
+
+      const generated = yield* textGeneration.generateThreadTitle({
+        cwd: input.cwd,
+        message: input.messageText,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        modelSelection,
+      });
+      if (!generated) {
+        return;
+      }
+
+      const thread = yield* resolveThread(input.threadId);
+      if (!thread) {
+        return;
+      }
+      if (!canReplaceThreadTitle(thread.title, input.titleSeed)) {
+        return;
+      }
+
+      yield* orchestrationEngine.dispatch({
+        type: "thread.meta.update",
+        commandId: serverCommandId("thread-title-rename"),
+        threadId: input.threadId,
+        title: generated.title,
+      });
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider command reactor failed to generate or rename thread title", {
+          threadId: input.threadId,
+          cwd: input.cwd,
+          cause: Cause.pretty(cause),
+        }),
+      ),
+    );
+  });
+
   const processTurnStartRequested = Effect.fnUntraced(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>,
   ) {
@@ -495,6 +557,16 @@ const make = Effect.gen(function* () {
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
     }).pipe(Effect.forkScoped);
 
+    if (thread.worktreePath && canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
+      yield* maybeGenerateThreadTitleForFirstTurn({
+        threadId: event.payload.threadId,
+        cwd: thread.worktreePath,
+        messageText: message.text,
+        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+        ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
+      }).pipe(Effect.forkScoped);
+    }
+
     yield* sendTurnForThread({
       threadId: event.payload.threadId,
       messageText: message.text,
@@ -503,6 +575,7 @@ const make = Effect.gen(function* () {
         ? { modelSelection: event.payload.modelSelection }
         : {}),
       interactionMode: event.payload.interactionMode,
+      ...(event.payload.skills !== undefined ? { skills: event.payload.skills } : {}),
       createdAt: event.payload.createdAt,
     }).pipe(
       Effect.catchCause((cause) =>

@@ -67,8 +67,9 @@ export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
 export interface ProviderModelOptionsByProvider {
   codex: ReadonlyArray<{ slug: string; name: string }>
-
   claudeAgent: ReadonlyArray<{ slug: string; name: string }>
+  cursor: ReadonlyArray<{ slug: string; name: string }>
+  opencode: ReadonlyArray<{ slug: string; name: string }>
 }
 
 interface CozeaChatSurfaceProps {
@@ -589,7 +590,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       {props.composerStatus}
 
-      <div className="mt-3 overflow-hidden rounded-2xl bg-secondary">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-sidebar-border/50 bg-secondary">
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
             <ComposerPendingApprovalPanel
@@ -630,6 +631,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <ComposerPromptEditor
             value={composerValue}
             cursor={props.composerCursor}
+            skills={props.providerSnapshot?.skills ?? []}
             terminalContexts={[]}
             onRemoveTerminalContext={() => {}}
             onChange={handleComposerChange}
