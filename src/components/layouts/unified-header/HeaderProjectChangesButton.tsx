@@ -92,7 +92,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             });
           }}
         >
-          <HugeiconsIcon icon={__GitCompareHugeIcon} className="size-3 shrink-0" />
+          <HugeiconsIcon icon={__GitCompareHugeIcon} className="size-4 shrink-0" />
           {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) ? (
             <span className="inline-flex items-center gap-1 text-[10px] tabular-nums">
               <span className="text-success">+{diffStats.additions}</span>

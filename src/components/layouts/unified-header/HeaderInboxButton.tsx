@@ -115,7 +115,7 @@ export function HeaderInboxButton() {
               className="h-6 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
             >
               <span className="relative flex">
-                <HugeiconsIcon icon={__InboxHugeIcon} className="size-3 shrink-0" />
+                <HugeiconsIcon icon={__InboxHugeIcon} className="size-4 shrink-0" />
                 {inviteCount > 0 ? (
                   <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
                 ) : null}
