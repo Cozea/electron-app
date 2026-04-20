@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type {
   BrowserFindInPageOptions,
   BrowserFindState,
@@ -140,6 +140,9 @@ export function useWorkbenchBrowserView(
   const [placeholderScreenshot, setPlaceholderScreenshot] = useState<string | null>(null)
   const lastSentBoundsRef = useRef<{ x: number; y: number; w: number; h: number; v: boolean } | null>(null)
   const lastRequestedUrlRef = useRef<string>(url)
+  /** Latest `url` from React props — avoids stale closures in the model subscriber vs `tile.url`. */
+  const committedWorkbenchUrlRef = useRef(url)
+  committedWorkbenchUrlRef.current = url
 
   const overlayPausedRef = useRef(overlayPaused)
   const scheduleBoundsSyncRef = useRef<(() => void) | null>(null)
@@ -212,15 +215,20 @@ export function useWorkbenchBrowserView(
     })
   }, [storageScope, tileId, url])
 
-  useEffect(() => {
+  /** Acquire model + subscribe once per tile; URL loads run in the following layout effect so stale error states cannot clobber a new address. */
+  useLayoutEffect(() => {
     const model = acquireBrowserTileModel(tileId, { persistent: persistModel })
     modelRef.current = model
 
     const unsubscribe = model.subscribe((nextState) => {
       setState(nextState)
-      if (nextState.url && nextState.url !== url) {
-        lastRequestedUrlRef.current = nextState.url
-        onUrlObservedRef.current?.(nextState.url)
+      // Never push a failed navigation URL into the workbench — it would overwrite a newly typed address.
+      if (!nextState.loadError && nextState.url) {
+        const committed = committedWorkbenchUrlRef.current
+        if (nextState.url !== committed) {
+          lastRequestedUrlRef.current = nextState.url
+          onUrlObservedRef.current?.(nextState.url)
+        }
       }
       if (nextState.title && nextState.title !== "Browser") {
         onTitleObservedRef.current?.(nextState.title)
@@ -228,16 +236,10 @@ export function useWorkbenchBrowserView(
       onFaviconObservedRef.current?.(nextState.favicon ?? null)
     })
 
-    void model.initialize({
-      initialUrl: url,
-      storageScope,
-      workspaceId,
-    })
-
     return unsubscribe
-  }, [persistModel, storageScope, tileId, url, workspaceId])
+  }, [persistModel, storageScope, tileId, workspaceId])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const unsubscribe = window.electronAPI.workbenchBrowser.onNewPageRequest((request) => {
       if (request.sourceTileId !== tileId) return
       onNewPageRequestRef.current?.(request)
@@ -259,7 +261,7 @@ export function useWorkbenchBrowserView(
     return () => unsubscribe()
   }, [tileId])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const model = modelRef.current
     if (!model) return
 
