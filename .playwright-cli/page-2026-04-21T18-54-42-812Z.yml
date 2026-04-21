@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img "Cozea" [ref=e8]
+        - heading "Welcome to Cozea" [level=1] [ref=e9]
+        - paragraph [ref=e10]: Initialize this device to continue
+      - button "Continue on this device" [ref=e11]
+      - alert [ref=e12]: Unable to initialize the local device profile.
+    - paragraph [ref=e13]: Cozea uses a local trusted device identity by default. Collaboration access is granted per project.
+  - generic:
+    - region "Notifications"

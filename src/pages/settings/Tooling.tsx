@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { SettingsPageBody } from '@/components/settings/SettingsChrome'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
@@ -6,12 +6,10 @@ import { toolingSettingsClient } from '@/lib/settings/toolingSettingsClient'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Switch } from '../../components/ui/switch'
-import { cn } from '../../lib/utils'
 import type { GitRuntimeHealth, RuntimeHealth, RuntimeKind } from '../../types/electron'
-import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/useRuntimeInstallStore'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, Download01Icon as __DownloadHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ToolingProps {
   surface?: 'page' | 'drawer'
@@ -28,6 +26,14 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   python: 'Python',
   rust: 'Rust (cargo)',
   go: 'Go',
+}
+
+function getRuntimeBadgeLabel(runtime: RuntimeHealth): string {
+  if (runtime.available) {
+    if (runtime.source === 'override') return 'Override'
+    return 'System'
+  }
+  return 'Install on system'
 }
 
 let cachedRuntimeStatus: { target: string; runtimes: RuntimeHealth[] } | null = null
@@ -91,29 +97,6 @@ function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
   }
 }
 
-function RuntimeProgressRing({ progress }: { progress: number }) {
-  const normalized = Math.max(0, Math.min(100, progress))
-  const radius = 7
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (normalized / 100) * circumference
-
-  return (
-    <svg className="h-4 w-4 -rotate-90" viewBox="0 0 20 20" aria-hidden="true">
-      <circle cx="10" cy="10" r={radius} className="fill-none stroke-muted/40" strokeWidth="2" />
-      <circle
-        cx="10"
-        cy="10"
-        r={radius}
-        className="fill-none stroke-primary transition-[stroke-dashoffset] duration-300 ease-out"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-      />
-    </svg>
-  )
-}
-
 export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const [isLoading, setIsLoading] = useState(!cachedRuntimeStatus)
   const [error, setError] = useState<string | null>(null)
@@ -126,9 +109,6 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 5
-  const runtimeInstallJobs = useRuntimeInstallStore((state) => state.jobs)
-  const ensureRuntimeInstalled = useRuntimeInstallStore((state) => state.ensureRuntimeInstalled)
-  const previousStatusesRef = useRef<Partial<Record<RuntimeKind, RuntimeInstallStatus>>>({})
 
   const loadRuntimeStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -181,27 +161,6 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
     void loadPreviewHeaderCompatibilitySetting()
   }, [])
-
-  useEffect(() => {
-    const hasActiveInstall = Object.values(runtimeInstallJobs).some((job) => job?.status === 'installing')
-    if (!hasActiveInstall) return
-    const timer = window.setInterval(() => {
-      void loadRuntimeStatus({ silent: true })
-    }, 2500)
-    return () => window.clearInterval(timer)
-  }, [loadRuntimeStatus, runtimeInstallJobs])
-
-  useEffect(() => {
-    for (const [runtimeKey, job] of Object.entries(runtimeInstallJobs)) {
-      if (!job) continue
-      const runtime = runtimeKey as RuntimeKind
-      const previousStatus = previousStatusesRef.current[runtime]
-      if (previousStatus !== job.status && job.status === 'success') {
-        void loadRuntimeStatus({ silent: true })
-      }
-      previousStatusesRef.current[runtime] = job.status
-    }
-  }, [loadRuntimeStatus, runtimeInstallJobs])
 
   const handlePreviewHeaderCompatibilityChange = useCallback(
     async (checked: boolean) => {
@@ -330,6 +289,10 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium">Runtime Inventory</h3>
           </div>
+          <div className="rounded-2xl border border-border/50 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
+            Cozea resolves developer toolchains from your system PATH or explicit runtime overrides. If a runtime is
+            missing, install it on your machine and restart the app.
+          </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
             <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
               <span>Runtime</span>
@@ -358,11 +321,8 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                     <div className="min-h-[260px] space-y-1">
                       {paginatedRuntimes.map((runtime) => (
                         (() => {
-                          const installJob = runtimeInstallJobs[runtime.runtime]
-                          const isInstalling = installJob?.status === 'installing'
-                          const installSucceeded = installJob?.status === 'success'
-                          const installFailed = installJob?.status === 'error'
-                          const isInstalled = runtime.available || installSucceeded
+                          const badgeLabel = getRuntimeBadgeLabel(runtime)
+                          const badgeVariant = runtime.available ? 'secondary' : 'destructive'
 
                           return (
                             <div
@@ -377,52 +337,18 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                               </div>
                               <span
                                 className="truncate text-muted-foreground"
-                                title={runtime.executablePath || installJob?.error || runtime.error || ''}
+                                title={runtime.executablePath || runtime.error || ''}
                               >
-                                {runtime.executablePath || installJob?.error || runtime.error || '—'}
+                                {runtime.executablePath || runtime.error || '—'}
                               </span>
                               <div className="flex items-center justify-end">
-                                {isInstalled ? (
-                                  <Badge variant="secondary" className="gap-1 rounded-full">
-                                    <HugeiconsIcon icon={__CheckHugeIcon} className="h-3 w-3" />
-                                    Installed
-                                  </Badge>
-                                ) : (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className={cn(
-                                      'h-8 w-8 rounded-full',
-                                      installFailed && 'text-amber-500 hover:text-amber-500'
-                                    )}
-                                    title={
-                                      isInstalling
-                                        ? 'Downloading runtime...'
-                                        : installFailed
-                                          ? 'Retry download'
-                                          : 'Download runtime'
-                                    }
-                                    aria-label={
-                                      isInstalling
-                                        ? 'Downloading runtime'
-                                        : installFailed
-                                          ? 'Retry runtime download'
-                                          : 'Download runtime'
-                                    }
-                                    disabled={isInstalling}
-                                    onClick={() => {
-                                      void ensureRuntimeInstalled(runtime.runtime)
-                                    }}
-                                  >
-                                    {isInstalling ? (
-                                      <RuntimeProgressRing progress={installJob?.progress ?? 0} />
-                                    ) : installFailed ? (
-                                      <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-4 w-4" />
-                                    ) : (
-                                      <HugeiconsIcon icon={__DownloadHugeIcon} className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                )}
+                                <Badge variant={badgeVariant} className="gap-1 rounded-full">
+                                  <HugeiconsIcon
+                                    icon={runtime.available ? __CheckHugeIcon : __AlertTriangleHugeIcon}
+                                    className="h-3 w-3"
+                                  />
+                                  {badgeLabel}
+                                </Badge>
                               </div>
                             </div>
                           )
