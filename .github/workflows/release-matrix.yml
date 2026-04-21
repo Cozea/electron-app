@@ -5,6 +5,16 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Git tag to build and publish (e.g. v0.2.0). Must exist on the remote.'
+        required: true
+        type: string
+      publish:
+        description: 'Publish installers to Cozea/cozea-prod (requires secrets)'
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -48,9 +58,9 @@ jobs:
       COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.git_bundle_targets }}
       COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.runtime_bundle_targets }}
       COZEA_RUNTIME_RELEASE_REPO: Cozea/cozea-prod
-      COZEA_RUNTIME_RELEASE_TAG: ${{ github.ref_name }}
+      COZEA_RUNTIME_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
       COZEA_GIT_BUNDLE_RELEASE_REPO: Cozea/cozea-prod
-      COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ github.ref_name }}
+      COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
       COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
       COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
@@ -82,6 +92,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -97,33 +108,28 @@ jobs:
         id: publish_mode
         shell: bash
         run: |
+          publish_flag="${{ github.event.inputs.publish }}"
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             echo "mode=always" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${publish_flag}" == "true" ]]; then
             echo "mode=always" >> "$GITHUB_OUTPUT"
           else
             echo "mode=never" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate manual publish ref
-        if: github.event_name == 'workflow_dispatch' && steps.publish_mode.outputs.mode == 'always'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
-            echo "::error::Manual publish must be dispatched from a release tag ref such as v0.2.0."
-            exit 1
-          fi
-
       - name: Verify tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
+          release_tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            release_tag="${{ inputs.release_tag }}"
+          fi
           package_version="$(node -p "require('./package.json').version")"
           expected_tag="v${package_version}"
-          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
-            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version ${package_version}."
+          if [[ "${release_tag}" != "${expected_tag}" ]]; then
+            echo "::error::Release tag ${release_tag} does not match package.json version ${package_version}."
             exit 1
           fi
 
@@ -364,7 +370,7 @@ jobs:
         run: |
           set -euo pipefail
           repo="Cozea/cozea-prod"
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
           target="${{ matrix.git_bundle_targets }}"
           tmp_dir="$(mktemp -d)"
           assets=()
