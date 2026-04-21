@@ -1,10 +1,10 @@
-// @ts-nocheck
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon } from '@hugeicons/core-free-icons'
 import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
 import { resolveSelectableModel } from "@cozea/assistant-shared/model";
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { type ProviderPickerKind, PROVIDER_OPTIONS } from "./session-logic";
-import { ChevronDownIcon } from "lucide-react";
 import { Button, buttonVariants } from "../ui/button";
 import {
   Menu,
@@ -24,24 +24,14 @@ import type { Icon } from "../Icons";
 import { cn } from "@/lib/utils";
 import { getProviderSnapshot } from "../../providerModels";
 
-function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): option is {
-  value: ProviderKind;
-  label: string;
-  available: true;
-} {
-  return option.available;
-}
-
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
   claudeAgent: ClaudeAI,
   cursor: CursorIcon,
+  opencode: OpenCodeIcon,
 };
 
-export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
-const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option.available);
 const COMING_SOON_PROVIDER_OPTIONS = [
-  { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
   { id: "gemini", label: "Gemini", icon: Gemini },
 ] as const;
 
@@ -67,6 +57,78 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const activeProvider = props.lockedProvider ?? props.provider;
+  const providerMenuOptions = useMemo(
+    () =>
+      PROVIDER_OPTIONS.map((option) => {
+        const liveProvider = props.providers
+          ? getProviderSnapshot(props.providers, option.value)
+          : undefined;
+        const modelOptions = props.modelOptionsByProvider[option.value];
+
+        if (!props.providers) {
+          return {
+            ...option,
+            modelOptions,
+            isSelectable: modelOptions.length > 0,
+            unavailableLabel: modelOptions.length > 0 ? null : "Unavailable",
+          };
+        }
+
+        if (!liveProvider) {
+          return {
+            ...option,
+            modelOptions,
+            isSelectable: false,
+            unavailableLabel: "Loading",
+          };
+        }
+
+        if (!liveProvider.enabled || liveProvider.status === "disabled") {
+          return {
+            ...option,
+            modelOptions,
+            isSelectable: false,
+            unavailableLabel: "Disabled",
+          };
+        }
+
+        if (!liveProvider.installed) {
+          return {
+            ...option,
+            modelOptions,
+            isSelectable: false,
+            unavailableLabel: "Not installed",
+          };
+        }
+
+        if (liveProvider.status === "error") {
+          return {
+            ...option,
+            modelOptions,
+            isSelectable: false,
+            unavailableLabel: "Unavailable",
+          };
+        }
+
+        if (modelOptions.length <= 0) {
+          return {
+            ...option,
+            modelOptions,
+            isSelectable: false,
+            unavailableLabel:
+              liveProvider.auth.status === "unauthenticated" ? "Sign in required" : "No models",
+          };
+        }
+
+        return {
+          ...option,
+          modelOptions,
+          isSelectable: true,
+          unavailableLabel: null,
+        };
+      }),
+    [props.modelOptionsByProvider, props.providers],
+  );
   const selectedProviderOptions = props.modelOptionsByProvider[activeProvider];
   const selectedModelLabel =
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ?? props.model;
@@ -124,7 +186,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             )}
           />
           <span className="min-w-0 flex-1 truncate">{selectedModelLabel}</span>
-          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+          <HugeiconsIcon icon={__ChevronDownIconHugeIcon} aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
       </MenuTrigger>
       <MenuPopup align="start">
@@ -147,17 +209,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           </MenuGroup>
         ) : (
           <>
-            {AVAILABLE_PROVIDER_OPTIONS.map((option) => {
+            {providerMenuOptions.map((option) => {
               const OptionIcon = PROVIDER_ICON_BY_PROVIDER[option.value];
-              const liveProvider = props.providers
-                ? getProviderSnapshot(props.providers, option.value)
-                : undefined;
-              if (liveProvider && liveProvider.status !== "ready") {
-                const unavailableLabel = !liveProvider.enabled
-                  ? "Disabled"
-                  : !liveProvider.installed
-                    ? "Not installed"
-                    : "Unavailable";
+              if (!option.isSelectable) {
                 return (
                   <MenuItem key={option.value} disabled>
                     <OptionIcon
@@ -169,7 +223,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     />
                     <span>{option.label}</span>
                     <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
-                      {unavailableLabel}
+                      {option.unavailableLabel}
                     </span>
                   </MenuItem>
                 );
@@ -192,7 +246,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                         value={props.provider === option.value ? props.model : ""}
                         onValueChange={(value) => handleModelChange(option.value, value)}
                       >
-                        {props.modelOptionsByProvider[option.value].map((modelOption) => (
+                        {option.modelOptions.map((modelOption) => (
                           <MenuRadioItem
                             key={`${option.value}:${modelOption.slug}`}
                             value={modelOption.slug}
@@ -207,23 +261,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 </MenuSub>
               );
             })}
-            {UNAVAILABLE_PROVIDER_OPTIONS.length > 0 && <MenuDivider />}
-            {UNAVAILABLE_PROVIDER_OPTIONS.map((option) => {
-              const OptionIcon = PROVIDER_ICON_BY_PROVIDER[option.value];
-              return (
-                <MenuItem key={option.value} disabled>
-                  <OptionIcon
-                    aria-hidden="true"
-                    className="size-4 shrink-0 text-muted-foreground/85 opacity-80"
-                  />
-                  <span>{option.label}</span>
-                  <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
-                    Coming soon
-                  </span>
-                </MenuItem>
-              );
-            })}
-            {UNAVAILABLE_PROVIDER_OPTIONS.length === 0 && <MenuDivider />}
+            <MenuDivider />
             {COMING_SOON_PROVIDER_OPTIONS.map((option) => {
               const OptionIcon = option.icon;
               return (

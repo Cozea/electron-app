@@ -3,54 +3,45 @@ import { useParams } from '@/lib/router'
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../convex/_generated/api"
-import type { Doc, Id } from "../../../../convex/_generated/dataModel"
+import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
-
-interface SlugResolutionCandidate {
-  projectId: Id<"projects">
-  organizationId: Id<"organizations">
-  name: string
-  role: string
-  updatedAt: number
-}
-
-interface SlugResolutionResult {
-  status: "not_found" | "ambiguous" | "ok"
-  project?: Doc<"projects">
-  role?: string
-  slug?: string
-  candidates?: SlugResolutionCandidate[]
-}
+import {
+  useOptionalProjectRouteContext,
+  type ProjectRouteSlugResolutionResult,
+} from "@/features/projects/contexts/ProjectRouteContext"
 
 export function useAccessibleProject() {
   const { slug, projectId } = useParams()
   const { convexUserId } = useAuth()
-  const { convexOrg, preferredConvexOrganizationId } = useScopedAppContext()
+  const projectRouteContext = useOptionalProjectRouteContext()
+  const routeProjectIdParam = projectRouteContext?.projectIdParam ?? projectId ?? null
+  const routeSlugParam = projectRouteContext?.slugParam ?? slug ?? null
 
   const projectById = useQuery(
     api.projects.getAccessibleById,
-    projectId && convexUserId
-      ? { projectId: projectId as Id<"projects">, userId: convexUserId }
+    !projectRouteContext && routeProjectIdParam && convexUserId
+      ? { projectId: routeProjectIdParam as Id<"projects">, userId: convexUserId }
       : "skip"
   )
 
   const projectBySlugResult = useQuery(
     api.projects.getAccessibleBySlug,
-    !projectId && slug && convexUserId
+    !projectRouteContext && !routeProjectIdParam && routeSlugParam && convexUserId
       ? {
-          slug,
+          slug: routeSlugParam,
           userId: convexUserId,
-          preferredOrganizationId: preferredConvexOrganizationId,
         }
       : "skip"
-  ) as SlugResolutionResult | undefined
+  ) as ProjectRouteSlugResolutionResult | undefined
 
   const project = useMemo(() => {
-    if (projectId) {
+    if (projectRouteContext) {
+      return projectRouteContext.project
+    }
+    if (routeProjectIdParam) {
       return projectById
     }
-    if (!slug) {
+    if (!routeSlugParam) {
       return null
     }
     if (projectBySlugResult === undefined) {
@@ -60,14 +51,13 @@ export function useAccessibleProject() {
       return null
     }
     return projectBySlugResult.project ?? null
-  }, [projectById, projectBySlugResult, projectId, slug])
+  }, [projectById, projectBySlugResult, projectRouteContext, routeProjectIdParam, routeSlugParam])
 
   return {
     project,
-    projectIdParam: projectId ?? null,
-    slugParam: slug ?? null,
+    projectIdParam: routeProjectIdParam,
+    slugParam: routeSlugParam,
     convexUserId,
-    convexOrg,
-    slugResolution: projectBySlugResult,
+    slugResolution: projectRouteContext?.slugResolution ?? projectBySlugResult,
   }
 }

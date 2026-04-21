@@ -5,7 +5,7 @@ import type {
   NativePreviewSessionState,
 } from '@shared/nativePreviewTypes'
 
-interface NativePreviewStoreState {
+export interface NativePreviewScopeState {
   iosSimulators: NativePreviewIosSimulatorDevice[]
   selectedIosSimulatorId: string | null
   sessionState: NativePreviewSessionState | null
@@ -13,26 +13,31 @@ interface NativePreviewStoreState {
   simulatorsError: string | null
   sessionLoading: boolean
   sessionError: string | null
+}
+
+interface NativePreviewStoreState {
+  scopes: Record<string, NativePreviewScopeState>
   actions: {
-    setIosSimulators: (devices: NativePreviewIosSimulatorDevice[]) => void
-    setSelectedIosSimulatorId: (deviceId: string | null) => void
-    setSessionState: (state: NativePreviewSessionState | null) => void
-    setSimulatorsLoading: (loading: boolean) => void
-    setSimulatorsError: (error: string | null) => void
-    setSessionLoading: (loading: boolean) => void
-    setSessionError: (error: string | null) => void
-    reset: () => void
+    ensureScope: (scopeKey: string) => void
+    setIosSimulators: (scopeKey: string, devices: NativePreviewIosSimulatorDevice[]) => void
+    setSelectedIosSimulatorId: (scopeKey: string, deviceId: string | null) => void
+    setSessionState: (scopeKey: string, state: NativePreviewSessionState | null) => void
+    setSimulatorsLoading: (scopeKey: string, loading: boolean) => void
+    setSimulatorsError: (scopeKey: string, error: string | null) => void
+    setSessionLoading: (scopeKey: string, loading: boolean) => void
+    setSessionError: (scopeKey: string, error: string | null) => void
+    reset: (scopeKey: string) => void
   }
 }
 
-const DEFAULT_STATE = {
-  iosSimulators: [] as NativePreviewIosSimulatorDevice[],
+export const DEFAULT_NATIVE_PREVIEW_SCOPE_STATE: NativePreviewScopeState = {
+  iosSimulators: [],
   selectedIosSimulatorId: null,
-  sessionState: null as NativePreviewSessionState | null,
+  sessionState: null,
   simulatorsLoading: false,
-  simulatorsError: null as string | null,
+  simulatorsError: null,
   sessionLoading: false,
-  sessionError: null as string | null,
+  sessionError: null,
 }
 
 function choosePreferredSimulator(
@@ -51,19 +56,100 @@ function choosePreferredSimulator(
   return devices[0]?.udid ?? null
 }
 
+function getScopeState(
+  scopes: Record<string, NativePreviewScopeState>,
+  scopeKey: string
+): NativePreviewScopeState {
+  return scopes[scopeKey] ?? DEFAULT_NATIVE_PREVIEW_SCOPE_STATE
+}
+
 export const useNativePreviewStore = create<NativePreviewStoreState>()((set) => ({
-  ...DEFAULT_STATE,
+  scopes: {},
   actions: {
-    setIosSimulators: (devices) => set((state) => ({
-      iosSimulators: devices,
-      selectedIosSimulatorId: choosePreferredSimulator(devices, state.selectedIosSimulatorId),
+    ensureScope: (scopeKey) => set((state) => {
+      if (state.scopes[scopeKey]) {
+        return state
+      }
+
+      return {
+        scopes: {
+          ...state.scopes,
+          [scopeKey]: DEFAULT_NATIVE_PREVIEW_SCOPE_STATE,
+        },
+      }
+    }),
+    setIosSimulators: (scopeKey, devices) => set((state) => {
+      const scope = getScopeState(state.scopes, scopeKey)
+      return {
+        scopes: {
+          ...state.scopes,
+          [scopeKey]: {
+            ...scope,
+            iosSimulators: devices,
+            selectedIosSimulatorId: choosePreferredSimulator(devices, scope.selectedIosSimulatorId),
+          },
+        },
+      }
+    }),
+    setSelectedIosSimulatorId: (scopeKey, deviceId) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: {
+          ...getScopeState(state.scopes, scopeKey),
+          selectedIosSimulatorId: deviceId,
+        },
+      },
     })),
-    setSelectedIosSimulatorId: (deviceId) => set({ selectedIosSimulatorId: deviceId }),
-    setSessionState: (sessionState) => set({ sessionState }),
-    setSimulatorsLoading: (simulatorsLoading) => set({ simulatorsLoading }),
-    setSimulatorsError: (simulatorsError) => set({ simulatorsError }),
-    setSessionLoading: (sessionLoading) => set({ sessionLoading }),
-    setSessionError: (sessionError) => set({ sessionError }),
-    reset: () => set(DEFAULT_STATE),
+    setSessionState: (scopeKey, sessionState) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: {
+          ...getScopeState(state.scopes, scopeKey),
+          sessionState,
+        },
+      },
+    })),
+    setSimulatorsLoading: (scopeKey, simulatorsLoading) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: {
+          ...getScopeState(state.scopes, scopeKey),
+          simulatorsLoading,
+        },
+      },
+    })),
+    setSimulatorsError: (scopeKey, simulatorsError) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: {
+          ...getScopeState(state.scopes, scopeKey),
+          simulatorsError,
+        },
+      },
+    })),
+    setSessionLoading: (scopeKey, sessionLoading) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: {
+          ...getScopeState(state.scopes, scopeKey),
+          sessionLoading,
+        },
+      },
+    })),
+    setSessionError: (scopeKey, sessionError) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: {
+          ...getScopeState(state.scopes, scopeKey),
+          sessionError,
+        },
+      },
+    })),
+    reset: (scopeKey) => set((state) => ({
+      scopes: {
+        ...state.scopes,
+        [scopeKey]: DEFAULT_NATIVE_PREVIEW_SCOPE_STATE,
+      },
+    })),
   },
 }))

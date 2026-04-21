@@ -1,8 +1,12 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon, ChevronDoubleCloseIcon as __ChevronUpIconHugeIcon } from '@hugeicons/core-free-icons'
+
 "use client"
 
 import * as React from "react"
 import { Select as BaseSelect } from "@base-ui/react"
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -58,7 +62,7 @@ function SelectTrigger({
     >
       {children}
       <BaseSelect.Icon>
-        <ChevronDownIcon className="size-4 opacity-50" />
+        <HugeiconsIcon icon={__ChevronDownIconHugeIcon} className="size-4 opacity-50" />
       </BaseSelect.Icon>
     </BaseSelect.Trigger>
   )
@@ -136,7 +140,7 @@ function SelectItem({
         className="absolute right-2 flex size-3.5 items-center justify-center"
       >
         <BaseSelect.ItemIndicator>
-          <CheckIcon className="size-4" />
+          <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-4" />
         </BaseSelect.ItemIndicator>
       </span>
       <BaseSelect.ItemText>{children}</BaseSelect.ItemText>
@@ -170,7 +174,7 @@ function SelectScrollUpButton({
       )}
       {...props}
     >
-      <ChevronUpIcon className="size-4" />
+      <HugeiconsIcon icon={__ChevronUpIconHugeIcon} className="size-4" />
     </BaseSelect.ScrollUpArrow>
   )
 }
@@ -188,7 +192,7 @@ function SelectScrollDownButton({
       )}
       {...props}
     >
-      <ChevronDownIcon className="size-4" />
+      <HugeiconsIcon icon={__ChevronDownIconHugeIcon} className="size-4" />
     </BaseSelect.ScrollDownArrow>
   )
 }

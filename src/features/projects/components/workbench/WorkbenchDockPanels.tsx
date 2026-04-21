@@ -11,15 +11,18 @@ import {
 import type { IDockviewPanelProps } from "dockview"
 
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
+  type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
-  buildWorkbenchScopeKey,
+  selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
+import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 export interface WorkbenchDockPanelParams {
   projectId: string
@@ -32,13 +35,18 @@ interface WorkbenchDockRuntimeValue {
   laneId: string
   projectPath: string | null
   projectName: string | null
-  onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
-  onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
+  workspaceId: string | null
+  framework: string | null
+  storedDevCommand: string | null
+  storedDevPort: number | null
+  workbenchSession: WorkbenchSessionSnapshot | null
+  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
-    type: "assistantChat" | "browser" | "terminal" | "devServer",
+    request: WorkbenchSelectionLaunchRequest,
   ) => void
+  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
 }
 
 const WorkbenchDockRuntimeContext = createContext<WorkbenchDockRuntimeValue | null>(null)
@@ -47,19 +55,24 @@ const panelSuspenseFallback = (
   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading panel…</div>
 )
 
-const LazyWorkbenchBrowserTile = lazy(() =>
-  import("@/features/projects/components/workbench/WorkbenchBrowserTile").then((m) => ({
-    default: m.WorkbenchBrowserTile,
-  })),
-)
 const LazyWorkbenchAssistantChatTile = lazy(() =>
   import("@/features/projects/components/workbench/WorkbenchAssistantChatTile").then((m) => ({
     default: m.WorkbenchAssistantChatTile,
   })),
 )
+const LazyWorkbenchBrowserTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchBrowserTile").then((m) => ({
+    default: m.WorkbenchBrowserTile,
+  })),
+)
 const LazyWorkbenchDevServerTile = lazy(() =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchDevServerTile,
+  })),
+)
+const LazyWorkbenchMobileSimulatorTile = lazy(() =>
+  import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
+    default: m.WorkbenchMobileSimulatorTile,
   })),
 )
 const LazyWorkbenchSelectionTile = lazy(() =>
@@ -73,7 +86,7 @@ const LazyWorkbenchTerminalTile = lazy(() =>
   })),
 )
 
-function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
+export function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
   const value = useContext(WorkbenchDockRuntimeContext)
   if (!value) {
     throw new Error("Workbench dock panel rendered outside runtime provider")
@@ -101,10 +114,16 @@ function MissingTilePlaceholder() {
   )
 }
 
-function useWorkbenchTile(projectId: string, laneId: string, tileId: string): WorkbenchTile | null {
-  return useProjectWorkbenchStore(
-    (state) => state.workbenches[buildWorkbenchScopeKey(projectId, laneId)]?.tiles[tileId] ?? null,
-  )
+function useWorkbenchTile(
+  projectId: string,
+  laneId: string,
+  projectPath: string | null,
+  tileId: string,
+): WorkbenchTile | null {
+  return useProjectWorkbenchStore((state) => {
+    const workbench = selectProjectWorkbench(projectId, laneId, projectPath)(state)
+    return workbench?.tiles[tileId] ?? null
+  })
 }
 
 function useSyncPanelTitle(
@@ -117,10 +136,81 @@ function useSyncPanelTitle(
   }, [api, title])
 }
 
-const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
-  const actions = useProjectWorkbenchStore((state) => state.actions)
+const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const runtime = useWorkbenchDockRuntime()
+  const storedTile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
+  const tile =
+    storedTile?.type === "selection"
+      ? storedTile
+      : runtime.getSelectionPreviewTile(props.params.tileId)
+  const singletonEmptyWorkbench = useProjectWorkbenchStore((state) => {
+    const wb = selectProjectWorkbench(
+      props.params.projectId,
+      props.params.laneId,
+      runtime.projectPath,
+    )(state)
+    if (!wb || wb.order.length !== 1) return false
+    const sole = wb.tiles[wb.order[0]]
+    return sole?.type === "selection"
+  })
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "selection") {
+    return (
+      <WorkbenchTileChrome
+        title="Add DevApp"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="selection"
+        hideWindowActions={singletonEmptyWorkbench}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  const selectionTile = tile as WorkbenchSelectionTileRecord
+
+  return (
+    <WorkbenchTileChrome
+      title={selectionTile.title}
+      panelApi={props.api}
+      containerApi={props.containerApi}
+      chromeVariant="pill"
+      tileType="selection"
+      hideWindowActions={singletonEmptyWorkbench}
+      contentClassName="h-full"
+    >
+      <Suspense fallback={panelSuspenseFallback}>
+        <LazyWorkbenchSelectionTile
+          tile={selectionTile}
+          singletonEmptyWorkbench={singletonEmptyWorkbench}
+          projectName={runtime.projectName}
+          projectPath={runtime.projectPath}
+          onChoose={(request) => {
+            runtime.onResolveSelectionTile(selectionTile.id, request)
+          }}
+        />
+      </Suspense>
+    </WorkbenchTileChrome>
+  )
+})
+
+const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -136,85 +226,30 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
     )
   }
 
-  const browserTile = tile as WorkbenchBrowserTileRecord
-
   return (
     <Suspense fallback={panelSuspenseFallback}>
       <LazyWorkbenchBrowserTile
-        tileId={browserTile.id}
-        url={browserTile.url}
-        storageScope={browserTile.storageScope ?? "workspace"}
-        workspaceId={props.params.projectId}
-        linkedDevServerTileId={browserTile.linkedDevServerTileId}
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchBrowserTileRecord}
+        projectPath={runtime.projectPath}
+        workspaceId={runtime.workspaceId}
+        workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
-        onUrlCommitted={(nextUrl) => {
-          actions.updateBrowserTile(props.params.projectId, props.params.laneId, browserTile.id, { url: nextUrl })
-        }}
-        onTitleObserved={(title) => {
-          const normalized = title.trim()
-          if (!normalized) return
-          actions.updateTileTitle(props.params.projectId, props.params.laneId, browserTile.id, normalized)
-        }}
-        onNewPageRequest={(nextUrl) => {
-          runtime.onOpenBrowserFromBrowser(browserTile.id, nextUrl)
-        }}
       />
     </Suspense>
   )
 })
 
-const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
-  const runtime = useWorkbenchDockRuntime()
-  const singletonEmptyWorkbench = useProjectWorkbenchStore((state) => {
-    const wb = state.workbenches[buildWorkbenchScopeKey(props.params.projectId, props.params.laneId)]
-    if (!wb || wb.order.length !== 1) return false
-    const sole = wb.tiles[wb.order[0]]
-    return sole?.type === "selection"
-  })
-
-  useSyncPanelTitle(props.api, tile?.title)
-
-  if (!tile || tile.type !== "selection") {
-    return (
-      <WorkbenchTileChrome
-        title="Add Tile"
-        panelApi={props.api}
-        containerApi={props.containerApi}
-      >
-        <MissingTilePlaceholder />
-      </WorkbenchTileChrome>
-    )
-  }
-
-  const selectionTile = tile as WorkbenchSelectionTileRecord
-
-  return (
-    <WorkbenchTileChrome
-      title={selectionTile.title}
-      panelApi={props.api}
-      containerApi={props.containerApi}
-      contentClassName="h-full"
-    >
-      <Suspense fallback={panelSuspenseFallback}>
-        <LazyWorkbenchSelectionTile
-          tile={selectionTile}
-          singletonEmptyWorkbench={singletonEmptyWorkbench}
-          projectName={runtime.projectName}
-          projectPath={runtime.projectPath}
-          onChoose={(type) => {
-            runtime.onResolveSelectionTile(selectionTile.id, type)
-          }}
-        />
-      </Suspense>
-    </WorkbenchTileChrome>
-  )
-})
-
 const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -224,6 +259,8 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         title="Terminal"
         panelApi={props.api}
         containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="terminal"
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -233,7 +270,11 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
   return (
     <Suspense fallback={panelSuspenseFallback}>
       <LazyWorkbenchTerminalTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tileId={props.params.tileId}
         projectPath={runtime.projectPath}
+        workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -242,9 +283,13 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
 })
 
 const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
-  const actions = useProjectWorkbenchStore((state) => state.actions)
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -260,31 +305,77 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
     )
   }
 
-  const devServerTile = tile as WorkbenchDevServerTileRecord
-
   return (
     <Suspense fallback={panelSuspenseFallback}>
       <LazyWorkbenchDevServerTile
-        tile={devServerTile}
-        projectId={runtime.projectId}
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchDevServerTileRecord}
         projectPath={runtime.projectPath}
+        workspaceId={runtime.workspaceId}
+        framework={runtime.framework}
+        storedDevCommand={runtime.storedDevCommand}
+        storedDevPort={runtime.storedDevPort}
+        workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
-        onLinkedBrowserReady={(nextUrl) => {
-          if (!devServerTile.linkedBrowserTileId) return
-          actions.updateBrowserTile(props.params.projectId, props.params.laneId, devServerTile.linkedBrowserTileId, {
-            url: nextUrl,
-            linkedDevServerTileId: devServerTile.id,
-          })
-        }}
+      />
+    </Suspense>
+  )
+})
+
+const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "mobileSimulator") {
+    return (
+      <WorkbenchTileChrome
+        title="Mobile Simulator"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <Suspense fallback={panelSuspenseFallback}>
+      <LazyWorkbenchMobileSimulatorTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchMobileSimulatorTileRecord}
+        projectPath={runtime.projectPath}
+        workspaceId={runtime.workspaceId}
+        framework={runtime.framework}
+        storedDevCommand={runtime.storedDevCommand}
+        storedDevPort={runtime.storedDevPort}
+        workbenchSession={runtime.workbenchSession}
+        panelApi={props.api}
+        containerApi={props.containerApi}
       />
     </Suspense>
   )
 })
 
 const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const tile = useWorkbenchTile(props.params.projectId, props.params.laneId, props.params.tileId)
   const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.projectPath,
+    props.params.tileId,
+  )
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -294,6 +385,8 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
         title="AI Agent"
         panelApi={props.api}
         containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="assistantChat"
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -320,6 +413,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   browser: BrowserPanel,
   terminal: TerminalPanel,
   devServer: DevServerPanel,
+  mobileSimulator: MobileSimulatorPanel,
   assistantChat: AssistantChatPanel,
 }
 
@@ -328,13 +422,18 @@ export function WorkbenchDockRuntimeProvider(props: {
   laneId: string
   projectPath: string | null
   projectName: string | null
-  onOpenBrowserFromDevServer: (sourceTileId: string, url: string) => void
-  onOpenBrowserFromBrowser: (sourceTileId: string, url: string) => void
+  workspaceId: string | null
+  framework: string | null
+  storedDevCommand: string | null
+  storedDevPort: number | null
+  workbenchSession: WorkbenchSessionSnapshot | null
+  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
     selectionTileId: string,
-    type: "assistantChat" | "browser" | "terminal" | "devServer",
+    request: WorkbenchSelectionLaunchRequest,
   ) => void
+  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
   children: ReactNode
 }) {
   const value = useMemo<WorkbenchDockRuntimeValue>(
@@ -343,20 +442,30 @@ export function WorkbenchDockRuntimeProvider(props: {
       laneId: props.laneId,
       projectPath: props.projectPath,
       projectName: props.projectName,
-      onOpenBrowserFromDevServer: props.onOpenBrowserFromDevServer,
-      onOpenBrowserFromBrowser: props.onOpenBrowserFromBrowser,
+      workspaceId: props.workspaceId,
+      framework: props.framework,
+      storedDevCommand: props.storedDevCommand,
+      storedDevPort: props.storedDevPort,
+      workbenchSession: props.workbenchSession,
+      getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
       onResolveSelectionTile: props.onResolveSelectionTile,
+      onSplitTile: props.onSplitTile,
     }),
     [
       props.projectId,
       props.laneId,
       props.projectPath,
       props.projectName,
-      props.onOpenBrowserFromDevServer,
-      props.onOpenBrowserFromBrowser,
+      props.workspaceId,
+      props.framework,
+      props.storedDevCommand,
+      props.storedDevPort,
+      props.workbenchSession,
+      props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,
       props.onResolveSelectionTile,
+      props.onSplitTile,
     ],
   )
 

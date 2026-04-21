@@ -120,10 +120,18 @@ export class BrowserTileModel {
 
   async initialize(options: BrowserCreateOptions = {}): Promise<void> {
     if (this.initialized) {
-      if (options.initialUrl) {
-        this.lastRequestedUrl = options.initialUrl
+      const existingState = await window.electronAPI.workbenchBrowser.getState({ tileId: this.id })
+      if (!existingState) {
+        this.initialized = false
+      } else {
+        this.stateValue = toBrowserState(existingState)
+        this.lastRequestedUrl = existingState.url
+        this.emit()
       }
-      return
+
+      if (this.initialized) {
+        return
+      }
     }
 
     if (!this.initializePromise) {
@@ -148,6 +156,7 @@ export class BrowserTileModel {
   }
 
   async setVisible(visible: boolean): Promise<void> {
+    await this.initialize()
     await window.electronAPI.workbenchBrowser.setBounds(
       visible
         ? { tileId: this.id, visible: true as const }
@@ -156,6 +165,7 @@ export class BrowserTileModel {
   }
 
   async layout(bounds: BrowserHostBounds): Promise<void> {
+    await this.initialize()
     await window.electronAPI.workbenchBrowser.setBounds({
       tileId: this.id,
       visible: true as const,
@@ -166,7 +176,15 @@ export class BrowserTileModel {
   async loadURL(url: string): Promise<BrowserState> {
     await this.initialize({ initialUrl: url })
 
-    if (!url || this.lastRequestedUrl === url) {
+    if (!url) {
+      return this.stateValue
+    }
+
+    if (
+      this.lastRequestedUrl === url &&
+      this.stateValue.url === url &&
+      !this.stateValue.loadError
+    ) {
       return this.stateValue
     }
 

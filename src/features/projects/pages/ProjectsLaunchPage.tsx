@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
-import { getWorkspaceSelectionId } from "@shared/types"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useResolvedScope } from "@/hooks/useResolvedScope"
-import { useScopedAppContext } from "@/hooks/useScopedAppContext"
-import { Projects } from "@/pages/Projects"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import {
   buildWorkbenchHref,
   clearLastWorkbenchRoute,
@@ -16,13 +20,8 @@ import {
 } from "@/features/projects/lib/lastWorkbenchRoute"
 
 export function ProjectsLaunchPage() {
-  const { convexUserId, isLoading } = useAuth()
-  const resolvedScope = useResolvedScope({ ignoreLocation: true })
-  const { personalScoped, workspaceScoped, convexOrg } = useScopedAppContext()
-  const workspaceSelectionId =
-    getWorkspaceSelectionId(resolvedScope.activeWorkspace) ??
-    resolvedScope.activeWorkspace?.organizationId ??
-    null
+  const { convexUserId, user } = useAuth()
+  const workspaceSelectionId = user?.id ?? "local-device"
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const lastWorkbenchRoute =
     ignoredWorkspaceSelectionId === workspaceSelectionId
@@ -39,23 +38,10 @@ export function ProjectsLaunchPage() {
       : "skip",
   )
 
-  const personalProjectsPage = useQuery(
-    api.projects.listPageForPersonalWorkspaceMemberView,
-    !lastWorkbenchRoute && personalScoped && convexUserId
+  const projectsPage = useQuery(
+    api.projects.listPageForCurrentUser,
+    !lastWorkbenchRoute && convexUserId
       ? {
-          userId: convexUserId,
-          statusFilter: "all",
-          sortBy: "last_modified",
-          page: 1,
-          pageSize: 1,
-        }
-      : "skip",
-  )
-  const workspaceProjectsPage = useQuery(
-    api.projects.listPageForOrganization,
-    !lastWorkbenchRoute && workspaceScoped && convexOrg?._id && convexUserId
-      ? {
-          organizationId: convexOrg._id,
           userId: convexUserId,
           statusFilter: "all",
           sortBy: "last_modified",
@@ -77,15 +63,7 @@ export function ProjectsLaunchPage() {
     setIgnoredWorkspaceSelectionId(workspaceSelectionId)
   }, [lastWorkbenchRoute, restoredProject, workspaceSelectionId])
 
-  if (isLoading) {
-    return null
-  }
-
   if (lastWorkbenchRoute) {
-    if (restoredProject === undefined) {
-      return null
-    }
-
     if (restoredProject) {
       return (
         <Navigate
@@ -98,20 +76,66 @@ export function ProjectsLaunchPage() {
     }
   }
 
-  const fallbackProject = personalScoped
-    ? (personalProjectsPage?.items?.[0] ?? null)
-    : (workspaceProjectsPage?.items?.[0] ?? null)
+  const fallbackProject = projectsPage?.items?.[0] ?? null
 
-  if (
-    (!personalScoped && workspaceScoped && convexOrg?._id && workspaceProjectsPage === undefined) ||
-    (personalScoped && convexUserId && personalProjectsPage === undefined)
-  ) {
-    return null
-  }
+  const hasProjects = Boolean(fallbackProject?._id)
+  const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac")
 
-  if (fallbackProject?._id) {
-    return <Navigate to={buildWorkbenchHref(String(fallbackProject._id))} replace />
-  }
+  const shortcutRows = [
+    {
+      label: "Open Chat",
+      keys: isMac ? ["⌃", "⌘", "I"] : ["Ctrl", "Alt", "I"],
+    },
+    {
+      label: "Show All Commands",
+      keys: isMac ? ["⇧", "⌘", "P"] : ["Ctrl", "Shift", "P"],
+    },
+    {
+      label: "Toggle Terminal",
+      keys: isMac ? ["⌃", "`"] : ["Ctrl", "`"],
+    },
+  ] as const
 
-  return <Projects />
+  return (
+    <div className="flex min-h-full flex-1 items-center justify-center">
+      <div className="w-full p-6 md:p-10">
+        <Empty className="py-6">
+          {hasProjects ? (
+            <EmptyHeader>
+              <EmptyTitle>Select a project</EmptyTitle>
+              <EmptyDescription>
+                Choose a project from the sidebar to continue in its workbench.
+              </EmptyDescription>
+            </EmptyHeader>
+          ) : (
+            <EmptyHeader>
+              <EmptyTitle>Welcome to Cozea</EmptyTitle>
+              <EmptyDescription>
+                Create a new project from the sidebar to get started.
+              </EmptyDescription>
+            </EmptyHeader>
+          )}
+          <EmptyContent className="w-full max-w-xs">
+            <div className="w-full space-y-2 rounded-lg p-3">
+              {shortcutRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-muted-foreground">{row.label}</span>
+                    <KbdGroup className="gap-1">
+                      {row.keys.map((key) => (
+                        <Kbd
+                          key={`${row.label}-${key}`}
+                          className="h-6 min-w-6 rounded-md border border-border border-b-[2px] bg-background px-1.5 text-foreground shadow-sm"
+                        >
+                          {key}
+                        </Kbd>
+                      ))}
+                    </KbdGroup>
+                  </div>
+                ))}
+              </div>
+            </EmptyContent>
+        </Empty>
+      </div>
+    </div>
+  )
 }

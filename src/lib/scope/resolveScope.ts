@@ -1,43 +1,30 @@
-import type { Id } from "../../../convex/_generated/dataModel"
-import type {
-  OrganizationWorkspaceMembership,
-  PersonalWorkspaceMembership,
-  WorkspaceMembership,
-} from "@shared/types"
+import type { PersonalWorkspaceMembership } from "@shared/types"
 
-export type ScopeKind = "personal" | "workspace"
-export type RouteScopeKind =
-  | "personal-settings"
-  | "workspace-settings"
-  | "workspace-team"
-  | "neutral"
+export type ScopeKind = "personal"
+export type RouteScopeKind = "personal-settings" | "neutral"
 
 export interface ResolveScopeInput {
   routePath?: string | null
-  currentOrganizationWorkspace: OrganizationWorkspaceMembership | null
-  currentPersonalWorkspace: PersonalWorkspaceMembership | null
   personalWorkspace: PersonalWorkspaceMembership | null
 }
 
 export interface ResolvedScope {
   routePath: string
   routeScopeKind: RouteScopeKind
-  activeWorkspace: WorkspaceMembership | null
-  currentOrganizationWorkspace: OrganizationWorkspaceMembership | null
+  activeWorkspace: PersonalWorkspaceMembership | null
+  currentOrganizationWorkspace: null
   currentPersonalWorkspace: PersonalWorkspaceMembership | null
   personalWorkspace: PersonalWorkspaceMembership | null
   activeScopeKind: ScopeKind | null
-  scopedWorkspace: WorkspaceMembership | null
+  scopedWorkspace: PersonalWorkspaceMembership | null
   scopedScopeKind: ScopeKind | null
-  isOrganizationWorkspace: boolean
+  isOrganizationWorkspace: false
   isPersonalWorkspace: boolean
-  workspaceScoped: boolean
+  workspaceScoped: false
   personalScoped: boolean
-  organizationScoped: boolean
-  activeOrganizationId: string | null
-  activeConvexOrganizationId: Id<"organizations"> | undefined
-  scopedOrganizationId: string | null
-  scopedConvexOrganizationId: Id<"organizations"> | undefined
+  organizationScoped: false
+  activeWorkspaceId: string | null
+  scopedWorkspaceId: string | null
 }
 
 function normalizeRoutePath(value?: string | null): string {
@@ -47,33 +34,14 @@ function normalizeRoutePath(value?: string | null): string {
   return withLeadingSlash.replace(/\/+$/, "") || "/"
 }
 
-function mapWorkspaceTypeToScopeKind(
-  workspaceType?: WorkspaceMembership["workspaceType"] | null
-): ScopeKind | null {
-  if (workspaceType === "organization") {
-    return "workspace"
-  }
-
-  if (workspaceType === "personal") {
-    return "personal"
-  }
-
-  return null
-}
-
 export function getRouteScopeKind(routePath?: string | null): RouteScopeKind {
   const normalizedRoute = normalizeRoutePath(routePath)
+  const unprefixedRoute = normalizedRoute.startsWith("/projects/")
+    ? `/${normalizedRoute.slice("/projects/".length)}`
+    : normalizedRoute
 
-  if (normalizedRoute.startsWith("/settings/")) {
+  if (unprefixedRoute.startsWith("/settings/")) {
     return "personal-settings"
-  }
-
-  if (normalizedRoute.startsWith("/workspace/")) {
-    return "workspace-settings"
-  }
-
-  if (normalizedRoute === "/teams" || normalizedRoute.startsWith("/teams/")) {
-    return "workspace-team"
   }
 
   return "neutral"
@@ -82,42 +50,28 @@ export function getRouteScopeKind(routePath?: string | null): RouteScopeKind {
 export function resolveScope(input: ResolveScopeInput): ResolvedScope {
   const routePath = normalizeRoutePath(input.routePath)
   const routeScopeKind = getRouteScopeKind(routePath)
-  const activeWorkspace = input.currentOrganizationWorkspace ?? input.currentPersonalWorkspace ?? null
-  const activeScopeKind = mapWorkspaceTypeToScopeKind(activeWorkspace?.workspaceType ?? null)
-
-  const workspaceScoped =
-    routeScopeKind === "workspace-settings" || routeScopeKind === "workspace-team"
+  const activeWorkspace = input.personalWorkspace
+  const activeScopeKind = activeWorkspace ? "personal" : null
   const personalScoped = routeScopeKind === "personal-settings"
-  const organizationScoped = workspaceScoped
-
-  const scopedWorkspace = personalScoped
-    ? input.personalWorkspace
-    : organizationScoped
-      ? input.currentOrganizationWorkspace
-      : activeWorkspace
-
-  const scopedScopeKind = mapWorkspaceTypeToScopeKind(scopedWorkspace?.workspaceType ?? null)
+  const scopedWorkspace = personalScoped ? input.personalWorkspace : activeWorkspace
+  const scopedScopeKind = scopedWorkspace ? "personal" : null
 
   return {
     routePath,
     routeScopeKind,
     activeWorkspace,
-    currentOrganizationWorkspace: input.currentOrganizationWorkspace,
-    currentPersonalWorkspace: input.currentPersonalWorkspace,
+    currentOrganizationWorkspace: null,
+    currentPersonalWorkspace: input.personalWorkspace,
     personalWorkspace: input.personalWorkspace,
     activeScopeKind,
     scopedWorkspace,
     scopedScopeKind,
-    isOrganizationWorkspace: activeScopeKind === "workspace",
+    isOrganizationWorkspace: false,
     isPersonalWorkspace: activeScopeKind === "personal",
-    workspaceScoped,
+    workspaceScoped: false,
     personalScoped,
-    organizationScoped,
-    activeOrganizationId: activeWorkspace?.organizationId ?? null,
-    activeConvexOrganizationId:
-      (activeWorkspace?.convexOrgId as Id<"organizations"> | undefined) ?? undefined,
-    scopedOrganizationId: scopedWorkspace?.organizationId ?? null,
-    scopedConvexOrganizationId:
-      (scopedWorkspace?.convexOrgId as Id<"organizations"> | undefined) ?? undefined,
+    organizationScoped: false,
+    activeWorkspaceId: activeWorkspace?.workspaceId ?? activeWorkspace?.organizationId ?? null,
+    scopedWorkspaceId: scopedWorkspace?.workspaceId ?? scopedWorkspace?.organizationId ?? null,
   }
 }

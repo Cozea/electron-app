@@ -152,7 +152,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
       Effect.succeed(event).pipe(
         Effect.tap((canonicalEvent) =>
-          canonicalEventLogger ? canonicalEventLogger.write(canonicalEvent, null) : Effect.void,
+          canonicalEventLogger
+            ? canonicalEventLogger.write(canonicalEvent, canonicalEvent.threadId)
+            : Effect.void,
         ),
         Effect.flatMap((canonicalEvent) => PubSub.publish(runtimeEventPubSub, canonicalEvent)),
         Effect.asVoid,
@@ -282,6 +284,39 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         return { adapter: recovered.adapter, threadId: input.threadId, isActive: true } as const;
       });
 
+    const stopStaleSessionsForThread = (input: {
+      readonly threadId: ThreadId;
+      readonly currentProvider: ProviderSession["provider"];
+    }) =>
+      Effect.forEach(
+        adapters,
+        (adapter) =>
+          adapter.provider === input.currentProvider
+            ? Effect.void
+            : Effect.gen(function* () {
+                const hasSession = yield* adapter.hasSession(input.threadId);
+                if (!hasSession) {
+                  return;
+                }
+
+                yield* adapter.stopSession(input.threadId).pipe(
+                  Effect.tap(() =>
+                    analytics.record("provider.session.stopped", {
+                      provider: adapter.provider,
+                    }),
+                  ),
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("provider.session.stop-stale-failed", {
+                      threadId: input.threadId,
+                      provider: adapter.provider,
+                      cause,
+                    }),
+                  ),
+                );
+              }),
+        { discard: true },
+      );
+
     const startSession: ProviderServiceShape["startSession"] = (threadId, rawInput) =>
       Effect.gen(function* () {
         const parsed = yield* decodeInputOrValidationError({
@@ -329,6 +364,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
+        yield* stopStaleSessionsForThread({
+          threadId,
+          currentProvider: adapter.provider,
+        });
         yield* upsertSessionBinding(session, threadId, {
           modelSelection: input.modelSelection,
         });
@@ -458,7 +497,14 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         if (routed.isActive) {
           yield* routed.adapter.stopSession(routed.threadId);
         }
-        yield* directory.remove(input.threadId);
+        yield* directory.upsert({
+          threadId: input.threadId,
+          provider: routed.adapter.provider,
+          status: "stopped",
+          runtimePayload: {
+            activeTurnId: null,
+          },
+        });
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
         });

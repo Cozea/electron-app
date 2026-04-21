@@ -1,23 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useConvex, useMutation, useQuery } from 'convex/react'
+import { useCallback, useMemo, useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
-import { syncProjectRepositoryAccess } from '@/lib/git/projectRepoAutomation'
-import {
-  resolveProjectIntegrationProvider,
-  resolveProjectRepoAccessStatus,
-} from '@/lib/git/projectRepoAccess'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
+
   Table,
   TableBody,
   TableCell,
@@ -35,17 +27,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  ArrowUpDown,
-  Filter,
-  Loader2,
-  MoreVertical,
-  RotateCcw,
-  Shield,
-  Trash2,
-  UserMinus,
-  UserPlus,
-} from 'lucide-react'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
 
 type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
 type SortField = 'name' | 'role' | 'date'
@@ -54,7 +38,7 @@ type SortDirection = 'asc' | 'desc'
 interface TeamTableRow {
   key: string
   type: 'member' | 'invite'
-  email: string
+  secondaryLabel: string
   name: string
   role: ProjectRole
   status: 'active' | 'pending'
@@ -63,24 +47,10 @@ interface TeamTableRow {
   isSelf: boolean
   userId?: Id<'users'>
   inviteId?: Id<'projectInvites'>
-  repoAccess?: {
-    state: 'pending' | 'granted' | 'needs_identity' | 'manual_required' | 'revoked' | 'error'
-    errorMessage?: string
-    providerAccountHandle?: string
-  }
-}
-
-interface WorkspaceMemberRecord {
-  userId: Id<'users'>
-  user?: {
-    email?: string | null
-    firstName?: string | null
-    lastName?: string | null
-    profileImageUrl?: string | null
-  } | null
 }
 
 const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
+
   { value: 'project_manager', label: 'Project Manager' },
   { value: 'developer', label: 'Developer' },
   { value: 'designer', label: 'Designer' },
@@ -99,6 +69,9 @@ function getRoleLabel(role: ProjectRole | null | undefined): string {
 }
 
 function formatMemberName(member: {
+  displayName?: string | null
+  secondaryLabel?: string | null
+  contactEmail?: string | null
   user?: {
     firstName?: string | null
     lastName?: string | null
@@ -106,12 +79,30 @@ function formatMemberName(member: {
   } | null
   userId: Id<'users'>
 }): string {
+  if (member.displayName?.trim()) return member.displayName.trim()
   const first = member.user?.firstName?.trim() ?? ''
   const last = member.user?.lastName?.trim() ?? ''
   const fullName = `${first} ${last}`.trim()
   if (fullName) return fullName
+  if (member.contactEmail) return member.contactEmail
+  if (member.secondaryLabel) return member.secondaryLabel
   if (member.user?.email) return member.user.email
   return String(member.userId)
+}
+
+function formatMemberSecondaryLabel(member: {
+  secondaryLabel?: string | null
+  contactEmail?: string | null
+  user?: {
+    email?: string | null
+  } | null
+}): string {
+  return (
+    member.secondaryLabel?.trim() ??
+    member.contactEmail?.trim() ??
+    member.user?.email?.trim() ??
+    ''
+  )
 }
 
 function formatInviteeName(invite: {
@@ -140,67 +131,10 @@ function formatDate(timestamp: number): string {
     .replace(/\//g, '-')
 }
 
-function getRepoAccessBadgePresentation(
-  repoAccess: TeamTableRow['repoAccess'] | undefined,
-  provider?: 'github' | 'gitlab'
-): { label: string; className: string } {
-  if (!provider) {
-    return {
-      label: 'No repo sync',
-      className: 'border-border/60 bg-secondary/60 text-muted-foreground',
-    }
-  }
-
-  switch (repoAccess?.state) {
-    case 'granted':
-      return {
-        label: 'Granted',
-        className: 'border-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-      }
-    case 'pending':
-      return {
-        label: 'Pending',
-        className: 'border-0 bg-amber-500/15 text-amber-700 dark:text-amber-300',
-      }
-    case 'needs_identity':
-      return {
-        label: provider === 'github' ? 'Needs GitHub handle' : 'Needs identity',
-        className: 'border-0 bg-orange-500/15 text-orange-700 dark:text-orange-300',
-      }
-    case 'manual_required':
-      return {
-        label: 'Manual',
-        className: 'border-0 bg-secondary text-muted-foreground',
-      }
-    case 'error':
-      return {
-        label: 'Error',
-        className: 'border-0 bg-destructive/15 text-destructive',
-      }
-    case 'revoked':
-      return {
-        label: 'Revoked',
-        className: 'border-0 bg-secondary text-muted-foreground',
-      }
-    default:
-      return {
-        label: 'Not synced',
-        className: 'border-border/60 bg-secondary/60 text-muted-foreground',
-      }
-  }
-}
-
 export function ProjectTeamPage() {
-  const convex = useConvex()
-  const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
-  const projectWorkspace = useProjectWorkspaceContext(project)
-  const isPersonalWorkspace = projectWorkspace.isPersonalWorkspace
-  const projectOrganizationId = projectWorkspace.organizationId
-  const hasResolvedWorkspaceContext = project !== undefined && !projectWorkspace.isLoading
 
-  const addMember = useMutation(api.projectMembers.addMember)
   const cancelInvite = useMutation(api.projectInvites.cancelInvite)
   const resendInvite = useMutation(api.projectInvites.resendInvite)
   const updateMemberRole = useMutation(api.projectMembers.updateRole)
@@ -216,127 +150,30 @@ export function ProjectTeamPage() {
     api.projectMembers.listMembers,
     project?._id && convexUserId ? { projectId: project._id, viewerUserId: convexUserId } : 'skip'
   )
-  const currentWorkspaceAccess = useQuery(
-    api.organizations.getCurrentMemberAccess,
-    hasResolvedWorkspaceContext && !isPersonalWorkspace && projectOrganizationId && convexUserId
-      ? { orgId: projectOrganizationId, viewerUserId: convexUserId }
-      : 'skip'
-  )
-  const workspaceMembers = useQuery(
-    api.organizations.getMembers,
-    hasResolvedWorkspaceContext &&
-    !isPersonalWorkspace &&
-    projectOrganizationId &&
-    convexUserId &&
-    (currentWorkspaceAccess?.permissions.includes('members:view') ?? false)
-      ? { orgId: projectOrganizationId, viewerUserId: convexUserId }
-      : 'skip'
-  )
   const pendingInvites = useQuery(
     api.projectInvites.listForProject,
-    hasResolvedWorkspaceContext && project?._id && convexUserId && isPersonalWorkspace
-      ? { projectId: project._id, viewerUserId: convexUserId }
-      : 'skip'
-  )
-  const repoAccessRecords = useQuery(
-    api.projectRepoAccess.listForProject,
     project?._id && convexUserId
       ? { projectId: project._id, viewerUserId: convexUserId }
       : 'skip'
   )
-  const { getConnection } = useWorkspaceSourceControl({
-    route: isPersonalWorkspace ? '/settings/source-control' : '/workspace/source-control',
-    enabled: Boolean(project?.organizationId && convexUserId),
-  })
-  const repoIntegrationProvider = resolveProjectIntegrationProvider(project ?? null)
-  const repoIntegration = repoIntegrationProvider
-    ? getConnection(repoIntegrationProvider)
-    : null
-  const repoAccessStatus = useMemo(
-    () =>
-      resolveProjectRepoAccessStatus({
-        project,
-        sourceControlConnection: repoIntegration,
-        isPersonalWorkspace,
-      }),
-    [isPersonalWorkspace, project, repoIntegration]
-  )
 
   const [teamError, setTeamError] = useState<string | null>(null)
   const [teamActionKey, setTeamActionKey] = useState<string | null>(null)
-  const [selectedWorkspaceMemberId, setSelectedWorkspaceMemberId] = useState('')
-  const [selectedWorkspaceMemberRole, setSelectedWorkspaceMemberRole] =
-    useState<ProjectRole>('developer')
 
   const [roleFilter, setRoleFilter] = useState<'all' | ProjectRole>('all')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const hasResolvedTeamRows = members !== undefined && (!isPersonalWorkspace || pendingInvites !== undefined)
+  const hasResolvedTeamRows = members !== undefined && pendingInvites !== undefined
 
   const isManager = memberRole === 'project_manager'
-  const canManageTeam = Boolean(convexUserId) && (
-    isPersonalWorkspace
-      ? isManager
-      : currentWorkspaceAccess?.permissions.includes('projects:share') ?? false
-  )
-  const repoAutomationProvider =
-    repoAccessStatus.supportsProviderAutomation &&
-    (repoAccessStatus.provider === 'github' || repoAccessStatus.provider === 'gitlab')
-      ? repoAccessStatus.provider
-      : undefined
-  const assignableWorkspaceMembers = useMemo(() => {
-    if (isPersonalWorkspace) return []
-
-    const assignedUserIds = new Set((members ?? []).map((member) => String(member.userId)))
-    return ((workspaceMembers ?? []) as WorkspaceMemberRecord[])
-      .filter((member) => member.user && !assignedUserIds.has(String(member.userId)))
-      .sort((left, right) =>
-        formatMemberName(left).localeCompare(formatMemberName(right))
-      )
-  }, [isPersonalWorkspace, members, workspaceMembers])
-  const repoAccessByUserId = useMemo(() => {
-    const next = new Map<string, NonNullable<typeof repoAccessRecords>[number]>()
-    for (const record of repoAccessRecords ?? []) {
-      if (!record.memberUserId) continue
-      next.set(String(record.memberUserId), record)
-    }
-    return next
-  }, [repoAccessRecords])
-  const repoAccessByEmail = useMemo(() => {
-    const next = new Map<string, NonNullable<typeof repoAccessRecords>[number]>()
-    for (const record of repoAccessRecords ?? []) {
-      if (!record.inviteEmail) continue
-      next.set(record.inviteEmail.trim().toLowerCase(), record)
-    }
-    return next
-  }, [repoAccessRecords])
-
-  useEffect(() => {
-    if (
-      selectedWorkspaceMemberId &&
-      assignableWorkspaceMembers.some(
-        (member) => String(member.userId) === selectedWorkspaceMemberId,
-      )
-    ) {
-      return
-    }
-
-    setSelectedWorkspaceMemberId(
-      assignableWorkspaceMembers[0] ? String(assignableWorkspaceMembers[0].userId) : '',
-    )
-  }, [assignableWorkspaceMembers, selectedWorkspaceMemberId])
+  const canManageTeam = Boolean(convexUserId) && isManager
 
   const filteredRows = useMemo(() => {
     const memberRows: TeamTableRow[] = (members ?? []).map((member) => {
-      const email = member.user?.email ?? ''
-      const normalizedEmail = email.trim().toLowerCase()
-      const repoAccess =
-        repoAccessByUserId.get(String(member.userId)) ??
-        (normalizedEmail ? repoAccessByEmail.get(normalizedEmail) : undefined)
       return {
         key: `member:${String(member.userId)}`,
         type: 'member',
-        email,
+        secondaryLabel: formatMemberSecondaryLabel(member),
         name: formatMemberName(member),
         role: member.role,
         status: 'active',
@@ -344,24 +181,14 @@ export function ProjectTeamPage() {
         avatarUrl: member.user?.profileImageUrl ?? null,
         isSelf: convexUserId === member.userId,
         userId: member.userId,
-        repoAccess: repoAccess
-          ? {
-              state: repoAccess.accessState,
-              errorMessage: repoAccess.errorMessage,
-              providerAccountHandle: repoAccess.providerAccountHandle,
-            }
-          : undefined,
       }
     })
 
-    const inviteRows: TeamTableRow[] = isPersonalWorkspace
-      ? (pendingInvites ?? []).map((invite) => {
-      const email = invite.email
-      const repoAccess = repoAccessByEmail.get(email.trim().toLowerCase())
+    const inviteRows: TeamTableRow[] = (pendingInvites ?? []).map((invite) => {
       return {
         key: `invite:${String(invite._id)}`,
         type: 'invite',
-        email,
+        secondaryLabel: invite.email,
         name: formatInviteeName(invite),
         role: invite.role,
         status: 'pending',
@@ -369,16 +196,8 @@ export function ProjectTeamPage() {
         avatarUrl: invite.user?.profileImageUrl ?? null,
         isSelf: false,
         inviteId: invite._id,
-        repoAccess: repoAccess
-          ? {
-              state: repoAccess.accessState,
-              errorMessage: repoAccess.errorMessage,
-              providerAccountHandle: repoAccess.providerAccountHandle,
-            }
-          : undefined,
       }
     })
-      : []
 
     const rows = [...memberRows, ...inviteRows].filter((row) => {
       if (roleFilter === 'all') return true
@@ -402,40 +221,11 @@ export function ProjectTeamPage() {
     })
   }, [
     convexUserId,
-    isPersonalWorkspace,
     members,
     pendingInvites,
-    repoAccessByEmail,
-    repoAccessByUserId,
     roleFilter,
     sortDirection,
     sortField,
-  ])
-
-  const handleAddWorkspaceMember = useCallback(async () => {
-    if (!project?._id || !project || !convexUserId || !canManageTeam || !selectedWorkspaceMemberId) return
-
-    setTeamActionKey('add-member')
-    setTeamError(null)
-    try {
-      await addMember({
-        projectId: project._id,
-        actorUserId: convexUserId,
-        memberUserId: selectedWorkspaceMemberId as Id<'users'>,
-        role: selectedWorkspaceMemberRole,
-      })
-    } catch (error) {
-      setTeamError(cleanConvexError(error, 'Failed to add workspace member'))
-    } finally {
-      setTeamActionKey(null)
-    }
-  }, [
-    addMember,
-    canManageTeam,
-    convexUserId,
-    project,
-    selectedWorkspaceMemberId,
-    selectedWorkspaceMemberRole,
   ])
 
   const handleRoleChange = useCallback(
@@ -472,34 +262,11 @@ export function ProjectTeamPage() {
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
-        const member = (members ?? []).find((entry) => entry.userId === memberUserId)
-        const repoAccess =
-          repoAccessByUserId.get(String(memberUserId)) ??
-          (member?.user?.email
-            ? repoAccessByEmail.get(member.user.email.trim().toLowerCase())
-            : undefined)
         await removeMember({
           projectId: project._id,
           actorUserId: convexUserId,
           memberUserId,
         })
-
-        const syncOutcome = await syncProjectRepositoryAccess({
-          convex,
-          project,
-          actorUserId: convexUserId,
-          subjectType: 'member',
-          memberUserId,
-          inviteEmail: member?.user?.email ?? undefined,
-          providerAccountHandle: repoAccess?.providerAccountHandle,
-          role: member?.role ?? 'developer',
-          action: 'revoke',
-          isPersonalWorkspace,
-        })
-
-        if (!syncOutcome.success && syncOutcome.error) {
-          setTeamError(syncOutcome.error)
-        }
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to remove member'))
       } finally {
@@ -508,14 +275,9 @@ export function ProjectTeamPage() {
     },
     [
       canManageTeam,
-      convex,
       convexUserId,
-      isPersonalWorkspace,
-      members,
       project,
       removeMember,
-      repoAccessByEmail,
-      repoAccessByUserId,
     ]
   )
 
@@ -526,39 +288,17 @@ export function ProjectTeamPage() {
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
-        const invite = (pendingInvites ?? []).find((entry) => entry._id === inviteId)
-        const repoAccess = invite?.email
-          ? repoAccessByEmail.get(invite.email.trim().toLowerCase())
-          : undefined
         await cancelInvite({
           inviteId,
-          cancelledBy: convexUserId,
+          actorUserId: convexUserId,
         })
-
-        if (invite?.email) {
-          const syncOutcome = await syncProjectRepositoryAccess({
-            convex,
-            project,
-            actorUserId: convexUserId,
-            subjectType: 'invite',
-            inviteEmail: invite.email,
-            providerAccountHandle: repoAccess?.providerAccountHandle,
-            role: invite.role,
-            action: 'revoke',
-            isPersonalWorkspace,
-          })
-
-          if (!syncOutcome.success && syncOutcome.error) {
-            setTeamError(syncOutcome.error)
-          }
-        }
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to cancel invite'))
       } finally {
         setTeamActionKey(null)
       }
     },
-    [cancelInvite, canManageTeam, convex, convexUserId, isPersonalWorkspace, pendingInvites, project, repoAccessByEmail]
+    [cancelInvite, canManageTeam, convexUserId, project]
   )
 
   const handleResendInvite = useCallback(
@@ -570,7 +310,7 @@ export function ProjectTeamPage() {
       try {
         await resendInvite({
           inviteId,
-          resentBy: convexUserId,
+          actorUserId: convexUserId,
         })
       } catch (error) {
         setTeamError(cleanConvexError(error, 'Failed to resend invite'))
@@ -581,58 +321,13 @@ export function ProjectTeamPage() {
     [canManageTeam, convexUserId, resendInvite, project]
   )
 
-  const handleRetryRepoAccess = useCallback(
-    async (row: TeamTableRow) => {
-      if (!project || !convexUserId || !canManageTeam || !repoAutomationProvider) return
-
-      let providerAccountHandle = row.repoAccess?.providerAccountHandle
-      if (repoAutomationProvider === 'github' && !providerAccountHandle) {
-        const provided = window.prompt(
-          'Enter the collaborator’s GitHub username for repository access.'
-        )
-        if (!provided?.trim()) {
-          return
-        }
-        providerAccountHandle = provided.trim()
-      }
-
-      const actionKey = `repo:${row.key}`
-      setTeamActionKey(actionKey)
-      setTeamError(null)
-
-      try {
-        const syncOutcome = await syncProjectRepositoryAccess({
-          convex,
-          project,
-          actorUserId: convexUserId,
-          subjectType: row.type === 'member' ? 'member' : 'invite',
-          memberUserId: row.userId,
-          inviteEmail: row.email,
-          providerAccountHandle,
-          role: row.role,
-          action: 'grant',
-          isPersonalWorkspace,
-        })
-
-        if (!syncOutcome.success && syncOutcome.error) {
-          setTeamError(syncOutcome.error)
-        }
-      } catch (error) {
-        setTeamError(cleanConvexError(error, 'Failed to sync repository access'))
-      } finally {
-        setTeamActionKey(null)
-      }
-    },
-    [canManageTeam, convex, convexUserId, isPersonalWorkspace, project, repoAutomationProvider]
-  )
-
   const headerActions = useMemo(() => {
     return (
       <div className="flex items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
-              <Filter className="h-3.5 w-3.5" />
+            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
+              <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
               {roleFilter === 'all' ? 'All Roles' : getRoleLabel(roleFilter)}
             </Button>
           </DropdownMenuTrigger>
@@ -648,8 +343,8 @@ export function ProjectTeamPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
-              <ArrowUpDown className="h-3.5 w-3.5" />
+            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
+              <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
               {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
             </Button>
           </DropdownMenuTrigger>
@@ -662,7 +357,7 @@ export function ProjectTeamPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-xs">
+            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
               {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
             </Button>
           </DropdownMenuTrigger>
@@ -678,7 +373,12 @@ export function ProjectTeamPage() {
   useProjectHeader(headerActions)
 
   if (project === undefined) {
-    return null
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        Loading project team…
+      </div>
+    )
   }
 
   if (project === null) {
@@ -697,116 +397,14 @@ export function ProjectTeamPage() {
         </div>
       ) : null}
 
-      {repoAccessStatus.state !== 'not_configured' ? (
-        <div className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h3 className="text-base font-medium">{repoAccessStatus.title}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{repoAccessStatus.description}</p>
-            </div>
-            {repoAccessStatus.state === 'integration_missing' || repoAccessStatus.state === 'integration_mismatch' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-xl"
-                onClick={() => {
-                  navigate(isPersonalWorkspace ? '/settings/source-control' : '/workspace/source-control')
-                }}
-              >
-                {repoAccessStatus.state === 'integration_mismatch' ? 'Fix Source Control' : 'Connect Source Control'}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {!projectWorkspace.isLoading && !isPersonalWorkspace ? (
-        <div className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h3 className="text-base font-medium">Workspace member assignment</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Organization projects only accept existing workspace members. Add people to the
-                workspace first, then assign them to this project.
-              </p>
-            </div>
-
-            {canManageTeam ? (
-              assignableWorkspaceMembers.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                  <Select
-                    value={selectedWorkspaceMemberId}
-                    onValueChange={setSelectedWorkspaceMemberId}
-                  >
-                    <SelectTrigger className="w-full min-w-[240px] justify-between rounded-xl bg-secondary/80">
-                      <SelectValue placeholder="Select workspace member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assignableWorkspaceMembers.map((member) => (
-                        <SelectItem key={String(member.userId)} value={String(member.userId)}>
-                          {formatMemberName(member)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={selectedWorkspaceMemberRole}
-                    onValueChange={(value) => setSelectedWorkspaceMemberRole(value as ProjectRole)}
-                  >
-                    <SelectTrigger className="w-full min-w-[180px] justify-between rounded-xl bg-secondary/80">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ROLE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Button
-                    type="button"
-                    className="gap-2 rounded-xl"
-                    disabled={!selectedWorkspaceMemberId || teamActionKey === 'add-member'}
-                    onClick={() => {
-                      void handleAddWorkspaceMember()
-                    }}
-                  >
-                    {teamActionKey === 'add-member' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <UserPlus className="h-4 w-4" />
-                    )}
-                    Add member
-                  </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  All workspace members already have project access.
-                </p>
-              )
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                You need workspace project-sharing access to change this team.
-              </p>
-            )}
-          </div>
-        </div>
-      ) : null}
-
         <div className="overflow-hidden">
           <Table className="[&_th]:px-4 [&_td]:px-4">
           <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
             <TableRow>
-              <TableHead className="w-[34%]">Member Name</TableHead>
-              <TableHead className="w-[20%]">Role</TableHead>
-              <TableHead className="w-[14%]">Project</TableHead>
-              <TableHead className="w-[16%]">Repo</TableHead>
-              <TableHead className="w-[12%]">Date</TableHead>
+              <TableHead className="w-[40%]">Collaborator</TableHead>
+              <TableHead className="w-[22%]">Role</TableHead>
+              <TableHead className="w-[16%]">Project</TableHead>
+              <TableHead className="w-[16%]">Date</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -841,7 +439,7 @@ export function ProjectTeamPage() {
                           <div className="flex items-center gap-2">
                             <span className="truncate font-medium">{row.name}</span>
                           </div>
-                          <div className="truncate text-sm text-muted-foreground">{row.email}</div>
+                          <div className="truncate text-sm text-muted-foreground">{row.secondaryLabel}</div>
                         </div>
                       </div>
                     </TableCell>
@@ -876,65 +474,22 @@ export function ProjectTeamPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="overflow-hidden">
-                      <div className="min-w-0 space-y-1">
-                        {(() => {
-                          const repoBadge = getRepoAccessBadgePresentation(
-                            row.repoAccess,
-                            repoAutomationProvider
-                          )
-                          return (
-                            <Badge className={repoBadge.className}>
-                              {repoBadge.label}
-                            </Badge>
-                          )
-                        })()}
-                        {row.repoAccess?.providerAccountHandle ? (
-                          <div className="truncate text-xs text-muted-foreground">
-                            {row.repoAccess.providerAccountHandle}
-                          </div>
-                        ) : null}
-                        {row.repoAccess?.errorMessage ? (
-                          <div className="line-clamp-2 text-xs text-muted-foreground">
-                            {row.repoAccess.errorMessage}
-                          </div>
-                        ) : null}
-                      </div>
-                    </TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(row.date)}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
+                            <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {row.type === 'member' ? (
                             <>
-                              {repoAutomationProvider ? (
-                                <>
-                                  <DropdownMenuItem
-                                    disabled={!canManageTeam || teamActionKey === `repo:${row.key}`}
-                                    onClick={() => {
-                                      void handleRetryRepoAccess(row)
-                                    }}
-                                  >
-                                    {teamActionKey === `repo:${row.key}` ? (
-                                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                                    )}
-                                    Retry Repo Access
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                </>
-                              ) : null}
                               <DropdownMenuSub>
                                 <DropdownMenuSubTrigger
                                   disabled={!canManageTeam || row.isSelf || !row.userId}
                                 >
-                                  <Shield className="mr-2 h-4 w-4" />
+                                  <HugeiconsIcon icon={__ShieldHugeIcon} className="mr-2 h-4 w-4" />
                                   Change Role
                                 </DropdownMenuSubTrigger>
                                 <DropdownMenuSubContent>
@@ -952,7 +507,7 @@ export function ProjectTeamPage() {
                                       }}
                                     >
                                       {teamActionKey === roleActionKey && row.role !== option.value ? (
-                                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                       ) : null}
                                       {option.label}
                                       {row.role === option.value ? (
@@ -977,33 +532,15 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <UserMinus className="mr-2 h-3.5 w-3.5" />
+                                  <HugeiconsIcon icon={__UserMinusHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
                                 {row.isSelf ? "Can't remove yourself" : 'Remove'}
                               </DropdownMenuItem>
                             </>
                           ) : (
                             <>
-                              {repoAutomationProvider ? (
-                                <>
-                                  <DropdownMenuItem
-                                    disabled={!canManageTeam || teamActionKey === `repo:${row.key}`}
-                                    onClick={() => {
-                                      void handleRetryRepoAccess(row)
-                                    }}
-                                  >
-                                    {teamActionKey === `repo:${row.key}` ? (
-                                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                                    )}
-                                    Retry Repo Access
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                </>
-                              ) : null}
                               <DropdownMenuItem
                                 disabled={!canManageTeam || !row.inviteId || teamActionKey === resendActionKey}
                                 onClick={() => {
@@ -1012,9 +549,9 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                                  <HugeiconsIcon icon={__RotateCcwHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
                                 Resend
                               </DropdownMenuItem>
@@ -1027,9 +564,9 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
                                 Cancel
                               </DropdownMenuItem>
@@ -1043,7 +580,7 @@ export function ProjectTeamPage() {
               })
             ) : hasResolvedTeamRows ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                   No members or pending invites yet.
                 </TableCell>
               </TableRow>

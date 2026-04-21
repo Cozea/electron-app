@@ -1,7 +1,4 @@
-import type {
-  OrganizationMembership,
-  Session,
-} from './types'
+import type { Session } from './types'
 import type {
   NativePreviewActionResult,
   NativePreviewCaptureScreenshotRequest,
@@ -24,8 +21,6 @@ import type {
 } from './nativePreviewTypes'
 
 export type {
-  OrganizationMembership,
-  OrganizationWorkspaceMembership,
   PersonalWorkspaceMembership,
   Session,
   User,
@@ -36,6 +31,7 @@ export interface AppSettings {
   projectsDirectory: string
   previewHeaderCompatibilityEnabled: boolean
   approvedExternalReadRoots?: string[]
+  deactivateTransparency?: boolean
 }
 
 export type UpdateStatus =
@@ -63,6 +59,17 @@ export interface UpdateState {
   error?: string
 }
 
+export interface GpuAccelerationDiagnostics {
+  hardwareAccelerationEnabled: boolean
+  featureStatus: Record<string, string>
+  gpuCompositing: string | null
+  webgl: string | null
+  webgl2: string | null
+  rasterization: string | null
+  videoDecode: string | null
+  updatedAt: number
+}
+
 export interface StorageUsage {
   projects: number
   dependencies: number
@@ -73,11 +80,24 @@ export interface StorageUsage {
   diskFree: number
 }
 
+export interface ProjectPathNativeIconResult {
+  success: boolean
+  dataUrl?: string
+  error?: string
+}
+
 export interface LocalProject {
   name: string
   path: string
   size: number
   lastModified: number
+}
+
+export interface ProjectLocalPathLookupOptions {
+  slug: string
+  projectId?: string
+  localPathHint?: string | null
+  attachedPathHint?: string | null
 }
 
 export interface StorageProjectsPage {
@@ -196,6 +216,18 @@ export interface RuntimeResolveCommandResult {
 export interface CreateProjectFolderResult {
   success: boolean
   localPath?: string
+  error?: string
+}
+
+export interface GhCliStatus {
+  available: boolean
+  username?: string
+  error?: string
+}
+
+export interface CreateGitHubRepoResult {
+  success: boolean
+  repoUrl?: string
   error?: string
 }
 
@@ -725,6 +757,40 @@ export interface GitSyncCommitPushResult {
   error?: string
 }
 
+export interface GitCheckpointCaptureResult {
+  success: boolean
+  ref?: string
+  commitOid?: string
+  error?: string
+}
+
+export interface GitCheckpointDiffResult {
+  success: boolean
+  diff?: string
+  error?: string
+}
+
+export interface GitCheckpointFilePairResult {
+  success: boolean
+  previousContent?: string
+  nextContent?: string
+  error?: string
+}
+
+export interface GitCheckpointDeleteResult {
+  success: boolean
+  deletedRefs?: string[]
+  error?: string
+}
+
+export interface GitCheckpointHeadStatsResult {
+  success: boolean
+  additions: number
+  deletions: number
+  changedFiles: number
+  error?: string
+}
+
 export interface SyncOp {
   opId: string
   idempotencyKey: string
@@ -780,6 +846,57 @@ export interface TerminalInfo {
   title: string
 }
 
+export interface TerminalSnapshot {
+  id: string
+  projectPath: string
+  runId?: string
+  command?: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  running: boolean
+  startedAt: number
+  endedAt: number | null
+  timedOut: boolean
+  cancelled: boolean
+}
+
+export type TerminalActivityTrackingMode = 'off' | 'subprocess'
+export type TerminalKind = 'shell' | 'dev-server' | 'agent' | 'task'
+export type FileChangeActorType = 'user' | 'agent' | 'system'
+export type FileChangeOriginKind = 'user' | 'agent' | 'remote' | 'init'
+
+export interface FileChangeAttribution {
+  origin: FileChangeOriginKind
+  sourceOrigin?: string
+  actorType?: FileChangeActorType
+  actorId?: string
+  userId?: string
+  userName?: string
+  clientId?: string
+  terminalId?: string
+  terminalTitle?: string
+  terminalKind?: TerminalKind | string
+  commandId?: string
+  commandText?: string
+  runId?: string
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  gitCwd?: string
+  checkpointGroupId?: string
+  timestamp?: number
+}
+
+export interface GitDirtyStateSnapshot {
+  projectPath: string
+  additions: number
+  deletions: number
+  changedFiles: number
+  computedAt: number
+  error?: string
+}
+
 export interface TerminalCreateOptions {
   projectPath: string
   profileId?: string
@@ -788,6 +905,12 @@ export interface TerminalCreateOptions {
   rows?: number
   runId?: string
   env?: Record<string, string>
+  activityTracking?: TerminalActivityTrackingMode
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  gitCwd?: string
+  terminalKind?: TerminalKind
 }
 
 export interface TerminalOutputEvent {
@@ -832,7 +955,11 @@ export interface AgentToolPrepareResult extends AgentToolStatus {
 export interface DevServerStartOptions {
   projectPath: string
   command: string
+  bootstrapCommand?: string | null
   port: number
+  sessionKey?: string | null
+  framework?: string | null
+  terminalId: string
   cols?: number
   rows?: number
   runId?: string
@@ -894,6 +1021,30 @@ export interface IntegrationToolResult {
   exitCode?: number | null
   timedOut?: boolean
   error?: string
+}
+
+export interface CollabDeviceIdentity {
+  deviceId: string
+  deviceLabel: string
+  platform: string
+  publicKeyAlgorithm: string
+  fingerprint: string
+  publicKeyJwk: string
+}
+
+export interface CollabWrappedRoomKeyResult {
+  wrappedKey: string
+  wrapAlgorithm: string
+  senderPublicKeyJwk: string
+  senderDeviceId: string
+}
+
+export interface CollabRecoveryKitResult {
+  recoveryCode: string
+  wrappedKey: string
+  wrapAlgorithm: string
+  salt: string
+  iterations: number
 }
 
 export interface LocalAiRuntimeStatus {
@@ -979,118 +1130,39 @@ export interface WorkbenchBrowserViewState {
   loadError?: string | null
 }
 
+export type WorkbenchSessionLifecycle =
+  | 'active'
+  | 'backgroundWarm'
+  | 'backgroundFrozen'
+  | 'closed'
+
+export interface WorkbenchSessionDevServerState {
+  running: boolean
+  port: number | null
+  runId: string | null
+}
+
+export interface WorkbenchSessionSnapshot {
+  sessionKey: string
+  projectId: string
+  laneId: string
+  projectPath: string | null
+  lifecycle: WorkbenchSessionLifecycle
+  pinned: boolean
+  openedAt: number
+  lastFocusedAt: number
+  lastBackgroundedAt: number | null
+  terminalBindings: Record<string, string>
+  devServer: WorkbenchSessionDevServerState
+  hasBrowserSurface: boolean
+  hasNativePreviewSession: boolean
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
-  auth: {
-    login: () => Promise<{ success: boolean }>
-    logout: (options?: { accessToken?: string | null }) => Promise<{ success: boolean }>
-    getSession: () => Promise<Session | null>
-    refresh: () => Promise<AuthRefreshResult>
-    updateOrganizations: (
-      organizations: OrganizationMembership[]
-    ) => Promise<{ success: boolean; error?: string }>
-    onSuccess: (callback: (session: Session) => void) => () => void
-    onError: (callback: (error: string) => void) => () => void
-  }
   localAiRuntime: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
-  }
-  sourceControl: {
-    startOAuth: (options: {
-      provider: 'github' | 'gitlab'
-      orgId: string
-      metadata?: Record<string, unknown>
-    }) => Promise<{ success: boolean; error?: string }>
-    onOAuthSuccess: (callback: (data: {
-      provider: string
-      accessToken?: string
-      refreshToken?: string
-      tokenExpiresAt?: number
-      externalId?: string
-      externalAccountName?: string
-      scopes?: string[]
-      metadata?: Record<string, unknown>
-    }) => void) => () => void
-    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
-    listRepositoryOwners: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      bypassCache?: boolean
-    }) => Promise<RepositoryOwnerDescriptor[]>
-    listRepositoriesPage: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-      search?: string
-      page: number
-      pageSize: number
-      bypassCache?: boolean
-    }) => Promise<RepositoryListPageResult>
-    listBranches: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repositoryId?: string
-      repositoryFullName: string
-      defaultBranch?: string
-      bypassCache?: boolean
-    }) => Promise<RepositoryBranchDescriptor[]>
-    listRepositoryLanguages: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repoUrl: string
-      repositoryId?: string
-      bypassCache?: boolean
-    }) => Promise<RepositoryLanguageDescriptor[]>
-    getRepositoryReadmeSnippet: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      repoUrl: string
-      branch?: string
-      repositoryId?: string
-      bypassCache?: boolean
-    }) => Promise<RepositoryReadmeSnippetDescriptor>
-    createRepository: (options: {
-      provider: 'github' | 'gitlab'
-      accessToken?: string
-      providerHost?: string
-      authStrategy?: 'oauth' | 'github_app_installation'
-      name: string
-      description?: string
-      private?: boolean
-      autoInit?: boolean
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-    }) => Promise<RepositoryDescriptor>
-    invalidateProviderCache: (options?: {
-      provider?: 'github' | 'gitlab'
-      ownerId?: string
-      repositoryId?: string
-    }) => Promise<{ success: boolean }>
-    syncRepositoryAccess: (options: {
-      projectId?: string
-      provider: 'github' | 'gitlab'
-      repoUrl: string
-      providerHost?: string
-      accessToken?: string
-      action?: 'grant' | 'revoke'
-      role?: string
-      inviteEmail?: string
-      providerAccountHandle?: string
-    }) => Promise<{ success: boolean; error?: string; accessState?: 'pending' | 'error' | 'revoked' | 'granted' | 'needs_identity' | 'manual_required'; externalInvitationId?: string; providerAccountHandle?: string }>
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
@@ -1122,6 +1194,32 @@ export interface ElectronAPI {
     getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
     listTools: () => Promise<IntegrationToolDefinition[]>
   }
+  collab: {
+    isEncryptionAvailable: () => Promise<boolean>
+    ensureDeviceIdentity: () => Promise<CollabDeviceIdentity>
+    getStoredDeviceIdentity: () => Promise<CollabDeviceIdentity | null>
+    wrapRoomKey: (options: {
+      roomKeyBase64: string
+      recipientPublicKeyJwk: string
+    }) => Promise<CollabWrappedRoomKeyResult>
+    unwrapRoomKey: (options: {
+      senderPublicKeyJwk: string
+      wrappedKey: string
+      wrapAlgorithm?: string
+    }) => Promise<{ roomKeyBase64: string }>
+    createRecoveryKit: (options: {
+      roomKeyBase64: string
+      recoveryCode?: string
+    }) => Promise<CollabRecoveryKitResult>
+    unwrapRecoveryKit: (options: {
+      recoveryCode: string
+      wrappedKey: string
+      salt: string
+      iterations: number
+      wrapAlgorithm?: string
+    }) => Promise<{ roomKeyBase64: string }>
+    deleteDeviceIdentity: () => Promise<{ success: boolean; error?: string }>
+  }
   tools: {
     run: (request: {
       name: string
@@ -1149,6 +1247,8 @@ export interface ElectronAPI {
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
     onOpenSettings: (callback: (route: string) => void) => () => void
+    getGpuDiagnostics: () => Promise<GpuAccelerationDiagnostics>
+    setNativeThemeSource: (source: 'system' | 'light' | 'dark') => Promise<void>
   }
   settings: {
     get: () => Promise<AppSettings>
@@ -1217,6 +1317,93 @@ export interface ElectronAPI {
     onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
   }
+  workbenchSession: {
+    ensureSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    activateSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    backgroundSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      mode?: Exclude<WorkbenchSessionLifecycle, 'active' | 'closed'>
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    closeSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+    }) => Promise<{ success: boolean }>
+    getSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    listSessions: () => Promise<WorkbenchSessionSnapshot[]>
+    setPinned: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      pinned: boolean
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    getTerminalBinding: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      tileId: string
+    }) => Promise<string | null>
+    bindTerminal: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      tileId: string
+      terminalId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    releaseTerminal: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      tileId: string
+      close?: boolean
+    }) => Promise<{ success: boolean; terminalId?: string }>
+    getBrowserBinding: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      tileId: string
+    }) => Promise<string | null>
+    bindBrowser: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      tileId: string
+      browserTileId: string
+      projectPath?: string | null
+    }) => Promise<WorkbenchSessionSnapshot>
+    releaseBrowser: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      tileId: string
+      destroy?: boolean
+    }) => Promise<{ success: boolean; browserTileId?: string }>
+    setNativePreviewSession: (options: {
+      sessionKey?: string | null
+      projectId: string
+      laneId: string
+      locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null
+      stopPrevious?: boolean
+    }) => Promise<WorkbenchSessionSnapshot | null>
+    onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
+  }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probePort: (options: { port: number; timeoutMs?: number }) => Promise<PreviewProbePortResult>
@@ -1258,20 +1445,9 @@ export interface ElectronAPI {
       projectId?: string
       baseDirectory?: string
     }) => Promise<CloneRepositoryResult>
-    getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
+    getLocalPath: (options: string | ProjectLocalPathLookupOptions) => Promise<string | null>
     rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
     clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
-    getLaneState: (options: { projectId: string }) => Promise<ProjectLaneState | null>
-    ensureCollabLane: (options: { projectId: string; projectPath: string; branch: string }) => Promise<ProjectLaneState>
-    upsertLane: (options: {
-      projectId: string
-      branch: string
-      projectPath: string
-      name?: string
-      isCollab?: boolean
-      laneId?: string
-    }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
-    setActiveLane: (options: { projectId: string; laneId: string }) => Promise<{ success: boolean; laneState?: ProjectLaneState; error?: string }>
     listGitBranches: (options: { projectPath: string }) => Promise<ProjectGitBranchListResult>
     checkoutGitBranch: (options: { projectPath: string; branch: string }) => Promise<ProjectGitCheckoutResult>
     createGitWorktree: (options: {
@@ -1293,7 +1469,7 @@ export interface ElectronAPI {
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
@@ -1302,18 +1478,21 @@ export interface ElectronAPI {
       projectPath: string
       oldPath: string
       newPath: string
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<RenameFileResult>
     deletePath: (options: {
       projectPath: string
       targetPath: string
-      origin?: 'agent' | 'remote' | 'sync'
+      origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<{ success: boolean; error?: string }>
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
     copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>
     preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
+    getPathNativeIcon: (options: { projectPath: string }) => Promise<ProjectPathNativeIconResult>
+    checkGhCliStatus: () => Promise<GhCliStatus>
+    createGitHubRepo: (options: { name: string; localPath: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
   }
   runtime: {
     getProjectCapabilities: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
@@ -1490,6 +1669,43 @@ export interface ElectronAPI {
       encryptedCredentials?: string
       keyId?: string
     }) => Promise<GitSyncCommitPushResult>
+    gitCaptureCheckpoint: (options: {
+      projectPath: string
+      checkpointId: string
+      authorName: string
+      authorEmail?: string
+    }) => Promise<GitCheckpointCaptureResult>
+    gitDiffCheckpoints: (options: {
+      projectPath: string
+      fromCheckpointId?: string | null
+      toCheckpointId: string
+      filePath?: string
+    }) => Promise<GitCheckpointDiffResult>
+    gitReadCheckpointFilePair: (options: {
+      projectPath: string
+      fromCheckpointId?: string | null
+      toCheckpointId: string
+      filePath: string
+    }) => Promise<GitCheckpointFilePairResult>
+    gitDeleteCheckpointRefs: (options: {
+      projectPath: string
+      checkpointIds: string[]
+    }) => Promise<GitCheckpointDeleteResult>
+    gitDeleteAllCheckpointRefs: (options: {
+      projectPath: string
+    }) => Promise<GitCheckpointDeleteResult>
+    gitGetHeadDiffStats: (options: {
+      projectPath: string
+      authorName?: string
+    }) => Promise<GitCheckpointHeadStatsResult>
+    subscribeGitDirtyState: (options: {
+      projectPath: string
+      authorName?: string
+    }) => Promise<GitDirtyStateSnapshot>
+    unsubscribeGitDirtyState: (options: {
+      projectPath: string
+    }) => Promise<{ success: boolean }>
+    onGitDirtyStateChange: (callback: (snapshot: GitDirtyStateSnapshot) => void) => () => void
     mergePreview: (options: {
       baseContent: string
       localContent: string
@@ -1512,16 +1728,23 @@ export interface ElectronAPI {
   }
   yjs: {
     setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>
-    onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
+    onExternalFileChange: (callback: (data: {
+      filePath: string
+      content: string
+      origin?: string | FileChangeAttribution
+    }) => void) => () => void
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
-      origin?: string
+      origin?: string | FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
       sizeBytes: number
       content?: string
     }) => void) => () => void
-    onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => () => void
+    onExternalFileDelete: (callback: (data: {
+      filePath: string
+      origin?: string | FileChangeAttribution
+    }) => void) => () => void
   }
   devServer: {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
@@ -1540,6 +1763,7 @@ export interface ElectronAPI {
     getProfiles: () => Promise<TerminalProfile[]>
     list: (options: { projectPath: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
+    getSnapshot: (options: { terminalId: string }) => Promise<TerminalSnapshot | null>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
     onOutputForTerminal: (terminalId: string, callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void

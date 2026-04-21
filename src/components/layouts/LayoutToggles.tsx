@@ -23,32 +23,54 @@ function PanelLeftIcon({ active = false, className, ...props }: PanelIconProps) 
     )
 }
 
-export function LayoutToggles() {
+/** Left-rail sidebar show/hide; hidden on workbench (toggle lives in workbench toolbar) and per-project settings chrome. */
+export function SidebarInsetToggle() {
     const location = useLocation()
     const sidebar = useOptionalSidebar()
     const sidebarState = sidebar?.state ?? 'collapsed'
-    const sidebarToggleInWorkbenchHeader = location.pathname.endsWith('/workbench')
+    const pathname = location.pathname
+    const sidebarToggleInWorkbenchHeader = pathname.endsWith('/workbench')
+    const sidebarToggleInProjectSettingsHeader = /\/projects\/(?:p\/[^/]+|[^/]+)\/settings(?:\/|$)/.test(
+        pathname,
+    )
+    /** Workbench header includes a `SidebarTrigger` via `ProjectShellTitleBarLeft` (collapsed desktop + closed mobile). */
+    const sidebarToggleInSharedShellLeft =
+        /^\/projects\/(?:settings|workspace|teams|store)(\/|$)/.test(pathname) ||
+        /^\/projects\/?$/.test(pathname)
+
+    if (
+        !sidebar ||
+        sidebarToggleInWorkbenchHeader ||
+        sidebarToggleInProjectSettingsHeader ||
+        sidebarToggleInSharedShellLeft
+    ) {
+        return null
+    }
 
     return (
-        <div className="flex items-center gap-0.5">
-            {sidebar && !sidebarToggleInWorkbenchHeader ? (
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', sidebarState === 'expanded' && 'text-foreground')}
-                            onClick={sidebar.toggleSidebar}
-                            aria-label={sidebarState === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
-                        >
-                            <PanelLeftIcon active={sidebarState === 'expanded'} className="h-4 w-4" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                        {sidebarState === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
-                    </TooltipContent>
-                    </Tooltip>
-                ) : null}
-        </div>
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                        'h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground',
+                        sidebarState === 'expanded' && 'text-foreground',
+                    )}
+                    onClick={sidebar.toggleSidebar}
+                    aria-label={sidebarState === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
+                >
+                    <PanelLeftIcon active={sidebarState === 'expanded'} className="h-4 w-4" />
+                </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+                {sidebarState === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
+            </TooltipContent>
+        </Tooltip>
     )
+}
+
+/** Reserved for additional layout controls; sidebar toggle is rendered in `UnifiedHeader` (left cluster). */
+export function LayoutToggles() {
+    return null
 }

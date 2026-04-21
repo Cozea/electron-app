@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import { ChevronDown, X } from 'lucide-react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
+
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -19,6 +19,9 @@ import {
   type TaskOverlayMarker,
   type TaskOverlayPayload,
 } from '@/features/projects/lib/taskFocusOverlay'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Cancel01Icon as __XHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon } from '@hugeicons/core-free-icons'
 
 interface TaskFocusOverlayProps {
   task: TaskOverlayPayload | null | undefined
@@ -147,7 +150,7 @@ export function TaskFocusOverlay({
           <div className="flex items-center gap-1">
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="icon-sm" className="group shrink-0">
-                <ChevronDown
+                <HugeiconsIcon icon={__ChevronDownHugeIcon}
                   className={cn(
                     'h-4 w-4 transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100',
                     !isOpen && '-rotate-90',
@@ -161,7 +164,7 @@ export function TaskFocusOverlay({
               className="shrink-0"
               onClick={handleDismiss}
             >
-              <X className="h-4 w-4" />
+              <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -202,3 +205,4 @@ export function TaskFocusOverlay({
     </div>
   )
 }
+

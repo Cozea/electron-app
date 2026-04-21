@@ -38,7 +38,6 @@ export const generateUploadUrl = mutation({
 export const create = mutation({
   args: {
     projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
     userId: v.id("users"),
     storageId: v.optional(v.id("_storage")), // Optional for folders
     name: v.string(),
@@ -77,7 +76,6 @@ export const create = mutation({
 
     const assetId = await ctx.db.insert("projectAssets", {
       projectId: args.projectId,
-      organizationId: project.organizationId,
       name: args.name,
       storageId: args.storageId,
       mimeType: args.mimeType,
@@ -92,7 +90,7 @@ export const create = mutation({
     })
 
     if (args.storageId && args.mimeType !== "application/x-directory") {
-      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      await applyProjectStorageDeltas(ctx, args.projectId, {
         assets: Math.max(0, args.size),
       })
     }
@@ -163,7 +161,7 @@ export const remove = mutation({
     await ctx.db.delete(args.assetId)
 
     if (asset.storageId && asset.mimeType !== "application/x-directory" && !hasSiblingReference) {
-      await applyProjectStorageDeltas(ctx, asset.organizationId, asset.projectId, {
+      await applyProjectStorageDeltas(ctx, asset.projectId, {
         assets: -Math.max(0, asset.size),
       })
     }
@@ -381,7 +379,6 @@ export const bulkDelete = mutation({
       error?: string
       freedBytes: number
       projectId?: Id<"projects">
-      organizationId?: Id<"organizations">
     }> = []
 
     for (let index = 0; index < args.assetIds.length; index += 1) {
@@ -425,19 +422,16 @@ export const bulkDelete = mutation({
         success: true,
         freedBytes: shouldDeleteUnderlyingStorage ? Math.max(0, asset.size) : 0,
         projectId: asset.projectId,
-        organizationId: asset.organizationId,
       })
     }
 
     const freedBytesByProject = new Map<string, {
-      organizationId: Id<"organizations">
       projectId: Id<"projects">
       bytes: number
     }>()
     for (const result of results) {
       if (
         !result.success ||
-        !result.organizationId ||
         !result.projectId ||
         result.freedBytes <= 0
       ) {
@@ -449,7 +443,6 @@ export const bulkDelete = mutation({
         existing.bytes += result.freedBytes
       } else {
         freedBytesByProject.set(key, {
-          organizationId: result.organizationId,
           projectId: result.projectId,
           bytes: result.freedBytes,
         })
@@ -457,7 +450,7 @@ export const bulkDelete = mutation({
     }
 
     for (const entry of freedBytesByProject.values()) {
-      await applyProjectStorageDeltas(ctx, entry.organizationId, entry.projectId, {
+      await applyProjectStorageDeltas(ctx, entry.projectId, {
         assets: -entry.bytes,
       })
     }
@@ -489,7 +482,6 @@ export const duplicate = mutation({
     const now = Date.now()
     const newAssetId = await ctx.db.insert("projectAssets", {
       projectId: asset.projectId,
-      organizationId: asset.organizationId,
       name: copyName,
       storageId: asset.storageId, // Share the same storage file
       mimeType: asset.mimeType,

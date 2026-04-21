@@ -1,8 +1,12 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, MinusSignIcon as __CircleIconHugeIcon } from '@hugeicons/core-free-icons'
+
 "use client"
 
 import * as React from 'react'
 import { Menu as BaseMenu } from '@base-ui/react'
-import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -137,7 +141,7 @@ function DropdownMenuCheckboxItem({
     >
       <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
         <BaseMenu.CheckboxItemIndicator>
-          <CheckIcon className="size-4" />
+          <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-4" />
         </BaseMenu.CheckboxItemIndicator>
       </span>
       {children}
@@ -175,7 +179,7 @@ function DropdownMenuRadioItem({
     >
       <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
         <BaseMenu.RadioItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
+          <HugeiconsIcon icon={__CircleIconHugeIcon} className="size-2 fill-current" />
         </BaseMenu.RadioItemIndicator>
       </span>
       {children}
@@ -194,7 +198,7 @@ function DropdownMenuLabel({
     <div
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn('px-2 py-1.5 text-sm font-medium data-[inset]:pl-8', className)}
+      className={cn('px-2 py-1.5 text-sm font-normal data-[inset]:pl-8', className)}
       role="presentation"
       {...props}
     />
@@ -245,7 +249,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto size-4" />
+      <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="ml-auto size-4" />
     </BaseMenu.SubmenuTrigger>
   )
 }

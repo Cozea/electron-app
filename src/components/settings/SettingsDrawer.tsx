@@ -1,96 +1,40 @@
-import { ChevronLeft } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WindowChromeTopInset } from '@/components/window-chrome/WindowChromeTopInset'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
-import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
-import { General } from '@/pages/workspace/General'
-import { Integrations } from '@/pages/workspace/Integrations'
-import { SourceControl } from '@/pages/workspace/SourceControl'
-import { Sync } from '@/pages/workspace/Sync'
-import { Policies } from '@/pages/workspace/Policies'
-import { Members } from '@/pages/teams/Members'
-import { MemberDetailsContent } from '@/pages/teams/MemberDetails'
-import { Roles } from '@/pages/teams/Roles'
-import { Billing } from '@/pages/workspace/Billing'
-import { useScopedAppContext } from '@/hooks/useScopedAppContext'
-
-import { prewarmCloudStorageData } from '@/hooks/useScopedCloudStorageData'
 import {
-  canAccessWorkspaceSurface,
-  getSettingsSurfaceDisplayLabel,
-  listSettingsSurfaces,
+
   resolveSettingsSurfaceFromRoute,
 } from '@/lib/settings/settingsRegistry'
+import { resolveSettingsNavigationSections } from '@/lib/settings/settingsNavigation'
 import {
   useSettingsDrawerStore,
   type SettingsDrawerSection,
 } from '@/stores/useSettingsDrawerStore'
+import {
+  SETTINGS_DRAWER_NAV_ROW_CLASS,
+  SIDEBAR_PILL_ACTIVE_CLASS,
+} from '@/features/projects/components/sidebar/projectSidebarShared'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
   if (section === 'account') {
-    return <Account surface="drawer" />
-  }
-
-  if (section === 'billing') {
-    return <Billing surface="drawer" route={route} />
-  }
-
-  if (section === 'general') {
-    return <General surface="drawer" route={route} />
+    return <Account surface="drawer" route={route} />
   }
 
   if (section === 'appearance') {
-    return <Appearance surface="drawer" />
+    return <Appearance surface="drawer" route={route} />
   }
 
-  if (section === 'storage') {
-    return <Storage surface="drawer" />
-  }
-
-  if (section === 'cliTools') {
-    return <Integrations surface="drawer" route={route} />
-  }
-
-  if (section === 'sourceControl') {
-    return <SourceControl surface="drawer" route={route} />
-  }
-
-  if (section === 'cloudStorage') {
-    return <Sync surface="drawer" route={route} />
-  }
-
-  if (section === 'policies') {
-    return <Policies surface="drawer" route={route} />
-  }
-
-  if (section === 'members') {
-    if (route.startsWith('/teams/members/')) {
-      return <MemberDetailsContent surface="drawer" route={route} />
-    }
-    return <Members surface="drawer" route={route} />
-  }
-
-  if (section === 'permissions') {
-    return <Roles surface="drawer" route={route} />
-  }
 
   return <Tooling surface="drawer" route={route} />
-}
-
-function getDrawerSurfaceLabel(
-  surface: ReturnType<typeof listSettingsSurfaces>[number],
-  scopeKind: 'personal' | 'workspace',
-) {
-  if (surface.id === 'cliTools') {
-    return scopeKind === 'workspace' ? 'Integrations' : 'CLI Tools'
-  }
-
-  return getSettingsSurfaceDisplayLabel(surface, scopeKind)
 }
 
 export function SettingsDrawer() {
@@ -110,25 +54,7 @@ export function SettingsDrawer() {
   const resolvedDrawerSurface = resolveSettingsSurfaceFromRoute(routePath, {
     placement: 'drawer',
   })
-  const {
-    workspaceScoped,
-    personalScoped,
-    convexOrganizationId,
-    surfaceAccess,
-  } = useScopedAppContext({
-    route: routePath || '/settings/account',
-  })
-  const settingsDrawerItems = listSettingsSurfaces({
-    scopeKind: workspaceScoped ? 'workspace' : 'personal',
-    placement: 'drawer',
-  }).filter((surface) => {
-    if (workspaceScoped) {
-      return canAccessWorkspaceSurface(surface, surfaceAccess)
-    }
-
-    return true
-  })
-  const drawerSidebarLabel = workspaceScoped ? 'Workspace' : 'Settings'
+  const navSections = useMemo(() => resolveSettingsNavigationSections('drawer'), [])
 
   const preloadSurface = useCallback((route: string, preload?: () => Promise<unknown>) => {
     if (!preload) return
@@ -138,24 +64,6 @@ export function SettingsDrawer() {
       preloadedRoutesRef.current.delete(route)
     })
   }, [])
-
-  const getSurfacePreload = useCallback(
-    (
-      surface: ReturnType<typeof listSettingsSurfaces>[number]
-    ): (() => Promise<unknown>) | undefined => {
-      if (surface.id === 'cloudStorage') {
-        return async () => {
-          await Promise.all([
-            surface.preload?.(),
-            prewarmCloudStorageData(convexOrganizationId ?? null),
-          ])
-        }
-      }
-
-      return surface.preload
-    },
-    [convexOrganizationId]
-  )
 
   useEffect(() => {
     const updateFades = (
@@ -216,14 +124,14 @@ export function SettingsDrawer() {
     <Sheet open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <SheetContent
         side="right"
-        disableAnimation={personalScoped}
+        disableAnimation
         className="inset-0 flex h-screen w-screen max-w-none flex-col gap-0 p-0 sm:max-w-none"
         closeClassName="hidden"
       >
         <SheetHeader className="sr-only">
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription>
-            Browse and update account, workspace, billing, integrations, storage, members, and permissions settings.
+            Browse and update device, appearance, and tooling settings.
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -242,38 +150,39 @@ export function SettingsDrawer() {
                 ref={sidebarScrollRef}
                 className="h-full overflow-y-auto scrollbar-hide px-2 py-3"
               >
-                <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                  {drawerSidebarLabel}
-                </div>
-                <div className="space-y-1">
-                  {settingsDrawerItems.map((item) => {
-                    const Icon = item.icon
-                    const itemRoute = item.routes[workspaceScoped ? 'workspace' : 'personal']
-                    if (!itemRoute) {
-                      return null
-                    }
-                    const isActive =
-                      resolvedDrawerSurface?.surface.id === item.id || section === item.id
+                {navSections.map((navSection, index) => (
+                  <div key={navSection.id} className={cn(index > 0 && 'mt-3')}>
+                    <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
+                      {navSection.label}
+                    </div>
+                    <div className="space-y-1">
+                      {navSection.items.map((item) => {
+                        const Icon = item.surface.icon
+                        const isActive =
+                          resolvedDrawerSurface?.surface.id === item.surface.id ||
+                          section === item.surface.id
 
-                    return (
-                      <button
-                        key={itemRoute}
-                        type="button"
-                        data-active={isActive}
-                        onClick={() => openFromRoute(itemRoute)}
-                        onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                        onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
-                        onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                        return (
+                          <button
+                            key={item.route}
+                            type="button"
+                            onClick={() => openFromRoute(item.route)}
+                            onMouseEnter={() => preloadSurface(item.route, item.surface.preload)}
+                            onFocus={() => preloadSurface(item.route, item.surface.preload)}
+                            onPointerDown={() => preloadSurface(item.route, item.surface.preload)}
                             className={cn(
-                          'flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
-                        )}
-                      >
-                        <Icon className="opacity-60" />
-                        <span>{getDrawerSurfaceLabel(item, workspaceScoped ? 'workspace' : 'personal')}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+                              SETTINGS_DRAWER_NAV_ROW_CLASS,
+                              isActive && SIDEBAR_PILL_ACTIVE_CLASS,
+                            )}
+                          >
+                            <Icon />
+                            <span>{item.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
               <div
                 className={cn(
@@ -289,12 +198,8 @@ export function SettingsDrawer() {
               />
             </div>
             <div className="mt-auto p-2 pb-3">
-              <button
-                type="button"
-                onClick={close}
-                className="flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground"
-              >
-                <ChevronLeft className="h-4 w-4 opacity-60" />
+              <button type="button" onClick={close} className={SETTINGS_DRAWER_NAV_ROW_CLASS}>
+                <HugeiconsIcon icon={__ChevronLeftHugeIcon} className="h-4 w-4" />
                 <span>Back</span>
               </button>
             </div>

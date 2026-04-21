@@ -1,11 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { useConvex } from 'convex/react'
 import * as Y from 'yjs'
 import type { Id } from '../../convex/_generated/dataModel'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
-import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 import type { YjsProjectDoc, RenameEntry } from '@/lib/yjs/YjsProjectDoc'
 import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
+import { extractRemoteYjsOrigin, type RemoteYjsOrigin } from '@/lib/yjs/origins'
 
 /**
  * useYjsFileWriteback - Writes remote Yjs changes back to local disk.
@@ -24,10 +23,10 @@ import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
 export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
   projectPath: string | null,
+  gitCwd: string | null,
   projectId: Id<'projects'> | null,
   userId: Id<'users'> | null
 ): void {
-  const convex = useConvex()
   const pendingWritesRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing
 
@@ -40,23 +39,42 @@ export function useYjsFileWriteback(
       actorType: 'system',
       source: 'remote',
     })
-    const gitDurabilityCoordinator = userId
-      ? GitDurabilityCoordinator.acquireShared({
-          projectId,
-          projectPath,
-          convex,
-          userId,
-        })
-      : null
 
     // Track which files we're observing
     const observedFiles = new Map<string, () => void>()
     const pendingDeletes = new Set<string>()
+    const pendingCheckpointTimers = new Map<string, ReturnType<typeof setTimeout>>()
     let deleteDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
     const normalizeFilePath = (filePath: string): string | null => {
       const normalized = normalizeProjectFilePath(filePath)
       return normalized.length > 0 ? normalized : null
+    }
+
+    const scheduleCheckpointCapture = (origin: RemoteYjsOrigin | null) => {
+      const checkpointGroupId = origin?.checkpointGroupId?.trim()
+      if (!checkpointGroupId) return
+
+      const existing = pendingCheckpointTimers.get(checkpointGroupId)
+      if (existing) {
+        clearTimeout(existing)
+      }
+
+      const timer = setTimeout(() => {
+        pendingCheckpointTimers.delete(checkpointGroupId)
+        if (!gitCwd) {
+          return
+        }
+        void window.electronAPI.sync.gitCaptureCheckpoint({
+          projectPath: gitCwd,
+          checkpointId: checkpointGroupId,
+          authorName: 'Remote collaborator',
+        }).catch((error) => {
+          console.warn(`[YjsWriteback] Failed to capture remote checkpoint ${checkpointGroupId}:`, error)
+        })
+      }, DEBOUNCE_MS + 50)
+
+      pendingCheckpointTimers.set(checkpointGroupId, timer)
     }
 
     // Write a file to disk
@@ -73,7 +91,6 @@ export function useYjsFileWriteback(
         if (!result.success) {
           throw new Error(result.error ?? 'Write failed')
         }
-        gitDurabilityCoordinator?.scheduleSync(`remote-write:${normalizedPath}`)
         console.log(`[YjsWriteback] Wrote remote change: ${normalizedPath}`)
       } catch (err) {
         console.error(`[YjsWriteback] Failed to write ${normalizedPath}:`, err)
@@ -109,7 +126,6 @@ export function useYjsFileWriteback(
           projectPath,
           paths,
         })
-        gitDurabilityCoordinator?.scheduleSync(`remote-delete:${paths.join(',')}`)
         console.log(`[YjsWriteback] Deleted remote files: ${paths.join(', ')}`)
       } catch (err) {
         console.error('[YjsWriteback] Failed to delete remote files:', err)
@@ -137,12 +153,14 @@ export function useYjsFileWriteback(
       const yText = yjsDoc.files.get(filePath)
       if (!yText) return
 
-      const handler = (_event: unknown, transaction: { origin: string | null }) => {
+      const handler = (_event: unknown, transaction: { origin: unknown }) => {
         // Only write back changes from remote (not our own agent/init)
         // 'remote' origin = came from another user via Convex
-        if (transaction.origin === 'remote') {
+        const remoteOrigin = extractRemoteYjsOrigin(transaction.origin)
+        if (remoteOrigin) {
           const content = yText.toString()
           scheduleWrite(normalizedPath, content)
+          scheduleCheckpointCapture(remoteOrigin)
         }
       }
 
@@ -151,12 +169,12 @@ export function useYjsFileWriteback(
     }
 
     // Observe the files map for new files being added
-    const filesMapHandler = (event: Y.YMapEvent<Y.Text>, transaction: Y.Transaction) => {
-      for (const [rawPath, change] of event.changes.keys.entries()) {
+    const filesMapHandler = (event: Y.YEvent<Y.Map<Y.Text>>, transaction: Y.Transaction) => {
+      for (const rawPath of event.keysChanged) {
         const normalizedPath = normalizeFilePath(rawPath)
         if (!normalizedPath) continue
 
-        if (change.action === 'delete') {
+        if (!yjsDoc.files.has(rawPath)) {
           // Stop observing deleted files
           const unobserve = observedFiles.get(normalizedPath)
           if (unobserve) {
@@ -172,8 +190,10 @@ export function useYjsFileWriteback(
           }
 
           // Only delete from disk for remote changes
-          if (transaction.origin === 'remote') {
+          const remoteOrigin = extractRemoteYjsOrigin(transaction.origin)
+          if (remoteOrigin) {
             scheduleDelete(normalizedPath)
+            scheduleCheckpointCapture(remoteOrigin)
           }
 
           continue
@@ -183,11 +203,13 @@ export function useYjsFileWriteback(
         observeFile(rawPath)
 
         // If a file was created remotely, we may have missed the initial content change.
-        if (transaction.origin === 'remote') {
+        const remoteOrigin = extractRemoteYjsOrigin(transaction.origin)
+        if (remoteOrigin) {
           const yText = yjsDoc.files.get(rawPath)
           if (yText) {
             scheduleWrite(normalizedPath, yText.toString())
           }
+          scheduleCheckpointCapture(remoteOrigin)
         }
       }
     }
@@ -218,7 +240,6 @@ export function useYjsFileWriteback(
           size: 0,
           idempotencyKey: `remote:rename:${normalizedFrom}:${normalizedTo}`,
         })
-        gitDurabilityCoordinator?.scheduleSync(`remote-rename:${normalizedFrom}:${normalizedTo}`)
         console.log(`[YjsWriteback] Renamed: ${normalizedFrom} -> ${normalizedTo}`)
       } catch (err) {
         console.error(`[YjsWriteback] Failed to rename ${normalizedFrom} -> ${normalizedTo}:`, err)
@@ -226,20 +247,20 @@ export function useYjsFileWriteback(
     }
 
     // Observe the renames map for remote renames
-    const renamesMapHandler = (event: Y.YMapEvent<RenameEntry>, transaction: Y.Transaction) => {
+    const renamesMapHandler = (event: Y.YEvent<Y.Map<RenameEntry>>, transaction: Y.Transaction) => {
       // Only process remote renames
-      if (transaction.origin !== 'remote') return
+      const remoteOrigin = extractRemoteYjsOrigin(transaction.origin)
+      if (!remoteOrigin) return
 
-      for (const [renameId, change] of event.changes.keys.entries()) {
-        if (change.action === 'add') {
-          const rename = yjsDoc.renames.get(renameId)
-          if (rename) {
-            renameFileToDisk(rename.from, rename.to, rename.isDirectory)
-            // Clear the rename after processing to prevent re-processing
-            // (do this async to not block the observer)
-            setTimeout(() => yjsDoc.clearRename(renameId), 100)
-          }
-        }
+      for (const renameId of event.keysChanged) {
+        const rename = yjsDoc.renames.get(renameId)
+        if (!rename) continue
+
+        renameFileToDisk(rename.from, rename.to, rename.isDirectory)
+        scheduleCheckpointCapture(remoteOrigin)
+        // Clear the rename after processing to prevent re-processing
+        // (do this async to not block the observer)
+        setTimeout(() => yjsDoc.clearRename(renameId), 100)
       }
     }
 
@@ -272,7 +293,10 @@ export function useYjsFileWriteback(
       // Cleanup: cancel pending deletes
       if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)
       pendingDeletes.clear()
-      gitDurabilityCoordinator?.release()
+      for (const timeout of pendingCheckpointTimers.values()) {
+        clearTimeout(timeout)
+      }
+      pendingCheckpointTimers.clear()
 
       // Unobserve files map
       yjsDoc.files.unobserve(filesMapHandler)
@@ -280,5 +304,5 @@ export function useYjsFileWriteback(
       // Unobserve renames map
       yjsDoc.renames.unobserve(renamesMapHandler)
     }
-  }, [convex, projectId, projectPath, userId, yjsDoc])
+  }, [gitCwd, projectId, projectPath, userId, yjsDoc])
 }

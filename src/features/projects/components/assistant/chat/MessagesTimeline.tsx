@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type MessageId, type TurnId } from "@cozea/assistant-contracts";
+import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant-contracts";
 import {
   memo,
   useCallback,
@@ -8,16 +8,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentType,
   type ReactNode,
+  type SVGProps,
 } from "react";
 import {
   measureElement as measureVirtualElement,
   type VirtualItem,
   useVirtualizer,
 } from "@tanstack/react-virtual";
-import { deriveTimelineEntries, formatElapsed } from "./session-logic";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
+import { deriveTimelineEntries } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
-import { type TurnDiffSummary } from "./types";
+import { type TurnDiffSummary } from "@/stores/types";
 import { summarizeTurnDiffStats } from "./turnDiffTree";
 import ChatMarkdown from "./ChatMarkdown";
 import {
@@ -27,21 +31,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  BotIcon,
-  ChevronsUpDown,
-  CheckIcon,
-  CircleAlertIcon,
-  EyeIcon,
-  GlobeIcon,
-  HammerIcon,
-  type LucideIcon,
-  SquarePenIcon,
-  TerminalIcon,
-  Undo2Icon,
-  WrenchIcon,
-  ZapIcon,
-} from "lucide-react";
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
 import { clamp } from "effect/Number";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
@@ -63,6 +54,19 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
+import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+
+const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
+const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
+const CheckIcon = asHugeIcon(__CheckIconHugeIcon)
+const TerminalIcon = asHugeIcon(__TerminalIconHugeIcon)
+const BotIcon = asHugeIcon(__BotIconHugeIcon)
+const CircleAlertIcon = asHugeIcon(__CircleAlertIconHugeIcon)
+const EyeIcon = asHugeIcon(__EyeIconHugeIcon)
+const GlobeIcon = asHugeIcon(__GlobeIconHugeIcon)
+const SquarePenIcon = asHugeIcon(__SquarePenIconHugeIcon)
+const HammerIcon = asHugeIcon(__HammerIconHugeIcon)
+const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon)
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
@@ -70,6 +74,7 @@ const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 interface MessagesTimelineProps {
   hasMessages: boolean;
   isWorking: boolean;
+  selectedProvider: ProviderKind | null;
   activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
   scrollContainer: HTMLDivElement | null;
@@ -90,9 +95,27 @@ interface MessagesTimelineProps {
   workspaceRoot: string | undefined;
 }
 
+function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined): LucideIcon {
+  switch (provider) {
+    case "claudeAgent":
+      return ClaudeAI
+    case "cursor":
+      return CursorIcon
+    case "gemini":
+      return Gemini
+    case "opencode":
+      return OpenCodeIcon
+    case "codex":
+      return OpenAI
+    default:
+      return MessageSquareIcon
+  }
+}
+
 export const MessagesTimeline = memo(function MessagesTimeline({
   hasMessages,
   isWorking,
+  selectedProvider,
   activeTurnInProgress,
   activeTurnStartedAt,
   scrollContainer,
@@ -114,6 +137,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 }: MessagesTimelineProps) {
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
+  const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
     const timelineRoot = timelineRootRef.current;
@@ -335,13 +359,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
               {showHeader && (
                 <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                  <p className="text-[8px] uppercase tracking-[0.12em] text-muted-foreground/50">
                     {groupLabel} ({groupedEntries.length})
                   </p>
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
+                      className="text-[8px] uppercase tracking-[0.08em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/70"
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
                       {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
@@ -431,7 +455,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         title="Revert to this message"
                         aria-label="Revert to this message"
                       >
-                        <Undo2Icon className="size-3" />
+                        <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
                       </Button>
                     )}
                   </div>
@@ -448,12 +472,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <>
               {row.showCompletionDivider && (
-                <div className="my-3 flex items-center gap-3">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
-                    {completionSummary ? `Response • ${completionSummary}` : "Response"}
-                  </span>
-                  <span className="h-px flex-1 bg-border" />
+                <div className="my-4 px-1">
+                  <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground/88">
+                    <span className="font-medium">
+                      {completionSummary ?? "Response ready"}
+                    </span>
+                    <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-3.5 shrink-0 stroke-[2.2] text-muted-foreground/65" />
+                  </div>
+                  <div className="mt-2 h-px bg-border/70" />
                 </div>
               )}
               <div className="min-w-0 px-1 py-0.5">
@@ -497,7 +523,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                             aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           >
-                            <ChevronsUpDown className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                           </Button>
                           <Button
                             type="button"
@@ -565,7 +591,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         <Empty className="w-full max-w-md py-8">
           <EmptyHeader>
             <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-              <BotIcon className="h-7 w-7" />
+              <EmptyAssistantIcon className="h-7 w-7" />
             </EmptyMedia>
             <EmptyTitle className="text-base font-medium">Ready to assist</EmptyTitle>
             <EmptyDescription>

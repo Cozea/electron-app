@@ -5,7 +5,9 @@
  * Used as fallback when metadata isn't stored in Convex.
  */
 
-import type { DevCommandSuggestion } from '@shared/electronApiTypes'
+import type { AppSettings, DevCommandSuggestion } from '@shared/electronApiTypes'
+import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
+import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 
 export type Framework =
   | 'expo'
@@ -51,6 +53,8 @@ export interface DevServerLaunchContext {
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
+const MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH = 4
+
 function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager): string {
   if (pm === 'npm') return command
   const trimmed = command.trim()
@@ -73,17 +77,209 @@ function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager)
   return command
 }
 
-async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
-  try {
-    const entries = await window.electronAPI.fs.readDir(projectPath)
-    const names = new Set(entries.map((entry) => entry.name))
-    if (names.has('bun.lockb')) return 'bun'
-    if (names.has('pnpm-lock.yaml')) return 'pnpm'
-    if (names.has('yarn.lock')) return 'yarn'
-    if (names.has('package-lock.json')) return 'npm'
-  } catch {
-    // Fall through to npm.
+function trimTrailingSeparators(pathValue: string): string {
+  if (/^[A-Za-z]:[\\/]*$/.test(pathValue)) {
+    return pathValue.endsWith('\\') || pathValue.endsWith('/') ? pathValue : `${pathValue}\\`
   }
+
+  return pathValue.replace(/[\\/]+$/, '') || pathValue
+}
+
+function inferPathSeparator(pathValue: string): '/' | '\\' {
+  return pathValue.includes('\\') ? '\\' : '/'
+}
+
+function joinAbsolutePath(basePath: string, ...segments: string[]): string {
+  const separator = inferPathSeparator(basePath)
+  const normalizedBase = trimTrailingSeparators(basePath)
+  const cleanedSegments = segments
+    .map((segment) => segment.replace(/^[/\\]+|[/\\]+$/g, ''))
+    .filter(Boolean)
+
+  if (cleanedSegments.length === 0) {
+    return normalizedBase
+  }
+
+  const baseWithSeparator =
+    normalizedBase.endsWith('/') || normalizedBase.endsWith('\\')
+      ? normalizedBase
+      : `${normalizedBase}${separator}`
+
+  return `${baseWithSeparator}${cleanedSegments.join(separator)}`
+}
+
+function getParentDirectory(pathValue: string): string | null {
+  const normalized = trimTrailingSeparators(pathValue)
+  const lastSlashIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+
+  if (lastSlashIndex < 0) {
+    return null
+  }
+
+  if (lastSlashIndex === 0) {
+    return normalized[0]
+  }
+
+  if (lastSlashIndex === 2 && /^[A-Za-z]:/.test(normalized.slice(0, 2))) {
+    return normalized.slice(0, 3)
+  }
+
+  const parent = normalized.slice(0, lastSlashIndex)
+  return parent.length > 0 ? parent : null
+}
+
+function normalizeComparableAbsolutePath(pathValue: string): string {
+  const trimmed = trimTrailingSeparators(pathValue).replace(/\\/g, '/')
+
+  if (trimmed === '/') {
+    return trimmed
+  }
+
+  if (/^[A-Za-z]:\/$/.test(trimmed)) {
+    return trimmed.toLowerCase()
+  }
+
+  return trimmed.toLowerCase()
+}
+
+function isPathInsideRoot(candidatePath: string, rootPath: string): boolean {
+  const normalizedCandidate = normalizeComparableAbsolutePath(candidatePath)
+  const normalizedRoot = normalizeComparableAbsolutePath(rootPath)
+
+  if (normalizedCandidate === normalizedRoot) {
+    return true
+  }
+
+  return normalizedCandidate.startsWith(`${normalizedRoot}/`)
+}
+
+function getApprovedReadRoots(settings: AppSettings): string[] {
+  const roots = new Set<string>()
+  const projectsDirectory = settings.projectsDirectory?.trim()
+  if (projectsDirectory) {
+    roots.add(trimTrailingSeparators(projectsDirectory))
+  }
+
+  for (const approvedRoot of settings.approvedExternalReadRoots ?? []) {
+    if (typeof approvedRoot !== 'string' || approvedRoot.trim().length === 0) {
+      continue
+    }
+    roots.add(trimTrailingSeparators(approvedRoot))
+  }
+
+  return Array.from(roots)
+}
+
+function isPathInsideApprovedRoots(candidatePath: string, approvedRoots: readonly string[]): boolean {
+  return approvedRoots.some((rootPath) => isPathInsideRoot(candidatePath, rootPath))
+}
+
+function buildPackageManagerSearchRoots(
+  projectPath: string,
+  approvedRoots: readonly string[],
+): string[] {
+  const roots: string[] = []
+  const initialRoot = trimTrailingSeparators(projectPath.trim())
+  let current: string | null = initialRoot
+
+  if (initialRoot) {
+    roots.push(initialRoot)
+  }
+
+  for (let depth = 1; depth <= MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH && current; depth += 1) {
+    const normalized = trimTrailingSeparators(current)
+    const parent = getParentDirectory(normalized)
+    if (!parent || parent === normalized) {
+      break
+    }
+
+    if (!isPathInsideApprovedRoots(parent, approvedRoots)) {
+      break
+    }
+
+    if (!roots.includes(parent)) {
+      roots.push(parent)
+    }
+    current = parent
+  }
+
+  return roots
+}
+
+function parsePackageManagerField(
+  packageManagerField: unknown,
+): PackageManager | null {
+  if (typeof packageManagerField !== 'string') {
+    return null
+  }
+
+  const normalized = packageManagerField.trim().toLowerCase()
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized === 'bun' || normalized.startsWith('bun@')) return 'bun'
+  if (normalized === 'pnpm' || normalized.startsWith('pnpm@')) return 'pnpm'
+  if (normalized === 'yarn' || normalized.startsWith('yarn@')) return 'yarn'
+  if (normalized === 'npm' || normalized.startsWith('npm@')) return 'npm'
+
+  return null
+}
+
+function detectPackageManagerFromEntryNames(entryNames: Set<string>): PackageManager | null {
+  if (entryNames.has('bun.lock') || entryNames.has('bun.lockb')) return 'bun'
+  if (entryNames.has('pnpm-lock.yaml')) return 'pnpm'
+  if (entryNames.has('yarn.lock')) return 'yarn'
+  if (entryNames.has('package-lock.json')) return 'npm'
+  return null
+}
+
+async function readPackageManagerFromAbsolutePackageJson(
+  absoluteDirectoryPath: string,
+): Promise<PackageManager | null> {
+  try {
+    const raw = await projectAnalysisDesktopClient.readAbsoluteFile(
+      joinAbsolutePath(absoluteDirectoryPath, 'package.json'),
+    )
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw) as { packageManager?: unknown }
+    return parsePackageManagerField(parsed.packageManager)
+  } catch {
+    return null
+  }
+}
+
+async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
+  let approvedRoots: string[] = []
+
+  try {
+    approvedRoots = getApprovedReadRoots(await settingsDesktopClient.get())
+  } catch {
+    approvedRoots = []
+  }
+
+  for (const candidateRoot of buildPackageManagerSearchRoots(projectPath, approvedRoots)) {
+    const packageManagerFromPackageJson =
+      await readPackageManagerFromAbsolutePackageJson(candidateRoot)
+    if (packageManagerFromPackageJson) {
+      return packageManagerFromPackageJson
+    }
+
+    try {
+      const entries = await projectAnalysisDesktopClient.readDir(candidateRoot)
+      const entryNames = new Set(entries.map((entry) => entry.name))
+      const packageManagerFromLockfile = detectPackageManagerFromEntryNames(entryNames)
+      if (packageManagerFromLockfile) {
+        return packageManagerFromLockfile
+      }
+    } catch {
+      // Fall through to the next ancestor candidate.
+    }
+  }
+
   return 'npm'
 }
 
@@ -261,6 +457,7 @@ const FRAMEWORK_CONFIGS: Record<Framework, Omit<FrameworkInfo, 'framework'>> = {
 
 interface PackageJson {
   name?: string
+  packageManager?: string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   scripts?: Record<string, string>
@@ -281,7 +478,7 @@ function extractNpmScriptName(command: string | null | undefined): string | null
 
 async function readPackageJson(projectPath: string): Promise<PackageJson | null> {
   try {
-    const result = await window.electronAPI.project.readFile({
+    const result = await projectAnalysisDesktopClient.readFile({
       projectPath,
       filePath: 'package.json',
     })
@@ -524,7 +721,7 @@ export async function getProjectPreviewExperience(
 }
 
 /**
- * Get just the dev server config (for ServerControl)
+ * Get just the dev server config for preview/runtime launch flows.
  */
 function getPersistedDevCommand(projectPath: string): string | null {
   if (typeof localStorage === 'undefined') return null
@@ -549,7 +746,7 @@ export async function getDevServerConfig(
   let requiresUserSelection = false
 
   try {
-    const profile = await window.electronAPI.runtime.getProjectCapabilities({ projectPath })
+    const profile = await projectAnalysisDesktopClient.getProjectCapabilities({ projectPath })
     suggestions = profile?.devServer?.suggestions ?? []
     requiresUserSelection = Boolean(profile?.devServer?.requiresUserSelection)
   } catch {
@@ -687,7 +884,7 @@ export async function checkDependenciesInstalled(
   packageManager?: PackageManager
 ): Promise<boolean> {
   try {
-    const rootEntries = await window.electronAPI.fs.readDir(projectPath)
+    const rootEntries = await projectAnalysisDesktopClient.readDir(projectPath)
     const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )
@@ -716,7 +913,7 @@ export async function checkDependenciesInstalled(
  */
 export async function hasPackageJson(projectPath: string): Promise<boolean> {
   try {
-    const result = await window.electronAPI.project.readFile({ projectPath, filePath: 'package.json' })
+    const result = await projectAnalysisDesktopClient.readFile({ projectPath, filePath: 'package.json' })
     return result.success && !!result.content
   } catch {
     return false

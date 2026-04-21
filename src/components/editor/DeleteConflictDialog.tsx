@@ -1,6 +1,6 @@
 import { useYjsProject } from '@/contexts/YjsProjectContext'
-import { AlertTriangle, FileX, FileCheck } from 'lucide-react'
 import {
+
   Dialog,
   DialogContent,
   DialogDescription,
@@ -9,6 +9,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, DocumentAttachmentIcon as __FileCheckHugeIcon, DocumentAttachmentIcon as __FileXHugeIcon } from '@hugeicons/core-free-icons'
 
 /**
  * DeleteConflictDialog - Shows a dialog when delete-vs-edit conflicts are detected.
@@ -48,7 +51,7 @@ export function DeleteConflictDialog() {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-amber-600">
-            <AlertTriangle className="w-5 h-5" />
+            <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="w-5 h-5" />
             File Conflict Detected
           </DialogTitle>
           <DialogDescription>
@@ -84,11 +87,11 @@ export function DeleteConflictDialog() {
               className="flex-1"
               onClick={handleAcceptDelete}
             >
-              <FileX className="w-4 h-4 mr-2" />
+              <HugeiconsIcon icon={__FileXHugeIcon} className="w-4 h-4 mr-2" />
               Accept Deletion
             </Button>
             <Button className="flex-1" onClick={handleKeepLocal}>
-              <FileCheck className="w-4 h-4 mr-2" />
+              <HugeiconsIcon icon={__FileCheckHugeIcon} className="w-4 h-4 mr-2" />
               Keep My Version
             </Button>
           </div>
@@ -104,3 +107,4 @@ export function DeleteConflictDialog() {
     </Dialog>
   )
 }
+

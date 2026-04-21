@@ -9,46 +9,30 @@ interface ProjectHeaderOptions {
 
 export function useProjectHeader(
   header: ReactNode | null,
-  breadcrumbAddon?: ReactNode | null,
   centerAddon?: ReactNode | null,
-  hideBreadcrumbs?: boolean,
   options?: ProjectHeaderOptions
 ) {
   const setHeader = useProjectHeaderStore((state) => state.setHeader)
-  const setBreadcrumbAddon = useProjectHeaderStore((state) => state.setBreadcrumbAddon)
   const setCenterAddon = useProjectHeaderStore((state) => state.setCenterAddon)
-  const setHideBreadcrumbs = useProjectHeaderStore((state) => state.setHideBreadcrumbs)
   const setInsetLeft = useProjectHeaderStore((state) => state.setInsetLeft)
   const setInsetRight = useProjectHeaderStore((state) => state.setInsetRight)
+  const reset = useProjectHeaderStore((state) => state.reset)
 
   useEffect(() => {
     setHeader(header ?? null)
-    setBreadcrumbAddon(breadcrumbAddon ?? null)
     setCenterAddon(centerAddon ?? null)
-    setHideBreadcrumbs(Boolean(hideBreadcrumbs))
     setInsetLeft(options?.insetLeft ?? 0)
     setInsetRight(options?.insetRight ?? 0)
-
-    return () => {
-      setHeader(null)
-      setBreadcrumbAddon(null)
-      setCenterAddon(null)
-      setHideBreadcrumbs(false)
-      setInsetLeft(0)
-      setInsetRight(0)
-    }
   }, [
     header,
-    breadcrumbAddon,
     centerAddon,
-    hideBreadcrumbs,
     options?.insetLeft,
     options?.insetRight,
     setHeader,
-    setBreadcrumbAddon,
     setCenterAddon,
-    setHideBreadcrumbs,
     setInsetLeft,
     setInsetRight,
   ])
+
+  useEffect(() => reset, [reset])
 }

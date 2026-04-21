@@ -1,11 +1,40 @@
+import { ConvexError, v } from "convex/values"
 import type { MutationCtx } from "./_generated/server"
 import { internalMutation, mutation, query } from "./_generated/server"
-import { v } from "convex/values"
 
 // Keep awareness reasonably fresh to avoid "ghost cursors".
 // Clients republish periodically to stay active.
 const AWARENESS_TIMEOUT_MS = 45 * 1000
 const AWARENESS_CLEANUP_BATCH_SIZE = 1000
+
+function parseCipherEnvelopeMetadata(update: ArrayBuffer): { kind: string; keyVersion: number } | null {
+  try {
+    const text = new TextDecoder().decode(new Uint8Array(update))
+    const parsed = JSON.parse(text) as {
+      v?: unknown
+      alg?: unknown
+      kind?: unknown
+      keyVersion?: unknown
+    }
+
+    if (
+      parsed?.v !== 1 ||
+      parsed.alg !== "A256GCM" ||
+      typeof parsed.kind !== "string" ||
+      typeof parsed.keyVersion !== "number" ||
+      !Number.isFinite(parsed.keyVersion)
+    ) {
+      return null
+    }
+
+    return {
+      kind: parsed.kind,
+      keyVersion: Math.max(1, Math.floor(parsed.keyVersion)),
+    }
+  } catch {
+    return null
+  }
+}
 
 async function deleteExpiredAwarenessBatch(ctx: MutationCtx) {
   const now = Date.now()
@@ -39,6 +68,34 @@ export const upsertAwareness = mutation({
     ttlMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const activeRoomKey = await ctx.db
+      .query("projectCollabRoomKeys")
+      .withIndex("by_project_and_room", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", `project:${args.projectId}`),
+      )
+      .collect()
+      .then((entries) =>
+        entries
+          .filter((entry) => entry.status === "active")
+          .sort((a, b) => b.keyVersion - a.keyVersion)[0] ?? null,
+      )
+
+    if (activeRoomKey) {
+      const metadata = parseCipherEnvelopeMetadata(args.update)
+      if (!metadata || metadata.kind !== "yjs_awareness") {
+        throw new ConvexError({
+          code: "invalid_encrypted_payload",
+          message: "Invalid encrypted yjs_awareness payload.",
+        })
+      }
+      if (metadata.keyVersion !== activeRoomKey.keyVersion) {
+        throw new ConvexError({
+          code: "encryption_key_stale",
+          message: "Encrypted collaboration key is stale. Refresh room access.",
+        })
+      }
+    }
+
     const existing = await ctx.db
       .query("yjsAwareness")
       .withIndex("by_project_and_client", (q) =>

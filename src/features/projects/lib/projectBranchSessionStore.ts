@@ -1,0 +1,327 @@
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+
+const STORAGE_KEY = "cozea:project-branch-sessions:v1"
+const COLLAB_LANE_ID = "collab"
+const LOCAL_LANE_PREFIX = "branch:"
+
+interface StoredProjectBranchSession {
+  projectId: string
+  activeBranch: string | null
+  collabBranch: string
+  projectPath: string | null
+  updatedAt: number
+}
+
+interface StoredProjectBranchSessionState {
+  version: 2
+  sessions: Record<string, StoredProjectBranchSession>
+}
+
+function normalizeProjectId(projectId: string | null | undefined): string | null {
+  const trimmed = projectId?.trim()
+  return trimmed ? trimmed : null
+}
+
+function normalizeBranch(value: string | null | undefined, fallback = "main"): string {
+  const trimmed = value?.trim()
+  return trimmed || fallback
+}
+
+function normalizeProjectPath(projectPath: string | null | undefined): string | null {
+  const trimmed = projectPath?.trim()
+  return trimmed ? trimmed : null
+}
+
+function buildInitialState(): StoredProjectBranchSessionState {
+  return {
+    version: 2,
+    sessions: {},
+  }
+}
+
+function buildSessionStorageKey(
+  projectId: string,
+  projectPath: string | null | undefined,
+): string {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    throw new Error("projectId is required")
+  }
+
+  const normalizedProjectPath = normalizeProjectPath(projectPath)
+  return `${normalizedProjectId}::${normalizedProjectPath ?? "unbound"}`
+}
+
+function readState(): StoredProjectBranchSessionState {
+  if (typeof window === "undefined") {
+    return buildInitialState()
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return buildInitialState()
+    }
+
+    const parsed = JSON.parse(raw) as {
+      version?: number
+      sessions?: unknown
+      projects?: unknown
+    } | null
+    if (!parsed || typeof parsed !== "object") {
+      return buildInitialState()
+    }
+
+    if (
+      parsed.version === 2 &&
+      parsed.sessions &&
+      typeof parsed.sessions === "object"
+    ) {
+      return {
+        version: 2,
+        sessions: parsed.sessions as Record<string, StoredProjectBranchSession>,
+      }
+    }
+
+    const legacyProjects =
+      parsed.version === 1 &&
+      "projects" in parsed &&
+      parsed.projects &&
+      typeof parsed.projects === "object"
+        ? (parsed.projects as Record<string, StoredProjectBranchSession>)
+        : null
+
+    if (!legacyProjects) {
+      return buildInitialState()
+    }
+
+    const nextState = buildInitialState()
+    for (const session of Object.values(legacyProjects)) {
+      const normalizedProjectId = normalizeProjectId(session.projectId)
+      if (!normalizedProjectId) {
+        continue
+      }
+
+      nextState.sessions[
+        buildSessionStorageKey(normalizedProjectId, session.projectPath)
+      ] = {
+        ...session,
+        projectId: normalizedProjectId,
+        projectPath: normalizeProjectPath(session.projectPath),
+      }
+    }
+
+    return nextState
+  } catch {
+    return buildInitialState()
+  }
+}
+
+function writeState(state: StoredProjectBranchSessionState): void {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+}
+
+export function buildBranchSessionLaneId(branch: string, collabBranch: string): string {
+  if (normalizeBranch(branch) === normalizeBranch(collabBranch)) {
+    return COLLAB_LANE_ID
+  }
+
+  return `${LOCAL_LANE_PREFIX}${encodeURIComponent(normalizeBranch(branch, collabBranch))}`
+}
+
+export function resolveBranchSessionLaneBranch(
+  laneId: string | null | undefined,
+  collabBranch: string,
+): string | null {
+  const normalizedLaneId = laneId?.trim()
+  if (!normalizedLaneId) {
+    return null
+  }
+
+  if (normalizedLaneId === COLLAB_LANE_ID) {
+    return normalizeBranch(collabBranch)
+  }
+
+  if (!normalizedLaneId.startsWith(LOCAL_LANE_PREFIX)) {
+    return null
+  }
+
+  const encodedBranch = normalizedLaneId.slice(LOCAL_LANE_PREFIX.length)
+  if (!encodedBranch) {
+    return null
+  }
+
+  try {
+    return normalizeBranch(decodeURIComponent(encodedBranch), collabBranch)
+  } catch {
+    return null
+  }
+}
+
+export function readProjectBranchSession(projectId: string | null | undefined): StoredProjectBranchSession | null {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    return null
+  }
+
+  const matchingSessions = Object.values(readState().sessions)
+    .filter((session) => session.projectId === normalizedProjectId)
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+
+  return matchingSessions[0] ?? null
+}
+
+export function readScopedProjectBranchSession(
+  projectId: string | null | undefined,
+  projectPath: string | null | undefined,
+): StoredProjectBranchSession | null {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    return null
+  }
+
+  return (
+    readState().sessions[
+      buildSessionStorageKey(normalizedProjectId, projectPath)
+    ] ?? null
+  )
+}
+
+export function rememberProjectBranchSession(args: {
+  projectId: string
+  branch: string
+  collabBranch: string
+  projectPath: string | null
+}): StoredProjectBranchSession {
+  const normalizedProjectId = normalizeProjectId(args.projectId)
+  if (!normalizedProjectId) {
+    throw new Error("projectId is required")
+  }
+
+  const nextSession: StoredProjectBranchSession = {
+    projectId: normalizedProjectId,
+    activeBranch: normalizeBranch(args.branch, args.collabBranch),
+    collabBranch: normalizeBranch(args.collabBranch),
+    projectPath: normalizeProjectPath(args.projectPath),
+    updatedAt: Date.now(),
+  }
+
+  const state = readState()
+  state.sessions[
+    buildSessionStorageKey(normalizedProjectId, nextSession.projectPath)
+  ] = nextSession
+  writeState(state)
+  return nextSession
+}
+
+export function clearProjectBranchSession(
+  projectId: string | null | undefined,
+  projectPath?: string | null,
+): void {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  if (!normalizedProjectId) {
+    return
+  }
+
+  const state = readState()
+  const normalizedProjectPath = normalizeProjectPath(projectPath)
+
+  if (normalizedProjectPath) {
+    const scopedKey = buildSessionStorageKey(normalizedProjectId, normalizedProjectPath)
+    if (!(scopedKey in state.sessions)) {
+      return
+    }
+    delete state.sessions[scopedKey]
+    writeState(state)
+    return
+  }
+
+  let changed = false
+  for (const [storageKey, session] of Object.entries(state.sessions)) {
+    if (session.projectId !== normalizedProjectId) {
+      continue
+    }
+
+    delete state.sessions[storageKey]
+    changed = true
+  }
+
+  if (!changed) {
+    return
+  }
+
+  writeState(state)
+}
+
+export function activateProjectBranchLane(args: {
+  projectId: string
+  laneId: string
+  collabBranch: string
+  projectPath: string | null
+}): StoredProjectBranchSession | null {
+  const branch = resolveBranchSessionLaneBranch(args.laneId, args.collabBranch)
+  if (!branch) {
+    return null
+  }
+
+  return rememberProjectBranchSession({
+    projectId: args.projectId,
+    branch,
+    collabBranch: args.collabBranch,
+    projectPath: args.projectPath,
+  })
+}
+
+export function buildProjectBranchLaneState(args: {
+  projectId: string
+  projectPath: string | null
+  collabBranch: string
+  activeBranch: string | null
+}): ProjectLaneState | null {
+  const normalizedProjectId = normalizeProjectId(args.projectId)
+  const normalizedProjectPath = normalizeProjectPath(args.projectPath)
+  if (!normalizedProjectId || !normalizedProjectPath) {
+    return null
+  }
+
+  const normalizedCollabBranch = normalizeBranch(args.collabBranch)
+  const normalizedActiveBranch = normalizeBranch(args.activeBranch, normalizedCollabBranch)
+  const now = Date.now()
+
+  const collabLane: ProjectLaneDescriptor = {
+    id: COLLAB_LANE_ID,
+    name: "Shared",
+    branch: normalizedCollabBranch,
+    projectPath: normalizedProjectPath,
+    isCollab: true,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const lanes: ProjectLaneDescriptor[] = [collabLane]
+  let activeLaneId = collabLane.id
+
+  if (normalizedActiveBranch !== normalizedCollabBranch) {
+    const localLane: ProjectLaneDescriptor = {
+      id: buildBranchSessionLaneId(normalizedActiveBranch, normalizedCollabBranch),
+      name: normalizedActiveBranch,
+      branch: normalizedActiveBranch,
+      projectPath: normalizedProjectPath,
+      isCollab: false,
+      createdAt: now,
+      updatedAt: now,
+    }
+    lanes.push(localLane)
+    activeLaneId = localLane.id
+  }
+
+  return {
+    activeLaneId,
+    collabLaneId: collabLane.id,
+    lanes,
+  }
+}

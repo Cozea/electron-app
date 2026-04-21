@@ -1,42 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from '@/lib/router'
+import { useCallback, useEffect, useState } from 'react'
+import * as Y from 'yjs'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useConvex, useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { RepositoryProvisioner } from '@/components/git/RepositoryProvisioner'
-import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
+import { invalidateCollabSession, useCollabSession } from '@/hooks/useCollabSession'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
-import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
-import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
-import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
-import { resolveProjectLaneGitContext } from '@/lib/git/projectLaneContext'
-import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
-import {
-  resolveProjectRepoAccessStatus,
-} from '@/lib/git/projectRepoAccess'
-import type { GitSyncStatusResult } from '@shared/electronApiTypes'
-import {
-  getDefaultVersionControlSetupMode,
-  getVersionControlSetupLabel,
-  normalizeVersionControlProvider,
-  supportsVersionControlAutomation,
-} from '@shared/versionControl'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
-import { buildLegacyProjectPath, buildProjectPath } from '@/features/projects/lib/projectRoutes'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,38 +22,22 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import { EncryptedLocalSnapshotStore } from '@/lib/collab/EncryptedLocalSnapshotStore'
 import {
-  AlertTriangle,
-  Loader2,
-  Save,
-  Trash2,
-} from 'lucide-react'
-import type { ProjectGitRuntimeProjectLike } from '@/lib/git/projectGitRuntime'
+  bytesToEnvelope,
+  decryptPayload,
+  encryptPayload,
+  envelopeToBytes,
+  generateRoomKeyBase64,
+} from '@/lib/collab/cipherEnvelope'
 
-type SettingsSectionId = 'general' | 'source-control' | 'danger'
-type VersionControlProviderOption = 'github' | 'local'
-type GitActionKey = 'status' | 'fetch' | 'pull' | 'commit' | 'push' | 'sync'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
-const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; label: string }> = [
-  { id: 'general', label: 'General' },
-  { id: 'source-control', label: 'Source Control' },
-  { id: 'danger', label: 'Danger' },
-]
-
-const VERSION_CONTROL_PROVIDER_OPTIONS: Array<{
-  value: VersionControlProviderOption
-  label: string
-}> = [
-  { value: 'github', label: 'GitHub' },
-  { value: 'local', label: 'Local only' },
-]
-
-function normalizeProjectSettingsProviderOption(
-  value: string | null | undefined
-): VersionControlProviderOption {
-  return normalizeVersionControlProvider(value) === 'github' ? 'github' : 'local'
+export interface ProjectSettingsPageProps {
+  presentation?: 'modal' | 'embedded'
+  onRequestClose?: (() => void) | null
 }
 
 function cleanConvexError(error: unknown, fallback: string): string {
@@ -88,28 +45,36 @@ function cleanConvexError(error: unknown, fallback: string): string {
   return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
 }
 
-export function ProjectSettingsPage() {
-  const convex = useConvex()
+interface ActiveRecoveryKit {
+  roomId: string
+  keyVersion: number
+  wrapAlgorithm: string
+  wrappedKey: string
+  salt: string
+  iterations: number
+  createdAt: number
+  createdByDeviceId: string
+}
+
+export function ProjectSettingsPage({
+  presentation = 'modal',
+  onRequestClose = null,
+}: ProjectSettingsPageProps = {}) {
+  const unsafeYjsApi = api as any
+  const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
-  const { section: sectionParam } = useParams()
   const { convexUserId } = useAuth()
-  const { project, projectIdParam, slugParam } = useAccessibleProject()
-  const syncContext = useOptionalProjectSyncContext()
-  const projectWorkspace = useProjectWorkspaceContext(project)
-
-  const currentSection: SettingsSectionId =
-    sectionParam === 'danger' || sectionParam === 'source-control' ? sectionParam : 'general'
-
-  const buildSettingsPath = useCallback((section: SettingsSectionId) => {
-    if (project?._id) return buildProjectPath(String(project._id), `settings/${section}`)
-    if (projectIdParam) return buildProjectPath(projectIdParam, `settings/${section}`)
-    return slugParam ? buildLegacyProjectPath(slugParam, `settings/${section}`) : null
-  }, [project?._id, projectIdParam, slugParam])
+  const { project } = useAccessibleProject()
 
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
   const removeProject = useMutation(api.projects.deleteProject)
-  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
+  const revokeCollabDevice = useMutation(api.yjs.revokeCollabDevice)
+  const storeWrappedRoomKey = useMutation(api.yjs.storeWrappedRoomKey)
+  const storeRecoveryKit = useMutation(unsafeYjsApi.yjs.storeRecoveryKit)
+  const syncCollabRoom = useMutation(api.yjs.syncWithServer)
+  const rotateEncryptedRoomKey = useMutation(api.yjs.rotateEncryptedRoomKey)
+  const resetEncryptedRoom = useMutation(api.yjs.resetEncryptedRoom)
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
@@ -117,83 +82,33 @@ export function ProjectSettingsPage() {
       ? { projectId: project._id, userId: convexUserId }
       : 'skip'
   )
-  const { localPath: resolvedLocalPath } = useLocalProjectPath({
-    projectId: project?._id ? String(project._id) : projectIdParam,
-    projectSlug: project?.slug ?? slugParam,
+  const collabSessionResult = useCollabSession({
+    projectId: project?._id ? String(project._id) : null,
+    enabled: Boolean(project?._id),
   })
-  const memberLocalPath = syncContext?.projectPath ?? resolvedLocalPath
+  const collaborationDevices = useQuery(
+    api.yjs.listCollabRoomDevices,
+    project?._id && collabSessionResult.session?.roomId
+      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
+      : 'skip',
+  )
+  const pendingKeyRequests = useQuery(
+    api.yjs.listPendingKeyRequests,
+    project?._id && collabSessionResult.session?.roomId
+      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
+      : 'skip',
+  )
+  const activeRecoveryKit = useQuery(
+    unsafeYjsApi.yjs.getActiveRecoveryKit,
+    project?._id && collabSessionResult.session?.roomId
+      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
+      : 'skip',
+  ) as ActiveRecoveryKit | null | undefined
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [provider, setProvider] = useState<VersionControlProviderOption>('local')
-  const [repoUrl, setRepoUrl] = useState('')
-  const [activeCollabBranch, setActiveCollabBranch] = useState('main')
-  const [syncPolicy, setSyncPolicy] = useState<'auto' | 'manual'>('auto')
-  const [commitMessage, setCommitMessage] = useState('manual: sync workspace')
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [gitError, setGitError] = useState<string | null>(null)
-  const [gitNotice, setGitNotice] = useState<string | null>(null)
-  const [gitStatus, setGitStatus] = useState<GitSyncStatusResult | null>(null)
-  const [gitActionKey, setGitActionKey] = useState<GitActionKey | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-
-  const { getConnection } = useWorkspaceSourceControl({
-    route: projectWorkspace.isPersonalWorkspace
-      ? '/settings/source-control'
-      : '/workspace/source-control',
-    enabled: Boolean(project?.organizationId && convexUserId),
-  })
-  const repoIntegration =
-    project?.organizationId && provider === 'github'
-      ? getConnection(provider)
-      : null
-  const setupMode = useMemo(
-    () => project?.sourceControl?.setupMode ?? getDefaultVersionControlSetupMode(projectWorkspace.isPersonalWorkspace),
-    [project?.sourceControl?.setupMode, projectWorkspace.isPersonalWorkspace]
-  )
-  const normalizedRepoUrl = repoUrl.trim()
-  const normalizedActiveCollabBranch = activeCollabBranch.trim() || 'main'
-  const editableProject = useMemo<ProjectGitRuntimeProjectLike | null>(() => {
-    if (!project) return null
-
-    return {
-      _id: project._id,
-      organizationId: project.organizationId,
-      gitRepository:
-        provider !== 'local' && normalizedRepoUrl
-          ? {
-              provider,
-              url: normalizedRepoUrl,
-              defaultBranch: project?.gitRepository?.defaultBranch ?? normalizedActiveCollabBranch,
-            }
-          : null,
-      sourceControl: {
-        ...project.sourceControl,
-        provider,
-        repoUrl: normalizedRepoUrl || undefined,
-        activeCollabBranch: normalizedActiveCollabBranch,
-        defaultBranch: normalizedActiveCollabBranch,
-        syncPolicy,
-        setupMode,
-      },
-    }
-  }, [
-    normalizedActiveCollabBranch,
-    normalizedRepoUrl,
-    project,
-    provider,
-    setupMode,
-    syncPolicy,
-  ])
-  const repoAccessStatus = useMemo(
-    () =>
-      resolveProjectRepoAccessStatus({
-        project: editableProject,
-        sourceControlConnection: repoIntegration,
-        isPersonalWorkspace: projectWorkspace.isPersonalWorkspace,
-      }),
-    [editableProject, projectWorkspace.isPersonalWorkspace, repoIntegration]
-  )
 
   const [showArchiveDialog, setShowArchiveDialog] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -202,40 +117,29 @@ export function ProjectSettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showCollabResetDialog, setShowCollabResetDialog] = useState(false)
+  const [showRecoveryCodeDialog, setShowRecoveryCodeDialog] = useState(false)
+  const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState<string | null>(null)
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState('')
+  const [collabAction, setCollabAction] = useState<"share" | "rotate" | "reset" | "generate-recovery" | "recover" | `revoke:${string}` | null>(null)
+  const [collabError, setCollabError] = useState<string | null>(null)
+  const [collabNotice, setCollabNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (!project) return
     setName(project.name ?? '')
     setDescription(project.description ?? '')
-    setProvider(normalizeProjectSettingsProviderOption(
-      project.sourceControl?.provider ?? project.gitRepository?.provider
-    ))
-    setRepoUrl(project.gitRepository?.url ?? project.sourceControl?.repoUrl ?? '')
-    setActiveCollabBranch(
-      project.sourceControl?.activeCollabBranch ??
-        project.sourceControl?.defaultBranch ??
-        project.gitRepository?.defaultBranch ??
-        'main'
-    )
-    setSyncPolicy(project.sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto')
     setSaveError(null)
-    setGitError(null)
-    setGitNotice(null)
-    setGitStatus(null)
     setArchiveError(null)
     setDeleteError(null)
+    setCollabError(null)
+    setCollabNotice(null)
+    setGeneratedRecoveryCode(null)
+    setRecoveryCodeInput('')
   }, [
     project?._id,
     project?.description,
-    project?.gitRepository?.defaultBranch,
-    project?.gitRepository?.provider,
-    project?.gitRepository?.url,
     project?.name,
-    project?.sourceControl?.activeCollabBranch,
-    project?.sourceControl?.defaultBranch,
-    project?.sourceControl?.provider,
-    project?.sourceControl?.repoUrl,
-    project?.sourceControl?.syncPolicy,
     project,
   ])
 
@@ -244,309 +148,183 @@ export function ProjectSettingsPage() {
 
   const projectName = project?.name ?? ''
   const projectDescription = project?.description ?? ''
-  const projectProvider =
-    normalizeProjectSettingsProviderOption(project?.sourceControl?.provider ?? project?.gitRepository?.provider)
-  const projectRepoUrl = project?.gitRepository?.url ?? project?.sourceControl?.repoUrl ?? ''
-  const projectActiveCollabBranch =
-    project?.sourceControl?.activeCollabBranch ??
-    project?.sourceControl?.defaultBranch ??
-    project?.gitRepository?.defaultBranch ??
-    'main'
-  const projectSyncPolicy = project?.sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto'
-  const usesExistingRemote = project?.sourceControl?.workingCopyMode === 'attached'
-  const hasRemoteOperations = Boolean(normalizedRepoUrl) || usesExistingRemote
   const hasChanges = Boolean(project) && (
     name !== projectName ||
-    description !== projectDescription ||
-    provider !== projectProvider ||
-    normalizedRepoUrl !== projectRepoUrl ||
-    normalizedActiveCollabBranch !== projectActiveCollabBranch ||
-    syncPolicy !== projectSyncPolicy
+    description !== projectDescription
   )
   const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
+  const collabSession = collabSessionResult.session
+  const collabBootstrap = collabSession?.encryption ?? null
+  const currentDeviceId = collabSession?.deviceId ?? null
+  const collabScopeKey = project?._id ? String(project._id) : null
+  const canManageCollabSecurity = Boolean(project?._id && convexUserId && canEditGeneral)
+  const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
 
-  const refreshGitStatus = useCallback(async (options?: { silent?: boolean }) => {
-    if (!memberLocalPath) {
-      setGitStatus(null)
-      return
+  const buildAndStoreRecoveryKit = useCallback(async (args: {
+    roomKeyBase64: string
+    keyVersion: number
+  }): Promise<string | null> => {
+    if (!project || !convexUserId || !collabSession) {
+      return null
     }
 
-    const isSilent = options?.silent === true
-    if (!isSilent) {
-      setGitActionKey('status')
-      setGitError(null)
-      setGitNotice(null)
-    }
-
-    try {
-      const statusResult = await window.electronAPI.sync.gitStatus({
-        projectPath: memberLocalPath,
-      })
-      if (!statusResult.success) {
-        throw new Error(statusResult.error || 'Failed to read local git status')
-      }
-      setGitStatus(statusResult)
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to read local git status'
-      setGitStatus(null)
-      if (!isSilent) {
-        setGitError(message)
-      }
-    } finally {
-      if (!isSilent) {
-        setGitActionKey(null)
-      }
-    }
-  }, [memberLocalPath])
-
-  useEffect(() => {
-    if (currentSection !== 'source-control' || !memberLocalPath) return
-    void refreshGitStatus()
-  }, [currentSection, memberLocalPath, refreshGitStatus])
-
-  const resolveGitActionContext = useCallback(async () => {
-    if (!project || !editableProject || !memberLocalPath) {
-      throw new Error('Local project checkout is not available on this device.')
-    }
-
-    const context = await resolveProjectLaneGitContext({
-      convex,
-      project: editableProject,
-      projectId: String(project._id),
-      projectPath: memberLocalPath,
-      collabBranch: normalizedActiveCollabBranch,
-      userId: convexUserId,
+    const recoveryKit = await window.electronAPI.collab.createRecoveryKit({
+      roomKeyBase64: args.roomKeyBase64,
     })
 
-    return {
-      branch: context.collabBranch,
-      projectPath: context.collabLanePath,
-      remoteConfig: context.remoteConfig,
-    }
-  }, [convex, convexUserId, editableProject, memberLocalPath, normalizedActiveCollabBranch, project])
-
-  const recordSyncState = useCallback(async (
-    status: 'syncing' | 'synced' | 'error',
-    errorMessage?: string
-  ) => {
-    if (!project?._id || !convexUserId) return
-    await updateSyncStatus({
+    await storeRecoveryKit({
       projectId: project._id,
-      userId: convexUserId,
-      status,
-      errorMessage,
+      roomId: collabSession.roomId,
+      keyVersion: args.keyVersion,
+      createdByUserId: convexUserId,
+      createdByDeviceId: collabSession.deviceId,
+      wrapAlgorithm: recoveryKit.wrapAlgorithm,
+      wrappedKey: recoveryKit.wrappedKey,
+      salt: recoveryKit.salt,
+      iterations: recoveryKit.iterations,
     })
-  }, [convexUserId, project?._id, updateSyncStatus])
 
-  const handleGitActionFailure = useCallback(async (message: string) => {
-    try {
-      await recordSyncState('error', message)
-    } catch {
-      // Ignore sync metadata failures and surface the git error itself.
+    setGeneratedRecoveryCode(recoveryKit.recoveryCode)
+    setShowRecoveryCodeDialog(true)
+    return recoveryKit.recoveryCode
+  }, [collabSession, convexUserId, project, storeRecoveryKit])
+
+  const rotateRoomKeyWithCurrentRoom = useCallback(async (options?: {
+    devices?: NonNullable<typeof collaborationDevices>
+  }): Promise<number | null> => {
+    if (
+      !project ||
+      !convexUserId ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'ready' ||
+      !collabBootstrap.wrappedRoomKey ||
+      !collabBootstrap.senderPublicKeyJwk
+    ) {
+      return null
     }
-    setGitError(message)
-  }, [recordSyncState])
 
-  const finalizeGitAction = useCallback(async (notice: string, kind: 'dirty' | 'synced' | 'pulled' | 'published') => {
-    if (!project || !memberLocalPath) return
-    await recordSyncState('synced')
-    setGitNotice(notice)
-    dispatchGitStatusEvent({
-      projectId: String(project._id),
-      projectPath: memberLocalPath,
-      kind,
+    const devices = options?.devices ?? collaborationDevices
+    if (!devices || devices.length === 0) {
+      throw new Error('No active trusted devices are available for key rotation.')
+    }
+
+    const { roomKeyBase64: currentRoomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
+      senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
+      wrappedKey: collabBootstrap.wrappedRoomKey,
+      wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
     })
-    await refreshGitStatus({ silent: true })
-  }, [memberLocalPath, project, recordSyncState, refreshGitStatus])
 
-  const handleFetch = useCallback(async () => {
-    setGitActionKey('fetch')
-    setGitError(null)
-    setGitNotice(null)
+    const syncState = await syncCollabRoom({
+      projectId: project._id,
+      clientId: `settings-rotation:${Date.now()}`,
+      roomId: collabSession.roomId,
+    })
 
-    try {
-      const { branch, projectPath, remoteConfig } = await resolveGitActionContext()
-      if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
-        throw new Error('This project does not have a remote repository configured yet.')
-      }
-
-      await recordSyncState('syncing')
-      const fetchResult = await window.electronAPI.sync.gitFetchMain({
-        projectPath,
-        branch,
-        repoUrl: remoteConfig.repoUrl,
-        provider: remoteConfig.provider,
-        accessToken: remoteConfig.accessToken,
+    const roomDoc = new Y.Doc()
+    if (syncState.serverSnapshot) {
+      const decryptedSnapshot = await decryptPayload({
+        roomKeyBase64: currentRoomKeyBase64,
+        envelope: bytesToEnvelope(new Uint8Array(syncState.serverSnapshot)),
+        expectedKind: 'yjs_snapshot',
       })
-      if (!fetchResult.success) {
-        throw new Error(fetchResult.error || 'Failed to fetch latest remote changes')
-      }
-
-      await finalizeGitAction('Fetched latest remote changes.', 'dirty')
-    } catch (error) {
-      await handleGitActionFailure(
-        error instanceof Error ? error.message : 'Failed to fetch latest remote changes'
-      )
-    } finally {
-      setGitActionKey(null)
+      Y.applyUpdate(roomDoc, decryptedSnapshot, 'snapshot')
     }
-  }, [finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
-
-  const handlePull = useCallback(async () => {
-    setGitActionKey('pull')
-    setGitError(null)
-    setGitNotice(null)
-
-    try {
-      const { branch, projectPath, remoteConfig } = await resolveGitActionContext()
-      if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
-        throw new Error('This project does not have a remote repository configured yet.')
-      }
-
-      await recordSyncState('syncing')
-      const pullResult = await window.electronAPI.sync.gitPullMain({
-        projectPath,
-        branch,
-        repoUrl: remoteConfig.repoUrl,
-        strategy: 'merge',
-        provider: remoteConfig.provider,
-        accessToken: remoteConfig.accessToken,
+    for (const update of syncState.recentUpdates) {
+      const decryptedUpdate = await decryptPayload({
+        roomKeyBase64: currentRoomKeyBase64,
+        envelope: bytesToEnvelope(new Uint8Array(update.update)),
+        expectedKind: 'yjs_update',
       })
-      if (!pullResult.success) {
-        throw new Error(pullResult.error || 'Failed to pull latest remote changes')
-      }
-      if (pullResult.hadConflicts) {
-        throw new Error('Git merge conflicts must be resolved before continuing.')
-      }
-
-      await finalizeGitAction(
-        pullResult.alreadyUpToDate ? 'Already up to date.' : 'Pulled latest remote changes.',
-        'pulled'
-      )
-    } catch (error) {
-      await handleGitActionFailure(
-        error instanceof Error ? error.message : 'Failed to pull latest remote changes'
-      )
-    } finally {
-      setGitActionKey(null)
-    }
-  }, [finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
-
-  const handleCommit = useCallback(async () => {
-    setGitActionKey('commit')
-    setGitError(null)
-    setGitNotice(null)
-
-    const nextCommitMessage = commitMessage.trim()
-    if (!nextCommitMessage) {
-      setGitError('Commit message is required.')
-      return
+      Y.applyUpdate(roomDoc, decryptedUpdate, 'snapshot')
     }
 
-    try {
-      const { projectPath } = await resolveGitActionContext()
-      await recordSyncState('syncing')
-      const commitResult = await window.electronAPI.sync.gitCommitAll({
-        projectPath,
-        message: nextCommitMessage,
-      })
-      if (!commitResult.success) {
-        throw new Error(commitResult.error || 'Failed to create git commit')
-      }
-
-      await finalizeGitAction(
-        commitResult.commitCreated === false
-          ? 'No local changes to commit.'
-          : 'Created local git commit.',
-        'dirty'
-      )
-    } catch (error) {
-      await handleGitActionFailure(
-        error instanceof Error ? error.message : 'Failed to create git commit'
-      )
-    } finally {
-      setGitActionKey(null)
-    }
-  }, [commitMessage, finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
-
-  const handlePush = useCallback(async () => {
-    setGitActionKey('push')
-    setGitError(null)
-    setGitNotice(null)
-
-    try {
-      const { branch, projectPath, remoteConfig } = await resolveGitActionContext()
-      if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
-        throw new Error('This project does not have a remote repository configured yet.')
-      }
-
-      await recordSyncState('syncing')
-      const pushResult = await window.electronAPI.sync.gitPushMain({
-        projectPath,
-        branch,
-        repoUrl: remoteConfig.repoUrl,
-        provider: remoteConfig.provider,
-        accessToken: remoteConfig.accessToken,
-      })
-      if (!pushResult.success) {
-        throw new Error(pushResult.error || 'Failed to push local git commits')
-      }
-
-      await finalizeGitAction(
-        pushResult.pushed === false ? 'No local commits to push.' : 'Pushed local commits.',
-        'published'
-      )
-    } catch (error) {
-      await handleGitActionFailure(
-        error instanceof Error ? error.message : 'Failed to push local git commits'
-      )
-    } finally {
-      setGitActionKey(null)
-    }
-  }, [finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
-
-  const handleSyncNow = useCallback(async () => {
-    if (!project?._id || !convexUserId || !memberLocalPath) {
-      setGitError('Local project checkout is not available on this device.')
-      return
-    }
-
-    setGitActionKey('sync')
-    setGitError(null)
-    setGitNotice(null)
-
-    try {
-      const collabLane = await window.electronAPI.project.ensureCollabLane({
+    const nextKeyVersion = (collabBootstrap.activeKeyVersion ?? 1) + 1
+    const nextRoomKeyBase64 = generateRoomKeyBase64()
+    const nextSnapshotEnvelope = await encryptPayload({
+      roomKeyBase64: nextRoomKeyBase64,
+      kind: 'yjs_snapshot',
+      keyVersion: nextKeyVersion,
+      plaintext: Y.encodeStateAsUpdate(roomDoc),
+      metadata: {
         projectId: String(project._id),
-        projectPath: memberLocalPath,
-        branch: normalizedActiveCollabBranch,
-      })
-      const resolvedCollabLane =
-        collabLane.lanes.find((lane) => lane.id === collabLane.collabLaneId) ?? null
-      const collabProjectPath = resolvedCollabLane?.projectPath ?? memberLocalPath
-      const coordinator = GitDurabilityCoordinator.acquireShared({
-        projectId: project._id,
-        projectPath: collabProjectPath,
-        convex,
-        userId: convexUserId,
+        roomId: collabSession.roomId,
+      },
+    })
+
+    const wrappedKeys: Array<{
+      recipientUserId: NonNullable<typeof devices>[number]['userId']
+      recipientDeviceId: string
+      senderPublicKeyJwk: string
+      wrapAlgorithm: string
+      wrappedKey: string
+    }> = []
+
+    for (const device of devices) {
+      if (device.revokedAt || !device.publicKeyJwk) {
+        continue
+      }
+
+      const wrapped = await window.electronAPI.collab.wrapRoomKey({
+        roomKeyBase64: nextRoomKeyBase64,
+        recipientPublicKeyJwk: device.publicKeyJwk,
       })
 
-      try {
-        await recordSyncState('syncing')
-        await coordinator.flushNow(true)
-        await finalizeGitAction('Git sync complete.', 'synced')
-      } finally {
-        coordinator.release()
-      }
-    } catch (error) {
-      await handleGitActionFailure(
-        error instanceof Error ? error.message : 'Failed to complete git sync'
-      )
-    } finally {
-      setGitActionKey(null)
+      wrappedKeys.push({
+        recipientUserId: device.userId,
+        recipientDeviceId: device.deviceId,
+        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        wrapAlgorithm: wrapped.wrapAlgorithm,
+        wrappedKey: wrapped.wrappedKey,
+      })
     }
-  }, [convex, convexUserId, finalizeGitAction, handleGitActionFailure, memberLocalPath, normalizedActiveCollabBranch, project?._id, recordSyncState])
+
+    if (wrappedKeys.length === 0) {
+      throw new Error('No active trusted devices are available for key rotation.')
+    }
+
+    const nextSnapshotBytes = envelopeToBytes(nextSnapshotEnvelope)
+    await rotateEncryptedRoomKey({
+      projectId: project._id,
+      roomId: collabSession.roomId,
+      userId: convexUserId,
+      initiatedByDeviceId: collabSession.deviceId,
+      encryptedSnapshot: nextSnapshotBytes.slice().buffer,
+      createdByClientId: String(roomDoc.clientID),
+      wrappedKeys,
+    })
+
+    await buildAndStoreRecoveryKit({
+      roomKeyBase64: nextRoomKeyBase64,
+      keyVersion: nextKeyVersion,
+    })
+
+    if (collabScopeKey) {
+      const localStore = new EncryptedLocalSnapshotStore()
+      await localStore.save({
+        scopeKey: collabScopeKey,
+        keyVersion: nextKeyVersion,
+        envelopeJson: JSON.stringify(nextSnapshotEnvelope),
+        updatedAt: Date.now(),
+      })
+    }
+
+    invalidateCollabSession(String(project._id))
+    await collabSessionResult.refresh()
+
+    return nextKeyVersion
+  }, [
+    buildAndStoreRecoveryKit,
+    collabBootstrap,
+    collabScopeKey,
+    collabSession,
+    collabSessionResult,
+    collaborationDevices,
+    convexUserId,
+    project,
+    rotateEncryptedRoomKey,
+    syncCollabRoom,
+  ])
 
   const handleSave = useCallback(async () => {
     if (!project || !convexUserId) return
@@ -567,14 +345,6 @@ export function ProjectSettingsPage() {
         userId: convexUserId,
         name: nextName,
         description,
-        sourceControl: {
-          provider,
-          repoUrl: normalizedRepoUrl || undefined,
-          activeCollabBranch: normalizedActiveCollabBranch,
-          defaultBranch: normalizedActiveCollabBranch,
-          syncPolicy,
-          setupMode,
-        },
       })
     } catch (error) {
       setSaveError(cleanConvexError(error, 'Failed to save project settings'))
@@ -586,12 +356,7 @@ export function ProjectSettingsPage() {
     description,
     hasChanges,
     name,
-    normalizedActiveCollabBranch,
-    normalizedRepoUrl,
     project,
-    provider,
-    setupMode,
-    syncPolicy,
     updateProject,
   ])
 
@@ -639,34 +404,292 @@ export function ProjectSettingsPage() {
     }
   }, [convexUserId, navigate, project, removeProject])
 
-  const headerActions = useMemo(() => {
-    if (currentSection !== 'general' && currentSection !== 'source-control') return null
-    return (
-      <Button
-        size="sm"
-        variant="secondary"
-        className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-        onClick={() => {
-          void handleSave()
-        }}
-        disabled={!canSave}
-      >
-        {isSaving ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Save className="h-3.5 w-3.5" />
-        )}
-        {isSaving ? 'Saving...' : 'Save Changes'}
-      </Button>
-    )
-  }, [canSave, currentSection, handleSave, isSaving])
+  const handleSharePendingDevices = useCallback(async () => {
+    if (
+      !project ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'ready' ||
+      !collabBootstrap.wrappedRoomKey ||
+      !collabBootstrap.senderPublicKeyJwk ||
+      !pendingKeyRequests ||
+      pendingKeyRequests.length === 0
+    ) {
+      return
+    }
 
-  useProjectHeader(headerActions)
+    setCollabAction('share')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
+        senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
+        wrappedKey: collabBootstrap.wrappedRoomKey,
+        wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
+      })
+
+      for (const request of pendingKeyRequests) {
+        if (typeof request.fulfilledAt === 'number') {
+          continue
+        }
+
+        const wrapped = await window.electronAPI.collab.wrapRoomKey({
+          roomKeyBase64,
+          recipientPublicKeyJwk: request.recipientPublicKeyJwk,
+        })
+
+        await storeWrappedRoomKey({
+          projectId: project._id,
+          roomId: collabSession.roomId,
+          keyVersion: collabBootstrap.activeKeyVersion ?? 1,
+          recipientUserId: request.recipientUserId,
+          recipientDeviceId: request.recipientDeviceId,
+          senderDeviceId: wrapped.senderDeviceId,
+          senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+          wrapAlgorithm: wrapped.wrapAlgorithm,
+          wrappedKey: wrapped.wrappedKey,
+        })
+      }
+
+      setCollabNotice('Pending devices can now join encrypted collaboration.')
+      await collabSessionResult.refresh()
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to share encrypted room keys'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    collabBootstrap,
+    collabSession,
+    collabSessionResult,
+    pendingKeyRequests,
+    project,
+    storeWrappedRoomKey,
+  ])
+
+  const handleRevokeDevice = useCallback(async (deviceId: string) => {
+    if (!project || !collabSession) {
+      return
+    }
+
+    setCollabAction(`revoke:${deviceId}`)
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      await revokeCollabDevice({
+        projectId: project._id,
+        roomId: collabSession.roomId,
+        deviceId,
+      })
+      if (collabBootstrap?.status === 'ready' && collaborationDevices) {
+        const nextDevices = collaborationDevices.map((device) =>
+          device.deviceId === deviceId
+            ? { ...device, revokedAt: Date.now() }
+            : device,
+        )
+        await rotateRoomKeyWithCurrentRoom({
+          devices: nextDevices,
+        })
+        setCollabNotice('Device access revoked and the shared room key was rotated automatically.')
+      } else {
+        setCollabNotice('Device access revoked for future encrypted collaboration.')
+      }
+      await collabSessionResult.refresh()
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to revoke collaboration device'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    collabBootstrap?.status,
+    collabSession,
+    collabSessionResult,
+    collaborationDevices,
+    project,
+    revokeCollabDevice,
+    rotateRoomKeyWithCurrentRoom,
+  ])
+
+  const handleRotateRoomKey = useCallback(async () => {
+    if (!project || !collabSession || collabBootstrap?.status !== 'ready') {
+      return
+    }
+
+    setCollabAction('rotate')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      await rotateRoomKeyWithCurrentRoom()
+      setCollabNotice('Encrypted room keys rotated. Shared-branch devices will refresh onto the new key automatically.')
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to rotate encrypted room keys'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [collabBootstrap?.status, collabSession, project, rotateRoomKeyWithCurrentRoom])
+
+  const handleGenerateRecoveryKit = useCallback(async () => {
+    if (
+      !project ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'ready' ||
+      !collabBootstrap.wrappedRoomKey ||
+      !collabBootstrap.senderPublicKeyJwk
+    ) {
+      return
+    }
+
+    setCollabAction('generate-recovery')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
+        senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
+        wrappedKey: collabBootstrap.wrappedRoomKey,
+        wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
+      })
+
+      await buildAndStoreRecoveryKit({
+        roomKeyBase64,
+        keyVersion: collabBootstrap.activeKeyVersion ?? 1,
+      })
+
+      setCollabNotice(activeRecoveryKit ? 'Recovery code regenerated. Save the new code somewhere safe.' : 'Recovery code generated. Save it somewhere safe.')
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to generate recovery code'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    activeRecoveryKit,
+    buildAndStoreRecoveryKit,
+    collabBootstrap,
+    collabSession,
+    project,
+  ])
+
+  const handleRecoverWithCode = useCallback(async () => {
+    if (
+      !project ||
+      !convexUserId ||
+      !collabSession ||
+      !collabBootstrap ||
+      collabBootstrap.status !== 'missing_for_device' ||
+      !collabSession.devicePublicKeyJwk ||
+      !activeRecoveryKit ||
+      !recoveryCodeInput.trim()
+    ) {
+      return
+    }
+
+    setCollabAction('recover')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRecoveryKit({
+        recoveryCode: recoveryCodeInput.trim(),
+        wrappedKey: activeRecoveryKit.wrappedKey,
+        salt: activeRecoveryKit.salt,
+        iterations: activeRecoveryKit.iterations,
+        wrapAlgorithm: activeRecoveryKit.wrapAlgorithm,
+      })
+
+      const wrapped = await window.electronAPI.collab.wrapRoomKey({
+        roomKeyBase64,
+        recipientPublicKeyJwk: collabSession.devicePublicKeyJwk,
+      })
+
+      await storeWrappedRoomKey({
+        projectId: project._id,
+        roomId: collabSession.roomId,
+        keyVersion: activeRecoveryKit.keyVersion,
+        recipientUserId: convexUserId,
+        recipientDeviceId: collabSession.deviceId,
+        senderDeviceId: wrapped.senderDeviceId,
+        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        wrapAlgorithm: wrapped.wrapAlgorithm,
+        wrappedKey: wrapped.wrappedKey,
+      })
+
+      invalidateCollabSession(String(project._id))
+      await collabSessionResult.refresh()
+      setRecoveryCodeInput('')
+      setCollabNotice('This device recovered access to the encrypted collaboration room.')
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to recover room access with the recovery code'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    activeRecoveryKit,
+    collabBootstrap,
+    collabSession,
+    collabSessionResult,
+    convexUserId,
+    project,
+    recoveryCodeInput,
+    storeWrappedRoomKey,
+  ])
+
+  const handleResetEncryptedRoom = useCallback(async () => {
+    if (!project || !collabSession) {
+      return
+    }
+
+    setCollabAction('reset')
+    setCollabError(null)
+    setCollabNotice(null)
+
+    try {
+      await resetEncryptedRoom({
+        projectId: project._id,
+        roomId: collabSession.roomId,
+        userId: convexUserId ?? undefined,
+        retainDeviceId: collabSession.deviceId,
+      })
+
+      if (collabScopeKey) {
+        const localStore = new EncryptedLocalSnapshotStore()
+        await localStore.clear(collabScopeKey)
+      }
+
+      invalidateCollabSession(String(project._id))
+      await collabSessionResult.refresh()
+      setCollabNotice('Encrypted collaboration room reset. Re-open the shared branch to initialize a fresh shared room from local project state.')
+      setShowCollabResetDialog(false)
+    } catch (error) {
+      setCollabError(cleanConvexError(error, 'Failed to reset encrypted collaboration room'))
+    } finally {
+      setCollabAction(null)
+    }
+  }, [
+    collabScopeKey,
+    collabSession,
+    collabSessionResult,
+    convexUserId,
+    project,
+    resetEncryptedRoom,
+  ])
+
+  function closeSettingsModal(): void {
+    if (isEmbedded) {
+      onRequestClose?.()
+      return
+    }
+    navigate('/projects')
+  }
 
   if (project === undefined) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        Loading project settings…
       </div>
     )
   }
@@ -680,430 +703,372 @@ export function ProjectSettingsPage() {
   }
 
   return (
-    <div className="h-[calc(100%+2.5rem)] -mt-10">
-      <ScrollArea className="h-full">
-        <div className="w-full min-h-full px-4 pt-16 pb-6 xl:px-3">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-            <aside className="rounded-2xl border border-border/60 bg-card/50 p-2">
-              <div className="space-y-1">
-                {SETTINGS_SECTIONS.map((section) => {
-                  const isActive = currentSection === section.id
-                  const targetPath = buildSettingsPath(section.id)
-                  return (
-                    <button
-                      key={section.id}
-                      type="button"
-                      className={`flex h-9 w-full items-center rounded-lg px-3 text-left text-sm transition-colors ${
-                        isActive
-                          ? 'bg-accent text-accent-foreground'
-                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-                      }`}
-                      onClick={() => {
-                        if (targetPath) navigate(targetPath, { replace: true })
-                      }}
-                    >
-                      {section.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </aside>
+    <>
+      <div
+        role={isEmbedded ? undefined : 'dialog'}
+        aria-modal={isEmbedded ? undefined : true}
+        className={cn(
+          'relative flex h-full w-full flex-col overflow-hidden bg-background supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur',
+          !isEmbedded &&
+            'max-w-4xl mx-auto my-10 rounded-[24px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
+        )}
+        onClick={!isEmbedded ? (e) => e.stopPropagation() : undefined}
+      >
+        <button
+          type="button"
+          onClick={closeSettingsModal}
+          className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
+          aria-label="Close settings"
+        >
+          <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
+        </button>
 
-            <section className="space-y-5">
-              {currentSection === 'general' ? (
-                <div className="space-y-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Project Name</Label>
-                    <Input
-                      id="name"
-                      value={name}
-                      onChange={(event) => {
-                        setName(event.target.value)
-                      }}
-                      placeholder="My Project"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={description}
-                      onChange={(event) => {
-                        setDescription(event.target.value)
-                      }}
-                      placeholder="A brief description of your project..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="slug">Project Slug</Label>
-                    <Input id="slug" value={project.slug || ''} disabled />
-                    <p className="text-xs text-muted-foreground">
-                      Slug is retained for compatibility links. Canonical routes use project id.
-                    </p>
-                  </div>
-
-                  {saveError ? (
-                    <p className="text-xs text-destructive">{saveError}</p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {currentSection === 'source-control' ? (
-                <div className="space-y-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-                  <div className="rounded-xl border border-border/60 bg-secondary/40 p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">{repoAccessStatus.title}</p>
-                        <p className="text-xs text-muted-foreground">{repoAccessStatus.description}</p>
-                      </div>
-                      {repoAccessStatus.state === 'integration_missing' || repoAccessStatus.state === 'integration_mismatch' ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="rounded-full"
-                          onClick={() => {
-                            navigate(projectWorkspace.isPersonalWorkspace ? '/settings/source-control' : '/workspace/source-control')
-                          }}
-                        >
-                          {repoAccessStatus.state === 'integration_mismatch' ? 'Fix Source Control' : 'Connect Source Control'}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Provider</Label>
-                    <Select
-                      value={provider}
-                      onValueChange={(value) => {
-                        const nextProvider = value as VersionControlProviderOption
-                        setProvider(nextProvider)
-                        if (nextProvider === 'local') {
-                          setRepoUrl('')
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="rounded-xl bg-background">
-                        <SelectValue placeholder="Select provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VERSION_CONTROL_PROVIDER_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Remote URL</Label>
-                    <Input
-                      value={repoUrl}
-                      onChange={(event) => {
-                        setRepoUrl(event.target.value)
-                      }}
-                      placeholder={usesExistingRemote ? 'Uses the remote configured in your attached checkout' : 'https://github.com/owner/repo'}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {usesExistingRemote && !normalizedRepoUrl
-                        ? 'Leave this blank to keep using the remote configured in the attached checkout.'
-                        : 'This remote is owned by your connected git provider, not by the app.'}
-                    </p>
-                  </div>
-
-                  {supportsVersionControlAutomation(provider) && project.organizationId ? (
-                    <RepositoryProvisioner
-                      provider={provider}
-                      organizationId={project.organizationId}
-                      integrationConnected={Boolean(repoIntegration)}
-                      setupMode={setupMode}
-                      selectedRepoUrl={normalizedRepoUrl}
-                      suggestedRepoName={name}
-                      visibility={project.sourceControl?.visibility ?? 'private'}
-                      onRepositorySelected={(repository) => {
-                        setRepoUrl(repository.url)
-                        setActiveCollabBranch(repository.defaultBranch || 'main')
-                      }}
-                    />
-                  ) : null}
-
-                  <div className="space-y-2">
-                    <Label>Active Collab Branch</Label>
-                    <Input
-                      value={activeCollabBranch}
-                      onChange={(event) => {
-                        setActiveCollabBranch(event.target.value)
-                      }}
-                      placeholder="main"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      This is the shared branch the app syncs and collaborates against. Personal local lanes will target their own branches separately.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Repository Default Branch</Label>
-                    <Input
-                      value={project.gitRepository?.defaultBranch ?? 'main'}
-                      disabled
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Provider metadata for the repository itself. It is shown here for reference and no longer drives the app’s active sync target.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Working Copy</Label>
-                    <Input
-                      value={usesExistingRemote ? 'Attached checkout' : 'Managed workspace'}
-                      disabled
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Provider Setup</Label>
-                    <Input
-                      value={getVersionControlSetupLabel({
-                        provider,
-                        setupMode,
-                      })}
-                      disabled
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {projectWorkspace.isPersonalWorkspace
-                        ? 'Personal workspaces use personal provider ownership.'
-                        : 'Organization workspaces require non-personal provider ownership.'}
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label>Sync Mode</Label>
-                    <RadioGroup
-                      value={syncPolicy}
-                      onValueChange={(value) => {
-                        setSyncPolicy(value === 'manual' ? 'manual' : 'auto')
-                      }}
-                      className="space-y-3"
-                    >
-                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 p-4">
-                        <RadioGroupItem value="auto" id="sync-auto" className="mt-0.5" />
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">Automatic</p>
-                          <p className="text-xs text-muted-foreground">
-                            The app commits, fetches, pulls, and pushes for you when the workspace changes.
-                          </p>
-                        </div>
-                      </label>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 p-4">
-                        <RadioGroupItem value="manual" id="sync-manual" className="mt-0.5" />
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">Manual</p>
-                          <p className="text-xs text-muted-foreground">
-                            The app still tracks git status, but commit, pull, and push happen only when you trigger them.
-                          </p>
-                        </div>
-                      </label>
-                    </RadioGroup>
-                  </div>
-
-                  <div className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">Local git status</p>
-                        <p className="text-xs text-muted-foreground">
-                          {memberLocalPath
-                            ? memberLocalPath
-                            : 'This project has not been opened on this device yet.'}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="rounded-full"
-                        onClick={() => {
-                          void refreshGitStatus()
-                        }}
-                        disabled={!memberLocalPath || gitActionKey === 'status'}
-                      >
-                        {gitActionKey === 'status' ? 'Refreshing...' : 'Refresh Status'}
-                      </Button>
-                    </div>
-
-                    {gitStatus ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="secondary" className="rounded-full">
-                          {gitStatus.currentBranch || normalizedActiveCollabBranch}
-                        </Badge>
-                        <Badge variant={gitStatus.clean ? 'outline' : 'secondary'} className="rounded-full">
-                          {gitStatus.clean ? 'Clean' : 'Dirty'}
-                        </Badge>
-                        <Badge variant="outline" className="rounded-full">
-                          {`${gitStatus.ahead ?? 0} ahead`}
-                        </Badge>
-                        <Badge variant="outline" className="rounded-full">
-                          {`${gitStatus.behind ?? 0} behind`}
-                        </Badge>
-                        {gitStatus.hasConflicts ? (
-                          <Badge variant="destructive" className="rounded-full">
-                            Conflicts
-                          </Badge>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="manual-commit-message">Commit Message</Label>
+        <div className="flex-1 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="w-full min-h-full px-6 pt-5 pb-6 mx-auto max-w-xl">
+            <div className="w-full">
+              <section className="space-y-5">
+                <div className="min-w-0 space-y-6">
+                  <section>
+                    <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
+                      General
+                    </h3>
+                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
+                      <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
+                        <Label htmlFor="name" className="text-xs font-medium text-foreground whitespace-nowrap">Project Name</Label>
                         <Input
-                          id="manual-commit-message"
-                          value={commitMessage}
+                          id="name"
+                          value={name}
                           onChange={(event) => {
-                            setCommitMessage(event.target.value)
+                            setName(event.target.value)
                           }}
-                          placeholder="manual: sync workspace"
+                          placeholder="My Project"
+                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
                         />
                       </div>
-                      <div className="flex items-end">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="w-full rounded-xl"
-                          onClick={() => {
-                            void handleFetch()
+                      <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                        <Label htmlFor="description" className="text-xs font-medium text-foreground whitespace-nowrap">Description</Label>
+                        <Input
+                          id="description"
+                          value={description}
+                          onChange={(event) => {
+                            setDescription(event.target.value)
                           }}
-                          disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
-                        >
-                          {gitActionKey === 'fetch' ? 'Fetching...' : 'Fetch'}
-                        </Button>
+                          placeholder="Short description..."
+                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
+                        />
                       </div>
-                      <div className="flex items-end">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="w-full rounded-xl"
-                          onClick={() => {
-                            void handlePull()
-                          }}
-                          disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
-                        >
-                          {gitActionKey === 'pull' ? 'Pulling...' : 'Pull'}
-                        </Button>
+                      <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                        <div className="flex flex-col gap-0.5 min-w-0 pr-4">
+                          <Label htmlFor="slug" className="text-xs font-medium text-foreground">Project Slug</Label>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            Retained for compatibility links
+                          </p>
+                        </div>
+                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-none bg-transparent px-0 text-sm shadow-none opacity-50 cursor-not-allowed text-right" />
                       </div>
-                      <div className="flex items-end">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="w-full rounded-xl"
-                          onClick={() => {
-                            void handleCommit()
-                          }}
-                          disabled={!memberLocalPath || gitActionKey !== null}
-                        >
-                          {gitActionKey === 'commit' ? 'Committing...' : 'Commit'}
-                        </Button>
-                      </div>
+                      {saveError ? (
+                        <div className="border-t border-border/40 px-4 py-3">
+                          <p className="text-xs text-destructive">{saveError}</p>
+                        </div>
+                      ) : null}
                     </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="rounded-xl"
-                        onClick={() => {
-                          void handlePush()
-                        }}
-                        disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
-                      >
-                        {gitActionKey === 'push' ? 'Pushing...' : 'Push'}
-                      </Button>
-                      <Button
-                        type="button"
-                        className="rounded-xl"
-                        onClick={() => {
-                          void handleSyncNow()
-                        }}
-                        disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
-                      >
-                        {gitActionKey === 'sync' ? 'Syncing...' : 'Sync Now'}
-                      </Button>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground">
-                      {syncPolicy === 'manual'
-                        ? 'Manual mode disables background commit, pull, and push. Use these buttons when you want to update the repository.'
-                        : 'Automatic mode still runs background git durability, but these controls are available for explicit repo operations.'}
-                    </p>
-                  </div>
-
-                  {gitNotice ? (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400">{gitNotice}</p>
-                  ) : null}
-                  {gitError ? (
-                    <p className="text-xs text-destructive">{gitError}</p>
-                  ) : null}
-
-                  {saveError ? (
-                    <p className="text-xs text-destructive">{saveError}</p>
-                  ) : null}
+                  </section>
                 </div>
-              ) : null}
-
-              {currentSection === 'danger' ? (
-                <div className="space-y-4">
-                  <h3 className="text-base font-medium flex items-center gap-2 text-destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    Danger Zone
-                  </h3>
-
-                  <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/60 bg-destructive/5 p-5">
-                    <div>
-                      <h4 className="font-medium">Archive Project</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Archive this project. It can be restored later.
-                      </p>
+                <div className="min-w-0 space-y-6">
+                  <section>
+                    <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
+                      Collaboration Security
+                    </h3>
+                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
+                      <div className="border-b border-border/40 px-4 py-3">
+                        <p className="text-xs font-medium text-foreground">Encrypted shared collaboration</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Shared-branch collaboration is encrypted end to end. Git remains fully manual.
+                        </p>
+                      </div>
+                      <div className="px-4 py-3 text-[11px] text-muted-foreground">
+                        {collabSessionResult.status === 'loading' ? 'Checking collaboration room security…' : null}
+                        {collabSessionResult.status === 'error' ? (
+                          <span className="text-destructive">{collabSessionResult.error ?? 'Failed to load collaboration security status.'}</span>
+                        ) : null}
+                        {collabBootstrap?.status === 'room_not_initialized' ? (
+                          <span>
+                            Encrypted collaboration will initialize automatically the next time someone opens the shared branch.
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'missing_for_device' ? (
+                          <span>
+                            {activeRecoveryKit
+                              ? 'This device is waiting for an already-authorized device or a saved recovery code to restore room access.'
+                              : 'This device is waiting for an already-authorized device to share the room key.'}
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'device_revoked' ? (
+                          <span className="text-destructive">
+                            This device has been revoked from encrypted collaboration. Switch to the shared branch from another authorized device to approve a new one.
+                          </span>
+                        ) : null}
+                        {collabBootstrap?.status === 'ready' ? (
+                          <span>
+                            This device is authorized for encrypted collaboration. {pendingRequestCount > 0 ? `${pendingRequestCount} device${pendingRequestCount === 1 ? '' : 's'} waiting for approval.` : 'No devices are waiting for approval right now.'}
+                          </span>
+                        ) : null}
+                      </div>
+                      {collabError ? (
+                        <div className="border-t border-border/40 px-4 py-3">
+                          <p className="text-xs text-destructive">{collabError}</p>
+                        </div>
+                      ) : null}
+                      {collabNotice ? (
+                        <div className="border-t border-border/40 px-4 py-3">
+                          <p className="text-xs text-emerald-600">{collabNotice}</p>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Trusted-device recovery</Label>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Authorize pending devices from a currently trusted device.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            disabled={pendingRequestCount === 0 || collabAction === 'share'}
+                            onClick={() => {
+                              void handleSharePendingDevices()
+                            }}
+                          >
+                            {collabAction === 'share' ? (
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Share keys
+                          </Button>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Recovery code</Label>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Save an offline code to restore access without a trusted device.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            disabled={collabAction === 'generate-recovery'}
+                            onClick={() => {
+                              void handleGenerateRecoveryKit()
+                            }}
+                          >
+                            {collabAction === 'generate-recovery' ? (
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            {activeRecoveryKit ? 'Regenerate code' : 'Generate code'}
+                          </Button>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Rotate room key</Label>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Issue a new room key for trusted devices and retire the old one.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            disabled={collabAction === 'rotate' || !collaborationDevices || collaborationDevices.length === 0}
+                            onClick={() => {
+                              void handleRotateRoomKey()
+                            }}
+                          >
+                            {collabAction === 'rotate' ? (
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Rotate keys
+                          </Button>
+                        </div>
+                      ) : null}
+                      {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
+                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Room recovery</Label>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Start fresh if no authorized devices are available to approve access.
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                            disabled={collabAction === 'reset'}
+                            onClick={() => {
+                              setShowCollabResetDialog(true)
+                            }}
+                          >
+                            Reset room
+                          </Button>
+                        </div>
+                      ) : null}
+                      {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
+                        <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <Label className="text-xs font-medium text-foreground">Recover with code</Label>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Authorize this device using an offline recovery code.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={recoveryCodeInput}
+                              onChange={(event) => {
+                                setRecoveryCodeInput(event.target.value)
+                              }}
+                              placeholder="XXXX-XXXX-XXXX-XXXX"
+                              className="h-8 text-xs"
+                            />
+                            <Button
+                              variant="outline"
+                              className="h-8 text-[11px]"
+                              disabled={collabAction === 'recover' || recoveryCodeInput.trim().length === 0}
+                              onClick={() => {
+                                void handleRecoverWithCode()
+                              }}
+                            >
+                              {collabAction === 'recover' ? (
+                                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              ) : null}
+                              Recover
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                      {collaborationDevices && collaborationDevices.length > 0 ? (
+                        <div className="border-t border-border/40">
+                          {collaborationDevices.map((device, index) => (
+                            <div
+                              key={device.deviceId}
+                              className={cn(
+                                'flex min-h-[44px] items-center justify-between gap-4 px-4 py-2',
+                                index > 0 && 'border-t border-border/40',
+                              )}
+                            >
+                              <div className="flex min-w-0 flex-col gap-0.5">
+                                <p className="truncate text-xs font-medium text-foreground">
+                                  {device.deviceLabel}
+                                  {device.deviceId === currentDeviceId ? ' · This device' : ''}
+                                </p>
+                                <p className="truncate text-[11px] text-muted-foreground">
+                                  {device.platform} · {device.fingerprint.slice(0, 12)}
+                                  {device.hasPendingRequest ? ' · waiting for key' : ''}
+                                  {device.revokedAt ? ' · revoked' : ''}
+                                </p>
+                              </div>
+                              {canManageCollabSecurity ? (
+                                <Button
+                                  variant="ghost"
+                                  className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                                  disabled={
+                                    Boolean(device.revokedAt) ||
+                                    device.deviceId === currentDeviceId ||
+                                    collabAction === `revoke:${device.deviceId}`
+                                  }
+                                  onClick={() => {
+                                    void handleRevokeDevice(device.deviceId)
+                                  }}
+                                >
+                                  {collabAction === `revoke:${device.deviceId}` ? (
+                                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  ) : null}
+                                  {device.revokedAt ? 'Revoked' : 'Revoke'}
+                                </Button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                    <Button
-                      variant="outline"
-                      className="text-orange-500 hover:text-orange-600"
-                      disabled={!convexUserId || !isManager || project.status === 'archived'}
-                      onClick={() => {
-                        setShowArchiveDialog(true)
-                        setArchiveError(null)
-                      }}
-                    >
-                      {project.status === 'archived' ? 'Archived' : 'Archive Project'}
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/60 bg-destructive/5 p-5">
-                    <div>
-                      <h4 className="font-medium">Delete Project</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Permanently delete this project and all its data. This action cannot be undone.
-                      </p>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      disabled={!convexUserId}
-                      onClick={() => {
-                        setShowDeleteDialog(true)
-                        setDeleteError(null)
-                      }}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete Project
-                    </Button>
-                  </div>
+                  </section>
                 </div>
-              ) : null}
-            </section>
+
+                <div className="min-w-0 space-y-6">
+                  <section>
+                    <h3 className="flex items-center gap-1.5 px-1 text-xs font-medium text-destructive mb-1.5">
+                      <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
+                      Danger Zone
+                    </h3>
+                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-destructive/15 dark:bg-destructive/20">
+                      <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <Label className="text-xs font-medium text-foreground">Archive Project</Label>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            Archive this project. It can be restored later.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="h-7 text-[11px] text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
+                          disabled={!convexUserId || !isManager || project.status === 'archived'}
+                          onClick={() => {
+                            setShowArchiveDialog(true)
+                            setArchiveError(null)
+                          }}
+                        >
+                          {project.status === 'archived' ? 'Archived' : 'Archive'}
+                        </Button>
+                      </div>
+                      <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-destructive/20 px-4 py-2">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <Label className="text-xs font-medium text-foreground">Delete Project</Label>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              Permanently delete this project and all its data. Cannot be undone.
+                            </p>
+                        </div>
+                        <Button
+                          variant="destructive"
+                          disabled={!convexUserId}
+                          className="h-7 text-[11px]"
+                          onClick={() => {
+                            setShowDeleteDialog(true)
+                            setDeleteError(null)
+                          }}
+                        >
+                          <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <div className="flex justify-end pt-3">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+                    onClick={() => {
+                      void handleSave()
+                    }}
+                    disabled={!canSave}
+                  >
+                    {isSaving ? (
+                      <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
+                    )}
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </section>
+            </div>
           </div>
-        </div>
-      </ScrollArea>
+        </ScrollArea>
+      </div>
+    </div>
 
       <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
         <AlertDialogContent>
@@ -1143,6 +1108,75 @@ export function ProjectSettingsPage() {
         isDeleting={isDeleting}
         errorMessage={deleteError}
       />
-    </div>
+
+      <AlertDialog open={showCollabResetDialog} onOpenChange={setShowCollabResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset encrypted collaboration room</AlertDialogTitle>
+            <AlertDialogDescription>
+              This clears the current encrypted shared collaboration state for <span className="font-semibold">{project.name}</span>.
+              Use this only when no currently-authorized device can approve access or recover the room.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Local files on this device stay intact, but the shared encrypted room history and keys will be replaced.
+          </p>
+          {collabError ? <p className="text-sm text-destructive">{collabError}</p> : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={collabAction === 'reset'}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleResetEncryptedRoom()
+              }}
+              disabled={collabAction === 'reset'}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {collabAction === 'reset' ? 'Resetting…' : 'Reset room'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={showRecoveryCodeDialog}
+        onOpenChange={(open) => {
+          setShowRecoveryCodeDialog(open)
+          if (!open) {
+            setGeneratedRecoveryCode(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this recovery code</AlertDialogTitle>
+            <AlertDialogDescription>
+              This code can restore encrypted collaboration access for a new device when no trusted device is available.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-xl bg-muted px-4 py-3">
+            <p className="font-mono text-sm tracking-[0.18em] text-foreground">
+              {generatedRecoveryCode ?? 'No recovery code generated.'}
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Keep it somewhere safe. We only show the newly generated code here.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                if (generatedRecoveryCode) {
+                  void navigator.clipboard.writeText(generatedRecoveryCode)
+                }
+              }}
+            >
+              Copy code
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDownToLine, Download, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useAutoUpdater } from '@/hooks/useAutoUpdater'
 import { useAutoUpdateStore } from '@/stores/useAutoUpdateStore'
 import { cn } from '@/lib/utils'
 import logoLightMode from '@/assets/logos/logo_light_mode.png'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDownZeroOneIcon as __ArrowDownToLineHugeIcon, ArrowDownZeroOneIcon as __DownloadHugeIcon, Cancel01Icon as __XHugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
 
 interface UpdateMenuProps {
   disableAutoUpdaterHook?: boolean
@@ -80,7 +82,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
         onClick={() => setDismissedKey(dismissKey)}
         aria-label="Dismiss update card"
       >
-        <X className="h-4 w-4" />
+        <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
       </button>
 
       <div className="h-24 border-b border-zinc-200 bg-gradient-to-b from-zinc-50 to-white">
@@ -125,7 +127,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 className="h-8 flex-1 bg-zinc-900 text-white hover:bg-zinc-800"
                 onClick={() => handleDownload('now')}
               >
-                <Download className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__DownloadHugeIcon} className="h-3.5 w-3.5" />
                 Download & restart
               </Button>
               <Button
@@ -134,7 +136,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 className="h-8 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
                 onClick={() => handleDownload('later')}
               >
-                <ArrowDownToLine className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__ArrowDownToLineHugeIcon} className="h-3.5 w-3.5" />
                 Download only
               </Button>
             </>
@@ -157,7 +159,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 className="h-8 flex-1 bg-zinc-900 text-white hover:bg-zinc-800"
                 onClick={handleRestart}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
                 Download & restart
               </Button>
               <Button
@@ -176,3 +178,4 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
     document.body
   )
 }
+

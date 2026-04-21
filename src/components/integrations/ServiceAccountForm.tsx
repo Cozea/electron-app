@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowMoveUpLeftIcon as __FileUpHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+
 /**
  * Service Account Form Component
  *
@@ -10,7 +15,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, AlertCircle, FileUp } from 'lucide-react'
 import type { IntegrationCredentials, IntegrationDefinition } from '@/lib/integrations/types'
 
 interface ServiceAccountFormProps {
@@ -143,7 +147,7 @@ export function ServiceAccountForm({
         />
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <FileUp className="h-3.5 w-3.5" />
+          <HugeiconsIcon icon={__FileUpHugeIcon} className="h-3.5 w-3.5" />
           <span className="truncate">
             {fileName ? `Loaded ${fileName}` : 'Upload a service account JSON file'}
           </span>
@@ -159,7 +163,7 @@ export function ServiceAccountForm({
       {/* Error message */}
       {(localError || error) && (
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-4 w-4" />
           <AlertDescription>{localError || error}</AlertDescription>
         </Alert>
       )}
@@ -172,7 +176,7 @@ export function ServiceAccountForm({
         <Button type="submit" disabled={!isValid || isSubmitting}>
           {isSubmitting ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 mr-2 animate-spin" />
               Connecting...
             </>
           ) : (

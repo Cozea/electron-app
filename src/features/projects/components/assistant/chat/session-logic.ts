@@ -19,18 +19,18 @@ import type {
   Thread,
   ThreadSession,
   TurnDiffSummary,
-} from "./types";
+} from "@/stores/types";
 
-export type ProviderPickerKind = ProviderKind | "cursor";
+export type ProviderPickerKind = ProviderKind;
 
-export const PROVIDER_OPTIONS: Array<{
+export const PROVIDER_OPTIONS: ReadonlyArray<{
   value: ProviderPickerKind;
   label: string;
-  available: boolean;
 }> = [
-  { value: "codex", label: "Codex", available: true },
-  { value: "claudeAgent", label: "Claude", available: true },
-  { value: "cursor", label: "Cursor", available: false },
+  { value: "codex", label: "Codex" },
+  { value: "claudeAgent", label: "Claude" },
+  { value: "cursor", label: "Cursor" },
+  { value: "opencode", label: "OpenCode" },
 ];
 
 export interface WorkLogEntry {

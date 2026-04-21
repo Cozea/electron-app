@@ -87,14 +87,19 @@ let healthCacheAt = 0
 const HEALTH_CACHE_TTL_MS = 30_000
 const EXPLICIT_GIT_EXECUTABLE_ENV = "COZEA_GIT_EXECUTABLE"
 
+let dirsEnsured = false
+
 function ensureGitRuntimeConfigDirs(): string {
   const baseDir = path.join(app.getPath("userData"), "git-runtime")
-  const configDir = path.join(baseDir, "config")
-  const cacheDir = path.join(baseDir, "cache")
-  const homeDir = path.join(baseDir, "home")
-  fs.mkdirSync(configDir, { recursive: true })
-  fs.mkdirSync(cacheDir, { recursive: true })
-  fs.mkdirSync(homeDir, { recursive: true })
+  if (!dirsEnsured) {
+    const configDir = path.join(baseDir, "config")
+    const cacheDir = path.join(baseDir, "cache")
+    const homeDir = path.join(baseDir, "home")
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.mkdirSync(cacheDir, { recursive: true })
+    fs.mkdirSync(homeDir, { recursive: true })
+    dirsEnsured = true
+  }
   return baseDir
 }
 

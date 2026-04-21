@@ -21,10 +21,6 @@ export function buildProjectJoinPath(token: string): string {
   return `/projects/join/${encodePathSegment(token)}`
 }
 
-export function buildLegacyProjectJoinPath(token: string): string {
-  return `/join/project/${encodePathSegment(token)}`
-}
-
 export function buildProjectInvitePath(inviteId: string): string {
   return `/projects/invite/${encodePathSegment(inviteId)}`
 }

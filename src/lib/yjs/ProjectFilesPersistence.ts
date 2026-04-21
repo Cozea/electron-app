@@ -2,20 +2,39 @@ import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { api } from '../../../convex/_generated/api'
-import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
+import { clearActiveCheckpointGroup, ensureActiveCheckpointGroup } from './checkpointGroups'
+import { extractAttributionOrigin, isRemoteYjsOrigin, resolveYjsOriginKind } from './origins'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
+
+interface ChangeAttributionMetadata {
+  origin: ChangeOrigin
+  sourceOrigin?: string
+  actorType?: 'user' | 'agent' | 'system'
+  actorId?: string
+  terminalId?: string
+  terminalTitle?: string
+  terminalKind?: string
+  commandId?: string
+  commandText?: string
+  runId?: string
+  sessionKey?: string
+  laneId?: string
+  workspaceId?: string
+  gitCwd?: string
+  timestamp?: number
+}
 
 interface PendingChange {
   content: string
   previousContent: string
-  origin: ChangeOrigin
+  attribution: ChangeAttributionMetadata
   previousLineCount: number
 }
 
 interface PendingDelete {
   previousContent: string
-  origin: ChangeOrigin
+  attribution: ChangeAttributionMetadata
   previousLineCount: number
 }
 
@@ -72,34 +91,16 @@ function shouldExcludeActivityPath(path: string): boolean {
   ))
 }
 
-function mergeChangeOrigin(
-  current: ChangeOrigin | null,
-  next: ChangeOrigin
-): ChangeOrigin {
-  if (!current || current === next) {
-    return next
-  }
-  if (current === 'agent' || next === 'agent') {
-    return 'agent'
-  }
-  if (current === 'user' || next === 'user') {
-    return 'user'
-  }
-  if (current === 'remote' || next === 'remote') {
-    return 'remote'
-  }
-  return 'init'
-}
-
 /**
- * ProjectFilesPersistence - Persists Yjs file changes to activity logs and durable sync.
+ * ProjectFilesPersistence - Persists Yjs file changes to activity logs and shared snapshots.
  *
  * This provider tracks local Yjs edits/deletes, logs them for the activity feed,
- * and then routes durability through the Git-backed sync lane.
+ * Cozea collaboration durability is handled by Yjs websocket sync and snapshots.
  */
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
+  private gitProjectPath: string | null
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
@@ -108,29 +109,21 @@ export class ProjectFilesPersistence {
   private previousContents: Map<string, string> = new Map()
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private debounceMs = 1000
-  private gitDurabilityCoordinator: GitDurabilityCoordinator | null
 
   constructor(
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
-    projectPath: string | null,
+    gitProjectPath: string | null,
     convex: ConvexReactClient,
     userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
+    this.gitProjectPath = gitProjectPath
     this.convex = convex
     this.userId = userId
     this.userName = userName
-    this.gitDurabilityCoordinator = projectPath
-      ? GitDurabilityCoordinator.acquireShared({
-          projectId,
-          projectPath,
-          convex,
-          userId,
-        })
-      : null
 
     // Initialize previous contents for existing files
     for (const [path, text] of filesMap.entries()) {
@@ -141,13 +134,13 @@ export class ProjectFilesPersistence {
     this.filesMap.observeDeep(this.handleFilesChange)
   }
 
-  private handleFilesChange = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
+  private handleFilesChange = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
     // Skip non-user-edit transactions (remote sync, snapshot/state-vector hydration, local init hydration).
     // These are already persisted on the server - no need to re-persist
     // and doing so would update timestamps causing sync to see "changes"
     const origin = transaction.origin
     if (
-      origin === 'remote' ||
+      isRemoteYjsOrigin(origin) ||
       origin === 'snapshot' ||
       origin === 'sync' ||
       origin === 'state-vector' ||
@@ -157,14 +150,38 @@ export class ProjectFilesPersistence {
     }
 
     // Determine the change origin type
-    const changeOrigin: ChangeOrigin =
-      origin === 'agent' ? 'agent' : origin === 'init' ? 'init' : 'user'
+    const extractedAttribution = extractAttributionOrigin(origin)
+    const resolvedOriginKind = resolveYjsOriginKind(origin)
+    const changeAttribution: ChangeAttributionMetadata = {
+      origin:
+        resolvedOriginKind === 'agent'
+          ? 'agent'
+          : resolvedOriginKind === 'init'
+            ? 'init'
+            : resolvedOriginKind === 'remote'
+              ? 'remote'
+              : 'user',
+      sourceOrigin: extractedAttribution?.sourceOrigin,
+      actorType: extractedAttribution?.actorType,
+      actorId: extractedAttribution?.actorId,
+      terminalId: extractedAttribution?.terminalId,
+      terminalTitle: extractedAttribution?.terminalTitle,
+      terminalKind: extractedAttribution?.terminalKind,
+      commandId: extractedAttribution?.commandId,
+      commandText: extractedAttribution?.commandText,
+      runId: extractedAttribution?.runId,
+      sessionKey: extractedAttribution?.sessionKey,
+      laneId: extractedAttribution?.laneId,
+      workspaceId: extractedAttribution?.workspaceId,
+      gitCwd: extractedAttribution?.gitCwd,
+      timestamp: extractedAttribution?.timestamp,
+    }
 
     for (const event of events) {
       if (event.target === this.filesMap) {
         // Handle file deletions from the map
-        for (const [path, change] of event.changes.keys.entries()) {
-          if (change.action !== 'delete') continue
+        for (const path of event.keysChanged) {
+          if (this.filesMap.has(path)) continue
 
           const previousContent = this.previousContents.get(path) || ''
           const previousLineCount = this.countLines(previousContent)
@@ -174,7 +191,7 @@ export class ProjectFilesPersistence {
 
           this.pendingDeletes.set(path, {
             previousContent,
-            origin: changeOrigin,
+            attribution: changeAttribution,
             previousLineCount,
           })
         }
@@ -195,7 +212,7 @@ export class ProjectFilesPersistence {
           this.pendingChanges.set(path, {
             content: nextContent,
             previousContent: previousContent,
-            origin: changeOrigin,
+            attribution: changeAttribution,
             previousLineCount,
           })
         }
@@ -204,6 +221,7 @@ export class ProjectFilesPersistence {
 
     // Only schedule persist if there are actual local changes/deletes
     if (this.pendingChanges.size > 0 || this.pendingDeletes.size > 0) {
+      ensureActiveCheckpointGroup(String(this.projectId))
       this.schedulePersist()
     }
   }
@@ -225,130 +243,153 @@ export class ProjectFilesPersistence {
     this.debounceTimer = setTimeout(() => this.persistChanges(), this.debounceMs)
   }
 
-  private async enqueueDurabilitySync(source: ChangeOrigin, reason: string): Promise<void> {
-    if (source === 'remote' || source === 'init') {
-      return
-    }
-
-    this.gitDurabilityCoordinator?.scheduleSync(reason)
-  }
-
   private async persistChanges() {
     const changes = new Map(this.pendingChanges)
     this.pendingChanges.clear()
     const deletes = new Map(this.pendingDeletes)
     this.pendingDeletes.clear()
-    let hasMaterialChanges = false
-    let snapshotSource: ChangeOrigin | null = null
+    const checkpointGroupId =
+      changes.size > 0 || deletes.size > 0
+        ? ensureActiveCheckpointGroup(String(this.projectId))
+        : null
+    let loggedActivity = false
 
-    // Persist deletions first
-    if (deletes.size > 0) {
-      for (const [path, info] of deletes) {
-        if (shouldExcludeActivityPath(path)) {
+    try {
+      // Persist deletions first
+      if (deletes.size > 0) {
+        for (const [path, info] of deletes) {
+          if (shouldExcludeActivityPath(path)) {
+            this.previousContents.delete(path)
+            continue
+          }
+
+          const { attribution, previousLineCount } = info
+          try {
+            await this.convex.mutation(api.activity.logFileChange, {
+              projectId: this.projectId,
+              userId: this.userId,
+              filePath: path,
+              changeType: 'delete',
+              additions: 0,
+              deletions: previousLineCount,
+              totalLines: 0,
+              origin: attribution.origin,
+              sourceOrigin: attribution.sourceOrigin,
+              actorType: attribution.actorType,
+              actorId: attribution.actorId,
+              userName: this.userName,
+              terminalId: attribution.terminalId,
+              terminalTitle: attribution.terminalTitle,
+              terminalKind: attribution.terminalKind,
+              commandId: attribution.commandId,
+              commandText: attribution.commandText,
+              runId: attribution.runId,
+              sessionKey: attribution.sessionKey,
+              laneId: attribution.laneId,
+              workspaceId: attribution.workspaceId,
+              gitCwd: attribution.gitCwd,
+              changeTimestamp: attribution.timestamp,
+              checkpointGroupId: checkpointGroupId ?? undefined,
+            })
+            loggedActivity = true
+            await this.convex.mutation(api.fileTombstones.createTombstone, {
+              projectId: this.projectId,
+              filePath: path,
+              deletedBy: this.userId,
+              deletedByAgent: attribution.origin === 'agent' ? this.userName : undefined,
+            })
+          } catch (error) {
+            console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
+          }
+
           this.previousContents.delete(path)
+        }
+      }
+
+      for (const [path, change] of changes) {
+        // A delete may have happened after we captured `changes`
+        if (deletes.has(path)) continue
+        if (shouldExcludeActivityPath(path)) {
+          this.previousContents.set(path, change.content)
           continue
         }
 
-        const { previousContent, origin, previousLineCount } = info
+        const { content, previousContent, attribution, previousLineCount } = change
+        // Ignore no-op writes to avoid noisy feed events and redundant uploads.
+        if (content === previousContent) continue
+
+        const currentLineCount = this.countLines(content)
+
+        // Calculate additions and deletions
+        const isNewFile = previousLineCount === 0
+        const additions = isNewFile ? currentLineCount : Math.max(0, currentLineCount - previousLineCount)
+        const deletions = isNewFile ? 0 : Math.max(0, previousLineCount - currentLineCount)
+
         try {
           await this.convex.mutation(api.activity.logFileChange, {
             projectId: this.projectId,
             userId: this.userId,
             filePath: path,
-            changeType: 'delete',
-            oldContent: previousContent,
-            newContent: '',
-            additions: 0,
-            deletions: previousLineCount,
-            totalLines: 0,
-            origin,
+            changeType: isNewFile ? 'create' : 'modify',
+            additions,
+            deletions,
+            totalLines: currentLineCount,
+            origin: attribution.origin,
+            sourceOrigin: attribution.sourceOrigin,
+            actorType: attribution.actorType,
+            actorId: attribution.actorId,
             userName: this.userName,
+            terminalId: attribution.terminalId,
+            terminalTitle: attribution.terminalTitle,
+            terminalKind: attribution.terminalKind,
+            commandId: attribution.commandId,
+            commandText: attribution.commandText,
+            runId: attribution.runId,
+            sessionKey: attribution.sessionKey,
+            laneId: attribution.laneId,
+            workspaceId: attribution.workspaceId,
+            gitCwd: attribution.gitCwd,
+            changeTimestamp: attribution.timestamp,
+            checkpointGroupId: checkpointGroupId ?? undefined,
           })
-          await this.convex.mutation(api.fileTombstones.createTombstone, {
+          loggedActivity = true
+          await this.convex.mutation(api.fileTombstones.removeTombstone, {
             projectId: this.projectId,
             filePath: path,
-            deletedBy: this.userId,
-            deletedByAgent: origin === 'agent' ? this.userName : undefined,
           })
+
+          // Update previous content for next diff
+          this.previousContents.set(path, content)
         } catch (error) {
-          console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
+          console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
         }
-
-        this.previousContents.delete(path)
-        hasMaterialChanges = true
-        snapshotSource = mergeChangeOrigin(snapshotSource, origin)
-      }
-    }
-
-    for (const [path, change] of changes) {
-      // A delete may have happened after we captured `changes`
-      if (deletes.has(path)) continue
-      if (shouldExcludeActivityPath(path)) {
-        this.previousContents.set(path, change.content)
-        continue
       }
 
-      const { content, previousContent, origin, previousLineCount } = change
-      // Ignore no-op writes to avoid noisy feed events and redundant uploads.
-      if (content === previousContent) continue
-
-      const currentLineCount = this.countLines(content)
-
-      // Calculate additions and deletions
-      const isNewFile = previousLineCount === 0
-      const additions = isNewFile ? currentLineCount : Math.max(0, currentLineCount - previousLineCount)
-      const deletions = isNewFile ? 0 : Math.max(0, previousLineCount - currentLineCount)
-
-      try {
-        // Log the activity with content for diff viewing
-        await this.convex.mutation(api.activity.logFileChange, {
-          projectId: this.projectId,
-          userId: this.userId,
-          filePath: path,
-          changeType: isNewFile ? 'create' : 'modify',
-          oldContent: previousContent,
-          newContent: content,
-          additions,
-          deletions,
-          totalLines: currentLineCount,
-          origin,
-          userName: this.userName,
+      if (
+        loggedActivity &&
+        checkpointGroupId &&
+        this.gitProjectPath &&
+        window.electronAPI?.sync?.gitCaptureCheckpoint
+      ) {
+        const captureResult = await window.electronAPI.sync.gitCaptureCheckpoint({
+          projectPath: this.gitProjectPath,
+          checkpointId: checkpointGroupId,
+          authorName: this.userName,
         })
-        await this.convex.mutation(api.fileTombstones.removeTombstone, {
-          projectId: this.projectId,
-          filePath: path,
-        })
-
-        // Update previous content for next diff
-        this.previousContents.set(path, content)
-        hasMaterialChanges = true
-        snapshotSource = mergeChangeOrigin(snapshotSource, origin)
-      } catch (error) {
-        console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
+        if (!captureResult.success) {
+          console.error('[ProjectFilesPersistence] Failed to capture checkpoint:', captureResult.error)
+        }
       }
-    }
-
-    if (hasMaterialChanges && snapshotSource) {
-      await this.enqueueDurabilitySync(
-        snapshotSource,
-        `yjs-batch: upserts=${changes.size}, deletes=${deletes.size}`
-      )
+    } finally {
+      if (checkpointGroupId) {
+        clearActiveCheckpointGroup(String(this.projectId), checkpointGroupId)
+      }
     }
   }
 
   destroy() {
-    const releaseGitCoordinator = () => {
-      this.gitDurabilityCoordinator?.release()
-      this.gitDurabilityCoordinator = null
-    }
-
     if (this.pendingChanges.size > 0 || this.pendingDeletes.size > 0) {
-      void this.persistChanges().finally(releaseGitCoordinator)
-    } else {
-      const flushPromise = this.gitDurabilityCoordinator
-        ? this.gitDurabilityCoordinator.flushNow()
-        : Promise.resolve()
-      void flushPromise.finally(releaseGitCoordinator)
+      void this.persistChanges()
     }
     this.filesMap.unobserveDeep(this.handleFilesChange)
     if (this.debounceTimer) clearTimeout(this.debounceTimer)

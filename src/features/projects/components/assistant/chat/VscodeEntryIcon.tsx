@@ -1,7 +1,11 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { DocumentAttachmentIcon as __FileIconHugeIcon, Folder01Icon as __FolderIconHugeIcon } from '@hugeicons/core-free-icons'
+
 // @ts-nocheck
 import { memo, useMemo, useState } from "react";
 import { getVscodeIconUrlForEntry } from "../vscode-icons";
-import { FileIcon, FolderIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {
@@ -19,9 +23,9 @@ export const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {
 
   if (failed) {
     return props.kind === "directory" ? (
-      <FolderIcon className={cn("size-4 text-muted-foreground/80", props.className)} />
+      <HugeiconsIcon icon={__FolderIconHugeIcon} className={cn("size-4 text-muted-foreground/80", props.className)} />
     ) : (
-      <FileIcon className={cn("size-4 text-muted-foreground/80", props.className)} />
+      <HugeiconsIcon icon={__FileIconHugeIcon} className={cn("size-4 text-muted-foreground/80", props.className)} />
     );
   }
 

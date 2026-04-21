@@ -67,6 +67,7 @@ function getDefaultSettings(): AppSettings {
     projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
     previewHeaderCompatibilityEnabled: true,
     approvedExternalReadRoots: [],
+    deactivateTransparency: false,
   }
 }
 

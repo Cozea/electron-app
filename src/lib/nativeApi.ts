@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { NativeApi } from "@cozea/assistant-contracts";
 
+import { readConfiguredWsUrl } from "./desktopBridgeClient";
 import { createWsNativeApi } from "./wsNativeApi";
 
 function readCachedApi(): NativeApi | undefined {
@@ -15,16 +16,6 @@ function writeCachedApi(api: NativeApi): NativeApi {
   return api;
 }
 
-function readExplicitWebFallbackUrl(): string | null {
-  const rawUrl = import.meta.env.VITE_WS_URL;
-  if (typeof rawUrl !== "string") {
-    return null;
-  }
-
-  const trimmed = rawUrl.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
 export function readNativeApi(): NativeApi | undefined {
   if (typeof window === "undefined") return undefined;
   const cachedApi = readCachedApi();
@@ -34,14 +25,9 @@ export function readNativeApi(): NativeApi | undefined {
     return writeCachedApi(window.nativeApi);
   }
 
-  const desktopWsUrl = window.desktopBridge?.getWsUrl?.();
-  if (desktopWsUrl) {
-    return writeCachedApi(createWsNativeApi(desktopWsUrl));
-  }
-
-  const explicitWebFallbackUrl = readExplicitWebFallbackUrl();
-  if (explicitWebFallbackUrl) {
-    return writeCachedApi(createWsNativeApi(explicitWebFallbackUrl));
+  const configuredWsUrl = readConfiguredWsUrl();
+  if (configuredWsUrl) {
+    return writeCachedApi(createWsNativeApi(configuredWsUrl));
   }
 
   return undefined;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type {
   BrowserFindInPageOptions,
   BrowserFindState,
@@ -34,6 +34,10 @@ export interface WorkbenchBrowserViewState {
 interface UseWorkbenchBrowserViewOptions {
   tileId: string
   url: string
+  sessionKey?: string | null
+  projectId: string
+  laneId: string
+  projectPath?: string | null
   visible?: boolean
   overlaySelector?: string
   storageScope?: BrowserStorageScope
@@ -41,12 +45,13 @@ interface UseWorkbenchBrowserViewOptions {
   persistModel?: boolean
   onUrlObserved?: (url: string) => void
   onTitleObserved?: (title: string) => void
+  onFaviconObserved?: (favicon: string | null) => void
   onNewPageRequest?: (request: BrowserNewPageRequest) => void
   onCommand?: (command: BrowserUiCommand) => void
 }
 
 interface UseWorkbenchBrowserViewResult {
-  hostRef: React.RefObject<HTMLDivElement | null>
+  hostRef: RefObject<HTMLDivElement | null>
   state: WorkbenchBrowserViewState
   boundsReady: boolean
   overlayPaused: boolean
@@ -87,6 +92,9 @@ export function useWorkbenchBrowserView(
   const {
     tileId,
     url,
+    sessionKey = null,
+    projectId,
+    laneId,
     visible = true,
     overlaySelector = '[data-workbench-browser-overlay="true"]',
     storageScope = "workspace",
@@ -94,6 +102,7 @@ export function useWorkbenchBrowserView(
     persistModel = false,
     onUrlObserved,
     onTitleObserved,
+    onFaviconObserved,
     onNewPageRequest,
     onCommand,
   } = options
@@ -131,6 +140,49 @@ export function useWorkbenchBrowserView(
   const [placeholderScreenshot, setPlaceholderScreenshot] = useState<string | null>(null)
   const lastSentBoundsRef = useRef<{ x: number; y: number; w: number; h: number; v: boolean } | null>(null)
   const lastRequestedUrlRef = useRef<string>(url)
+  /** Latest `url` from React props — avoids stale closures in the model subscriber vs `tile.url`. */
+  const committedWorkbenchUrlRef = useRef(url)
+  committedWorkbenchUrlRef.current = url
+
+  const overlayPausedRef = useRef(overlayPaused)
+  const scheduleBoundsSyncRef = useRef<(() => void) | null>(null)
+
+  const onUrlObservedRef = useRef(onUrlObserved)
+  const onTitleObservedRef = useRef(onTitleObserved)
+  const onFaviconObservedRef = useRef(onFaviconObserved)
+  const onNewPageRequestRef = useRef(onNewPageRequest)
+  const onCommandRef = useRef(onCommand)
+
+  useEffect(() => {
+    onUrlObservedRef.current = onUrlObserved
+    onTitleObservedRef.current = onTitleObserved
+    onFaviconObservedRef.current = onFaviconObserved
+    onNewPageRequestRef.current = onNewPageRequest
+    onCommandRef.current = onCommand
+  })
+
+  useEffect(() => {
+    overlayPausedRef.current = overlayPaused
+    scheduleBoundsSyncRef.current?.()
+  }, [overlayPaused])
+
+  useEffect(() => {
+    if (!sessionKey) {
+      return
+    }
+
+    void window.electronAPI.workbenchSession
+      .bindBrowser({
+        sessionKey,
+        projectId,
+        laneId,
+        tileId,
+        browserTileId: tileId,
+      })
+      .catch((error) => {
+        console.warn("[WorkbenchBrowser] Failed to bind browser tile to session", error)
+      })
+  }, [laneId, projectId, sessionKey, tileId])
 
   useEffect(() => {
     setState((current) => {
@@ -163,51 +215,53 @@ export function useWorkbenchBrowserView(
     })
   }, [storageScope, tileId, url])
 
-  useEffect(() => {
+  /** Acquire model + subscribe once per tile; URL loads run in the following layout effect so stale error states cannot clobber a new address. */
+  useLayoutEffect(() => {
     const model = acquireBrowserTileModel(tileId, { persistent: persistModel })
     modelRef.current = model
 
     const unsubscribe = model.subscribe((nextState) => {
       setState(nextState)
-      if (nextState.url && nextState.url !== url) {
-        // Treat browser-observed URL changes as already-synced so the follow-up
-        // store update does not trigger a redundant navigate() and reload cycle.
-        lastRequestedUrlRef.current = nextState.url
-        onUrlObserved?.(nextState.url)
+      // Never push a failed navigation URL into the workbench — it would overwrite a newly typed address.
+      if (!nextState.loadError && nextState.url) {
+        const committed = committedWorkbenchUrlRef.current
+        if (nextState.url !== committed) {
+          lastRequestedUrlRef.current = nextState.url
+          onUrlObservedRef.current?.(nextState.url)
+        }
       }
       if (nextState.title && nextState.title !== "Browser") {
-        onTitleObserved?.(nextState.title)
+        onTitleObservedRef.current?.(nextState.title)
       }
-    })
-
-    void model.initialize({
-      initialUrl: url,
-      storageScope,
-      workspaceId,
+      onFaviconObservedRef.current?.(nextState.favicon ?? null)
     })
 
     return unsubscribe
-  }, [onTitleObserved, onUrlObserved, persistModel, storageScope, tileId, url, workspaceId])
+  }, [persistModel, storageScope, tileId, workspaceId])
 
-  useEffect(() => {
-    if (!onNewPageRequest) return
+  useLayoutEffect(() => {
     const unsubscribe = window.electronAPI.workbenchBrowser.onNewPageRequest((request) => {
       if (request.sourceTileId !== tileId) return
-      onNewPageRequest(request)
+      onNewPageRequestRef.current?.(request)
     })
     return unsubscribe
-  }, [onNewPageRequest, tileId])
+  }, [tileId])
 
   useEffect(() => {
-    if (!onCommand) return
     const unsubscribe = window.electronAPI.workbenchBrowser.onCommand((command) => {
       if (command.tileId !== tileId) return
-      onCommand(command)
-    })
-    return unsubscribe
-  }, [onCommand, tileId])
+      
+      if (command.type.startsWith('split-control-')) {
+        window.dispatchEvent(new CustomEvent('cozea:split-control', { detail: command }))
+        return
+      }
 
-  useEffect(() => {
+      onCommandRef.current?.(command)
+    })
+    return () => unsubscribe()
+  }, [tileId])
+
+  useLayoutEffect(() => {
     const model = modelRef.current
     if (!model) return
 
@@ -230,6 +284,12 @@ export function useWorkbenchBrowserView(
   }, [storageScope, tileId, url, workspaceId])
 
   useEffect(() => {
+    if (!visible || !url) {
+      setHasOverlappingOverlay(false)
+      setOverlayPauseReason(null)
+      return
+    }
+
     const element = hostRef.current
     if (!element) return
 
@@ -249,7 +309,7 @@ export function useWorkbenchBrowserView(
           return false
         }
         const style = window.getComputedStyle(candidate)
-        if (style.display === "none" || style.visibility === "hidden" || style.pointerEvents === "none") {
+        if (style.display === "none" || style.visibility === "hidden") {
           return false
         }
         const overlayRect = candidate.getBoundingClientRect()
@@ -289,7 +349,7 @@ export function useWorkbenchBrowserView(
       window.removeEventListener("resize", schedule)
       window.removeEventListener("scroll", schedule, true)
     }
-  }, [overlaySelector])
+  }, [overlaySelector, url, visible])
 
   useEffect(() => {
     if (!url) {
@@ -300,67 +360,80 @@ export function useWorkbenchBrowserView(
   }, [url])
 
   useEffect(() => {
-    if (!overlayPaused && boundsReady) {
-      setPlaceholderScreenshot(null)
-    }
-  }, [boundsReady, overlayPaused])
-
-  useEffect(() => {
     const model = modelRef.current
     if (!model) return
 
     let cancelled = false
+    let frame = 0
 
-    if (!hasOverlappingOverlay || !url || state.loadError || !boundsReady || state.isLoading) {
+    if (!hasOverlappingOverlay || !url || state.loadError) {
       setOverlayPaused(false)
+      // Do NOT set placeholderScreenshot(null) here so it stays mounted and prevents un-pause flicker.
       return () => {
         cancelled = true
+        cancelAnimationFrame(frame)
       }
     }
 
-    const capturePauseScreenshot = async () => {
-      const screenshot = await model.captureScreenshot().catch(() => null)
-      if (cancelled) return
-      if (screenshot) {
-        setPlaceholderScreenshot(screenshot)
-        setOverlayPaused(true)
-        return
+    if (overlayPauseReason === "Split controls") {
+      const captureAndPause = async () => {
+        const screenshot = await model.captureScreenshot().catch(() => null)
+        if (cancelled) return
+        if (screenshot) {
+          setPlaceholderScreenshot(screenshot)
+          // Use requestAnimationFrame to delay pausing by one frame so the DOM updates first
+          frame = requestAnimationFrame(() => {
+            if (cancelled) return
+            setOverlayPaused(true)
+          })
+        } else {
+          setOverlayPaused(true)
+        }
       }
-      setOverlayPaused(false)
+      void captureAndPause()
+    } else {
+      setOverlayPaused(true)
     }
-
-    void capturePauseScreenshot()
 
     return () => {
       cancelled = true
+      cancelAnimationFrame(frame)
     }
-  }, [boundsReady, hasOverlappingOverlay, state.isLoading, state.loadError, url])
+  }, [hasOverlappingOverlay, overlayPauseReason, state.loadError, url])
 
   useEffect(() => {
     const element = hostRef.current
-    if (!element) return
     const model = modelRef.current
     if (!model) return
+
+    if (!visible || !url) {
+      lastSentBoundsRef.current = null
+      void model.setVisible(false)
+      setBoundsReady(false)
+      return
+    }
+
+    if (!element) return
 
     let frame = 0
 
     const syncBounds = () => {
       const rect = element.getBoundingClientRect()
-      
-      const inset = 1
-      const x = Math.ceil(rect.left) + inset
-      const y = Math.ceil(rect.top) + inset
-      const width = Math.max(0, Math.floor(rect.right) - Math.ceil(rect.left) - inset * 2)
-      const height = Math.max(0, Math.floor(rect.bottom) - Math.ceil(rect.top) - inset * 2)
+
+      const x = Math.round(rect.left)
+      const y = Math.round(rect.top)
+      const width = Math.max(0, Math.round(rect.right) - x)
+      const height = Math.max(0, Math.round(rect.bottom) - y)
 
       const stateLoadError = state.loadError
-      const nextVisible =
+      const nextBoundsReady =
         visible &&
-        !overlayPaused &&
         Boolean(url) &&
         !stateLoadError &&
         width > 0 &&
         height > 0
+
+      const nextVisible = nextBoundsReady && !overlayPausedRef.current
       const last = lastSentBoundsRef.current
       if (
         last &&
@@ -378,13 +451,15 @@ export function useWorkbenchBrowserView(
       } else {
         void model.setVisible(false)
       }
-      setBoundsReady(nextVisible)
+      setBoundsReady(nextBoundsReady)
     }
 
     const schedule = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(syncBounds)
     }
+
+    scheduleBoundsSyncRef.current = schedule
 
     const resizeObserver = new ResizeObserver(schedule)
     resizeObserver.observe(element)
@@ -395,6 +470,7 @@ export function useWorkbenchBrowserView(
     schedule()
 
     return () => {
+      scheduleBoundsSyncRef.current = null
       cancelAnimationFrame(frame)
       resizeObserver.disconnect()
       window.removeEventListener("resize", schedule)
@@ -404,7 +480,7 @@ export function useWorkbenchBrowserView(
       void model.setVisible(false)
       setBoundsReady(false)
     }
-  }, [overlayPaused, tileId, url, visible, state.loadError])
+  }, [tileId, url, visible, state.loadError])
 
   useEffect(() => {
     return () => {

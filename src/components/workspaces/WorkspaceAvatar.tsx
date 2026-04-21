@@ -1,4 +1,7 @@
-import type { LucideIcon } from 'lucide-react'
+
+import type { ComponentType, SVGProps } from "react"
+
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 
 import { cn } from '@/lib/utils'
 import { resolveWorkspaceIdentityPresentation, type WorkspaceIdentityRenderable } from '@/lib/workspaces/workspaceIdentity'

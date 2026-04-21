@@ -332,7 +332,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
+          ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),
+          ...(command.skills !== undefined ? { skills: command.skills } : {}),
           createdAt: command.createdAt,
         },
       };

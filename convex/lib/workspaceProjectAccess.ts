@@ -1,14 +1,14 @@
-import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
+import type { Id } from "../_generated/dataModel"
 import {
-  resolveMemberAccess,
-  type ResolvedOrganizationAccess,
-} from "./organizationRoles"
-import { getProjectMembership, PERSONAL_WORKSPACE_PREFIX } from "./projectSharing"
+  canAccessProject,
+  canArchiveProject,
+  canEditProject,
+  canManageProject,
+  getProjectAccessState,
+} from "./projectAccess"
 
 type ReadDatabaseCtx = Pick<QueryCtx | MutationCtx, "db">
-
-type OrganizationRole = "admin" | "member" | "viewer"
 
 export type WorkspaceProjectPermission =
   | "projects:view"
@@ -20,89 +20,23 @@ export type WorkspaceProjectPermission =
   | "projects:manage"
 
 export interface WorkspaceProjectAccess {
-  organization: Doc<"organizations"> | null
-  membership: Doc<"members"> | null
-  access: ResolvedOrganizationAccess | null
-  isPersonalOwner: boolean
-}
-
-function organizationRolePriority(role: OrganizationRole): number {
-  switch (role) {
-    case "admin":
-      return 3
-    case "member":
-      return 2
-    default:
-      return 1
-  }
-}
-
-function pickCanonicalOrganizationMembership<
-  T extends { role: OrganizationRole; updatedAt?: number; joinedAt?: number; _id: unknown },
->(memberships: T[]): T | null {
-  if (memberships.length === 0) return null
-  return [...memberships].sort((a, b) => {
-    const roleDelta = organizationRolePriority(b.role) - organizationRolePriority(a.role)
-    if (roleDelta !== 0) return roleDelta
-    const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
-    if (updatedDelta !== 0) return updatedDelta
-    const joinedDelta = (b.joinedAt || 0) - (a.joinedAt || 0)
-    if (joinedDelta !== 0) return joinedDelta
-    return String(a._id).localeCompare(String(b._id))
-  })[0]
-}
-
-export async function getCanonicalOrganizationMembership(
-  ctx: ReadDatabaseCtx,
-  organizationId: Id<"organizations">,
-  userId: Id<"users">
-): Promise<Doc<"members"> | null> {
-  const memberships = await ctx.db
-    .query("members")
-    .withIndex("by_organization_and_user", (q) =>
-      q.eq("organizationId", organizationId).eq("userId", userId)
-    )
-    .collect()
-
-  return pickCanonicalOrganizationMembership(memberships)
+  projectExists: boolean
+  isCreator: boolean
+  isMember: boolean
+  role: "project_manager" | "developer" | "designer" | "viewer" | null
 }
 
 export async function getWorkspaceProjectAccess(
   ctx: ReadDatabaseCtx,
-  organizationId: Id<"organizations">,
+  projectId: Id<"projects">,
   userId: Id<"users">
 ): Promise<WorkspaceProjectAccess> {
-  const organization = await ctx.db.get(organizationId)
-  if (!organization) {
-    return {
-      organization: null,
-      membership: null,
-      access: null,
-      isPersonalOwner: false,
-    }
-  }
-
-  if (organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)) {
-    const user = await ctx.db.get(userId)
-    const isPersonalOwner =
-      !!user && organization.workosId === `${PERSONAL_WORKSPACE_PREFIX}${user.workosId}`
-
-    return {
-      organization,
-      membership: null,
-      access: null,
-      isPersonalOwner,
-    }
-  }
-
-  const membership = await getCanonicalOrganizationMembership(ctx, organizationId, userId)
-  const access = await resolveMemberAccess(ctx, membership)
-
+  const access = await getProjectAccessState(ctx, projectId, userId)
   return {
-    organization,
-    membership,
-    access,
-    isPersonalOwner: false,
+    projectExists: access.project !== null,
+    isCreator: access.isCreator,
+    isMember: access.membership !== null,
+    role: access.membership?.role ?? null,
   }
 }
 
@@ -110,25 +44,28 @@ export function hasWorkspaceProjectPermission(
   workspaceAccess: WorkspaceProjectAccess,
   permission: WorkspaceProjectPermission
 ): boolean {
-  if (workspaceAccess.isPersonalOwner) {
-    return true
-  }
-
-  return workspaceAccess.access?.permissions.includes(permission) ?? false
-}
-
-function canUseProjectMembershipFallback(
-  workspaceAccess: WorkspaceProjectAccess
-): boolean {
-  if (!workspaceAccess.organization) {
+  if (!workspaceAccess.projectExists) {
     return false
   }
 
-  if (workspaceAccess.organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)) {
+  if (workspaceAccess.isCreator) {
     return true
   }
 
-  return workspaceAccess.membership !== null
+  switch (permission) {
+    case "projects:view":
+      return workspaceAccess.isMember
+    case "projects:create":
+    case "projects:import":
+      return true
+    case "projects:archive":
+    case "projects:delete":
+    case "projects:manage":
+    case "projects:share":
+      return workspaceAccess.role === "project_manager"
+    default:
+      return false
+  }
 }
 
 export async function canAccessProjectByWorkspaceOrMembership(
@@ -136,27 +73,7 @@ export async function canAccessProjectByWorkspaceOrMembership(
   projectId: Id<"projects">,
   userId: Id<"users">
 ): Promise<boolean> {
-  const project = await ctx.db.get(projectId)
-  if (!project || project.status === "deleted") {
-    return false
-  }
-
-  const workspaceAccess = await getWorkspaceProjectAccess(
-    ctx,
-    project.organizationId,
-    userId
-  )
-
-  if (hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
-    return true
-  }
-
-  if (!canUseProjectMembershipFallback(workspaceAccess)) {
-    return false
-  }
-
-  const membership = await getProjectMembership(ctx, projectId, userId)
-  return !!membership
+  return await canAccessProject(ctx, projectId, userId)
 }
 
 export async function canEditProjectByWorkspaceOrMembership(
@@ -164,27 +81,7 @@ export async function canEditProjectByWorkspaceOrMembership(
   projectId: Id<"projects">,
   userId: Id<"users">
 ): Promise<boolean> {
-  const project = await ctx.db.get(projectId)
-  if (!project || project.status === "deleted") {
-    return false
-  }
-
-  const workspaceAccess = await getWorkspaceProjectAccess(
-    ctx,
-    project.organizationId,
-    userId
-  )
-
-  if (workspaceAccess.isPersonalOwner || hasWorkspaceProjectPermission(workspaceAccess, "projects:manage")) {
-    return true
-  }
-
-  if (!canUseProjectMembershipFallback(workspaceAccess)) {
-    return false
-  }
-
-  const membership = await getProjectMembership(ctx, projectId, userId)
-  return membership ? membership.role !== "viewer" : false
+  return await canEditProject(ctx, projectId, userId)
 }
 
 export async function canManageProjectByWorkspaceOrMembership(
@@ -192,27 +89,7 @@ export async function canManageProjectByWorkspaceOrMembership(
   projectId: Id<"projects">,
   userId: Id<"users">
 ): Promise<boolean> {
-  const project = await ctx.db.get(projectId)
-  if (!project || project.status === "deleted") {
-    return false
-  }
-
-  const workspaceAccess = await getWorkspaceProjectAccess(
-    ctx,
-    project.organizationId,
-    userId
-  )
-
-  if (workspaceAccess.isPersonalOwner || hasWorkspaceProjectPermission(workspaceAccess, "projects:manage")) {
-    return true
-  }
-
-  if (!canUseProjectMembershipFallback(workspaceAccess)) {
-    return false
-  }
-
-  const membership = await getProjectMembership(ctx, projectId, userId)
-  return membership?.role === "project_manager"
+  return await canManageProject(ctx, projectId, userId)
 }
 
 export async function canArchiveProjectByWorkspaceOrMembership(
@@ -220,25 +97,5 @@ export async function canArchiveProjectByWorkspaceOrMembership(
   projectId: Id<"projects">,
   userId: Id<"users">
 ): Promise<boolean> {
-  const project = await ctx.db.get(projectId)
-  if (!project || project.status === "deleted") {
-    return false
-  }
-
-  const workspaceAccess = await getWorkspaceProjectAccess(
-    ctx,
-    project.organizationId,
-    userId
-  )
-
-  if (hasWorkspaceProjectPermission(workspaceAccess, "projects:archive")) {
-    return true
-  }
-
-  if (!canUseProjectMembershipFallback(workspaceAccess)) {
-    return false
-  }
-
-  const membership = await getProjectMembership(ctx, projectId, userId)
-  return membership?.role === "project_manager"
+  return await canArchiveProject(ctx, projectId, userId)
 }

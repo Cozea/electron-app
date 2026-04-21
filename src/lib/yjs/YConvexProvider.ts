@@ -3,6 +3,7 @@ import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { YjsOfflineQueue } from './OfflineQueue'
+import { extractAttributionOrigin, isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
 
 /**
  * YConvexProvider - Syncs Y.Doc updates via Convex real-time subscriptions.
@@ -66,7 +67,7 @@ export class YConvexProvider {
   private handleLocalUpdate = async (update: Uint8Array, origin: unknown) => {
     // Don't re-broadcast updates we received from remote
     if (
-      origin === 'remote' ||
+      isRemoteYjsOrigin(origin) ||
       origin === 'sync' ||
       origin === 'snapshot' ||
       origin === 'state-vector' ||
@@ -75,7 +76,7 @@ export class YConvexProvider {
       return
     }
 
-    const originStr = typeof origin === 'string' ? origin : 'user'
+    const originStr = extractAttributionOrigin(origin)?.origin ?? (typeof origin === 'string' ? origin : 'user')
 
     // If offline, queue immediately
     if (!this._isOnline) {
@@ -111,7 +112,7 @@ export class YConvexProvider {
     for (const u of updates) {
       // Skip our own updates to avoid duplicate application
       if (u.clientId !== this.clientId) {
-        Y.applyUpdate(this.doc, new Uint8Array(u.update), 'remote')
+        Y.applyUpdate(this.doc, new Uint8Array(u.update), makeRemoteYjsOrigin({ clientId: u.clientId }))
       }
     }
   }
@@ -121,7 +122,7 @@ export class YConvexProvider {
    * Used when joining an existing collaborative session.
    */
   applySnapshot(snapshot: ArrayBuffer) {
-    Y.applyUpdate(this.doc, new Uint8Array(snapshot), 'remote')
+    Y.applyUpdate(this.doc, new Uint8Array(snapshot), makeRemoteYjsOrigin({}))
   }
 
   /**

@@ -566,6 +566,20 @@ function buildUserMessageEffect(
     const text = buildPromptText(input);
     const sdkContent: Array<Record<string, unknown>> = [];
 
+    for (const skill of input.skills ?? []) {
+      if (skill && typeof skill === "object" && typeof skill.path === "string") {
+        const skillText = yield* dependencies.fileSystem.readFileString(skill.path).pipe(
+          Effect.catchAll(() => Effect.succeed(""))
+        );
+        if (skillText.trim().length > 0) {
+          sdkContent.push({
+            type: "text",
+            text: `[Skill: ${typeof skill.name === "string" ? skill.name : "Custom Instruction"}]\n${skillText.trim()}`,
+          });
+        }
+      }
+    }
+
     if (text.length > 0) {
       sdkContent.push({ type: "text", text });
     }

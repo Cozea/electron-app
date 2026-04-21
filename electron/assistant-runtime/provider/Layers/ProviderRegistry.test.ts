@@ -31,7 +31,9 @@ import {
   readCodexConfigModelProvider,
 } from "./CodexProvider";
 import { checkClaudeProviderStatus, parseClaudeAuthStatusFromOutput } from "./ClaudeProvider";
-import { haveProvidersChanged, ProviderRegistryLive } from "./ProviderRegistry";
+import { parseCursorAboutOutput } from "./CursorProvider";
+import { haveProvidersChanged, mergeProviderSnapshot, ProviderRegistryLive } from "./ProviderRegistry";
+import { ServerConfig } from "../../config";
 import { ServerSettingsService, type ServerSettingsShape } from "../../serverSettings";
 import { ProviderRegistry } from "../Services/ProviderRegistry";
 
@@ -174,7 +176,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "codex");
           assert.strictEqual(status.status, "ready");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "authenticated");
+          assert.strictEqual(status.auth.status, "authenticated");
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {
@@ -234,7 +236,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
             assert.strictEqual(status.provider, "codex");
             assert.strictEqual(status.installed, true);
             assert.strictEqual(status.status, "ready");
-            assert.strictEqual(status.authStatus, "authenticated");
+            assert.strictEqual(status.auth.status, "authenticated");
           } finally {
             process.env.PATH = previousPath;
           }
@@ -248,7 +250,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "codex");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, false);
-          assert.strictEqual(status.authStatus, "unknown");
+          assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
             "Codex CLI (`codex`) is not installed or not on PATH.",
@@ -263,7 +265,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "codex");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unknown");
+          assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
             "Codex CLI v0.36.0 is too old for Cozea. Upgrade to v0.37.0 or newer and restart Cozea.",
@@ -286,7 +288,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "codex");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unauthenticated");
+          assert.strictEqual(status.auth.status, "unauthenticated");
           assert.strictEqual(
             status.message,
             "Codex CLI is not authenticated. Run `codex login` and try again.",
@@ -312,7 +314,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "codex");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unauthenticated");
+          assert.strictEqual(status.auth.status, "unauthenticated");
           assert.strictEqual(
             status.message,
             "Codex CLI is not authenticated. Run `codex login` and try again.",
@@ -337,7 +339,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "codex");
           assert.strictEqual(status.status, "warning");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unknown");
+          assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
             "Codex CLI authentication status command is unavailable in this Codex version.",
@@ -365,33 +367,44 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
             status: "ready",
             enabled: true,
             installed: true,
-            authStatus: "authenticated",
+            auth: { status: "authenticated" },
             checkedAt: "2026-03-25T00:00:00.000Z",
             version: "1.0.0",
             models: [],
+            slashCommands: [],
+            skills: [],
           },
           {
             provider: "claudeAgent",
             status: "warning",
             enabled: true,
             installed: true,
-            authStatus: "unknown",
+            auth: { status: "unknown" },
             checkedAt: "2026-03-25T00:00:00.000Z",
             version: "1.0.0",
             models: [],
+            slashCommands: [],
+            skills: [],
           },
         ] as const satisfies ReadonlyArray<ServerProvider>;
 
         assert.strictEqual(haveProvidersChanged(providers, [...providers]), false);
       });
 
-      it.effect("reruns codex health when codex provider settings change", () =>
-        Effect.gen(function* () {
+      it.effect(
+        "reruns codex health when codex provider settings change",
+        () =>
+          Effect.gen(function* () {
           const serverSettings = yield* makeMutableServerSettingsService();
           const scope = yield* Scope.make();
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
           const providerRegistryLayer = ProviderRegistryLive.pipe(
             Layer.provideMerge(Layer.succeed(ServerSettingsService, serverSettings)),
+            Layer.provideMerge(
+              ServerConfig.layerTest(process.cwd(), {
+                prefix: "t3-provider-registry-",
+              }),
+            ),
             Layer.provideMerge(
               mockCommandSpawnerLayer((command, args) => {
                 const joined = args.join(" ");
@@ -418,7 +431,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry;
 
-            const initial = yield* registry.getProviders;
+            const initial = yield* registry.refresh("codex");
             assert.strictEqual(
               initial.find((status) => status.provider === "codex")?.status,
               "ready",
@@ -446,7 +459,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
               "error",
             );
           }).pipe(Effect.provide(runtimeServices));
-        }),
+          }),
+        15_000,
       );
 
       it.effect("skips codex probes entirely when the provider is disabled", () =>
@@ -493,7 +507,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
             assert.strictEqual(status.provider, "codex");
             assert.strictEqual(status.status, "ready");
             assert.strictEqual(status.installed, true);
-            assert.strictEqual(status.authStatus, "unknown");
+            assert.strictEqual(status.auth.status, "unknown");
             assert.strictEqual(
               status.message,
               "Using a custom Codex model provider; OpenAI login check skipped.",
@@ -536,7 +550,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           const status = yield* checkCodexProviderStatus();
           // The auth probe runs and sees "not logged in" → error
           assert.strictEqual(status.status, "error");
-          assert.strictEqual(status.authStatus, "unauthenticated");
+          assert.strictEqual(status.auth.status, "unauthenticated");
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {
@@ -557,7 +571,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
       it("exit code 0 with no auth markers is ready", () => {
         const parsed = parseAuthStatusFromOutput({ stdout: "OK\n", stderr: "", code: 0 });
         assert.strictEqual(parsed.status, "ready");
-        assert.strictEqual(parsed.authStatus, "authenticated");
+        assert.strictEqual(parsed.auth.status, "authenticated");
       });
 
       it("JSON with authenticated=false is unauthenticated", () => {
@@ -567,7 +581,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           code: 0,
         });
         assert.strictEqual(parsed.status, "error");
-        assert.strictEqual(parsed.authStatus, "unauthenticated");
+        assert.strictEqual(parsed.auth.status, "unauthenticated");
       });
 
       it("JSON without auth marker is warning", () => {
@@ -577,7 +591,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           code: 0,
         });
         assert.strictEqual(parsed.status, "warning");
-        assert.strictEqual(parsed.authStatus, "unknown");
+        assert.strictEqual(parsed.auth.status, "unknown");
       });
     });
 
@@ -714,7 +728,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "claudeAgent");
           assert.strictEqual(status.status, "ready");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "authenticated");
+          assert.strictEqual(status.auth.status, "authenticated");
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {
@@ -738,7 +752,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "claudeAgent");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, false);
-          assert.strictEqual(status.authStatus, "unknown");
+          assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
             "Claude Agent CLI (`claude`) is not installed or not on PATH.",
@@ -770,7 +784,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "claudeAgent");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unauthenticated");
+          assert.strictEqual(status.auth.status, "unauthenticated");
           assert.strictEqual(
             status.message,
             "Claude is not authenticated. Run `claude auth login` and try again.",
@@ -798,7 +812,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "claudeAgent");
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unauthenticated");
+          assert.strictEqual(status.auth.status, "unauthenticated");
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {
@@ -818,7 +832,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           assert.strictEqual(status.provider, "claudeAgent");
           assert.strictEqual(status.status, "warning");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.authStatus, "unknown");
+          assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
             "Claude Agent authentication status command is unavailable in this version of Claude.",
@@ -843,7 +857,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
       it("exit code 0 with no auth markers is ready", () => {
         const parsed = parseClaudeAuthStatusFromOutput({ stdout: "OK\n", stderr: "", code: 0 });
         assert.strictEqual(parsed.status, "ready");
-        assert.strictEqual(parsed.authStatus, "authenticated");
+        assert.strictEqual(parsed.auth.status, "authenticated");
       });
 
       it("JSON with loggedIn=true is authenticated", () => {
@@ -853,7 +867,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           code: 0,
         });
         assert.strictEqual(parsed.status, "ready");
-        assert.strictEqual(parsed.authStatus, "authenticated");
+        assert.strictEqual(parsed.auth.status, "authenticated");
       });
 
       it("JSON with loggedIn=false is unauthenticated", () => {
@@ -863,7 +877,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           code: 0,
         });
         assert.strictEqual(parsed.status, "error");
-        assert.strictEqual(parsed.authStatus, "unauthenticated");
+        assert.strictEqual(parsed.auth.status, "unauthenticated");
       });
 
       it("JSON without auth marker is warning", () => {
@@ -873,7 +887,199 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           code: 0,
         });
         assert.strictEqual(parsed.status, "warning");
-        assert.strictEqual(parsed.authStatus, "unknown");
+        assert.strictEqual(parsed.auth.status, "unknown");
+      });
+    });
+
+    describe("mergeProviderSnapshot", () => {
+      it("preserves previous models when the refreshed snapshot returns an empty model list", () => {
+        const previousProvider = {
+          provider: "cursor",
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "2026.04.09-f2b0fcd",
+          models: [
+            {
+              slug: "claude-opus-4-6",
+              name: "Opus 4.6",
+              isCustom: false,
+              capabilities: {
+                reasoningEffortLevels: [{ value: "high", label: "High", isDefault: true }],
+                supportsFastMode: true,
+                supportsThinkingToggle: true,
+                contextWindowOptions: [],
+                promptInjectedEffortLevels: [],
+              },
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          models: [],
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider).models, [
+          ...previousProvider.models,
+        ]);
+      });
+
+      it("fills missing capabilities from the previous provider snapshot", () => {
+        const previousProvider = {
+          provider: "cursor",
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "2026.04.09-f2b0fcd",
+          models: [
+            {
+              slug: "claude-opus-4-6",
+              name: "Opus 4.6",
+              isCustom: false,
+              capabilities: {
+                reasoningEffortLevels: [{ value: "high", label: "High", isDefault: true }],
+                supportsFastMode: true,
+                supportsThinkingToggle: true,
+                contextWindowOptions: [],
+                promptInjectedEffortLevels: [],
+              },
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          models: [
+            {
+              slug: "claude-opus-4-6",
+              name: "Opus 4.6",
+              isCustom: false,
+              capabilities: {
+                reasoningEffortLevels: [],
+                supportsFastMode: false,
+                supportsThinkingToggle: false,
+                contextWindowOptions: [],
+                promptInjectedEffortLevels: [],
+              },
+            },
+          ],
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider).models, [
+          ...previousProvider.models,
+        ]);
+      });
+
+      it("keeps a provider selectable when the latest refresh fails transiently", () => {
+        const previousProvider = {
+          provider: "opencode",
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated", type: "opencode" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "1.14.19",
+          models: [
+            {
+              slug: "openai/gpt-5.4",
+              name: "OpenAI · GPT-5.4",
+              isCustom: false,
+              capabilities: {
+                reasoningEffortLevels: [],
+                supportsFastMode: false,
+                supportsThinkingToggle: false,
+                contextWindowOptions: [],
+                promptInjectedEffortLevels: [],
+              },
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          status: "error",
+          auth: { status: "unknown", type: "opencode" },
+          models: [],
+          message: "Couldn't reach the configured OpenCode server at http://127.0.0.1:4096.",
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider), {
+          ...refreshedProvider,
+          status: "warning",
+          models: [...previousProvider.models],
+          message:
+            "Using last known provider metadata while the latest health check recovers. " +
+            "Couldn't reach the configured OpenCode server at http://127.0.0.1:4096.",
+        });
+      });
+
+      it("does not hide real unauthenticated provider failures behind stale metadata", () => {
+        const previousProvider = {
+          provider: "cursor",
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "2026.04.09-f2b0fcd",
+          models: [
+            {
+              slug: "claude-opus-4-6",
+              name: "Opus 4.6",
+              isCustom: false,
+              capabilities: {
+                reasoningEffortLevels: [{ value: "high", label: "High", isDefault: true }],
+                supportsFastMode: true,
+                supportsThinkingToggle: true,
+                contextWindowOptions: [],
+                promptInjectedEffortLevels: [],
+              },
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          status: "error",
+          auth: { status: "unauthenticated" },
+          models: [],
+          message: "Cursor Agent is not authenticated. Run `agent login` and try again.",
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider), {
+          ...refreshedProvider,
+          models: [...previousProvider.models],
+        });
+      });
+    });
+
+    describe("parseCursorAboutOutput", () => {
+      it("surfaces macOS keychain credential failures with a specific message", () => {
+        const parsed = parseCursorAboutOutput({
+          stdout: "",
+          stderr: "ERROR: SecItemCopyMatching failed -50\n",
+          code: 1,
+        });
+
+        assert.strictEqual(parsed.status, "error");
+        assert.strictEqual(parsed.auth.status, "unknown");
+        assert.strictEqual(
+          parsed.message,
+          "Cursor Agent CLI could not read its macOS Keychain credentials. Unlock the login keychain, open Cursor once, then run `agent login` again if needed.",
+        );
       });
     });
   },
