@@ -36,35 +36,28 @@ jobs:
             runs_on: macos-15-xlarge
             electron_target: mac
             arch: arm64
-            git_bundle_targets: darwin-arm64
             runtime_bundle_targets: darwin-arm64
+            runtime_release_target: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
             runs_on: macos-15-large
             electron_target: mac
             arch: x64
-            git_bundle_targets: darwin-x64
             runtime_bundle_targets: darwin-x64
+            runtime_release_target: darwin-x64
           - name: Windows x64
             artifact_name: windows-x64
             runs_on: windows-2022
             electron_target: win
             arch: x64
-            git_bundle_targets: win32-x64
             runtime_bundle_targets: ''
+            runtime_release_target: win32-x64
     env:
       CI: true
       NODE_OPTIONS: --max-old-space-size=4096
-      COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.git_bundle_targets }}
       COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.runtime_bundle_targets }}
       COZEA_RUNTIME_RELEASE_REPO: Cozea/cozea-prod
       COZEA_RUNTIME_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-      COZEA_GIT_BUNDLE_RELEASE_REPO: Cozea/cozea-prod
-      COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-      COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
-      COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
-      COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
-      COZEA_GIT_BUNDLE_URL_WIN32_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_ARM64 }}
       COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64 }}
       COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64 }}
       COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
@@ -351,7 +344,7 @@ jobs:
           set -euo pipefail
           repo="Cozea/cozea-prod"
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
-          target="${{ matrix.git_bundle_targets }}"
+          target="${{ matrix.runtime_release_target }}"
           tmp_dir="$(mktemp -d)"
           assets=()
 
