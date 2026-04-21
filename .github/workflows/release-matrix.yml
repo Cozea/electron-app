@@ -384,6 +384,15 @@ jobs:
             assets+=("$file")
           done < <(find build/runtime/packs -type f 2>/dev/null | sort)
 
+          # Runtime assets are published to a separate repo/release. Ensure the
+          # target release exists before uploading from matrix jobs.
+          if ! gh release view "${tag}" --repo "${repo}" >/dev/null 2>&1; then
+            gh release create "${tag}" \
+              --repo "${repo}" \
+              --title "${tag}" \
+              --notes "Runtime assets for ${tag}." >/dev/null 2>&1 || gh release view "${tag}" --repo "${repo}" >/dev/null
+          fi
+
           if [[ ${#assets[@]} -gt 0 ]]; then
             gh release upload "${tag}" "${assets[@]}" --repo "${repo}" --clobber
           else
