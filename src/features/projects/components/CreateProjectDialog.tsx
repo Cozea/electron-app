@@ -869,10 +869,15 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
         return
       }
 
+      const selectedRepositoryForMode = selectedRepository
+      if (!selectedRepositoryForMode) {
+        throw new Error("Please select a repository.")
+      }
+
       const cloneResult = await window.electronAPI.project.cloneRepository({
-        slug: buildFilesystemSlug(trimmedName || selectedRepository.name),
-        repoUrl: selectedRepository.url,
-        provider: selectedRepository.provider,
+        slug: buildFilesystemSlug(trimmedName || selectedRepositoryForMode.name),
+        repoUrl: selectedRepositoryForMode.url,
+        provider: selectedRepositoryForMode.provider,
         branch: resolvedBranch || undefined,
         baseDirectory: trimmedParentDirectory,
       })
@@ -890,20 +895,20 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
         template: "blank",
         creationPath: "repo",
         sourceControl: {
-          provider: selectedRepository.provider,
-          repoUrl: selectedRepository.url,
+          provider: selectedRepositoryForMode.provider,
+          repoUrl: selectedRepositoryForMode.url,
           activeCollabBranch: branch,
           defaultBranch: branch,
           visibility: formatRemoteVisibility(
-            selectedRepository.visibility,
-            selectedRepository.private,
+            selectedRepositoryForMode.visibility,
+            selectedRepositoryForMode.private,
           ),
           workingCopyMode: "managed",
           setupMode,
         },
         repoSource: {
-          provider: selectedRepository.provider,
-          repoUrl: selectedRepository.url,
+          provider: selectedRepositoryForMode.provider,
+          repoUrl: selectedRepositoryForMode.url,
           branch,
         },
       })
@@ -916,7 +921,7 @@ export function CreateProjectDialog({ open, mode, onOpenChange }: CreateProjectD
       await persistProjectPath(result.projectId, createdProjectPath)
       await persistBindingDetails({
         projectId: result.projectId,
-        repository: selectedRepository,
+        repository: selectedRepositoryForMode,
         branch,
         workingCopyMode: "managed",
       })

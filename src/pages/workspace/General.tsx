@@ -34,6 +34,7 @@ export function General({ surface = 'page', route }: GeneralProps = {}) {
   const navigate = useViewTransitionNavigate()
   const {
     settingsPage,
+    logout,
     convexUserId,
     convexOrg,
     workspaceOrganizationId,
