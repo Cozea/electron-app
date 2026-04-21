@@ -5,7 +5,7 @@ import path from 'node:path'
 import type { RuntimeHealth, RuntimeKind, RuntimeResolveResult, RuntimeTarget } from './runtimeTypes'
 import { resolveCommandIntent } from './commandResolver'
 
-const KNOWN_RUNTIME_KINDS: RuntimeKind[] = [
+const SYSTEM_MANAGED_RUNTIMES = new Set<RuntimeKind>([
   'node',
   'npm',
   'corepack',
@@ -15,7 +15,7 @@ const KNOWN_RUNTIME_KINDS: RuntimeKind[] = [
   'python',
   'rust',
   'go',
-]
+])
 
 function getExecutableName(runtime: RuntimeKind): string {
   if (process.platform !== 'win32') {
@@ -45,46 +45,11 @@ export function getRuntimeCacheRoot(): string {
   return path.join(os.homedir(), '.cozea', 'runtimes')
 }
 
-function getBundledRuntimeRoots(): string[] {
-  const roots = new Set<string>()
-  const explicitRoot = process.env.COZEA_BUNDLED_RUNTIME_ROOT?.trim()
-  if (explicitRoot) {
-    roots.add(path.resolve(explicitRoot))
-  }
-
-  const appRoot = process.env.APP_ROOT || process.cwd()
-  roots.add(path.join(appRoot, 'build', 'runtime'))
-  roots.add(path.join(process.resourcesPath, 'runtime'))
-
-  return Array.from(roots)
-}
-
 function resolveOverridePath(runtime: RuntimeKind): string | null {
   const envName = `COZEA_RUNTIME_${runtime.toUpperCase()}_PATH`
   const override = process.env[envName]
   if (!override) return null
   return fs.existsSync(override) ? override : null
-}
-
-function getBundledCandidate(runtime: RuntimeKind, target: RuntimeTarget): string | null {
-  const executable = getExecutableName(runtime)
-  const roots = getBundledRuntimeRoots()
-  for (const root of roots) {
-    const candidatePaths = [
-      path.join(root, target, 'bin', executable),
-      path.join(root, target, runtime, 'bin', executable),
-      path.join(root, target, 'node', 'bin', executable),
-    ]
-    for (const candidate of candidatePaths) {
-      if (fs.existsSync(candidate)) return candidate
-    }
-  }
-  return null
-}
-
-function getRuntimePackCandidate(runtime: RuntimeKind, target: RuntimeTarget): string {
-  const executable = getExecutableName(runtime)
-  return path.join(getRuntimeCacheRoot(), target, runtime, 'bin', executable)
 }
 
 function getPathEntries(): string[] {
@@ -133,28 +98,6 @@ export function resolveRuntimeHealth(runtime: RuntimeKind, target = getRuntimeTa
     }
   }
 
-  const bundled = getBundledCandidate(runtime, target)
-  if (bundled && fs.existsSync(bundled)) {
-    return {
-      runtime,
-      target,
-      source: 'bundled',
-      available: true,
-      executablePath: bundled,
-    }
-  }
-
-  const runtimePack = getRuntimePackCandidate(runtime, target)
-  if (fs.existsSync(runtimePack)) {
-    return {
-      runtime,
-      target,
-      source: 'runtime-pack',
-      available: true,
-      executablePath: runtimePack,
-    }
-  }
-
   const system = resolveSystemPath(getExecutableName(runtime))
   if (system) {
     return {
@@ -166,28 +109,21 @@ export function resolveRuntimeHealth(runtime: RuntimeKind, target = getRuntimeTa
     }
   }
 
+  const missingError = SYSTEM_MANAGED_RUNTIMES.has(runtime)
+    ? `${runtime} must be installed on your system and available on PATH.`
+    : 'Runtime executable not found.'
+
   return {
     runtime,
     target,
     source: 'missing',
     available: false,
-    error: 'Runtime executable not found.',
+    error: missingError,
   }
 }
 
-export function getRuntimePathPrefixes(target = getRuntimeTarget()): string[] {
-  const prefixes = new Set<string>()
-  for (const root of getBundledRuntimeRoots()) {
-    prefixes.add(path.join(root, target, 'bin'))
-    prefixes.add(path.join(root, target, 'node', 'bin'))
-  }
-
-  const cacheRoot = getRuntimeCacheRoot()
-  for (const runtime of KNOWN_RUNTIME_KINDS) {
-    prefixes.add(path.join(cacheRoot, target, runtime, 'bin'))
-  }
-
-  return Array.from(prefixes).filter((entry) => fs.existsSync(entry))
+export function getRuntimePathPrefixes(_target = getRuntimeTarget()): string[] {
+  return []
 }
 
 export function resolveCommandWithRuntime(command: string, target = getRuntimeTarget()): RuntimeResolveResult {

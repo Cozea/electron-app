@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CapabilityCatalog, RuntimeManifest } from './runtimeTypes'
+import type { CapabilityCatalog } from './runtimeTypes'
 
 function safeReadJsonFile<T>(filePath: string): T | null {
   try {
@@ -19,31 +19,6 @@ function getAppRoot(): string {
 function firstExistingPath(candidates: string[]): string {
   const match = candidates.find((candidate) => fs.existsSync(candidate))
   return match || candidates[0]
-}
-
-export function getBundledRuntimeManifestPath(): string {
-  return firstExistingPath([
-    path.join(getAppRoot(), 'build', 'runtime', 'manifest.json'),
-    path.join(process.resourcesPath, 'runtime', 'manifest.json'),
-  ])
-}
-
-export function getBundledRuntimeManifestSignaturePath(): string {
-  return firstExistingPath([
-    path.join(getAppRoot(), 'build', 'runtime', 'runtime-manifest.sig'),
-    path.join(getAppRoot(), 'build', 'runtime', 'manifest.sig'),
-    path.join(process.resourcesPath, 'runtime', 'runtime-manifest.sig'),
-    path.join(process.resourcesPath, 'runtime', 'manifest.sig'),
-  ])
-}
-
-export function loadBundledRuntimeManifest(): RuntimeManifest {
-  const manifest = safeReadJsonFile<RuntimeManifest>(getBundledRuntimeManifestPath())
-  if (manifest) return manifest
-  return {
-    generatedAt: new Date(0).toISOString(),
-    entries: [],
-  }
 }
 
 export function getBundledCapabilityCatalogPath(): string {

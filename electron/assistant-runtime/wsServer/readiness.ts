@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { Deferred, Effect } from "effect";
 
 export interface ServerReadiness {
   readonly awaitServerReady: Effect.Effect<void>;
+  readonly isServerReady: Effect.Effect<boolean>;
   readonly markHttpListening: Effect.Effect<void>;
   readonly markPushBusReady: Effect.Effect<void>;
   readonly markKeybindingsReady: Effect.Effect<void>;
@@ -16,18 +16,29 @@ export const makeServerReadiness = Effect.gen(function* () {
   const keybindingsReady = yield* Deferred.make<void>();
   const terminalSubscriptionsReady = yield* Deferred.make<void>();
   const orchestrationSubscriptionsReady = yield* Deferred.make<void>();
+  const serverReady = yield* Deferred.make<void>();
+
+  const markServerReady = Effect.all([
+    Deferred.await(httpListening),
+    Deferred.await(pushBusReady),
+    Deferred.await(keybindingsReady),
+    Deferred.await(terminalSubscriptionsReady),
+    Deferred.await(orchestrationSubscriptionsReady),
+  ]).pipe(
+    Effect.asVoid,
+    Effect.flatMap(() => Deferred.succeed(serverReady, undefined)),
+    Effect.orDie,
+    Effect.forkScoped,
+  );
+
+  yield* markServerReady;
 
   const complete = (deferred: Deferred.Deferred<void>) =>
     Deferred.succeed(deferred, undefined).pipe(Effect.orDie);
 
   return {
-    awaitServerReady: Effect.all([
-      Deferred.await(httpListening),
-      Deferred.await(pushBusReady),
-      Deferred.await(keybindingsReady),
-      Deferred.await(terminalSubscriptionsReady),
-      Deferred.await(orchestrationSubscriptionsReady),
-    ]).pipe(Effect.asVoid),
+    awaitServerReady: Deferred.await(serverReady),
+    isServerReady: Deferred.isDone(serverReady),
     markHttpListening: complete(httpListening),
     markPushBusReady: complete(pushBusReady),
     markKeybindingsReady: complete(keybindingsReady),

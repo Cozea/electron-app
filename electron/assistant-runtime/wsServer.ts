@@ -76,6 +76,7 @@ import {
 import { parseBase64DataUrl } from "./imageMime.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { expandHomePath } from "./os-jank.ts";
+import { ASSISTANT_RUNTIME_READINESS_PATH } from "./readiness";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@cozea/assistant-shared/schemaJson";
@@ -432,6 +433,16 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     void Effect.runPromise(
       Effect.gen(function* () {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+
+        if (url.pathname === ASSISTANT_RUNTIME_READINESS_PATH) {
+          const isReady = yield* readiness.isServerReady;
+          respond(
+            isReady ? 200 : 503,
+            { "Content-Type": "application/json", "Cache-Control": "no-store" },
+            JSON.stringify({ status: isReady ? "ready" : "starting" }),
+          );
+          return;
+        }
 
         if (url.pathname.startsWith(ATTACHMENTS_ROUTE_PREFIX)) {
           const rawRelativePath = url.pathname.slice(ATTACHMENTS_ROUTE_PREFIX.length);

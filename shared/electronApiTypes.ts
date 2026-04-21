@@ -151,7 +151,7 @@ export type RuntimeKind =
   | 'rust'
   | 'go'
 
-export type RuntimeSource = 'override' | 'bundled' | 'runtime-pack' | 'system' | 'missing'
+export type RuntimeSource = 'override' | 'system' | 'missing'
 export type RuntimeTarget = `${NodeJS.Platform}-${NodeJS.Architecture}` | string
 
 export interface RuntimeHealth {
@@ -552,7 +552,7 @@ export interface SyncWriteFile {
 export interface GitRuntimeHealth {
   available: boolean
   executablePath?: string
-  source: 'bundled' | 'system' | 'missing'
+  source: 'system' | 'missing'
   gitVersion?: string
   supportsMergeFile: boolean
   supportsZdiff3: boolean

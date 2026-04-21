@@ -4,7 +4,6 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import net from 'node:net'
 
 import { autoUpdater } from 'electron-updater'
 import { Cause, Effect, Exit, Fiber } from 'effect'
@@ -35,6 +34,8 @@ import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSession
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
 import { startAssistantRuntime } from './assistant-runtime/boot'
+import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
+import { waitForHttpReady } from './backendReadiness'
 
 import { DevServerService } from './services/DevServerService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
@@ -71,6 +72,15 @@ const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const ASSISTANT_RUNTIME_WS_URL =
   process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || 'ws://127.0.0.1:3773'
 const ASSISTANT_RUNTIME_WS_URL_ARG = `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
+const ASSISTANT_RUNTIME_HTTP_URL = (() => {
+  try {
+    const parsed = new URL(ASSISTANT_RUNTIME_WS_URL)
+    const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:'
+    return `${protocol}//${parsed.host}`
+  } catch {
+    return null
+  }
+})()
 const DEV_SERVER_ORIGIN = (() => {
   if (!VITE_DEV_SERVER_URL) return null
   try {
@@ -385,10 +395,7 @@ const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
 const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
 const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
 const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
-const ASSISTANT_RUNTIME_CONNECT_TIMEOUT_MS = 500
-const ASSISTANT_RUNTIME_READY_TIMEOUT_MS = 15_000
-const ASSISTANT_RUNTIME_READY_POLL_MS = 250
-const ASSISTANT_RUNTIME_RECOVERY_POLL_MS = 1_500
+const ASSISTANT_RUNTIME_READY_TIMEOUT_MS = 60_000
 const ASSISTANT_RUNTIME_RESTART_DELAY_MS = 2_000
 
 type AssistantRuntimePhase = 'idle' | 'starting' | 'ready' | 'error'
@@ -399,19 +406,6 @@ interface AssistantRuntimeStatus {
   lastError: string | null
   updatedAt: number
 }
-
-const assistantRuntimeSocketTarget = (() => {
-  try {
-    const parsed = new URL(ASSISTANT_RUNTIME_WS_URL)
-    const port = Number.parseInt(parsed.port, 10)
-    return {
-      host: parsed.hostname,
-      port: Number.isFinite(port) ? port : 80,
-    }
-  } catch {
-    return null
-  }
-})()
 
 let assistantRuntimeStatus: AssistantRuntimeStatus = {
   phase: 'idle',
@@ -473,33 +467,6 @@ function setAssistantRuntimeStatus(
   broadcastAssistantRuntimeStatus()
 }
 
-async function probeAssistantRuntimeListener(): Promise<boolean> {
-  if (!assistantRuntimeSocketTarget) {
-    return false
-  }
-
-  return new Promise<boolean>((resolve) => {
-    const socket = net.createConnection({
-      host: assistantRuntimeSocketTarget.host,
-      port: assistantRuntimeSocketTarget.port,
-    })
-
-    let settled = false
-
-    const finalize = (value: boolean) => {
-      if (settled) return
-      settled = true
-      socket.removeAllListeners()
-      socket.destroy()
-      resolve(value)
-    }
-
-    socket.once('connect', () => finalize(true))
-    socket.once('error', () => finalize(false))
-    socket.setTimeout(ASSISTANT_RUNTIME_CONNECT_TIMEOUT_MS, () => finalize(false))
-  })
-}
-
 function formatAssistantRuntimeExitMessage(exit: unknown): string {
   if (Exit.isFailure(exit)) {
     return Cause.pretty(exit.cause).trim()
@@ -509,38 +476,50 @@ function formatAssistantRuntimeExitMessage(exit: unknown): string {
 
 async function monitorAssistantRuntimeReadiness(generation: number): Promise<void> {
   const startedAt = Date.now()
-  let timeoutReported = false
   logAssistantBridge('runtime-readiness-monitor-started', { generation })
 
-  while (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
-    const isReady = await probeAssistantRuntimeListener()
-    if (isReady) {
-      logAssistantBridge('runtime-ready', {
-        generation,
-        elapsedMs: Date.now() - startedAt,
-      })
+  if (!ASSISTANT_RUNTIME_HTTP_URL) {
+    logAssistantBridge('runtime-ready-timeout', {
+      generation,
+      elapsedMs: Date.now() - startedAt,
+      reason: 'invalid-runtime-url',
+    })
+    if (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
       setAssistantRuntimeStatus({
-        phase: 'ready',
-        lastError: null,
+        phase: 'error',
+        lastError: 'Local chat runtime URL is invalid.',
       })
-      return
     }
+    return
+  }
 
-    const elapsedMs = Date.now() - startedAt
-    if (!timeoutReported && elapsedMs >= ASSISTANT_RUNTIME_READY_TIMEOUT_MS) {
-      timeoutReported = true
-      logAssistantBridge('runtime-ready-timeout', {
-        generation,
-        elapsedMs,
-      })
+  try {
+    await waitForHttpReady(ASSISTANT_RUNTIME_HTTP_URL, {
+      path: ASSISTANT_RUNTIME_READINESS_PATH,
+      timeoutMs: ASSISTANT_RUNTIME_READY_TIMEOUT_MS,
+    })
+  } catch {
+    logAssistantBridge('runtime-ready-timeout', {
+      generation,
+      elapsedMs: Date.now() - startedAt,
+    })
+    if (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
       setAssistantRuntimeStatus({
         phase: 'error',
         lastError: 'Local chat runtime is taking longer than expected to start.',
       })
     }
+    return
+  }
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, timeoutReported ? ASSISTANT_RUNTIME_RECOVERY_POLL_MS : ASSISTANT_RUNTIME_READY_POLL_MS)
+  if (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
+    logAssistantBridge('runtime-ready', {
+      generation,
+      elapsedMs: Date.now() - startedAt,
+    })
+    setAssistantRuntimeStatus({
+      phase: 'ready',
+      lastError: null,
     })
   }
 }
