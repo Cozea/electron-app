@@ -1,0 +1,390 @@
+name: Desktop Release Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Git tag to build and publish (e.g. v0.2.0). Must exist on the remote.'
+        required: true
+        type: string
+      publish:
+        description: 'Publish installers to Cozea/cozea-prod (requires secrets)'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manual-release-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            artifact_name: macos-arm64
+            runs_on: macos-15-xlarge
+            electron_target: mac
+            arch: arm64
+            git_bundle_targets: darwin-arm64
+            runtime_bundle_targets: darwin-arm64
+          - name: macOS x64
+            artifact_name: macos-x64
+            runs_on: macos-15-large
+            electron_target: mac
+            arch: x64
+            git_bundle_targets: darwin-x64
+            runtime_bundle_targets: darwin-x64
+          - name: Windows x64
+            artifact_name: windows-x64
+            runs_on: windows-2022
+            electron_target: win
+            arch: x64
+            git_bundle_targets: win32-x64
+            runtime_bundle_targets: ''
+    env:
+      CI: true
+      NODE_OPTIONS: --max-old-space-size=4096
+      COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.git_bundle_targets }}
+      COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.runtime_bundle_targets }}
+      COZEA_RUNTIME_RELEASE_REPO: Cozea/cozea-prod
+      COZEA_RUNTIME_RELEASE_TAG: ${{ inputs.release_tag }}
+      COZEA_GIT_BUNDLE_RELEASE_REPO: Cozea/cozea-prod
+      COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ inputs.release_tag }}
+      COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
+      COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
+      COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
+      COZEA_GIT_BUNDLE_URL_WIN32_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_ARM64 }}
+      COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
+      COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH }}
+      COZEA_RUNTIME_SIGNING_PUBLIC_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PUBLIC_KEY }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || vars.VITE_CONVEX_URL }}
+      VITE_AI_API_URL: ${{ secrets.VITE_AI_API_URL || vars.VITE_AI_API_URL }}
+      VITE_FF_DATA_ROUTER: '1'
+      VITE_FF_VIEW_TRANSITIONS: '1'
+      VITE_FF_PRIORITIZED_SCHEDULING: '1'
+      VITE_FF_REACT_COMPILER: '1'
+      VITE_FF_ROLLDOWN_BUILD: '1'
+      VITE_FF_JANK_DIAGNOSTICS: '1'
+      VITE_FF_CONTENT_VISIBILITY: '1'
+      VITE_FF_OFFSCREEN_SCREENSHOT: '1'
+      VITE_FF_UTILITY_PROCESS_MANIFEST: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve publish mode
+        id: publish_mode
+        shell: bash
+        run: |
+          if [[ "${{ github.event.inputs.publish }}" == "true" ]]; then
+            echo "mode=always" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=never" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./package.json').version")"
+          expected_tag="v${package_version}"
+          if [[ "${{ inputs.release_tag }}" != "${expected_tag}" ]]; then
+            echo "::error::Release tag ${{ inputs.release_tag }} does not match package.json version ${package_version}."
+            exit 1
+          fi
+
+      - name: Validate shared release build env
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in VITE_CONVEX_URL VITE_AI_API_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required build environment values: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Validate macOS release secrets
+        if: matrix.electron_target == 'mac' && steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in GH_TOKEN APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required macOS release secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install macOS build deps
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install autoconf
+
+      - name: Import macOS signing certificate (pre-pack signing)
+        if: runner.os == 'macOS' && steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cert_path="${RUNNER_TEMP}/cozea-signing-cert.p12"
+          if [[ "${CSC_LINK}" == http://* || "${CSC_LINK}" == https://* ]]; then
+            curl -fsSL "${CSC_LINK}" -o "${cert_path}"
+          elif [[ "${CSC_LINK}" == file://* ]]; then
+            cp "${CSC_LINK#file://}" "${cert_path}"
+          elif [[ -f "${CSC_LINK}" ]]; then
+            cp "${CSC_LINK}" "${cert_path}"
+          else
+            payload="${CSC_LINK#base64:}"
+            if [[ "${payload}" == data:* ]]; then
+              payload="${payload#*,}"
+            fi
+            printf '%s' "${payload}" | base64 --decode > "${cert_path}" 2>/dev/null || printf '%s' "${payload}" | base64 -D > "${cert_path}"
+          fi
+
+          keychain_path="${RUNNER_TEMP}/cozea-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+
+          existing_keychains="$(security list-keychains -d user | sed 's/[ \"]//g' | tr '\n' ' ')"
+          security list-keychains -d user -s "${keychain_path}" ${existing_keychains}
+          security default-keychain -d user -s "${keychain_path}"
+
+          security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
+          security find-identity -v -p codesigning "${keychain_path}"
+
+          identity_full="$(security find-identity -v -p codesigning "${keychain_path}" | awk -F\" '/Developer ID Application:/{print $2; exit}')"
+          if [[ -z "${identity_full}" ]]; then
+            echo "::error::No Developer ID Application identity found in imported signing certificate."
+            exit 1
+          fi
+          identity_common="${identity_full#Developer ID Application: }"
+          echo "COZEA_CODESIGN_IDENTITY=${identity_full}" >> "$GITHUB_ENV"
+          echo "CSC_NAME=${identity_common}" >> "$GITHUB_ENV"
+          echo "Using codesigning identity (full): ${identity_full}"
+          echo "Using electron-builder CSC_NAME: ${identity_common}"
+
+      - name: Prepare Runtime Metadata
+        run: bun run prepare:runtime-metadata
+
+      - name: Sign Runtime Metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${COZEA_RUNTIME_SIGNING_PRIVATE_KEY:-}" || -n "${COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
+            bun run sign:runtime-metadata
+          else
+            echo "::warning::Runtime signing key not configured; runtime metadata signatures were not generated."
+          fi
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Typecheck Assistant Runtime
+        run: bun run typecheck:assistant-runtime
+
+      - name: Build and Package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          max_attempts=2
+          success=0
+          for attempt in $(seq 1 "${max_attempts}"); do
+            log_file="$(mktemp)"
+            echo "Build/package attempt ${attempt}/${max_attempts}"
+
+            dist_cmd=(bun run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }})
+
+            if "${dist_cmd[@]}" 2>&1 | tee "${log_file}"; then
+              success=1
+              break
+            fi
+
+            is_last_attempt=0
+            if [[ "${attempt}" -ge "${max_attempts}" ]]; then
+              is_last_attempt=1
+            fi
+
+            if [[ "${is_last_attempt}" -eq 0 ]] && grep -Eqi 'NSURLErrorDomain Code=-1009|Internet connection appears to be offline|appstoreconnect\.apple\.com/notary|Failed to notarize via notarytool' "${log_file}"; then
+              echo "::warning::Transient notarization/network failure detected on attempt ${attempt}/${max_attempts}. Retrying build/package once."
+              rm -rf dist
+              sleep 20
+              continue
+            fi
+
+            echo "::error::Build/package failed on attempt ${attempt}/${max_attempts}."
+            exit 1
+          done
+
+          if [[ "${success}" -ne 1 ]]; then
+            echo "::error::Build/package did not succeed after ${max_attempts} attempts."
+            exit 1
+          fi
+
+      - name: Verify macOS Signature and Notarization
+        if: runner.os == 'macOS' && steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          found_app=0
+          while IFS= read -r app_path; do
+            found_app=1
+            echo "Verifying app bundle: ${app_path}"
+            codesign --verify --deep --strict --verbose=2 "${app_path}"
+            spctl --assess --type execute --verbose=4 "${app_path}"
+            xcrun stapler validate "${app_path}"
+          done < <(find dist -maxdepth 4 -type d -name '*.app' ! -path '*/Contents/Frameworks/*')
+
+          if [[ "${found_app}" -eq 0 ]]; then
+            echo "::error::No .app bundle found in dist/ for signature/notarization verification."
+            exit 1
+          fi
+
+          found_dmg=0
+          while IFS= read -r dmg_path; do
+            found_dmg=1
+            echo "Submitting DMG for notarization: ${dmg_path}"
+            dmg_notarized=0
+            for dmg_attempt in 1 2; do
+              set +e
+              dmg_submit_output="$(
+                xcrun notarytool submit "${dmg_path}" \
+                  --apple-id "${APPLE_ID}" \
+                  --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+                  --team-id "${APPLE_TEAM_ID}" \
+                  --wait \
+                  --output-format json 2>&1
+              )"
+              dmg_submit_exit=$?
+              set -e
+
+              printf '%s\n' "${dmg_submit_output}"
+
+              dmg_submission_id="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/.*\"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p' | head -n1)"
+              if [[ -z "${dmg_submission_id}" ]]; then
+                dmg_submission_id="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/^[[:space:]]*id:[[:space:]]*([0-9a-fA-F-]{36}).*/\1/p' | head -n1)"
+              fi
+
+              dmg_submission_status="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/.*\"status\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p' | head -n1)"
+              if [[ -z "${dmg_submission_status}" ]]; then
+                dmg_submission_status="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/^[[:space:]]*status:[[:space:]]*([A-Za-z]+).*/\1/p' | head -n1)"
+              fi
+
+              dmg_submission_status_lc="$(printf '%s' "${dmg_submission_status}" | tr '[:upper:]' '[:lower:]')"
+              if [[ "${dmg_submit_exit}" -eq 0 && "${dmg_submission_status_lc}" == "accepted" ]]; then
+                dmg_notarized=1
+                break
+              fi
+
+              if [[ -n "${dmg_submission_id}" ]]; then
+                echo "::group::DMG notary log ${dmg_submission_id}"
+                xcrun notarytool log "${dmg_submission_id}" --apple-id "${APPLE_ID}" --password "${APPLE_APP_SPECIFIC_PASSWORD}" --team-id "${APPLE_TEAM_ID}" || true
+                echo "::endgroup::"
+              fi
+
+              if [[ "${dmg_attempt}" -lt 2 ]]; then
+                echo "::warning::DMG notarization attempt ${dmg_attempt}/2 failed for ${dmg_path} (exit=${dmg_submit_exit}, status=${dmg_submission_status:-unknown}, id=${dmg_submission_id:-none}); retrying once."
+                sleep 20
+              fi
+            done
+
+            if [[ "${dmg_notarized}" -ne 1 ]]; then
+              echo "::error::DMG notarization failed for ${dmg_path}"
+              exit 1
+            fi
+
+            echo "Stapling DMG: ${dmg_path}"
+            xcrun stapler staple "${dmg_path}"
+            xcrun stapler validate "${dmg_path}"
+            echo "DMG staple validation succeeded: ${dmg_path}"
+          done < <(find dist -maxdepth 5 -type f -name '*.dmg')
+
+          if [[ "${found_dmg}" -eq 0 ]]; then
+            echo "::warning::No DMG artifact found in dist/ to validate."
+          fi
+
+      - name: Upload Runtime Assets to Release
+        if: steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="Cozea/cozea-prod"
+          tag="${{ inputs.release_tag }}"
+          target="${{ matrix.git_bundle_targets }}"
+          tmp_dir="$(mktemp -d)"
+          assets=()
+
+          if [[ -f "build/runtime/capability-catalog.json" ]]; then
+            cp "build/runtime/capability-catalog.json" "${tmp_dir}/capability-catalog-${target}.json"
+            assets+=("${tmp_dir}/capability-catalog-${target}.json")
+          fi
+
+          if [[ -f "build/runtime/capability-catalog.sig" ]]; then
+            cp "build/runtime/capability-catalog.sig" "${tmp_dir}/capability-catalog-${target}.sig"
+            assets+=("${tmp_dir}/capability-catalog-${target}.sig")
+          fi
+
+          if [[ -f "build/runtime/runtime-public-key.pem" ]]; then
+            cp "build/runtime/runtime-public-key.pem" "${tmp_dir}/runtime-public-key-${target}.pem"
+            assets+=("${tmp_dir}/runtime-public-key-${target}.pem")
+          fi
+
+          if [[ ${#assets[@]} -gt 0 ]]; then
+            gh release upload "${tag}" "${assets[@]}" --repo "${repo}" --clobber
+          else
+            echo "::warning::No runtime assets found to upload."
+          fi
+
+      - name: Upload Dist Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-dist
+          path: dist/**
+          if-no-files-found: warn
