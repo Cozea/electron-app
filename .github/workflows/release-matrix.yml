@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish release assets and metadata
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -99,8 +105,20 @@ jobs:
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             echo "mode=always" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.publish }}" == "true" ]]; then
+            echo "mode=always" >> "$GITHUB_OUTPUT"
           else
             echo "mode=never" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate manual publish ref
+        if: github.event_name == 'workflow_dispatch' && steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
+            echo "::error::Manual publish must be dispatched from a release tag ref such as v0.2.0."
+            exit 1
           fi
 
       - name: Verify tag matches package version
