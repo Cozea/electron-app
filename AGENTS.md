@@ -51,9 +51,9 @@ Releases are built by GitHub Actions and published as GitHub Releases in the **d
 
 ### How Releases Are Triggered
 
-- **Preferred:** Push a git tag matching `v*` on `Cozea/electron-app` (e.g. `v0.0.7`). That runs the full **release matrix** on GitHub Actions (macOS arm64, macOS Intel x64, Windows x64) and publishes installers to `Cozea/cozea-prod`.
+- A release build/publish runs automatically **only** when a git tag matching `v*` is pushed (e.g. `v0.0.7`).
 - Normal branch pushes do **not** publish a release.
-- **Manual:** In GitHub Actions, run **Desktop Release Matrix** via **workflow_dispatch**. Set `release_tag` to the tag to build (e.g. `v0.2.0`) and leave **publish** enabled to upload to `cozea-prod` (same secrets as tag pushes). Turn **publish** off for a dry run (artifacts only as workflow run uploads).
+- `workflow_dispatch` is enabled but currently resolves publish mode to `never` (build only, no publish).
 
 Workflow file: `.github/workflows/release-matrix.yml`
 
@@ -75,13 +75,11 @@ git push origin v0.0.8
 
 ### What Gets Published
 
-`electron-builder` is configured to publish to `cozea-prod` (see `electron-builder.config.cjs`). CI builds each platform/arch separately; macOS assets typically include:
+`electron-builder` is configured to publish to `cozea-prod` (see `electron-builder.config.cjs`). The release assets typically include:
 
-- Apple Silicon: `Cozea-X.Y.Z-arm64.dmg`, `Cozea-X.Y.Z-arm64-mac.zip`
-- Intel: `Cozea-X.Y.Z-x64.dmg`, `Cozea-X.Y.Z-x64-mac.zip` (from the `macOS x64` matrix job)
+- `Cozea-X.Y.Z-arm64.dmg` (primary macOS installer)
+- `Cozea-X.Y.Z-arm64-mac.zip` (alternate download)
 - `latest-mac.yml` and blockmaps (auto-updater metadata)
-
-Local `bun run release` from one machine only produces the architecture for that host (usually arm64 only). Use **tag push or workflow_dispatch on GitHub** for both macOS architectures.
 
 ### Required CI Configuration
 
@@ -95,7 +93,7 @@ The release workflow expects these to be set in GitHub Actions for `Cozea/electr
 
 ### Local Release (Fallback)
 
-Avoid local publishing for production: it does not run the full matrix (Intel/Windows). Use it only if CI is unavailable. You can publish from a macOS machine (arm64) as long as:
+If GitHub Actions is blocked/unavailable, you can publish a release from a macOS machine (arm64) as long as:
 
 - You have a valid **Developer ID Application** signing identity installed in Keychain, and
 - `VITE_CONVEX_URL` is available at build time (e.g. via `.env.local`), and
