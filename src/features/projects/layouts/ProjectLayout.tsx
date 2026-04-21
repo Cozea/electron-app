@@ -72,7 +72,7 @@ function extractProjectCloudLocalPath(project: unknown): string | null {
 export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
-  const { convexUserId, user, logout } = useAuth();
+  const { convexUserId, user } = useAuth();
   const location = useLocation();
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
@@ -386,14 +386,13 @@ export function ProjectLayout({
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {isAppStoreRoute ? (
-            <AppStoreSidebar color="currentColor" user={user} onLogout={logout} />
+            <AppStoreSidebar color="currentColor" user={user} />
           ) : isSettingsModeRoute ? (
-            <SettingsSidebar color="currentColor" user={user} onLogout={logout} />
+            <SettingsSidebar color="currentColor" user={user} />
           ) : (
             <ProjectSidebar
               color="currentColor"
               user={user}
-              onLogout={logout}
               projectId={project?._id ?? null}
             />
           )}
