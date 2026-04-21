@@ -231,7 +231,7 @@ module.exports = async function afterSign(context) {
 
   const appOutDir = context?.appOutDir
   if (!appOutDir) {
-    log('No appOutDir available in afterSign context, skipping pack signing.')
+    log('No appOutDir available in afterSign context, skipping git pack signing.')
     return
   }
 
@@ -239,15 +239,15 @@ module.exports = async function afterSign(context) {
   if (!identity) {
     const allowUnsignedBundlesInCI = process.env.COZEA_ALLOW_UNSIGNED_GIT_BUNDLES === '1'
     if (process.env.CI === 'true' && !allowUnsignedBundlesInCI) {
-      throw new Error('No Developer ID identity available to sign bundled pack binaries.')
+      throw new Error('No Developer ID identity available to sign bundled git pack binaries.')
     }
-    log('No codesigning identity found, skipping pack signing.')
+    log('No codesigning identity found, skipping git pack signing.')
     return
   }
 
   const appBundles = await findAppBundles(appOutDir)
   if (appBundles.length === 0) {
-    log(`No .app bundles found in ${appOutDir}, skipping pack signing.`)
+    log(`No .app bundles found in ${appOutDir}, skipping git pack signing.`)
     return
   }
 
@@ -257,10 +257,7 @@ module.exports = async function afterSign(context) {
 
   for (const appBundlePath of appBundles) {
     const resourcesPath = path.join(appBundlePath, 'Contents', 'Resources')
-    const archiveRoots = [
-      path.join(resourcesPath, 'git', 'packs'),
-      path.join(resourcesPath, 'runtime', 'packs'),
-    ]
+    const archiveRoots = [path.join(resourcesPath, 'git', 'packs')]
 
     for (const archiveRoot of archiveRoots) {
       const archives = await collectArchives(archiveRoot)
@@ -274,6 +271,6 @@ module.exports = async function afterSign(context) {
   }
 
   log(
-    `Pack signing complete. scanned_archives=${archiveCount}, updated_archives=${changedArchiveCount}, signed_binaries=${signedBinaryCount}`
+    `Git pack signing complete. scanned_archives=${archiveCount}, updated_archives=${changedArchiveCount}, signed_binaries=${signedBinaryCount}`
   )
 }

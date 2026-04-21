@@ -1,67 +1,109 @@
-import { execFile as execFileCallback } from "node:child_process";
-import { promisify } from "node:util";
+import {
+  listLoginShellCandidates,
+  mergePathEntries,
+  readPathFromLaunchctl,
+  readEnvironmentFromLoginShell,
+  resolveWindowsEnvironment,
+} from "@cozea/assistant-shared/shell";
+import type {
+  CommandAvailabilityOptions,
+  ShellEnvironmentReader,
+  WindowsShellEnvironmentReader,
+} from "@cozea/assistant-shared/shell";
 
-const execFile = promisify(execFileCallback);
+type WindowsCommandAvailabilityChecker = (
+  command: string,
+  options?: CommandAvailabilityOptions,
+) => boolean;
 
-function buildEnvironmentCaptureCommand(names: ReadonlyArray<string>): string {
-  return names
-    .map((name) => {
-      return [
-        `printf '%s\\n' '__COZEA_ENV_${name}_START__'`,
-        `printenv ${name} || true`,
-        `printf '%s\\n' '__COZEA_ENV_${name}_END__'`,
-      ].join("; ");
-    })
-    .join("; ");
+const LOGIN_SHELL_ENV_NAMES = [
+  "PATH",
+  "SSH_AUTH_SOCK",
+  "HOMEBREW_PREFIX",
+  "HOMEBREW_CELLAR",
+  "HOMEBREW_REPOSITORY",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+] as const;
+
+function logShellEnvironmentWarning(message: string, error?: unknown): void {
+  console.warn("[Boot]", message, error instanceof Error ? error.message : (error ?? ""));
 }
 
-function extractEnvironmentValue(output: string, name: string): string | undefined {
-  const startMarker = `__COZEA_ENV_${name}_START__`;
-  const endMarker = `__COZEA_ENV_${name}_END__`;
-  const startIndex = output.indexOf(startMarker);
-  if (startIndex === -1) return undefined;
+export function syncShellEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+  options: {
+    platform?: NodeJS.Platform;
+    readEnvironment?: ShellEnvironmentReader;
+    readWindowsEnvironment?: WindowsShellEnvironmentReader;
+    isWindowsCommandAvailable?: WindowsCommandAvailabilityChecker;
+    readLaunchctlPath?: typeof readPathFromLaunchctl;
+    userShell?: string;
+    logWarning?: (message: string, error?: unknown) => void;
+  } = {},
+): void {
+  const platform = options.platform ?? process.platform;
 
-  const valueStartIndex = startIndex + startMarker.length;
-  const endIndex = output.indexOf(endMarker, valueStartIndex);
-  if (endIndex === -1) return undefined;
-
-  let value = output.slice(valueStartIndex, endIndex);
-  if (value.startsWith("\n")) {
-    value = value.slice(1);
-  }
-  if (value.endsWith("\n")) {
-    value = value.slice(0, -1);
-  }
-
-  return value.length > 0 ? value : undefined;
-}
-
-export async function syncShellEnvironment(): Promise<void> {
-  if (process.platform !== "darwin") return;
+  const logWarning = options.logWarning ?? logShellEnvironmentWarning;
+  const readEnvironment = options.readEnvironment ?? readEnvironmentFromLoginShell;
+  const shellEnvironment: Partial<Record<string, string>> = {};
 
   try {
-    const shell = process.env.SHELL ?? "/bin/zsh";
-
-    const names = ["PATH", "SSH_AUTH_SOCK"];
-    const { stdout: output } = await execFile(shell, ["-ilc", buildEnvironmentCaptureCommand(names)], {
-      encoding: "utf8",
-      timeout: 5000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-
-    for (const name of names) {
-      const value = extractEnvironmentValue(output, name);
-      if (value !== undefined) {
-        if (name === "PATH") {
-          process.env.PATH = value;
-        } else if (name === "SSH_AUTH_SOCK" && !process.env.SSH_AUTH_SOCK) {
-          process.env.SSH_AUTH_SOCK = value;
+    if (platform === "win32") {
+      const repairedEnvironment = resolveWindowsEnvironment(env, {
+        ...(options.readWindowsEnvironment
+          ? { readEnvironment: options.readWindowsEnvironment }
+          : {}),
+        ...(options.isWindowsCommandAvailable
+          ? { commandAvailable: options.isWindowsCommandAvailable }
+          : {}),
+      });
+      for (const [key, value] of Object.entries(repairedEnvironment)) {
+        if (value !== undefined) {
+          env[key] = value;
         }
+      }
+      return;
+    }
+
+    if (platform !== "darwin" && platform !== "linux") return;
+
+    for (const shell of listLoginShellCandidates(platform, env.SHELL, options.userShell)) {
+      try {
+        Object.assign(shellEnvironment, readEnvironment(shell, LOGIN_SHELL_ENV_NAMES));
+        if (shellEnvironment.PATH) {
+          break;
+        }
+      } catch (error) {
+        logWarning(`Failed to read login shell environment from ${shell}.`, error);
       }
     }
 
-    console.log("[Boot] Shell environment synced successfully from", shell);
-  } catch (err) {
-    console.error("[Boot] Failed to sync shell environment:", err);
+    const launchctlPath =
+      platform === "darwin" && !shellEnvironment.PATH
+        ? (options.readLaunchctlPath ?? readPathFromLaunchctl)()
+        : undefined;
+    const mergedPath = mergePathEntries(shellEnvironment.PATH ?? launchctlPath, env.PATH, platform);
+    if (mergedPath) {
+      env.PATH = mergedPath;
+    }
+
+    if (!env.SSH_AUTH_SOCK && shellEnvironment.SSH_AUTH_SOCK) {
+      env.SSH_AUTH_SOCK = shellEnvironment.SSH_AUTH_SOCK;
+    }
+
+    for (const name of [
+      "HOMEBREW_PREFIX",
+      "HOMEBREW_CELLAR",
+      "HOMEBREW_REPOSITORY",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_HOME",
+    ] as const) {
+      if (!env[name] && shellEnvironment[name]) {
+        env[name] = shellEnvironment[name];
+      }
+    }
+  } catch (error) {
+    logWarning("Failed to synchronize the desktop shell environment.", error);
   }
 }

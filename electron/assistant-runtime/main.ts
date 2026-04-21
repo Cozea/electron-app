@@ -384,7 +384,7 @@ export const makeServerRuntimeProgram = (input: CliInput) =>
 
     const config = yield* ServerConfig;
 
-    if (!config.devUrl && !config.staticDir) {
+    if (config.mode !== "desktop" && !config.devUrl && !config.staticDir) {
       yield* Effect.logWarning(
         "web bundle missing and no VITE_DEV_SERVER_URL; web UI unavailable",
         {

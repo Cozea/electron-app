@@ -9,7 +9,7 @@ export type RuntimeKind =
   | 'rust'
   | 'go'
 
-export type RuntimeSource = 'override' | 'bundled' | 'runtime-pack' | 'system' | 'missing'
+export type RuntimeSource = 'override' | 'system' | 'missing'
 
 export type RuntimeTarget = `${NodeJS.Platform}-${NodeJS.Architecture}` | string
 
@@ -70,24 +70,6 @@ export interface RuntimeResolveResult {
     alternatives: string[]
   }
   error?: string
-}
-
-export interface RuntimeManifestEntry {
-  runtime: RuntimeKind
-  target: RuntimeTarget
-  version: string
-  archiveName?: string
-  downloadUrl?: string
-  sha256?: string
-  // Detached base64 signature of the runtime archive bytes.
-  signature?: string
-  executableRelativePath?: string
-}
-
-export interface RuntimeManifest {
-  generatedAt: string
-  version?: string
-  entries: RuntimeManifestEntry[]
 }
 
 export interface CapabilityCatalogRule {

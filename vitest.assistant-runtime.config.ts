@@ -57,7 +57,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [
+      "electron/*.test.ts",
       "electron/assistant-runtime/**/*.test.ts",
+      "shared/assistant-shared/*.test.ts",
       "shared/assistant-contracts/*.test.ts",
     ],
   },

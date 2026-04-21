@@ -1,19 +1,3 @@
-const fs = require("node:fs")
-const path = require("node:path")
-
-const macRuntimeTargets = ["darwin-arm64", "darwin-x64"]
-const runtimeExecutables = ["node", "npm", "corepack", "pnpm", "yarn", "bun"]
-const macRuntimeBinaries = macRuntimeTargets
-  .flatMap((target) =>
-    runtimeExecutables.map((executable) => {
-      const sourcePath = path.join(__dirname, "build", "runtime", target, "bin", executable)
-      const bundlePath = `Contents/Resources/runtime/${target}/bin/${executable}`
-      return { sourcePath, bundlePath }
-    })
-  )
-  .filter(({ sourcePath }) => fs.existsSync(sourcePath))
-  .map(({ bundlePath }) => bundlePath)
-
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: "com.cozea.app",
@@ -31,9 +15,13 @@ module.exports = {
     {
       from: "build/runtime",
       to: "runtime",
-      // Keep bundled JS toolchain (node/npm/corepack/pnpm/yarn/bun) and metadata,
-      // but ship runtime packs (python/rust/go archives) via release assets.
-      filter: ["**/*", "!packs/**/*", "!packs-src/**/*"],
+      // Ship lightweight runtime metadata and verification material only.
+      // Actual language/toolchain runtimes should come from the system PATH.
+      filter: [
+        "capability-catalog.json",
+        "capability-catalog.sig",
+        "runtime-public-key.pem",
+      ],
     },
   ],
   mac: {
@@ -42,7 +30,6 @@ module.exports = {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
-    binaries: [...macRuntimeBinaries],
     target: ["dmg", "zip"],
   },
   dmg: {
