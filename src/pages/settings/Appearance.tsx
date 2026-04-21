@@ -59,6 +59,7 @@ const themes: { value: Theme; label: string; colors: { bg: string; card: string;
 export function Appearance({ surface = 'page' }: AppearanceProps) {
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
+  const selectedThemeLabel = themes.find((candidate) => candidate.value === theme)?.label ?? 'System'
 
   const content = (
     <div
@@ -70,7 +71,10 @@ export function Appearance({ surface = 'page' }: AppearanceProps) {
     >
       <div>
         <h3 className="text-base font-medium mb-1">Theme</h3>
-        <p className="text-sm text-muted-foreground mb-4">Choose your preferred color scheme</p>
+        <p className="text-sm text-muted-foreground mb-4">
+          Choose your preferred color scheme
+          <span className="ml-2 text-foreground/80">Selected: {selectedThemeLabel}</span>
+        </p>
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
           {themes.map((t) => {
             const isSelected = theme === t.value
@@ -129,7 +133,7 @@ export function Appearance({ surface = 'page' }: AppearanceProps) {
                 </div>
                 {isSelected && (
                   <div className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                    <Check className={cn('h-2.5 w-2.5', t.value === 'light' ? 'text-foreground' : 'text-primary-foreground')} />
                   </div>
                 )}
               </button>
