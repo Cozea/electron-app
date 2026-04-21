@@ -5,12 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish release assets and metadata
-        required: false
-        type: string
-        default: 'false'
 
 permissions:
   contents: write
@@ -102,12 +96,10 @@ jobs:
       - name: Resolve publish mode
         id: publish_mode
         shell: bash
-        env:
-          MANUAL_PUBLISH: ${{ github.event.inputs.publish || 'false' }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             echo "mode=always" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${MANUAL_PUBLISH}" == "true" ]]; then
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
             echo "mode=always" >> "$GITHUB_OUTPUT"
           else
             echo "mode=never" >> "$GITHUB_OUTPUT"
