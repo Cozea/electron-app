@@ -65,10 +65,8 @@ function formatLocalDeviceLabel(label: string): string {
 
 export function NavUser({
   user,
-  onLogout,
 }: {
   user: RawUser | FormattedUser | null | undefined
-  onLogout?: () => void
 }) {
   const { theme, setTheme } = useTheme()
   const userData = formatUserData(user)
@@ -92,7 +90,6 @@ export function NavUser({
         | "theme-dark"
         | "theme-system"
         | "theme-group"
-        | "logout"
         | "separator-top"
         | "separator-bottom"
       >[] = []
@@ -121,10 +118,6 @@ export function NavUser({
         ],
       })
       items.push({ id: "separator-bottom", label: "", type: "separator" })
-      items.push({
-        id: "logout",
-        label: "Log out",
-      })
 
       const position = {
         x: Math.round(rect.left + rect.width / 2),
@@ -146,16 +139,12 @@ export function NavUser({
         case "theme-system":
           setTheme("system")
           break
-        case "logout":
-          onLogout?.()
-          break
       }
     },
     [
       menuSummarySublabel,
       menuTitle,
       navigate,
-      onLogout,
       setTheme,
       theme,
     ],

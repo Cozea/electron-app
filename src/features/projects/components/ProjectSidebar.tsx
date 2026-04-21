@@ -76,7 +76,6 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
     lastName?: string | null;
     profileImageUrl?: string | null;
   } | null;
-  onLogout?: () => void;
   projectId?: Id<"projects"> | null;
   presenceUsers?: unknown[];
   presenceCount?: number;
@@ -84,7 +83,6 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 export function ProjectSidebar({
   user,
-  onLogout,
   projectId: providedProjectId,
   presenceUsers: _presenceUsers,
   presenceCount: _presenceCount,
@@ -775,7 +773,7 @@ export function ProjectSidebar({
             </Button>
           ) : (
             <div>
-              <NavUser user={user} onLogout={onLogout} />
+              <NavUser user={user} />
             </div>
           )}
         </SidebarFooter>

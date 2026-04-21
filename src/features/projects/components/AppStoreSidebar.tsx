@@ -37,7 +37,6 @@ interface AppStoreSidebarProps extends React.ComponentProps<typeof Sidebar> {
     lastName?: string | null
     profileImageUrl?: string | null
   } | null
-  onLogout?: () => void
 }
 
 function AppStoreSidebarNavRow({
@@ -63,7 +62,7 @@ function AppStoreSidebarNavRow({
   )
 }
 
-export function AppStoreSidebar({ user, onLogout, className, ...props }: AppStoreSidebarProps) {
+export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarProps) {
   const navigate = useViewTransitionNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -151,7 +150,7 @@ export function AppStoreSidebar({ user, onLogout, className, ...props }: AppStor
 
       <SidebarSeparator />
       <SidebarFooter className="gap-3 p-3">
-        <NavUser user={user} onLogout={onLogout} />
+        <NavUser user={user} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

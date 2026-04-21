@@ -32,7 +32,6 @@ interface SettingsSidebarProps extends React.ComponentProps<typeof Sidebar> {
     lastName?: string | null
     profileImageUrl?: string | null
   } | null
-  onLogout?: () => void
 }
 
 function toProjectsPath(path: string): string {
@@ -63,7 +62,7 @@ function SettingsSidebarNavRow({
   )
 }
 
-export function SettingsSidebar({ user, onLogout, className, ...props }: SettingsSidebarProps) {
+export function SettingsSidebar({ user, className, ...props }: SettingsSidebarProps) {
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
   const navSections = React.useMemo(
@@ -147,7 +146,7 @@ export function SettingsSidebar({ user, onLogout, className, ...props }: Setting
           </button>
         ) : (
           <div>
-            <NavUser user={user} onLogout={onLogout} />
+            <NavUser user={user} />
           </div>
         )}
       </SidebarFooter>
