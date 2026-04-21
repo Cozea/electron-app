@@ -10,6 +10,7 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 import { createServer } from "./wsServer";
 import WebSocket from "ws";
 import { deriveServerPaths, ServerConfig, type ServerConfigShape } from "./config";
+import { ASSISTANT_RUNTIME_READINESS_PATH } from "./readiness";
 import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
 
 import {
@@ -614,6 +615,17 @@ describe("WebSocket Server", () => {
       cwd: "/test/project",
       projectName: "project",
     });
+  });
+
+  it("serves a readiness endpoint once the runtime is bootstrapped", async () => {
+    server = await createTestServer({ cwd: "/test/project" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const response = await fetch(`http://127.0.0.1:${port}${ASSISTANT_RUNTIME_READINESS_PATH}`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ready" });
   });
 
   it("serves persisted attachments from stateDir", async () => {

@@ -55,8 +55,6 @@ jobs:
       COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_ARM64 }}
-      COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64 }}
-      COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64 }}
       COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
       COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH }}
       COZEA_RUNTIME_SIGNING_PUBLIC_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PUBLIC_KEY }}
@@ -105,13 +103,40 @@ jobs:
             echo "mode=never" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./package.json').version")"
+          expected_tag="v${package_version}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version ${package_version}."
+            exit 1
+          fi
+
+      - name: Validate shared release build env
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in VITE_CONVEX_URL VITE_AI_API_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required build environment values: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Validate macOS release secrets
         if: matrix.electron_target == 'mac' && steps.publish_mode.outputs.mode == 'always'
         shell: bash
         run: |
           set -euo pipefail
           missing=()
-          for name in GH_TOKEN APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD VITE_CONVEX_URL VITE_AI_API_URL; do
+          for name in GH_TOKEN APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
@@ -122,9 +147,9 @@ jobs:
           fi
 
       - name: Install Dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Install macOS build deps (bundled Git)
+      - name: Install macOS build deps
         if: runner.os == 'macOS'
         run: |
           brew update
@@ -177,33 +202,24 @@ jobs:
           echo "Using codesigning identity (full): ${identity_full}"
           echo "Using electron-builder CSC_NAME: ${identity_common}"
 
-      - name: Prepare Bundled Runtimes
-        run: bun run prepare:bundled-runtimes
+      - name: Prepare Runtime Metadata
+        run: bun run prepare:runtime-metadata
 
-      - name: Verify Bundled Runtimes
-        run: bun run prepare:bundled-runtimes:check
-
-      - name: Prepare Runtime Pack Sources
-        run: bun run prepare:runtime-pack-sources
-
-      - name: Verify Runtime Pack Sources
-        run: bun run prepare:runtime-pack-sources:check
-
-      - name: Build Runtime Packs
-        run: bun run build:runtime-packs
-
-      - name: Sign Runtime Manifest and Catalog
+      - name: Sign Runtime Metadata
         shell: bash
         run: |
           set -euo pipefail
           if [[ -n "${COZEA_RUNTIME_SIGNING_PRIVATE_KEY:-}" || -n "${COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
-            bun run sign:runtime-manifest
+            bun run sign:runtime-metadata
           else
-            echo "::warning::Runtime signing key not configured; runtime pack signatures were not generated."
+            echo "::warning::Runtime signing key not configured; runtime metadata signatures were not generated."
           fi
 
       - name: Typecheck
         run: bun run typecheck
+
+      - name: Typecheck Assistant Runtime
+        run: bun run typecheck:assistant-runtime
 
       - name: Build and Package
         shell: bash
@@ -341,16 +357,6 @@ jobs:
           tmp_dir="$(mktemp -d)"
           assets=()
 
-          if [[ -f "build/runtime/manifest.json" ]]; then
-            cp "build/runtime/manifest.json" "${tmp_dir}/runtime-manifest-${target}.json"
-            assets+=("${tmp_dir}/runtime-manifest-${target}.json")
-          fi
-
-          if [[ -f "build/runtime/runtime-manifest.sig" ]]; then
-            cp "build/runtime/runtime-manifest.sig" "${tmp_dir}/runtime-manifest-${target}.sig"
-            assets+=("${tmp_dir}/runtime-manifest-${target}.sig")
-          fi
-
           if [[ -f "build/runtime/capability-catalog.json" ]]; then
             cp "build/runtime/capability-catalog.json" "${tmp_dir}/capability-catalog-${target}.json"
             assets+=("${tmp_dir}/capability-catalog-${target}.json")
@@ -365,10 +371,6 @@ jobs:
             cp "build/runtime/runtime-public-key.pem" "${tmp_dir}/runtime-public-key-${target}.pem"
             assets+=("${tmp_dir}/runtime-public-key-${target}.pem")
           fi
-
-          while IFS= read -r file; do
-            assets+=("$file")
-          done < <(find build/runtime/packs -type f 2>/dev/null | sort)
 
           if [[ ${#assets[@]} -gt 0 ]]; then
             gh release upload "${tag}" "${assets[@]}" --repo "${repo}" --clobber
