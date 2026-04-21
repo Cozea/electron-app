@@ -68,12 +68,12 @@ export function formatProjectDeleteError(input: unknown): ProjectDeleteErrorPres
 
   if (
     code === 'project_delete_permission_required' ||
-    lower.includes('only project creators, managers, or authorized workspace members can delete projects')
+    lower.includes('only project creators, managers, or authorized collaborators can delete projects')
   ) {
     return {
       title: 'Delete Permission Required',
       message: 'You do not have permission to delete this project.',
-      detail: 'Only project creators, managers, or authorized workspace members can delete projects.',
+      detail: 'Only project creators, managers, or authorized collaborators can delete projects.',
     }
   }
 
@@ -110,7 +110,7 @@ export function formatProjectRenameError(input: unknown): ProjectRenameErrorPres
     return {
       title: 'Rename Permission Required',
       message: 'You do not have permission to rename this project.',
-      detail: 'Only project editors or authorized workspace members can rename projects.',
+      detail: 'Only project editors or authorized collaborators can rename projects.',
     }
   }
 

@@ -39,7 +39,7 @@ export function getRuntimeTarget(): RuntimeTarget {
 }
 
 export function getRuntimeCacheRoot(): string {
-  if (app.isReady()) {
+  if (app && typeof app.isReady === 'function' && app.isReady()) {
     return path.join(app.getPath('userData'), 'runtimes')
   }
   return path.join(os.homedir(), '.cozea', 'runtimes')

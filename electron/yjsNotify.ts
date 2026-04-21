@@ -1,16 +1,18 @@
 import path from "node:path"
 
-import { BrowserWindow, WebContents } from "electron"
+import { BrowserWindow, webContents } from "electron"
+
+import { GitDirtyStateService } from "./services/GitDirtyStateService"
 
 export interface ExternalFileChangePayload {
   filePath: string
   content: string
-  origin?: string
+  origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
 }
 
 export interface ExternalFileMetaChangePayload {
   filePath: string
-  origin?: string
+  origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
   isBinary: boolean
   isDirectory?: boolean
   sizeBytes: number
@@ -19,7 +21,7 @@ export interface ExternalFileMetaChangePayload {
 
 export interface ExternalFileDeletePayload {
   filePath: string
-  origin?: string
+  origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
 }
 
 /** Normalized absolute roots per renderer webContents id (set via yjs:setInterestRoots). */
@@ -72,7 +74,7 @@ function fileMatchesAnyRoot(filePath: string, roots: string[]): boolean {
 }
 
 function pruneStaleInterestEntry(webContentsId: number): void {
-  const wc = WebContents.fromId(webContentsId)
+  const wc = webContents.fromId(webContentsId)
   if (!wc || wc.isDestroyed()) {
     interestRootsByWebContentsId.delete(webContentsId)
   }
@@ -101,7 +103,7 @@ function forEachInterestedWindowForPath(filePath: string, fn: (window: BrowserWi
     pruneStaleInterestEntry(wcId)
     if (!interestRootsByWebContentsId.has(wcId)) continue
 
-    const wc = WebContents.fromId(wcId)
+    const wc = webContents.fromId(wcId)
     if (!wc || wc.isDestroyed()) {
       interestRootsByWebContentsId.delete(wcId)
       continue
@@ -118,7 +120,7 @@ function forEachInterestedWindowForPath(filePath: string, fn: (window: BrowserWi
 export function notifyFileChanged(
   filePath: string,
   content: string,
-  options?: { origin?: string },
+  options?: { origin?: string | import("../shared/electronApiTypes").FileChangeAttribution },
 ): void {
   const payload: ExternalFileChangePayload = {
     filePath,
@@ -128,15 +130,20 @@ export function notifyFileChanged(
   forEachInterestedWindowForPath(filePath, (window) => {
     window.webContents.send("yjs:external-file-change", payload)
   })
+  GitDirtyStateService.getInstance().invalidateFilePath(filePath)
 }
 
 export function notifyFileMetaChanged(payload: ExternalFileMetaChangePayload): void {
   forEachInterestedWindowForPath(payload.filePath, (window) => {
     window.webContents.send("yjs:external-file-meta-change", payload)
   })
+  GitDirtyStateService.getInstance().invalidateFilePath(payload.filePath)
 }
 
-export function notifyFileDeleted(filePath: string, options?: { origin?: string }): void {
+export function notifyFileDeleted(
+  filePath: string,
+  options?: { origin?: string | import("../shared/electronApiTypes").FileChangeAttribution },
+): void {
   const payload: ExternalFileDeletePayload = {
     filePath,
     origin: options?.origin,
@@ -144,4 +151,5 @@ export function notifyFileDeleted(filePath: string, options?: { origin?: string 
   forEachInterestedWindowForPath(filePath, (window) => {
     window.webContents.send("yjs:external-file-delete", payload)
   })
+  GitDirtyStateService.getInstance().invalidateFilePath(filePath)
 }

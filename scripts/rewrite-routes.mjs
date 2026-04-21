@@ -20,7 +20,6 @@ import { Billing } from '@/pages/workspace/Billing'
 import AI from "@/pages/workspace/AI"
 import { Integrations } from '@/pages/workspace/Integrations'
 import { SourceControl } from '@/pages/workspace/SourceControl'
-import { Sync } from '@/pages/workspace/Sync'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import ModelSelection from "@/pages/settings/ModelSelection"
@@ -74,8 +73,6 @@ const WORKSPACE_INTEGRATIONS_ROUTE = getSettingsSurfaceRoute('cliTools', 'worksp
 const PERSONAL_INTEGRATIONS_ROUTE = getSettingsSurfaceRoute('cliTools', 'personal') ?? '/settings/cli-tools'
 const WORKSPACE_SOURCE_CONTROL_ROUTE = getSettingsSurfaceRoute('sourceControl', 'workspace') ?? '/workspace/source-control'
 const PERSONAL_SOURCE_CONTROL_ROUTE = getSettingsSurfaceRoute('sourceControl', 'personal') ?? '/settings/source-control'
-const WORKSPACE_CLOUD_STORAGE_ROUTE = getSettingsSurfaceRoute('cloudStorage', 'workspace') ?? '/workspace/sync'
-const PERSONAL_CLOUD_STORAGE_ROUTE = getSettingsSurfaceRoute('cloudStorage', 'personal') ?? '/settings/cloud-storage'
 const PERSONAL_ACCOUNT_ROUTE = getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
 const PERSONAL_APPEARANCE_ROUTE = getSettingsSurfaceRoute('appearance', 'personal') ?? '/settings/appearance'
 const PERSONAL_TOOLING_ROUTE = getSettingsSurfaceRoute('tooling', 'personal') ?? '/settings/tooling'

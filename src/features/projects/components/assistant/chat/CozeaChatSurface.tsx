@@ -1,4 +1,5 @@
 import {
+
   ApprovalRequestId,
   MessageId,
   type ModelSelection,
@@ -9,16 +10,6 @@ import {
   type ServerProvider,
   type TurnId,
 } from "@cozea/assistant-contracts"
-import {
-  BotIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ListTodoIcon,
-  LockIcon,
-  LockOpenIcon,
-  Loader2,
-  XIcon,
-} from "lucide-react"
 import {
   type ClipboardEventHandler,
   memo,
@@ -66,14 +57,19 @@ import {
   findFirstUnansweredPendingUserInputQuestionIndex,
   type PendingUserInputDraftAnswer,
 } from "@/features/projects/components/assistant/pendingUserInput"
-import { type Thread } from "@/stores/assistant-types"
+import { type Thread } from "@/stores/types"
 import { cn } from "@/lib/utils"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
 export interface ProviderModelOptionsByProvider {
   codex: ReadonlyArray<{ slug: string; name: string }>
   claudeAgent: ReadonlyArray<{ slug: string; name: string }>
+  cursor: ReadonlyArray<{ slug: string; name: string }>
+  opencode: ReadonlyArray<{ slug: string; name: string }>
 }
 
 interface CozeaChatSurfaceProps {
@@ -594,7 +590,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       {props.composerStatus}
 
-      <div className="mt-3 overflow-hidden rounded-2xl bg-secondary">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-sidebar-border/50 bg-secondary">
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
             <ComposerPendingApprovalPanel
@@ -635,6 +631,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <ComposerPromptEditor
             value={composerValue}
             cursor={props.composerCursor}
+            skills={props.providerSnapshot?.skills ?? []}
             terminalContexts={[]}
             onRemoveTerminalContext={() => {}}
             onChange={handleComposerChange}
@@ -738,7 +735,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   disabled={!props.isRuntimeReady || props.isInterrupting}
                 >
                   {props.isInterrupting ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <HugeiconsIcon icon={__Loader2HugeIcon} className="size-3 animate-spin" />
                   ) : (
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
                       <rect x="2" y="2" width="8" height="8" rx="1.5" />
@@ -792,7 +789,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   : "Default mode - click to enter plan mode"
               }
             >
-              {showPlanFollowUpPrompt ? <ListTodoIcon /> : <BotIcon />}
+              {props.selectedInteractionMode === "plan" ? <HugeiconsIcon icon={__ListTodoIconHugeIcon} /> : <HugeiconsIcon icon={__ChatIconHugeIcon} />}
               <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
             </Button>
 
@@ -811,7 +808,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   : "Approval required - click for full access"
               }
             >
-              {props.selectedRuntimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
+              {props.selectedRuntimeMode === "full-access" ? <HugeiconsIcon icon={__LockOpenIconHugeIcon} /> : <HugeiconsIcon icon={__LockIconHugeIcon} />}
               <span>
                 {props.selectedRuntimeMode === "full-access" ? "Full access" : "Supervised"}
               </span>
@@ -828,11 +825,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     </form>
   )
 
+  const hasProviderBanner = props.providerSnapshot && props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled";
+  const showBannersContainer = threadError || hasProviderBanner;
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background">
-      <ProviderStatusBanner status={props.providerSnapshot} />
-      <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
-
       <div
         className={cn(
           "relative flex min-h-0 flex-1 flex-col",
@@ -859,6 +856,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               This agent tile needs a local project path before it can start a thread.
             </div>
           </div>
+        ) : showBannersContainer ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8">
+            <ProviderStatusBanner status={props.providerSnapshot} />
+            <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
+          </div>
         ) : (
           <div
             ref={props.timelineRef}
@@ -868,6 +870,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}
               isWorking={isWorking}
+              selectedProvider={props.selectedProvider}
               activeTurnInProgress={isWorking || !latestTurnSettled}
               activeTurnStartedAt={activeTurnStartedAt}
               scrollContainer={props.timelineRef.current}
@@ -892,30 +895,35 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         {dockComposerOnHover ? (
           <div
             className={cn(
-              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 flex flex-col items-center justify-end px-3 sm:right-4 sm:px-5",
-              showComposerDockChrome && "pt-1.5 pb-4 sm:pt-2 sm:pb-5",
+              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 px-3 pb-4 sm:right-4 sm:px-5 sm:pb-5",
             )}
           >
             <div
               className={cn(
-                "pointer-events-none h-40 w-full max-w-2xl shrink-0 bg-gradient-to-t from-background/92 via-background/55 to-transparent transition-opacity duration-300",
-                showComposerDockChrome ? "opacity-100" : "opacity-0",
+                "relative mx-auto w-full max-w-2xl",
               )}
-              aria-hidden
-            />
-            <div
-              className={cn(
-                "relative z-[1] w-full max-w-2xl space-y-2 overflow-hidden transition-all duration-200 ease-out",
-                showComposerDockChrome
-                  ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
-                  : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
-              )}
-              onFocusCapture={() => {
-                setComposerDockFocused(true)
-              }}
-              onBlurCapture={handleComposerDockBlurCapture}
             >
-              {composerForm}
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-[-0.75rem] bottom-[-1rem] top-[-4.5rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:inset-x-[-1rem] sm:bottom-[-1.25rem] sm:top-[-5rem]",
+                  showComposerDockChrome ? "opacity-100" : "opacity-0",
+                )}
+                aria-hidden
+              />
+              <div
+                className={cn(
+                  "relative z-[1] w-full space-y-2 overflow-hidden transition-all duration-200 ease-out",
+                  showComposerDockChrome
+                    ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
+                    : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
+                )}
+                onFocusCapture={() => {
+                  setComposerDockFocused(true)
+                }}
+                onBlurCapture={handleComposerDockBlurCapture}
+              >
+                {composerForm}
+              </div>
             </div>
           </div>
         ) : null}
@@ -949,7 +957,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 navigateExpandedImage(-1)
               }}
             >
-              <ChevronLeftIcon className="size-5" />
+              <HugeiconsIcon icon={__ChevronLeftIconHugeIcon} className="size-5" />
             </Button>
           ) : null}
           <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
@@ -961,7 +969,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               onClick={closeExpandedImage}
               aria-label="Close image preview"
             >
-              <XIcon className="size-4" />
+              <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />
             </Button>
             <img
               src={expandedImageItem.src}
@@ -987,7 +995,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 navigateExpandedImage(1)
               }}
             >
-              <ChevronRightIcon className="size-5" />
+              <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-5" />
             </Button>
           ) : null}
         </div>

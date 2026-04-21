@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+const COLLAB_SESSION_INVALIDATION_EVENT = 'cozea:collab-session-invalidate'
+
 interface CollabCapabilities {
   execution: 'browser-local' | 'vm'
   languageScope: string[]
@@ -9,18 +11,32 @@ interface CollabCapabilities {
   yjs: boolean
 }
 
+export interface CollabEncryptionBootstrap {
+  roomId: string
+  encryptionRequired: boolean
+  status: 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
+  activeKeyVersion: number | null
+  wrappedRoomKey: string | null
+  wrapAlgorithm: string | null
+  senderPublicKeyJwk: string | null
+}
+
 export interface CollabSession {
   projectId: string
   roomId: string
   collabWsUrl: string
   token: string
   protocolVersion: string
+  deviceId: string
+  deviceLabel?: string
+  deviceFingerprint?: string
+  devicePublicKeyJwk?: string
   capabilities: CollabCapabilities
+  encryption: CollabEncryptionBootstrap
 }
 
 interface UseCollabSessionOptions {
   projectId: string | null
-  accessToken: string | null
   enabled?: boolean
 }
 
@@ -30,6 +46,18 @@ interface UseCollabSessionResult {
   capabilities: CollabCapabilities | null
   error: string | null
   refresh: () => Promise<CollabSession | null>
+}
+
+export function invalidateCollabSession(projectId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(COLLAB_SESSION_INVALIDATION_EVENT, {
+      detail: { projectId },
+    }),
+  )
 }
 
 function normalizeGatewayBaseUrl(raw: string | undefined): string | null {
@@ -58,7 +86,6 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 
 export function useCollabSession({
   projectId,
-  accessToken,
   enabled = true,
 }: UseCollabSessionOptions): UseCollabSessionResult {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -67,7 +94,9 @@ export function useCollabSession({
   const [error, setError] = useState<string | null>(null)
 
   const gatewayBaseUrl = useMemo(
-    () => normalizeGatewayBaseUrl(import.meta.env.VITE_AUTH_SERVER_URL),
+    () =>
+      normalizeGatewayBaseUrl(import.meta.env.VITE_COLLAB_BASE_URL) ??
+      normalizeGatewayBaseUrl(import.meta.env.VITE_AUTH_SERVER_URL),
     []
   )
 
@@ -80,7 +109,7 @@ export function useCollabSession({
       return null
     }
 
-    if (!accessToken || !gatewayBaseUrl) {
+    if (!gatewayBaseUrl) {
       setStatus('error')
       setError('WebSocket collaboration gateway is not configured')
       setSession(null)
@@ -91,53 +120,68 @@ export function useCollabSession({
     setStatus('loading')
     setError(null)
 
-    const authHeaders = {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    }
-
     try {
-      const [capabilityResponse, sessionResponse] = await Promise.all([
-        fetch(`${gatewayBaseUrl}/collab/capabilities?projectId=${encodeURIComponent(projectId)}`, {
-          method: 'GET',
-          headers: authHeaders,
-          credentials: 'include',
-        }),
-        fetch(`${gatewayBaseUrl}/collab/session`, {
-          method: 'POST',
-          headers: authHeaders,
-          credentials: 'include',
-          body: JSON.stringify({
-            projectId,
-            clientType: 'electron',
-          }),
-        }),
-      ])
+      const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
 
-      const [capabilityPayload, sessionPayload] = await Promise.all([
-        parseJsonResponse(capabilityResponse),
-        parseJsonResponse(sessionResponse),
-      ])
+      const sessionResponse = await fetch(`${gatewayBaseUrl}/collab/session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          projectId,
+          clientType: 'electron',
+          deviceId: deviceIdentity.deviceId,
+          deviceLabel: deviceIdentity.deviceLabel,
+          platform: deviceIdentity.platform,
+          publicKeyJwk: deviceIdentity.publicKeyJwk,
+          publicKeyAlgorithm: deviceIdentity.publicKeyAlgorithm,
+          fingerprint: deviceIdentity.fingerprint,
+        }),
+      })
 
-      if (!capabilityResponse.ok) {
-        throw new Error(getPayloadError(capabilityPayload, `Failed to fetch collab capabilities (${capabilityResponse.status})`))
-      }
+      const sessionPayload = await parseJsonResponse(sessionResponse)
+
       if (!sessionResponse.ok) {
         throw new Error(getPayloadError(sessionPayload, `Failed to create collab session (${sessionResponse.status})`))
       }
 
-      const parsedCapabilities = (capabilityPayload || null) as CollabCapabilities | null
       const parsedSession = (sessionPayload || null) as CollabSession | null
 
-      if (!parsedCapabilities || !parsedSession?.token || !parsedSession?.roomId) {
+      if (
+        !parsedSession?.capabilities ||
+        !parsedSession?.token ||
+        !parsedSession?.roomId ||
+        !parsedSession?.deviceId ||
+        !parsedSession?.collabWsUrl ||
+        !parsedSession?.protocolVersion ||
+        !parsedSession?.encryption
+      ) {
         throw new Error('Collab gateway response is invalid')
       }
 
-      setCapabilities(parsedCapabilities)
-      setSession(parsedSession)
+      const parsedCapabilities = parsedSession.capabilities as CollabCapabilities | undefined
+
+      const nextSession: CollabSession = {
+        ...parsedSession,
+        deviceLabel: deviceIdentity.deviceLabel,
+        deviceFingerprint: deviceIdentity.fingerprint,
+        devicePublicKeyJwk: deviceIdentity.publicKeyJwk,
+        capabilities: parsedCapabilities ?? {
+          execution: 'vm',
+          languageScope: ['typescript', 'javascript', 'json', 'markdown', 'html', 'css', 'yaml', 'shell'],
+          preview: true,
+          terminal: true,
+          deployments: false,
+          yjs: true,
+        },
+      }
+
+      setCapabilities(nextSession.capabilities)
+      setSession(nextSession)
       setStatus('ready')
       setError(null)
-      return parsedSession
+      return nextSession
     } catch (requestError) {
       const message =
         requestError instanceof Error
@@ -149,11 +193,30 @@ export function useCollabSession({
       setError(message)
       return null
     }
-  }, [accessToken, enabled, gatewayBaseUrl, projectId])
+  }, [enabled, gatewayBaseUrl, projectId])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleInvalidation = (event: Event) => {
+      const customEvent = event as CustomEvent<{ projectId?: string }>
+      if (!projectId || customEvent.detail?.projectId !== projectId) {
+        return
+      }
+      void refresh()
+    }
+
+    window.addEventListener(COLLAB_SESSION_INVALIDATION_EVENT, handleInvalidation as EventListener)
+    return () => {
+      window.removeEventListener(COLLAB_SESSION_INVALIDATION_EVENT, handleInvalidation as EventListener)
+    }
+  }, [projectId, refresh])
 
   return {
     status,

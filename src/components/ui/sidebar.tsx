@@ -1,7 +1,6 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { PanelLeftIcon } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
@@ -24,6 +23,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+import { HugeiconsIcon } from '@hugeicons/react'
+import { SidebarLeftIcon } from '@hugeicons/core-free-icons'
+
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 
@@ -31,6 +33,7 @@ function getSidebarStateFromCookie(): boolean | null {
   if (typeof document === "undefined") return null
   const match = document.cookie.match(
     new RegExp("(^| )" + SIDEBAR_COOKIE_NAME + "=([^;]+)")
+
   )
   const value = match ? match[2] : null
   if (value === "true") return true
@@ -41,34 +44,8 @@ const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+const SIDEBAR_MAC_TOP_INSET_PX = 36
 const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 160, 320] as const
-
-/** Same as Lucide PanelLeft but with the left side filled (panel open state) */
-function PanelLeftFilledIcon({ className, ...props }: React.SVGAttributes<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={cn("shrink-0", className)}
-      {...props}
-    >
-      {/* Left half of rounded rect (same shape as PanelLeft left side), filled */}
-      <path
-        d="M5 3 L9 3 L9 21 L5 21 Q3 21 3 19 L3 5 Q3 3 5 3 Z"
-        fill="currentColor"
-        stroke="none"
-      />
-      {/* Same as PanelLeft: outer rect + vertical divider */}
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      <path d="M9 3v18" />
-    </svg>
-  )
-}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -244,6 +221,7 @@ function Sidebar({
   variant = "sidebar",
   collapsible = "offcanvas",
   windowChromeAware = false,
+  windowChromeEndAddon = null,
   rootClassName,
   rootStyle,
   className,
@@ -255,6 +233,8 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
   windowChromeAware?: boolean
+  /** Rendered into the macOS window-chrome inset row (top-right), without pushing sidebar content down. */
+  windowChromeEndAddon?: React.ReactNode
   rootClassName?: string
   rootStyle?: React.CSSProperties
 }) {
@@ -264,17 +244,45 @@ function Sidebar({
   const desktopRootWidth =
     collapsible === "offcanvas" && state === "collapsed" ? "0px" : "var(--sidebar-width)"
   const shouldRenderWindowChromeInset = windowChromeAware && !isMobile && windowChrome.isMac
-  const windowChromeInset = shouldRenderWindowChromeInset ? (
-    <div
-      aria-hidden="true"
-      data-slot="sidebar-window-chrome-inset"
-      className="titlebar-drag-region shrink-0 transition-[height,opacity] duration-200 ease-out"
-      style={{
-        height: windowChrome.topInset,
-        opacity: windowChrome.showMacWindowControls ? 1 : 0,
-      }}
-    />
+  const macWindowChromeInset = shouldRenderWindowChromeInset ? (
+    windowChromeEndAddon ? (
+      <div
+        data-slot="sidebar-window-chrome-inset"
+        className="relative shrink-0"
+        style={{ height: SIDEBAR_MAC_TOP_INSET_PX }}
+      >
+        <div
+          aria-hidden="true"
+          className="titlebar-drag-region absolute inset-0 transition-opacity duration-200 ease-out"
+          style={{
+            opacity: windowChrome.showMacWindowControls ? 1 : 0,
+          }}
+        />
+        <div className="titlebar-no-drag absolute inset-y-0 right-1 z-10 flex items-center">
+          {windowChromeEndAddon}
+        </div>
+      </div>
+    ) : (
+      <div
+        aria-hidden="true"
+        data-slot="sidebar-window-chrome-inset"
+        className="titlebar-drag-region shrink-0 transition-opacity duration-200 ease-out"
+        style={{
+          height: SIDEBAR_MAC_TOP_INSET_PX,
+          opacity: windowChrome.showMacWindowControls ? 1 : 0,
+        }}
+      />
+    )
   ) : null
+
+  const desktopNonMacWindowChromeAccessory =
+    windowChromeAware && !isMobile && !windowChrome.isMac && windowChromeEndAddon ? (
+      <div className="flex shrink-0 items-center justify-end px-2 pt-2">
+        <div className="titlebar-no-drag">{windowChromeEndAddon}</div>
+      </div>
+    ) : null
+
+  const windowChromeAccessory = macWindowChromeInset ?? desktopNonMacWindowChromeAccessory
 
   if (collapsible === "none") {
     return (
@@ -290,7 +298,7 @@ function Sidebar({
         style={{ ...rootStyle, ...containerStyle }}
         {...props}
       >
-        {windowChromeInset}
+        {windowChromeAccessory}
         {children}
       </div>
     )
@@ -380,11 +388,11 @@ function Sidebar({
           data-slot="sidebar-inner"
           className={cn(
             "bg-content-surface flex h-full w-full flex-col relative group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar",
-            side === "left" && "border-r border-sidebar-border",
-            side === "right" && "border-l border-sidebar-border"
+            side === "left" && "border-r border-border/60",
+            side === "right" && "border-l border-border/60"
           )}
         >
-          {windowChromeInset}
+          {windowChromeAccessory}
           {children}
         </div>
       </div>
@@ -397,7 +405,7 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar, open } = useSidebar()
+  const { toggleSidebar } = useSidebar()
 
   return (
     <Button
@@ -412,7 +420,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      {open ? <PanelLeftFilledIcon className="size-3" /> : <PanelLeftIcon className="size-3 shrink-0" />}
+      <HugeiconsIcon icon={SidebarLeftIcon} className="h-3.5 w-3.5 shrink-0" />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
@@ -547,7 +555,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        "text-sidebar-foreground/70 ring-sidebar-ring flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-medium leading-none outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-3.5 [&>svg]:shrink-0",
+        "text-sidebar-foreground/70 ring-sidebar-ring flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-normal leading-none outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-3.5 [&>svg]:shrink-0",
         "group-data-[collapsible=icon]:hidden",
         className
       )}
@@ -616,12 +624,15 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 rounded-none p-2 text-left text-xs outline-hidden ring-sidebar-ring transition-[width,height,padding,color] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-3.5 [&>svg]:shrink-0 relative group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! data-[active=true]:font-medium data-[active=true]:before:absolute data-[active=true]:before:-left-2 data-[active=true]:before:top-0 data-[active=true]:before:bottom-0 data-[active=true]:before:w-[2px] data-[active=true]:before:bg-primary",
+  "peer/menu-button flex w-full items-center gap-2 rounded-none p-2 text-left text-xs font-normal outline-hidden ring-sidebar-ring transition-[width,height,padding,color] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-3.5 [&>svg]:shrink-0 relative group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! data-[active=true]:before:absolute data-[active=true]:before:-left-2 data-[active=true]:before:top-0 data-[active=true]:before:bottom-0 data-[active=true]:before:w-[2px] data-[active=true]:before:bg-primary",
   {
     variants: {
       variant: {
         default:
           "text-sidebar-foreground/70 hover:bg-transparent hover:text-primary active:bg-transparent active:text-primary data-[active=true]:bg-transparent data-[active=true]:text-primary data-[state=open]:hover:bg-transparent data-[state=open]:hover:text-primary",
+        /** Match `SIDEBAR_NAV_ROW_BUTTON_CLASS` / project list: `px-2` + h-8, not base `p-2` */
+        pill:
+          "rounded-md p-0 px-2 font-normal text-sidebar-foreground/70 hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)] active:bg-[var(--sidebar-pill-hover-bg)] active:text-[var(--sidebar-pill-hover-fg)] data-[active=true]:bg-[var(--sidebar-pill-hover-bg)] data-[active=true]:text-[var(--sidebar-pill-hover-fg)] data-[active=true]:font-normal data-[active=true]:before:hidden [&>svg]:text-muted-foreground/75 data-[active=true]:[&>svg]:text-[var(--sidebar-pill-hover-fg)] data-[state=open]:hover:bg-[var(--sidebar-pill-hover-bg)] data-[state=open]:hover:text-[var(--sidebar-pill-hover-fg)]",
         outline:
           "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-transparent hover:text-primary hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
       },
@@ -728,7 +739,7 @@ function SidebarMenuBadge({
       data-slot="sidebar-menu-badge"
       data-sidebar="menu-badge"
       className={cn(
-        "text-sidebar-foreground pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-medium tabular-nums select-none",
+        "text-sidebar-foreground pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-normal tabular-nums select-none",
         "peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-sidebar-accent-foreground",
         "peer-data-[size=sm]/menu-button:top-1",
         "peer-data-[size=default]/menu-button:top-1.5",
@@ -830,7 +841,7 @@ function SidebarMenuSubButton({
       data-active={isActive}
       className={cn(
         "text-sidebar-foreground/70 ring-sidebar-ring hover:bg-transparent hover:text-primary active:bg-transparent active:text-primary flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden px-2 outline-hidden focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-3.5 [&>svg]:shrink-0",
-        "data-[active=true]:bg-transparent data-[active=true]:text-primary data-[active=true]:font-medium",
+        "data-[active=true]:bg-transparent data-[active=true]:text-primary",
         size === "sm" && "text-[11px]",
         size === "md" && "text-xs",
         "group-data-[collapsible=icon]:hidden",

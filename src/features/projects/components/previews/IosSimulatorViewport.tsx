@@ -1,4 +1,5 @@
 import {
+
   memo,
   useCallback,
   useEffect,
@@ -9,7 +10,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
-import { ExternalLink, RefreshCw, Smartphone } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils'
 import { TaskFocusOverlay } from '@/features/projects/components/TaskFocusOverlay'
 import type { TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
-import type { PageRoute } from '@/stores/useProjectPagesStore'
+import type { PageRoute } from '@/features/projects/lib/previewRuntimeTypes'
 import type {
   NativePreviewIosSimulatorDevice,
   NativePreviewRotation,
@@ -30,6 +30,9 @@ import type {
 } from '@shared/nativePreviewTypes'
 
 import type { PreviewDevice } from './types'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __RefreshCwHugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
 
 const MIN_PREVIEW_SCALE = 0.5
 const MAX_PREVIEW_SCALE = 3
@@ -52,6 +55,7 @@ interface IosSimulatorViewportProps {
   onSendTouches: (request: {
     type: 'start' | 'move' | 'end'
     touches: Array<{ xRatio: number; yRatio: number }>
+
     rotation?: NativePreviewRotation
   }) => Promise<void>
   onSendWheel: (request: {
@@ -347,7 +351,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
 
   const emptyState = useMemo(() => {
     if (simulatorsLoading) {
-      return 'Loading iOS simulators...'
+      return 'Available iOS simulators will appear here.'
     }
     if (simulatorsError) {
       return simulatorsError
@@ -365,7 +369,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       return sessionError
     }
     if (sessionLoading || sessionState?.status === 'starting') {
-      return 'Starting native preview session...'
+      return 'Simulator preview will attach here.'
     }
     return 'Waiting for the simulator stream.'
   }, [selectedSimulator, serverRunning, sessionError, sessionLoading, sessionState?.status, simulatorsError, simulatorsLoading])
@@ -405,9 +409,8 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-4 bg-content-surface px-6 text-center text-muted-foreground">
-                <Smartphone className="h-16 w-16 opacity-20" />
-                <div className="space-y-2">
-                  <p className="text-lg text-foreground/90">{emptyState}</p>
+                <div className="max-w-sm space-y-1">
+                  <p className="text-sm text-foreground/90">{emptyState}</p>
                   {selectedSimulator ? (
                     <p className="text-xs text-muted-foreground">
                       {selectedSimulator.name} · {selectedSimulator.state}
@@ -416,11 +419,11 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={onRefreshSimulators}>
-                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-1.5 h-3.5 w-3.5" />
                     Refresh
                   </Button>
                   <Button size="sm" variant="outline" onClick={onOpenExternally} disabled={!streamUrl}>
-                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="mr-1.5 h-3.5 w-3.5" />
                     Stream
                   </Button>
                 </div>
@@ -445,7 +448,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
                 </SelectContent>
               </Select>
               <Button size="icon" variant="outline" className="h-8 w-8 rounded-lg bg-background/85 backdrop-blur" onClick={onRefreshSimulators}>
-                <RefreshCw className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
               </Button>
             </div>
 

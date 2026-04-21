@@ -1,11 +1,13 @@
 import type { ComponentType } from "react"
-
-import { Globe } from "lucide-react"
 import { FaBrave, FaChrome, FaEdge, FaFirefoxBrowser, FaSafari } from "react-icons/fa6"
 import { TbBrandArc } from "react-icons/tb"
 
 import type { AvailableExternalBrowser, ExternalBrowserId } from "@shared/electronApiTypes"
 
+import { Globe02Icon as __GlobeHugeIcon } from '@hugeicons/core-free-icons'
+
+import { asHugeIcon } from '@/lib/icons/asHugeIcon'
+const Globe = asHugeIcon(__GlobeHugeIcon)
 export const PREVIEW_BROWSER_PREFERENCE_KEY = "cozea.preview.browser"
 export const PREVIEW_DESTINATION_PREFERENCE_KEY = "cozea.preview.destination"
 
@@ -92,3 +94,4 @@ export function getExternalBrowserIcon(
       return Globe
   }
 }
+

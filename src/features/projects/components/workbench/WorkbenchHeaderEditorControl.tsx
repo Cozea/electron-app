@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ChevronDown, Code2 } from "lucide-react"
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm } from "react-icons/si"
 import { VscVscodeInsiders } from "react-icons/vsc"
 import type { ComponentType, MouseEvent, SVGProps } from "react"
@@ -9,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvailableExternalEditor, ExternalEditorId } from "@shared/electronApiTypes"
 import {
+
   openProjectFileInExternalEditor,
   PREVIEW_EDITOR_PREFERENCE_KEY,
   readStoredExternalEditorPreference,
@@ -20,6 +20,11 @@ import {
   VisualStudioCodeIcon,
   ZedIcon,
 } from "@/features/projects/components/workbench/WorkbenchEditorIcons"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDown01Icon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'
+
+const Code2 = (props: any) => <HugeiconsIcon icon={__Code2HugeIcon} {...props} />
 
 interface WorkbenchHeaderEditorControlProps {
   projectPath: string | null
@@ -211,36 +216,36 @@ export function WorkbenchHeaderEditorControl({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="group inline-flex h-7 items-center">
+        <div className={cn("group inline-flex h-6 items-center rounded-md border bg-transparent shadow-none overflow-hidden", adjacentOpenSidebar ? "border-sidebar-foreground/20" : "border-border/60")}>
           <Button
             variant="ghost"
-            size="sm"
-            className={cn("h-7 shrink-0 gap-1 rounded-md border-0 bg-transparent px-1.5", chromeButtonClass)}
+            className={cn("h-full shrink-0 rounded-none bg-transparent !px-2 shadow-none", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
             disabled={!projectPath || !selectedEditorOption}
+            aria-label={
+              selectedEditorOption
+                ? `Open in ${selectedEditorOption.editor.name}`
+                : "No supported external editor detected"
+            }
           >
             <SelectedEditorIcon className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
-            <span className="text-[11px] leading-none text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground">
-              Open
-            </span>
           </Button>
 
           {orderedEditors.length > 1 ? (
             <>
               <div
-                className={cn("hidden h-4 w-px shrink-0 group-hover:block group-focus-within:block", adjacentOpenSidebar ? "bg-sidebar-border" : "bg-border")}
+                className={cn("h-full w-px shrink-0", adjacentOpenSidebar ? "bg-sidebar-border" : "bg-border/60")}
                 aria-hidden
               />
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className={cn("hidden h-7 w-7 shrink-0 rounded-md border-0 bg-transparent group-hover:inline-flex group-focus-within:inline-flex", chromeButtonClass)}
+                className={cn("h-full w-7 shrink-0 rounded-none bg-transparent px-0 shadow-none inline-flex", chromeButtonClass)}
                 aria-label="Choose editor"
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
               >
-                <ChevronDown className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
               </Button>
             </>
           ) : null}
@@ -252,3 +257,4 @@ export function WorkbenchHeaderEditorControl({
     </Tooltip>
   )
 }
+

@@ -1,8 +1,12 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
+
 "use client"
 
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
-import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -101,7 +105,7 @@ function SheetContent({
             closeClassName
           )}
         >
-          <XIcon className="size-4" />
+          <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>

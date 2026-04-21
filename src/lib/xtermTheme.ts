@@ -1,7 +1,31 @@
 import { WebglAddon } from '@xterm/addon-webgl'
-import type { ITheme, Terminal } from '@xterm/xterm'
+import type { Terminal } from '@xterm/xterm'
 
 const ROOT_THEME_SELECTOR = '.dark, .navy, .wine, .clay, .forest'
+
+function isMacPlatform(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+
+  const userAgentDataPlatform = (
+    navigator as Navigator & { userAgentData?: { platform?: string } }
+  ).userAgentData?.platform
+  const platform = userAgentDataPlatform ?? navigator.platform ?? ''
+  return /mac/i.test(platform)
+}
+
+/** Primary SF Mono stack (parity with t3-style embedded terminals; falls back cross-platform). */
+export const XTERM_FONT_FAMILY =
+  `"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace${
+    isMacPlatform() ? ', AppleBraille' : ''
+  }`
+
+/** Slightly relaxed line height for readability (matches common desktop terminal drawers). */
+export const XTERM_LINE_HEIGHT = 1
+export const XTERM_CUSTOM_GLYPHS = true
+export const XTERM_RESCALE_OVERLAPPING_GLYPHS = true
+export const XTERM_UNICODE_VERSION = '11'
 
 export function colorToHex(cssColor: string): string {
   const canvas = document.createElement('canvas')
@@ -112,36 +136,6 @@ export function buildAnsiPalette(useDarkPalette: boolean) {
   }
 }
 
-export function observeThemeChanges(onThemeChange: () => void): () => void {
-  if (typeof MutationObserver === 'undefined') {
-    return () => {}
-  }
-
-  let frameId: number | null = null
-  const schedule = () => {
-    if (frameId !== null) {
-      window.cancelAnimationFrame(frameId)
-    }
-    frameId = window.requestAnimationFrame(() => {
-      frameId = null
-      onThemeChange()
-    })
-  }
-
-  const observer = new MutationObserver(schedule)
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class', 'style', 'data-theme'],
-  })
-
-  return () => {
-    observer.disconnect()
-    if (frameId !== null) {
-      window.cancelAnimationFrame(frameId)
-    }
-  }
-}
-
 export function loadXtermWebglAddon(terminal: Terminal): WebglAddon | null {
   try {
     const addon = new WebglAddon()
@@ -153,18 +147,4 @@ export function loadXtermWebglAddon(terminal: Terminal): WebglAddon | null {
   } catch {
     return null
   }
-}
-
-export function syncTerminalTheme(terminal: Terminal, buildTheme: () => ITheme): () => void {
-  const applyTheme = () => {
-    terminal.options.theme = buildTheme()
-    try {
-      terminal.refresh(0, Math.max(terminal.rows - 1, 0))
-    } catch {
-      // Ignore refresh errors after disposal or while dimensions settle.
-    }
-  }
-
-  applyTheme()
-  return observeThemeChanges(applyTheme)
 }

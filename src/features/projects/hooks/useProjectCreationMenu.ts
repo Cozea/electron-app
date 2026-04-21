@@ -1,8 +1,14 @@
 import { useCallback, type MouseEvent } from "react"
 
+import {
+  canShowDesktopContextMenu,
+  showDesktopContextMenu,
+} from "@/lib/desktopBridgeClient"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
+import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
-type ProjectCreationMenuAction = "empty" | "local" | "repo"
+type ProjectCreationMenuAction = "empty" | "local"
 
 function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: number } | undefined {
   if (event) {
@@ -30,28 +36,30 @@ function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: n
 
 export function useProjectCreationMenu() {
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
+  const { importLocalFolder, importPickedLocalFolder } = useLocalProjectImport()
 
   const openDirect = useCallback(
     (mode: CreateProjectDialogMode = "empty") => {
+      if (mode === "local") {
+        void importLocalFolder()
+        return
+      }
       openCreateProjectDialog({ mode })
     },
-    [openCreateProjectDialog],
+    [importLocalFolder, openCreateProjectDialog],
   )
 
   const openMenu = useCallback(
     async (event?: MouseEvent<HTMLElement>) => {
-      const desktopBridge = window.desktopBridge
-
-      if (!desktopBridge?.showContextMenu) {
+      if (!canShowDesktopContextMenu()) {
         openCreateProjectDialog({ mode: "empty" })
         return
       }
 
-      const selection = await desktopBridge.showContextMenu<ProjectCreationMenuAction>(
+      const selection = await showDesktopContextMenu<ProjectCreationMenuAction>(
         [
           { id: "empty", label: "Empty project" },
           { id: "local", label: "Import local folder" },
-          { id: "repo", label: "Import repository" },
         ],
         resolveMenuPosition(event),
       )
@@ -60,9 +68,18 @@ export function useProjectCreationMenu() {
         return
       }
 
+      if (selection === "local") {
+        const selectedPath = await browseForDirectory("Select local project folder")
+        if (!selectedPath?.trim()) {
+          return
+        }
+        void importPickedLocalFolder(selectedPath)
+        return
+      }
+
       openCreateProjectDialog({ mode: selection })
     },
-    [openCreateProjectDialog],
+    [importLocalFolder, importPickedLocalFolder, openCreateProjectDialog],
   )
 
   return {

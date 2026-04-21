@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, FolderOpen, GitMerge, Loader2, RefreshCw } from 'lucide-react'
 
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useLocation } from '@/lib/router'
@@ -14,6 +13,10 @@ import { useAccessibleProject } from '@/features/projects/hooks/useAccessiblePro
 import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/CodeMirrorMergeViewer'
+import { resolveAttachedLocalProjectPathHint } from '@/features/projects/lib/projectLocalRootHints'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowLeftRightIcon as __GitMergeHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ConflictFileState {
   baseContent: string | null
@@ -40,6 +43,16 @@ export function ProjectConflictsPage() {
     preferInitialPath: Boolean(navigationLocalPath),
     projectId,
     projectSlug: project?.slug ?? null,
+    cloudPathHint:
+      project && 'localPath' in project && typeof project.localPath === 'string'
+        ? project.localPath
+        : null,
+    attachedPathHint: resolveAttachedLocalProjectPathHint(
+      project as {
+        importedFrom?: { provider: string; repoFullName: string; branch?: string | null } | null
+
+      } | null,
+    ),
   })
   const projectPath = syncContext?.projectPath ?? resolvedLocalPath
   const projectName = project?.name ?? project?.slug ?? 'Project'
@@ -201,8 +214,8 @@ export function ProjectConflictsPage() {
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading project…
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        Loading conflicts…
       </div>
     )
   }
@@ -242,7 +255,7 @@ export function ProjectConflictsPage() {
               Open Project
             </Button>
             <Button variant="outline" onClick={() => void refreshStatus()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-2 h-4 w-4" />
               Refresh
             </Button>
           </CardContent>
@@ -256,7 +269,7 @@ export function ProjectConflictsPage() {
       <div className="flex w-72 shrink-0 flex-col border-r bg-muted/20">
         <div className="border-b px-4 py-4">
           <div className="mb-2 flex items-center gap-2">
-            <GitMerge className="h-4 w-4" />
+            <HugeiconsIcon icon={__GitMergeHugeIcon} className="h-4 w-4" />
             <h1 className="text-sm font-semibold">Conflict Resolver</h1>
           </div>
           <p className="text-xs text-muted-foreground">{projectName}</p>
@@ -264,7 +277,7 @@ export function ProjectConflictsPage() {
             <Badge variant="secondary">
               {remainingCount} file{remainingCount === 1 ? '' : 's'}
             </Badge>
-            {statusLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
+            {statusLoading ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
           </div>
         </div>
 
@@ -298,14 +311,14 @@ export function ProjectConflictsPage() {
 
         <div className="flex flex-col gap-2 border-t p-3">
           <Button variant="outline" onClick={handleOpenFolder}>
-            <FolderOpen className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={__FolderOpenHugeIcon} className="mr-2 h-4 w-4" />
             Open Folder
           </Button>
           <Button
             variant="ghost"
             onClick={() => projectId && navigate(buildProjectPath(projectId), { replace: true })}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="mr-2 h-4 w-4" />
             Back to Project
           </Button>
         </div>
@@ -321,11 +334,11 @@ export function ProjectConflictsPage() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => void refreshStatus(selectedPath)}>
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-2 h-4 w-4" />
               Refresh
             </Button>
             <Button onClick={handleResolve} disabled={!selectedPath || saveLoading}>
-              {saveLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+              {saveLoading ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : <HugeiconsIcon icon={__CheckHugeIcon} className="mr-2 h-4 w-4" />}
               Save Resolution
             </Button>
           </div>
@@ -355,7 +368,7 @@ export function ProjectConflictsPage() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="outline">Local</Badge>
                     <Badge variant="outline">Incoming</Badge>
-                    {fileLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    {fileLoading ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" /> : null}
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-hidden rounded-md border">

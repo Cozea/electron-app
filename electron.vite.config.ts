@@ -72,6 +72,14 @@ const sharedAliases: Alias[] = [
     find: '@cozea/assistant-shared',
     replacement: path.resolve(__dirname, './shared/assistant-shared'),
   },
+  {
+    find: /^@cozea\/effect-acp\/(.*)$/,
+    replacement: `${path.resolve(__dirname, './packages/effect-acp/src')}/$1`,
+  },
+  {
+    find: '@cozea/effect-acp',
+    replacement: path.resolve(__dirname, './packages/effect-acp/src/client.ts'),
+  },
 ]
 
 export default defineConfig({
@@ -81,11 +89,12 @@ export default defineConfig({
     },
     build: {
       externalizeDeps: {
-        exclude: ['@pierre/diffs'],
+        exclude: ['@pierre/diffs', '@cozea/effect-acp', '@opencode-ai/sdk'],
       },
       lib: {
         entry: {
           index: 'electron/main.ts',
+          'workbench-runtime': 'electron/workbench-runtime/child.ts',
         },
       },
       rollupOptions: {
@@ -216,6 +225,7 @@ export default defineConfig({
       format: 'es',
     },
     build: {
+      emptyOutDir: true,
       rollupOptions: {
         input: 'index.html',
       },

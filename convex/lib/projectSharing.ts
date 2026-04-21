@@ -1,8 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 
-export const PERSONAL_WORKSPACE_PREFIX = "personal:"
-
 type ProjectSharingCtx = Pick<QueryCtx | MutationCtx, "db">
 
 export function normalizeProjectInviteEmail(email: string): string {
@@ -36,6 +34,140 @@ export async function getProjectMembership(
     .first()
 }
 
+export async function getProjectTrustedDevice(
+  ctx: ProjectSharingCtx,
+  projectId: Id<"projects">,
+  deviceId: string
+) {
+  const trustedDevice = await ctx.db
+    .query("projectTrustedDevices")
+    .withIndex("by_project_and_device", (q) =>
+      q.eq("projectId", projectId).eq("deviceId", deviceId)
+    )
+    .first()
+
+  if (!trustedDevice || typeof trustedDevice.revokedAt === "number") {
+    return null
+  }
+
+  return trustedDevice
+}
+
+export async function trustProjectDevice(
+  ctx: MutationCtx,
+  args: {
+    projectId: Id<"projects">
+    deviceId: string
+    deviceLabel: string
+    platform?: string
+    fingerprint?: string
+    role: Doc<"projectMembers">["role"]
+    userId?: Id<"users">
+    addedByUserId?: Id<"users">
+    addedByDeviceId?: string
+  }
+) {
+  const now = Date.now()
+  const existing = await ctx.db
+    .query("projectTrustedDevices")
+    .withIndex("by_project_and_device", (q) =>
+      q.eq("projectId", args.projectId).eq("deviceId", args.deviceId)
+    )
+    .first()
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      userId: args.userId ?? existing.userId,
+      deviceLabel: args.deviceLabel,
+      platform: args.platform ?? existing.platform,
+      fingerprint: args.fingerprint ?? existing.fingerprint,
+      role: args.role,
+      lastSeenAt: now,
+      revokedAt: undefined,
+      addedByUserId: args.addedByUserId ?? existing.addedByUserId,
+      addedByDeviceId: args.addedByDeviceId ?? existing.addedByDeviceId,
+    })
+    return existing._id
+  }
+
+  return await ctx.db.insert("projectTrustedDevices", {
+    projectId: args.projectId,
+    userId: args.userId,
+    deviceId: args.deviceId,
+    deviceLabel: args.deviceLabel,
+    platform: args.platform,
+    fingerprint: args.fingerprint,
+    role: args.role,
+    addedAt: now,
+    addedByUserId: args.addedByUserId,
+    addedByDeviceId: args.addedByDeviceId,
+    lastSeenAt: now,
+  })
+}
+
+export async function listProjectTrustedDevicesForUser(
+  ctx: ProjectSharingCtx,
+  projectId: Id<"projects">,
+  userId: Id<"users">
+) {
+  return await ctx.db
+    .query("projectTrustedDevices")
+    .withIndex("by_project_and_user", (q) =>
+      q.eq("projectId", projectId).eq("userId", userId)
+    )
+    .collect()
+}
+
+export async function syncTrustedDevicesRoleForUser(
+  ctx: MutationCtx,
+  args: {
+    projectId: Id<"projects">
+    userId: Id<"users">
+    role: Doc<"projectMembers">["role"]
+  }
+) {
+  const trustedDevices = await listProjectTrustedDevicesForUser(
+    ctx,
+    args.projectId,
+    args.userId
+  )
+
+  await Promise.all(
+    trustedDevices
+      .filter((device) => typeof device.revokedAt !== "number")
+      .map((device) =>
+        ctx.db.patch(device._id, {
+          role: args.role,
+        })
+      )
+  )
+}
+
+export async function revokeTrustedDevicesForUser(
+  ctx: MutationCtx,
+  args: {
+    projectId: Id<"projects">
+    userId: Id<"users">
+  }
+) {
+  const trustedDevices = await listProjectTrustedDevicesForUser(
+    ctx,
+    args.projectId,
+    args.userId
+  )
+  const revokedAt = Date.now()
+
+  await Promise.all(
+    trustedDevices
+      .filter((device) => typeof device.revokedAt !== "number")
+      .map((device) =>
+        ctx.db.patch(device._id, {
+          revokedAt,
+        })
+      )
+  )
+}
+
 export async function requireProjectManagerMembership(
   ctx: MutationCtx,
   projectId: Id<"projects">,
@@ -54,25 +186,14 @@ export async function getProjectShareScope(
   projectId: Id<"projects">
 ): Promise<{
   project: Doc<"projects">
-  organization: Doc<"organizations">
-  isPersonalProject: boolean
 }> {
   const project = await ctx.db.get(projectId)
   if (!project || project.status === "deleted") {
     throw new Error("Project not found")
   }
 
-  const organization = await ctx.db.get(project.organizationId)
-  if (!organization) {
-    throw new Error("Workspace not found")
-  }
-
   return {
     project,
-    organization,
-    isPersonalProject: Boolean(
-      organization.workosId && organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
-    ),
   }
 }
 
@@ -80,11 +201,7 @@ export async function assertPersonalProjectShareScope(
   ctx: ProjectSharingCtx,
   projectId: Id<"projects">
 ) {
-  const scope = await getProjectShareScope(ctx, projectId)
-  if (!scope.isPersonalProject) {
-    throw new Error("Shareable invite links are only available for personal projects")
-  }
-  return scope
+  return await getProjectShareScope(ctx, projectId)
 }
 
 export async function findPendingProjectInviteByEmail(

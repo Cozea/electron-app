@@ -1,4 +1,5 @@
 import { shell, type IpcMain } from 'electron'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -6,12 +7,15 @@ import type {
   AppSettings,
   CloneRepositoryResult,
   CopyDirectorySnapshotResult,
+  CreateGitHubRepoResult,
   CreateProjectFolderResult,
   FileEntry,
+  GhCliStatus,
   StorageActionResult,
   ImportSourcePreflightIssue,
   ImportSourcePreflightResult,
   ListFilesResult,
+  ProjectPathNativeIconResult,
   ReadFileBase64Result,
   ReadFileResult,
   WatchProjectResult,
@@ -23,15 +27,9 @@ import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import {
   clearRegisteredProjectPath,
-  readRegisteredProjectPath,
   rememberProjectPath,
+  resolveCanonicalProjectPath,
 } from '../projectPathRegistry'
-import {
-  ensureProjectCollabLane,
-  readProjectLaneState,
-  setActiveProjectLane,
-  upsertProjectLane,
-} from '../projectLaneRegistry'
 import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
@@ -213,7 +211,7 @@ function runGitCommand(
 
 function normalizeProjectLookup(
   value: unknown,
-): { slug: string; projectId?: string } {
+): { slug: string; projectId?: string; localPathHint?: string; attachedPathHint?: string } {
   if (typeof value === 'string') {
     return { slug: value }
   }
@@ -225,6 +223,8 @@ function normalizeProjectLookup(
   const rawValue = value as {
     slug?: unknown
     projectId?: unknown
+    localPathHint?: unknown
+    attachedPathHint?: unknown
   }
 
   let slug = ''
@@ -240,7 +240,11 @@ function normalizeProjectLookup(
   }
 
   const projectId = typeof rawValue.projectId === 'string' ? rawValue.projectId : undefined
-  return { slug, projectId }
+  const localPathHint =
+    typeof rawValue.localPathHint === 'string' ? rawValue.localPathHint : undefined
+  const attachedPathHint =
+    typeof rawValue.attachedPathHint === 'string' ? rawValue.attachedPathHint : undefined
+  return { slug, projectId, localPathHint, attachedPathHint }
 }
 
 export function registerProjectHandlers(
@@ -428,30 +432,37 @@ npm-debug.log*
 
   ipcMain.handle(
     'project:getLocalPath',
-    async (_event, value: string | { slug: string; projectId?: string }): Promise<string | null> => {
-      const { slug, projectId } = normalizeProjectLookup(value)
+    async (
+      _event,
+      value: string | { slug: string; projectId?: string; localPathHint?: string; attachedPathHint?: string },
+    ): Promise<string | null> => {
+      const { slug, projectId, localPathHint, attachedPathHint } = normalizeProjectLookup(value)
       const settings = deps.loadSettings()
-      if (projectId) {
-        const registeredPath = readRegisteredProjectPath(projectId)
-        if (registeredPath) {
-          return registeredPath
-        }
-      }
-      if (!slug || typeof settings.projectsDirectory !== 'string') {
+      if (
+        !projectId &&
+        !localPathHint &&
+        !attachedPathHint &&
+        (!slug || typeof settings.projectsDirectory !== 'string')
+      ) {
         console.warn('[ProjectPath] Invalid getLocalPath lookup payload', {
           value,
           normalizedSlug: slug,
           projectId: projectId ?? null,
+          localPathHint: localPathHint ?? null,
+          attachedPathHint: attachedPathHint ?? null,
           projectsDirectoryType: typeof settings.projectsDirectory,
           projectsDirectory: settings.projectsDirectory,
         })
         return null
       }
-      const resolvedPath = resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
-      if (resolvedPath && projectId) {
-        rememberProjectPath(projectId, resolvedPath)
-      }
-      return resolvedPath
+
+      return resolveCanonicalProjectPath({
+        projectId,
+        slug,
+        projectsDirectory: settings.projectsDirectory,
+        localPathHint,
+        attachedPathHint,
+      })
     },
   )
 
@@ -465,7 +476,7 @@ npm-debug.log*
       }: { projectId: string; projectPath: string }
     ): Promise<{ success: boolean; localPath?: string; error?: string }> => {
       try {
-        const localPath = rememberProjectPath(projectId, projectPath)
+        const localPath = rememberProjectPath(projectId, projectPath, { source: 'manual' })
         return {
           success: true,
           localPath,
@@ -484,84 +495,6 @@ npm-debug.log*
     async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
       clearRegisteredProjectPath(projectId)
       return { success: true }
-    },
-  )
-
-  ipcMain.handle(
-    'project:getLaneState',
-    async (_event, { projectId }: { projectId: string }) => {
-      return readProjectLaneState(projectId)
-    },
-  )
-
-  ipcMain.handle(
-    'project:ensureCollabLane',
-    async (
-      _event,
-      {
-        projectId,
-        projectPath,
-        branch,
-      }: { projectId: string; projectPath: string; branch: string }
-    ) => {
-      return ensureProjectCollabLane({ projectId, projectPath, branch })
-    },
-  )
-
-  ipcMain.handle(
-    'project:upsertLane',
-    async (
-      _event,
-      {
-        projectId,
-        branch,
-        projectPath,
-        name,
-        isCollab,
-        laneId,
-      }: {
-        projectId: string
-        branch: string
-        projectPath: string
-        name?: string
-        isCollab?: boolean
-        laneId?: string
-      }
-    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
-      try {
-        const laneState = upsertProjectLane({
-          projectId,
-          branch,
-          projectPath,
-          name,
-          isCollab,
-          laneId,
-        })
-        return { success: true, laneState }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to update project lane',
-        }
-      }
-    },
-  )
-
-  ipcMain.handle(
-    'project:setActiveLane',
-    async (
-      _event,
-      { projectId, laneId }: { projectId: string; laneId: string }
-    ): Promise<{ success: boolean; laneState?: unknown; error?: string }> => {
-      try {
-        const laneState = setActiveProjectLane({ projectId, laneId })
-        return { success: true, laneState }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to activate project lane',
-        }
-      }
     },
   )
 
@@ -654,6 +587,14 @@ npm-debug.log*
         }
       }
     },
+  )
+
+  ipcMain.handle(
+    'project:getPathNativeIcon',
+    async (): Promise<ProjectPathNativeIconResult> => ({
+      success: false,
+      error: 'Native project icons are temporarily disabled.',
+    }),
   )
 
   ipcMain.handle(
@@ -1212,4 +1153,158 @@ npm-debug.log*
       return null
     }
   })
+
+  // ---------------------------------------------------------------------------
+  // GitHub CLI helpers
+  // ---------------------------------------------------------------------------
+
+  function runGhCommand(
+    args: string[],
+    options?: { cwd?: string; timeoutMs?: number }
+  ): Promise<{ success: boolean; stdout: string; stderr: string; error?: string }> {
+    const timeoutMs = options?.timeoutMs ?? 15_000
+    return new Promise((resolve) => {
+      let child: ChildProcess
+      try {
+        child = spawn('gh', args, {
+          cwd: options?.cwd,
+          stdio: 'pipe',
+          env: { ...process.env },
+        })
+      } catch (error) {
+        resolve({
+          success: false,
+          stdout: '',
+          stderr: '',
+          error: error instanceof Error ? error.message : 'Failed to spawn gh',
+        })
+        return
+      }
+
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          child.kill('SIGTERM')
+          resolve({ success: false, stdout, stderr, error: 'gh command timed out' })
+        }
+      }, timeoutMs)
+
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+
+      child.on('error', (error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        const isNotFound =
+          (error as NodeJS.ErrnoException).code === 'ENOENT' ||
+          error.message.includes('ENOENT')
+        resolve({
+          success: false,
+          stdout,
+          stderr,
+          error: isNotFound
+            ? 'GitHub CLI (`gh`) is not installed.'
+            : error.message,
+        })
+      })
+
+      child.on('close', (code) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve({
+          success: code === 0,
+          stdout,
+          stderr,
+          error: code !== 0 ? stderr.trim() || `gh exited with code ${code}` : undefined,
+        })
+      })
+    })
+  }
+
+  ipcMain.handle(
+    'project:checkGhCliStatus',
+    async (): Promise<GhCliStatus> => {
+      const result = await runGhCommand(['auth', 'status'])
+
+      if (!result.success) {
+        return {
+          available: false,
+          error: result.error ?? 'GitHub CLI is not available or not authenticated.',
+        }
+      }
+
+      // `gh auth status` prints to stderr, so we combine both streams
+      const combined = `${result.stdout}\n${result.stderr}`
+      const usernameMatch = combined.match(/Logged in to [\w.]+\s+.*?account\s+(\S+)/i)
+        ?? combined.match(/account\s+(\S+)/i)
+        ?? combined.match(/✓\s+Logged in to \S+ as (\S+)/i)
+
+      return {
+        available: true,
+        username: usernameMatch?.[1]?.replace(/\s*\(.*\)$/, '') ?? undefined,
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'project:createGitHubRepo',
+    async (
+      _event,
+      { name, localPath, visibility = 'private' }: { name: string; localPath: string; visibility?: 'private' | 'public' }
+    ): Promise<CreateGitHubRepoResult> => {
+      const trimmedName = name.trim()
+      if (!trimmedName) {
+        return { success: false, error: 'Repository name is required.' }
+      }
+
+      if (!fs.existsSync(localPath)) {
+        return { success: false, error: 'Local project folder does not exist.' }
+      }
+
+      // Ensure the folder has a git repo (it should from createFolder with initGit)
+      const gitDir = path.join(localPath, '.git')
+      if (!fs.existsSync(gitDir)) {
+        const initResult = await runGitCommand(['init'], localPath)
+        if (!initResult.success) {
+          return { success: false, error: initResult.error ?? 'Failed to initialize git.' }
+        }
+      }
+
+      // Create the GitHub repo and set it as origin
+      const visibilityFlag = visibility === 'public' ? '--public' : '--private'
+      const result = await runGhCommand(
+        ['repo', 'create', trimmedName, visibilityFlag, '--source', localPath, '--remote', 'origin'],
+        { cwd: localPath, timeoutMs: 30_000 }
+      )
+
+      if (!result.success) {
+        // Provide a friendlier message for common errors
+        const errLower = (result.error ?? '').toLowerCase()
+        if (errLower.includes('name already exists') || errLower.includes('already exists')) {
+          return {
+            success: false,
+            error: `A GitHub repository named "${trimmedName}" already exists on your account. Choose a different project name.`,
+          }
+        }
+        if (errLower.includes('not logged in') || errLower.includes('gh auth login')) {
+          return {
+            success: false,
+            error: 'GitHub CLI is not authenticated. Run `gh auth login` first.',
+          }
+        }
+        return { success: false, error: result.error ?? 'Failed to create GitHub repository.' }
+      }
+
+      // Extract the repo URL from stdout (gh repo create prints the URL)
+      const repoUrl = result.stdout.trim().split('\n').pop()?.trim() ?? undefined
+
+      return { success: true, repoUrl }
+    }
+  )
 }

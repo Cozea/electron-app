@@ -32,6 +32,7 @@ export interface TerminalInstance {
   status: 'starting' | 'running' | 'exited' | 'error'
   exitCode?: number | null
   hasOutput: boolean
+  uiAttached?: boolean
 }
 
 export interface TerminalGroup {
@@ -79,7 +80,9 @@ interface TerminalState {
     ) => void
     setTerminalHasOutput: (terminalId: string, hasOutput: boolean) => void
     appendTerminalOutput: (terminalId: string, chunk: string) => void
+    replaceTerminalOutput: (terminalId: string, content: string) => void
     clearTerminalOutput: (terminalId: string) => void
+    setTerminalUiAttached: (terminalId: string, attached: boolean) => void
     createGroup: () => string
     setActiveGroup: (groupId: string) => void
     setActiveTerminal: (terminalId: string) => void
@@ -141,6 +144,7 @@ function normalizeTerminal(terminal: TerminalInstance): TerminalInstance {
   return {
     ...terminal,
     surface: terminal.surface ?? 'panel',
+    uiAttached: terminal.uiAttached ?? true,
   }
 }
 
@@ -362,12 +366,48 @@ export const useTerminalStore = create<TerminalState>()(
           })
         },
 
+        replaceTerminalOutput: (terminalId, content) => {
+          set((state) => {
+            if (!state.terminals[terminalId]) return state
+
+            const trimmedChunks =
+              content.length > 0
+                ? [content]
+                : []
+
+            return {
+              outputBuffers: {
+                ...state.outputBuffers,
+                [terminalId]: trimmedChunks,
+              },
+            }
+          })
+        },
+
         clearTerminalOutput: (terminalId) => {
           set((state) => {
             if (!state.outputBuffers[terminalId]) return state
             const next = { ...state.outputBuffers }
             delete next[terminalId]
             return { outputBuffers: next }
+          })
+        },
+
+        setTerminalUiAttached: (terminalId, attached) => {
+          set((state) => {
+            const terminal = state.terminals[terminalId]
+            if (!terminal) return state
+            if (Boolean(terminal.uiAttached) === attached) return state
+
+            return {
+              terminals: {
+                ...state.terminals,
+                [terminalId]: {
+                  ...terminal,
+                  uiAttached: attached,
+                },
+              },
+            }
           })
         },
 

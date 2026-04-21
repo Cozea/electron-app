@@ -135,17 +135,17 @@ pub fn spawn(
     })
 }
 
-use sysinfo::{System, Pid};
+use sysinfo::{System, Pid, ProcessesToUpdate};
 
 #[napi]
 pub fn check_subprocess_activity(pid: u32) -> Result<bool> {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
     
     let target_pid = Pid::from(pid as usize);
     let mut has_child = false;
     
-    for (proc_pid, process) in sys.processes() {
+    for (_proc_pid, process) in sys.processes() {
         if let Some(parent_pid) = process.parent() {
             if parent_pid == target_pid {
                 has_child = true;

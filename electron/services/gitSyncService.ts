@@ -19,13 +19,31 @@ import type {
   GitSyncStatusResult,
 } from '../../shared/electronApiTypes'
 import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from './gitAuth'
-import { classifyConflictPath, tryMergeJsonConflict } from './gitConflictHeuristics'
-import { mergeTextWithGit, runGitCommand } from '../gitRuntime'
-
-const DEFAULT_BRANCH = 'main'
-const DEFAULT_REMOTE = 'origin'
-const DEFAULT_GIT_USER_NAME = 'Cozea Sync'
-const DEFAULT_GIT_USER_EMAIL = 'sync@cozea.local'
+import {
+  commitAndPush as runCommitAndPushWorkflow,
+  fetchMain as runFetchMainWorkflow,
+  pullMain as runPullMainWorkflow,
+  pushMain as runPushMainWorkflow,
+} from './gitRemoteSync'
+import {
+  applyCapturedWorkspaceState as runApplyCapturedWorkspaceState,
+  captureWorkspaceState as runCaptureWorkspaceState,
+  finalizeSequencerIfReady as runFinalizeSequencerIfReady,
+  tryAutoResolveConflicts as runTryAutoResolveConflicts,
+} from './gitReplayWorkspaceState'
+import {
+  DEFAULT_GIT_USER_EMAIL,
+  DEFAULT_GIT_USER_NAME,
+  DEFAULT_REMOTE,
+  isEmptyCherryPickError,
+  isMissingRemoteBranchError,
+  normalizeGitBranch,
+  normalizeGitRemote,
+  normalizeGitRemoteUrl,
+  parseGitStatus,
+  type RepoMetadata,
+} from './gitSyncShared'
+import { runGitCommand } from '../gitRuntime'
 
 interface GitCommandOptions {
   cwd: string
@@ -39,29 +57,6 @@ interface GitAuthOptions {
   encryptedCredentials?: string
   keyId?: string
   debug?: boolean
-}
-
-interface RepoMetadata {
-  repoExists: boolean
-  isRepo: boolean
-  gitDir?: string
-  topLevelPath?: string
-  currentBranch?: string
-  headCommit?: string
-}
-
-interface ParsedStatus {
-  clean: boolean
-  ahead: number
-  behind: number
-  upstreamBranch: string | null
-  hasConflicts: boolean
-  hasStagedChanges: boolean
-  hasUnstagedChanges: boolean
-  hasUntrackedChanges: boolean
-  deletedCount: number
-  changedPaths: string[]
-  conflictedPaths: string[]
 }
 
 export class GitSyncService {
@@ -90,7 +85,7 @@ export class GitSyncService {
     repoUrl?: string
     debug?: boolean
   }): Promise<GitSyncEnsureRepoResult> {
-    const branch = this.normalizeBranch(options.branch)
+    const branch = normalizeGitBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
 
     try {
@@ -121,7 +116,7 @@ export class GitSyncService {
       }
 
       if (options.repoUrl?.trim()) {
-        const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
+        const remoteResult = await this.setRemoteUrl(projectPath, normalizeGitRemoteUrl(options.repoUrl))
         if (!remoteResult.success) {
           return {
             success: false,
@@ -169,7 +164,7 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncCloneResult> {
-    const branch = this.normalizeBranch(options.branch)
+    const branch = normalizeGitBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
     const parentDir = path.dirname(projectPath)
 
@@ -203,14 +198,14 @@ export class GitSyncService {
       }
 
       fs.mkdirSync(parentDir, { recursive: true })
-      const cloneArgs = ['clone', '--branch', branch, '--single-branch', this.normalizeRemoteUrl(options.repoUrl), projectPath]
+      const cloneArgs = ['clone', '--branch', branch, '--single-branch', normalizeGitRemoteUrl(options.repoUrl), projectPath]
       let clone = await this.runGit(cloneArgs, {
         cwd: parentDir,
         extraHeader: this.resolveExtraHeader(options),
         timeoutMs: 120_000,
       })
-      if (!clone.success && this.isMissingRemoteBranchError(clone.error)) {
-        clone = await this.runGit(['clone', this.normalizeRemoteUrl(options.repoUrl), projectPath], {
+      if (!clone.success && isMissingRemoteBranchError(clone.error)) {
+        clone = await this.runGit(['clone', normalizeGitRemoteUrl(options.repoUrl), projectPath], {
           cwd: parentDir,
           extraHeader: this.resolveExtraHeader(options),
           timeoutMs: 120_000,
@@ -261,75 +256,19 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncFetchResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
-    const projectPath = path.resolve(options.projectPath)
-
-    const metadata = await this.getRepoMetadata(projectPath)
-    this.debug(options.debug, 'fetch:start', {
-      projectPath,
-      remote,
-      branch,
-      isRepo: metadata.isRepo,
-      headCommit: metadata.headCommit ?? null,
-      repoUrl: options.repoUrl ?? null,
+    return runFetchMainWorkflow(options, {
+      debug: this.debug.bind(this),
+      getRepoMetadata: this.getRepoMetadata.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),
+      resolveExtraHeader: this.resolveExtraHeader.bind(this),
+      runGit: this.runGit.bind(this),
+      getRevision: this.getRevision.bind(this),
+      getCurrentBranch: this.getCurrentBranch.bind(this),
+      getStatus: this.getStatus.bind(this),
+      restoreMain: this.restoreMain.bind(this),
+      adoptWorkspace: this.adoptWorkspace.bind(this),
+      commitAll: this.commitAll.bind(this),
     })
-    if (!metadata.isRepo) {
-      return { success: false, error: 'Project path is not a git repository' }
-    }
-
-    if (options.repoUrl?.trim()) {
-      const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
-      if (!remoteResult.success) {
-        return { success: false, error: remoteResult.error }
-      }
-    }
-
-    const fetchResult = await this.runGit(['fetch', '--prune', remote, branch], {
-      cwd: projectPath,
-      extraHeader: this.resolveExtraHeader(options),
-      timeoutMs: 120_000,
-    })
-    if (!fetchResult.success) {
-      if (this.isMissingRemoteBranchError(fetchResult.error)) {
-        this.debug(options.debug, 'fetch:missing_remote_branch', {
-          projectPath,
-          remote,
-          branch,
-          currentBranch: await this.getCurrentBranch(projectPath),
-          headCommit: metadata.headCommit ?? null,
-        })
-        return {
-          success: true,
-          remote,
-          branch,
-          currentBranch: await this.getCurrentBranch(projectPath),
-          upstreamRef: `${remote}/${branch}`,
-          headCommit: undefined,
-        }
-      }
-      return { success: false, error: fetchResult.error }
-    }
-
-    const remoteHead =
-      (await this.getRevision(projectPath, `${remote}/${branch}`)) ??
-      (await this.getRevision(projectPath, 'FETCH_HEAD'))
-    const currentBranch = await this.getCurrentBranch(projectPath)
-    this.debug(options.debug, 'fetch:success', {
-      projectPath,
-      remote,
-      branch,
-      currentBranch: currentBranch ?? null,
-      remoteHead: remoteHead ?? metadata.headCommit ?? null,
-    })
-    return {
-      success: true,
-      remote,
-      branch,
-      currentBranch,
-      upstreamRef: `${remote}/${branch}`,
-      headCommit: remoteHead ?? metadata.headCommit,
-    }
   }
 
   async getStatus(options: {
@@ -338,8 +277,8 @@ export class GitSyncService {
     branch?: string
     debug?: boolean
   }): Promise<GitSyncStatusResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
+    const remote = normalizeGitRemote(options.remote)
+    const branch = normalizeGitBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
     const metadata = await this.getRepoMetadata(projectPath)
     this.debug(options.debug, 'status:start', {
@@ -383,7 +322,7 @@ export class GitSyncService {
 
     let ahead = 0
     let behind = 0
-    const parsed = this.parseStatus(status.stdout)
+    const parsed = parseGitStatus(status.stdout)
     ahead = parsed.ahead
     behind = parsed.behind
 
@@ -458,142 +397,19 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncPullResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
-    const strategy = options.strategy ?? 'merge'
-    const projectPath = path.resolve(options.projectPath)
-
-    const metadata = await this.getRepoMetadata(projectPath)
-    this.debug(options.debug, 'pull:start', {
-      projectPath,
-      remote,
-      branch,
-      strategy,
-      currentBranch: metadata.currentBranch ?? null,
-      headCommit: metadata.headCommit ?? null,
+    return runPullMainWorkflow(options, {
+      debug: this.debug.bind(this),
+      getRepoMetadata: this.getRepoMetadata.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),
+      resolveExtraHeader: this.resolveExtraHeader.bind(this),
+      runGit: this.runGit.bind(this),
+      getRevision: this.getRevision.bind(this),
+      getCurrentBranch: this.getCurrentBranch.bind(this),
+      getStatus: this.getStatus.bind(this),
+      restoreMain: this.restoreMain.bind(this),
+      adoptWorkspace: this.adoptWorkspace.bind(this),
+      commitAll: this.commitAll.bind(this),
     })
-    if (!metadata.isRepo) {
-      return {
-        success: false,
-        strategy,
-        error: 'Project path is not a git repository',
-      }
-    }
-
-    if (options.repoUrl?.trim()) {
-      const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
-      if (!remoteResult.success) {
-        return {
-          success: false,
-          strategy,
-          error: remoteResult.error,
-        }
-      }
-    }
-
-    const beforeHead = metadata.headCommit
-    const remoteHead =
-      (await this.getRevision(projectPath, `${remote}/${branch}`)) ??
-      (await this.getRevision(projectPath, 'FETCH_HEAD'))
-    if (!beforeHead && remoteHead) {
-      this.debug(options.debug, 'pull:delegating_restore', {
-        projectPath,
-        remote,
-        branch,
-        remoteHead,
-      })
-      const restore = await this.restoreMain(options)
-      if (!restore.success) {
-        return {
-          success: false,
-          remote,
-          branch,
-          strategy,
-          error: restore.error,
-          hadConflicts: false,
-        }
-      }
-      return {
-        success: true,
-        remote,
-        branch,
-        strategy,
-        currentBranch: restore.currentBranch,
-        headCommit: restore.headCommit,
-        alreadyUpToDate: false,
-        hadConflicts: false,
-        fastForward: true,
-      }
-    }
-
-    const pullArgs =
-      strategy === 'ff-only'
-        ? ['pull', '--ff-only', remote, branch]
-        : [
-            'pull',
-            '--no-rebase',
-            '--no-edit',
-            ...(options.allowUnrelatedHistories ? ['--allow-unrelated-histories'] : []),
-            remote,
-            branch,
-          ]
-    const pull = await this.runGit(pullArgs, {
-      cwd: projectPath,
-      extraHeader: this.resolveExtraHeader(options),
-      timeoutMs: 120_000,
-    })
-    if (!pull.success) {
-      const statusAfterFailure = await this.getStatus({
-        projectPath,
-        remote,
-        branch,
-        debug: options.debug,
-      })
-      const conflictedPaths =
-        statusAfterFailure.success && statusAfterFailure.isRepo
-          ? statusAfterFailure.conflictedPaths ?? []
-          : []
-      const hadConflicts =
-        (statusAfterFailure.success && statusAfterFailure.isRepo && Boolean(statusAfterFailure.hasConflicts)) ||
-        /conflict/i.test(pull.error)
-
-      return {
-        success: false,
-        remote,
-        branch,
-        strategy,
-        hadConflicts,
-        conflictedPaths,
-        error: pull.error,
-      }
-    }
-
-    const afterHead = await this.getRevision(projectPath, 'HEAD')
-    const combinedOutput = `${pull.stdout}\n${pull.stderr}`
-    this.debug(options.debug, 'pull:result', {
-      projectPath,
-      remote,
-      branch,
-      beforeHead: beforeHead ?? null,
-      afterHead: afterHead ?? null,
-      alreadyUpToDate: /already up[ -]to[ -]date/i.test(combinedOutput),
-      fastForward:
-        /fast-forward/i.test(combinedOutput) ||
-        (Boolean(beforeHead) && Boolean(afterHead) && beforeHead !== afterHead && strategy === 'ff-only'),
-    })
-    return {
-      success: true,
-      remote,
-      branch,
-      strategy,
-      currentBranch: await this.getCurrentBranch(projectPath),
-      headCommit: afterHead ?? beforeHead,
-      alreadyUpToDate: /already up[ -]to[ -]date/i.test(combinedOutput),
-      hadConflicts: false,
-      fastForward:
-        /fast-forward/i.test(combinedOutput) ||
-        (Boolean(beforeHead) && Boolean(afterHead) && beforeHead !== afterHead && strategy === 'ff-only'),
-    }
   }
 
   async replayLocalCommits(options: {
@@ -608,8 +424,8 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncReplayResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
+    const remote = normalizeGitRemote(options.remote)
+    const branch = normalizeGitBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
     const remoteRef = `${remote}/${branch}`
 
@@ -631,7 +447,7 @@ export class GitSyncService {
     }
 
     if (options.repoUrl?.trim()) {
-      const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
+      const remoteResult = await this.setRemoteUrl(projectPath, normalizeGitRemoteUrl(options.repoUrl))
       if (!remoteResult.success) {
         return {
           success: false,
@@ -727,7 +543,7 @@ export class GitSyncService {
           timeoutMs: 120_000,
         })
         if (!cherryPick.success) {
-          if (this.isEmptyCherryPickError(cherryPick.error)) {
+          if (isEmptyCherryPickError(cherryPick.error)) {
             const skipResult = await this.runGit(['cherry-pick', '--skip'], {
               cwd: projectPath,
               timeoutMs: 30_000,
@@ -841,8 +657,8 @@ export class GitSyncService {
     debug?: boolean
   }): Promise<GitRepoHealthResult> {
     const projectPath = path.resolve(options.projectPath)
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
+    const remote = normalizeGitRemote(options.remote)
+    const branch = normalizeGitBranch(options.branch)
     const remoteRef = `${remote}/${branch}`
 
     const metadata = await this.getRepoMetadata(projectPath)
@@ -1191,8 +1007,8 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncRestoreResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
+    const remote = normalizeGitRemote(options.remote)
+    const branch = normalizeGitBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
 
     const metadata = await this.getRepoMetadata(projectPath)
@@ -1213,7 +1029,7 @@ export class GitSyncService {
     }
 
     if (options.repoUrl?.trim()) {
-      const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
+      const remoteResult = await this.setRemoteUrl(projectPath, normalizeGitRemoteUrl(options.repoUrl))
       if (!remoteResult.success) {
         return {
           success: false,
@@ -1301,7 +1117,7 @@ export class GitSyncService {
     repoUrl?: string
     debug?: boolean
   }): Promise<GitSyncAdoptResult> {
-    const branch = this.normalizeBranch(options.branch)
+    const branch = normalizeGitBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
 
     try {
@@ -1329,7 +1145,7 @@ export class GitSyncService {
       }
 
       if (options.repoUrl?.trim()) {
-        const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
+        const remoteResult = await this.setRemoteUrl(projectPath, normalizeGitRemoteUrl(options.repoUrl))
         if (!remoteResult.success) {
           return {
             success: false,
@@ -1451,95 +1267,19 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncPushResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
-    const projectPath = path.resolve(options.projectPath)
-
-    const metadata = await this.getRepoMetadata(projectPath)
-    if (!metadata.isRepo) {
-      return {
-        success: false,
-        error: 'Project path is not a git repository',
-      }
-    }
-
-    if (options.repoUrl?.trim()) {
-      const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
-      if (!remoteResult.success) {
-        return {
-          success: false,
-          error: remoteResult.error,
-        }
-      }
-    }
-
-    const push = await this.runGit(['push', remote, `HEAD:${branch}`], {
-      cwd: projectPath,
-      extraHeader: this.resolveExtraHeader(options),
-      timeoutMs: 120_000,
+    return runPushMainWorkflow(options, {
+      debug: this.debug.bind(this),
+      getRepoMetadata: this.getRepoMetadata.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),
+      resolveExtraHeader: this.resolveExtraHeader.bind(this),
+      runGit: this.runGit.bind(this),
+      getRevision: this.getRevision.bind(this),
+      getCurrentBranch: this.getCurrentBranch.bind(this),
+      getStatus: this.getStatus.bind(this),
+      restoreMain: this.restoreMain.bind(this),
+      adoptWorkspace: this.adoptWorkspace.bind(this),
+      commitAll: this.commitAll.bind(this),
     })
-    if (!push.success) {
-      if (this.isShallowUpdateRejected(push.error)) {
-        this.debug(options.debug, 'push:shallow_rejected', {
-          projectPath,
-          remote,
-          branch,
-        })
-        const adopt = await this.adoptWorkspace({
-          projectPath,
-          branch,
-          repoUrl: options.repoUrl,
-          debug: options.debug,
-        })
-        if (!adopt.success) {
-          return {
-            success: false,
-            remote,
-            branch,
-            error: adopt.error || push.error,
-          }
-        }
-
-        const retryPush = await this.runGit(['push', remote, `HEAD:${branch}`], {
-          cwd: projectPath,
-          extraHeader: this.resolveExtraHeader(options),
-          timeoutMs: 120_000,
-        })
-        if (!retryPush.success) {
-          return {
-            success: false,
-            remote,
-            branch,
-            error: retryPush.error,
-          }
-        }
-
-        return {
-          success: true,
-          remote,
-          branch,
-          currentBranch: await this.getCurrentBranch(projectPath),
-          headCommit: await this.getRevision(projectPath, 'HEAD') ?? undefined,
-          pushed: true,
-        }
-      }
-
-      return {
-        success: false,
-        remote,
-        branch,
-        error: push.error,
-      }
-    }
-
-    return {
-      success: true,
-      remote,
-      branch,
-      currentBranch: await this.getCurrentBranch(projectPath),
-      headCommit: await this.getRevision(projectPath, 'HEAD') ?? undefined,
-      pushed: true,
-    }
   }
 
   async commitAndPush(options: {
@@ -1555,76 +1295,19 @@ export class GitSyncService {
     encryptedCredentials?: string
     keyId?: string
   }): Promise<GitSyncCommitPushResult> {
-    const remote = this.normalizeRemote(options.remote)
-    const branch = this.normalizeBranch(options.branch)
-    const projectPath = path.resolve(options.projectPath)
-
-    const metadata = await this.getRepoMetadata(projectPath)
-    if (!metadata.isRepo) {
-      return {
-        success: false,
-        error: 'Project path is not a git repository',
-      }
-    }
-
-    const commit = await this.commitAll({
-      projectPath,
-      message: options.message,
-      addAll: options.addAll,
+    return runCommitAndPushWorkflow(options, {
+      debug: this.debug.bind(this),
+      getRepoMetadata: this.getRepoMetadata.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),
+      resolveExtraHeader: this.resolveExtraHeader.bind(this),
+      runGit: this.runGit.bind(this),
+      getRevision: this.getRevision.bind(this),
+      getCurrentBranch: this.getCurrentBranch.bind(this),
+      getStatus: this.getStatus.bind(this),
+      restoreMain: this.restoreMain.bind(this),
+      adoptWorkspace: this.adoptWorkspace.bind(this),
+      commitAll: this.commitAll.bind(this),
     })
-    if (!commit.success) {
-      return {
-        success: false,
-        remote,
-        branch,
-        error: commit.error,
-      }
-    }
-
-    if (!commit.commitCreated) {
-      return {
-        success: true,
-        remote,
-        branch,
-        currentBranch: metadata.currentBranch,
-        commitCreated: false,
-        pushed: false,
-        commitSha: commit.commitSha,
-      }
-    }
-
-    const push = await this.pushMain({
-      projectPath,
-      remote,
-      branch,
-      repoUrl: options.repoUrl,
-      extraHeader: options.extraHeader,
-      provider: options.provider,
-      accessToken: options.accessToken,
-      encryptedCredentials: options.encryptedCredentials,
-      keyId: options.keyId,
-    })
-    if (!push.success) {
-      return {
-        success: false,
-        remote,
-        branch,
-        commitCreated: true,
-        pushed: false,
-        commitSha: commit.commitSha,
-        error: push.error,
-      }
-    }
-
-    return {
-      success: true,
-      remote,
-      branch,
-      currentBranch: push.currentBranch ?? (await this.getCurrentBranch(projectPath)),
-      commitCreated: true,
-      pushed: true,
-      commitSha: commit.commitSha,
-    }
   }
 
   private async initializeRepository(projectPath: string, branch: string) {
@@ -1676,34 +1359,46 @@ export class GitSyncService {
     })
   }
 
+  private repoMetadataCache = new Map<string, { ts: number; data: Promise<RepoMetadata> }>()
+
   private async getRepoMetadata(projectPath: string): Promise<RepoMetadata> {
-    if (!fs.existsSync(projectPath)) {
-      return { repoExists: false, isRepo: false }
+    const cached = this.repoMetadataCache.get(projectPath)
+    if (cached && Date.now() - cached.ts < 500) {
+      return cached.data
     }
 
-    const inside = await this.runGit(['rev-parse', '--is-inside-work-tree'], {
-      cwd: projectPath,
-      timeoutMs: 10_000,
-    })
-    if (!inside.success || inside.stdout.trim() !== 'true') {
-      return { repoExists: true, isRepo: false }
-    }
+    const promise = (async () => {
+      if (!fs.existsSync(projectPath)) {
+        return { repoExists: false, isRepo: false }
+      }
 
-    const [gitDir, topLevelPath, currentBranch, headCommit] = await Promise.all([
-      this.getSingleValue(projectPath, ['rev-parse', '--git-dir']),
-      this.getSingleValue(projectPath, ['rev-parse', '--show-toplevel']),
-      this.getCurrentBranch(projectPath),
-      this.getRevision(projectPath, 'HEAD'),
-    ])
+      const inside = await this.runGit(['rev-parse', '--is-inside-work-tree'], {
+        cwd: projectPath,
+        timeoutMs: 10_000,
+      })
+      if (!inside.success || inside.stdout.trim() !== 'true') {
+        return { repoExists: true, isRepo: false }
+      }
 
-    return {
-      repoExists: true,
-      isRepo: true,
-      gitDir: gitDir ?? undefined,
-      topLevelPath: topLevelPath ?? undefined,
-      currentBranch: currentBranch ?? undefined,
-      headCommit: headCommit ?? undefined,
-    }
+      const [gitDir, topLevelPath, currentBranch, headCommit] = await Promise.all([
+        this.getSingleValue(projectPath, ['rev-parse', '--git-dir']),
+        this.getSingleValue(projectPath, ['rev-parse', '--show-toplevel']),
+        this.getCurrentBranch(projectPath),
+        this.getRevision(projectPath, 'HEAD'),
+      ])
+
+      return {
+        repoExists: true,
+        isRepo: true,
+        gitDir: gitDir ?? undefined,
+        topLevelPath: topLevelPath ?? undefined,
+        currentBranch: currentBranch ?? undefined,
+        headCommit: headCommit ?? undefined,
+      }
+    })();
+
+    this.repoMetadataCache.set(projectPath, { ts: Date.now(), data: promise })
+    return promise
   }
 
   private async getCurrentBranch(projectPath: string): Promise<string | null> {
@@ -1816,101 +1511,6 @@ export class GitSyncService {
     return null
   }
 
-  private parseStatus(stdout: string): ParsedStatus {
-    const lines = stdout.split(/\r?\n/).filter(Boolean)
-    let ahead = 0
-    let behind = 0
-    let upstreamBranch: string | null = null
-    let hasConflicts = false
-    let hasStagedChanges = false
-    let hasUnstagedChanges = false
-    let hasUntrackedChanges = false
-    let deletedCount = 0
-    const changedPaths: string[] = []
-    const conflictedPaths = new Set<string>()
-
-    for (const line of lines) {
-      if (line.startsWith('## ')) {
-        const branchInfo = line.slice(3)
-        const upstreamMatch = branchInfo.match(/\.{3}([^\s]+)(?:\s|$)/)
-        if (upstreamMatch) {
-          upstreamBranch = upstreamMatch[1]
-        }
-        const aheadMatch = branchInfo.match(/ahead (\d+)/)
-        const behindMatch = branchInfo.match(/behind (\d+)/)
-        ahead = aheadMatch ? Number(aheadMatch[1]) : 0
-        behind = behindMatch ? Number(behindMatch[1]) : 0
-        continue
-      }
-
-      const code = line.slice(0, 2)
-      const rawPath = line.slice(3).trim()
-      const normalizedPath = rawPath.includes(' -> ')
-        ? rawPath.split(' -> ').pop()?.trim() ?? rawPath
-        : rawPath
-      if (normalizedPath) {
-        changedPaths.push(normalizedPath)
-      }
-
-      const staged = code[0]
-      const unstaged = code[1]
-      if (staged === '?' && unstaged === '?') {
-        hasUntrackedChanges = true
-        continue
-      }
-      if (staged === 'D' || unstaged === 'D') {
-        deletedCount += 1
-      }
-      if ('UADRC'.includes(staged) || 'UADRC'.includes(unstaged)) {
-        const isConflict =
-          staged === 'U' ||
-          unstaged === 'U' ||
-          code === 'AA' ||
-          code === 'DD'
-        hasConflicts = hasConflicts || isConflict
-        if (isConflict && normalizedPath) {
-          conflictedPaths.add(normalizedPath)
-        }
-      }
-      if (staged !== ' ') hasStagedChanges = true
-      if (unstaged !== ' ') hasUnstagedChanges = true
-    }
-
-    return {
-      clean: !hasConflicts && !hasStagedChanges && !hasUnstagedChanges && !hasUntrackedChanges,
-      ahead,
-      behind,
-      upstreamBranch,
-      hasConflicts,
-      hasStagedChanges,
-      hasUnstagedChanges,
-      hasUntrackedChanges,
-      deletedCount,
-      changedPaths,
-      conflictedPaths: Array.from(conflictedPaths),
-    }
-  }
-
-  private normalizeBranch(branch?: string): string {
-    return branch?.trim() || DEFAULT_BRANCH
-  }
-
-  private normalizeRemote(remote?: string): string {
-    return remote?.trim() || DEFAULT_REMOTE
-  }
-
-  private normalizeRemoteUrl(repoUrl: string): string {
-    return repoUrl.trim()
-  }
-
-  private isShallowUpdateRejected(error: string | undefined): boolean {
-    if (!error) {
-      return false
-    }
-
-    return /shallow update not allowed/i.test(error)
-  }
-
   private resolveExtraHeader(options: GitAuthOptions & { extraHeader?: string }): string | undefined {
     const explicit = options.extraHeader?.trim()
     if (explicit) {
@@ -1931,30 +1531,6 @@ export class GitSyncService {
       return undefined
     }
     return buildGitAuthorizationHeader(options.provider, resolved.accessToken) ?? undefined
-  }
-
-  private isMissingRemoteBranchError(error: string | undefined): boolean {
-    const message = error?.toLowerCase() ?? ''
-    if (!message) return false
-    return (
-      message.includes("couldn't find remote ref") ||
-      (message.includes('remote branch') && message.includes('not found')) ||
-      message.includes('remote head refers to nonexistent ref') ||
-      message.includes('no such ref was fetched')
-    )
-  }
-
-  private isEmptyCherryPickError(error: string | undefined): boolean {
-    const message = error?.toLowerCase() ?? ''
-    if (!message) {
-      return false
-    }
-
-    return (
-      message.includes('the previous cherry-pick is now empty') ||
-      message.includes('nothing to commit') ||
-      message.includes('previous cherry-pick is now empty')
-    )
   }
 
   private async listRevisions(projectPath: string, args: string[]): Promise<string[]> {
@@ -1978,57 +1554,11 @@ export class GitSyncService {
     stashCommit?: string
     error?: string
   }> {
-    const status = await this.getStatus({ projectPath })
-    if (!status.success || !status.isRepo) {
-      return {
-        success: false,
-        stashCreated: false,
-        error: status.error || 'Failed to inspect local workspace state',
-      }
-    }
-
-    const hasDirtyWorkspace =
-      Boolean(status.hasStagedChanges) ||
-      Boolean(status.hasUnstagedChanges) ||
-      Boolean(status.hasUntrackedChanges)
-    if (!hasDirtyWorkspace) {
-      return {
-        success: true,
-        stashCreated: false,
-      }
-    }
-
-    const previousTop = await this.getRevision(projectPath, 'stash@{0}')
-    const stashMessage = `cozea-open:${Date.now()}`
-    const stashResult = await this.runGit(
-      ['stash', 'push', '--include-untracked', '--message', stashMessage],
-      {
-        cwd: projectPath,
-        timeoutMs: 120_000,
-      }
-    )
-    if (!stashResult.success) {
-      return {
-        success: false,
-        stashCreated: false,
-        error: stashResult.error,
-      }
-    }
-
-    const currentTop = await this.getRevision(projectPath, 'stash@{0}')
-    if (!currentTop || currentTop === previousTop) {
-      return {
-        success: true,
-        stashCreated: false,
-      }
-    }
-
-    return {
-      success: true,
-      stashCreated: true,
-      stashRef: 'stash@{0}',
-      stashCommit: currentTop,
-    }
+    return runCaptureWorkspaceState(projectPath, {
+      getStatus: this.getStatus.bind(this),
+      getRevision: this.getRevision.bind(this),
+      runGit: this.runGit.bind(this),
+    })
   }
 
   private async applyCapturedWorkspaceState(options: {
@@ -2044,90 +1574,16 @@ export class GitSyncService {
     conflictedPaths?: string[]
     error?: string
   }> {
-    const applyResult = await this.runGit(['stash', 'apply', '--index', options.stashRef], {
-      cwd: options.projectPath,
-      timeoutMs: 120_000,
+    return runApplyCapturedWorkspaceState(options, {
+      getStatus: this.getStatus.bind(this),
+      getRevision: this.getRevision.bind(this),
+      getRepoMetadata: this.getRepoMetadata.bind(this),
+      getIndexStageContent: this.getIndexStageContent.bind(this),
+      getSequencerState: this.getSequencerState.bind(this),
+      normalizeRepoFilePath: this.normalizeRepoFilePath.bind(this),
+      resolveRepoRelativePath: this.resolveRepoRelativePath.bind(this),
+      runGit: this.runGit.bind(this),
     })
-    if (!applyResult.success) {
-      const statusAfterFailure = await this.getStatus({
-        projectPath: options.projectPath,
-        remote: options.remote,
-        branch: options.branch,
-        debug: options.debug,
-      })
-      const autoResolveResult =
-        statusAfterFailure.success && statusAfterFailure.isRepo
-          ? await this.tryAutoResolveConflicts({
-              projectPath: options.projectPath,
-              remote: options.remote,
-              branch: options.branch,
-              conflictedPaths: statusAfterFailure.conflictedPaths ?? [],
-              debug: options.debug,
-            })
-          : null
-      if (autoResolveResult?.success && (autoResolveResult.remainingConflictedPaths?.length ?? 0) === 0) {
-        const dropped = await this.dropStashRef(options.projectPath, options.stashRef, options.stashCommit)
-        if (!dropped.success) {
-          console.warn('[GitSyncService] Failed to drop open replay stash after auto-resolve:', dropped.error)
-        }
-        return {
-          success: true,
-          hadConflicts: false,
-        }
-      }
-      return {
-        success: false,
-        hadConflicts:
-          Boolean(autoResolveResult?.remainingConflictedPaths?.length) ||
-          (statusAfterFailure.success && statusAfterFailure.isRepo && Boolean(statusAfterFailure.hasConflicts)) ||
-          /conflict/i.test(applyResult.error),
-        conflictedPaths:
-          autoResolveResult?.remainingConflictedPaths ??
-          (statusAfterFailure.success && statusAfterFailure.isRepo
-            ? statusAfterFailure.conflictedPaths ?? []
-            : []),
-        error: autoResolveResult?.error || applyResult.error,
-      }
-    }
-
-    const dropped = await this.dropStashRef(options.projectPath, options.stashRef, options.stashCommit)
-    if (!dropped.success) {
-      console.warn('[GitSyncService] Failed to drop open replay stash:', dropped.error)
-    }
-
-    return {
-      success: true,
-      hadConflicts: false,
-    }
-  }
-
-  private async dropStashRef(
-    projectPath: string,
-    stashRef: string,
-    stashCommit?: string
-  ): Promise<{ success: boolean; error?: string }> {
-    if (stashCommit) {
-      const currentTop = await this.getRevision(projectPath, stashRef)
-      if (currentTop !== stashCommit) {
-        return {
-          success: false,
-          error: 'Stash stack changed before cleanup',
-        }
-      }
-    }
-
-    const dropResult = await this.runGit(['stash', 'drop', stashRef], {
-      cwd: projectPath,
-      timeoutMs: 30_000,
-    })
-    if (!dropResult.success) {
-      return {
-        success: false,
-        error: dropResult.error,
-      }
-    }
-
-    return { success: true }
   }
 
   private async tryAutoResolveConflicts(options: {
@@ -2142,246 +1598,23 @@ export class GitSyncService {
     remainingConflictedPaths: string[]
     error?: string
   }> {
-    const resolvedPaths: string[] = []
-
-    for (const filePath of options.conflictedPaths) {
-      const resolved = await this.tryAutoResolveConflictPath({
-        projectPath: options.projectPath,
-        filePath,
-      })
-      if (!resolved.success) {
-        continue
-      }
-      resolvedPaths.push(filePath)
-    }
-
-    let remainingStatus = await this.getStatus({
-      projectPath: options.projectPath,
-      remote: options.remote,
-      branch: options.branch,
-      debug: options.debug,
+    return runTryAutoResolveConflicts(options, {
+      getStatus: this.getStatus.bind(this),
+      getRevision: this.getRevision.bind(this),
+      getRepoMetadata: this.getRepoMetadata.bind(this),
+      getIndexStageContent: this.getIndexStageContent.bind(this),
+      getSequencerState: this.getSequencerState.bind(this),
+      normalizeRepoFilePath: this.normalizeRepoFilePath.bind(this),
+      resolveRepoRelativePath: this.resolveRepoRelativePath.bind(this),
+      runGit: this.runGit.bind(this),
     })
-    if (!remainingStatus.success || !remainingStatus.isRepo) {
-      return {
-        success: false,
-        resolvedPaths,
-        remainingConflictedPaths: options.conflictedPaths,
-        error: remainingStatus.error || 'Failed to verify git status after auto-resolving conflicts',
-      }
-    }
-
-    if ((remainingStatus.conflictedPaths?.length ?? 0) === 0) {
-      const finalizeResult = await this.finalizeSequencerIfReady(options.projectPath)
-      if (!finalizeResult.success) {
-        return {
-          success: false,
-          resolvedPaths,
-          remainingConflictedPaths: [],
-          error: finalizeResult.error,
-        }
-      }
-      remainingStatus = await this.getStatus({
-        projectPath: options.projectPath,
-        remote: options.remote,
-        branch: options.branch,
-        debug: options.debug,
-      })
-      if (!remainingStatus.success || !remainingStatus.isRepo) {
-        return {
-          success: false,
-          resolvedPaths,
-          remainingConflictedPaths: [],
-          error: remainingStatus.error || 'Failed to verify git status after completing auto-resolve sequencer',
-        }
-      }
-    }
-
-    return {
-      success: true,
-      resolvedPaths,
-      remainingConflictedPaths: remainingStatus.conflictedPaths ?? [],
-    }
-  }
-
-  private async tryAutoResolveConflictPath(options: {
-    projectPath: string
-    filePath: string
-  }): Promise<{ success: boolean; error?: string }> {
-    const filePath = this.normalizeRepoFilePath(options.filePath)
-    const baseContent = await this.getIndexStageContent(options.projectPath, 1, filePath)
-    const oursContent = await this.getIndexStageContent(options.projectPath, 2, filePath)
-    const theirsContent = await this.getIndexStageContent(options.projectPath, 3, filePath)
-    const kind = classifyConflictPath(filePath, {
-      baseContent,
-      oursContent,
-      theirsContent,
-    })
-
-    if (kind === 'lockfile' || kind === 'generated') {
-      return this.checkoutConflictStage({
-        projectPath: options.projectPath,
-        filePath,
-        preferredStage: 'ours',
-      })
-    }
-
-    if (kind === 'binary') {
-      return this.resolveBinaryConflict(options.projectPath, filePath)
-    }
-
-    if (kind === 'structured-json') {
-      const mergedJson = tryMergeJsonConflict(baseContent, oursContent, theirsContent)
-      if (mergedJson != null) {
-        return this.writeResolvedConflictFile(options.projectPath, filePath, mergedJson)
-      }
-    }
-
-    if (kind === 'text' || kind === 'structured-json') {
-      const mergeResult = await mergeTextWithGit({
-        baseContent: baseContent ?? '',
-        localContent: oursContent ?? '',
-        cloudContent: theirsContent ?? '',
-        labels: {
-          local: 'CURRENT',
-          base: 'BASE',
-          cloud: 'INCOMING',
-        },
-      })
-      if (mergeResult.success && !mergeResult.hasConflicts) {
-        return this.writeResolvedConflictFile(options.projectPath, filePath, mergeResult.mergedContent)
-      }
-    }
-
-    return { success: false }
-  }
-
-  private async writeResolvedConflictFile(
-    projectPath: string,
-    filePath: string,
-    content: string
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const metadata = await this.getRepoMetadata(projectPath)
-      if (!metadata.isRepo) {
-        return { success: false, error: 'Project path is not a git repository' }
-      }
-      const repoRoot = metadata.topLevelPath ?? projectPath
-      const fullPath = this.resolveRepoRelativePath(projectPath, repoRoot, filePath)
-      await fs.promises.mkdir(path.dirname(fullPath), { recursive: true })
-      await fs.promises.writeFile(fullPath, content, 'utf8')
-      const addResult = await this.runGit(['add', '--', filePath], {
-        cwd: projectPath,
-        timeoutMs: 30_000,
-      })
-      return addResult.success ? { success: true } : { success: false, error: addResult.error }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to write resolved conflict file',
-      }
-    }
-  }
-
-  private async checkoutConflictStage(options: {
-    projectPath: string
-    filePath: string
-    preferredStage: 'ours' | 'theirs'
-  }): Promise<{ success: boolean; error?: string }> {
-    const checkoutPreferred = await this.runGit(
-      ['checkout', `--${options.preferredStage}`, '--', options.filePath],
-      {
-        cwd: options.projectPath,
-        timeoutMs: 30_000,
-      }
-    )
-    if (!checkoutPreferred.success) {
-      const fallbackStage = options.preferredStage === 'ours' ? 'theirs' : 'ours'
-      const checkoutFallback = await this.runGit(
-        ['checkout', `--${fallbackStage}`, '--', options.filePath],
-        {
-          cwd: options.projectPath,
-          timeoutMs: 30_000,
-        }
-      )
-      if (!checkoutFallback.success) {
-        return { success: false, error: checkoutPreferred.error }
-      }
-    }
-
-    const addResult = await this.runGit(['add', '--', options.filePath], {
-      cwd: options.projectPath,
-      timeoutMs: 30_000,
-    })
-    return addResult.success ? { success: true } : { success: false, error: addResult.error }
-  }
-
-  private async resolveBinaryConflict(
-    projectPath: string,
-    filePath: string
-  ): Promise<{ success: boolean; error?: string }> {
-    const metadata = await this.getRepoMetadata(projectPath)
-    if (!metadata.isRepo) {
-      return { success: false, error: 'Project path is not a git repository' }
-    }
-    const repoRoot = metadata.topLevelPath ?? projectPath
-    const fullPath = this.resolveRepoRelativePath(projectPath, repoRoot, filePath)
-    const conflictCopyPath = this.buildBinaryConflictCopyPath(fullPath)
-
-    const checkoutTheirs = await this.runGit(['checkout', '--theirs', '--', filePath], {
-      cwd: projectPath,
-      timeoutMs: 30_000,
-    })
-    if (!checkoutTheirs.success) {
-      return { success: false, error: checkoutTheirs.error }
-    }
-
-    await fs.promises.mkdir(path.dirname(conflictCopyPath), { recursive: true })
-    await fs.promises.copyFile(fullPath, conflictCopyPath)
-
-    const checkoutOurs = await this.runGit(['checkout', '--ours', '--', filePath], {
-      cwd: projectPath,
-      timeoutMs: 30_000,
-    })
-    if (!checkoutOurs.success) {
-      return { success: false, error: checkoutOurs.error }
-    }
-
-    const conflictCopyRelativePath = path.relative(repoRoot, conflictCopyPath).replace(/\\/g, '/')
-    const addResult = await this.runGit(['add', '--', filePath, conflictCopyRelativePath], {
-      cwd: projectPath,
-      timeoutMs: 30_000,
-    })
-    return addResult.success ? { success: true } : { success: false, error: addResult.error }
-  }
-
-  private buildBinaryConflictCopyPath(fullPath: string): string {
-    const parsed = path.parse(fullPath)
-    let candidate = path.join(parsed.dir, `${parsed.name}.local-conflict${parsed.ext}`)
-    let suffix = 1
-    while (fs.existsSync(candidate)) {
-      candidate = path.join(parsed.dir, `${parsed.name}.local-conflict-${suffix}${parsed.ext}`)
-      suffix += 1
-    }
-    return candidate
   }
 
   private async finalizeSequencerIfReady(projectPath: string): Promise<{ success: boolean; error?: string }> {
-    const sequencerState = await this.getSequencerState(projectPath)
-    if (sequencerState === 'merge') {
-      const commitResult = await this.runGit(['commit', '--no-edit'], {
-        cwd: projectPath,
-        timeoutMs: 120_000,
-      })
-      return commitResult.success ? { success: true } : { success: false, error: commitResult.error }
-    }
-    if (sequencerState === 'cherry-pick') {
-      const continueResult = await this.runGit(['cherry-pick', '--continue'], {
-        cwd: projectPath,
-        timeoutMs: 120_000,
-      })
-      return continueResult.success ? { success: true } : { success: false, error: continueResult.error }
-    }
-    return { success: true }
+    return runFinalizeSequencerIfReady(projectPath, {
+      getSequencerState: this.getSequencerState.bind(this),
+      runGit: this.runGit.bind(this),
+    })
   }
 
   private async getCommitParentCount(projectPath: string, commit: string): Promise<number> {

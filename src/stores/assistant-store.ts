@@ -1,15 +1,15 @@
 // @ts-nocheck
 import { Fragment, type ReactNode, createElement, useEffect } from "react";
 import {
-  type ProviderKind,
   ThreadId,
   type OrchestrationReadModel,
-  type OrchestrationSessionStatus,
 } from "@cozea/assistant-contracts";
 import { resolveModelSlugForProvider } from "@cozea/assistant-shared/model";
 import { create } from "zustand";
-import { type ChatMessage, type Project, type Thread } from "./assistant-types";
+import { type ChatMessage, type Project, type Thread } from "./types";
+import { normalizeThreadSession } from "./threadSession";
 import { Debouncer } from "@tanstack/react-pacer";
+import { resolveWsHttpOrigin } from "@/lib/desktopBridgeClient";
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -155,53 +155,6 @@ function mapProjectsFromReadModel(
     .map((entry) => entry.project);
 }
 
-function toLegacySessionStatus(
-  status: OrchestrationSessionStatus,
-): "connecting" | "ready" | "running" | "error" | "closed" {
-  switch (status) {
-    case "starting":
-      return "connecting";
-    case "running":
-      return "running";
-    case "error":
-      return "error";
-    case "ready":
-    case "interrupted":
-      return "ready";
-    case "idle":
-    case "stopped":
-      return "closed";
-  }
-}
-
-function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
-    return providerName;
-  }
-  return "codex";
-}
-
-function resolveWsHttpOrigin(): string {
-  if (typeof window === "undefined") return "";
-  const bridgeWsUrl = window.desktopBridge?.getWsUrl?.();
-  const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
-  const wsCandidate =
-    typeof bridgeWsUrl === "string" && bridgeWsUrl.length > 0
-      ? bridgeWsUrl
-      : typeof envWsUrl === "string" && envWsUrl.length > 0
-        ? envWsUrl
-        : null;
-  if (!wsCandidate) return window.location.origin;
-  try {
-    const wsUrl = new URL(wsCandidate);
-    const protocol =
-      wsUrl.protocol === "wss:" ? "https:" : wsUrl.protocol === "ws:" ? "http:" : wsUrl.protocol;
-    return `${protocol}//${wsUrl.host}`;
-  } catch {
-    return window.location.origin;
-  }
-}
-
 function toAttachmentPreviewUrl(rawUrl: string): string {
   if (rawUrl.startsWith("/")) {
     return `${resolveWsHttpOrigin()}${rawUrl}`;
@@ -239,17 +192,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         },
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
-        session: thread.session
-          ? {
-              provider: toLegacyProvider(thread.session.providerName),
-              status: toLegacySessionStatus(thread.session.status),
-              orchestrationStatus: thread.session.status,
-              activeTurnId: thread.session.activeTurnId ?? undefined,
-              createdAt: thread.session.updatedAt,
-              updatedAt: thread.session.updatedAt,
-              ...(thread.session.lastError ? { lastError: thread.session.lastError } : {}),
-            }
-          : null,
+        session: normalizeThreadSession(thread.session),
         messages: thread.messages.map((message) => {
           const attachments = message.attachments?.map((attachment) => ({
             type: "image" as const,

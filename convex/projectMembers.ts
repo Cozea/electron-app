@@ -4,10 +4,12 @@ import type { Id } from "./_generated/dataModel"
 import {
   canAccessProjectByWorkspaceOrMembership,
   canEditProjectByWorkspaceOrMembership,
-  getCanonicalOrganizationMembership,
-  getWorkspaceProjectAccess,
-  hasWorkspaceProjectPermission,
 } from "./lib/workspaceProjectAccess"
+import {
+  getProjectTrustedDevice,
+  revokeTrustedDevicesForUser,
+  syncTrustedDevicesRoleForUser,
+} from "./lib/projectSharing"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -36,6 +38,25 @@ function hasPermission(role: ProjectRole, permission: Permission): boolean {
   return permissions?.includes(permission) ?? false
 }
 
+function isLocalDeviceEmail(email: string | null | undefined): boolean {
+  return typeof email === "string" && email.trim().toLowerCase().endsWith("@local.cozea.app")
+}
+
+function buildTrustedDeviceSecondaryLabel(device: {
+  platform?: string
+  fingerprint?: string
+} | null): string | null {
+  if (!device) return null
+  const parts: string[] = []
+  if (device.platform) {
+    parts.push(device.platform)
+  }
+  if (device.fingerprint) {
+    parts.push(device.fingerprint.slice(0, 8))
+  }
+  return parts.length > 0 ? parts.join(" · ") : null
+}
+
 async function getTeamManagementContext(
   ctx: Pick<MutationCtx, "db">,
   projectId: Id<"projects">,
@@ -46,11 +67,6 @@ async function getTeamManagementContext(
     throw new Error("Project not found")
   }
 
-  const workspaceAccess = await getWorkspaceProjectAccess(
-    ctx,
-    project.organizationId,
-    actorUserId
-  )
   const actorMembership = await ctx.db
     .query("projectMembers")
     .withIndex("by_project_and_user", (q) =>
@@ -58,17 +74,13 @@ async function getTeamManagementContext(
     )
     .first()
 
-  const isPersonalProject = Boolean(
-    workspaceAccess.organization?.workosId.startsWith("personal:")
+  const canManageTeam = Boolean(
+    actorMembership && hasPermission(actorMembership.role as ProjectRole, "manage_members")
   )
-  const canManageTeam = isPersonalProject
-    ? Boolean(actorMembership && hasPermission(actorMembership.role as ProjectRole, "manage_members"))
-    : hasWorkspaceProjectPermission(workspaceAccess, "projects:share")
 
   return {
     project,
     actorMembership,
-    isPersonalProject,
     canManageTeam,
   }
 }
@@ -100,9 +112,51 @@ export const listMembers = query({
 
     return await Promise.all(
       memberships.map(async (m) => {
-        const user = await ctx.db.get(m.userId)
+        const [user, trustedDevices] = await Promise.all([
+          ctx.db.get(m.userId),
+          ctx.db
+            .query("projectTrustedDevices")
+            .withIndex("by_project_and_user", (q) =>
+              q.eq("projectId", args.projectId).eq("userId", m.userId)
+            )
+            .collect(),
+        ])
+        const primaryTrustedDevice =
+          trustedDevices
+            .filter((device) => typeof device.revokedAt !== "number")
+            .sort((left, right) => (right.lastSeenAt ?? right.addedAt) - (left.lastSeenAt ?? left.addedAt))[0] ??
+          null
+        const contactEmail =
+          m.contactEmail ??
+          (user?.email && !isLocalDeviceEmail(user.email) ? user.email : null)
+        const first = user?.firstName?.trim() ?? ""
+        const last = user?.lastName?.trim() ?? ""
+        const fullName = `${first} ${last}`.trim()
+        const displayName =
+          primaryTrustedDevice?.deviceLabel?.trim() ||
+          fullName ||
+          contactEmail ||
+          user?.email ||
+          String(m.userId)
+        const secondaryLabel =
+          contactEmail ??
+          buildTrustedDeviceSecondaryLabel(primaryTrustedDevice) ??
+          (user?.email && !isLocalDeviceEmail(user.email) ? user.email : null)
+
         return {
           ...m,
+          contactEmail,
+          displayName,
+          secondaryLabel,
+          trustedDevice: primaryTrustedDevice
+            ? {
+                deviceId: primaryTrustedDevice.deviceId,
+                deviceLabel: primaryTrustedDevice.deviceLabel,
+                platform: primaryTrustedDevice.platform ?? null,
+                fingerprint: primaryTrustedDevice.fingerprint ?? null,
+                lastSeenAt: primaryTrustedDevice.lastSeenAt ?? null,
+              }
+            : null,
           user: user
             ? {
                 id: user._id,
@@ -187,19 +241,23 @@ export const getProjectAccessForServer = query({
   args: {
     projectId: v.id("projects"),
     userId: v.id("users"),
+    deviceId: v.optional(v.string()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
 
+    const trustedDevice = args.deviceId
+      ? await getProjectTrustedDevice(ctx, args.projectId, args.deviceId)
+      : null
     const [canAccess, canEdit] = await Promise.all([
       canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
       canEditProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
     ])
 
     return {
-      canAccess,
-      canEdit,
+      canAccess: Boolean(trustedDevice) || canAccess,
+      canEdit: trustedDevice ? trustedDevice.role !== "viewer" : canEdit,
     }
   },
 })
@@ -222,24 +280,13 @@ export const addMember = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { project, canManageTeam, isPersonalProject } = await getTeamManagementContext(
+    const { canManageTeam } = await getTeamManagementContext(
       ctx,
       args.projectId,
       args.actorUserId
     )
     if (!canManageTeam) {
       throw new Error("Unauthorized to add members")
-    }
-
-    if (!isPersonalProject) {
-      const workspaceMembership = await getCanonicalOrganizationMembership(
-        ctx,
-        project.organizationId,
-        args.memberUserId
-      )
-      if (!workspaceMembership) {
-        throw new Error("User must already be a member of this workspace")
-      }
     }
 
     // Check if user is already a member
@@ -259,11 +306,13 @@ export const addMember = mutation({
     if (!user) {
       throw new Error("User not found")
     }
+    const contactEmail = user.email && !isLocalDeviceEmail(user.email) ? user.email : undefined
 
     const now = Date.now()
     const membershipId = await ctx.db.insert("projectMembers", {
       projectId: args.projectId,
       userId: args.memberUserId,
+      contactEmail,
       role: args.role,
       addedAt: now,
       addedBy: args.actorUserId,
@@ -329,6 +378,11 @@ export const updateRole = mutation({
     await ctx.db.patch(targetMembership._id, {
       role: args.newRole,
     })
+    await syncTrustedDevicesRoleForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.memberUserId,
+      role: args.newRole,
+    })
   },
 })
 
@@ -380,6 +434,10 @@ export const removeMember = mutation({
     }
 
     await ctx.db.delete(targetMembership._id)
+    await revokeTrustedDevicesForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.memberUserId,
+    })
   },
 })
 
@@ -415,6 +473,10 @@ export const leaveProject = mutation({
     }
 
     await ctx.db.delete(membership._id)
+    await revokeTrustedDevicesForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.userId,
+    })
   },
 })
 
@@ -458,10 +520,20 @@ export const transferOwnership = mutation({
     await ctx.db.patch(newOwnerMembership._id, {
       role: "project_manager",
     })
+    await syncTrustedDevicesRoleForUser(ctx, {
+      projectId: args.projectId,
+      userId: args.newOwnerId,
+      role: "project_manager",
+    })
 
     // Optionally demote self
     if (args.demoteSelf && args.newRoleForSelf) {
       await ctx.db.patch(actorMembership._id, {
+        role: args.newRoleForSelf,
+      })
+      await syncTrustedDevicesRoleForUser(ctx, {
+        projectId: args.projectId,
+        userId: args.actorUserId,
         role: args.newRoleForSelf,
       })
     }
@@ -532,21 +604,7 @@ export const updateMemberLocalPath = mutation({
       )
       .first()
 
-    if (!membership) {
-      const workspaceAccess = await getWorkspaceProjectAccess(
-        ctx,
-        project.organizationId,
-        args.userId
-      )
-
-      if (!hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
-        throw new Error("Unauthorized to access this project")
-      }
-
-      if (!workspaceAccess.isPersonalOwner) {
-        return { success: true }
-      }
-
+    if (!membership && project.createdBy === args.userId) {
       const now = Date.now()
       await ctx.db.insert("projectMembers", {
         projectId: args.projectId,
@@ -558,6 +616,10 @@ export const updateMemberLocalPath = mutation({
       })
 
       return { success: true }
+    }
+
+    if (!membership) {
+      throw new Error("Project membership not found")
     }
 
     await ctx.db.patch(membership._id, {

@@ -4,6 +4,14 @@ import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit } from '../gitRuntime'
+import {
+  captureCheckpoint,
+  deleteAllCheckpointRefs,
+  deleteCheckpointRefs,
+  diffCheckpoints,
+  getHeadDiffStats,
+  readCheckpointFilePair,
+} from '../gitCheckpoints'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { markInternalFsChange } from '../projectWatcher'
 import {
@@ -13,6 +21,7 @@ import {
   normalizeSyncPath,
   type SyncOpRecord,
 } from '../services/syncJournalStore'
+import { GitDirtyStateService } from '../services/GitDirtyStateService'
 import { GitSyncService } from '../services/gitSyncService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
@@ -22,6 +31,7 @@ function sha256Hex(content: Buffer | Uint8Array): string {
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
   const gitSyncService = GitSyncService.getInstance()
+  const gitDirtyStateService = GitDirtyStateService.getInstance()
 
   ipcMain.handle(
     'sync:hashFile',
@@ -289,7 +299,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
         debug?: boolean
       }
-    ) => gitSyncService.pullMain(options)
+    ) => gitSyncService.pullMain(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -308,7 +320,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
         debug?: boolean
       }
-    ) => gitSyncService.replayLocalCommits(options)
+    ) => gitSyncService.replayLocalCommits(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -381,7 +395,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
         debug?: boolean
       }
-    ) => gitSyncService.restoreMain(options)
+    ) => gitSyncService.restoreMain(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -394,7 +410,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         repoUrl?: string
         debug?: boolean
       }
-    ) => gitSyncService.adoptWorkspace(options)
+    ) => gitSyncService.adoptWorkspace(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -406,7 +424,9 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         message: string
         addAll?: boolean
       }
-    ) => gitSyncService.commitAll(options)
+    ) => gitSyncService.commitAll(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
   )
 
   ipcMain.handle(
@@ -442,7 +462,102 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         encryptedCredentials?: string
         keyId?: string
       }
-    ) => gitSyncService.commitAndPush(options)
+    ) => gitSyncService.commitAndPush(options).finally(() => {
+      gitDirtyStateService.invalidateProjectPath(options.projectPath)
+    })
+  )
+
+  ipcMain.handle(
+    'sync:gitCaptureCheckpoint',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        checkpointId: string
+        authorName: string
+        authorEmail?: string
+      }
+    ) =>
+      captureCheckpoint(
+        options.projectPath,
+        options.checkpointId,
+        options.authorName,
+        options.authorEmail,
+      )
+  )
+
+  ipcMain.handle(
+    'sync:gitDiffCheckpoints',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        fromCheckpointId?: string | null
+        toCheckpointId: string
+        filePath?: string
+      }
+    ) =>
+      diffCheckpoints({
+        cwd: options.projectPath,
+        fromCheckpointId: options.fromCheckpointId,
+        toCheckpointId: options.toCheckpointId,
+        filePath: options.filePath,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitReadCheckpointFilePair',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        fromCheckpointId?: string | null
+        toCheckpointId: string
+        filePath: string
+      }
+    ) =>
+      readCheckpointFilePair({
+        cwd: options.projectPath,
+        fromCheckpointId: options.fromCheckpointId,
+        toCheckpointId: options.toCheckpointId,
+        filePath: options.filePath,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitDeleteCheckpointRefs',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        checkpointIds: string[]
+      }
+    ) =>
+      deleteCheckpointRefs({
+        cwd: options.projectPath,
+        checkpointIds: options.checkpointIds,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitDeleteAllCheckpointRefs',
+    async (
+      _event,
+      options: {
+        projectPath: string
+      }
+    ) => deleteAllCheckpointRefs(options.projectPath)
+  )
+
+  ipcMain.handle(
+    'sync:gitGetHeadDiffStats',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        authorName?: string
+      }
+    ) => getHeadDiffStats(options.projectPath, options.authorName)
   )
 
   ipcMain.handle(

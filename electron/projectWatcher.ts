@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from './yjsNotify'
 import { shouldExcludeGeneratedDirectory, shouldExcludeGeneratedFile } from './services/generatedArtifactFilters'
+import { TerminalProvenanceService } from './services/TerminalProvenanceService'
 
 const INTERNAL_IGNORE_MS = 1500
 const PROCESS_DEBOUNCE_MS = 200
@@ -73,6 +74,7 @@ function shouldIgnoreRelativePath(relPath: string): boolean {
 }
 
 const internalWriteTimestamps = new Map<string, number>()
+const terminalProvenanceService = TerminalProvenanceService.getInstance()
 
 export function markInternalFsChange(fullPath: string): void {
   internalWriteTimestamps.set(fullPath, Date.now())
@@ -122,13 +124,23 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
 
   const relNormalized = normalizeRelativePath(rel)
   if (shouldIgnoreRelativePath(relNormalized)) return
+  const provenanceOrigin = terminalProvenanceService.resolveForFilePath(fullPath)
+  const resolvedOrigin =
+    provenanceOrigin ??
+    ({
+      origin: 'user',
+      sourceOrigin: 'watcher',
+      actorType: 'user',
+      actorId: 'watcher',
+      timestamp: Date.now(),
+    } as const)
 
   try {
     const stats = fs.statSync(fullPath)
     if (stats.isDirectory()) {
       notifyFileMetaChanged({
         filePath: fullPath,
-        origin: 'external',
+        origin: resolvedOrigin,
         isBinary: false,
         isDirectory: true,
         sizeBytes: 0,
@@ -144,7 +156,7 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     if (isBinary || stats.size > MAX_TEXT_FILE_BYTES) {
       notifyFileMetaChanged({
         filePath: fullPath,
-        origin: 'external',
+        origin: resolvedOrigin,
         isBinary,
         isDirectory: false,
         sizeBytes: stats.size,
@@ -153,10 +165,10 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     }
 
     const content = fs.readFileSync(fullPath, 'utf-8')
-    notifyFileChanged(fullPath, content, { origin: 'external' })
+    notifyFileChanged(fullPath, content, { origin: resolvedOrigin })
     notifyFileMetaChanged({
       filePath: fullPath,
-      origin: 'external',
+      origin: resolvedOrigin,
       isBinary: false,
       isDirectory: false,
       sizeBytes: stats.size,
@@ -164,7 +176,7 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     })
   } catch {
     // Missing path: treat as deletion (rename/remove)
-    notifyFileDeleted(fullPath, { origin: 'external' })
+    notifyFileDeleted(fullPath, { origin: resolvedOrigin })
 
     // If a directory was removed, close any nested directory watchers.
     if (handle.watcherType === 'manual') {

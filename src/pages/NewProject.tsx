@@ -3,12 +3,17 @@ import { useEffect } from "react"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
+import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 function resolveMode(search: string): CreateProjectDialogMode {
   const params = new URLSearchParams(search)
   const rawMode = params.get("mode")
 
-  if (rawMode === "local" || rawMode === "repo") {
+  if (rawMode === "local") {
     return rawMode
   }
 
@@ -18,6 +23,7 @@ function resolveMode(search: string): CreateProjectDialogMode {
 export default function NewProject() {
   const navigate = useViewTransitionNavigate()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
+  const { importPickedLocalFolder } = useLocalProjectImport()
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -28,9 +34,32 @@ export default function NewProject() {
       return
     }
 
-    openCreateProjectDialog({ mode: resolveMode(window.location.search) })
-    navigate("/projects", { replace: true })
-  }, [navigate, openCreateProjectDialog])
+    const nextMode = resolveMode(window.location.search)
 
-  return null
+    if (nextMode === "local") {
+      void browseForDirectory("Select local project folder").then((selectedPath) => {
+        if (!selectedPath?.trim()) {
+          navigate("/projects", { replace: true })
+          return
+        }
+
+        void importPickedLocalFolder(selectedPath).then((outcome) => {
+          if (outcome !== "imported") {
+            navigate("/projects", { replace: true })
+          }
+        })
+      })
+      return
+    }
+
+    openCreateProjectDialog({ mode: nextMode })
+    navigate("/projects", { replace: true })
+  }, [importPickedLocalFolder, navigate, openCreateProjectDialog])
+
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+      Opening project setup…
+    </div>
+  )
 }

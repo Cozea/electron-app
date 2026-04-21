@@ -2,7 +2,7 @@ import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
 export default defineSchema({
-  // Users - synced from WorkOS
+  // Users - local device-backed profiles with legacy identity compatibility
   users: defineTable({
     // WorkOS identifiers
     workosId: v.string(),
@@ -22,9 +22,6 @@ export default defineSchema({
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
-        sourceControlDefaultProvider: v.optional(
-          v.union(v.literal("github"), v.literal("gitlab"))
-        ),
       })
     ),
 
@@ -37,667 +34,12 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_normalized_email", ["normalizedEmail"]),
 
-  // Organizations - synced from WorkOS
-  organizations: defineTable({
-    workosId: v.string(), // WorkOS organization ID
-    name: v.string(),
-    slug: v.string(),
-    description: v.optional(v.string()),
-    logoUrl: v.optional(v.string()),
-    iconKey: v.optional(v.union(v.string(), v.null())),
-    iconColor: v.optional(v.union(v.string(), v.null())),
-
-    // AI-specific settings (new - per pricing spec)
-    aiSettings: v.optional(
-      v.object({
-        // Providers allowed for this workspace
-        allowedProviders: v.array(
-          v.union(
-            v.literal("anthropic"),
-            v.literal("openai"),
-            v.literal("google"),
-            v.literal("xai"),
-            v.literal("moonshotai")
-          )
-        ),
-        // Optional model allowlist (if set, only these model IDs are allowed)
-        allowedModels: v.optional(v.array(v.string())),
-        // Provider tools policy
-        allowProviderTools: v.optional(v.boolean()),
-        allowWebSearch: v.optional(v.boolean()),
-        maxReasoningDepth: v.optional(
-          v.union(v.literal("low"), v.literal("medium"), v.literal("high"))
-        ),
-        // Monthly spending cap in cents (null = unlimited)
-        monthlySpendingCapCents: v.optional(v.number()),
-        // Default model tier for new users
-        defaultModelTier: v.optional(
-          v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))
-        ),
-      })
-    ),
-
-    sourceControlSettings: v.optional(
-      v.object({
-        defaultProvider: v.optional(
-          v.union(v.literal("github"), v.literal("gitlab"))
-        ),
-      })
-    ),
-
-    // Subscription & billing (workspace infrastructure tiers)
-    subscription: v.object({
-      plan: v.union(
-        v.literal("free"),       // Free
-        v.literal("pro"),        // Pro
-        v.literal("max"),        // Max
-        v.literal("startup"),    // Startup
-        v.literal("team"),       // Startup (legacy alias)
-        v.literal("enterprise")  // Enterprise
-      ),
-      status: v.union(
-        v.literal("active"),
-        v.literal("canceled"),
-        v.literal("past_due"),
-        v.literal("trialing")
-      ),
-      stripeCustomerId: v.optional(v.string()),
-      stripeSubscriptionId: v.optional(v.string()),
-      currentPeriodStart: v.optional(v.number()),
-      currentPeriodEnd: v.optional(v.number()),
-      // Team plan specific
-      seatCount: v.optional(v.number()),
-      // Billing catalog version (for migrations)
-      catalogVersion: v.optional(v.string()),
-    }),
-
-    // Storage usage tracking
-    storageUsage: v.optional(
-      v.object({
-        totalBytes: v.number(),
-        lastCalculatedAt: v.number(),
-        breakdown: v.object({
-          sourceAndConfig: v.number(),
-          collaborationData: v.number(),
-          aiHistory: v.number(),
-          buildCache: v.number(),
-          snapshots: v.number(),
-          gitHistory: v.number(),
-          databaseBackups: v.number(),
-          assets: v.number(),
-        }),
-      })
-    ),
-
-    // Timestamps
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_workos_id", ["workosId"])
-    .index("by_slug", ["slug"]),
-
-  organizationRoles: defineTable({
-    organizationId: v.id("organizations"),
-    key: v.string(),
-    name: v.string(),
-    description: v.string(),
-    baseRole: v.union(
-      v.literal("admin"),
-      v.literal("member"),
-      v.literal("viewer")
-    ),
-    permissions: v.array(
-      v.union(
-        v.literal("org:read"),
-        v.literal("org:update"),
-        v.literal("org:delete"),
-        v.literal("org:manage_billing"),
-        v.literal("billing:view"),
-        v.literal("billing:manage_subscription"),
-        v.literal("billing:manage_seats"),
-        v.literal("billing:view_invoices"),
-        v.literal("billing:manage_payment_method"),
-        v.literal("members:view"),
-        v.literal("members:invite"),
-        v.literal("members:remove"),
-        v.literal("members:update_role"),
-        v.literal("invitations:view"),
-        v.literal("invitations:send"),
-        v.literal("invitations:revoke"),
-        v.literal("roles:view"),
-        v.literal("roles:create"),
-        v.literal("roles:update"),
-        v.literal("roles:delete"),
-        v.literal("roles:assign"),
-        v.literal("projects:view"),
-        v.literal("projects:create"),
-        v.literal("projects:import"),
-        v.literal("projects:edit"),
-        v.literal("projects:manage"),
-        v.literal("projects:archive"),
-        v.literal("projects:delete"),
-        v.literal("projects:share"),
-        v.literal("project_ai:use"),
-        v.literal("project_ai:use_tools"),
-        v.literal("project_ai:use_agents"),
-        v.literal("workspace_ai:view"),
-        v.literal("workspace_ai:manage_settings"),
-        v.literal("workspace_ai:manage_model_policy"),
-        v.literal("workspace_ai:manage_provider_policy"),
-        v.literal("workspace_ai:view_usage"),
-        v.literal("tooling:view"),
-        v.literal("tooling:manage"),
-        v.literal("settings:view"),
-        v.literal("settings:update"),
-        v.literal("settings:manage_api_keys"),
-        v.literal("integrations:view"),
-        v.literal("integrations:connect"),
-        v.literal("integrations:disconnect"),
-        v.literal("usage:view"),
-        v.literal("usage:export"),
-        v.literal("audit:view")
-      )
-    ),
-    isSystem: v.boolean(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_key", ["organizationId", "key"]),
-
-  // Organization members - synced from WorkOS
-  members: defineTable({
-    workosId: v.string(), // WorkOS membership ID
-    organizationId: v.id("organizations"),
-    userId: v.id("users"),
-    role: v.union(
-      v.literal("admin"),
-      v.literal("member"),
-      v.literal("viewer")
-    ),
-    roleId: v.optional(v.id("organizationRoles")),
-    permissionGrants: v.optional(v.array(
-      v.union(
-        v.literal("org:read"),
-        v.literal("org:update"),
-        v.literal("org:delete"),
-        v.literal("org:manage_billing"),
-        v.literal("billing:view"),
-        v.literal("billing:manage_subscription"),
-        v.literal("billing:manage_seats"),
-        v.literal("billing:view_invoices"),
-        v.literal("billing:manage_payment_method"),
-        v.literal("members:view"),
-        v.literal("members:invite"),
-        v.literal("members:remove"),
-        v.literal("members:update_role"),
-        v.literal("invitations:view"),
-        v.literal("invitations:send"),
-        v.literal("invitations:revoke"),
-        v.literal("roles:view"),
-        v.literal("roles:create"),
-        v.literal("roles:update"),
-        v.literal("roles:delete"),
-        v.literal("roles:assign"),
-        v.literal("projects:view"),
-        v.literal("projects:create"),
-        v.literal("projects:import"),
-        v.literal("projects:edit"),
-        v.literal("projects:manage"),
-        v.literal("projects:archive"),
-        v.literal("projects:delete"),
-        v.literal("projects:share"),
-        v.literal("project_ai:use"),
-        v.literal("project_ai:use_tools"),
-        v.literal("project_ai:use_agents"),
-        v.literal("workspace_ai:view"),
-        v.literal("workspace_ai:manage_settings"),
-        v.literal("workspace_ai:manage_model_policy"),
-        v.literal("workspace_ai:manage_provider_policy"),
-        v.literal("workspace_ai:view_usage"),
-        v.literal("tooling:view"),
-        v.literal("tooling:manage"),
-        v.literal("settings:view"),
-        v.literal("settings:update"),
-        v.literal("settings:manage_api_keys"),
-        v.literal("integrations:view"),
-        v.literal("integrations:connect"),
-        v.literal("integrations:disconnect"),
-        v.literal("usage:view"),
-        v.literal("usage:export"),
-        v.literal("audit:view")
-      )
-    )),
-    permissionDenies: v.optional(v.array(
-      v.union(
-        v.literal("org:read"),
-        v.literal("org:update"),
-        v.literal("org:delete"),
-        v.literal("org:manage_billing"),
-        v.literal("billing:view"),
-        v.literal("billing:manage_subscription"),
-        v.literal("billing:manage_seats"),
-        v.literal("billing:view_invoices"),
-        v.literal("billing:manage_payment_method"),
-        v.literal("members:view"),
-        v.literal("members:invite"),
-        v.literal("members:remove"),
-        v.literal("members:update_role"),
-        v.literal("invitations:view"),
-        v.literal("invitations:send"),
-        v.literal("invitations:revoke"),
-        v.literal("roles:view"),
-        v.literal("roles:create"),
-        v.literal("roles:update"),
-        v.literal("roles:delete"),
-        v.literal("roles:assign"),
-        v.literal("projects:view"),
-        v.literal("projects:create"),
-        v.literal("projects:import"),
-        v.literal("projects:edit"),
-        v.literal("projects:manage"),
-        v.literal("projects:archive"),
-        v.literal("projects:delete"),
-        v.literal("projects:share"),
-        v.literal("project_ai:use"),
-        v.literal("project_ai:use_tools"),
-        v.literal("project_ai:use_agents"),
-        v.literal("workspace_ai:view"),
-        v.literal("workspace_ai:manage_settings"),
-        v.literal("workspace_ai:manage_model_policy"),
-        v.literal("workspace_ai:manage_provider_policy"),
-        v.literal("workspace_ai:view_usage"),
-        v.literal("tooling:view"),
-        v.literal("tooling:manage"),
-        v.literal("settings:view"),
-        v.literal("settings:update"),
-        v.literal("settings:manage_api_keys"),
-        v.literal("integrations:view"),
-        v.literal("integrations:connect"),
-        v.literal("integrations:disconnect"),
-        v.literal("usage:view"),
-        v.literal("usage:export"),
-        v.literal("audit:view")
-      )
-    )),
-
-    // Timestamps
-    joinedAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_workos_id", ["workosId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_user", ["userId"])
-    .index("by_organization_and_user", ["organizationId", "userId"]),
-
-  // Pending invitations
-  invitations: defineTable({
-    organizationId: v.id("organizations"),
-    email: v.string(),
-    role: v.union(
-      v.literal("admin"),
-      v.literal("member"),
-      v.literal("viewer")
-    ),
-    roleId: v.optional(v.id("organizationRoles")),
-    permissionGrants: v.optional(v.array(
-      v.union(
-        v.literal("org:read"),
-        v.literal("org:update"),
-        v.literal("org:delete"),
-        v.literal("org:manage_billing"),
-        v.literal("billing:view"),
-        v.literal("billing:manage_subscription"),
-        v.literal("billing:manage_seats"),
-        v.literal("billing:view_invoices"),
-        v.literal("billing:manage_payment_method"),
-        v.literal("members:view"),
-        v.literal("members:invite"),
-        v.literal("members:remove"),
-        v.literal("members:update_role"),
-        v.literal("invitations:view"),
-        v.literal("invitations:send"),
-        v.literal("invitations:revoke"),
-        v.literal("roles:view"),
-        v.literal("roles:create"),
-        v.literal("roles:update"),
-        v.literal("roles:delete"),
-        v.literal("roles:assign"),
-        v.literal("projects:view"),
-        v.literal("projects:create"),
-        v.literal("projects:import"),
-        v.literal("projects:edit"),
-        v.literal("projects:manage"),
-        v.literal("projects:archive"),
-        v.literal("projects:delete"),
-        v.literal("projects:share"),
-        v.literal("project_ai:use"),
-        v.literal("project_ai:use_tools"),
-        v.literal("project_ai:use_agents"),
-        v.literal("workspace_ai:view"),
-        v.literal("workspace_ai:manage_settings"),
-        v.literal("workspace_ai:manage_model_policy"),
-        v.literal("workspace_ai:manage_provider_policy"),
-        v.literal("workspace_ai:view_usage"),
-        v.literal("tooling:view"),
-        v.literal("tooling:manage"),
-        v.literal("settings:view"),
-        v.literal("settings:update"),
-        v.literal("settings:manage_api_keys"),
-        v.literal("integrations:view"),
-        v.literal("integrations:connect"),
-        v.literal("integrations:disconnect"),
-        v.literal("usage:view"),
-        v.literal("usage:export"),
-        v.literal("audit:view")
-      )
-    )),
-    permissionDenies: v.optional(v.array(
-      v.union(
-        v.literal("org:read"),
-        v.literal("org:update"),
-        v.literal("org:delete"),
-        v.literal("org:manage_billing"),
-        v.literal("billing:view"),
-        v.literal("billing:manage_subscription"),
-        v.literal("billing:manage_seats"),
-        v.literal("billing:view_invoices"),
-        v.literal("billing:manage_payment_method"),
-        v.literal("members:view"),
-        v.literal("members:invite"),
-        v.literal("members:remove"),
-        v.literal("members:update_role"),
-        v.literal("invitations:view"),
-        v.literal("invitations:send"),
-        v.literal("invitations:revoke"),
-        v.literal("roles:view"),
-        v.literal("roles:create"),
-        v.literal("roles:update"),
-        v.literal("roles:delete"),
-        v.literal("roles:assign"),
-        v.literal("projects:view"),
-        v.literal("projects:create"),
-        v.literal("projects:import"),
-        v.literal("projects:edit"),
-        v.literal("projects:manage"),
-        v.literal("projects:archive"),
-        v.literal("projects:delete"),
-        v.literal("projects:share"),
-        v.literal("project_ai:use"),
-        v.literal("project_ai:use_tools"),
-        v.literal("project_ai:use_agents"),
-        v.literal("workspace_ai:view"),
-        v.literal("workspace_ai:manage_settings"),
-        v.literal("workspace_ai:manage_model_policy"),
-        v.literal("workspace_ai:manage_provider_policy"),
-        v.literal("workspace_ai:view_usage"),
-        v.literal("tooling:view"),
-        v.literal("tooling:manage"),
-        v.literal("settings:view"),
-        v.literal("settings:update"),
-        v.literal("settings:manage_api_keys"),
-        v.literal("integrations:view"),
-        v.literal("integrations:connect"),
-        v.literal("integrations:disconnect"),
-        v.literal("usage:view"),
-        v.literal("usage:export"),
-        v.literal("audit:view")
-      )
-    )),
-    invitedBy: v.id("users"),
-    token: v.string(), // Unique invite token (legacy, kept for backwards compat)
-    workosInvitationId: v.optional(v.string()), // WorkOS invitation ID for revocation
-    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("expired")),
-    expiresAt: v.number(),
-    createdAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_email", ["email"])
-    .index("by_token", ["token"]),
-
-  // Website + product access waitlist
-  waitlistSubmissions: defineTable({
-    email: v.string(),
-    normalizedEmail: v.string(),
-    name: v.optional(v.string()),
-    roleHint: v.union(
-      v.literal("nontechnical"),
-      v.literal("developer"),
-      v.literal("both")
-    ),
-    source: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("approved"),
-      v.literal("rejected")
-    ),
-    notes: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    approvedAt: v.optional(v.number()),
-    rejectedAt: v.optional(v.number()),
-  })
-    .index("by_normalized_email", ["normalizedEmail"])
-    .index("by_status", ["status"])
-    .index("by_created_at", ["createdAt"]),
-
-  // Connected integrations (GitHub, Vercel, Supabase, etc.)
-  integrations: defineTable({
-    organizationId: v.id("organizations"),
-    provider: v.union(
-      // Version Control
-      v.literal("github"),
-      v.literal("gitlab"),
-      // Backend/Database
-      v.literal("supabase"),
-      v.literal("firebase"),
-      v.literal("planetscale"),
-      v.literal("neon"),
-      // Deployment
-      v.literal("vercel"),
-      v.literal("netlify"),
-      v.literal("railway"),
-      v.literal("fly"),
-      // Auth
-      v.literal("clerk"),
-      v.literal("auth0"),
-      // Payments
-      v.literal("stripe"),
-      // Email
-      v.literal("resend"),
-      v.literal("sendgrid"),
-      // Storage
-      v.literal("aws"),
-      v.literal("cloudflare"),
-      // Collaboration
-      v.literal("linear"),
-      v.literal("slack"),
-      // Work OS
-      v.literal("notion"),
-      v.literal("airtable"),
-      v.literal("monday"),
-      v.literal("asana"),
-      v.literal("clickup"),
-      v.literal("coda")
-    ),
-
-    // Auth type used for this integration
-    authType: v.union(
-      v.literal("oauth"),
-      v.literal("api_key"),
-      v.literal("service_account")
-    ),
-
-    // Encrypted credentials (JSON blob encrypted client-side with org-specific key)
-    // Format: iv:authTag:ciphertext (hex-encoded AES-256-GCM)
-    encryptedCredentials: v.string(),
-
-    // OAuth-specific fields
-    oauthScopes: v.optional(v.array(v.string())),
-    tokenExpiresAt: v.optional(v.number()),
-
-    // Provider-specific data
-    externalId: v.optional(v.string()), // e.g., GitHub installation ID, account ID
-    externalAccountName: v.optional(v.string()), // Display name from provider
-    metadata: v.optional(v.any()), // Provider-specific config (regions, project IDs, etc.)
-
-    // CLI tools this integration enables
-    enabledTools: v.optional(v.array(v.string())), // e.g., ["supabase_query", "supabase_deploy"]
-
-    // Status
-    status: v.union(
-      v.literal("active"),
-      v.literal("expired"),
-      v.literal("revoked"),
-      v.literal("needs_reauth")
-    ),
-    lastVerifiedAt: v.optional(v.number()),
-
-    connectedBy: v.id("users"),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_provider", ["organizationId", "provider"])
-    .index("by_status", ["status"]),
-
-  // Integration encryption keys metadata (actual key stored in local OS keychain)
-  integrationKeys: defineTable({
-    organizationId: v.id("organizations"),
-    keyId: v.string(), // UUID used to identify key in local keychain
-    keyVersion: v.number(), // For key rotation support
-    algorithm: v.literal("aes-256-gcm"),
-    createdAt: v.number(),
-    rotatedAt: v.optional(v.number()),
-  })
-    .index("by_organization", ["organizationId"]),
-
-  // Audit logs for compliance
-  auditLogs: defineTable({
-    organizationId: v.id("organizations"),
-    userId: v.id("users"),
-    action: v.string(), // e.g., "member.invited", "settings.updated", "integration.connected"
-    resourceType: v.optional(v.string()), // e.g., "member", "integration"
-    resourceId: v.optional(v.string()),
-    metadata: v.optional(v.any()), // Action-specific details
-    ipAddress: v.optional(v.string()),
-    userAgent: v.optional(v.string()),
-    timestamp: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_timestamp", ["organizationId", "timestamp"])
-    .index("by_user", ["userId"]),
-
-  // Identity repair and duplication reconciliation audit.
-  identityRepairRuns: defineTable({
-    scope: v.union(v.literal("scan"), v.literal("repair")),
-    dryRun: v.boolean(),
-    startedAt: v.number(),
-    finishedAt: v.optional(v.number()),
-    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
-    summary: v.optional(v.any()),
-    error: v.optional(v.string()),
-  })
-    .index("by_started_at", ["startedAt"])
-    .index("by_status", ["status"]),
-
-  // Stripe catalog metadata (products/prices) for workspace-wide use
-  stripeCatalog: defineTable({
-    catalogVersion: v.string(),
-    mode: v.union(v.literal("test"), v.literal("live")),
-    subscriptionPrices: v.object({
-      startupMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      startupYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      proMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      proYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      maxMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      maxYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      // Legacy aliases kept for compatibility with older catalog payloads.
-      pro: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      max: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-      team: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
-    }),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_version", ["catalogVersion"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Account-scoped billing subscription source of truth.
-  accountSubscriptions: defineTable({
-    accountUserId: v.id("users"),
-    plan: v.union(
-      v.literal("free"),
-      v.literal("pro"),
-      v.literal("max"),
-      v.literal("startup"),
-      v.literal("enterprise")
-    ),
-    status: v.union(
-      v.literal("active"),
-      v.literal("canceled"),
-      v.literal("past_due"),
-      v.literal("trialing")
-    ),
-    cycle: v.optional(v.union(v.literal("monthly"), v.literal("yearly"))),
-    seatQuantity: v.optional(v.number()),
-    trialStart: v.optional(v.number()),
-    trialEnd: v.optional(v.number()),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripePriceId: v.optional(v.string()),
-    stripeProductId: v.optional(v.string()),
-    currentPeriodStart: v.optional(v.number()),
-    currentPeriodEnd: v.optional(v.number()),
-    cancelAt: v.optional(v.number()),
-    canceledAt: v.optional(v.number()),
-    legacyOrganizationId: v.optional(v.id("organizations")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_account_user", ["accountUserId"])
-    .index("by_stripe_customer", ["stripeCustomerId"])
-    .index("by_stripe_subscription", ["stripeSubscriptionId"])
-    .index("by_updated_at", ["updatedAt"]),
-
-  // Maps an organization to the account that owns its paid seat pool.
-  organizationBillingAccounts: defineTable({
-    organizationId: v.id("organizations"),
-    billingUserId: v.id("users"),
-    mode: v.union(v.literal("account")),
-    migratedFromLegacyWorkspaceBilling: v.optional(v.boolean()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_billing_user", ["billingUserId"])
-    .index("by_organization_and_billing_user", ["organizationId", "billingUserId"]),
-
-  // Explicit paid-seat assignments for a workspace under a billing account.
-  accountSeatAssignments: defineTable({
-    organizationId: v.id("organizations"),
-    billingUserId: v.id("users"),
-    assignedUserId: v.id("users"),
-    assignedByUserId: v.optional(v.id("users")),
-    source: v.optional(v.union(v.literal("owner_auto"), v.literal("manual"), v.literal("migration"))),
-    status: v.union(v.literal("active"), v.literal("revoked")),
-    assignedAt: v.number(),
-    revokedAt: v.optional(v.number()),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_billing_user_and_organization", ["billingUserId", "organizationId"])
-    .index("by_billing_org_assigned", ["billingUserId", "organizationId", "assignedUserId"])
-    .index("by_organization_assigned", ["organizationId", "assignedUserId"])
-    .index("by_updated_at", ["updatedAt"]),
-
   // ============================================
   // PROJECT SYSTEM TABLES
   // ============================================
 
   // Projects - comprehensive project configuration
   projects: defineTable({
-    organizationId: v.id("organizations"),
     name: v.string(),
     slug: v.string(),
     description: v.optional(v.string()),
@@ -705,11 +47,7 @@ export default defineSchema({
     targetLaunchDate: v.optional(v.number()),
 
     // Creation path
-    creationPath: v.union(
-      v.literal("fresh"),
-      v.literal("repo"),
-      v.literal("prompt")
-    ),
+    creationPath: v.union(v.literal("fresh"), v.literal("repo")),
 
     // Template & Stack
     template: v.optional(v.string()),
@@ -736,19 +74,16 @@ export default defineSchema({
       })
     ),
 
-    // Source Control
+    // Legacy repository integration metadata.
+    // Collaboration should not depend on these fields on the active path.
     sourceControl: v.optional(
       v.object({
         provider: v.optional(v.string()), // github, gitlab, bitbucket, local
         repoUrl: v.optional(v.string()),
-        activeCollabBranch: v.optional(v.string()),
         defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()), // public, private
         mergeStrategy: v.optional(v.string()), // squash, merge, rebase
         mergeQueue: v.optional(v.string()),
-        syncPolicy: v.optional(
-          v.union(v.literal("auto"), v.literal("manual"))
-        ),
         workingCopyMode: v.optional(
           v.union(v.literal("managed"), v.literal("attached"))
         ),
@@ -758,10 +93,7 @@ export default defineSchema({
       })
     ),
 
-    // Git is the only supported durability mode for projects.
-    syncMode: v.optional(v.literal("git")),
-
-    // Canonical Git repository metadata for Git-backed sync.
+    // Optional attached repository metadata.
     gitRepository: v.optional(
       v.object({
         provider: v.string(), // github, gitlab, bitbucket
@@ -772,7 +104,7 @@ export default defineSchema({
       })
     ),
 
-    // Git sync state tracked by Cozea. This is product metadata, not user-facing history.
+    // Optional repository status metadata kept for compatibility and tooling.
     gitSyncState: v.optional(
       v.object({
         accessState: v.union(
@@ -809,7 +141,7 @@ export default defineSchema({
     // Preview image (captured from live preview)
     previewImageId: v.optional(v.id("_storage")),
 
-    // Generated plan (from Step 8)
+    // Generated project structure used by builder/tasks surfaces
     generatedPlan: v.optional(
       v.object({
         pages: v.array(
@@ -834,15 +166,13 @@ export default defineSchema({
 
     // Status
     status: v.union(
-      v.literal("draft"), // Still in wizard
+      v.literal("draft"), // Created but not yet active
       v.literal("generating"), // AI generating plan
       v.literal("building"), // AI building files
       v.literal("active"), // Ready to use
       v.literal("archived"),
       v.literal("deleted")
     ),
-    wizardStep: v.optional(v.number()),
-
     // Repo import specific
     importedFrom: v.optional(
       v.object({
@@ -851,47 +181,6 @@ export default defineSchema({
         branch: v.string(),
         detectedStack: v.optional(v.any()),
       })
-    ),
-
-    // One-shot specific
-    originalPrompt: v.optional(v.string()),
-    promptSettings: v.optional(
-      v.object({
-        model: v.string(),
-        agentId: v.union(
-          v.literal("plan"),
-          v.literal("build"),
-          v.literal("assistant_general"),
-          v.literal("assistant_project"),
-          v.literal("explore"),
-          v.literal("review")
-        ),
-        surface: v.union(
-          v.literal("wizard"),
-          v.literal("builder"),
-          v.literal("assistant_panel"),
-          v.literal("assistant_project")
-        ),
-        variantId: v.optional(
-          v.union(
-            v.literal("none"),
-            v.literal("minimal"),
-            v.literal("low"),
-            v.literal("medium"),
-            v.literal("high"),
-            v.literal("xhigh"),
-            v.literal("max")
-          )
-        ),
-        toolsEnabled: v.boolean(),
-        webSearchEnabled: v.boolean(),
-        providerOptions: v.optional(v.any()), // Provider-specific tool options
-      })
-    ),
-
-    // Selected plan tier (from AI-generated plans)
-    selectedPlanTier: v.optional(
-      v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
     ),
 
     // Local path where project files are stored (on creator's machine)
@@ -907,20 +196,6 @@ export default defineSchema({
         devPort: v.optional(v.number()), // 3000, 5173, etc.
         buildCommand: v.optional(v.string()), // npm run build
         startCommand: v.optional(v.string()), // npm start
-      })
-    ),
-
-    // Cloud storage for org-wide access
-    cloudStorage: v.optional(
-      v.object({
-        provider: v.string(), // "crozcode" | "s3" | "gcs" | "azure"
-        bucket: v.optional(v.string()),
-        key: v.string(), // path/key within storage
-        uploadedAt: v.optional(v.number()),
-        uploadedBy: v.optional(v.id("users")),
-        version: v.number(), // for diff checking
-        checksum: v.optional(v.string()), // for integrity verification
-        sizeBytes: v.optional(v.number()),
       })
     ),
 
@@ -941,9 +216,6 @@ export default defineSchema({
     lastSyncAt: v.optional(v.number()),
     lastSyncBy: v.optional(v.id("users")),
 
-    // Project team (for role-based access within org)
-    teamId: v.optional(v.id("projectTeams")),
-
     // Collaborative editing state (for future traffic control)
     sharedFilesVersion: v.optional(v.number()),
     lastSharedUpdate: v.optional(v.number()),
@@ -952,16 +224,14 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_slug", ["organizationId", "slug"])
-    .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_created_by", ["createdBy"])
-    .index("by_sync_mode", ["syncMode"]),
+    .index("by_slug", ["slug"])
+    .index("by_created_by", ["createdBy"]),
 
   // Project members with expanded roles
   projectMembers: defineTable({
     projectId: v.id("projects"),
     userId: v.id("users"),
+    contactEmail: v.optional(v.string()),
     role: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -980,9 +250,32 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
 
-  // Per-project storage accounting aggregate used for fast org rollups and repair jobs.
+  projectTrustedDevices: defineTable({
+    projectId: v.id("projects"),
+    userId: v.optional(v.id("users")),
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.optional(v.string()),
+    fingerprint: v.optional(v.string()),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    addedAt: v.number(),
+    addedByUserId: v.optional(v.id("users")),
+    addedByDeviceId: v.optional(v.string()),
+    lastSeenAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_device", ["projectId", "deviceId"])
+    .index("by_project_and_user", ["projectId", "userId"])
+    .index("by_device", ["deviceId"]),
+
+  // Per-project storage accounting aggregate used for local/cloud repair jobs.
   projectStorageUsage: defineTable({
-    organizationId: v.id("organizations"),
     projectId: v.id("projects"),
     totalBytes: v.number(),
     lastCalculatedAt: v.number(),
@@ -999,9 +292,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_project", ["organizationId", "projectId"]),
+    .index("by_project", ["projectId"]),
 
   // Project invites for pending team members
   projectInvites: defineTable({
@@ -1025,125 +316,9 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_project_and_status", ["projectId", "status"]),
 
-  projectRepoAccess: defineTable({
-    projectId: v.id("projects"),
-    provider: v.union(v.literal("github"), v.literal("gitlab")),
-    repoUrl: v.optional(v.string()),
-    subjectType: v.union(v.literal("member"), v.literal("invite")),
-    memberUserId: v.optional(v.id("users")),
-    inviteEmail: v.optional(v.string()),
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
-    accessState: v.union(
-      v.literal("pending"),
-      v.literal("granted"),
-      v.literal("needs_identity"),
-      v.literal("manual_required"),
-      v.literal("revoked"),
-      v.literal("error")
-    ),
-    providerAccountHandle: v.optional(v.string()),
-    externalInvitationId: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-    lastAttemptAt: v.number(),
-    lastSyncedAt: v.optional(v.number()),
-    lastAttemptedBy: v.optional(v.id("users")),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_member_provider", ["projectId", "memberUserId", "provider"])
-    .index("by_project_and_email_provider", ["projectId", "inviteEmail", "provider"]),
-
-  workspaceSourceControlConnections: defineTable({
-    organizationId: v.id("organizations"),
-    scopeType: v.union(v.literal("user"), v.literal("workspace")),
-    userId: v.optional(v.id("users")),
-    provider: v.union(v.literal("github"), v.literal("gitlab")),
-    authType: v.union(v.literal("oauth")),
-    authStatus: v.union(
-      v.literal("active"),
-      v.literal("needs_reauth"),
-      v.literal("revoked"),
-      v.literal("missing_setup"),
-      v.literal("error")
-    ),
-    setupMode: v.union(v.literal("personal"), v.literal("organization")),
-    providerHost: v.optional(v.string()),
-    externalAccountId: v.optional(v.string()),
-    externalAccountName: v.optional(v.string()),
-    externalAccountLogin: v.optional(v.string()),
-    oauthScopes: v.optional(v.array(v.string())),
-    tokenExpiresAt: v.optional(v.number()),
-    encryptedCredentials: v.string(),
-    namespaceId: v.optional(v.string()),
-    namespaceName: v.optional(v.string()),
-    namespaceLogin: v.optional(v.string()),
-    namespaceType: v.optional(
-      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
-    ),
-    installationId: v.optional(v.string()),
-    installationTargetType: v.optional(
-      v.union(v.literal("user"), v.literal("organization"))
-    ),
-    installationTargetLogin: v.optional(v.string()),
-    installationTargetName: v.optional(v.string()),
-    lastVerifiedAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-    connectedBy: v.id("users"),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_provider", ["organizationId", "provider"])
-    .index("by_scope_user", ["scopeType", "userId"])
-    .index("by_scope_user_provider", ["scopeType", "userId", "provider"])
-    .index("by_scope_organization", ["scopeType", "organizationId"])
-    .index("by_scope_organization_provider", ["scopeType", "organizationId", "provider"]),
-
-  projectRepositoryBindings: defineTable({
-    projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
-    workspaceConnectionId: v.optional(v.id("workspaceSourceControlConnections")),
-    provider: v.union(
-      v.literal("github"),
-      v.literal("gitlab"),
-      v.literal("bitbucket"),
-      v.literal("local")
-    ),
-    setupMode: v.union(v.literal("personal"), v.literal("organization")),
-    syncPolicy: v.union(v.literal("auto"), v.literal("manual")),
-    workingCopyMode: v.union(v.literal("managed"), v.literal("attached")),
-    repoUrl: v.optional(v.string()),
-    activeCollabBranch: v.string(),
-    defaultBranch: v.string(),
-    ownerId: v.optional(v.string()),
-    ownerLogin: v.optional(v.string()),
-    ownerName: v.optional(v.string()),
-    ownerType: v.optional(
-      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
-    ),
-    repoId: v.optional(v.string()),
-    repoName: v.optional(v.string()),
-    repoFullName: v.optional(v.string()),
-    visibility: v.optional(v.string()),
-    providerHost: v.optional(v.string()),
-    repoAccessPolicy: v.union(v.literal("on_first_open")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_provider", ["organizationId", "provider"])
-    .index("by_workspace_connection", ["workspaceConnectionId"]),
-
   // Shared project tasks created from the task board UI.
   projectTasks: defineTable({
     projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
     taskKey: v.string(),
     title: v.string(),
     description: v.string(),
@@ -1182,13 +357,11 @@ export default defineSchema({
     completedBy: v.optional(v.id("users")),
   })
     .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
     .index("by_project_and_task_key", ["projectId", "taskKey"]),
 
   // Shared completion state for synthesized task-board items.
   projectTaskStates: defineTable({
     projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
     source: v.union(
       v.literal("page"),
       v.literal("entity"),
@@ -1208,13 +381,11 @@ export default defineSchema({
     completedBy: v.optional(v.id("users")),
   })
     .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
     .index("by_project_and_source_and_storage", ["projectId", "source", "storageId"]),
 
   // Inbox items for task assignment and completion events.
   projectTaskNotifications: defineTable({
     userId: v.id("users"),
-    organizationId: v.id("organizations"),
     projectId: v.id("projects"),
     kind: v.union(v.literal("assigned"), v.literal("completed")),
     taskSource: v.union(
@@ -1236,7 +407,6 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_user_and_created", ["userId", "createdAt"])
-    .index("by_user_and_organization_and_created", ["userId", "organizationId", "createdAt"])
     .index("by_project_and_created", ["projectId", "createdAt"]),
 
   // Project join links for personal-project collaboration sharing
@@ -1261,41 +431,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_token", ["token"])
     .index("by_project_and_status", ["projectId", "status"]),
-
-  // Project teams - groups of users with shared access to projects
-  projectTeams: defineTable({
-    organizationId: v.id("organizations"),
-    name: v.string(),
-    description: v.optional(v.string()),
-
-    // Team-level permissions (can be overridden per-project)
-    defaultRole: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
-
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organization", ["organizationId"]),
-
-  // Project team members
-  projectTeamMembers: defineTable({
-    teamId: v.id("projectTeams"),
-    userId: v.id("users"),
-    role: v.union(
-      v.literal("team_lead"),
-      v.literal("member")
-    ),
-    addedAt: v.number(),
-    addedBy: v.id("users"),
-  })
-    .index("by_team", ["teamId"])
-    .index("by_user", ["userId"])
-    .index("by_team_and_user", ["teamId", "userId"]),
 
   // File locks for collaborative editing (traffic control system)
   projectFileLocks: defineTable({
@@ -1344,130 +479,6 @@ export default defineSchema({
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_expires_at", ["expiresAt"]),
 
-  // Project conversation messages (for AI planning phase)
-  projectMessages: defineTable({
-    projectId: v.id("projects"),
-    role: v.union(v.literal("user"), v.literal("assistant")),
-    content: v.string(),
-
-    // For plan cards rendered in the conversation
-    planOptions: v.optional(
-      v.array(
-        v.object({
-          tier: v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp")),
-          name: v.string(),
-          description: v.string(),
-          features: v.array(v.string()),
-          estimatedScope: v.optional(v.string()),
-          // Full project config for this plan tier
-          config: v.object({
-            name: v.optional(v.string()),
-            description: v.optional(v.string()),
-            audience: v.optional(v.string()),
-            targetPlatform: v.optional(v.union(v.literal("web"))),
-            buildContract: v.optional(
-              v.object({
-                previewMode: v.union(v.literal("web")),
-                frameworkClass: v.union(v.literal("web-framework")),
-                toolchain: v.optional(v.any()),
-                commands: v.optional(v.any()),
-                constraints: v.optional(v.any()),
-                fallbackPolicy: v.optional(v.any()),
-                successCriteria: v.optional(v.any()),
-                telemetryHints: v.optional(v.any()),
-              })
-            ),
-            template: v.optional(v.string()),
-            stack: v.optional(
-              v.object({
-                backend: v.string(),
-                hosting: v.string(),
-                aiProvider: v.string(),
-              })
-            ),
-            sourceControl: v.optional(
-              v.object({
-                provider: v.string(),
-                repoUrl: v.optional(v.string()),
-                activeCollabBranch: v.optional(v.string()),
-                defaultBranch: v.optional(v.string()),
-                visibility: v.string(),
-                mergeStrategy: v.string(),
-              })
-            ),
-            visuals: v.optional(
-              v.object({
-                uiLibrary: v.string(),
-                vibeDescription: v.optional(v.string()),
-                colorPreset: v.optional(v.string()),
-                primaryColor: v.string(),
-                secondaryColor: v.string(),
-                accentColor: v.string(),
-                logoUrl: v.optional(v.string()),
-              })
-            ),
-            generatedPlan: v.optional(
-              v.object({
-                pages: v.array(
-                  v.object({
-                    id: v.string(),
-                    name: v.string(),
-                    route: v.string(),
-                    type: v.string(),
-                    purpose: v.optional(v.string()),
-                    actions: v.optional(v.array(v.string())),
-                  })
-                ),
-                entities: v.array(
-                  v.object({
-                    id: v.string(),
-                    name: v.string(),
-                    fields: v.optional(v.array(v.string())),
-                  })
-                ),
-              })
-            ),
-          }),
-        })
-      )
-    ),
-
-    createdAt: v.number(),
-    })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_created", ["projectId", "createdAt"]),
-
-  // Project templates (system-defined)
-  projectTemplates: defineTable({
-    slug: v.string(),
-    name: v.string(),
-    description: v.string(),
-    icon: v.string(),
-    pageCount: v.number(),
-    category: v.string(),
-    defaultPages: v.array(
-      v.object({
-        name: v.string(),
-        route: v.string(),
-        type: v.string(),
-      })
-    ),
-    defaultEntities: v.array(
-      v.object({
-        name: v.string(),
-        fields: v.array(v.string()),
-      })
-    ),
-    scaffoldPrompt: v.string(),
-    isActive: v.boolean(),
-    sortOrder: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_slug", ["slug"])
-    .index("by_category", ["category"])
-    .index("by_active_and_sort", ["isActive", "sortOrder"]),
-
   // Project files stored in Convex File Storage
   projectFiles: defineTable({
     projectId: v.id("projects"),
@@ -1503,6 +514,95 @@ export default defineSchema({
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_project_and_status", ["projectId", "status"])
     .index("by_storage_id", ["storageId"]),
+
+  // ============================================
+  // COLLABORATION ENCRYPTION TABLES
+  // ============================================
+
+  // Collaboration-capable device identities. Only public metadata is stored here.
+  collabDevices: defineTable({
+    userId: v.id("users"),
+    deviceId: v.string(),
+    deviceLabel: v.string(),
+    platform: v.string(),
+    publicKeyJwk: v.string(),
+    publicKeyAlgorithm: v.string(),
+    fingerprint: v.string(),
+    createdAt: v.number(),
+    lastSeenAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_user_and_device", ["userId", "deviceId"])
+    .index("by_device", ["deviceId"])
+    .index("by_user", ["userId"]),
+
+  // One logical room-key record per encrypted collaboration room/version.
+  projectCollabRoomKeys: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("rotating"),
+      v.literal("revoked"),
+    ),
+    createdByUserId: v.id("users"),
+    createdByDeviceId: v.string(),
+    createdAt: v.number(),
+    rotatedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_room", ["projectId", "roomId"])
+    .index("by_project_room_and_version", ["projectId", "roomId", "keyVersion"]),
+
+  // Wrapped room keys, one row per recipient device.
+  projectCollabWrappedKeys: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    recipientUserId: v.id("users"),
+    recipientDeviceId: v.string(),
+    senderDeviceId: v.string(),
+    senderPublicKeyJwk: v.string(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    createdAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project_room_and_recipient", ["projectId", "roomId", "recipientDeviceId"])
+    .index("by_project_room_and_key_version", ["projectId", "roomId", "keyVersion"]),
+
+  // Pending room-key requests when a new collaborator device needs access
+  // to an encrypted collaboration room.
+  projectCollabKeyRequests: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    recipientUserId: v.id("users"),
+    recipientDeviceId: v.string(),
+    recipientPublicKeyJwk: v.string(),
+    recipientFingerprint: v.string(),
+    requestedAt: v.number(),
+    fulfilledAt: v.optional(v.number()),
+  })
+    .index("by_project_and_room", ["projectId", "roomId"])
+    .index("by_project_room_and_device", ["projectId", "roomId", "recipientDeviceId"]),
+
+  // Optional recovery kits for encrypted collaboration rooms.
+  // The server stores only encrypted room-key backups, never plaintext keys.
+  projectCollabRecoveryKits: defineTable({
+    projectId: v.id("projects"),
+    roomId: v.string(),
+    keyVersion: v.number(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    salt: v.string(),
+    iterations: v.number(),
+    createdByUserId: v.id("users"),
+    createdByDeviceId: v.string(),
+    createdAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_room", ["projectId", "roomId"])
+    .index("by_project_room_and_key_version", ["projectId", "roomId", "keyVersion"]),
 
   // ============================================
   // YJS COLLABORATIVE EDITING TABLES
@@ -1594,6 +694,7 @@ export default defineSchema({
   fileChanges: defineTable({
     projectId: v.id("projects"),
     userId: v.optional(v.id("users")), // Optional for agent changes
+    checkpointGroupId: v.optional(v.string()),
 
     // File info
     filePath: v.string(),
@@ -1604,9 +705,8 @@ export default defineSchema({
       v.literal("rename")
     ),
 
-    // Content for diff viewing (stored for history)
-    oldContent: v.optional(v.string()),
-    newContent: v.optional(v.string()),
+    // For renames: the source path before the rename.
+    oldPath: v.optional(v.string()),
 
     // Change statistics
     additions: v.optional(v.number()),
@@ -1620,6 +720,26 @@ export default defineSchema({
       v.literal("remote"),
       v.literal("init")
     ),
+    sourceOrigin: v.optional(v.string()),
+    actorType: v.optional(
+      v.union(
+        v.literal("user"),
+        v.literal("agent"),
+        v.literal("system"),
+      )
+    ),
+    actorId: v.optional(v.string()),
+    terminalId: v.optional(v.string()),
+    terminalTitle: v.optional(v.string()),
+    terminalKind: v.optional(v.string()),
+    commandId: v.optional(v.string()),
+    commandText: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    sessionKey: v.optional(v.string()),
+    laneId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    gitCwd: v.optional(v.string()),
+    changeTimestamp: v.optional(v.number()),
 
     // User display info (denormalized for fast reads)
     userName: v.optional(v.string()),
@@ -1630,18 +750,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_time", ["projectId", "timestamp"])
     .index("by_user", ["userId"]),
-
-  // Conversation compaction checkpoints for auto-context compression.
-  aiCompactionState: defineTable({
-    organizationId: v.string(), // WorkOS org id from AI runtime request
-    conversationId: v.string(),
-    summary: v.string(),
-    compactedThroughMessageId: v.string(),
-    updatedAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_org_conversation", ["organizationId", "conversationId"])
-    .index("by_expires_at", ["expiresAt"]),
 
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
@@ -1691,7 +799,6 @@ export default defineSchema({
   // Project assets (images, videos, PDFs, etc.)
   projectAssets: defineTable({
     projectId: v.id("projects"),
-    organizationId: v.id("organizations"),
     name: v.string(),
     storageId: v.optional(v.id("_storage")), // Optional for folders
     mimeType: v.string(),
@@ -1712,7 +819,6 @@ export default defineSchema({
     ),
   })
     .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
     .index("by_folder", ["projectId", "folderPath"])
     .index("by_category", ["projectId", "category"])
     .searchIndex("search_assets", {

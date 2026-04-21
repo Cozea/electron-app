@@ -11,17 +11,15 @@ interface UseResolvedScopeOptions {
 
 export function useResolvedScope(options: UseResolvedScopeOptions = {}): ResolvedScope {
   const location = useLocation()
-  const { currentOrganizationWorkspace, currentPersonalWorkspace, personalWorkspace } = useAuth()
+  const { personalWorkspace } = useAuth()
   const routePath = options.route ?? (options.ignoreLocation ? undefined : location.pathname)
 
   return useMemo(
     () =>
       resolveScope({
         routePath,
-        currentOrganizationWorkspace,
-        currentPersonalWorkspace,
         personalWorkspace,
       }),
-    [currentOrganizationWorkspace, currentPersonalWorkspace, personalWorkspace, routePath]
+    [personalWorkspace, routePath]
   )
 }

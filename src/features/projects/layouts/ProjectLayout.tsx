@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, memo, useRef, useCallback, useEffect, useMemo } from "react";
+import { type ReactNode, useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -8,116 +8,49 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
+import { SettingsSidebar } from "../components/SettingsSidebar";
+import { AppStoreSidebar } from "../components/AppStoreSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
 import { usePageContextStore } from "@/stores/usePageContextStore";
-import { useTerminalStore } from "@/stores/useTerminalStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge";
-import { ensureVscodeServicesInitialized } from "@/lib/editor/vscodeServices";
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge";
-import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore";
-import { useShallow } from "zustand/react/shallow";
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
-import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync";
-import { logGitOpenDebug } from "@/lib/git/gitOpenDebug";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
-import { useScopedAppContext } from "@/hooks/useScopedAppContext";
-import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
+import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
+import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
+import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
+import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
+import { useProjectGitCwd } from "@/features/projects/hooks/useProjectGitCwd";
+import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
+import {
+  ProjectRouteContext,
+  type ProjectRouteSlugResolutionResult,
+} from "@/features/projects/contexts/ProjectRouteContext";
+import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
+import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 
-function getProjectSubpageLabel(pathname: string, basePath: string | null): string | null {
-  if (!basePath) return null;
-  if (pathname === basePath || pathname === `${basePath}/`) return null;
-
-  if (!pathname.startsWith(basePath)) return null;
-  const rest = pathname.slice(basePath.length).replace(/^\/+/, "");
-  const segment = rest.split("/")[0] ?? "";
-
-  switch (segment) {
-    case "workbench":
-      return "Workbench";
-    case "pages":
-      // Legacy URL segment; route redirects to workbench
-      return "Workbench";
-    case "changes":
-      return "Workbench";
-    case "conflicts":
-      return "Conflicts";
-    case "settings":
-      return "Settings";
-    case "team":
-      return "Team";
-    case "tasks":
-      return "Workbench";
-    default:
-      return null;
+function normalizeProjectPath(projectPath: string | null | undefined): string | null {
+  if (!projectPath?.trim()) {
+    return null;
   }
-}
 
-interface ProjectLayoutHeaderProps {
-  breadcrumbs: { label: string; href?: string }[];
-  header?: ReactNode;
-  breadcrumbAddon?: ReactNode;
-  centerAddon?: ReactNode;
-  preSearchAddon?: ReactNode;
-  rightAddon?: ReactNode;
-  className?: string;
-  layoutMode?: "fixed" | "inset";
-  insetLeft?: number;
-  insetRight?: number;
-  compactHeaderActions?: boolean;
-  projectInviteContext?: {
-    projectId: Id<"projects"> | null;
-    projectName?: string | null;
-  } | null;
+  return projectPath.replace(/\\/g, "/").replace(/\/+$/, "");
 }
-
-const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
-  breadcrumbs,
-  header,
-  breadcrumbAddon,
-  centerAddon,
-  preSearchAddon,
-  rightAddon,
-  className,
-  layoutMode = "fixed",
-  insetLeft = 0,
-  insetRight = 0,
-  compactHeaderActions = true,
-  projectInviteContext = null,
-}: ProjectLayoutHeaderProps) {
-  return (
-    <UnifiedHeader
-      breadcrumbs={breadcrumbs}
-      header={header}
-      breadcrumbAddon={breadcrumbAddon}
-      centerAddon={centerAddon}
-      preSearchAddon={preSearchAddon}
-      rightAddon={rightAddon}
-      className={className}
-      layoutMode={layoutMode}
-      leftWindowControlsInset={layoutMode === "fixed"}
-      contentInsetLeft={insetLeft}
-      contentInsetRight={insetRight}
-      compactHeaderActions={compactHeaderActions}
-      projectInviteContext={projectInviteContext}
-    />
-  );
-});
 
 interface ProjectLayoutProps {
   children?: ReactNode;
-  breadcrumbs?: { label: string; href?: string }[];
 }
 
 interface ProjectLayoutLocationState {
-  syncMode?: "git";
   localPath?: string | null;
+  projectName?: string | null;
   pendingTeamSetup?: Array<{
     email: string;
     name?: string;
@@ -127,16 +60,23 @@ interface ProjectLayoutLocationState {
   }>;
 }
 
+function extractProjectCloudLocalPath(project: unknown): string | null {
+  if (!project || typeof project !== "object" || !("localPath" in project)) {
+    return null;
+  }
+
+  const localPath = (project as { localPath?: unknown }).localPath;
+  return typeof localPath === "string" && localPath.trim().length > 0 ? localPath : null;
+}
+
 export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
-  const { convexUserId, user, logout } = useAuth();
-  const { preferredConvexOrganizationId } = useScopedAppContext();
+  const { convexUserId, user } = useAuth();
   const location = useLocation();
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
   const locationState = (location.state as ProjectLayoutLocationState | null) ?? null;
-  const initialSyncMode = locationState?.syncMode ?? null;
 
   // Get project data (with caching)
   const freshProjectById = useQuery(
@@ -151,7 +91,6 @@ export function ProjectLayout({
       ? {
           slug: routeSlug,
           userId: convexUserId,
-          preferredOrganizationId: preferredConvexOrganizationId,
         }
       : "skip",
   );
@@ -161,35 +100,8 @@ export function ProjectLayout({
       ? freshProjectBySlug.project
       : null;
   const project = useCachedQuery(`layout-project-${routeProjectId ?? routeSlug}`, freshProject);
-  const projectIdForSyncBypass = routeProjectId ?? (project?._id ? String(project._id) : null);
-  const shouldSkipInitialSyncCheck =
-    initialSyncMode === "git" ||
-    project?.syncMode === "git" ||
-    (projectIdForSyncBypass ? hasRecentProjectOpenSync(projectIdForSyncBypass) : false);
-  useEffect(() => {
-    if (!project?._id) {
-      return;
-    }
-
-    logGitOpenDebug("project_layout:route_state", {
-      projectId: String(project._id),
-      routeProjectId: routeProjectId ?? null,
-      routeSlug: routeSlug ?? null,
-      syncMode: project.syncMode ?? null,
-      initialSyncMode,
-      shouldSkipInitialSyncCheck,
-      projectIdForSyncBypass,
-    });
-  }, [
-    initialSyncMode,
-    project?._id,
-    project?.syncMode,
-    projectIdForSyncBypass,
-    routeProjectId,
-    routeSlug,
-    shouldSkipInitialSyncCheck,
-  ]);
   const projectSlug = project?.slug ?? routeSlug ?? null;
+  const effectiveProjectName = project?.name ?? locationState?.projectName ?? null;
   const projectBasePath = routeProjectId
     ? buildProjectPath(routeProjectId)
     : project?._id
@@ -203,12 +115,46 @@ export function ProjectLayout({
   const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
   const mirroredLocalPathRef = useRef<string | null>(null);
   const navigationLocalPath = locationState?.localPath ?? null;
-  const { localPath: effectiveLocalPath } = useLocalProjectPath({
+  const trustedNavigationPath = useMemo(
+    () => normalizeProjectPath(navigationLocalPath),
+    [navigationLocalPath],
+  );
+  const projectCloudLocalPath = useMemo(() => extractProjectCloudLocalPath(project), [project]);
+  const attachedPathHint = useMemo(
+    () =>
+      resolveAttachedLocalProjectPathHint(
+        project as {
+          importedFrom?: { provider: string; repoFullName: string; branch?: string | null } | null;
+        } | null,
+      ),
+    [project],
+  );
+  const normalizedAttachedPathHint = useMemo(
+    () => normalizeProjectPath(attachedPathHint),
+    [attachedPathHint],
+  );
+  const { localPath: candidateLocalPath } = useLocalProjectPath({
     initialPath: navigationLocalPath,
     preferInitialPath: Boolean(navigationLocalPath),
     projectId: project?._id ? String(project._id) : routeProjectId,
     projectSlug,
+    cloudPathHint: projectCloudLocalPath,
+    attachedPathHint,
   });
+  const [effectiveLocalPath, setEffectiveLocalPath] = useState<string | null>(
+    normalizeProjectPath(navigationLocalPath),
+  );
+
+  useEffect(() => {
+    if (trustedNavigationPath) {
+      setEffectiveLocalPath(trustedNavigationPath);
+      return;
+    }
+
+    setEffectiveLocalPath(normalizeProjectPath(candidateLocalPath));
+  }, [candidateLocalPath, trustedNavigationPath]);
+
+  const gitCwd = useProjectGitCwd(effectiveLocalPath);
 
   const pendingTeamSetup = useMemo(
     () => locationState?.pendingTeamSetup ?? [],
@@ -246,9 +192,8 @@ export function ProjectLayout({
         }
 
         const nextState =
-          locationState?.syncMode || navigationLocalPath
+          navigationLocalPath
             ? {
-                syncMode: locationState?.syncMode,
                 localPath: navigationLocalPath,
               }
             : null;
@@ -272,47 +217,49 @@ export function ProjectLayout({
     location.pathname,
     location.search,
     navigationLocalPath,
-    locationState?.syncMode,
     navigate,
     pendingTeamSetup,
     pendingTeamSetupReady,
     project?._id,
   ]);
 
-  const rememberResolvedProjectPath = useCallback(
-    async (projectPath: string) => {
-      if (!project?._id) {
-        return;
-      }
+  const trustedCloudMirrorPath = useMemo(() => {
+    if (!effectiveLocalPath) {
+      return null;
+    }
 
-      const result = await window.electronAPI.project.rememberLocalPath({
-        projectId: String(project._id),
-        projectPath,
-      });
+    if (trustedNavigationPath && effectiveLocalPath === trustedNavigationPath) {
+      return trustedNavigationPath;
+    }
 
-      if (!result.success) {
-        console.warn("[ProjectLayout] Failed to persist local project path:", result.error);
-      }
-    },
-    [project?._id],
-  );
+    if (normalizedAttachedPathHint && effectiveLocalPath === normalizedAttachedPathHint) {
+      return normalizedAttachedPathHint;
+    }
+
+    return null;
+  }, [effectiveLocalPath, normalizedAttachedPathHint, trustedNavigationPath]);
 
   useEffect(() => {
-    if (!effectiveLocalPath || !project?._id || !convexUserId) {
+    if (!effectiveLocalPath || !project?._id) {
       return;
     }
 
-    const mirrorKey = `${String(project._id)}:${convexUserId}:${effectiveLocalPath}`;
+    primeLocalProjectPath(String(project._id), effectiveLocalPath, projectSlug);
+
+    if (!convexUserId || !trustedCloudMirrorPath) {
+      return;
+    }
+
+    const mirrorKey = `${String(project._id)}:${convexUserId}:${trustedCloudMirrorPath}`;
     if (mirroredLocalPathRef.current === mirrorKey) {
       return;
     }
     mirroredLocalPathRef.current = mirrorKey;
 
-    void rememberResolvedProjectPath(effectiveLocalPath);
     void updateMemberLocalPath({
       projectId: project._id,
       userId: convexUserId,
-      localPath: effectiveLocalPath,
+      localPath: trustedCloudMirrorPath,
     }).catch((error) => {
       mirroredLocalPathRef.current = null;
       console.warn("[ProjectLayout] Failed to mirror local project path to cloud metadata:", error);
@@ -321,68 +268,70 @@ export function ProjectLayout({
     convexUserId,
     effectiveLocalPath,
     project?._id,
-    rememberResolvedProjectPath,
+    projectSlug,
+    trustedCloudMirrorPath,
     updateMemberLocalPath,
   ]);
 
-  useDiagnosticsBridge(effectiveLocalPath);
+  const isWorkbenchView = location.pathname.endsWith("/workbench");
+  const isChangesView = location.pathname.endsWith("/changes");
+  const isAppStoreRoute = location.pathname.startsWith("/projects/store");
+  const isSettingsModeRoute =
+    location.pathname.startsWith("/projects/settings/") ||
+    location.pathname.startsWith("/projects/workspace/") ||
+    location.pathname.startsWith("/projects/teams");
+  const shouldEnableProjectRuntime = Boolean(effectiveLocalPath);
+  const runtimeProjectPath = effectiveLocalPath;
+  const collabBranch = useMemo(
+    () => resolveProjectSharedBranch(project),
+    [project],
+  );
+  const routeProjectIdentity = project?._id ? String(project._id) : routeProjectId ?? null;
+  const {
+    laneState,
+    activeLane,
+    collabLane,
+    refreshLaneState,
+  } = useProjectLaneState({
+    projectId: shouldEnableProjectRuntime ? routeProjectIdentity : null,
+    projectPath: runtimeProjectPath,
+    collabBranch,
+  });
+  const activeBranch = activeLane?.branch ?? collabBranch;
+  const collaborationEnabled =
+    shouldEnableProjectRuntime && Boolean(runtimeProjectPath) && activeBranch === collabBranch;
+  const documentScopeId = useMemo(() => {
+    if (!routeProjectIdentity) {
+      return null;
+    }
+
+    if (!activeLane || activeLane.isCollab) {
+      return routeProjectIdentity;
+    }
+
+    return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
+  }, [activeLane, collabBranch, routeProjectIdentity]);
+
+  useDiagnosticsBridge(runtimeProjectPath);
 
   useEffect(() => {
-    setVscodeWorkspaceProjectPath(effectiveLocalPath);
-    if (effectiveLocalPath) {
-      void ensureVscodeServicesInitialized();
-    }
+    setVscodeWorkspaceProjectPath(runtimeProjectPath);
     return () => {
       setVscodeWorkspaceProjectPath(null);
     };
-  }, [effectiveLocalPath]);
-
-  // Ensure project-scoped runtime processes don't leak across navigation.
-  // - Stops any dev server PTY (devServer API)
-  // - Kills any terminals started for this projectPath (terminal API)
-  useEffect(() => {
-    if (!effectiveLocalPath) return;
-
-    return () => {
-      const projectPath = effectiveLocalPath;
-
-      // Stop dev server if running (ok if already stopped)
-      void window.electronAPI.devServer.stop({ projectPath }).catch(() => {
-        // ignore
-      });
-
-      // Kill all terminals for this project (ok if none)
-      void window.electronAPI.terminal
-        .list({ projectPath })
-        .then((terminalIds) =>
-          Promise.all(
-            terminalIds.map((terminalId) =>
-              window.electronAPI.terminal.kill({ terminalId }).catch(() => null),
-            ),
-          ),
-        )
-        .catch(() => {
-          // ignore
-        });
-
-      // Clear any stale terminal tabs in renderer state so we don't
-      // keep dead terminal IDs after project path changes.
-      useTerminalStore.getState().actions.resetProject(projectPath);
-    };
-  }, [effectiveLocalPath]);
+  }, [runtimeProjectPath]);
 
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
-  const isWorkbenchView = location.pathname.endsWith("/workbench");
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
   const presenceActiveRoute = isWorkbenchView ? (currentPreviewPage?.route ?? null) : null;
 
   // Real-time presence tracking
   const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId: project?._id,
-    userId: convexUserId,
-    userName: user?.firstName || user?.email || null,
-    userEmail: user?.email || null,
-    userAvatarUrl: user?.profileImageUrl || null,
+    projectId: shouldEnableProjectRuntime ? project?._id : null,
+    userId: shouldEnableProjectRuntime ? convexUserId : null,
+    userName: shouldEnableProjectRuntime ? user?.firstName || user?.email || null : null,
+    userEmail: shouldEnableProjectRuntime ? user?.email || null : null,
+    userAvatarUrl: shouldEnableProjectRuntime ? user?.profileImageUrl || null : null,
     activeFile: presenceActiveFile,
     activeRoute: presenceActiveRoute,
   });
@@ -398,44 +347,7 @@ export function ProjectLayout({
   );
 
   // Check if we are on views that need full-bleed content (no padding)
-  const isChangesView = location.pathname.endsWith("/changes");
   const shouldRemovePadding = isWorkbenchView || isChangesView;
-
-  const {
-    header: headerContent,
-    breadcrumbAddon,
-    centerAddon,
-    hideBreadcrumbs,
-    insetLeft,
-    insetRight,
-  } = useProjectHeaderStore(
-    useShallow((state) => ({
-      header: state.header,
-      breadcrumbAddon: state.breadcrumbAddon,
-      centerAddon: state.centerAddon,
-      hideBreadcrumbs: state.hideBreadcrumbs,
-      insetLeft: state.insetLeft,
-      insetRight: state.insetRight,
-    })),
-  );
-
-  // Main layout content
-  const subpageLabel = useMemo(
-    () => getProjectSubpageLabel(location.pathname, projectBasePath),
-    [location.pathname, projectBasePath],
-  );
-  const breadcrumbs = useMemo(
-    () =>
-      hideBreadcrumbs
-        ? []
-        : [
-            { label: "Projects", href: "/projects" },
-            ...(project?.name ? [{ label: project.name, href: projectBasePath ?? undefined }] : []),
-            ...(subpageLabel ? [{ label: subpageLabel }] : []),
-          ],
-    [hideBreadcrumbs, project?.name, projectBasePath, subpageLabel],
-  );
-  const headerSlot = headerContent;
 
   const presenceHeaderAddon = useMemo(
     () =>
@@ -448,40 +360,51 @@ export function ProjectLayout({
       ) : null,
     [handlePresenceUserClick, presenceUsers],
   );
+
+  const workspaceSelectionId = user?.id ?? "local-device";
+
+  const collaborationProjectId = useMemo((): Id<"projects"> | null => {
+    if (project?._id) return project._id;
+    const entry = readLastWorkbenchRoute(workspaceSelectionId);
+    if (!entry?.projectId) return null;
+    return entry.projectId as Id<"projects">;
+  }, [project?._id, workspaceSelectionId]);
+
+  const chromeHeader = useProjectChromeHeader({
+    isSettingsModeRoute,
+    pathname: location.pathname,
+    workspaceScoped: false,
+    presencePreSearchAddon: presenceHeaderAddon,
+    projectId: collaborationProjectId,
+    projectName: effectiveProjectName,
+    editorProjectPath: effectiveLocalPath ?? null,
+  });
+
   const layoutContent = (
     <SidebarProvider>
       <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
-          <ProjectSidebar
-            color="currentColor"
-            user={user}
-            onLogout={logout}
-            projectId={project?._id ?? null}
-          />
+          {isAppStoreRoute ? (
+            <AppStoreSidebar color="currentColor" user={user} />
+          ) : isSettingsModeRoute ? (
+            <SettingsSidebar color="currentColor" user={user} />
+          ) : (
+            <ProjectSidebar
+              color="currentColor"
+              user={user}
+              projectId={project?._id ?? null}
+            />
+          )}
           <SidebarInset
             color="currentColor"
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
           >
-            <ProjectLayoutHeader
-              breadcrumbs={breadcrumbs}
-              header={headerSlot ?? undefined}
-              breadcrumbAddon={breadcrumbAddon ?? undefined}
-              centerAddon={centerAddon ?? undefined}
-              preSearchAddon={presenceHeaderAddon ?? undefined}
-              className="border-b-0 bg-transparent"
-              layoutMode="fixed"
-              insetLeft={insetLeft}
-              insetRight={insetRight}
+            <UnifiedHeader
+              layoutMode="embedded"
+              leftWindowControlsInset
               compactHeaderActions
-              projectInviteContext={{
-                projectId: project?._id ?? null,
-                projectName: project?.name ?? null,
-              }}
-            />
-            <div
-              className="h-10 shrink-0 border-b border-border/60 bg-background"
-              aria-hidden="true"
+              {...chromeHeader}
             />
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
@@ -503,17 +426,61 @@ export function ProjectLayout({
     </SidebarProvider>
   );
 
+  const projectRouteContextValue = useMemo(
+    () => ({
+      project,
+      projectIdParam: routeProjectId ?? null,
+      slugParam: routeSlug ?? null,
+      slugResolution: (!routeProjectId ? freshProjectBySlug : undefined) as
+        | ProjectRouteSlugResolutionResult
+        | undefined,
+      localPath: effectiveLocalPath ?? null,
+      gitCwd,
+      projectBasePath,
+      projectName: effectiveProjectName,
+      collabBranch,
+      laneState,
+      activeLane,
+      collabLane,
+      collaborationEnabled,
+      refreshLaneState,
+    }),
+    [
+      activeLane,
+      collabBranch,
+      collabLane,
+      collaborationEnabled,
+      effectiveProjectName,
+      gitCwd,
+      effectiveLocalPath,
+      freshProjectBySlug,
+      laneState,
+      project,
+      projectBasePath,
+      refreshLaneState,
+      routeProjectId,
+      routeSlug,
+    ],
+  );
+
   return (
-    <ProjectSyncProvider
-      projectId={project?._id ?? null}
-      userId={convexUserId ?? null}
-      userName={user?.firstName || user?.email || "User"}
-      projectSlug={projectSlug}
-      localPath={effectiveLocalPath}
-      lastSyncAt={project?.lastSyncAt}
-      skipInitialSyncCheck={shouldSkipInitialSyncCheck}
-    >
-      {layoutContent}
-    </ProjectSyncProvider>
+    <ProjectRouteContext.Provider value={projectRouteContextValue}>
+      <ProjectSyncProvider
+        projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+        userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
+        userName={user?.firstName || user?.email || "User"}
+        laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
+        projectSlug={projectSlug}
+        localPath={runtimeProjectPath}
+        gitCwd={shouldEnableProjectRuntime ? gitCwd : null}
+        lastSyncAt={project?.lastSyncAt}
+        collaborationEnabled={collaborationEnabled}
+        activeBranch={activeBranch}
+        sharedBranch={collabBranch}
+        documentScopeId={documentScopeId}
+      >
+        {layoutContent}
+      </ProjectSyncProvider>
+    </ProjectRouteContext.Provider>
   );
 }

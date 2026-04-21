@@ -1,15 +1,9 @@
-import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
-
 export interface ProjectCloudAccessPresentation {
   summary: string
   detail: string | null
   actionHref: string | null
   actionLabel: string | null
   isAccessError: boolean
-}
-
-interface ProjectCloudAccessPresentationOptions {
-  workspaceScoped?: boolean
 }
 
 function extractErrorText(input: unknown, fallback: string): string {
@@ -37,19 +31,11 @@ function includesAny(haystack: string, needles: readonly string[]): boolean {
 
 export function formatProjectCloudAccessError(
   input: unknown,
-  fallback = 'Failed to prepare project',
-  options: ProjectCloudAccessPresentationOptions = {}
+  fallback = 'Failed to prepare project'
 ): ProjectCloudAccessPresentation {
   const rawMessage = extractErrorText(input, fallback)
   const normalized = cleanGitTransportError(rawMessage)
   const lower = normalized.toLowerCase()
-  const storageHref = getSettingsSurfaceRoute('storage', 'personal') ?? '/settings/storage'
-  const billingHref =
-    getSettingsSurfaceRoute('billing', options.workspaceScoped ? 'workspace' : 'personal') ??
-    '/settings/billing'
-  const sourceControlHref =
-    getSettingsSurfaceRoute('sourceControl', options.workspaceScoped ? 'workspace' : 'personal') ??
-    (options.workspaceScoped ? '/workspace/source-control' : '/settings/source-control')
 
   if (lower.includes('not a member of this project')) {
     return {
@@ -63,40 +49,40 @@ export function formatProjectCloudAccessError(
 
   if (lower.includes('past due')) {
     return {
-      summary: 'Subscription Required',
-      detail: 'Your subscription is past due. Update billing to restore cloud access.',
-      actionHref: billingHref,
-      actionLabel: 'Open Billing',
+      summary: 'Cloud Access Unavailable',
+      detail: 'This project still references retired hosted-plan metadata. Reopen from a current local copy or migrate the project metadata.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }
 
   if (lower.includes('subscription is canceled') || lower.includes('subscription is cancelled')) {
     return {
-      summary: 'Subscription Required',
-      detail: 'Your subscription is canceled. Start or renew a plan to restore cloud access.',
-      actionHref: billingHref,
-      actionLabel: 'Open Billing',
+      summary: 'Cloud Access Unavailable',
+      detail: 'This project still references retired hosted-plan metadata. Reopen from a current local copy or migrate the project metadata.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }
 
   if (lower.includes('not assigned to a paid seat')) {
     return {
-      summary: 'Seat Assignment Required',
-      detail: 'You are not assigned to a paid seat for cloud access in this workspace.',
-      actionHref: billingHref,
-      actionLabel: 'Open Billing',
+      summary: 'Retired Hosted Gate',
+      detail: 'This project still references old hosted access metadata that is no longer part of the product.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }
 
   if (lower.includes('active paid seat assignment')) {
     return {
-      summary: 'Seat Assignment Required',
-      detail: 'Cloud access requires an active paid seat assignment in this workspace.',
-      actionHref: billingHref,
-      actionLabel: 'Open Billing',
+      summary: 'Retired Hosted Gate',
+      detail: 'This project still references old hosted access metadata that is no longer part of the product.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }
@@ -108,10 +94,10 @@ export function formatProjectCloudAccessError(
     lower.includes('requested url returned error: 402')
   ) {
     return {
-      summary: 'Subscription Required',
-      detail: 'Cloud access requires an active subscription for this account.',
-      actionHref: billingHref,
-      actionLabel: 'Open Billing',
+      summary: 'Cloud Access Unavailable',
+      detail: 'This project still references a retired hosted-plan check. Reopen from a current local copy or migrate the project metadata.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }
@@ -130,9 +116,9 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Local Project Recovery Failed',
       detail:
-        'This local copy is out of sync or incomplete. Delete the local copy from Storage and open the project again.',
-      actionHref: storageHref,
-      actionLabel: 'Open Storage',
+        'This local copy is out of sync or incomplete. Delete the local copy manually from disk and open the project again.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: false,
     }
   }
@@ -153,9 +139,9 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Local Project Copy Needs Repair',
       detail:
-        'The local git data for this project looks incomplete or corrupted. Delete the local copy from Storage and reopen the project.',
-      actionHref: storageHref,
-      actionLabel: 'Open Storage',
+        'The local git data for this project looks incomplete or corrupted. Delete the local copy manually from disk and reopen the project.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: false,
     }
   }
@@ -193,12 +179,12 @@ export function formatProjectCloudAccessError(
     ])
   ) {
     return {
-      summary: 'Repository Access Required',
+      summary: 'Manual Repository Access Required',
       detail:
         normalized ||
-        'This project cannot open until repository access is provisioned for your account.',
-      actionHref: sourceControlHref,
-      actionLabel: 'Open Source Control',
+        'Repository access is no longer provisioned in-app. Make sure your local checkout can access the remote, then reopen the project.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }
@@ -210,12 +196,12 @@ export function formatProjectCloudAccessError(
     ])
   ) {
     return {
-      summary: 'Repository Access Pending',
+      summary: 'Manual Repository Access Pending',
       detail:
         normalized ||
-        'Accept the repository invitation in your git provider, then reopen the project.',
-      actionHref: sourceControlHref,
-      actionLabel: 'Open Source Control',
+        'Accept the repository invitation in your git provider or clone the repository locally, then reopen the project.',
+      actionHref: null,
+      actionLabel: null,
       isAccessError: true,
     }
   }

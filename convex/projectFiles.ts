@@ -88,7 +88,7 @@ export const saveFile = mutation({
       sourceAndConfigDelta += args.sizeBytes
     }
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       sourceAndConfig: sourceAndConfigDelta,
       gitHistory: gitHistoryDelta,
     })
@@ -158,7 +158,7 @@ export const deleteFile = mutation({
     // Optionally delete from storage (or keep for recovery)
     // await ctx.storage.delete(file.storageId)
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, file.projectId, {
+    await applyProjectStorageDeltas(ctx, file.projectId, {
       sourceAndConfig: sourceAndConfigDelta,
       gitHistory: gitHistoryDelta,
     })
@@ -283,7 +283,7 @@ export const saveFiles = mutation({
       }
     }
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       sourceAndConfig: sourceAndConfigDelta,
       gitHistory: gitHistoryDelta,
     })
@@ -367,7 +367,7 @@ export const markFilesDeleted = mutation({
       }
     }
 
-    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+    await applyProjectStorageDeltas(ctx, args.projectId, {
       sourceAndConfig: sourceAndConfigDelta,
       gitHistory: gitHistoryDelta,
     })

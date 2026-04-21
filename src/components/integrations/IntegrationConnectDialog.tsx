@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
+
 /**
  * Integration Connect Dialog
  *
@@ -19,7 +24,6 @@ import { IntegrationIcon } from './IntegrationIcon'
 import { ApiKeyForm } from './ApiKeyForm'
 import { ServiceAccountForm } from './ServiceAccountForm'
 import { Logo } from '@/components/Logo'
-import { ExternalLink, Loader2, AlertCircle } from 'lucide-react'
 import type { IntegrationDefinition, IntegrationCredentials } from '@/lib/integrations/types'
 
 interface IntegrationConnectDialogProps {
@@ -127,7 +131,7 @@ export function IntegrationConnectDialog({
                 className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
               >
                 Need help? View the setup guide
-                <ExternalLink className="h-3 w-3" />
+                <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
               </a>
             </div>
           )}
@@ -185,7 +189,7 @@ export function IntegrationConnectDialog({
         {/* Error message */}
         {error && (
           <Alert variant="destructive" className="mt-4">
-            <AlertCircle className="h-4 w-4" />
+            <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -200,7 +204,7 @@ export function IntegrationConnectDialog({
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 mr-2 animate-spin" />
                 Connecting...
               </>
             ) : integration.authType === 'oauth' ? (
@@ -229,7 +233,7 @@ export function IntegrationConnectDialog({
               className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
             >
               Need help? View the setup guide
-              <ExternalLink className="h-3 w-3" />
+              <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
             </a>
           </div>
         )}

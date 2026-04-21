@@ -1,27 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import {
-  AppWindow,
-  ArrowUpRight,
-  ChevronDown,
-  CheckCircle2,
-  Clock3,
-  FileText,
-  ListTodo,
-  Loader2,
-  Plus,
-  Trash2,
-  X,
-} from 'lucide-react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { openProjectFileInExternalEditor } from '@/features/projects/lib/externalEditorPreference'
-import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import {
+
   type TaskOverlayLocationState,
   type TaskOverlayPayload,
 } from '@/features/projects/lib/taskFocusOverlay'
@@ -60,6 +47,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon as __PlusHugeIcon, Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Clock01Icon as __Clock3HugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __FileTextHugeIcon, LeftToRightListBulletIcon as __ListTodoHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ArrowUpRightHugeIcon } from '@hugeicons/core-free-icons'
+
+const CheckCircle2 = (props: any) => <HugeiconsIcon icon={__CheckCircle2HugeIcon} {...props} />
+const Clock3 = (props: any) => <HugeiconsIcon icon={__Clock3HugeIcon} {...props} />
+const ListTodo = (props: any) => <HugeiconsIcon icon={__ListTodoHugeIcon} {...props} />
 
 type BoardStatus = 'planned' | 'active' | 'done'
 type BoardSource = 'manual' | 'page' | 'entity' | 'build' | 'lock'
@@ -161,6 +155,9 @@ interface ClaimantUserSummary {
 
 interface ClaimantMemberSourceRecord {
   userId: string
+  displayName?: string | null
+  secondaryLabel?: string | null
+  contactEmail?: string | null
   user: ClaimantUserSummary | null
 }
 
@@ -697,7 +694,7 @@ function TaskListRow({
             className="group flex min-w-0 flex-1 items-start gap-3 text-left"
             aria-label={`${isOpen ? 'Collapse' : 'Expand'} task ${item.title}`}
           >
-            <ChevronDown
+            <HugeiconsIcon icon={__ChevronDownHugeIcon}
               className={cn(
                 'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100',
                 !isOpen && '-rotate-90',
@@ -718,7 +715,7 @@ function TaskListRow({
                   {item.context.kind === 'file' ? (
                     getFileIcon(fileIconName, { className: 'h-3.5 w-3.5' })
                   ) : (
-                    <AppWindow className="h-3.5 w-3.5 shrink-0" />
+                    <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5 shrink-0" />
                   )}
                   <span className="truncate">{item.context.label}</span>
                 </span>
@@ -743,7 +740,7 @@ function TaskListRow({
           }}
           aria-label={`Open ${item.context.title}`}
         >
-          <ArrowUpRight className="h-4 w-4" />
+          <HugeiconsIcon icon={__ArrowUpRightHugeIcon} className="h-4 w-4" />
         </Button>
       </div>
 
@@ -787,9 +784,7 @@ export function TasksPage({
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
-  const projectWorkspace = useProjectWorkspaceContext(project)
   const { convexUserId } = useAuth()
-  const hasResolvedWorkspaceContext = project !== undefined && !projectWorkspace.isLoading
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -812,32 +807,14 @@ export function TasksPage({
   const [draftContextPagesLoading, setDraftContextPagesLoading] = useState(false)
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isSyncingLocalTasks, setIsSyncingLocalTasks] = useState(false)
-  const currentProjectOrgId = projectWorkspace.organizationId
-  const isOrganizationWorkspace = projectWorkspace.isOrganizationWorkspace
   const createManualTask = useMutation(api.projectTasks.createManualTask)
   const setManualTaskCheckedMarkers = useMutation(api.projectTasks.setManualTaskCheckedMarkers)
   const migrateLocalBoardState = useMutation(api.projectTasks.migrateLocalBoardState)
 
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
-    hasResolvedWorkspaceContext && !isOrganizationWorkspace && project?._id && convexUserId
+    project?._id && convexUserId
       ? { projectId: project._id, viewerUserId: convexUserId }
-      : 'skip',
-  )
-  const currentWorkspaceAccess = useQuery(
-    api.organizations.getCurrentMemberAccess,
-    hasResolvedWorkspaceContext && isOrganizationWorkspace && currentProjectOrgId && convexUserId
-      ? { orgId: currentProjectOrgId, viewerUserId: convexUserId }
-      : 'skip',
-  )
-  const workspaceMembers = useQuery(
-    api.organizations.getMembers,
-    hasResolvedWorkspaceContext &&
-    isOrganizationWorkspace &&
-    currentProjectOrgId &&
-    convexUserId &&
-    (currentWorkspaceAccess?.permissions.includes('members:view') ?? false)
-      ? { orgId: currentProjectOrgId, viewerUserId: convexUserId }
       : 'skip',
   )
   const sharedManualTasks = useQuery(
@@ -858,20 +835,24 @@ export function TasksPage({
       devPort: project.frameworkInfo.devPort,
     }
   }, [project?.frameworkInfo])
-  const claimantCandidatesLoading = isOrganizationWorkspace
-    ? projectWorkspace.isLoading || (currentProjectOrgId !== null && workspaceMembers === undefined)
-    : Boolean(project?._id) && projectMembers === undefined
+  const claimantCandidatesLoading = Boolean(project?._id) && projectMembers === undefined
   const claimantCandidates = useMemo(() => {
-    const sourceMembers = (
-      (isOrganizationWorkspace ? workspaceMembers : projectMembers) ?? []
-    ) as ClaimantMemberSourceRecord[]
+    const sourceMembers = (projectMembers ?? []) as ClaimantMemberSourceRecord[]
     const byIdentity = new Map<string, TaskClaimantCandidate>()
 
     for (const member of sourceMembers) {
-      const email = member.user?.email?.trim().toLowerCase()
+      const email = (
+        member.contactEmail ??
+        member.secondaryLabel ??
+        member.user?.email ??
+        member.displayName ??
+        String(member.userId)
+      )
+        .trim()
+        .toLowerCase()
       if (!email) continue
 
-      const name = formatClaimantName(member.user, email)
+      const name = member.displayName?.trim() || formatClaimantName(member.user, email)
       const candidate: TaskClaimantCandidate = {
         id: String(member.user?.id ?? member.userId),
         name,
@@ -888,7 +869,7 @@ export function TasksPage({
       if (nameCompare !== 0) return nameCompare
       return left.email.localeCompare(right.email)
     })
-  }, [isOrganizationWorkspace, projectMembers, workspaceMembers])
+  }, [projectMembers])
   const selectedDraftClaimantKeys = useMemo(
     () => new Set(draftClaimants.map((claimant) => getClaimantIdentityKey(claimant))),
     [draftClaimants],
@@ -1415,18 +1396,10 @@ export function TasksPage({
   }
 
   if (project === undefined) {
-    if (isEmbedded) {
-      return (
-        <div className="flex h-full items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      )
-    }
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
-        <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-border/60 bg-background/95 shadow-xl">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        Loading tasks…
       </div>
     )
   }
@@ -1466,7 +1439,7 @@ export function TasksPage({
                     setIsCreateDialogOpen(true)
                   }}
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
                   {isCreatingTask ? 'Adding...' : 'Add Task'}
                 </Button>
                 <button
@@ -1475,7 +1448,7 @@ export function TasksPage({
                   className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   aria-label="Close tasks"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -1536,7 +1509,7 @@ export function TasksPage({
                 setIsCreateDialogOpen(true)
               }}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
               {isCreatingTask ? 'Adding...' : 'Add Task'}
             </Button>
           </div>
@@ -1583,7 +1556,7 @@ export function TasksPage({
                       setIsCreateDialogOpen(true)
                     }}
                   >
-                    <Plus className="h-4 w-4" />
+                    <HugeiconsIcon icon={__PlusHugeIcon} className="h-4 w-4" />
                     {isCreatingTask ? 'Adding...' : 'Add Task'}
                   </Button>
                 </EmptyContent>
@@ -1625,7 +1598,7 @@ export function TasksPage({
                         }))
                       }
                     >
-                      <ChevronDown
+                      <HugeiconsIcon icon={__ChevronDownHugeIcon}
                         className={cn(
                           "h-4 w-4 transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
                           isCollapsed && "-rotate-90",
@@ -1693,7 +1666,7 @@ export function TasksPage({
               className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent/70 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/85 dark:bg-sidebar-accent/80 dark:hover:bg-sidebar-accent"
               aria-label="Close"
             >
-              <X className="h-4 w-4" />
+              <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
             </button>
           </DialogClose>
           <DialogHeader>
@@ -1744,11 +1717,7 @@ export function TasksPage({
                     value={draftClaimantSearch}
                     onChange={(event) => setDraftClaimantSearch(event.target.value)}
                     placeholder="Search people..."
-                    disabled={
-                      claimantCandidatesLoading
-                        ? false
-                        : claimantCandidates.length === 0 && !currentProjectOrgId && isOrganizationWorkspace
-                    }
+                    disabled={claimantCandidatesLoading ? false : claimantCandidates.length === 0}
                   />
 
                   {hasDraftClaimantSearch ? (
@@ -1760,9 +1729,7 @@ export function TasksPage({
                           </div>
                         ) : claimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
-                            {isOrganizationWorkspace && !currentProjectOrgId
-                              ? 'People are unavailable right now.'
-                              : 'No people available.'}
+                            No people available.
                           </div>
                         ) : filteredClaimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
@@ -1836,7 +1803,7 @@ export function TasksPage({
                             onClick={() => handleRemoveDraftClaimant(identityKey)}
                             aria-label={`Remove ${claimant.name}`}
                           >
-                            <X className="h-3 w-3" />
+                            <HugeiconsIcon icon={__XHugeIcon} className="h-3 w-3" />
                           </button>
                         </div>
                       )
@@ -1892,7 +1859,7 @@ export function TasksPage({
                         aria-label="Choose preview"
                         title="Choose preview"
                       >
-                        <AppWindow className="h-3.5 w-3.5" />
+                        <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
@@ -1909,7 +1876,7 @@ export function TasksPage({
                         aria-label="Choose file"
                         title="Choose file"
                       >
-                        <FileText className="h-3.5 w-3.5" />
+                        <HugeiconsIcon icon={__FileTextHugeIcon} className="h-3.5 w-3.5" />
                       </button>
                       </div>
                     </div>
@@ -1919,7 +1886,7 @@ export function TasksPage({
                         <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                           {isVisibleContextLoading ? (
                             <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
                               Loading {draftContextKind === 'page' ? 'previews' : 'files'}...
                             </div>
                           ) : visibleContextOptions.length === 0 ? (
@@ -1957,7 +1924,7 @@ export function TasksPage({
                                 >
                                   <span className="mt-0.5 shrink-0 text-muted-foreground">
                                     {option.kind === 'page' ? (
-                                      <AppWindow className="h-4 w-4" />
+                                      <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-4 w-4" />
                                     ) : (
                                       getFileIcon(option.title, { className: 'h-4 w-4' })
                                     )}
@@ -1986,7 +1953,7 @@ export function TasksPage({
                   {selectedDraftContext ? (
                     <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-sidebar-accent/80 px-3 py-1.5 text-xs text-sidebar-accent-foreground dark:bg-sidebar-accent">
                       {selectedDraftContext.kind === 'page' ? (
-                        <AppWindow className="h-3.5 w-3.5 shrink-0" />
+                        <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5 shrink-0" />
                       ) : (
                         getFileIcon(selectedDraftContext.title, {
                           className: 'h-3.5 w-3.5 shrink-0',
@@ -2013,7 +1980,7 @@ export function TasksPage({
                     className="h-7 rounded-full px-2 text-xs text-muted-foreground"
                     onClick={handleAddDraftMarkerRow}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
                     Add row
                   </Button>
                 </div>
@@ -2035,7 +2002,7 @@ export function TasksPage({
                         onClick={() => handleRemoveDraftMarkerRow(index)}
                         aria-label={`Remove marker ${index + 1}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <HugeiconsIcon icon={__Trash2HugeIcon} className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}

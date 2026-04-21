@@ -5,13 +5,18 @@ import type {
   NativePreviewSessionLocator,
 } from '@shared/nativePreviewTypes'
 
-import type { ServerStatus } from '@/stores/useProjectPagesStore'
-import { useNativePreviewStore } from '@/stores/useNativePreviewStore'
+import type { ServerStatus } from '@/features/projects/lib/previewRuntimeTypes'
+import {
+  DEFAULT_NATIVE_PREVIEW_SCOPE_STATE,
+  useNativePreviewStore,
+} from '@/stores/useNativePreviewStore'
 
 interface UseIosNativePreviewOptions {
+  scopeKey: string
   enabled: boolean
   projectPath: string | null
   serverStatus: ServerStatus
+  keepAliveOnUnmount?: boolean
 }
 
 function isPreviewSessionWanted(serverStatus: ServerStatus): boolean {
@@ -30,18 +35,24 @@ function buildLocator(
 }
 
 export function useIosNativePreview({
+  scopeKey,
   enabled,
   projectPath,
   serverStatus,
+  keepAliveOnUnmount = false,
 }: UseIosNativePreviewOptions) {
-  const iosSimulators = useNativePreviewStore((state) => state.iosSimulators)
-  const selectedIosSimulatorId = useNativePreviewStore((state) => state.selectedIosSimulatorId)
-  const sessionState = useNativePreviewStore((state) => state.sessionState)
-  const simulatorsLoading = useNativePreviewStore((state) => state.simulatorsLoading)
-  const simulatorsError = useNativePreviewStore((state) => state.simulatorsError)
-  const sessionLoading = useNativePreviewStore((state) => state.sessionLoading)
-  const sessionError = useNativePreviewStore((state) => state.sessionError)
+  const scopeState = useNativePreviewStore((state) => state.scopes[scopeKey] ?? DEFAULT_NATIVE_PREVIEW_SCOPE_STATE)
   const actions = useNativePreviewStore((state) => state.actions)
+
+  const {
+    iosSimulators,
+    selectedIosSimulatorId,
+    sessionState,
+    simulatorsLoading,
+    simulatorsError,
+    sessionLoading,
+    sessionError,
+  } = scopeState
 
   const selectedSimulator = useMemo(() => {
     return iosSimulators.find((device) => device.udid === selectedIosSimulatorId) ?? null
@@ -61,41 +72,45 @@ export function useIosNativePreview({
 
   const activeLocatorRef = useRef<NativePreviewSessionLocator | null>(null)
 
+  useEffect(() => {
+    actions.ensureScope(scopeKey)
+  }, [actions, scopeKey])
+
   const refreshSimulators = useCallback(async () => {
     if (!enabled) {
-      actions.setIosSimulators([])
-      actions.setSimulatorsError(null)
+      actions.setIosSimulators(scopeKey, [])
+      actions.setSimulatorsError(scopeKey, null)
       return
     }
 
-    actions.setSimulatorsLoading(true)
+    actions.setSimulatorsLoading(scopeKey, true)
     const result = await window.electronAPI.nativePreview.listIosSimulators()
-    actions.setSimulatorsLoading(false)
+    actions.setSimulatorsLoading(scopeKey, false)
 
     if (!result.success || !result.devices) {
-      actions.setSimulatorsError(result.error ?? 'Failed to load iOS simulators.')
-      actions.setIosSimulators([])
+      actions.setSimulatorsError(scopeKey, result.error ?? 'Failed to load iOS simulators.')
+      actions.setIosSimulators(scopeKey, [])
       return
     }
 
-    actions.setSimulatorsError(null)
-    actions.setIosSimulators(result.devices)
-  }, [actions, enabled])
+    actions.setSimulatorsError(scopeKey, null)
+    actions.setIosSimulators(scopeKey, result.devices)
+  }, [actions, enabled, scopeKey])
 
   useEffect(() => {
     void refreshSimulators()
   }, [refreshSimulators])
 
   useEffect(() => {
-    if (!enabled) {
-      actions.reset()
+    if (!enabled && !keepAliveOnUnmount) {
+      actions.reset(scopeKey)
     }
-  }, [actions, enabled])
+  }, [actions, enabled, keepAliveOnUnmount, scopeKey])
 
   useEffect(() => {
     if (!enabled || !projectPath || !selectedSimulator) {
-      actions.setSessionState(null)
-      actions.setSessionError(null)
+      actions.setSessionState(scopeKey, null)
+      actions.setSessionError(scopeKey, null)
       return
     }
 
@@ -105,13 +120,13 @@ export function useIosNativePreview({
       if (cancelled) {
         return
       }
-      actions.setSessionState(state)
+      actions.setSessionState(scopeKey, state)
     })()
 
     return () => {
       cancelled = true
     }
-  }, [actions, enabled, projectPath, selectedSimulator])
+  }, [actions, enabled, projectPath, scopeKey, selectedSimulator])
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.nativePreview.onStateChanged((event) => {
@@ -125,11 +140,11 @@ export function useIosNativePreview({
         event.state?.deviceId === activeLocator.deviceId &&
         event.state?.platform === activeLocator.platform
       ) {
-        actions.setSessionState(event.state)
+        actions.setSessionState(scopeKey, event.state)
         if (event.state?.status === 'error') {
-          actions.setSessionError(event.state.lastError ?? 'Native preview session failed.')
+          actions.setSessionError(scopeKey, event.state.lastError ?? 'Native preview session failed.')
         } else if (event.state) {
-          actions.setSessionError(null)
+          actions.setSessionError(scopeKey, null)
         }
         return
       }
@@ -139,12 +154,12 @@ export function useIosNativePreview({
         activeLocator &&
         event.sessionKey === `${activeLocator.platform}:${activeLocator.deviceId}:${activeLocator.projectPath}`
       ) {
-        actions.setSessionState(null)
+        actions.setSessionState(scopeKey, null)
       }
     })
 
     return unsubscribe
-  }, [actions])
+  }, [actions, scopeKey])
 
   useEffect(() => {
     let cancelled = false
@@ -164,11 +179,11 @@ export function useIosNativePreview({
     activeLocatorRef.current = desiredLocator
 
     if (!desiredLocator) {
-      actions.setSessionLoading(false)
+      actions.setSessionLoading(scopeKey, false)
       if (selectedSimulator && selectedSimulator.state !== 'Booted') {
-        actions.setSessionError('Boot the selected iOS simulator to start native preview.')
+        actions.setSessionError(scopeKey, 'Boot the selected iOS simulator to start native preview.')
       } else {
-        actions.setSessionError(null)
+        actions.setSessionError(scopeKey, null)
       }
       return
     }
@@ -177,36 +192,36 @@ export function useIosNativePreview({
       return
     }
 
-    actions.setSessionLoading(true)
-    actions.setSessionError(null)
+    actions.setSessionLoading(scopeKey, true)
+    actions.setSessionError(scopeKey, null)
     void (async () => {
       const result = await window.electronAPI.nativePreview.startSession(desiredLocator)
       if (cancelled || activeLocatorRef.current !== desiredLocator) {
         return
       }
-      actions.setSessionLoading(false)
+      actions.setSessionLoading(scopeKey, false)
       if (!result.success) {
-        actions.setSessionState(result.state ?? null)
-        actions.setSessionError(result.error ?? 'Failed to start native preview session.')
+        actions.setSessionState(scopeKey, result.state ?? null)
+        actions.setSessionError(scopeKey, result.error ?? 'Failed to start native preview session.')
         return
       }
-      actions.setSessionState(result.state ?? null)
-      actions.setSessionError(null)
+      actions.setSessionState(scopeKey, result.state ?? null)
+      actions.setSessionError(scopeKey, null)
     })()
 
     return () => {
       cancelled = true
     }
-  }, [actions, desiredLocator, selectedSimulator])
+  }, [actions, desiredLocator, scopeKey, selectedSimulator])
 
   useEffect(() => {
     return () => {
       const activeLocator = activeLocatorRef.current
-      if (activeLocator) {
+      if (activeLocator && !keepAliveOnUnmount) {
         void window.electronAPI.nativePreview.stopSession(activeLocator)
       }
     }
-  }, [])
+  }, [keepAliveOnUnmount])
 
   return {
     iosSimulators,
@@ -217,7 +232,9 @@ export function useIosNativePreview({
     simulatorsError,
     sessionLoading,
     sessionError,
-    setSelectedIosSimulatorId: actions.setSelectedIosSimulatorId,
+    setSelectedIosSimulatorId: (deviceId: string | null) => {
+      actions.setSelectedIosSimulatorId(scopeKey, deviceId)
+    },
     refreshSimulators,
   }
 }

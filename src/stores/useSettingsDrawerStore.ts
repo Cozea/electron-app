@@ -32,9 +32,10 @@ function splitRoute(route?: string): { path: string; query: string } {
   }
 
   const normalizedRoute = route.trim()
-  if (SETTINGS_SURFACE_IDS.has(normalizedRoute as SettingsDrawerSection)) {
+  const normalizedSection = normalizedRoute === 'permissions' ? 'roles' : normalizedRoute
+  if (SETTINGS_SURFACE_IDS.has(normalizedSection as SettingsDrawerSection)) {
     return {
-      path: getSettingsSurfaceRoute(normalizedRoute as SettingsDrawerSection, 'personal') ?? DEFAULT_ROUTE,
+      path: getSettingsSurfaceRoute(normalizedSection as SettingsDrawerSection, 'personal') ?? DEFAULT_ROUTE,
       query: '',
     }
   }

@@ -1,191 +1,70 @@
-import {
-  Cloud,
-  CreditCard,
-  FileText,
-  FolderGit2,
-  HardDrive,
-  Lock,
-  Palette,
-  Shield,
-  Terminal,
-  UserCircle2,
-  Users,
-  Wrench,
-} from "lucide-react"
-
 import type {
   ResolvedSettingsSurfaceRoute,
   SettingsPlacement,
-  SettingsScopeKind,
   SettingsSidebarGroup,
+  SettingsScopeKind,
   SettingsSurfaceDefinition,
   SettingsSurfaceId,
-  WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
 
-const preloadAccountPage = () => import("@/pages/settings/Account")
-const preloadBillingPage = () => import("@/pages/workspace/Billing")
-const preloadAppearancePage = () => import("@/pages/settings/Appearance")
-const preloadGeneralPage = () => import("@/pages/workspace/General")
-const preloadStoragePage = async () => {
-  const module = await import("@/pages/settings/Storage")
-  await module.prewarmStorageSettings?.()
+import { asHugeIcon } from "@/lib/icons/asHugeIcon"
+import {
+  CommandLineIcon as __CommandLineIconHugeIcon,
+  PaintBoardIcon as __PaintBoardIconHugeIcon,
+  UserCircleIcon as __UserCircleIconHugeIcon,
+} from "@hugeicons/core-free-icons"
+
+const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
+const PaintBoardIcon = asHugeIcon(__PaintBoardIconHugeIcon)
+const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
+
+const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
+  account: 0,
+  appearance: 1,
+  tooling: 2,
 }
-const preloadSourceControlPage = () => import("@/pages/workspace/SourceControl")
-const preloadCliToolsPage = () => import("@/pages/workspace/Integrations")
+
+const preloadAccountPage = () => import("@/pages/settings/Account")
+const preloadAppearancePage = () => import("@/pages/settings/Appearance")
+
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
   await module.prewarmToolingSettings?.()
 }
-const preloadPoliciesPage = () => import("@/pages/workspace/Policies")
-const preloadMembersPage = () => import("@/pages/teams/Members")
-const preloadCloudStoragePage = () => import("@/pages/workspace/Sync")
-const preloadPermissionsPage = () => import("@/pages/teams/Roles")
 
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "account",
     label: "Account",
-    icon: UserCircle2,
+    icon: UserCircleIcon,
     routes: { personal: "/settings/account" },
-    storageMode: { personal: "cloud" },
-    placements: ["drawer", "command", "settingsWindow"],
-    preload: preloadAccountPage,
-    commandKeywords: ["account", "profile", "settings"],
-  },
-  {
-    id: "billing",
-    label: "Billing",
-    icon: CreditCard,
-    routes: { personal: "/settings/billing", workspace: "/workspace/billing" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
+    storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { workspace: "workspace" },
-    workspaceAccessKey: "billing",
-    preload: preloadBillingPage,
-    commandKeywords: ["billing", "subscription", "payment", "usage", "plan"],
+    sidebarGroups: { personal: "personalDevice" },
+    preload: preloadAccountPage,
+    commandKeywords: ["device", "profile", "settings"],
   },
   {
     id: "appearance",
     label: "Appearance",
-    icon: Palette,
+    icon: PaintBoardIcon,
     routes: { personal: "/settings/appearance" },
     storageMode: { personal: "local" },
-    placements: ["drawer", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
   },
   {
-    id: "storage",
-    label: "Storage",
-    icon: HardDrive,
-    routes: { personal: "/settings/storage" },
-    storageMode: { personal: "local" },
-    placements: ["drawer", "command", "settingsWindow"],
-    preload: preloadStoragePage,
-    commandKeywords: ["storage", "disk", "local files"],
-  },
-  {
-    id: "sourceControl",
-    label: "Source Control",
-    icon: FolderGit2,
-    routes: {
-      personal: "/settings/source-control",
-      workspace: "/workspace/source-control",
-    },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "settings",
-    preload: preloadSourceControlPage,
-    commandKeywords: ["source control", "git", "github", "gitlab", "repository", "repos"],
-  },
-  {
-    id: "cliTools",
-    label: "CLI Tools",
-    icon: Wrench,
-    routes: {
-      personal: "/settings/cli-tools",
-      workspace: "/workspace/integrations",
-    },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command", "settingsWindow"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "integrations",
-    preload: preloadCliToolsPage,
-    commandKeywords: ["cli", "tools", "integrations", "connect", "services", "terminal"],
-  },
-  {
     id: "tooling",
-    label: "Tooling",
-    icon: Terminal,
+    label: "Local environment",
+    icon: CommandLineIcon,
     routes: { personal: "/settings/tooling" },
     storageMode: { personal: "local" },
-    placements: ["drawer", "command", "settingsWindow"],
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
     preload: preloadToolingPage,
     commandKeywords: ["tooling", "runtime", "framework", "local machine"],
-  },
-  {
-    id: "general",
-    label: "General",
-    icon: FileText,
-    routes: { personal: "/settings/general", workspace: "/workspace/general" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "general",
-    preload: preloadGeneralPage,
-    commandKeywords: ["workspace", "general", "settings"],
-  },
-  {
-    id: "policies",
-    label: "Policies",
-    icon: Lock,
-    routes: { workspace: "/workspace/policies" },
-    storageMode: { workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { workspace: "team" },
-    workspaceAccessKey: "settings",
-    commandKeywords: ["policies", "governance", "sharing", "retention"],
-    preload: preloadPoliciesPage,
-  },
-  {
-    id: "members",
-    label: "Members",
-    icon: Users,
-    routes: { workspace: "/teams" },
-    storageMode: { workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { workspace: "team" },
-    workspaceAccessKey: "members",
-    preload: preloadMembersPage,
-    commandKeywords: ["team", "members", "organization", "invite"],
-  },
-  {
-    id: "permissions",
-    label: "Permissions",
-    icon: Shield,
-    routes: { workspace: "/teams/roles" },
-    storageMode: { workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { workspace: "team" },
-    workspaceAccessKey: "roles",
-    alpha: true,
-    preload: preloadPermissionsPage,
-    commandKeywords: ["permissions", "roles", "iam", "access"],
-  },
-  {
-    id: "cloudStorage",
-    label: "Cloud Storage",
-    icon: Cloud,
-    routes: { personal: "/settings/cloud-storage", workspace: "/workspace/sync" },
-    storageMode: { personal: "cloud", workspace: "cloud" },
-    placements: ["drawer", "sidebar", "command"],
-    sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
-    workspaceAccessKey: "usage",
-    alpha: true,
-    preload: preloadCloudStoragePage,
-    commandKeywords: ["cloud storage", "sync", "usage", "storage"],
   },
 ] as const
 
@@ -199,6 +78,19 @@ function normalizeRoutePath(route?: string | null): string {
   const withLeadingSlash = path.startsWith("/") ? path : `/${path}`
   return withLeadingSlash.replace(/\/+$/, "") || "/"
 }
+
+export function comparePersonalDeviceSidebarSurfaces(
+  a: SettingsSurfaceDefinition,
+  b: SettingsSurfaceDefinition,
+): number {
+  const na = PERSONAL_DEVICE_SIDEBAR_ORDER[a.id]
+  const nb = PERSONAL_DEVICE_SIDEBAR_ORDER[b.id]
+  if (na !== nb) return na - nb
+  return a.label.localeCompare(b.label)
+}
+
+export const comparePersonalContextUnifiedSettingsSidebar =
+  comparePersonalDeviceSidebarSurfaces
 
 export function getSettingsSurface(surfaceId: SettingsSurfaceId): SettingsSurfaceDefinition | null {
   return SETTINGS_SURFACES.find((surface) => surface.id === surfaceId) ?? null
@@ -273,24 +165,16 @@ export function resolveSettingsSurfaceFromRoute(
 
 export function getSettingsSurfaceDisplayLabel(
   surface: SettingsSurfaceDefinition,
-  scopeKind: SettingsScopeKind,
-  options?: {
+  _scopeKind: SettingsScopeKind,
+  _options?: {
     includeScopePrefix?: boolean
   }
 ): string {
-  if (!options?.includeScopePrefix) {
-    return surface.label
-  }
-
-  if (surface.routes.personal && surface.routes.workspace) {
-    return scopeKind === "workspace" ? `Workspace ${surface.label}` : `Personal ${surface.label}`
-  }
-
   return surface.label
 }
 
-export function getSettingsScopeLabel(scopeKind: SettingsScopeKind): string {
-  return scopeKind === 'workspace' ? 'Workspace' : 'Settings'
+export function getSettingsScopeLabel(_scopeKind: SettingsScopeKind): string {
+  return "Settings"
 }
 
 export function getSettingsSurfaceBreadcrumbs(
@@ -300,30 +184,6 @@ export function getSettingsSurfaceBreadcrumbs(
   const surface = getSettingsSurface(surfaceId)
   return [
     { label: getSettingsScopeLabel(scopeKind) },
-    { label: surface?.label ?? 'Settings' },
+    { label: surface?.label ?? "Settings" },
   ]
-}
-
-export function canAccessWorkspaceSurface(
-  surface: SettingsSurfaceDefinition,
-  access: WorkspaceSurfaceAccessState
-): boolean {
-  switch (surface.workspaceAccessKey) {
-    case "general":
-      return access.canViewWorkspaceGeneral
-    case "members":
-      return access.canViewWorkspaceMembers
-    case "roles":
-      return access.canViewWorkspaceRoles
-    case "billing":
-      return access.canViewWorkspaceUsage || access.canManageWorkspaceBilling
-    case "settings":
-      return access.canViewWorkspaceSettings
-    case "integrations":
-      return access.canViewWorkspaceIntegrations
-    case "usage":
-      return access.canViewWorkspaceUsage || access.canManageWorkspaceBilling
-    default:
-      return true
-  }
 }

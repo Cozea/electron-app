@@ -1,3 +1,8 @@
+
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Delete02Icon as __Trash2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, Settings01Icon as __SettingsHugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
+
 /**
  * Integration Card Component
  *
@@ -13,7 +18,6 @@ import {
   IntegrationComingSoonBadge,
   IntegrationBetaBadge,
 } from './IntegrationStatusBadge'
-import { Settings, ExternalLink, Trash2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { IntegrationDefinition, ConnectedIntegration } from '@/lib/integrations/types'
 
@@ -93,17 +97,17 @@ export function IntegrationCard({
             <>
               {needsReauth ? (
                 <Button size="sm" variant="default" onClick={onReauth} className="flex-1">
-                  <RefreshCw className="h-4 w-4 mr-1" />
+                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-4 w-4 mr-1" />
                   Reconnect
                 </Button>
               ) : (
                 <Button size="sm" variant="outline" onClick={onSettings} className="flex-1">
-                  <Settings className="h-4 w-4 mr-1" />
+                  <HugeiconsIcon icon={__SettingsHugeIcon} className="h-4 w-4 mr-1" />
                   Settings
                 </Button>
               )}
               <Button size="sm" variant="ghost" onClick={onDisconnect}>
-                <Trash2 className="h-4 w-4" />
+                <HugeiconsIcon icon={__Trash2HugeIcon} className="h-4 w-4" />
               </Button>
             </>
           ) : isComingSoon ? (
@@ -120,7 +124,7 @@ export function IntegrationCard({
             >
               {isConnecting ? (
                 <>
-                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-4 w-4 mr-1 animate-spin" />
                   Connecting...
                 </>
               ) : (
@@ -132,7 +136,7 @@ export function IntegrationCard({
           {/* External link to docs */}
           <Button size="sm" variant="ghost" asChild>
             <a href={integration.docsUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4" />
+              <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-4 w-4" />
             </a>
           </Button>
         </div>

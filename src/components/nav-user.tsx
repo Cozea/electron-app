@@ -1,51 +1,35 @@
 import * as React from "react"
-import {
-  ChevronsUpDown,
-} from "lucide-react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
 import { useTheme } from "@/contexts/ThemeContext"
-import { useAuth } from "@/contexts/AuthContext"
 import { useResolvedScope } from "@/hooks/useResolvedScope"
-import { useCreateWorkspaceDialogStore } from "@/stores/useCreateWorkspaceDialogStore"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { useScopedBillingData } from "@/hooks/useScopedBillingData"
-import {
-  getOrganizationPlanLabel,
-  getPersonalPlanLabel,
-} from "@/lib/billing/planLabels"
-import { resolveScopedSettingsHref } from "@/lib/workspaces/settingsRoutes"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Settings02Icon as __SettingsHugeIcon } from "@hugeicons/core-free-icons"
 
 // Raw user type from auth context
 interface RawUser {
   email: string
   firstName?: string | null
   lastName?: string | null
-  profileImageUrl?: string | null
 }
 
 // Formatted user type for display
 interface FormattedUser {
   name: string
   email: string
-  avatar: string
 }
 
 // Helper to format user data
 function formatUserData(user: RawUser | FormattedUser | null | undefined): FormattedUser {
   if (!user) {
-    return { name: "User", email: "", avatar: "" }
+    return { name: "This computer", email: "" }
   }
 
   // Check if already formatted (has 'name' property)
@@ -62,94 +46,67 @@ function formatUserData(user: RawUser | FormattedUser | null | undefined): Forma
   return {
     name,
     email: rawUser.email || "",
-    avatar: rawUser.profileImageUrl || "",
   }
+}
+
+function isLocalDeviceEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith("@local.cozea.app")
+}
+
+function formatLocalDeviceLabel(label: string): string {
+  const trimmed = label.trim()
+  if (!trimmed) {
+    return "This computer"
+  }
+
+  // Hostnames can include local-domain suffixes we do not want in the sidebar.
+  return trimmed.replace(/(\.localdomain|\.local)$/i, "") || "This computer"
 }
 
 export function NavUser({
   user,
-  onLogout,
 }: {
   user: RawUser | FormattedUser | null | undefined
-  onLogout?: () => void
 }) {
   const { theme, setTheme } = useTheme()
   const userData = formatUserData(user)
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.open)
-  const openSettingsDrawerFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
-  const openCreateWorkspaceDialog = useCreateWorkspaceDialogStore((state) => state.open)
   const navigate = useViewTransitionNavigate()
-  const { organizationWorkspaces, personalWorkspace } = useAuth()
   const { activeWorkspace: currentWorkspace } = useResolvedScope({ ignoreLocation: true })
-  const { seatManagement, workspaceScoped } = useScopedBillingData()
-  const hasWorkspaceSettings = currentWorkspace?.workspaceType === "organization"
-  const availableWorkspaceCount =
-    organizationWorkspaces.length +
-    (personalWorkspace || currentWorkspace?.workspaceType === "personal" ? 1 : 0)
-  const activePlanLabel = workspaceScoped
-    ? getOrganizationPlanLabel(seatManagement?.entitlement?.plan)
-    : getPersonalPlanLabel(seatManagement?.entitlement?.plan)
-  const workspaceSettingsHref = React.useMemo(
-    () => resolveScopedSettingsHref("/settings/general", workspaceScoped),
-    [workspaceScoped],
-  )
-  const menuSummarySublabel = workspaceScoped
-    ? [currentWorkspace?.organizationName, activePlanLabel]
-        .filter((value): value is string => Boolean(value))
-        .join(" · ")
-    : userData.email || activePlanLabel
+  const isLocalDeviceProfile = isLocalDeviceEmail(userData.email)
+  const menuTitle = isLocalDeviceProfile
+    ? `This ${formatLocalDeviceLabel(userData.name)}`
+    : userData.name
+  const menuSummarySublabel = isLocalDeviceProfile
+    ? "Local computer"
+    : currentWorkspace?.workspaceName || currentWorkspace?.organizationName || userData.email
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
       const rect = event.currentTarget.getBoundingClientRect()
       const items: ContextMenuItem<
         | "summary"
-        | "workspace-settings"
-        | "switch-workspace"
-        | "create-workspace"
         | "account-settings"
         | "theme-light"
         | "theme-dark"
         | "theme-system"
         | "theme-group"
-        | "logout"
         | "separator-top"
-        | "separator-middle"
         | "separator-bottom"
       >[] = []
 
-      if (userData.name || menuSummarySublabel) {
+      if (menuTitle || menuSummarySublabel) {
         items.push({
           id: "summary",
-          label: userData.name || "User",
+          label: menuTitle || "User",
           sublabel: menuSummarySublabel || undefined,
           enabled: false,
         })
         items.push({ id: "separator-top", label: "", type: "separator" })
       }
 
-      if (hasWorkspaceSettings) {
-        items.push({
-          id: "workspace-settings",
-          label: "Workspace Settings",
-        })
-      }
-
-      if (availableWorkspaceCount > 1) {
-        items.push({
-          id: "switch-workspace",
-          label: "Switch Workspace",
-        })
-      }
-
-      items.push({
-        id: "create-workspace",
-        label: "Create Workspace",
-      })
-      items.push({ id: "separator-middle", label: "", type: "separator" })
       items.push({
         id: "account-settings",
-        label: "Settings",
+        label: "User settings",
       })
       items.push({
         id: "theme-group",
@@ -161,34 +118,17 @@ export function NavUser({
         ],
       })
       items.push({ id: "separator-bottom", label: "", type: "separator" })
-      items.push({
-        id: "logout",
-        label: "Log out",
-      })
 
       const position = {
         x: Math.round(rect.left + rect.width / 2),
         y: Math.round(rect.top),
       }
 
-      const action = window.desktopBridge?.showContextMenu
-        ? await window.desktopBridge.showContextMenu(items, position)
-        : window.nativeApi?.contextMenu?.show
-          ? await window.nativeApi.contextMenu.show(items, position)
-          : null
+      const action = await showDesktopContextMenu(items, position)
 
       switch (action) {
-        case "workspace-settings":
-          openSettingsDrawerFromRoute(workspaceSettingsHref)
-          break
-        case "switch-workspace":
-          navigate("/workspaces/select")
-          break
-        case "create-workspace":
-          openCreateWorkspaceDialog()
-          break
         case "account-settings":
-          openSettingsDrawer("account")
+          navigate("/projects/settings/account")
           break
         case "theme-light":
           setTheme("light")
@@ -199,28 +139,14 @@ export function NavUser({
         case "theme-system":
           setTheme("system")
           break
-        case "logout":
-          onLogout?.()
-          break
       }
     },
     [
-      activePlanLabel,
-      availableWorkspaceCount,
-      currentWorkspace?.organizationName,
-      hasWorkspaceSettings,
       menuSummarySublabel,
+      menuTitle,
       navigate,
-      onLogout,
-      openCreateWorkspaceDialog,
-      openSettingsDrawer,
-      openSettingsDrawerFromRoute,
       setTheme,
       theme,
-      userData.email,
-      userData.name,
-      workspaceSettingsHref,
-      workspaceScoped,
     ],
   )
 
@@ -228,22 +154,21 @@ export function NavUser({
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
-          size="lg"
+          variant="pill"
+          size="default"
           type="button"
-          className="group rounded-2xl"
           onClick={handleMenuClick}
+          aria-label="Open user menu"
+          title="Open user menu"
         >
-          <Avatar className="h-6 w-6 rounded-full">
-            <AvatarImage src={userData.avatar} alt={userData.name} />
-            <AvatarFallback className="rounded-full">
-              {userData.name.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="grid min-w-0 flex-1 text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="min-w-0 truncate font-medium">{userData.name}</span>
-            <span className="min-w-0 truncate text-muted-foreground">{activePlanLabel}</span>
+          <HugeiconsIcon
+            icon={__SettingsHugeIcon}
+            className="size-3.5 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+          <div className="flex flex-1 items-center text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate font-normal text-sidebar-foreground">{menuTitle}</span>
           </div>
-          <ChevronsUpDown className="ml-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[collapsible=icon]:hidden" />
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>

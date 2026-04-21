@@ -87,6 +87,7 @@ export const logFileChange = mutation({
   args: {
     projectId: v.id("projects"),
     userId: v.optional(v.id("users")),
+    checkpointGroupId: v.optional(v.string()),
     filePath: v.string(),
     changeType: v.union(
       v.literal("create"),
@@ -94,8 +95,6 @@ export const logFileChange = mutation({
       v.literal("delete"),
       v.literal("rename")
     ),
-    oldContent: v.optional(v.string()),
-    newContent: v.optional(v.string()),
     additions: v.optional(v.number()),
     deletions: v.optional(v.number()),
     totalLines: v.optional(v.number()),
@@ -105,12 +104,58 @@ export const logFileChange = mutation({
       v.literal("remote"),
       v.literal("init")
     ),
+    sourceOrigin: v.optional(v.string()),
+    actorType: v.optional(
+      v.union(
+        v.literal("user"),
+        v.literal("agent"),
+        v.literal("system"),
+      )
+    ),
+    actorId: v.optional(v.string()),
     userName: v.optional(v.string()),
+    terminalId: v.optional(v.string()),
+    terminalTitle: v.optional(v.string()),
+    terminalKind: v.optional(v.string()),
+    commandId: v.optional(v.string()),
+    commandText: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    sessionKey: v.optional(v.string()),
+    laneId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    gitCwd: v.optional(v.string()),
+    changeTimestamp: v.optional(v.number()),
     /** For renames: the old path before rename */
     oldPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName, oldPath } = args
+    const {
+      projectId,
+      userId,
+      checkpointGroupId,
+      filePath,
+      changeType,
+      additions,
+      deletions,
+      totalLines,
+      origin,
+      sourceOrigin,
+      actorType,
+      actorId,
+      userName,
+      terminalId,
+      terminalTitle,
+      terminalKind,
+      commandId,
+      commandText,
+      runId,
+      sessionKey,
+      laneId,
+      workspaceId,
+      gitCwd,
+      changeTimestamp,
+      oldPath,
+    } = args
     if (shouldExcludeActivityPath(filePath)) {
       return null
     }
@@ -118,19 +163,33 @@ export const logFileChange = mutation({
     // Generate color for user
     const userColor = userId ? generateColor(userId) : "#6b7280"
 
-    await ctx.db.insert("fileChanges", {
+    return await ctx.db.insert("fileChanges", {
       projectId,
       userId,
+      checkpointGroupId,
       filePath,
       changeType,
-      oldContent: changeType === "rename" ? oldPath : oldContent,
-      newContent: changeType === "rename" ? filePath : newContent,
+      oldPath: changeType === "rename" ? oldPath : undefined,
       additions,
       deletions,
       totalLines,
       origin,
+      sourceOrigin,
+      actorType,
+      actorId,
       userName,
+      terminalId,
+      terminalTitle,
+      terminalKind,
+      commandId,
+      commandText,
+      runId,
+      sessionKey,
+      laneId,
+      workspaceId,
+      gitCwd,
       userColor,
+      changeTimestamp,
       timestamp: Date.now(),
     })
   },
@@ -175,16 +234,32 @@ export const getRecentActivity = query({
     const results = visibleChanges.map((change) => ({
       id: change._id,
       userId: change.userId,
+      checkpointGroupId: change.checkpointGroupId,
       filePath: change.filePath,
+      oldPath: change.oldPath,
       changeType: change.changeType,
       additions: change.additions,
       deletions: change.deletions,
       totalLines: change.totalLines,
       origin: change.origin,
+      sourceOrigin: change.sourceOrigin,
+      actorType: change.actorType,
+      actorId: change.actorId,
       userName: change.userName || "Unknown",
+      terminalId: change.terminalId,
+      terminalTitle: change.terminalTitle,
+      terminalKind: change.terminalKind,
+      commandId: change.commandId,
+      commandText: change.commandText,
+      runId: change.runId,
+      sessionKey: change.sessionKey,
+      laneId: change.laneId,
+      workspaceId: change.workspaceId,
+      gitCwd: change.gitCwd,
       userColor: change.userColor || "#6b7280",
       userImage: change.userId ? userImages.get(change.userId.toString()) : undefined,
       isAgent: change.origin === "agent",
+      changeTimestamp: change.changeTimestamp,
       timestamp: change.timestamp,
     }))
 
@@ -192,40 +267,48 @@ export const getRecentActivity = query({
   },
 })
 
-/**
- * Get a single file change with content for diff viewing.
- */
-export const getChangeWithContent = query({
+export const clearEphemeralChanges = mutation({
   args: {
-    changeId: v.id("fileChanges"),
+    projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const change = await ctx.db.get(args.changeId)
-    if (!change) return null
-    if (shouldExcludeActivityPath(change.filePath)) return null
+    const changes = await ctx.db
+      .query("fileChanges")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect()
 
-    // Fetch user image if userId exists
-    let userImage: string | undefined = undefined
-    if (change.userId) {
-      const user = await ctx.db.get(change.userId)
-      userImage = user?.profileImageUrl ?? undefined
+    const comments = await ctx.db
+      .query("changeComments")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect()
+
+    const reactions = await Promise.all(
+      comments.map((comment) =>
+        ctx.db
+          .query("changeCommentReactions")
+          .withIndex("by_comment", (q) => q.eq("commentId", comment._id))
+          .collect()
+      )
+    )
+
+    for (const commentReactions of reactions) {
+      for (const reaction of commentReactions) {
+        await ctx.db.delete(reaction._id)
+      }
+    }
+
+    for (const comment of comments) {
+      await ctx.db.delete(comment._id)
+    }
+
+    for (const change of changes) {
+      await ctx.db.delete(change._id)
     }
 
     return {
-      id: change._id,
-      filePath: change.filePath,
-      changeType: change.changeType,
-      oldContent: change.oldContent || "",
-      newContent: change.newContent || "",
-      additions: change.additions,
-      deletions: change.deletions,
-      totalLines: change.totalLines,
-      origin: change.origin,
-      userName: change.userName || "Unknown",
-      userColor: change.userColor || "#6b7280",
-      userImage,
-      isAgent: change.origin === "agent",
-      timestamp: change.timestamp,
+      deletedChanges: changes.length,
+      deletedComments: comments.length,
+      deletedReactions: reactions.reduce((total, commentReactions) => total + commentReactions.length, 0),
     }
   },
 })

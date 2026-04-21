@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { startTransition, useState, useEffect, useCallback, useRef } from 'react'
 import {
   checkDependenciesInstalled,
   detectPackageManager,
@@ -11,21 +11,42 @@ import {
   initialDevServerLifecycle,
   transitionDevServerLifecycle,
 } from '@/features/projects/lib/devServerLifecycle'
-import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import { createDevServerRestartScheduler } from '@/hooks/devServerRestartScheduler'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
 
 const RESTART_DELAY_MS = 500
+const MAX_DEV_SERVER_OUTPUT_LENGTH = 80_000
+const DEV_SERVER_OUTPUT_TRUNCATION_MESSAGE = '\n...dev server output truncated...\n'
+const OUTPUT_TIMELINE_INTERVAL_MS = 1500
+
+function appendDevServerOutput(current: string, chunk: string): string {
+  const next = current + chunk
+  if (next.length <= MAX_DEV_SERVER_OUTPUT_LENGTH) {
+    return next
+  }
+
+  const tailLength = Math.max(0, MAX_DEV_SERVER_OUTPUT_LENGTH - DEV_SERVER_OUTPUT_TRUNCATION_MESSAGE.length)
+  return `${DEV_SERVER_OUTPUT_TRUNCATION_MESSAGE}${next.slice(-tailLength)}`
+}
 
 interface UseDevServerManagerOptions {
   projectPath: string | null
+  sessionKey?: string | null
+  framework?: string | null
+  terminalId?: string | null
   autoStart?: boolean
   storedDevCommand?: string | null
   storedDevPort?: number | null
   previewMode?: DevServerLaunchContext['previewMode']
   nativePlatform?: DevServerLaunchContext['nativePlatform']
+  keepAliveOnUnmount?: boolean
+  initialSnapshot?: {
+    running: boolean
+    port: number | null
+    runId: string | null
+  } | null
   onReady?: (url: string) => void
   onError?: (error: string) => void
   onOutput?: (output: string) => void
@@ -40,7 +61,7 @@ interface DevServerState {
   failureReason: PreviewFailureReason | null
   lastOutputAt: number | null
   error: string | null
-  output: string[]
+  output: string
   timeline: DevServerTimelineEvent[]
   latestDomSnapshot: string | null
 }
@@ -67,33 +88,39 @@ const MAX_TIMELINE_EVENTS = 80
 
 export function useDevServerManager({
   projectPath,
+  sessionKey = null,
+  framework = null,
+  terminalId = null,
   autoStart = false,
   storedDevCommand = null,
   storedDevPort = null,
   previewMode = 'web',
   nativePlatform = null,
+  keepAliveOnUnmount = false,
+  initialSnapshot = null,
   onReady,
   onError,
   onOutput,
 }: UseDevServerManagerOptions) {
   const [state, setState] = useState<DevServerState>({
-    status: 'idle',
-    runId: null,
-    url: null,
-    port: null,
-    reachable: false,
+    status: initialSnapshot?.running ? 'ready' : 'idle',
+    runId: initialSnapshot?.runId ?? null,
+    url: initialSnapshot?.port ? `http://localhost:${initialSnapshot.port}` : null,
+    port: initialSnapshot?.port ?? null,
+    reachable: Boolean(initialSnapshot?.running && initialSnapshot?.port),
     failureReason: null,
     lastOutputAt: null,
     error: null,
-    output: [],
+    output: '',
     timeline: [],
     latestDomSnapshot: null,
   })
 
   const lifecycleRef = useRef(initialDevServerLifecycle())
-  const activeRunIdRef = useRef<string | null>(null)
+  const activeRunIdRef = useRef<string | null>(initialSnapshot?.runId ?? null)
   const cleanupRef = useRef<(() => void) | null>(null)
   const restartSchedulerRef = useRef(createDevServerRestartScheduler(RESTART_DELAY_MS))
+  const lastOutputTimelineAtRef = useRef(0)
 
   const transitionLifecycle = useCallback((event: Parameters<typeof transitionDevServerLifecycle>[1]) => {
     const result = transitionDevServerLifecycle(lifecycleRef.current, event)
@@ -126,115 +153,47 @@ export function useDevServerManager({
     })
   }, [])
 
-  const markUnhealthy = useCallback((reason: string, failureReason: PreviewFailureReason = 'server_unreachable') => {
-    const runId = activeRunIdRef.current
-    if (runId) {
-      transitionLifecycle({ type: 'unhealthy', runId, reason })
-    }
-    setState((prev) => ({
-      ...prev,
-      status: 'unhealthy',
-      error: reason,
-      failureReason,
-    }))
-    appendTimeline({
-      runId,
-      type: 'probe_failed',
-      message: reason,
-      details: { failureReason },
-    })
-  }, [appendTimeline, transitionLifecycle])
-
-  const markReadyFromPort = useCallback(async (runId: string, port: number) => {
-    if (isStaleRunEvent(runId)) return
-    const url = `http://localhost:${port}`
-
-    setState((prev) => ({
-      ...prev,
-      runId,
-      url,
-      port,
-      reachable: false,
-      failureReason: null,
-      error: null,
-    }))
-
-    let probeReachable = true
-    let failureReason: PreviewFailureReason | null = null
-    let failureMessage: string | null = null
-
-    if (window.electronAPI?.preview?.probeUrl) {
-      probeReachable = false
-      const maxAttempts = 12 // up to 30s total
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        if (isStaleRunEvent(runId)) return
-        try {
-          const probe = await window.electronAPI.preview.probeUrl({ url, timeoutMs: 2500 })
-          if (isStaleRunEvent(runId)) return
-          
-          if (probe.success && probe.reachable) {
-            probeReachable = true
-            failureReason = null
-            failureMessage = null
-            break
-          }
-          
-          const failure = getPreviewFailurePresentation(
-            probe.reason ?? 'server_unreachable',
-            probe.error ?? 'Dev server did not respond to probe',
-            { context: 'server' },
-          )
-          failureReason = failure.reason
-          failureMessage = failure.message
-        } catch (error) {
-          if (isStaleRunEvent(runId)) return
-          const failure = getPreviewFailurePresentation(
-            'server_unreachable',
-            error instanceof Error ? error.message : 'Dev server probe failed',
-            { context: 'server' },
-          )
-          failureReason = failure.reason
-          failureMessage = failure.message
-        }
-
-        if (attempt < maxAttempts && !isStaleRunEvent(runId)) {
-          await new Promise(resolve => setTimeout(resolve, 500))
-        }
-      }
-    }
-
-    if (!probeReachable) {
-      markUnhealthy(failureMessage ?? 'Dev server did not respond to probe', failureReason ?? 'server_unreachable')
+  useEffect(() => {
+    if (!initialSnapshot?.running || !initialSnapshot.port) {
       return
     }
 
-    appendTimeline({
-      runId,
-      type: 'ready_detected',
-      message: `Ready signal validated for port ${port}`,
+    activeRunIdRef.current = initialSnapshot.runId ?? activeRunIdRef.current
+    setState((prev) => {
+      const nextUrl = `http://localhost:${initialSnapshot.port}`
+      if (
+        prev.status === 'ready' &&
+        prev.port === initialSnapshot.port &&
+        prev.runId === (initialSnapshot.runId ?? prev.runId)
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        status: 'ready',
+        runId: initialSnapshot.runId ?? prev.runId,
+        url: nextUrl,
+        port: initialSnapshot.port,
+        reachable: true,
+        failureReason: null,
+        error: null,
+      }
     })
-    transitionLifecycle({ type: 'ready', runId })
-    setState((prev) => ({
-      ...prev,
-      status: 'ready',
-      runId,
-      url,
-      port,
-      reachable: true,
-      failureReason: null,
-      error: null,
-    }))
-    appendTimeline({
-      runId,
-      type: 'probe_succeeded',
-      message: `Reachability probe succeeded for ${url}`,
-    })
-    onReady?.(url)
-  }, [appendTimeline, isStaleRunEvent, markUnhealthy, onReady, transitionLifecycle])
+  }, [initialSnapshot?.port, initialSnapshot?.runId, initialSnapshot?.running])
 
   // Start the dev server
   const start = useCallback(async () => {
     if (!projectPath) return
+    if (!terminalId) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: 'Dev server terminal is still preparing. Try again in a moment.',
+        failureReason: 'server_unreachable',
+      }))
+      return
+    }
     if (state.status === 'starting' || state.status === 'ready') return
 
     restartSchedulerRef.current.cancel()
@@ -254,7 +213,7 @@ export function useDevServerManager({
       reachable: false,
       failureReason: null,
       error: null,
-      output: [],
+      output: '',
       lastOutputAt: null,
     }))
 
@@ -269,25 +228,31 @@ export function useDevServerManager({
       }
 
       let command = config.command
+      let bootstrapCommand: string | null = null
       const packageJsonExists = await hasPackageJson(projectPath)
       if (packageJsonExists) {
         const packageManager = await detectPackageManager(projectPath)
         const dependenciesInstalled = await checkDependenciesInstalled(projectPath, packageManager)
         if (!dependenciesInstalled) {
-          command = `${getInstallCommand(packageManager)} && ${config.command}`
+          bootstrapCommand = getInstallCommand(packageManager)
         }
       }
 
       console.log('[DevServer] Starting with config:', {
         ...config,
         command,
+        bootstrapCommand,
       })
 
       // Start the dev server
       const result = await window.electronAPI.devServer.start({
         projectPath,
         command,
+        bootstrapCommand,
         port: config.port,
+        sessionKey,
+        framework,
+        terminalId,
         runId: requestedRunId,
       })
 
@@ -313,9 +278,29 @@ export function useDevServerManager({
       })
 
       if (result.port) {
-         void markReadyFromPort(resolvedRunId, result.port)
-      } else if (result.existing && config.port) {
-         void markReadyFromPort(resolvedRunId, config.port)
+        const url = `http://localhost:${result.port}`
+        appendTimeline({
+          runId: resolvedRunId,
+          type: 'ready_detected',
+          message: `Ready on ${url}`,
+        })
+        appendTimeline({
+          runId: resolvedRunId,
+          type: 'probe_succeeded',
+          message: `Preview validated by the main process for ${url}`,
+        })
+        transitionLifecycle({ type: 'ready', runId: resolvedRunId })
+        setState((prev) => ({
+          ...prev,
+          status: 'ready',
+          runId: resolvedRunId,
+          url,
+          port: result.port ?? null,
+          reachable: true,
+          failureReason: null,
+          error: null,
+        }))
+        onReady?.(url)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -338,15 +323,18 @@ export function useDevServerManager({
     }
   }, [
     appendTimeline,
-    markReadyFromPort,
     nativePlatform,
     onError,
+    onReady,
     previewMode,
     projectPath,
+    sessionKey,
     state.status,
     storedDevCommand,
     storedDevPort,
+    terminalId,
     transitionLifecycle,
+    framework,
   ])
 
   // Stop the dev server
@@ -357,6 +345,25 @@ export function useDevServerManager({
 
     try {
       restartSchedulerRef.current.cancel()
+      const result = await window.electronAPI.devServer.stop({ projectPath })
+      if (!result.success) {
+        if (result.error) {
+          console.warn('[DevServer] Stop reported an error:', result.error)
+        }
+        setState((prev) => ({
+          ...prev,
+          status: 'error',
+          error: result.error ?? 'Failed to stop dev server',
+          failureReason: 'server_unreachable',
+        }))
+        appendTimeline({
+          runId: currentRunId,
+          type: 'error',
+          message: result.error ?? 'Failed to stop dev server',
+        })
+        return
+      }
+
       if (currentRunId) {
         transitionLifecycle({ type: 'stopped', runId: currentRunId })
       }
@@ -375,11 +382,6 @@ export function useDevServerManager({
         type: 'stopped',
         message: 'Dev server stopped',
       })
-
-      const result = await window.electronAPI.devServer.stop({ projectPath })
-      if (!result.success && result.error) {
-        console.warn('[DevServer] Stop reported an error:', result.error)
-      }
     } catch (err) {
       console.error('[DevServer] Failed to stop:', err)
     }
@@ -407,17 +409,23 @@ export function useDevServerManager({
       }
       const outputAt = Date.now()
 
-      // Append to output log
-      setState((prev) => ({
-        ...prev,
-        output: [...prev.output.slice(-100), output], // Keep last 100 lines
-        lastOutputAt: outputAt,
-      }))
-      appendTimeline({
-        runId: resolvedRunId ?? null,
-        type: 'output',
-        message: 'Received dev server output',
+      startTransition(() => {
+        setState((prev) => ({
+          ...prev,
+          output: appendDevServerOutput(prev.output, output),
+          lastOutputAt: outputAt,
+        }))
       })
+
+      if (outputAt - lastOutputTimelineAtRef.current >= OUTPUT_TIMELINE_INTERVAL_MS) {
+        lastOutputTimelineAtRef.current = outputAt
+        appendTimeline({
+          runId: resolvedRunId ?? null,
+          type: 'output',
+          message: 'Received dev server output',
+          details: { bytes: output.length },
+        })
+      }
 
       onOutput?.(output)
     })
@@ -501,12 +509,12 @@ export function useDevServerManager({
     const scheduler = restartSchedulerRef.current
     return () => {
       scheduler.cancel()
-      if (activeRunIdRef.current && projectPath) {
+      if (!keepAliveOnUnmount && activeRunIdRef.current && projectPath) {
         console.log('[DevServer] Cleaning up on unmount')
         window.electronAPI.devServer.stop({ projectPath }).catch(console.error)
       }
     }
-  }, [projectPath])
+  }, [keepAliveOnUnmount, projectPath])
 
   const setLatestDomSnapshot = useCallback((snapshot: string | null) => {
     setState((prev) => ({ ...prev, latestDomSnapshot: snapshot }))
