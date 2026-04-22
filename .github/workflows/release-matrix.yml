@@ -33,7 +33,7 @@ jobs:
         include:
           - name: macOS arm64
             artifact_name: macos-arm64
-            runs_on: macos-15-xlarge
+            runs_on: blacksmith-12vcpu-macos-latest
             electron_target: mac
             arch: arm64
             git_bundle_targets: darwin-arm64
