@@ -24,7 +24,7 @@
     "lint": "oxlint src electron convex shared server/src server/scripts tests electron.vite.config.ts vitest.config.ts",
     "test": "vitest run",
     "check:effect-schema": "node scripts/check-effect-schema-standardization.mjs",
-    "check:assistant-imports": "vitest run tests/assistantChatRuntimeImports.test.ts",
+    "check:assistant-imports": "vitest run tests/assistant/assistantChatRuntimeImports.test.ts",
     "audit:electron-ipc": "node scripts/audit-electron-ipc.mjs",
     "audit:electron-api-renderer": "node scripts/audit-electron-api-renderer.mjs",
     "test:watch": "vitest",

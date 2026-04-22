@@ -34,7 +34,7 @@ export default defineConfig({
       },
       {
         find: /^effect\/Context$/,
-        replacement: resolveFromRoot("./test-support/effect-context.ts"),
+        replacement: resolveFromRoot("./tests/support/effect-context.ts"),
       },
       {
         find: /^@effect\/sql\/SqlClient$/,
@@ -57,10 +57,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [
-      "electron/*.test.ts",
-      "electron/assistant-runtime/**/*.test.ts",
-      "shared/assistant-shared/*.test.ts",
-      "shared/assistant-contracts/*.test.ts",
+      "tests/electron/*.test.ts",
+      "tests/electron/assistant-runtime/**/*.test.ts",
+      "tests/shared/assistant-shared/*.test.ts",
+      "tests/shared/assistant-contracts/*.test.ts",
     ],
   },
 });

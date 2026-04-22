@@ -228,7 +228,7 @@ git commit -m "Updated stuff"
 ## Boundaries
 
 ### ✅ Always
-- Run `npm run typecheck` before committing
+- Run `bun run typecheck` before committing
 - Use existing UI components from `src/components/ui/`
 - Follow the established patterns in similar files
 

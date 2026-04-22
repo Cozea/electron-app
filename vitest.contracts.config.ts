@@ -29,8 +29,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [
-      "shared/assistant-contracts/*.test.ts",
-      "electron/assistant-runtime/keybindings.test.ts",
+      "tests/shared/assistant-contracts/*.test.ts",
+      "tests/electron/assistant-runtime/keybindings.test.ts",
     ],
   },
 });
