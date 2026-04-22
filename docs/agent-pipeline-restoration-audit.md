@@ -475,8 +475,8 @@ Why this goes first:
 
 Files likely impacted:
 
-- provider tests under `electron/assistant-runtime/provider/Layers/ProviderRegistry.test.ts`
-- websocket/runtime tests such as `electron/assistant-runtime/wsServer.test.ts`
+- provider tests under `tests/electron/assistant-runtime/provider/Layers/ProviderRegistry.test.ts`
+- websocket/runtime tests such as `tests/electron/assistant-runtime/wsServer.test.ts`
 - any runtime payload serialization touching `ServerProvider`
 
 Why this goes second:

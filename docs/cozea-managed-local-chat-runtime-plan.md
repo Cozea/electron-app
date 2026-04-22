@@ -604,7 +604,7 @@ Ship the architecture change safely.
 
 Current implementation update:
 
-- `tests/assistantChatRuntimeImports.test.ts` now verifies that desktop runtime boot still provides the startup layer expected by the runtime program, registers the runtime-status IPC bridge before app readiness, and clears cached runtime fibers safely on exit.
+- `tests/assistant/assistantChatRuntimeImports.test.ts` now verifies that desktop runtime boot still provides the startup layer expected by the runtime program, registers the runtime-status IPC bridge before app readiness, and clears cached runtime fibers safely on exit.
 - The same focused runtime wiring test now also verifies that the sqlite client uses the installed Effect reactivity import path, so the Electron-managed runtime does not regress back to the missing-module crash.
 - Manual desktop dev verification now shows the full bridge startup sequence reaching `runtime-ready` instead of restart-looping on runtime boot errors.
 
