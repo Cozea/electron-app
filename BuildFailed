@@ -1,0 +1,16 @@
+name: BuildFailed Shim
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  shim:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Shim
+        run: echo "BuildFailed workflow shim is active"
