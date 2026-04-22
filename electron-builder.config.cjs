@@ -1,8 +1,14 @@
+const releaseLane = process.env.COZEA_RELEASE_LANE ?? "stable"
+const updaterChannel = process.env.COZEA_UPDATER_CHANNEL ?? "latest"
+const githubReleaseType =
+  process.env.COZEA_GITHUB_RELEASE_TYPE ?? (releaseLane === "stable" ? "release" : "prerelease")
+
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: "com.cozea.app",
   productName: "Cozea",
   forceCodeSigning: true,
+  generateUpdatesFilesForAllChannels: true,
   // Pack archive rewriting must happen before app signing/notarization.
   // Running it after notarization invalidates Gatekeeper trust for the final app.
   afterPack: "scripts/electron-builder-after-sign.cjs",
@@ -49,6 +55,7 @@ module.exports = {
     provider: "github",
     owner: "Cozea",
     repo: "cozea-prod",
-    releaseType: "release",
+    channel: updaterChannel,
+    releaseType: githubReleaseType,
   },
 }

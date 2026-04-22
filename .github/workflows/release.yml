@@ -62,6 +62,9 @@ jobs:
       release_tag: ${{ steps.plan.outputs.release_tag }}
       checkout_ref: ${{ steps.plan.outputs.checkout_ref }}
       publish_mode: ${{ steps.plan.outputs.publish_mode }}
+      release_lane: ${{ steps.plan.outputs.release_lane }}
+      updater_channel: ${{ steps.plan.outputs.updater_channel }}
+      github_release_type: ${{ steps.plan.outputs.github_release_type }}
     steps:
       - name: Resolve release inputs
         id: plan
@@ -88,9 +91,37 @@ jobs:
             exit 1
           fi
 
+          version="${release_tag#v}"
+          release_lane="stable"
+          updater_channel="latest"
+          github_release_type="release"
+
+          case "${version}" in
+            *-beta.*|*-beta)
+              release_lane="beta"
+              updater_channel="beta"
+              github_release_type="prerelease"
+              ;;
+            *-canary.*|*-canary)
+              release_lane="canary"
+              # Electron Builder's documented prerelease ladder is latest/beta/alpha.
+              # We expose "canary" at the product level, but publish it on the alpha
+              # updater channel to preserve prerelease update behavior.
+              updater_channel="alpha"
+              github_release_type="prerelease"
+              ;;
+            *-*)
+              echo "::error::Unsupported prerelease tag ${release_tag}. Use stable, beta, or canary only."
+              exit 1
+              ;;
+          esac
+
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
           echo "checkout_ref=${checkout_ref}" >> "$GITHUB_OUTPUT"
           echo "publish_mode=${publish_mode}" >> "$GITHUB_OUTPUT"
+          echo "release_lane=${release_lane}" >> "$GITHUB_OUTPUT"
+          echo "updater_channel=${updater_channel}" >> "$GITHUB_OUTPUT"
+          echo "github_release_type=${github_release_type}" >> "$GITHUB_OUTPUT"
 
       - name: Release summary
         run: |
@@ -98,6 +129,9 @@ jobs:
           ## Release plan
 
           - Release tag: \`${{ steps.plan.outputs.release_tag }}\`
+          - Release lane: \`${{ steps.plan.outputs.release_lane }}\`
+          - Updater channel: \`${{ steps.plan.outputs.updater_channel }}\`
+          - GitHub release type: \`${{ steps.plan.outputs.github_release_type }}\`
           - Checkout ref: \`${{ steps.plan.outputs.checkout_ref }}\`
           - Publish mode: \`${{ steps.plan.outputs.publish_mode }}\`
           EOF
@@ -110,6 +144,9 @@ jobs:
     env:
       COZEA_RUNTIME_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
       COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+      COZEA_RELEASE_LANE: ${{ needs.plan.outputs.release_lane }}
+      COZEA_UPDATER_CHANNEL: ${{ needs.plan.outputs.updater_channel }}
+      COZEA_GITHUB_RELEASE_TYPE: ${{ needs.plan.outputs.github_release_type }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -218,6 +255,9 @@ jobs:
       COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
       COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.git_bundle_targets }}
       COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.runtime_bundle_targets }}
+      COZEA_RELEASE_LANE: ${{ needs.plan.outputs.release_lane }}
+      COZEA_UPDATER_CHANNEL: ${{ needs.plan.outputs.updater_channel }}
+      COZEA_GITHUB_RELEASE_TYPE: ${{ needs.plan.outputs.github_release_type }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
