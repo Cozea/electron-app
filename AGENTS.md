@@ -53,9 +53,9 @@ Releases are built by GitHub Actions and published as GitHub Releases in the **d
 
 - A release build/publish runs automatically **only** when a git tag matching `v*` is pushed (e.g. `v0.0.7`).
 - Normal branch pushes do **not** publish a release.
-- `workflow_dispatch` is enabled but currently resolves publish mode to `never` (build only, no publish).
+- `workflow_dispatch` can rebuild an existing tag in dry-run mode or publish it when `publish=true`.
 
-Workflow file: `.github/workflows/release-matrix.yml`
+Workflow file: `.github/workflows/release.yml`
 
 ### How To Cut a Release (Example)
 
