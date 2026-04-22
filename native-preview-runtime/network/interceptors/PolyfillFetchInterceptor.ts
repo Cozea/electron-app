@@ -205,7 +205,7 @@ class IncrementalResponseQueue {
  * Should be used alongside XHRInterceptor to cover all network request types.
  * Shares AsyncBoundedResponseBuffer with XHRInterceptor for response storage.
  *
- * @see polyfill_readme.md for detailed implementation notes
+ * @see docs/native-preview-runtime/network/interceptors/polyfill_readme.md for detailed implementation notes
  */
 class PolyfillFetchInterceptor {
   private enabled: boolean = false;
