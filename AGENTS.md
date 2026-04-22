@@ -54,6 +54,15 @@ Releases are built by GitHub Actions and published as GitHub Releases in the **d
 - A release build/publish runs automatically **only** when a git tag matching `v*` is pushed (e.g. `v0.0.7`).
 - Normal branch pushes do **not** publish a release.
 - `workflow_dispatch` can rebuild an existing tag in dry-run mode or publish it when `publish=true`.
+- Release lanes are limited to `stable`, `beta`, and `canary`.
+- Tag format:
+  - Stable: `v0.2.1`
+  - Beta: `v0.3.0-beta.1`
+  - Canary: `v0.3.0-canary.1`
+- Electron Builder's updater channel mapping is:
+  - Stable -> `latest`
+  - Beta -> `beta`
+  - Canary -> `alpha`
 
 Workflow file: `.github/workflows/release.yml`
 

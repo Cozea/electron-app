@@ -952,6 +952,24 @@ let updateInterval: NodeJS.Timeout | null = null
 
 const isAutoUpdateEnabled = () => app.isPackaged
 
+function resolveReleaseLaneFromVersion(version: string): 'stable' | 'beta' | 'canary' {
+  const normalized = version.trim().toLowerCase()
+  if (normalized.includes('-canary')) return 'canary'
+  if (normalized.includes('-beta')) return 'beta'
+  return 'stable'
+}
+
+function resolveUpdaterChannelForReleaseLane(lane: 'stable' | 'beta' | 'canary'): 'latest' | 'beta' | 'alpha' {
+  switch (lane) {
+    case 'canary':
+      return 'alpha'
+    case 'beta':
+      return 'beta'
+    default:
+      return 'latest'
+  }
+}
+
 function broadcastUpdateState(state: UpdateState): void {
   forEachBroadcastWindow((window) => {
     if (window.webContents.isDestroyed()) return
@@ -985,8 +1003,13 @@ function normalizeReleaseNotes(releaseNotes: unknown): string | undefined {
 function registerAutoUpdater(): void {
   if (!isAutoUpdateEnabled()) return
 
+  const releaseLane = resolveReleaseLaneFromVersion(app.getVersion())
+  const updaterChannel = resolveUpdaterChannelForReleaseLane(releaseLane)
+
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.channel = updaterChannel
+  autoUpdater.allowPrerelease = updaterChannel !== 'latest'
 
   autoUpdater.on('checking-for-update', () => {
     setUpdateState({ status: 'checking', error: undefined })
