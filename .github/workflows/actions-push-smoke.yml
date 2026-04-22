@@ -1,0 +1,13 @@
+name: Actions Push Smoke
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Smoke
+        run: echo "actions push smoke ok"
