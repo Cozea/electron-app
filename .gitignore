@@ -30,6 +30,7 @@ build/runtime/**
 # Server (separate repo)
 server/
 external/
+packages/pty/target/
 
 # Duplicate lockfile
 package-lock 2.json
@@ -39,9 +40,32 @@ package-lock 2.json
 !.vscode/extensions.json
 .idea
 .DS_Store
+.playwright-cli/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 out
+
+# Local caches
+__pycache__/
+*.pyc
+*.pyo
+*.tsbuildinfo
+
+# Local scratch output
+scratch/config-snapshots/cozea@0.0.0
+scratch/config-snapshots/electron-vite
+scratch/config-snapshots/electron.vite.config.*.mjs
+scratch/config-snapshots/package-lock 3.json
+scratch/config-snapshots/package.json.tmp
+scratch/diagnostics/analysis.txt
+scratch/diagnostics/icons.txt
+scratch/diagnostics/logs.txt
+scratch/diagnostics/out.html
+scratch/diagnostics/out.js
+scratch/diagnostics/search.html
+scratch/diagnostics/stream.out
+scratch/marketplace/marketplace_response.json
+scratch/marketplace/*.vsix
