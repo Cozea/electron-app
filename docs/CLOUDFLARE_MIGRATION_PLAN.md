@@ -26,7 +26,7 @@ The migration is now partially scaffolded in-repo so the plan has an executable 
 - [`cloudflare/worker/wrangler.jsonc`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/wrangler.jsonc:1)
 - [`cloudflare/worker/src/index.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/index.ts:1)
 - [`cloudflare/worker/src/durableObjects/CollabRoom.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/durableObjects/CollabRoom.ts:1)
-- [`cloudflare/worker/PROTOCOL.md`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/PROTOCOL.md:1)
+- [`docs/cloudflare/worker/PROTOCOL.md`](/Users/admin/Downloads/electron-app-main/docs/cloudflare/worker/PROTOCOL.md:1)
 
 This scaffold is intentionally not wired into production yet. It defines the target contract and removes ambiguity about what the Cloudflare replacement actually is.
 

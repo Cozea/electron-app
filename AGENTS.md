@@ -43,6 +43,7 @@ bun run build
 ## Desktop Releases (GitHub)
 
 Releases are built by GitHub Actions and published as GitHub Releases in the **distribution repo**.
+The fast agent-facing summary lives here; the fuller operator guide is in `docs/release-process.md`.
 
 ### Source vs Distribution Repos
 
@@ -69,11 +70,11 @@ Workflow file: `.github/workflows/release.yml`
 ### How To Cut a Release (Example)
 
 ```shell
-# 1) Bump version (updates package.json + lockfile) without creating a tag
-npm version 0.0.8 --no-git-tag-version
+# 1) Update package.json to the release version, then refresh the Bun lockfile
+bun install
 
 # 2) Commit
-git add package.json package-lock.json
+git add package.json bun.lock
 git commit -m "chore: prepare v0.0.8 release"
 
 # 3) Tag + push the tag (this is what triggers the release)
@@ -112,13 +113,19 @@ Then run:
 
 ```shell
 # Publishes to the distribution repo configured in electron-builder.config.cjs (cozea-prod)
-GH_TOKEN="$(gh auth token)" npm run release
+GH_TOKEN="$(gh auth token)" bun run release
 ```
 
 > **IMPORTANT - Convex Deployment**: This project uses **production Convex only**.
-> - Always use `npx convex deploy` to push schema/function changes
-> - **NEVER** use `convex dev` or `npx convex dev --once` - it switches the app to a dev deployment
+> - Always use `bunx convex deploy` to push schema/function changes
+> - **NEVER** use `convex dev` or `bunx convex dev --once` - it switches the app to a dev deployment
 > - Production URL: `https://knowing-finch-546.convex.cloud`
+
+### Documentation Layout
+
+- Keep `AGENTS.md` at the repo root for the short, canonical agent instructions.
+- Keep all other project markdown docs under `docs/`.
+- When release behavior changes, update both `AGENTS.md` and `docs/release-process.md` in the same change.
 
 ## Project Structure
 
