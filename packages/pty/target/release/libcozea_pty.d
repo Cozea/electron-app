@@ -1,1 +1,0 @@
-/Users/admin/Downloads/electron-app-main/packages/pty/target/release/libcozea_pty.dylib: /Users/admin/Downloads/electron-app-main/packages/pty/build.rs /Users/admin/Downloads/electron-app-main/packages/pty/src/lib.rs
