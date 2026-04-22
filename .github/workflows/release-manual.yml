@@ -37,7 +37,7 @@ jobs:
             runtime_bundle_targets: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
-            runs_on: macos-15-intel
+            runs_on: blacksmith-6vcpu-macos-latest
             electron_target: mac
             arch: x64
             git_bundle_targets: darwin-x64
