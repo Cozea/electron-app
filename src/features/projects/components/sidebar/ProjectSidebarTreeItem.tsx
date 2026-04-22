@@ -95,14 +95,20 @@ export const ProjectSidebarTreeItem = React.memo(
       if (!activeLaneSummary) return false
       return activeLaneSummary.agents.length === 0 && activeLaneSummary.surfaces.length === 0
     }, [activeLaneSummary])
+    const isLanesOpen = context.isCurrentProject && selection.isExpanded
 
     const handleProjectRowClick = React.useCallback(() => {
-      if (rowClickOpensProject) {
-        void actions.openProject(project, localPath)
-        return
+      void actions.openProject(project, localPath)
+      if (!rowClickOpensProject) {
+        if (context.isCurrentProject) {
+          actions.toggleExpanded(project.id)
+          return
+        }
+        if (!selection.isExpanded) {
+          actions.toggleExpanded(project.id)
+        }
       }
-      actions.toggleExpanded(project.id)
-    }, [actions, localPath, project, rowClickOpensProject])
+    }, [actions, context.isCurrentProject, localPath, project, rowClickOpensProject, selection.isExpanded])
 
     const handleProjectMenuClick = React.useCallback(
       async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -214,7 +220,7 @@ export const ProjectSidebarTreeItem = React.memo(
     )
 
     return (
-      <Collapsible open={selection.isExpanded}>
+      <Collapsible open={isLanesOpen}>
         <div
           className={cn(
             "group/project-item flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-sidebar-foreground/70",
@@ -226,11 +232,11 @@ export const ProjectSidebarTreeItem = React.memo(
         >
           <button
             type="button"
-            aria-expanded={rowClickOpensProject ? undefined : selection.isExpanded}
+            aria-expanded={rowClickOpensProject ? undefined : isLanesOpen}
             aria-label={
               rowClickOpensProject
                 ? `Open ${project.name}`
-                : selection.isExpanded
+                : isLanesOpen
                   ? `${project.name}, lanes expanded. Press to collapse.`
                   : `${project.name}, lanes collapsed. Press to expand.`
             }
@@ -241,7 +247,7 @@ export const ProjectSidebarTreeItem = React.memo(
           >
             <NativeProjectFolderIcon
               folderPath={localPath}
-              isOpen={rowClickOpensProject ? false : selection.isExpanded}
+              isOpen={rowClickOpensProject ? false : isLanesOpen}
             />
             <span className="min-w-0 flex-1 truncate font-normal">{project.name}</span>
           </button>

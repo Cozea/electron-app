@@ -166,8 +166,8 @@ export function NavUser({
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden
           />
-          <div className="flex flex-1 items-center text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate font-normal text-sidebar-foreground">{menuTitle}</span>
+          <div className="flex min-w-0 flex-1 items-center text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="block w-full truncate font-normal text-sidebar-foreground">{menuTitle}</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>
