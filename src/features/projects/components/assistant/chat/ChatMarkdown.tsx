@@ -21,9 +21,15 @@ import React, {
 } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
+import { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTheme } from "@/contexts/ThemeContext";
 import { resolveAppliedTheme } from "@/lib/theme";
+import {
+  openProjectFileInExternalEditor,
+  readStoredExternalEditorPreference,
+} from "@/features/projects/lib/externalEditorPreference";
+import { splitPathAndPosition } from "@/lib/terminalLinks";
 import { openInPreferredEditor } from "@/stores/editorPreferences";
 import {
   resolveDiffThemeName,
@@ -31,7 +37,10 @@ import {
   fnv1a32,
 } from "@/features/projects/components/assistant/lib/diffRendering";
 import { LRUCache } from "@/features/projects/components/assistant/lib/lruCache";
-import { resolveMarkdownFileLinkTarget } from "@/stores/markdown-links";
+import {
+  resolveMarkdownFileLinkTarget,
+  rewriteMarkdownFileUriHref,
+} from "@/stores/markdown-links";
 import { readNativeApi } from "@/lib/nativeApi";
 import { cn } from "@/lib/utils";
 
@@ -252,6 +261,9 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
   const { theme } = useTheme();
   const appliedTheme = resolveAppliedTheme(theme);
   const diffThemeName = resolveDiffThemeName(appliedTheme === "light" ? "light" : "dark");
+  const markdownUrlTransform = useCallback((href: string) => {
+    return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
+  }, []);
   const markdownComponents = useMemo<Components>(
     () => ({
       a({ node: _node, href, ...props }) {
@@ -267,6 +279,28 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
+              const { path, line: lineStr, column: columnStr } = splitPathAndPosition(targetPath);
+              const line = lineStr ? Number.parseInt(lineStr, 10) : undefined;
+              const column = columnStr ? Number.parseInt(columnStr, 10) : undefined;
+
+              if (typeof window !== "undefined" && window.electronAPI?.editor) {
+                void openProjectFileInExternalEditor({
+                  filePath: path,
+                  line: Number.isFinite(line) ? line : undefined,
+                  column: Number.isFinite(column) ? column : undefined,
+                  projectPath: cwd ?? null,
+                  preferredEditorId: readStoredExternalEditorPreference(),
+                }).then((result) => {
+                  if (!result.success) {
+                    console.warn(
+                      "Unable to open markdown file link in external editor.",
+                      result.error,
+                    );
+                  }
+                });
+                return;
+              }
+
               const api = readNativeApi();
               if (api) {
                 void openInPreferredEditor(api, targetPath);
@@ -309,7 +343,11 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
         variant === "timeline" ? "text-xs leading-normal" : "text-sm leading-relaxed",
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={markdownComponents}
+        urlTransform={markdownUrlTransform}
+      >
         {text}
       </ReactMarkdown>
     </div>

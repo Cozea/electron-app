@@ -2,8 +2,13 @@
 import { Fragment, type ReactNode, createElement, useEffect } from "react";
 import {
   ThreadId,
+  type OrchestrationEvent,
   type OrchestrationReadModel,
 } from "@cozea/assistant-contracts";
+import {
+  createEmptyOrchestrationReadModel,
+  projectOrchestrationReadModelEvent,
+} from "@/stores/orchestrationReadModelProjector";
 import { resolveModelSlugForProvider } from "@cozea/assistant-shared/model";
 import { create } from "zustand";
 import { type ChatMessage, type Project, type Thread } from "./types";
@@ -17,6 +22,8 @@ export interface AppState {
   projects: Project[];
   threads: Thread[];
   threadsHydrated: boolean;
+  /** Canonical server read model; updated by snapshot hydrate + WS domain events. */
+  orchestrationReadModel: OrchestrationReadModel;
 }
 
 const PERSISTED_STATE_KEY = "cozea:assistant:renderer-state:v8";
@@ -25,6 +32,7 @@ const initialState: AppState = {
   projects: [],
   threads: [],
   threadsHydrated: false,
+  orchestrationReadModel: createEmptyOrchestrationReadModel(new Date().toISOString()),
 };
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
@@ -168,13 +176,12 @@ function attachmentPreviewRoutePath(attachmentId: string): string {
 
 // ── Pure state transition functions ────────────────────────────────────
 
-export function syncServerReadModel(state: AppState, readModel: OrchestrationReadModel): AppState {
-  const projects = mapProjectsFromReadModel(
-    readModel.projects.filter((project) => project.deletedAt === null),
-    state.projects,
-  );
-  const existingThreadById = new Map(state.threads.map((thread) => [thread.id, thread] as const));
-  const threads = readModel.threads
+function mapUiThreadsFromReadModel(
+  readModel: OrchestrationReadModel,
+  existingThreads: Thread[],
+): Thread[] {
+  const existingThreadById = new Map(existingThreads.map((thread) => [thread.id, thread] as const));
+  return readModel.threads
     .filter((thread) => thread.deletedAt === null)
     .map((thread) => {
       const existing = existingThreadById.get(thread.id);
@@ -241,8 +248,85 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         activities: thread.activities.map((activity) => ({ ...activity })),
       };
     });
+}
+
+export function syncServerReadModel(state: AppState, readModel: OrchestrationReadModel): AppState {
+  const projects = mapProjectsFromReadModel(
+    readModel.projects.filter((project) => project.deletedAt === null),
+    state.projects,
+  );
+  const threads = mapUiThreadsFromReadModel(readModel, state.threads);
   return {
     ...state,
+    orchestrationReadModel: readModel,
+    projects,
+    threads,
+    threadsHydrated: true,
+  };
+}
+
+/**
+ * Merge consecutive `thread.message-sent` events for the same message (t3
+ * `coalesceOrchestrationUiEvents`) so one store update can represent a burst of
+ * streaming deltas.
+ */
+export function coalesceOrchestrationUiEvents(
+  events: ReadonlyArray<OrchestrationEvent>,
+): OrchestrationEvent[] {
+  if (events.length < 2) {
+    return [...events];
+  }
+
+  const coalesced: OrchestrationEvent[] = [];
+  for (const event of events) {
+    const previous = coalesced.at(-1);
+    if (
+      previous?.type === "thread.message-sent" &&
+      event.type === "thread.message-sent" &&
+      previous.payload.threadId === event.payload.threadId &&
+      previous.payload.messageId === event.payload.messageId
+    ) {
+      coalesced[coalesced.length - 1] = {
+        ...event,
+        payload: {
+          ...event.payload,
+          attachments: event.payload.attachments ?? previous.payload.attachments,
+          createdAt: previous.payload.createdAt,
+          text:
+            !event.payload.streaming && event.payload.text.length > 0
+              ? event.payload.text
+              : previous.payload.text + event.payload.text,
+        },
+      };
+      continue;
+    }
+
+    coalesced.push(event);
+  }
+
+  return coalesced;
+}
+
+export function applyOrchestrationDomainEventsToState(
+  state: AppState,
+  events: ReadonlyArray<OrchestrationEvent>,
+): AppState {
+  if (events.length === 0) {
+    return state;
+  }
+  const coalesced = coalesceOrchestrationUiEvents(events);
+  let readModel = state.orchestrationReadModel;
+  for (const event of coalesced) {
+    readModel = projectOrchestrationReadModelEvent(readModel, event);
+  }
+  const projects = mapProjectsFromReadModel(
+    readModel.projects.filter((project) => project.deletedAt === null),
+    state.projects,
+  );
+  const threads = mapUiThreadsFromReadModel(readModel, state.threads);
+  return {
+    ...state,
+    orchestrationReadModel: readModel,
     projects,
     threads,
     threadsHydrated: true,
@@ -350,6 +434,7 @@ export function setThreadBranch(
 
 interface AppStore extends AppState {
   syncServerReadModel: (readModel: OrchestrationReadModel) => void;
+  applyOrchestrationDomainEvents: (events: ReadonlyArray<OrchestrationEvent>) => void;
   markThreadVisited: (threadId: ThreadId, visitedAt?: string) => void;
   markThreadUnread: (threadId: ThreadId) => void;
   toggleProject: (projectId: Project["id"]) => void;
@@ -362,6 +447,8 @@ interface AppStore extends AppState {
 export const useStore = create<AppStore>((set) => ({
   ...readPersistedState(),
   syncServerReadModel: (readModel) => set((state) => syncServerReadModel(state, readModel)),
+  applyOrchestrationDomainEvents: (events) =>
+    set((state) => applyOrchestrationDomainEventsToState(state, events)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId) => set((state) => markThreadUnread(state, threadId)),

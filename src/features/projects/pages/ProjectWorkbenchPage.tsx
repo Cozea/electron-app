@@ -186,24 +186,28 @@ export function ProjectWorkbenchPage() {
             <span className="truncate">{projectName}</span>
           </div>
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-            <span className="text-muted-foreground/40 font-light select-none">/</span>
-            <WorkbenchHeaderBranchControl
-              projectId={projectId}
-              projectPath={projectPath}
-              collabBranch={collabBranch}
-              laneState={laneState}
-              activeLane={activeLane}
-              onLaneStateChange={() => {
-                void refreshLaneState?.();
-              }}
-              triggerClassName="h-6 rounded-md border-0 bg-transparent px-1.5 hover:bg-muted/60"
-            />
-            {project?._id ? (
-              <ProjectSyncIndicator
-                variant="compact"
-                className="h-5 w-5 shrink-0 rounded-sm bg-transparent"
+            <div className="inline-flex h-6 items-center rounded-md bg-sidebar px-0.5 text-muted-foreground/85 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)]">
+              <WorkbenchHeaderBranchControl
+                projectId={projectId}
+                projectPath={projectPath}
+                collabBranch={collabBranch}
+                laneState={laneState}
+                activeLane={activeLane}
+                onLaneStateChange={() => {
+                  void refreshLaneState?.();
+                }}
+                triggerClassName="h-6 min-h-6 gap-px rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
+                trailing={
+                  project?._id ? (
+                    <ProjectSyncIndicator
+                      variant="compact"
+                      inheritPillTextColor
+                      className="h-5 w-5 shrink-0 rounded-none bg-transparent shadow-none"
+                    />
+                  ) : null
+                }
               />
-            ) : null}
+            </div>
           </div>
         </div>
       </div>

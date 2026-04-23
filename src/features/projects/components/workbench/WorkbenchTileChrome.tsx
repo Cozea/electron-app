@@ -256,7 +256,7 @@ export function WorkbenchTileChrome({
         {!hideTitlePill ? (
           <div
             className={cn(
-              "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5",
+              "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5",
               chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
             )}
           >
@@ -278,7 +278,7 @@ export function WorkbenchTileChrome({
             className={cn(
               "flex shrink-0 items-center gap-1 transition-colors",
               chromeVariant === "pill" &&
-                "rounded-full bg-secondary px-1 shadow-none ring-0",
+                "rounded-md bg-secondary px-1 shadow-none ring-0",
             )}
           >
             {actions}
@@ -287,7 +287,7 @@ export function WorkbenchTileChrome({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
+                "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
                 chromeVariant === "pill"
                   ? pillControlHoverClasses
                   : "hover:bg-accent",
@@ -362,7 +362,7 @@ export function WorkbenchTileChrome({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 rounded-full border-0 shadow-none transition-colors",
+                "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
                 chromeVariant === "pill"
                   ? pillControlHoverClasses
                   : "hover:bg-accent",

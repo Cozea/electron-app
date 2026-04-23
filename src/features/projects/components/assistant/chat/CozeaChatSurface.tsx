@@ -429,8 +429,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     setComposerDockFocused(false)
   }, [])
-  const showComposerDockChrome =
-    !dockComposerOnHover ||
+  const dockComposerChromeReasons =
     composerDockHover ||
     composerDockFocused ||
     activePendingApproval !== null ||
@@ -441,6 +440,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isRunning ||
     props.isSending ||
     props.isInterrupting
+
+  const showComposerDockChrome = !dockComposerOnHover || dockComposerChromeReasons
+
+  const reserveScrollSpaceForDockedComposer =
+    dockComposerOnHover && dockComposerChromeReasons
 
   useEffect(() => {
     if (!isWorking) {
@@ -586,7 +590,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         event.preventDefault()
         void props.onSend()
       }}
-      className="mx-auto w-full min-w-0 max-w-2xl"
+      className="mx-auto w-full min-w-0 max-w-3xl"
     >
       {props.composerStatus}
 
@@ -864,7 +868,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : (
           <div
             ref={props.timelineRef}
-            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-5 sm:py-4"
+            className={cn(
+              "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 sm:px-5",
+              reserveScrollSpaceForDockedComposer
+                ? "pt-3 pb-28 transition-[padding-bottom] duration-200 ease-out sm:pt-4 sm:pb-32"
+                : "py-3 sm:py-4",
+            )}
           >
             <MessagesTimeline
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
@@ -900,7 +909,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           >
             <div
               className={cn(
-                "relative mx-auto w-full max-w-2xl",
+                "relative mx-auto w-full min-w-0 max-w-3xl",
               )}
             >
               <div

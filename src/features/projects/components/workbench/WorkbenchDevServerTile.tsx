@@ -615,7 +615,7 @@ function WorkbenchRuntimePreviewTile({
         </Toggle>
       </div>
       {previewDestination === "cozea" ? (
-        <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-secondary px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md bg-secondary px-2">
           <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
           <Input
             value={draftUrl}

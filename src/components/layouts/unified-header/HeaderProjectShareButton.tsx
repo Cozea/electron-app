@@ -558,19 +558,19 @@ export function HeaderProjectShareButton({
           <DialogTrigger asChild>
             <Button
               variant="ghost"
-              className="h-6 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
               disabled={!projectId || roleCheckPending || shareStatePending}
               aria-label="Share project"
+              title="Share project"
               onMouseEnter={prewarmPersonalContacts}
               onFocus={prewarmPersonalContacts}
               onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="size-3 shrink-0 animate-spin" />
+                <HugeiconsIcon icon={__Loader2HugeIcon} className="size-4 shrink-0 animate-spin" />
               ) : (
-                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-3 shrink-0" />
+                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
               )}
-              <span className="text-[10px] leading-none">Share</span>
             </Button>
           </DialogTrigger>
         </TooltipTrigger>

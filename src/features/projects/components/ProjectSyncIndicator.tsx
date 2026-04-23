@@ -23,6 +23,8 @@ type ProjectSyncIndicatorVariant = "sidebar" | "compact"
 interface ProjectSyncIndicatorProps {
   variant?: ProjectSyncIndicatorVariant
   className?: string
+  /** Compact variant: follow parent text color (e.g. sidebar-toned header pill). */
+  inheritPillTextColor?: boolean
 }
 
 /** Match sidebar collapse control: muted, foreground when the control is hovered. */
@@ -68,6 +70,7 @@ function getIndicatorStateKey(state: IndicatorState): string {
 export function ProjectSyncIndicator({
   variant = "sidebar",
   className,
+  inheritPillTextColor = false,
 }: ProjectSyncIndicatorProps) {
   const syncContext = useOptionalProjectSyncContext()
   const { isConnected } = useYjsProject()
@@ -242,9 +245,10 @@ export function ProjectSyncIndicator({
   }, [computedState, computedStateKey, displayStateKey])
 
   const Icon = displayState.icon
+  const compactIconToneClass = inheritPillTextColor ? "text-current" : INDICATOR_ICON_CLASS
   const iconClassName = cn(
     "h-4 w-4 shrink-0 transition-colors duration-200 ease-out",
-    INDICATOR_ICON_CLASS,
+    compactIconToneClass,
     displayState.motion === "spin" && "animate-spin",
     displayState.motion === "pulse" && "animate-pulse",
     displayState.filled && "fill-current",
@@ -269,7 +273,13 @@ export function ProjectSyncIndicator({
               )}
             >
               {showCompactSpinner ? (
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 shrink-0 animate-spin text-muted-foreground group-hover:text-foreground" />
+                <HugeiconsIcon
+                  icon={__Loader2HugeIcon}
+                  className={cn(
+                    "h-4 w-4 shrink-0 animate-spin",
+                    inheritPillTextColor ? "text-current" : "text-muted-foreground group-hover:text-foreground",
+                  )}
+                />
               ) : (
                 <Icon className={iconClassName} />
               )}

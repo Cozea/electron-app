@@ -108,7 +108,7 @@ function inferHomeFromCwd(cwd: string): string | undefined {
   return undefined;
 }
 
-function splitPathAndPosition(value: string): {
+export function splitPathAndPosition(value: string): {
   path: string;
   line: string | undefined;
   column: string | undefined;

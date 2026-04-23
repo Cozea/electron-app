@@ -248,7 +248,7 @@ function SelectionFilterBar({
 
         <div className="flex w-full shrink-0 justify-end">
           <div
-            className="flex h-9 w-full items-center gap-2 rounded-full bg-secondary px-3 text-sm transition-[color,box-shadow]"
+            className="flex h-9 w-full items-center gap-2 rounded-md bg-secondary px-3 text-sm transition-[color,box-shadow]"
             role="status"
             aria-label="Quick open hint"
           >
