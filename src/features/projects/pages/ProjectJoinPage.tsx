@@ -19,7 +19,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AlertCircleIcon as __AlertCircleHugeIcon,
   Link01Icon as __Link2HugeIcon,
-  Refresh01Icon as __Loader2HugeIcon,
 } from "@hugeicons/core-free-icons"
 
 function cleanConvexError(error: unknown, fallback: string): string {
@@ -105,7 +104,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
+              <div className="loader text-primary" />
             </div>
             <CardTitle>Loading Invite Link...</CardTitle>
             <CardDescription>Checking the project access attached to this link.</CardDescription>
@@ -147,7 +146,7 @@ export function ProjectJoinPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
+              <div className="loader text-primary" />
             </div>
             <CardTitle>Preparing This Device...</CardTitle>
             <CardDescription>Finishing the local device setup for project access.</CardDescription>
@@ -229,7 +228,7 @@ export function ProjectJoinPage() {
                 disabled={isJoining}
               >
                 {isJoining ? (
-                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+                  <div className="loader mr-2" />
                 ) : null}
                 Join project
               </Button>

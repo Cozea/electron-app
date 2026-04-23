@@ -61,7 +61,7 @@ import { type Thread } from "@/stores/types"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon } from '@hugeicons/core-free-icons'
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
@@ -739,7 +739,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   disabled={!props.isRuntimeReady || props.isInterrupting}
                 >
                   {props.isInterrupting ? (
-                    <HugeiconsIcon icon={__Loader2HugeIcon} className="size-3 animate-spin" />
+                    <div className="loader" />
                   ) : (
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
                       <rect x="2" y="2" width="8" height="8" rx="1.5" />

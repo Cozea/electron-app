@@ -15,9 +15,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
-
 type ProjectSyncIndicatorVariant = "sidebar" | "compact"
 
 interface ProjectSyncIndicatorProps {
@@ -273,10 +270,9 @@ export function ProjectSyncIndicator({
               )}
             >
               {showCompactSpinner ? (
-                <HugeiconsIcon
-                  icon={__Loader2HugeIcon}
+                <div
                   className={cn(
-                    "h-4 w-4 shrink-0 animate-spin",
+                    "loader",
                     inheritPillTextColor ? "text-current" : "text-muted-foreground group-hover:text-foreground",
                   )}
                 />

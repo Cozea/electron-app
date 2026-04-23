@@ -47,7 +47,7 @@ import {
 } from "./headerShared";
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon as __PlusHugeIcon, AddTeamIcon as __AddTeamHugeIcon, MoreVerticalIcon as __MoreVerticalHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __CopyHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SentIcon as __SendHugeIcon, Shield01Icon as __ShieldOffHugeIcon } from '@hugeicons/core-free-icons'
+import { Add01Icon as __PlusHugeIcon, AddTeamIcon as __AddTeamHugeIcon, MoreVerticalIcon as __MoreVerticalHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __CopyHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SentIcon as __SendHugeIcon, Shield01Icon as __ShieldOffHugeIcon } from '@hugeicons/core-free-icons'
 
 function isLocalDeviceEmail(email: string | null | undefined): boolean {
   return typeof email === "string" && email.trim().toLowerCase().endsWith("@local.cozea.app");
@@ -567,7 +567,7 @@ export function HeaderProjectShareButton({
               onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="size-4 shrink-0 animate-spin" />
+                <div className="loader text-muted-foreground" />
               ) : (
                 <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
               )}
@@ -734,7 +734,7 @@ export function HeaderProjectShareButton({
                                     >
                                       {teamActionKey === roleActionKey &&
                                       existingMember.role !== option.value ? (
-                                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
+                                        <div className="loader mr-2" />
                                       ) : null}
                                       {option.label}
                                     </DropdownMenuItem>
@@ -757,7 +757,7 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-2.5 w-2.5 animate-spin" />
+                                  <div className="loader" />
                                 ) : (
                                   <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
                                 )}
@@ -781,7 +781,7 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-1.5 h-2.5 w-2.5 animate-spin" />
+                                  <div className="loader mr-1.5" />
                                 ) : (
                                   <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-1.5 h-2.5 w-2.5" />
                                 )}
@@ -802,7 +802,7 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-2.5 w-2.5 animate-spin" />
+                                  <div className="loader" />
                                 ) : (
                                   <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
                                 )}
@@ -928,7 +928,7 @@ export function HeaderProjectShareButton({
                     disabled={inviteMembers.length === 0 || isSubmitting}
                   >
                     {isSubmitting ? (
-                      <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
+                      <div className="loader mr-2" />
                     ) : (
                       <HugeiconsIcon icon={__SendHugeIcon} className="mr-2 h-2.5 w-2.5" />
                     )}
@@ -973,7 +973,7 @@ export function HeaderProjectShareButton({
                       title="Copy link"
                     >
                       {joinLinkAction === "copy" ? (
-                        <HugeiconsIcon icon={__Loader2HugeIcon} className="h-2.5 w-2.5 animate-spin" />
+                        <div className="loader" />
                       ) : (
                         <HugeiconsIcon icon={__CopyHugeIcon} className="h-2.5 w-2.5" />
                       )}
@@ -1002,7 +1002,7 @@ export function HeaderProjectShareButton({
                           }}
                         >
                           {joinLinkAction === "rotate" ? (
-                            <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
+                            <div className="loader mr-2" />
                           ) : (
                             <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-2 h-2.5 w-2.5" />
                           )}
@@ -1018,7 +1018,7 @@ export function HeaderProjectShareButton({
                           className="text-destructive focus:text-destructive"
                         >
                           {joinLinkAction === "disable" ? (
-                            <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-2.5 w-2.5 animate-spin" />
+                            <div className="loader mr-2" />
                           ) : (
                             <HugeiconsIcon icon={__ShieldOffHugeIcon} className="mr-2 h-2.5 w-2.5" />
                           )}

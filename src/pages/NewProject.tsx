@@ -6,9 +6,6 @@ import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/sto
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
-
 function resolveMode(search: string): CreateProjectDialogMode {
   const params = new URLSearchParams(search)
   const rawMode = params.get("mode")
@@ -58,7 +55,7 @@ export default function NewProject() {
 
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+      <div className="loader mr-2" />
       Opening project setup…
     </div>
   )

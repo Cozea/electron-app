@@ -1,7 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowMoveUpLeftIcon as __FileUpHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+import { AlertCircleIcon as __AlertCircleHugeIcon, ArrowMoveUpLeftIcon as __FileUpHugeIcon } from '@hugeicons/core-free-icons'
 
 /**
  * Service Account Form Component
@@ -176,7 +176,7 @@ export function ServiceAccountForm({
         <Button type="submit" disabled={!isValid || isSubmitting}>
           {isSubmitting ? (
             <>
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 mr-2 animate-spin" />
+              <div className="loader mr-2" />
               Connecting...
             </>
           ) : (

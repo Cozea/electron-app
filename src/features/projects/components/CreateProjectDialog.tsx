@@ -40,7 +40,7 @@ import {
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon as __Loader2HugeIcon, Folder01Icon } from '@hugeicons/core-free-icons'
+import { Folder01Icon } from '@hugeicons/core-free-icons'
 
 interface CreateProjectDialogProps {
   open: boolean
@@ -579,7 +579,7 @@ export function CreateProjectDialog({
                         disabled={isCreateProjectDisabled}
                       >
                         {isSubmitting ? (
-                          <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+                          <div className="loader" />
                         ) : null}
                         {copy.submitLabel}
                       </Button>
@@ -592,7 +592,7 @@ export function CreateProjectDialog({
 
           {mode === "local" && localGitState?.isLoading ? (
             <Alert className="rounded-2xl bg-secondary/35">
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+              <div className="loader" />
               <AlertTitle>Checking the folder</AlertTitle>
               <AlertDescription>
                 Preparing the local import and reading any existing git details on disk.
@@ -624,7 +624,7 @@ export function CreateProjectDialog({
                 disabled={isCreateProjectDisabled}
               >
                 {isSubmitting ? (
-                  <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+                  <div className="loader" />
                 ) : null}
                 {copy.submitLabel}
               </Button>

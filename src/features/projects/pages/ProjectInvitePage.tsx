@@ -19,7 +19,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AlertCircleIcon as __AlertCircleHugeIcon,
-  Refresh01Icon as __Loader2HugeIcon,
   UserAdd01Icon as __UserPlusHugeIcon,
 } from "@hugeicons/core-free-icons"
 
@@ -128,7 +127,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
+              <div className="loader text-primary" />
             </div>
             <CardTitle>Loading Invite...</CardTitle>
             <CardDescription>Checking this project invite now.</CardDescription>
@@ -167,7 +166,7 @@ export function ProjectInvitePage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-7 w-7 animate-spin text-primary" />
+              <div className="loader text-primary" />
             </div>
             <CardTitle>Preparing This Device...</CardTitle>
             <CardDescription>Finishing the local device setup so this invite can be applied.</CardDescription>
@@ -235,7 +234,7 @@ export function ProjectInvitePage() {
               disabled={isSubmitting !== null}
             >
               {isSubmitting === "decline" ? (
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+                <div className="loader mr-2" />
               ) : null}
               Decline
             </Button>
@@ -247,7 +246,7 @@ export function ProjectInvitePage() {
               disabled={isSubmitting !== null}
             >
               {isSubmitting === "accept" ? (
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+                <div className="loader mr-2" />
               ) : null}
               Accept invite
             </Button>

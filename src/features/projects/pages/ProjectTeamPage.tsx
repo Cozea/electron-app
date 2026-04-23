@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
+import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
 
 type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
 type SortField = 'name' | 'role' | 'date'
@@ -375,7 +375,7 @@ export function ProjectTeamPage() {
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        <div className="loader mr-2" />
         Loading project team…
       </div>
     )
@@ -507,7 +507,7 @@ export function ProjectTeamPage() {
                                       }}
                                     >
                                       {teamActionKey === roleActionKey && row.role !== option.value ? (
-                                        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                        <div className="loader mr-2" />
                                       ) : null}
                                       {option.label}
                                       {row.role === option.value ? (
@@ -532,7 +532,7 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <div className="loader mr-2" />
                                 ) : (
                                   <HugeiconsIcon icon={__UserMinusHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
@@ -549,7 +549,7 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <div className="loader mr-2" />
                                 ) : (
                                   <HugeiconsIcon icon={__RotateCcwHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
@@ -564,7 +564,7 @@ export function ProjectTeamPage() {
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                  <div className="loader mr-2" />
                                 ) : (
                                   <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}

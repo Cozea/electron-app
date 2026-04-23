@@ -16,7 +16,7 @@ import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/Co
 import { resolveAttachedLocalProjectPathHint } from '@/features/projects/lib/projectLocalRootHints'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowLeftRightIcon as __GitMergeHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __Loader2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
+import { ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowLeftRightIcon as __GitMergeHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ConflictFileState {
   baseContent: string | null
@@ -214,7 +214,7 @@ export function ProjectConflictsPage() {
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        <div className="loader mr-2" />
         Loading conflicts…
       </div>
     )
@@ -277,7 +277,7 @@ export function ProjectConflictsPage() {
             <Badge variant="secondary">
               {remainingCount} file{remainingCount === 1 ? '' : 's'}
             </Badge>
-            {statusLoading ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
+            {statusLoading ? <div className="loader text-muted-foreground" /> : null}
           </div>
         </div>
 
@@ -338,7 +338,7 @@ export function ProjectConflictsPage() {
               Refresh
             </Button>
             <Button onClick={handleResolve} disabled={!selectedPath || saveLoading}>
-              {saveLoading ? <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" /> : <HugeiconsIcon icon={__CheckHugeIcon} className="mr-2 h-4 w-4" />}
+              {saveLoading ? <div className="loader mr-2" /> : <HugeiconsIcon icon={__CheckHugeIcon} className="mr-2 h-4 w-4" />}
               Save Resolution
             </Button>
           </div>
@@ -368,7 +368,7 @@ export function ProjectConflictsPage() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="outline">Local</Badge>
                     <Badge variant="outline">Incoming</Badge>
-                    {fileLoading ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" /> : null}
+                    {fileLoading ? <div className="loader" /> : null}
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
