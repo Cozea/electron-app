@@ -1978,6 +1978,56 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("preserves tool completion data payloads for downstream work-log rendering", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-item-completed-with-data"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-tool-complete"),
+      itemId: asItemId("item-tool-complete"),
+      payload: {
+        itemType: "file_change",
+        status: "completed",
+        title: "Edit files",
+        detail: "Updated files",
+        data: {
+          toolCallId: "tool-edit-1",
+          item: {
+            changes: [{ path: "src/app.ts" }, { path: "src/lib/util.ts" }],
+          },
+        },
+      },
+    });
+
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-item-completed-with-data",
+      ),
+    );
+
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-item-completed-with-data",
+    );
+    const payload =
+      activity?.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : undefined;
+    const data =
+      payload?.data && typeof payload.data === "object"
+        ? (payload.data as Record<string, unknown>)
+        : undefined;
+
+    expect(activity?.kind).toBe("tool.completed");
+    expect(payload?.itemType).toBe("file_change");
+    expect(payload?.status).toBe("completed");
+    expect(data?.toolCallId).toBe("tool-edit-1");
+  });
+
   it("projects Codex camelCase token usage payloads into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
