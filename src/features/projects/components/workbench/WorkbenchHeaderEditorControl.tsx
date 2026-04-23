@@ -228,7 +228,7 @@ export function WorkbenchHeaderEditorControl({
                 : "No supported external editor detected"
             }
           >
-            <SelectedEditorIcon className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+            <SelectedEditorIcon className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
           </Button>
 
           {orderedEditors.length > 1 ? (
@@ -245,7 +245,7 @@ export function WorkbenchHeaderEditorControl({
                 aria-haspopup="menu"
                 onClick={handleShowEditorPicker}
               >
-                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
               </Button>
             </>
           ) : null}

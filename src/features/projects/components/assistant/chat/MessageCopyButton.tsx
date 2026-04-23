@@ -16,7 +16,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({ text }: { tex
       type="button"
       size="icon-sm"
       variant="ghost"
-      className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
       onClick={() => copyToClipboard(text)}
       title="Copy message"
       aria-label="Copy message"

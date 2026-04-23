@@ -1,5 +1,6 @@
 import { EDITORS, EditorId } from "@cozea/assistant-contracts";
 import type { NativeApi } from "@cozea/assistant-contracts";
+import { readStoredExternalEditorPreference } from "@/features/projects/lib/externalEditorPreference";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMemo } from "react";
 
@@ -28,6 +29,10 @@ export function resolveAndPersistPreferredEditor(
   availableEditors: readonly EditorId[],
 ): EditorId | null {
   const availableEditorIds = new Set(availableEditors);
+  const workbench = readStoredExternalEditorPreference();
+  if (workbench && availableEditorIds.has(workbench as EditorId)) {
+    return workbench as EditorId;
+  }
   const stored = resolvePersistedEditorId();
   if (stored && availableEditorIds.has(stored)) return stored;
   const editor = EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? null;

@@ -1,4 +1,4 @@
-
+import type { ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -6,7 +6,7 @@ import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronAp
 import { useWorkbenchBranchControl } from "@/features/projects/components/workbench/branch-control/useWorkbenchBranchControl"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchHeaderBranchControlProps {
   projectId: string | null
@@ -16,6 +16,8 @@ interface WorkbenchHeaderBranchControlProps {
   activeLane: ProjectLaneDescriptor | null
   onLaneStateChange?: () => void
   triggerClassName?: string
+  /** Rendered inside the branch button after the label; pointer-events disabled so the control stays one hit target. */
+  trailing?: ReactNode
 }
 
 export function WorkbenchHeaderBranchControl({
@@ -26,6 +28,7 @@ export function WorkbenchHeaderBranchControl({
   activeLane,
   onLaneStateChange,
   triggerClassName,
+  trailing,
 }: WorkbenchHeaderBranchControlProps) {
   const {
     branchCwd,
@@ -48,7 +51,7 @@ export function WorkbenchHeaderBranchControl({
       variant="ghost"
       size="sm"
       className={cn(
-        "group h-6 gap-1 rounded-md border-0 bg-transparent px-1.5 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/60",
+        "h-6 gap-0.5 rounded-md border-0 bg-transparent px-1.5 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/60",
         triggerClassName,
       )}
       disabled={!branchCwd}
@@ -58,7 +61,11 @@ export function WorkbenchHeaderBranchControl({
     >
       {showActionSpinner ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3 w-3 animate-spin" /> : null}
       <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
-      <HugeiconsIcon icon={__ChevronDownHugeIcon} className="hidden h-3 w-3 opacity-70 group-hover:block group-focus-visible:block" />
+      {trailing ? (
+        <span className="inline-flex shrink-0 items-center pointer-events-none" aria-hidden="true">
+          {trailing}
+        </span>
+      ) : null}
     </Button>
   )
 }

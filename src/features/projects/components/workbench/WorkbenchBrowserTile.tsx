@@ -345,7 +345,7 @@ export function WorkbenchBrowserTile({
   )
 
   const navChipClass =
-    "h-7 w-7 shrink-0 rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+    "h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
   const browserHeaderControls = (
     <div className="flex min-w-0 items-center gap-1.5">
       <Button
@@ -374,7 +374,7 @@ export function WorkbenchBrowserTile({
       >
         <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
       </Button>
-      <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-secondary px-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md bg-secondary px-2">
         {state.favicon ? (
           <img
             src={state.favicon}
@@ -432,7 +432,7 @@ export function WorkbenchBrowserTile({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-6 w-6 rounded-full"
+            className="h-6 w-6 rounded-md"
             disabled={!hasFindQuery}
             onClick={() => {
               findPrevious()
@@ -445,7 +445,7 @@ export function WorkbenchBrowserTile({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-6 w-6 rounded-full"
+            className="h-6 w-6 rounded-md"
             disabled={!hasFindQuery}
             onClick={() => {
               findNext()
@@ -458,7 +458,7 @@ export function WorkbenchBrowserTile({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-6 w-6 rounded-full"
+            className="h-6 w-6 rounded-md"
             onClick={() => {
               closeFind(true)
             }}
