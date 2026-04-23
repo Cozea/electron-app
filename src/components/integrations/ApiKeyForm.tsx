@@ -1,7 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon, CheckmarkCircle02Icon as __CheckCircleHugeIcon, EyeIcon as __EyeHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon, ViewOffSlashIcon as __EyeOffHugeIcon } from '@hugeicons/core-free-icons'
+import { AlertCircleIcon as __AlertCircleHugeIcon, CheckmarkCircle02Icon as __CheckCircleHugeIcon, EyeIcon as __EyeHugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon, ViewOffSlashIcon as __EyeOffHugeIcon } from '@hugeicons/core-free-icons'
 
 /**
  * API Key Form Component
@@ -138,7 +138,7 @@ export function ApiKeyForm({
         <Button type="submit" disabled={!isValid || isSubmitting}>
           {isSubmitting ? (
             <>
-              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 mr-2 animate-spin" />
+              <div className="loader mr-2" />
               Connecting...
             </>
           ) : (

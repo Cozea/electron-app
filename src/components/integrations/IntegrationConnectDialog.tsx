@@ -1,7 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
+import { AlertCircleIcon as __AlertCircleHugeIcon, SquareArrowDownRightIcon as __ExternalLinkHugeIcon } from '@hugeicons/core-free-icons'
 
 /**
  * Integration Connect Dialog
@@ -204,7 +204,7 @@ export function IntegrationConnectDialog({
           >
             {isConnecting ? (
               <>
-                <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 mr-2 animate-spin" />
+                <div className="loader mr-2" />
                 Connecting...
               </>
             ) : integration.authType === 'oauth' ? (

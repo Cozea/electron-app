@@ -124,7 +124,7 @@ export function IntegrationCard({
             >
               {isConnecting ? (
                 <>
-                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-4 w-4 mr-1 animate-spin" />
+                  <div className="loader mr-1" />
                   Connecting...
                 </>
               ) : (

@@ -33,7 +33,7 @@ import {
 } from '@/lib/collab/cipherEnvelope'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon } from '@hugeicons/core-free-icons'
 
 export interface ProjectSettingsPageProps {
   presentation?: 'modal' | 'embedded'
@@ -688,7 +688,7 @@ export function ProjectSettingsPage({
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        <div className="loader mr-2" />
         Loading project settings…
       </div>
     )
@@ -842,7 +842,7 @@ export function ProjectSettingsPage({
                             }}
                           >
                             {collabAction === 'share' ? (
-                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              <div className="loader mr-2" />
                             ) : null}
                             Share keys
                           </Button>
@@ -865,7 +865,7 @@ export function ProjectSettingsPage({
                             }}
                           >
                             {collabAction === 'generate-recovery' ? (
-                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              <div className="loader mr-2" />
                             ) : null}
                             {activeRecoveryKit ? 'Regenerate code' : 'Generate code'}
                           </Button>
@@ -888,7 +888,7 @@ export function ProjectSettingsPage({
                             }}
                           >
                             {collabAction === 'rotate' ? (
-                              <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              <div className="loader mr-2" />
                             ) : null}
                             Rotate keys
                           </Button>
@@ -940,7 +940,7 @@ export function ProjectSettingsPage({
                               }}
                             >
                               {collabAction === 'recover' ? (
-                                <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                <div className="loader mr-2" />
                               ) : null}
                               Recover
                             </Button>
@@ -982,7 +982,7 @@ export function ProjectSettingsPage({
                                   }}
                                 >
                                   {collabAction === `revoke:${device.deviceId}` ? (
-                                    <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                    <div className="loader mr-2" />
                                   ) : null}
                                   {device.revokedAt ? 'Revoked' : 'Revoke'}
                                 </Button>
@@ -1056,7 +1056,7 @@ export function ProjectSettingsPage({
                     disabled={!canSave}
                   >
                     {isSaving ? (
-                      <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3.5 w-3.5 animate-spin" />
+                      <div className="loader" />
                     ) : (
                       <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
                     )}

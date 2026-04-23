@@ -1,15 +1,15 @@
 
 import { useMemo } from "react"
 
+import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { listStoreApps } from "@/features/devapps/registry"
 import {
-
   SettingsSectionDescription,
   SettingsSectionTitle,
 } from "@/components/settings/SettingsChrome"
 import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel"
 import {
   APP_STORE_FEATURE_CARDS,
-  APP_STORE_PREVIEW_APPS,
   resolveAppStoreCategory,
 } from "@/features/projects/lib/appStoreCatalog"
 import { useProjectHeader } from "@/hooks/useProjectHeader"
@@ -18,12 +18,6 @@ import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CpuChargeIcon as __ChipHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon } from '@hugeicons/core-free-icons'
-
-function matchesStoreQuery(values: string[], query: string): boolean {
-  if (!query.trim()) return true
-  const normalizedQuery = query.trim().toLowerCase()
-  return values.some((value) => value.toLowerCase().includes(normalizedQuery))
-}
 
 export function AppStorePage() {
   const [searchParams] = useSearchParams()
@@ -41,20 +35,22 @@ export function AppStorePage() {
     const cards = APP_STORE_FEATURE_CARDS.filter(
       (card) =>
         activeCategory.id === "discover" || card.categories.includes(activeCategory.id),
-    ).filter((card) =>
-      matchesStoreQuery([card.eyebrow, card.title, card.description], query),
-    )
+    ).filter((card) => {
+      if (!query.trim()) return true
+      const normalizedQuery = query.trim().toLowerCase()
+      return [card.eyebrow, card.title, card.description].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      )
+    })
 
     return activeCategory.id === "discover" ? cards.slice(0, 3) : cards.slice(0, 3)
   }, [activeCategory.id, query])
 
   const visiblePreviewApps = useMemo(() => {
-    const apps = APP_STORE_PREVIEW_APPS.filter(
-      (app) =>
-        activeCategory.id === "discover" || app.categories.includes(activeCategory.id),
-    ).filter((app) =>
-      matchesStoreQuery([app.name, app.category, app.description], query),
-    )
+    const apps = listStoreApps({
+      category: activeCategory.id,
+      query,
+    })
 
     return activeCategory.id === "discover" ? apps.slice(0, 6) : apps.slice(0, 6)
   }, [activeCategory.id, query])
@@ -171,41 +167,40 @@ export function AppStorePage() {
             <div className="flex items-end justify-between gap-4 px-1">
               <div className="space-y-1">
                 <h2 className="text-xl font-medium tracking-[-0.03em] text-foreground">
-                  Preview shelves
+                  Built-in DevApps
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  A first look at the kinds of products that will live in the store.
+                  Registry-backed apps already available across the launcher and store.
                 </p>
               </div>
               <span className="rounded-full bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
-                Coming soon
+                Available now
               </span>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {visiblePreviewApps.map((app) => {
-                const Icon = app.icon
                 return (
                   <div
-                    key={app.name}
+                    key={app.id}
                     className="flex items-start gap-4 rounded-[22px] bg-background px-4 py-4"
                   >
                     <div
                       className={cn(
-                        "flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px]",
-                        app.accentClassName,
+                        "flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br",
+                        app.store.accentClassName,
                       )}
                     >
-                      <Icon className="h-7 w-7" />
+                      <DevAppIcon app={app} />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-foreground">{app.name}</p>
-                          <p className="text-[11px] text-muted-foreground">{app.category}</p>
+                          <p className="text-[11px] text-muted-foreground">{app.store.categoryLabel}</p>
                         </div>
                         <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
-                          Soon
+                          {app.store.badgeLabel ?? "Built in"}
                         </span>
                       </div>
                       <p className="text-sm leading-6 text-muted-foreground">{app.description}</p>
@@ -301,4 +296,3 @@ export function AppStorePage() {
     </div>
   )
 }
-

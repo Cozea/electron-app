@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon as __PlusHugeIcon, Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Clock01Icon as __Clock3HugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __FileTextHugeIcon, LeftToRightListBulletIcon as __ListTodoHugeIcon, Refresh01Icon as __Loader2HugeIcon, SquareArrowDownRightIcon as __ArrowUpRightHugeIcon } from '@hugeicons/core-free-icons'
+import { Add01Icon as __PlusHugeIcon, Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Clock01Icon as __Clock3HugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __FileTextHugeIcon, LeftToRightListBulletIcon as __ListTodoHugeIcon, SquareArrowDownRightIcon as __ArrowUpRightHugeIcon } from '@hugeicons/core-free-icons'
 
 const CheckCircle2 = (props: any) => <HugeiconsIcon icon={__CheckCircle2HugeIcon} {...props} />
 const Clock3 = (props: any) => <HugeiconsIcon icon={__Clock3HugeIcon} {...props} />
@@ -1398,7 +1398,7 @@ export function TasksPage({
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <HugeiconsIcon icon={__Loader2HugeIcon} className="mr-2 h-4 w-4 animate-spin" />
+        <div className="loader mr-2" />
         Loading tasks…
       </div>
     )
@@ -1886,7 +1886,7 @@ export function TasksPage({
                         <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                           {isVisibleContextLoading ? (
                             <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
-                              <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+                              <div className="loader" />
                               Loading {draftContextKind === 'page' ? 'previews' : 'files'}...
                             </div>
                           ) : visibleContextOptions.length === 0 ? (

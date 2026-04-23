@@ -2,9 +2,6 @@
 
 import { cn } from "@/lib/utils"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
-
 interface RouteLoadingProps {
   className?: string
   label?: string
@@ -22,7 +19,7 @@ export function RouteLoading({
       )}
     >
       <div className="flex items-center gap-2">
-        <HugeiconsIcon icon={__Loader2HugeIcon} className="h-4 w-4 animate-spin" />
+        <div className="loader" />
         <span>{label}</span>
       </div>
     </div>

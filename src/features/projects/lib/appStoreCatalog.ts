@@ -1,12 +1,11 @@
 import type { ComponentType } from "react"
-import { AArrowDownIcon as __CloudDownloadHugeIcon, ArrowDownZeroOneIcon as __DownloadHugeIcon, ArrowLeftRightIcon as __ChatHugeIcon, CodeCircleIcon as __CodeHugeIcon, CommandLineIcon as __CommandLineHugeIcon, CpuChargeIcon as __ChipHugeIcon, EyeIcon as __EyeHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon, PaintBrush01Icon as __PaintBrushHugeIcon, Rocket01Icon as __RocketHugeIcon, Shield01Icon as __ShieldHugeIcon, SparklesIcon as __SparklesHugeIcon, SwatchIcon as __SwatchHugeIcon, Wrench01Icon as __ToolsHugeIcon } from '@hugeicons/core-free-icons'
+import { ArrowDownZeroOneIcon as __DownloadHugeIcon, CommandLineIcon as __CommandLineHugeIcon, CpuChargeIcon as __ChipHugeIcon, EyeIcon as __EyeHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon, PaintBrush01Icon as __PaintBrushHugeIcon, Rocket01Icon as __RocketHugeIcon, Shield01Icon as __ShieldHugeIcon, SparklesIcon as __SparklesHugeIcon, SwatchIcon as __SwatchHugeIcon, Wrench01Icon as __ToolsHugeIcon } from '@hugeicons/core-free-icons'
 
+import { listStoreApps } from "@/features/devapps/registry"
+import type { DevAppCategoryId, DevAppManifest } from "@/features/devapps/registry/types"
 import { asHugeIcon } from '@/lib/icons/asHugeIcon'
 const Download = asHugeIcon(__DownloadHugeIcon)
 const Bolt = asHugeIcon(__BoltHugeIcon)
-const Chat = asHugeIcon(__ChatHugeIcon)
-const CloudDownload = asHugeIcon(__CloudDownloadHugeIcon)
-const Code = asHugeIcon(__CodeHugeIcon)
 const CommandLine = asHugeIcon(__CommandLineHugeIcon)
 const Chip = asHugeIcon(__ChipHugeIcon)
 const Eye = asHugeIcon(__EyeHugeIcon)
@@ -16,14 +15,7 @@ const Shield = asHugeIcon(__ShieldHugeIcon)
 const Sparkles = asHugeIcon(__SparklesHugeIcon)
 const Swatch = asHugeIcon(__SwatchHugeIcon)
 const Tools = asHugeIcon(__ToolsHugeIcon)
-export type AppStoreCategoryId =
-  | "discover"
-  | "agent-kits"
-  | "preview-tools"
-  | "runtimes"
-  | "build-release"
-  | "themes"
-  | "updates"
+export type AppStoreCategoryId = DevAppCategoryId
 
 export interface AppStoreCategory {
   id: AppStoreCategoryId
@@ -38,15 +30,6 @@ export interface AppStoreCategory {
 export interface AppStoreFeatureCard {
   eyebrow: string
   title: string
-  description: string
-  icon: ComponentType<{ className?: string }>
-  accentClassName: string
-  categories: AppStoreCategoryId[]
-}
-
-export interface AppStorePreviewApp {
-  name: string
-  category: string
   description: string
   icon: ComponentType<{ className?: string }>
   accentClassName: string
@@ -177,88 +160,7 @@ export const APP_STORE_FEATURE_CARDS: AppStoreFeatureCard[] = [
   },
 ]
 
-export const APP_STORE_PREVIEW_APPS: AppStorePreviewApp[] = [
-  {
-    name: "Runtime Lab",
-    category: "Developer tools",
-    description: "Install local runtime packs for bun, node, python, and build chains.",
-    icon: Tools,
-    accentClassName: "bg-[#1d1f24] text-white",
-    categories: ["discover", "runtimes"],
-  },
-  {
-    name: "Preview Deck",
-    category: "Web surfaces",
-    description: "Launch persistent browser setups, preview presets, and inspector bundles.",
-    icon: CloudDownload,
-    accentClassName: "bg-[#316bff] text-white",
-    categories: ["discover", "preview-tools"],
-  },
-  {
-    name: "Agent Kits",
-    category: "AI workflows",
-    description: "Drop in provider presets, prompt packs, and opinionated tile templates.",
-    icon: Chip,
-    accentClassName: "bg-[#8b5cf6] text-white",
-    categories: ["discover", "agent-kits"],
-  },
-  {
-    name: "Prompt Atlas",
-    category: "AI workflows",
-    description: "Curated prompt libraries and reusable working styles for different kinds of build sessions.",
-    icon: Chat,
-    accentClassName: "bg-[#5b5bd6] text-white",
-    categories: ["agent-kits"],
-  },
-  {
-    name: "Mobile Mirror",
-    category: "Native preview",
-    description: "Ready-made simulator setups for validating mobile surfaces without extra ceremony.",
-    icon: Eye,
-    accentClassName: "bg-[#6d63ff] text-white",
-    categories: ["preview-tools"],
-  },
-  {
-    name: "Release Radar",
-    category: "Delivery",
-    description: "Track release readiness, launch notes, and what needs attention before shipping.",
-    icon: Rocket,
-    accentClassName: "bg-[#0f172a] text-white",
-    categories: ["discover", "build-release", "updates"],
-  },
-  {
-    name: "Theme Foundry",
-    category: "Visual systems",
-    description: "Store-curated icon sets, themes, templates, and workspace presentation packs.",
-    icon: Swatch,
-    accentClassName: "bg-[#f2b539] text-[#362500]",
-    categories: ["discover", "themes"],
-  },
-  {
-    name: "Change Logbook",
-    category: "Updates",
-    description: "See curated store drops, migration notes, and what changed across installed tools.",
-    icon: Download,
-    accentClassName: "bg-[#0f766e] text-white",
-    categories: ["updates"],
-  },
-  {
-    name: "Flight Checks",
-    category: "Build & release",
-    description: "Preflight checks for sync, deployment handoff, and production readiness.",
-    icon: Shield,
-    accentClassName: "bg-[#ef6f4e] text-white",
-    categories: ["build-release"],
-  },
-  {
-    name: "Code Garden",
-    category: "Extensions",
-    description: "Discover add-ons that enrich the editor, diff, review, and repository flow.",
-    icon: Code,
-    accentClassName: "bg-[#0b1320] text-white",
-    categories: ["discover", "runtimes", "build-release"],
-  },
-]
+export const APP_STORE_PREVIEW_APPS: ReadonlyArray<DevAppManifest> = listStoreApps()
 
 export function resolveAppStoreCategory(value: string | null | undefined): AppStoreCategory {
   return (
@@ -266,4 +168,3 @@ export function resolveAppStoreCategory(value: string | null | undefined): AppSt
     APP_STORE_CATEGORIES[0]
   )
 }
-

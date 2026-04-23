@@ -31,6 +31,7 @@ import {
   syncPanelTitles,
 } from "@/features/projects/lib/workbenchDockview";
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
+import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
 
 interface UseWorkbenchDockviewRuntimeInput {
@@ -354,23 +355,21 @@ export function useWorkbenchDockviewRuntime(
         null;
       if (!api || !isSelectionTile(selectionTile)) return;
 
-      const { type } = request
+      const resolvedLaunch = resolveWorkbenchSelectionLaunchRequest(request)
       const tileId =
-        type === "devServer" || type === "mobileSimulator"
+        resolvedLaunch.action === "openSingletonTile"
           ? workbenchActions.openSingletonTile(
               input.projectId,
               input.activeLaneId,
-              type,
-              undefined,
+              resolvedLaunch.tileType,
+              resolvedLaunch.options,
               input.projectPath,
             )
           : workbenchActions.addTile(
               input.projectId,
               input.activeLaneId,
-              type,
-              type === "assistantChat" && request.provider
-                ? { provider: request.provider }
-                : undefined,
+              resolvedLaunch.tileType,
+              resolvedLaunch.options,
               input.projectPath,
             );
       const nextTile = getLiveWorkbench()?.tiles[tileId];

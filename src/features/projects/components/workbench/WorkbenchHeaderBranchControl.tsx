@@ -5,9 +5,6 @@ import { cn } from "@/lib/utils"
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
 import { useWorkbenchBranchControl } from "@/features/projects/components/workbench/branch-control/useWorkbenchBranchControl"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon as __Loader2HugeIcon } from '@hugeicons/core-free-icons'
-
 interface WorkbenchHeaderBranchControlProps {
   projectId: string | null
   projectPath: string | null
@@ -59,7 +56,7 @@ export function WorkbenchHeaderBranchControl({
       aria-haspopup="menu"
       onClick={handleOpenNativeBranchMenu}
     >
-      {showActionSpinner ? <HugeiconsIcon icon={__Loader2HugeIcon} className="h-3 w-3 animate-spin" /> : null}
+      {showActionSpinner ? <div className="loader text-muted-foreground" /> : null}
       <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
       {trailing ? (
         <span className="inline-flex shrink-0 items-center pointer-events-none" aria-hidden="true">
