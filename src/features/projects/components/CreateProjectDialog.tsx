@@ -29,6 +29,7 @@ import {
   settingsInlineInputWidth,
 } from "@/components/settings/SettingsChrome"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   browseForDirectory,
   buildFilesystemSlug,
@@ -259,14 +260,15 @@ export function CreateProjectDialog({
   )
 
   const navigateToProjectWorkbench = useCallback(
-    (projectId: string, projectPath: string, projectName: string) => {
+    (projectId: string, projectSlug: string, projectPath: string, projectName: string) => {
       onOpenChange(false)
       navigate(buildProjectPath(projectId, "workbench"), {
-        state: {
+        state: buildProjectRouteNavigationState({
           projectId,
+          projectSlug,
           projectName,
           localPath: projectPath,
-        },
+        }),
       })
     },
     [navigate, onOpenChange],
@@ -354,7 +356,12 @@ export function CreateProjectDialog({
           status: "active",
         })
         await persistProjectPath(result.projectId, createdProjectPath)
-        navigateToProjectWorkbench(String(result.projectId), createdProjectPath, trimmedName)
+        navigateToProjectWorkbench(
+          String(result.projectId),
+          result.slug,
+          createdProjectPath,
+          trimmedName,
+        )
         return
       }
 
@@ -391,7 +398,12 @@ export function CreateProjectDialog({
           status: "active",
         })
         await persistProjectPath(result.projectId, trimmedLocalFolderPath)
-        navigateToProjectWorkbench(String(result.projectId), trimmedLocalFolderPath, trimmedName)
+        navigateToProjectWorkbench(
+          String(result.projectId),
+          result.slug,
+          trimmedLocalFolderPath,
+          trimmedName,
+        )
         return
       }
     } catch (nextError) {

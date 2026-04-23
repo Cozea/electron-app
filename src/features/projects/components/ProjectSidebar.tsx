@@ -33,6 +33,7 @@ import { buildProjectPath } from "../lib/projectRoutes";
 import { buildWorkbenchHref } from "../lib/lastWorkbenchRoute";
 import { prepareLocalProjectForOpen } from "../lib/projectOpenLocal";
 import { buildProjectLocalPathLookupOptions } from "@/features/projects/lib/projectLocalRootHints";
+import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
 import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
 import {
   areSidebarProjectItemsEqual,
@@ -313,7 +314,14 @@ export function ProjectSidebar({
         }
       }
 
-      navigate(buildWorkbenchHref(project.id, laneId, nextOptions));
+      navigate(buildWorkbenchHref(project.id, laneId, nextOptions), {
+        state: buildProjectRouteNavigationState({
+          projectId: project.id,
+          projectSlug: project.slug,
+          projectName: project.name,
+          localPath: workbenchProjectPath,
+        }),
+      });
     },
     [currentActiveLane?.projectPath, currentProjectId, currentProjectPath, navigate],
   );
@@ -389,13 +397,14 @@ export function ProjectSidebar({
 
         primeLocalProjectPath(project.id, localOpenResult.localPath, project.slug);
         navigate(buildProjectPath(project.id, "workbench"), {
-          state: {
+          state: buildProjectRouteNavigationState({
             projectId: project.id,
             projectSlug: project.slug,
             projectName: project.name,
-            projectTemplate: project.template ?? undefined,
             localPath: localOpenResult.localPath,
-          },
+          }, {
+            projectTemplate: project.template ?? undefined,
+          }),
         });
       } catch (error) {
         const presentation = formatProjectCloudAccessError(error, "Failed to prepare project");

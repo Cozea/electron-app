@@ -25,6 +25,20 @@ export interface ListStoreAppsOptions {
   query?: string
 }
 
+const DEV_APP_ID_BY_ASSISTANT_PROVIDER: Partial<Record<ProviderKind, string>> = {
+  codex: "codex",
+  claudeAgent: "claude",
+  cursor: "cursor",
+  opencode: "opencode",
+}
+
+const DEV_APP_ID_BY_SURFACE_TILE_TYPE = {
+  browser: "browser",
+  devServer: "dev-server",
+  mobileSimulator: "mobile-simulator",
+  terminal: "terminal",
+} as const
+
 export const BUILTIN_DEV_APPS: ReadonlyArray<DevAppManifest> = [
   browserDevAppManifest,
   devServerDevAppManifest,
@@ -64,6 +78,21 @@ function matchesQuery(manifest: DevAppManifest, query: string): boolean {
 
 export function getDevAppById(appId: string): DevAppManifest | undefined {
   return BUILTIN_DEV_APPS.find((manifest) => manifest.id === appId)
+}
+
+export function getDevAppForAssistantProvider(
+  provider: ProviderKind | null | undefined,
+): DevAppManifest | null {
+  if (!provider) return null
+  const appId = DEV_APP_ID_BY_ASSISTANT_PROVIDER[provider]
+  return appId ? (getDevAppById(appId) ?? null) : null
+}
+
+export function getDevAppForSurfaceTileType(
+  tileType: keyof typeof DEV_APP_ID_BY_SURFACE_TILE_TYPE | null | undefined,
+): DevAppManifest | null {
+  if (!tileType) return null
+  return getDevAppById(DEV_APP_ID_BY_SURFACE_TILE_TYPE[tileType]) ?? null
 }
 
 export function listLauncherApps(options: ListLauncherAppsOptions = {}): DevAppManifest[] {

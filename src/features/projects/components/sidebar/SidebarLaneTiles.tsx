@@ -1,7 +1,10 @@
-
-
+import type { ProviderKind } from "@cozea/assistant-contracts"
+import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import {
-
+  getDevAppForAssistantProvider,
+  getDevAppForSurfaceTileType,
+} from "@/features/devapps/registry"
+import {
   ClaudeAI,
   CursorIcon,
   Gemini,
@@ -32,12 +35,16 @@ import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
+const SIDEBAR_APP_ICON_CLASS = "size-4 shrink-0 overflow-hidden rounded-[4px]"
+
 function SurfaceTileGlyph(props: {
   favicon?: string | null
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
 }) {
   const className = props.className ?? "size-3.5 shrink-0 text-muted-foreground/75"
+  const devApp = getDevAppForSurfaceTileType(props.type)
+
   switch (props.type) {
     case "browser":
       if (props.favicon) {
@@ -50,13 +57,41 @@ function SurfaceTileGlyph(props: {
           />
         )
       }
+      if (devApp) {
+        return (
+          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
       return <HugeiconsIcon icon={__GlobeHugeIcon} className={className} aria-hidden />
     case "devServer":
+      if (devApp) {
+        return (
+          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
       return <HugeiconsIcon icon={__ServerStackHugeIcon} className={className} aria-hidden />
     case "mobileSimulator":
+      if (devApp) {
+        return (
+          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
       return <HugeiconsIcon icon={__PhoneHugeIcon} className={className} aria-hidden />
     case "terminal":
     default:
+      if (devApp) {
+        return (
+          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
       return <HugeiconsIcon icon={__ComputerTerminalHugeIcon} className={className} aria-hidden />
   }
 }
@@ -75,8 +110,18 @@ interface SidebarAgentStatusPill {
 }
 
 function ProviderGlyph(props: { provider?: string | null; className?: string }) {
-
   const className = props.className ?? "size-3.5"
+  const devApp = getDevAppForAssistantProvider(
+    typeof props.provider === "string" ? (props.provider as ProviderKind) : null,
+  )
+
+  if (devApp) {
+    return (
+      <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+        <DevAppIcon app={devApp} />
+      </span>
+    )
+  }
 
   switch (props.provider) {
     case "claudeAgent":
@@ -97,6 +142,9 @@ function providerGlyphColorClass(
   provider: string | null | undefined,
   isActive: boolean,
 ): string {
+  if (getDevAppForAssistantProvider(typeof provider === "string" ? (provider as ProviderKind) : null)) {
+    return ""
+  }
   switch (provider) {
     case "claudeAgent":
       return isActive ? "text-[#d97757]" : "text-[#d97757]/90"

@@ -1,9 +1,6 @@
 
-
 import { cn } from "@/lib/utils"
-
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Folder01Icon as __FolderClosedIconHugeIcon, Folder03Icon as __FolderOpenIconHugeIcon } from '@hugeicons/core-free-icons'
+import projectSidebarIcon from "@/assets/project-icons/project-sidebar-icon.png"
 
 export interface NativeProjectFolderIconProps {
   /** Local project folder path; kept for compatibility with existing call sites. */
@@ -26,6 +23,7 @@ export function NativeProjectFolderIcon({
   folderPath: _folderPath,
   isOpen = false,
   className,
+  imgClassName,
   fallbackClassName = "size-3.5 text-muted-foreground/75",
 }: NativeProjectFolderIconProps) {
   return (
@@ -35,9 +33,11 @@ export function NativeProjectFolderIcon({
           <path d="M2 7l10 10 10-10z" />
         </svg>
       ) : (
-        <HugeiconsIcon
-          icon={__FolderClosedIconHugeIcon}
-          className={fallbackClassName}
+        <img
+          src={projectSidebarIcon}
+          alt=""
+          aria-hidden
+          className={cn("size-3.5 shrink-0 object-contain", imgClassName ?? fallbackClassName)}
         />
       )}
     </span>

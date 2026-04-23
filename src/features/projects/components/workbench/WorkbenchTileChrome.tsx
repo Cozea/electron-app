@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
-import type { ContextMenuItem } from "@cozea/assistant-contracts"
+import type { ContextMenuItem, ProviderKind } from "@cozea/assistant-contracts"
 
 import { Button } from "@/components/ui/button"
+import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import {
+  getDevAppForAssistantProvider,
+  getDevAppForSurfaceTileType,
+} from "@/features/devapps/registry"
 import {
   ClaudeAI,
   CursorIcon,
@@ -23,6 +28,8 @@ const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminal
 const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
 const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
+const WORKBENCH_PILL_APP_ICON_CLASS = "size-4 shrink-0 overflow-hidden rounded-[4px]"
+const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-md"
 
 interface WorkbenchTileChromeProps {
   title: string
@@ -57,6 +64,28 @@ function resolveAssistantProviderIcon(provider: string | null | undefined) {
   }
 }
 
+function resolveTileDevApp(
+  tileType: WorkbenchTileChromeProps["tileType"],
+  assistantProvider: string | null | undefined,
+) {
+  if (tileType === "assistantChat") {
+    return getDevAppForAssistantProvider(
+      typeof assistantProvider === "string" ? (assistantProvider as ProviderKind) : null,
+    )
+  }
+
+  if (
+    tileType === "browser" ||
+    tileType === "devServer" ||
+    tileType === "mobileSimulator" ||
+    tileType === "terminal"
+  ) {
+    return getDevAppForSurfaceTileType(tileType)
+  }
+
+  return null
+}
+
 function resolveAssistantProviderIconClass(provider: string | null | undefined) {
   switch (provider) {
     case "claudeAgent":
@@ -73,7 +102,7 @@ function resolveAssistantProviderIconClass(provider: string | null | undefined) 
   }
 }
 
-function resolveTileIcon(
+function resolveTileFallbackIcon(
   tileType: WorkbenchTileChromeProps["tileType"],
   assistantProvider: string | null | undefined,
 ) {
@@ -93,6 +122,33 @@ function resolveTileIcon(
     default:
       return null
   }
+}
+
+interface WorkbenchTileGlyphProps {
+  tileType: WorkbenchTileChromeProps["tileType"]
+  assistantProvider?: string | null
+  appWrapperClassName: string
+  fallbackClassName: string
+}
+
+function WorkbenchTileGlyph({
+  tileType,
+  assistantProvider,
+  appWrapperClassName,
+  fallbackClassName,
+}: WorkbenchTileGlyphProps) {
+  const devApp = resolveTileDevApp(tileType, assistantProvider)
+
+  if (devApp) {
+    return (
+      <span className={appWrapperClassName}>
+        <DevAppIcon app={devApp} />
+      </span>
+    )
+  }
+
+  const TileIcon = resolveTileFallbackIcon(tileType, assistantProvider)
+  return TileIcon ? <TileIcon className={fallbackClassName} /> : null
 }
 
 export function WorkbenchTileChrome({
@@ -118,9 +174,8 @@ export function WorkbenchTileChrome({
   const runtime = useWorkbenchDockRuntime()
   const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
 
-  const TileIcon = resolveTileIcon(tileType, assistantProvider)
-  const tileIconClassName = cn(
-    "h-3.5 w-3.5 shrink-0",
+  const tileFallbackIconClassName = cn(
+    "h-4 w-4 shrink-0",
     tileType === "assistantChat"
       ? resolveAssistantProviderIconClass(assistantProvider)
       : "text-muted-foreground",
@@ -260,7 +315,12 @@ export function WorkbenchTileChrome({
               chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
             )}
           >
-            {TileIcon ? <TileIcon className={tileIconClassName} /> : null}
+            <WorkbenchTileGlyph
+              tileType={tileType}
+              assistantProvider={assistantProvider}
+              appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
+              fallbackClassName={tileFallbackIconClassName}
+            />
             <span className="truncate text-xs text-foreground">{title}</span>
           </div>
         ) : null}
@@ -412,7 +472,12 @@ export function WorkbenchTileChrome({
               <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-6 w-6" />
             </div>
             <div className="col-start-2 row-start-2 flex h-12 w-12 items-center justify-center rounded-xl border-2 border-primary/50 bg-primary/10 text-primary">
-              {TileIcon ? <TileIcon className="h-6 w-6" /> : null}
+              <WorkbenchTileGlyph
+                tileType={tileType}
+                assistantProvider={assistantProvider}
+                appWrapperClassName={WORKBENCH_OVERLAY_APP_ICON_CLASS}
+                fallbackClassName="h-6 w-6 shrink-0"
+              />
             </div>
             <div
               className={cn("col-start-3 row-start-2 flex h-12 w-12 items-center justify-center rounded-xl border-2 transition-colors cursor-pointer", splitDirection === "right" ? "border-primary bg-primary/20 text-primary" : "border-border bg-background/50 text-muted-foreground")}
