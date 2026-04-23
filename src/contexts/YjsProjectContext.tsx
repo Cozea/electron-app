@@ -1,7 +1,5 @@
 import {
   useCallback,
-  createContext,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -10,11 +8,10 @@ import {
 } from "react"
 import * as Y from "yjs"
 import { useConvex } from "convex/react"
-import type { Awareness } from "y-protocols/awareness"
 
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { useReconnectionSync, type DeleteConflict } from "@/hooks/useReconnectionSync"
+import { useReconnectionSync } from "@/hooks/useReconnectionSync"
 import { CollabWsProvider, type CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
 import { YjsIndexedDBProvider } from "@/lib/yjs/IndexedDBPersistence"
 import { ProjectFilesPersistence } from "@/lib/yjs/ProjectFilesPersistence"
@@ -27,14 +24,14 @@ import {
   envelopeToBytes,
   generateRoomKeyBase64,
 } from "@/lib/collab/cipherEnvelope"
+import { YjsProjectContext } from "@/contexts/YjsProjectContextValue"
 
-export interface YjsProjectContextValue {
-  yjsDoc: YjsProjectDoc | null
-  awareness: Awareness | null
-  isConnected: boolean
-  deleteConflicts: DeleteConflict[]
-  resolveDeleteConflict: (filePath: string, keepLocal: boolean) => Promise<void>
-}
+export {
+  EMPTY_YJS_PROJECT_CONTEXT_VALUE,
+  YjsProjectContextBridgeProvider,
+  useYjsProject,
+  type YjsProjectContextValue,
+} from "@/contexts/YjsProjectContextValue"
 
 interface InitialSyncResponse {
   serverSnapshot: ArrayBuffer | null
@@ -53,16 +50,6 @@ interface RoomEncryptionState {
   roomKeyBase64: string | null
   keyVersion: number | null
 }
-
-export const EMPTY_YJS_PROJECT_CONTEXT_VALUE: YjsProjectContextValue = {
-  yjsDoc: null,
-  awareness: null,
-  isConnected: false,
-  deleteConflicts: [],
-  resolveDeleteConflict: async () => {},
-}
-
-const YjsProjectContext = createContext<YjsProjectContextValue>(EMPTY_YJS_PROJECT_CONTEXT_VALUE)
 
 function generateColor(id: string): string {
   const colors = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9"]
@@ -723,18 +710,4 @@ export function YjsProjectProvider({
       {children}
     </YjsProjectContext.Provider>
   )
-}
-
-export function useYjsProject() {
-  return useContext(YjsProjectContext)
-}
-
-export function YjsProjectContextBridgeProvider({
-  children,
-  value,
-}: {
-  children: ReactNode
-  value: YjsProjectContextValue
-}) {
-  return <YjsProjectContext.Provider value={value}>{children}</YjsProjectContext.Provider>
 }

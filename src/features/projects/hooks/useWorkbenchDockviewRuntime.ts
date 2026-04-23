@@ -20,7 +20,6 @@ import {
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { useTerminalStore } from "@/stores/useTerminalStore";
-import { disposeBrowserTileModel } from "@/features/projects/browser/browserTileModel";
 import {
   buildDefaultDockview,
   getDockComponentName,
@@ -31,8 +30,13 @@ import {
   syncPanelTitles,
 } from "@/features/projects/lib/workbenchDockview";
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
-import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
+
+function disposeBrowserTileModelDeferred(tileId: string) {
+  return import("@/features/projects/browser/browserTileModel").then((module) =>
+    module.disposeBrowserTileModel(tileId),
+  );
+}
 
 interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
@@ -347,54 +351,59 @@ export function useWorkbenchDockviewRuntime(
     ) => {
       if (!input.projectId) return;
 
-      const api = dockviewApiRef.current;
-      const liveProject = getLiveWorkbench();
-      const selectionTile =
-        selectionPreviewTilesRef.current[selectionTileId] ??
-        liveProject?.tiles[selectionTileId] ??
-        null;
-      if (!api || !isSelectionTile(selectionTile)) return;
+      void (async () => {
+        const api = dockviewApiRef.current;
+        const liveProject = getLiveWorkbench();
+        const selectionTile =
+          selectionPreviewTilesRef.current[selectionTileId] ??
+          liveProject?.tiles[selectionTileId] ??
+          null;
+        if (!api || !isSelectionTile(selectionTile) || !input.projectId) return;
 
-      const resolvedLaunch = resolveWorkbenchSelectionLaunchRequest(request)
-      const tileId =
-        resolvedLaunch.action === "openSingletonTile"
-          ? workbenchActions.openSingletonTile(
-              input.projectId,
-              input.activeLaneId,
-              resolvedLaunch.tileType,
-              resolvedLaunch.options,
-              input.projectPath,
-            )
-          : workbenchActions.addTile(
-              input.projectId,
-              input.activeLaneId,
-              resolvedLaunch.tileType,
-              resolvedLaunch.options,
-              input.projectPath,
-            );
-      const nextTile = getLiveWorkbench()?.tiles[tileId];
-      if (!nextTile) return;
+        const { resolveWorkbenchSelectionLaunchRequest } = await import(
+          "@/features/projects/lib/workbenchSelectionLaunch"
+        );
+        const resolvedLaunch = resolveWorkbenchSelectionLaunchRequest(request)
+        const tileId =
+          resolvedLaunch.action === "openSingletonTile"
+            ? workbenchActions.openSingletonTile(
+                input.projectId,
+                input.activeLaneId,
+                resolvedLaunch.tileType,
+                resolvedLaunch.options,
+                input.projectPath,
+              )
+            : workbenchActions.addTile(
+                input.projectId,
+                input.activeLaneId,
+                resolvedLaunch.tileType,
+                resolvedLaunch.options,
+                input.projectPath,
+              );
+        const nextTile = getLiveWorkbench()?.tiles[tileId];
+        if (!nextTile) return;
 
-      api.addPanel({
-        id: nextTile.id,
-        title: nextTile.title,
-        component: getDockComponentName(nextTile.type),
-        params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
-        position: {
-          referencePanel: selectionTileId,
-          direction: "within",
-        },
-      });
+        api.addPanel({
+          id: nextTile.id,
+          title: nextTile.title,
+          component: getDockComponentName(nextTile.type),
+          params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
+          position: {
+            referencePanel: selectionTileId,
+            direction: "within",
+          },
+        });
 
-      workbenchActions.setActiveTile(
-        input.projectId,
-        input.activeLaneId,
-        nextTile.id,
-        input.projectPath,
-      );
-      api.getPanel(nextTile.id)?.api.setActive();
-      api.getPanel(selectionTileId)?.api.close();
-      transientSelectionTileIdRef.current = null;
+        workbenchActions.setActiveTile(
+          input.projectId,
+          input.activeLaneId,
+          nextTile.id,
+          input.projectPath,
+        );
+        api.getPanel(nextTile.id)?.api.setActive();
+        api.getPanel(selectionTileId)?.api.close();
+        transientSelectionTileIdRef.current = null;
+      })();
     },
     [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
   );
@@ -574,7 +583,7 @@ export function useWorkbenchDockviewRuntime(
             .catch((error) => {
               console.warn("[WorkbenchSession] Failed to release browser for removed panel", error);
             });
-          void disposeBrowserTileModel(panel.id).catch((error) => {
+          void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
             console.warn("[WorkbenchBrowser] Failed to dispose browser model", error);
           });
         }
@@ -607,7 +616,7 @@ export function useWorkbenchDockviewRuntime(
             .catch((error) => {
               console.warn("[WorkbenchSession] Failed to release runtime browser surface", error);
             });
-          void disposeBrowserTileModel(panel.id).catch((error) => {
+          void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
             console.warn("[WorkbenchBrowser] Failed to dispose runtime browser model", error);
           });
           if (removedTile.type === "mobileSimulator") {

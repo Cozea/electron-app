@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { lazy, Suspense, useEffect, useMemo } from "react"
 
 export {
   IDLE_SYNC_PROGRESS,
@@ -12,8 +12,7 @@ export {
 import {
   EMPTY_YJS_PROJECT_CONTEXT_VALUE,
   YjsProjectContextBridgeProvider,
-} from "@/contexts/YjsProjectContext"
-import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
+} from "@/contexts/YjsProjectContextValue"
 import {
   ProjectSyncContext,
   type ProjectSyncProviderProps,
@@ -23,6 +22,12 @@ import {
   useWorkspaceRuntimeStore,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
 import { normalizeWorkspaceLaneId } from "@/features/projects/workspaces/workspaceIdentity"
+
+const LazyDeleteConflictDialog = lazy(() =>
+  import("@/components/editor/DeleteConflictDialog").then((module) => ({
+    default: module.DeleteConflictDialog,
+  })),
+)
 
 export function ProjectSyncProvider({
   children,
@@ -118,7 +123,11 @@ export function ProjectSyncProvider({
   return (
     <ProjectSyncContext.Provider value={syncContextValue}>
       <YjsProjectContextBridgeProvider value={yjsContextValue}>
-        {syncContextValue ? <DeleteConflictDialog /> : null}
+        {syncContextValue ? (
+          <Suspense fallback={null}>
+            <LazyDeleteConflictDialog />
+          </Suspense>
+        ) : null}
         {children}
       </YjsProjectContextBridgeProvider>
     </ProjectSyncContext.Provider>

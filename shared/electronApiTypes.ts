@@ -1340,6 +1340,7 @@ export interface ElectronAPI {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      projectPath?: string | null
     }) => Promise<{ success: boolean }>
     getSession: (options: {
       sessionKey?: string | null

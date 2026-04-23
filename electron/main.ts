@@ -72,6 +72,7 @@ const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const ASSISTANT_RUNTIME_WS_URL =
   process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || 'ws://127.0.0.1:3773'
 const ASSISTANT_RUNTIME_WS_URL_ARG = `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
+const ELECTRON_REMOTE_DEBUGGING_PORT = process.env.ELECTRON_REMOTE_DEBUGGING_PORT?.trim() || null
 const ASSISTANT_RUNTIME_HTTP_URL = (() => {
   try {
     const parsed = new URL(ASSISTANT_RUNTIME_WS_URL)
@@ -108,6 +109,11 @@ const DEV_CONTENT_SECURITY_POLICY = APP_CONTENT_SECURITY_POLICY.replace(
   "script-src 'self'",
   "script-src 'self' 'unsafe-inline'"
 )
+
+if (ELECTRON_REMOTE_DEBUGGING_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', ELECTRON_REMOTE_DEBUGGING_PORT)
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
+}
 
 function matchesProtocolUrl(url: string, routePrefix: string): boolean {
   return SUPPORTED_PROTOCOLS.some((scheme) => url.startsWith(`${scheme}://${routePrefix}`))

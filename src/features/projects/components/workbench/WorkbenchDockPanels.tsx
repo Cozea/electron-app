@@ -1,17 +1,15 @@
 import {
-  createContext,
   lazy,
   memo,
   Suspense,
-  useContext,
   useEffect,
-  useMemo,
+  useRef,
+  useState,
   type ReactNode,
 } from "react"
 import type { IDockviewPanelProps } from "dockview"
 
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
@@ -22,38 +20,18 @@ import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
-
-export interface WorkbenchDockPanelParams {
-  projectId: string
-  laneId: string
-  tileId: string
-}
-
-interface WorkbenchDockRuntimeValue {
-  projectId: string
-  laneId: string
-  projectPath: string | null
-  projectName: string | null
-  workspaceId: string | null
-  framework: string | null
-  storedDevCommand: string | null
-  storedDevPort: number | null
-  workbenchSession: WorkbenchSessionSnapshot | null
-  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
-  onDuplicateAssistantTile: (sourceTileId: string) => void
-  onResolveSelectionTile: (
-    selectionTileId: string,
-    request: WorkbenchSelectionLaunchRequest,
-  ) => void
-  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
-}
-
-const WorkbenchDockRuntimeContext = createContext<WorkbenchDockRuntimeValue | null>(null)
+import {
+  type WorkbenchDockPanelParams,
+  useWorkbenchDockRuntime,
+} from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 
 const panelSuspenseFallback = (
   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading panel…</div>
 )
+const DEFAULT_BACKGROUND_UI_DETACH_MS = 45_000
+const DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 250
+const ASSISTANT_BACKGROUND_UI_DETACH_MS = null
+const SELECTION_BACKGROUND_UI_DETACH_MS = 0
 
 const LazyWorkbenchAssistantChatTile = lazy(() =>
   import("@/features/projects/components/workbench/WorkbenchAssistantChatTile").then((m) => ({
@@ -86,14 +64,6 @@ const LazyWorkbenchTerminalTile = lazy(() =>
   })),
 )
 
-export function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
-  const value = useContext(WorkbenchDockRuntimeContext)
-  if (!value) {
-    throw new Error("Workbench dock panel rendered outside runtime provider")
-  }
-  return value
-}
-
 function WorkbenchPlaceholder(props: { title: string; description: string }) {
   return (
     <div className="flex h-full items-center justify-center p-6 text-center">
@@ -103,6 +73,140 @@ function WorkbenchPlaceholder(props: { title: string; description: string }) {
       </div>
     </div>
   )
+}
+
+function DormantTilePlaceholder(props: { title: string }) {
+  return (
+    <WorkbenchPlaceholder
+      title={props.title}
+      description="Runtime state is retained. Select this tile to attach the UI."
+    />
+  )
+}
+
+function usePanelUiHydration(
+  api: IDockviewPanelProps<WorkbenchDockPanelParams>["api"],
+  options: {
+    detachAfterHiddenMs: number | null
+    visibleHydrateDelayMs: number
+  },
+) {
+  const detachTimerRef = useRef<number | null>(null)
+  const hydrateTimerRef = useRef<number | null>(null)
+  const [shouldHydrate, setShouldHydrate] = useState(() => {
+    if (api.isActive) return true
+    if (!api.isVisible) return false
+    return options.visibleHydrateDelayMs <= 0
+  })
+
+  useEffect(() => {
+    const clearDetachTimer = () => {
+      if (detachTimerRef.current === null) return
+      window.clearTimeout(detachTimerRef.current)
+      detachTimerRef.current = null
+    }
+    const clearHydrateTimer = () => {
+      if (hydrateTimerRef.current === null) return
+      window.clearTimeout(hydrateTimerRef.current)
+      hydrateTimerRef.current = null
+    }
+
+    const hydrateNow = () => {
+      clearDetachTimer()
+      clearHydrateTimer()
+      setShouldHydrate(true)
+    }
+
+    const scheduleVisibleHydration = () => {
+      clearDetachTimer()
+      clearHydrateTimer()
+      if (api.isActive || options.visibleHydrateDelayMs <= 0) {
+        hydrateNow()
+        return
+      }
+
+      hydrateTimerRef.current = window.setTimeout(() => {
+        hydrateTimerRef.current = null
+        setShouldHydrate(true)
+      }, options.visibleHydrateDelayMs)
+    }
+
+    const scheduleDetach = () => {
+      clearDetachTimer()
+      clearHydrateTimer()
+      if (options.detachAfterHiddenMs === null) {
+        return
+      }
+
+      if (options.detachAfterHiddenMs <= 0) {
+        setShouldHydrate(false)
+        return
+      }
+
+      detachTimerRef.current = window.setTimeout(() => {
+        detachTimerRef.current = null
+        setShouldHydrate(false)
+      }, options.detachAfterHiddenMs)
+    }
+
+    if (api.isActive) {
+      hydrateNow()
+    } else if (api.isVisible) {
+      scheduleVisibleHydration()
+    } else {
+      scheduleDetach()
+    }
+
+    const visibilityDisposable = api.onDidVisibilityChange((event) => {
+      if (event.isVisible) {
+        scheduleVisibleHydration()
+        return
+      }
+
+      scheduleDetach()
+    })
+    const activeDisposable = api.onDidActiveChange((event) => {
+      if (!event.isActive) {
+        return
+      }
+
+      hydrateNow()
+    })
+
+    return () => {
+      clearDetachTimer()
+      clearHydrateTimer()
+      visibilityDisposable.dispose()
+      activeDisposable.dispose()
+    }
+  }, [api, options.detachAfterHiddenMs, options.visibleHydrateDelayMs])
+
+  return shouldHydrate
+}
+
+function TileUiHydrationBoundary({
+  children,
+  detachAfterHiddenMs = DEFAULT_BACKGROUND_UI_DETACH_MS,
+  panelApi,
+  title,
+  visibleHydrateDelayMs = DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS,
+}: {
+  children: ReactNode
+  detachAfterHiddenMs?: number | null
+  panelApi: IDockviewPanelProps<WorkbenchDockPanelParams>["api"]
+  title: string
+  visibleHydrateDelayMs?: number
+}) {
+  const shouldHydrate = usePanelUiHydration(panelApi, {
+    detachAfterHiddenMs,
+    visibleHydrateDelayMs,
+  })
+
+  if (!shouldHydrate) {
+    return <DormantTilePlaceholder title={title} />
+  }
+
+  return <Suspense fallback={panelSuspenseFallback}>{children}</Suspense>
 }
 
 function MissingTilePlaceholder() {
@@ -188,7 +292,11 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
       hideWindowActions={singletonEmptyWorkbench}
       contentClassName="h-full"
     >
-      <Suspense fallback={panelSuspenseFallback}>
+      <TileUiHydrationBoundary
+        detachAfterHiddenMs={SELECTION_BACKGROUND_UI_DETACH_MS}
+        panelApi={props.api}
+        title={selectionTile.title}
+      >
         <LazyWorkbenchSelectionTile
           tile={selectionTile}
           singletonEmptyWorkbench={singletonEmptyWorkbench}
@@ -198,7 +306,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
             runtime.onResolveSelectionTile(selectionTile.id, request)
           }}
         />
-      </Suspense>
+      </TileUiHydrationBoundary>
     </WorkbenchTileChrome>
   )
 })
@@ -227,7 +335,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
   }
 
   return (
-    <Suspense fallback={panelSuspenseFallback}>
+    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
       <LazyWorkbenchBrowserTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -238,7 +346,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </Suspense>
+    </TileUiHydrationBoundary>
   )
 })
 
@@ -268,7 +376,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
   }
 
   return (
-    <Suspense fallback={panelSuspenseFallback}>
+    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
       <LazyWorkbenchTerminalTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -278,7 +386,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </Suspense>
+    </TileUiHydrationBoundary>
   )
 })
 
@@ -306,7 +414,7 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
   }
 
   return (
-    <Suspense fallback={panelSuspenseFallback}>
+    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
       <LazyWorkbenchDevServerTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -320,7 +428,7 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </Suspense>
+    </TileUiHydrationBoundary>
   )
 })
 
@@ -350,7 +458,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   }
 
   return (
-    <Suspense fallback={panelSuspenseFallback}>
+    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
       <LazyWorkbenchMobileSimulatorTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -364,7 +472,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </Suspense>
+    </TileUiHydrationBoundary>
   )
 })
 
@@ -394,7 +502,11 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
   }
 
   return (
-    <Suspense fallback={panelSuspenseFallback}>
+    <TileUiHydrationBoundary
+      detachAfterHiddenMs={ASSISTANT_BACKGROUND_UI_DETACH_MS}
+      panelApi={props.api}
+      title={tile.title}
+    >
       <LazyWorkbenchAssistantChatTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -404,7 +516,7 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
         containerApi={props.containerApi}
         onDuplicate={runtime.onDuplicateAssistantTile}
       />
-    </Suspense>
+    </TileUiHydrationBoundary>
   )
 })
 
@@ -415,63 +527,4 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   devServer: DevServerPanel,
   mobileSimulator: MobileSimulatorPanel,
   assistantChat: AssistantChatPanel,
-}
-
-export function WorkbenchDockRuntimeProvider(props: {
-  projectId: string
-  laneId: string
-  projectPath: string | null
-  projectName: string | null
-  workspaceId: string | null
-  framework: string | null
-  storedDevCommand: string | null
-  storedDevPort: number | null
-  workbenchSession: WorkbenchSessionSnapshot | null
-  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
-  onDuplicateAssistantTile: (sourceTileId: string) => void
-  onResolveSelectionTile: (
-    selectionTileId: string,
-    request: WorkbenchSelectionLaunchRequest,
-  ) => void
-  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
-  children: ReactNode
-}) {
-  const value = useMemo<WorkbenchDockRuntimeValue>(
-    () => ({
-      projectId: props.projectId,
-      laneId: props.laneId,
-      projectPath: props.projectPath,
-      projectName: props.projectName,
-      workspaceId: props.workspaceId,
-      framework: props.framework,
-      storedDevCommand: props.storedDevCommand,
-      storedDevPort: props.storedDevPort,
-      workbenchSession: props.workbenchSession,
-      getSelectionPreviewTile: props.getSelectionPreviewTile,
-      onDuplicateAssistantTile: props.onDuplicateAssistantTile,
-      onResolveSelectionTile: props.onResolveSelectionTile,
-      onSplitTile: props.onSplitTile,
-    }),
-    [
-      props.projectId,
-      props.laneId,
-      props.projectPath,
-      props.projectName,
-      props.workspaceId,
-      props.framework,
-      props.storedDevCommand,
-      props.storedDevPort,
-      props.workbenchSession,
-      props.getSelectionPreviewTile,
-      props.onDuplicateAssistantTile,
-      props.onResolveSelectionTile,
-      props.onSplitTile,
-    ],
-  )
-
-  return (
-    <WorkbenchDockRuntimeContext.Provider value={value}>
-      {props.children}
-    </WorkbenchDockRuntimeContext.Provider>
-  )
 }

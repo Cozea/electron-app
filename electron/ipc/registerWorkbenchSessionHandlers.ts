@@ -59,7 +59,7 @@ export function registerWorkbenchSessionHandlers(
 
   ipcMain.handle(
     'workbenchSession:closeSession',
-    async (_event, options: { sessionKey?: string | null; projectId: string; laneId: string }) => {
+    async (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) => {
       return { success: await service.closeSession(options) }
     },
   )

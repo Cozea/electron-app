@@ -10,7 +10,7 @@ import type {
   WorkbenchTile,
   WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
-import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockPanels"
+import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 
 export function getDockComponentName(
   type: WorkbenchTileType,

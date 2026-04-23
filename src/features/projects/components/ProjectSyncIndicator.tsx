@@ -10,7 +10,7 @@ import {
   MdWarning,
 } from "react-icons/md"
 
-import { useYjsProject } from "@/contexts/YjsProjectContext"
+import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
@@ -334,4 +334,3 @@ export function ProjectSyncIndicator({
     </div>
   )
 }
-
