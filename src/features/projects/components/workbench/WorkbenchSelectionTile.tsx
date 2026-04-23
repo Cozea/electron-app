@@ -199,12 +199,18 @@ function SelectionFilterBar({
   isMac,
   activeCategory,
   onCategoryChange,
+  searchQuery,
+  onSearchQueryChange,
+  searchInputRef,
   contentWidth,
   flush = false,
 }: {
   isMac: boolean
   activeCategory: CategoryTab
   onCategoryChange: (category: CategoryTab) => void
+  searchQuery: string
+  onSearchQueryChange: (query: string) => void
+  searchInputRef: RefObject<HTMLInputElement | null>
   contentWidth?: number
   flush?: boolean
 }) {
@@ -246,17 +252,30 @@ function SelectionFilterBar({
           ))}
         </div>
 
-        <div className="flex w-full shrink-0 justify-end">
-          <div
-            className="flex h-9 w-full items-center gap-2 rounded-md bg-secondary px-3 text-sm transition-[color,box-shadow]"
-            role="status"
-            aria-label="Quick open hint"
-          >
+        <label
+          className={cn(
+            "flex h-9 w-full items-center gap-2 rounded-md bg-secondary px-3 text-sm transition-[color,box-shadow]",
+            "ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
+          )}
+        >
+          <span className="sr-only">Search tools</span>
+          <span className="flex w-full shrink-0 items-center gap-2">
             <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Search...</span>
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={searchQuery}
+              onChange={(event) => onSearchQueryChange(event.target.value)}
+              placeholder="Search..."
+              className={cn(
+                "min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground",
+                "outline-none",
+              )}
+              aria-label="Search launcher options"
+            />
             <Kbd className="shrink-0 px-1.5">{shortcut}</Kbd>
-          </div>
-        </div>
+          </span>
+        </label>
       </div>
     </div>
   )
@@ -482,6 +501,8 @@ export function WorkbenchSelectionTile({
 
   const [rootRef, spacious] = useSelectionSurfaceDensity()
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
+  const [searchQuery, setSearchQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   const assistantOptions = useMemo(() => {
     const optionByProvider = new Map(
@@ -501,23 +522,37 @@ export function WorkbenchSelectionTile({
     return configuredProviders
   }, [config])
 
+  const allOptions = useMemo(
+    () => [...DEVELOPMENT_SELECTION_OPTIONS, ...assistantOptions],
+    [assistantOptions],
+  )
+  const categoryOptions = useMemo(() => {
+    if (activeCategory === "All") return allOptions
+    return allOptions.filter((option) => option.category === activeCategory)
+  }, [activeCategory, allOptions])
   const filteredOptions = useMemo(() => {
-    const all = [...DEVELOPMENT_SELECTION_OPTIONS, ...assistantOptions]
-    if (activeCategory === "All") return all
-    return all.filter((option) => option.category === activeCategory)
-  }, [activeCategory, assistantOptions])
-  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(filteredOptions.length)
+    const trimmedQuery = searchQuery.trim().toLowerCase()
+    if (!trimmedQuery) return categoryOptions
+    return categoryOptions.filter((option) =>
+      [option.label, option.description, option.id, option.category, option.provider]
+        .filter((part): part is string => typeof part === "string")
+        .some((part) => part.toLowerCase().includes(trimmedQuery)),
+    )
+  }, [categoryOptions, searchQuery])
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
   const useListView = launcherLayout.fittingColumns <= 2
 
   const launcherContentWidth = useMemo(() => {
-    const visibleColumns = Math.min(launcherLayout.columns, Math.max(1, filteredOptions.length))
+    // Keep filter bar and launcher content width tied to available layout columns,
+    // not to current result count (prevents width jitter while searching).
+    const visibleColumns = Math.max(1, launcherLayout.columns)
     return (
       visibleColumns * densityConfig.cellWidth +
       Math.max(0, visibleColumns - 1) * densityConfig.columnGap
     )
-  }, [densityConfig.cellWidth, densityConfig.columnGap, filteredOptions.length, launcherLayout.columns])
+  }, [densityConfig.cellWidth, densityConfig.columnGap, launcherLayout.columns])
 
   const pagedOptions = useMemo(() => {
     const pages: SelectionOption[][] = []
@@ -536,7 +571,21 @@ export function WorkbenchSelectionTile({
     const pager = launcherPagerRef.current
     if (!pager) return
     pager.scrollTo({ left: 0, top: 0, behavior: "auto" })
-  }, [activeCategory, launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows, useListView])
+  }, [activeCategory, launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows, searchQuery, useListView])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const pressedShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p"
+      if (!pressedShortcut) return
+      event.preventDefault()
+      const input = searchInputRef.current
+      if (!input) return
+      input.focus()
+      input.select()
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true })
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true })
+  }, [])
 
   useEffect(() => {
     if (useListView) return
@@ -585,6 +634,9 @@ export function WorkbenchSelectionTile({
       isMac={isMac}
       activeCategory={activeCategory}
       onCategoryChange={handleCategoryChange}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      searchInputRef={searchInputRef}
       contentWidth={useListView ? undefined : filterContentWidth}
       flush={useListView}
     />
@@ -627,55 +679,72 @@ export function WorkbenchSelectionTile({
                 style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
               >
                 {sharedFilterBar}
-                {filteredOptions.map((option) => (
-                  <SelectionListButton
-                    key={option.id}
-                    option={option}
-                    onChoose={onChoose}
-                  />
-                ))}
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => (
+                    <SelectionListButton
+                      key={option.id}
+                      option={option}
+                      onChoose={onChoose}
+                    />
+                  ))
+                ) : (
+                  <div className="px-3 py-4 text-xs text-muted-foreground">
+                    No results for "{searchQuery.trim()}".
+                  </div>
+                )}
               </div>
             ) : (
               <>
-                <div
-                  ref={launcherPagerRef}
-                  className={cn(
-                    "overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                    centerSingletonSelectionLayout ? "w-full flex-none" : "min-h-0 flex-1",
-                  )}
-                >
-                  <div className="flex h-full">
-                    {pagedOptions.map((page, pageIndex) => {
-                      const pageColumns = Math.min(launcherLayout.columns, Math.max(1, page.length))
-                      return (
-                        <div
-                          key={`selection-page-${pageIndex}`}
-                          className="flex min-w-full snap-start px-1 py-2"
-                        >
+                {filteredOptions.length > 0 ? (
+                  <div
+                    ref={launcherPagerRef}
+                    className={cn(
+                      "overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                      centerSingletonSelectionLayout ? "w-full flex-none" : "min-h-0 flex-1",
+                    )}
+                  >
+                    <div className="flex h-full">
+                      {pagedOptions.map((page, pageIndex) => {
+                        const pageColumns = Math.max(1, launcherLayout.columns)
+                        return (
                           <div
-                            className="grid w-full content-start justify-center"
-                            style={{
-                              gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
-                              gridAutoRows: `${densityConfig.cellHeight}px`,
-                              columnGap: `${densityConfig.columnGap}px`,
-                              rowGap: `${densityConfig.rowGap}px`,
-                            }}
+                            key={`selection-page-${pageIndex}`}
+                            className="flex min-w-full snap-start px-1 py-2"
                           >
-                            {page.map((option) => (
-                              <SelectionLauncherButton
-                                key={option.id}
-                                option={option}
-                                onChoose={onChoose}
-                              />
-                            ))}
+                            <div
+                              className="grid w-full content-start justify-center"
+                              style={{
+                                gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
+                                gridAutoRows: `${densityConfig.cellHeight}px`,
+                                columnGap: `${densityConfig.columnGap}px`,
+                                rowGap: `${densityConfig.rowGap}px`,
+                              }}
+                            >
+                              {page.map((option) => (
+                                <SelectionLauncherButton
+                                  key={option.id}
+                                  option={option}
+                                  onChoose={onChoose}
+                                />
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "flex items-center justify-center px-2 py-8 text-xs text-muted-foreground",
+                      centerSingletonSelectionLayout ? "w-full flex-none" : "min-h-0 flex-1",
+                    )}
+                  >
+                    No results for "{searchQuery.trim()}".
+                  </div>
+                )}
 
-                {pagedOptions.length > 1 ? (
+                {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
                   <div className="mt-3 flex items-center justify-center gap-2">
                     {pagedOptions.map((_, pageIndex) => (
                       <button
