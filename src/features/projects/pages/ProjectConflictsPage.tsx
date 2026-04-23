@@ -14,6 +14,7 @@ import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPa
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/CodeMirrorMergeViewer'
 import { resolveAttachedLocalProjectPathHint } from '@/features/projects/lib/projectLocalRootHints'
+import { resolveTrustedProjectRouteNavigationState } from '@/features/projects/lib/projectNavigationState'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowLeftRightIcon as __GitMergeHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
@@ -31,13 +32,18 @@ export function ProjectConflictsPage() {
   const { project, projectIdParam } = useAccessibleProject()
   const syncContext = useOptionalProjectSyncContext()
   const projectId = project?._id ? String(project._id) : projectIdParam
-  const navigationLocalPath =
-    typeof location.state === 'object' &&
-    location.state !== null &&
-    'localPath' in location.state &&
-    typeof (location.state as { localPath?: unknown }).localPath === 'string'
-      ? (location.state as { localPath: string }).localPath
-      : null
+  const trustedNavigationState = useMemo(
+    () =>
+      resolveTrustedProjectRouteNavigationState({
+        state: location.state,
+        routeProjectId: projectIdParam ?? null,
+        routeProjectSlug: null,
+        resolvedProjectId: project?._id ? String(project._id) : null,
+        resolvedProjectSlug: project?.slug ?? null,
+      }),
+    [location.state, project?._id, project?.slug, projectIdParam],
+  )
+  const navigationLocalPath = trustedNavigationState?.localPath ?? null
   const { localPath: resolvedLocalPath } = useLocalProjectPath({
     initialPath: navigationLocalPath,
     preferInitialPath: Boolean(navigationLocalPath),

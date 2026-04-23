@@ -40,12 +40,19 @@ export function DevAppIcon({ app, className }: DevAppIconProps) {
   }
 
   return (
-    <img
-      src={app.icon.src}
-      alt={app.icon.alt ?? app.name}
-      loading="lazy"
-      className={cn("h-full w-full rounded-[inherit] object-cover", className)}
-      onError={() => setHasError(true)}
-    />
+    <span
+      className={cn(
+        "flex h-full w-full items-center justify-center rounded-[inherit]",
+        app.icon.frameClassName,
+      )}
+    >
+      <img
+        src={app.icon.src}
+        alt={app.icon.alt ?? app.name}
+        loading="lazy"
+        className={cn("h-full w-full rounded-[inherit] object-cover", className)}
+        onError={() => setHasError(true)}
+      />
+    </span>
   )
 }

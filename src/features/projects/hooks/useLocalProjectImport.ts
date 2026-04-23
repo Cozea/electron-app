@@ -6,6 +6,7 @@ import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   browseForDirectory,
   deriveNameFromPath,
@@ -67,13 +68,14 @@ export function useLocalProjectImport() {
   )
 
   const navigateToProjectWorkbench = useCallback(
-    (projectId: string, projectPath: string, projectName: string) => {
+    (projectId: string, projectSlug: string, projectPath: string, projectName: string) => {
       navigate(buildProjectPath(projectId, "workbench"), {
-        state: {
+        state: buildProjectRouteNavigationState({
           projectId,
+          projectSlug,
           projectName,
           localPath: projectPath,
-        },
+        }),
       })
     },
     [navigate],
@@ -145,6 +147,7 @@ export function useLocalProjectImport() {
       await persistProjectPath(result.projectId, localFolderPath)
       navigateToProjectWorkbench(
         String(result.projectId),
+        result.slug,
         localFolderPath,
         projectName,
       )

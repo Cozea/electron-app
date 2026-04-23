@@ -145,7 +145,7 @@ function SelectionFilterBar({
 
         <label
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-md bg-secondary px-3 text-sm transition-[color,box-shadow]",
+            "flex h-9 w-full items-center gap-2 rounded-md border border-sidebar-border/50 bg-secondary px-3 text-sm transition-[color,box-shadow]",
             "ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
           )}
         >

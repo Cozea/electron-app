@@ -15,6 +15,7 @@ import {
   primeLocalProjectPath,
   suppressLocalProjectPath,
 } from "@/features/projects/hooks/useLocalProjectPath"
+import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   clearProjectBranchSession,
 } from "@/features/projects/lib/projectBranchSessionStore"
@@ -75,12 +76,12 @@ export function useProjectWorkspaceActions() {
 
       navigate(buildProjectPath(project.id, "workbench"), {
         replace: options?.replace,
-        state: {
+        state: buildProjectRouteNavigationState({
           projectId: project.id,
           projectSlug: project.slug,
           projectName: project.name,
           localPath: nextProjectPath,
-        },
+        }),
       })
 
       return nextProjectPath
@@ -152,12 +153,11 @@ export function useProjectWorkspaceActions() {
 
       navigate(buildProjectPath(project.id, "workbench"), {
         replace: options?.replace ?? true,
-        state: {
+        state: buildProjectRouteNavigationState({
           projectId: project.id,
           projectSlug: project.slug,
           projectName: project.name,
-          localPath: null,
-        },
+        }),
       })
 
       return true

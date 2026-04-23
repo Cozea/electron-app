@@ -26,6 +26,10 @@ import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/li
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
+import {
+  buildProjectRouteNavigationState,
+  resolveTrustedProjectRouteNavigationState,
+} from "@/features/projects/lib/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
 import { useProjectGitCwd } from "@/features/projects/hooks/useProjectGitCwd";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
@@ -49,8 +53,10 @@ interface ProjectLayoutProps {
 }
 
 interface ProjectLayoutLocationState {
-  localPath?: string | null;
+  projectId?: string | null;
+  projectSlug?: string | null;
   projectName?: string | null;
+  localPath?: string | null;
   pendingTeamSetup?: Array<{
     email: string;
     name?: string;
@@ -101,7 +107,18 @@ export function ProjectLayout({
       : null;
   const project = useCachedQuery(`layout-project-${routeProjectId ?? routeSlug}`, freshProject);
   const projectSlug = project?.slug ?? routeSlug ?? null;
-  const effectiveProjectName = project?.name ?? locationState?.projectName ?? null;
+  const trustedNavigationState = useMemo(
+    () =>
+      resolveTrustedProjectRouteNavigationState({
+        state: location.state,
+        routeProjectId: routeProjectId ?? null,
+        routeProjectSlug: routeSlug ?? null,
+        resolvedProjectId: project?._id ? String(project._id) : null,
+        resolvedProjectSlug: project?.slug ?? null,
+      }),
+    [location.state, project?._id, project?.slug, routeProjectId, routeSlug],
+  );
+  const effectiveProjectName = project?.name ?? trustedNavigationState?.projectName ?? null;
   const projectBasePath = routeProjectId
     ? buildProjectPath(routeProjectId)
     : project?._id
@@ -114,7 +131,7 @@ export function ProjectLayout({
   const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
   const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
   const mirroredLocalPathRef = useRef<string | null>(null);
-  const navigationLocalPath = locationState?.localPath ?? null;
+  const navigationLocalPath = trustedNavigationState?.localPath ?? null;
   const trustedNavigationPath = useMemo(
     () => normalizeProjectPath(navigationLocalPath),
     [navigationLocalPath],
@@ -193,9 +210,12 @@ export function ProjectLayout({
 
         const nextState =
           navigationLocalPath
-            ? {
+            ? buildProjectRouteNavigationState({
+                projectId: project?._id ? String(project._id) : routeProjectId ?? null,
+                projectSlug,
+                projectName: effectiveProjectName,
                 localPath: navigationLocalPath,
-              }
+              })
             : null;
         navigate(`${location.pathname}${location.search}${location.hash}`, {
           replace: true,
@@ -220,7 +240,10 @@ export function ProjectLayout({
     navigate,
     pendingTeamSetup,
     pendingTeamSetupReady,
+    projectSlug,
     project?._id,
+    routeProjectId,
+    effectiveProjectName,
   ]);
 
   const trustedCloudMirrorPath = useMemo(() => {
