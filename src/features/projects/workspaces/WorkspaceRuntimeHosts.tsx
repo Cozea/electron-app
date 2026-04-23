@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react"
 
 import {
   useYjsProject,
-} from "@/contexts/YjsProjectContext"
+} from "@/contexts/YjsProjectContextValue"
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
 import { ProjectSyncProviderRuntime } from "@/features/projects/contexts/ProjectSyncProviderRuntime"
 import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"

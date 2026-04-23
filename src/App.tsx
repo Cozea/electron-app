@@ -1,18 +1,109 @@
-import { useEffect, useEffectEvent } from 'react'
+import { lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
 import { Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { SettingsDrawer } from './components/settings/SettingsDrawer'
 import { CreateProjectDialogHost } from './features/projects/components/CreateProjectDialogHost'
-import { UpdateMenu } from './components/updates/UpdateMenu'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
-import { Login } from './pages/Login'
-import { Onboarding } from './components/Onboarding'
-import { WorkspaceRuntimeHosts } from '@/features/projects/workspaces/WorkspaceRuntimeHosts'
+import { WorkspaceRuntimeHostsGate } from '@/features/projects/workspaces/WorkspaceRuntimeHostsGate'
+
+const LazyLogin = lazy(() =>
+  import('./pages/Login').then((module) => ({
+    default: module.Login,
+  })),
+)
+const LazyOnboarding = lazy(() =>
+  import('./components/Onboarding').then((module) => ({
+    default: module.Onboarding,
+  })),
+)
+const LazyUpdateMenu = lazy(() =>
+  import('./components/updates/UpdateMenu').then((module) => ({
+    default: module.UpdateMenu,
+  })),
+)
+const LazySettingsDrawer = lazy(() =>
+  import('./components/settings/SettingsDrawer').then((module) => ({
+    default: module.SettingsDrawer,
+  })),
+)
+
+function LazySurface({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<FullscreenLoading />}>{children}</Suspense>
+}
+
+function DeferredUpdateMenu({ enabled }: { enabled: boolean }) {
+  const [shouldLoad, setShouldLoad] = useState(false)
+
+  useEffect(() => {
+    if (!enabled) {
+      setShouldLoad(false)
+      return
+    }
+
+    return scheduleIdleWarmup(() => {
+      setShouldLoad(true)
+    }, { delayMs: 5_000, timeoutMs: 15_000 })
+  }, [enabled])
+
+  if (!enabled || !shouldLoad) {
+    return null
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <LazyUpdateMenu />
+    </Suspense>
+  )
+}
+
+function SettingsDrawerHost({ enabled }: { enabled: boolean }) {
+  const isOpen = useSettingsDrawerStore((state) => state.isOpen)
+
+  if (!enabled || !isOpen) {
+    return null
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <LazySettingsDrawer />
+    </Suspense>
+  )
+}
+
+function scheduleIdleWarmup(
+  callback: () => void,
+  options: { delayMs: number; timeoutMs: number },
+) {
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (
+      callback: IdleRequestCallback,
+      options?: IdleRequestOptions,
+    ) => number
+    cancelIdleCallback?: (handle: number) => void
+  }
+  let idleHandle: number | null = null
+  const timeoutHandle = window.setTimeout(() => {
+    if (idleWindow.requestIdleCallback) {
+      idleHandle = idleWindow.requestIdleCallback(callback, {
+        timeout: options.timeoutMs,
+      })
+      return
+    }
+
+    callback()
+  }, options.delayMs)
+
+  return () => {
+    window.clearTimeout(timeoutHandle)
+    if (idleHandle !== null) {
+      idleWindow.cancelIdleCallback?.(idleHandle)
+    }
+  }
+}
 
 function FullscreenLoading() {
   return (
@@ -123,22 +214,25 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
 
+    const shouldWarmNewProject =
+      location.pathname === "/projects" || location.pathname === "/projects/"
     const shouldWarmProjectEditor =
       location.pathname.startsWith('/projects/') &&
-      !location.pathname.startsWith('/projects/new')
+      !location.pathname.startsWith('/projects/new') &&
+      !location.pathname.endsWith('/workbench')
 
-    const warmupTimer = window.setTimeout(() => {
-      void import('./pages/NewProject')
+    if (!shouldWarmNewProject && !shouldWarmProjectEditor) {
+      return
+    }
 
+    return scheduleIdleWarmup(() => {
+      if (shouldWarmNewProject) {
+        void import('./pages/NewProject')
+      }
       if (shouldWarmProjectEditor) {
         void import('./features/projects/pages/ProjectWorkbenchPage')
-        void import('./features/projects/pages/ChangesPage')
       }
-    }, 1200)
-
-    return () => {
-      window.clearTimeout(warmupTimer)
-    }
+    }, { delayMs: 3_500, timeoutMs: 12_000 })
   }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
 
   useEffect(() => {
@@ -146,16 +240,16 @@ function AppContent() {
       return
     }
 
-    const warmupTimer = window.setTimeout(() => {
+    if (location.pathname.endsWith('/workbench')) {
+      return
+    }
+
+    return scheduleIdleWarmup(() => {
       void import('./pages/settings/Tooling').then((module) =>
         module.prewarmToolingSettings?.()
       )
-    }, 150)
-
-    return () => {
-      window.clearTimeout(warmupTimer)
-    }
-  }, [isAuthenticated, isLoading, needsOnboarding])
+    }, { delayMs: 6_000, timeoutMs: 15_000 })
+  }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
 
   if (isLoading) {
     return <FullscreenLoading />
@@ -171,13 +265,19 @@ function AppContent() {
     if (isPublicProjectAccessRoute) {
       return <Outlet />
     }
-    return <Login />
+    return (
+      <LazySurface>
+        <LazyLogin />
+      </LazySurface>
+    )
   }
 
   if (needsOnboarding) {
     return (
       <>
-        <Onboarding />
+        <LazySurface>
+          <LazyOnboarding />
+        </LazySurface>
         <CreateProjectDialogHost />
       </>
     )
@@ -187,12 +287,12 @@ function AppContent() {
     <>
       <ElectronNavigationBridge />
       <ElectronSettingsBridge />
-      {!isSettingsWindow && <UpdateMenu />}
+      <DeferredUpdateMenu enabled={!isSettingsWindow} />
       <Outlet />
-      <WorkspaceRuntimeHosts />
+      <WorkspaceRuntimeHostsGate />
       <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
-      {!isSettingsWindow && <SettingsDrawer />}
+      <SettingsDrawerHost enabled={!isSettingsWindow} />
     </>
   )
 }

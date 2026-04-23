@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useRef, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -8,8 +8,6 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
-import { SettingsSidebar } from "../components/SettingsSidebar";
-import { AppStoreSidebar } from "../components/AppStoreSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
@@ -20,7 +18,6 @@ import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge";
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge";
-import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
@@ -40,12 +37,32 @@ import {
 import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 
+const LazySettingsSidebar = lazy(() =>
+  import("@/features/projects/components/SettingsSidebar").then((module) => ({
+    default: module.SettingsSidebar,
+  })),
+);
+const LazyAppStoreSidebar = lazy(() =>
+  import("@/features/projects/components/AppStoreSidebar").then((module) => ({
+    default: module.AppStoreSidebar,
+  })),
+);
+const LazyPresenceAvatarGroup = lazy(() =>
+  import("@/components/presence/PresenceAvatarGroup").then((module) => ({
+    default: module.PresenceAvatarGroup,
+  })),
+);
+
 function normalizeProjectPath(projectPath: string | null | undefined): string | null {
   if (!projectPath?.trim()) {
     return null;
   }
 
   return projectPath.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function SidebarModeFallback() {
+  return <div className="w-56 shrink-0 bg-sidebar" />;
 }
 
 interface ProjectLayoutProps {
@@ -375,11 +392,13 @@ export function ProjectLayout({
   const presenceHeaderAddon = useMemo(
     () =>
       presenceUsers.length > 0 ? (
-        <PresenceAvatarGroup
-          users={presenceUsers}
-          maxVisible={4}
-          onUserClick={handlePresenceUserClick}
-        />
+        <Suspense fallback={null}>
+          <LazyPresenceAvatarGroup
+            users={presenceUsers}
+            maxVisible={4}
+            onUserClick={handlePresenceUserClick}
+          />
+        </Suspense>
       ) : null,
     [handlePresenceUserClick, presenceUsers],
   );
@@ -409,9 +428,13 @@ export function ProjectLayout({
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {isAppStoreRoute ? (
-            <AppStoreSidebar color="currentColor" user={user} />
+            <Suspense fallback={<SidebarModeFallback />}>
+              <LazyAppStoreSidebar color="currentColor" user={user} />
+            </Suspense>
           ) : isSettingsModeRoute ? (
-            <SettingsSidebar color="currentColor" user={user} />
+            <Suspense fallback={<SidebarModeFallback />}>
+              <LazySettingsSidebar color="currentColor" user={user} />
+            </Suspense>
           ) : (
             <ProjectSidebar
               color="currentColor"

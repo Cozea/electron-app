@@ -15,7 +15,7 @@ import {
   OpenAI,
   OpenCodeIcon,
 } from "@/features/projects/components/assistant/Icons"
-import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockPanels"
+import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 

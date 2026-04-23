@@ -16,6 +16,11 @@ interface ProjectPathRegistryState {
   projects: Record<string, ProjectPathRegistryEntry>
 }
 
+export interface ProjectPathOwner {
+  projectId: string
+  path: string
+}
+
 const REGISTRY_FILE_NAME = 'project-path-registry.json'
 const projectPathCache = new Map<string, ProjectPathRegistryEntry>()
 
@@ -193,6 +198,35 @@ function readRegisteredProjectPathEntry(projectId: string): ProjectPathRegistryE
 
 export function readRegisteredProjectPath(projectId: string): string | null {
   return readRegisteredProjectPathEntry(projectId)?.path ?? null
+}
+
+export function findRegisteredProjectPathOwner(projectPath: string | null | undefined): ProjectPathOwner | null {
+  const resolvedPath = normalizeExistingDirectory(projectPath)
+  if (!resolvedPath) {
+    return null
+  }
+
+  const state = readRegistryState()
+  if (dedupeProjectPaths(state)) {
+    writeRegistryState(state)
+  }
+
+  for (const [projectId, entry] of Object.entries(state.projects)) {
+    const normalizedEntry = normalizeRegistryEntry(entry)
+    if (!normalizedEntry) {
+      continue
+    }
+
+    if (normalizedEntry.path === resolvedPath) {
+      projectPathCache.set(projectId, normalizedEntry)
+      return {
+        projectId,
+        path: normalizedEntry.path,
+      }
+    }
+  }
+
+  return null
 }
 
 export function rememberProjectPath(

@@ -1,4 +1,4 @@
-import { useYjsProject } from '@/contexts/YjsProjectContext'
+import { useYjsProject } from '@/contexts/YjsProjectContextValue'
 import {
 
   Dialog,
@@ -107,4 +107,3 @@ export function DeleteConflictDialog() {
     </Dialog>
   )
 }
-

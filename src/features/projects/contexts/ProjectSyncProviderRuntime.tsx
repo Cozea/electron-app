@@ -7,7 +7,8 @@ import {
 } from "react"
 
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { YjsProjectProvider, useYjsProject } from "@/contexts/YjsProjectContext"
+import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
+import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useCollabSession } from "@/hooks/useCollabSession"

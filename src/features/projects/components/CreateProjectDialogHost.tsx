@@ -1,5 +1,12 @@
-import { CreateProjectDialog } from "@/features/projects/components/CreateProjectDialog"
+import { lazy, Suspense } from "react"
+
 import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
+
+const LazyCreateProjectDialog = lazy(() =>
+  import("@/features/projects/components/CreateProjectDialog").then((module) => ({
+    default: module.CreateProjectDialog,
+  })),
+)
 
 export function CreateProjectDialogHost() {
   const isOpen = useCreateProjectDialogStore((state) => state.isOpen)
@@ -7,16 +14,22 @@ export function CreateProjectDialogHost() {
   const localFolderPath = useCreateProjectDialogStore((state) => state.localFolderPath)
   const close = useCreateProjectDialogStore((state) => state.close)
 
+  if (!isOpen) {
+    return null
+  }
+
   return (
-    <CreateProjectDialog
-      open={isOpen}
-      mode={mode}
-      initialLocalFolderPath={localFolderPath}
-      onOpenChange={(open) => {
-        if (!open) {
-          close()
-        }
-      }}
-    />
+    <Suspense fallback={null}>
+      <LazyCreateProjectDialog
+        open={isOpen}
+        mode={mode}
+        initialLocalFolderPath={localFolderPath}
+        onOpenChange={(open) => {
+          if (!open) {
+            close()
+          }
+        }}
+      />
+    </Suspense>
   )
 }

@@ -338,7 +338,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId: string
       mode?: 'backgroundWarm' | 'backgroundFrozen'
     }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
-    closeSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
+    closeSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:closeSession', options),
     getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),

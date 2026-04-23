@@ -10,17 +10,7 @@ import {
 import { AppRoot } from "@/App";
 import { RouteLoading } from "@/router/RouteLoading";
 import { Outlet } from "@/lib/router";
-import { ProjectsLaunchPage } from "@/features/projects/pages/ProjectsLaunchPage";
 import { ProjectLayout } from "@/features/projects/layouts/ProjectLayout";
-import { ProjectWorkbenchPage } from "@/features/projects/pages/ProjectWorkbenchPage";
-import { TasksPage } from "@/features/projects/pages/TasksPage";
-import { ProjectConflictsPage } from "@/features/projects/pages/ProjectConflictsPage";
-import { ProjectTeamPage } from "@/features/projects/pages/ProjectTeamPage";
-import { AppStorePage } from "@/features/projects/pages/AppStorePage";
-import NewProject from "@/pages/NewProject";
-import { Account } from "@/pages/settings/Account";
-import { Appearance } from "@/pages/settings/Appearance";
-import { Tooling } from "@/pages/settings/Tooling";
 
 function createLazyRouteComponent(
   loader: () => Promise<{ default: ComponentType }>,
@@ -59,6 +49,76 @@ const LegacyProjectRedirectPage = createLazyRouteComponent(
       default: module.LegacyProjectRedirectPage,
     })),
   "Loading project…",
+);
+const ProjectsLaunchPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectsLaunchPage").then((module) => ({
+      default: module.ProjectsLaunchPage,
+    })),
+  "Loading projects…",
+);
+const ProjectWorkbenchPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectWorkbenchPage").then((module) => ({
+      default: module.ProjectWorkbenchPage,
+    })),
+  "Loading workbench…",
+);
+const TasksPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/TasksPage").then((module) => ({
+      default: module.TasksPage,
+    })),
+  "Loading tasks…",
+);
+const ProjectConflictsPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectConflictsPage").then((module) => ({
+      default: module.ProjectConflictsPage,
+    })),
+  "Loading conflicts…",
+);
+const ProjectTeamPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/ProjectTeamPage").then((module) => ({
+      default: module.ProjectTeamPage,
+    })),
+  "Loading team…",
+);
+const AppStorePage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/AppStorePage").then((module) => ({
+      default: module.AppStorePage,
+    })),
+  "Loading DevApps Store…",
+);
+const NewProject = createLazyRouteComponent(
+  () =>
+    import("@/pages/NewProject").then((module) => ({
+      default: module.default,
+    })),
+  "Loading new project…",
+);
+const Account = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Account").then((module) => ({
+      default: module.Account,
+    })),
+  "Loading account…",
+);
+const Appearance = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Appearance").then((module) => ({
+      default: module.Appearance,
+    })),
+  "Loading appearance…",
+);
+const Tooling = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/Tooling").then((module) => ({
+      default: module.Tooling,
+    })),
+  "Loading tooling…",
 );
 const WORKSPACE_MEMBERS_ROUTE = "/teams";
 const WORKSPACE_ROLES_ROUTE = "/teams/roles";
