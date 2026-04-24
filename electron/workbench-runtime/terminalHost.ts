@@ -8,6 +8,7 @@ import type {
   TerminalActivityTrackingMode,
   TerminalCreateOptions,
   TerminalInfo,
+  TerminalOutputEvent,
   TerminalProfile,
   TerminalSnapshot,
 } from '../../shared/electronApiTypes'
@@ -27,7 +28,10 @@ function shellBasename(shellPath: string): string {
 
 function getLoginShellArgs(shellPath: string): string[] | undefined {
   const base = shellBasename(shellPath)
-  if (base === 'zsh' || base === 'bash' || base === 'fish') {
+  if (base === 'zsh') {
+    return ['-l', '-o', 'nopromptsp']
+  }
+  if (base === 'bash' || base === 'fish') {
     return ['-l']
   }
   return undefined
@@ -44,43 +48,98 @@ interface ManagedTerminal {
   terminalKind: string
   activityTracking: TerminalActivityTrackingMode
   ptyProcess: pty.NativePty
+  cols: number
+  rows: number
   profile: TerminalProfile
   title: string
   startedAt: number
   endedAt?: number
   exitCode?: number | null
   output: string
+  outputSequence: number
+  updatedAt: number
+  pendingOutputControlSequence: string
+  pendingOutputChunks: string[]
+  outputDrainScheduled: boolean
   cancelled?: boolean
   timedOut?: boolean
   lastInput?: string
   pendingInputBuffer: string
   lastCommandId?: string
   lastCommandAt?: number
+  resizeHistorySuppressionUntil?: number
   hasRunningSubprocess?: boolean
   activityPollTimer?: NodeJS.Timeout
 }
 
-const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
+const MAX_TERMINAL_OUTPUT_LENGTH = 120_000
+const MAX_TERMINAL_OUTPUT_LINES = 5000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
 const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
 const TERMINAL_HISTORY_MAX_ENTRIES = 500
 const windowsExecutableCache = new Map<string, boolean>()
 const DEFAULT_ACTIVITY_TRACKING: TerminalActivityTrackingMode = 'off'
+const MIN_TERMINAL_COLS = 2
+const MIN_TERMINAL_ROWS = 1
+const RESIZE_HISTORY_SUPPRESSION_MS = 500
 
 function truncateTerminalOutput(output: string): string {
-  if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
-  const tailLength = Math.max(0, MAX_TERMINAL_OUTPUT_LENGTH - TERMINAL_TRUNCATION_MESSAGE.length)
-  return `${TERMINAL_TRUNCATION_MESSAGE}${output.slice(-tailLength)}`
+  let nextOutput = output
+  if (nextOutput.length > MAX_TERMINAL_OUTPUT_LENGTH) {
+    const tailLength = Math.max(0, MAX_TERMINAL_OUTPUT_LENGTH - TERMINAL_TRUNCATION_MESSAGE.length)
+    nextOutput = `${TERMINAL_TRUNCATION_MESSAGE}${nextOutput.slice(-tailLength)}`
+  }
+
+  const lines = nextOutput.split('\n')
+  if (lines.length <= MAX_TERMINAL_OUTPUT_LINES) {
+    return nextOutput
+  }
+
+  return `${TERMINAL_TRUNCATION_MESSAGE}${lines.slice(-MAX_TERMINAL_OUTPUT_LINES).join('\n')}`
 }
 
 function appendTerminalOutput(current: string, chunk: string): string {
   return truncateTerminalOutput(current + chunk)
 }
 
+function normalizeTerminalDimension(value: number, minimum: number): number {
+  if (!Number.isFinite(value)) {
+    return minimum
+  }
+  return Math.max(minimum, Math.floor(value))
+}
+
+export function resolveTerminalResize(
+  current: { cols: number; rows: number },
+  next: { cols: number; rows: number },
+): { cols: number; rows: number } | null {
+  const cols = normalizeTerminalDimension(next.cols, MIN_TERMINAL_COLS)
+  const rows = normalizeTerminalDimension(next.rows, MIN_TERMINAL_ROWS)
+
+  if (current.cols === cols && current.rows === rows) {
+    return null
+  }
+
+  return { cols, rows }
+}
+
+export function shouldSuppressResizeHistoryChunk(data: string): boolean {
+  if (!data) {
+    return false
+  }
+
+  // Shells often repaint the prompt after SIGWINCH without committing a new line.
+  // The live xterm should see that repaint, but snapshots should not grow a fake
+  // prompt line every time the renderer remounts and resizes the PTY.
+  return !data.includes('\n')
+}
+
 function toPtyEnv(env: NodeJS.ProcessEnv, extra?: Record<string, string>): Record<string, string> {
   const merged: NodeJS.ProcessEnv = {
     ...env,
-    ...(extra ?? {}),
+  }
+  if (extra) {
+    Object.assign(merged, extra)
   }
   const normalized: Record<string, string> = {}
   for (const [key, value] of Object.entries(merged)) {
@@ -98,11 +157,156 @@ function isCapableTerm(term: string | undefined): boolean {
 }
 
 function defaultTermEnvForPty(resolvedTerm: string | undefined): Record<string, string> {
-  if (isCapableTerm(resolvedTerm)) return {}
+  const term = isCapableTerm(resolvedTerm) && resolvedTerm ? resolvedTerm : 'xterm-256color'
   return {
-    TERM: 'xterm-256color',
+    TERM: term,
     COLORTERM: 'truecolor',
+    CLICOLOR: '1',
   }
+}
+
+function colorCapabilityEnvForPty(env: NodeJS.ProcessEnv): Record<string, string> {
+  if (env.NO_COLOR !== undefined) {
+    return {}
+  }
+
+  return {
+    FORCE_COLOR: env.FORCE_COLOR ?? '1',
+  }
+}
+
+function isCsiFinalByte(codePoint: number): boolean {
+  return codePoint >= 0x40 && codePoint <= 0x7e
+}
+
+function shouldStripCsiSequence(body: string, finalByte: string): boolean {
+  if (finalByte === 'n') return true
+  if (finalByte === 'R' && /^[0-9;?]*$/.test(body)) return true
+  if (finalByte === 'c' && /^[>0-9;?]*$/.test(body)) return true
+  return false
+}
+
+function shouldStripOscSequence(content: string): boolean {
+  return /^(10|11|12);(?:\?|rgb:)/.test(content)
+}
+
+function stripStringTerminator(value: string): string {
+  if (value.endsWith('\u001b\\')) {
+    return value.slice(0, -2)
+  }
+  const lastCharacter = value.at(-1)
+  if (lastCharacter === '\u0007' || lastCharacter === '\u009c') {
+    return value.slice(0, -1)
+  }
+  return value
+}
+
+function findStringTerminatorIndex(input: string, start: number): number | null {
+  for (let index = start; index < input.length; index += 1) {
+    const codePoint = input.charCodeAt(index)
+    if (codePoint === 0x07 || codePoint === 0x9c) {
+      return index + 1
+    }
+    if (codePoint === 0x1b && input.charCodeAt(index + 1) === 0x5c) {
+      return index + 2
+    }
+  }
+  return null
+}
+
+function isEscapeIntermediateByte(codePoint: number): boolean {
+  return codePoint >= 0x20 && codePoint <= 0x2f
+}
+
+function isEscapeFinalByte(codePoint: number): boolean {
+  return codePoint >= 0x30 && codePoint <= 0x7e
+}
+
+function findEscapeSequenceEndIndex(input: string, start: number): number | null {
+  let cursor = start
+  while (cursor < input.length && isEscapeIntermediateByte(input.charCodeAt(cursor))) {
+    cursor += 1
+  }
+  if (cursor >= input.length) {
+    return null
+  }
+  return isEscapeFinalByte(input.charCodeAt(cursor)) ? cursor + 1 : start + 1
+}
+
+export function sanitizeTerminalHistoryChunk(
+  pendingControlSequence: string,
+  data: string,
+): { visibleText: string; pendingControlSequence: string } {
+  const input = `${pendingControlSequence}${data}`
+  let visibleText = ''
+  let index = 0
+
+  const append = (value: string) => {
+    visibleText += value
+  }
+
+  while (index < input.length) {
+    const codePoint = input.charCodeAt(index)
+
+    if (codePoint === 0x1b) {
+      const nextCodePoint = input.charCodeAt(index + 1)
+      if (Number.isNaN(nextCodePoint)) {
+        return { visibleText, pendingControlSequence: input.slice(index) }
+      }
+
+      if (nextCodePoint === 0x5b) {
+        let cursor = index + 2
+        while (cursor < input.length) {
+          if (isCsiFinalByte(input.charCodeAt(cursor))) {
+            const sequence = input.slice(index, cursor + 1)
+            const body = input.slice(index + 2, cursor)
+            if (!shouldStripCsiSequence(body, input[cursor] ?? '')) {
+              append(sequence)
+            }
+            index = cursor + 1
+            break
+          }
+          cursor += 1
+        }
+        if (cursor >= input.length) {
+          return { visibleText, pendingControlSequence: input.slice(index) }
+        }
+        continue
+      }
+
+      if (
+        nextCodePoint === 0x5d ||
+        nextCodePoint === 0x50 ||
+        nextCodePoint === 0x5e ||
+        nextCodePoint === 0x5f
+      ) {
+        const terminatorIndex = findStringTerminatorIndex(input, index + 2)
+        if (terminatorIndex === null) {
+          return { visibleText, pendingControlSequence: input.slice(index) }
+        }
+        const sequence = input.slice(index, terminatorIndex)
+        const content = stripStringTerminator(input.slice(index + 2, terminatorIndex))
+        if (nextCodePoint !== 0x5d || !shouldStripOscSequence(content)) {
+          append(sequence)
+        }
+        index = terminatorIndex
+        continue
+      }
+
+      const escapeSequenceEndIndex = findEscapeSequenceEndIndex(input, index + 1)
+      if (escapeSequenceEndIndex === null) {
+        return { visibleText, pendingControlSequence: input.slice(index) }
+      }
+      append(input.slice(index, escapeSequenceEndIndex))
+      index = escapeSequenceEndIndex
+      continue
+    }
+
+    append(input[index] ?? '')
+    index += 1
+  }
+
+  return { visibleText, pendingControlSequence: '' }
 }
 
 function isWindowsExecutableAvailable(executable: string): boolean {
@@ -361,6 +565,8 @@ export class TerminalRuntimeHost extends EventEmitter {
       command: terminal.lastInput,
       stdout: terminal.output,
       stderr: '',
+      outputSequence: terminal.outputSequence,
+      updatedAt: terminal.updatedAt,
       exitCode: terminal.exitCode ?? null,
       running: terminal.endedAt === undefined,
       startedAt: terminal.startedAt,
@@ -386,6 +592,77 @@ export class TerminalRuntimeHost extends EventEmitter {
 
   private emitRuntimeEvent(message: WorkbenchRuntimeEventMessage): void {
     this.emit('event', message)
+  }
+
+  private applyTerminalOutputChunk(terminal: Partial<ManagedTerminal>, data: string): void {
+    if (!terminal.id) {
+      return
+    }
+
+    const sanitized = sanitizeTerminalHistoryChunk(
+      terminal.pendingOutputControlSequence || '',
+      data,
+    )
+    terminal.pendingOutputControlSequence = sanitized.pendingControlSequence
+
+    const now = Date.now()
+    const suppressResizeHistory =
+      terminal.resizeHistorySuppressionUntil !== undefined &&
+      now <= terminal.resizeHistorySuppressionUntil &&
+      shouldSuppressResizeHistoryChunk(data)
+
+    const historyData =
+      !suppressResizeHistory && sanitized.visibleText.length > 0
+        ? sanitized.visibleText
+        : ''
+
+    if (historyData.length > 0) {
+      terminal.output = appendTerminalOutput(terminal.output || '', historyData)
+    }
+
+    const sequence = (terminal.outputSequence ?? 0) + 1
+    terminal.outputSequence = sequence
+    terminal.updatedAt = now
+
+    const payload: TerminalOutputEvent = {
+      terminalId: terminal.id,
+      data,
+      sequence,
+      createdAt: now,
+      historyData,
+      runId: terminal.runId,
+    }
+
+    this.emitRuntimeEvent({
+      type: 'event',
+      event: 'terminal.output',
+      payload,
+    })
+  }
+
+  private drainTerminalOutput(terminal: Partial<ManagedTerminal>): void {
+    terminal.outputDrainScheduled = false
+    const chunks = terminal.pendingOutputChunks ?? []
+    if (chunks.length === 0) {
+      return
+    }
+
+    terminal.pendingOutputChunks = []
+    for (const chunk of chunks) {
+      this.applyTerminalOutputChunk(terminal, chunk)
+    }
+  }
+
+  private enqueueTerminalOutput(terminal: Partial<ManagedTerminal>, data: string): void {
+    terminal.pendingOutputChunks = [...(terminal.pendingOutputChunks ?? []), data]
+    if (terminal.outputDrainScheduled) {
+      return
+    }
+
+    terminal.outputDrainScheduled = true
+    setImmediate(() => {
+      this.drainTerminalOutput(terminal)
+    })
   }
 
   private emitTerminalProvenance(
@@ -516,9 +793,16 @@ export class TerminalRuntimeHost extends EventEmitter {
         workspaceId: options.workspaceId,
         terminalKind: options.terminalKind ?? 'shell',
         activityTracking: this.normalizeActivityTracking(options.activityTracking),
+        cols,
+        rows,
         title: '',
         startedAt: Date.now(),
         output: '',
+        outputSequence: 0,
+        updatedAt: Date.now(),
+        pendingOutputControlSequence: '',
+        pendingOutputChunks: [],
+        outputDrainScheduled: false,
         pendingInputBuffer: '',
       }
 
@@ -528,8 +812,15 @@ export class TerminalRuntimeHost extends EventEmitter {
 
       for (const candidate of candidates) {
         try {
-          const profileEnv = { ...(candidate.env ?? {}), ...(options.env ?? {}) }
+          const profileEnv: Record<string, string> = {}
+          if (candidate.env) {
+            Object.assign(profileEnv, candidate.env)
+          }
+          if (options.env) {
+            Object.assign(profileEnv, options.env)
+          }
           const effectiveTerm = profileEnv.TERM ?? runtimeEnv.TERM
+          const colorEnv = colorCapabilityEnvForPty({ ...runtimeEnv, ...profileEnv })
           ptyProcess = pty.spawn(
             {
               executable: candidate.path,
@@ -539,29 +830,24 @@ export class TerminalRuntimeHost extends EventEmitter {
               rows,
               env: toPtyEnv(runtimeEnv, {
                 ...defaultTermEnvForPty(effectiveTerm),
+                ...colorEnv,
                 ...profileEnv,
               }),
             },
             (data) => {
-              terminal.output = appendTerminalOutput(terminal.output || '', data)
-              this.emitRuntimeEvent({
-                type: 'event',
-                event: 'terminal.output',
-                payload: {
-                  terminalId,
-                  data,
-                  runId: terminal.runId,
-                },
-              })
+              this.enqueueTerminalOutput(terminal, data)
             },
             (exitCode) => {
+              this.drainTerminalOutput(terminal)
               terminal.exitCode = exitCode ?? null
               terminal.endedAt = Date.now()
+              terminal.updatedAt = terminal.endedAt
 
               if (terminal.activityPollTimer) {
                 clearInterval(terminal.activityPollTimer)
                 terminal.activityPollTimer = undefined
               }
+              terminal.pendingOutputControlSequence = ''
 
               const managedTerminal = terminal as ManagedTerminal
               this.persistTerminalSnapshot(managedTerminal)
@@ -657,7 +943,15 @@ export class TerminalRuntimeHost extends EventEmitter {
       return { success: false }
     }
 
-    terminal.ptyProcess.resize(cols, rows)
+    const nextSize = resolveTerminalResize(terminal, { cols, rows })
+    if (!nextSize) {
+      return { success: true }
+    }
+
+    terminal.cols = nextSize.cols
+    terminal.rows = nextSize.rows
+    terminal.resizeHistorySuppressionUntil = Date.now() + RESIZE_HISTORY_SUPPRESSION_MS
+    terminal.ptyProcess.resize(nextSize.cols, nextSize.rows)
     return { success: true }
   }
 
@@ -667,8 +961,10 @@ export class TerminalRuntimeHost extends EventEmitter {
       return false
     }
 
+    this.drainTerminalOutput(terminal)
     terminal.cancelled = true
     terminal.endedAt = Date.now()
+    terminal.updatedAt = terminal.endedAt
     terminal.exitCode = terminal.exitCode ?? -1
     this.persistTerminalSnapshot(terminal)
     try {
@@ -715,8 +1011,10 @@ export class TerminalRuntimeHost extends EventEmitter {
   public killAll(): void {
     for (const terminal of this.terminals.values()) {
       try {
+        this.drainTerminalOutput(terminal)
         terminal.cancelled = true
         terminal.endedAt = Date.now()
+        terminal.updatedAt = terminal.endedAt
         terminal.exitCode = terminal.exitCode ?? -1
         this.persistTerminalSnapshot(terminal)
         terminal.ptyProcess.kill()

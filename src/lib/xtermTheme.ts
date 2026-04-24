@@ -22,7 +22,7 @@ export const XTERM_FONT_FAMILY =
   }`
 
 /** Slightly relaxed line height for readability (matches common desktop terminal drawers). */
-export const XTERM_LINE_HEIGHT = 1
+export const XTERM_LINE_HEIGHT = 1.18
 export const XTERM_CUSTOM_GLYPHS = true
 export const XTERM_RESCALE_OVERLAPPING_GLYPHS = true
 export const XTERM_UNICODE_VERSION = '11'
@@ -97,42 +97,42 @@ export function relativeLuminance(hex: string): number {
 export function buildAnsiPalette(useDarkPalette: boolean) {
   if (useDarkPalette) {
     return {
-      black: '#09090b',
-      red: '#f87171',
-      green: '#4ade80',
-      yellow: '#facc15',
-      blue: '#60a5fa',
-      magenta: '#c084fc',
-      cyan: '#22d3ee',
-      white: '#d4d4d8',
-      brightBlack: '#52525b',
-      brightRed: '#fca5a5',
-      brightGreen: '#86efac',
-      brightYellow: '#fde047',
-      brightBlue: '#93c5fd',
-      brightMagenta: '#d8b4fe',
-      brightCyan: '#67e8f9',
-      brightWhite: '#f4f4f5',
+      black: '#181e26',
+      red: '#ff7a8e',
+      green: '#86e795',
+      yellow: '#f4cd72',
+      blue: '#89beff',
+      magenta: '#d0b0ff',
+      cyan: '#7ce8ed',
+      white: '#d2dae6',
+      brightBlack: '#6e7888',
+      brightRed: '#ffa8b4',
+      brightGreen: '#b0f5ba',
+      brightYellow: '#ffe095',
+      brightBlue: '#aed2ff',
+      brightMagenta: '#e5cbff',
+      brightCyan: '#a7f4f7',
+      brightWhite: '#f4f7fc',
     }
   }
 
   return {
-    black: '#2f333d',
-    red: '#d73a49',
-    green: '#22863a',
-    yellow: '#9a6700',
-    blue: '#005cc5',
-    magenta: '#6f42c1',
-    cyan: '#0a7ea4',
-    white: '#57606a',
-    brightBlack: '#6e7781',
-    brightRed: '#cf222e',
-    brightGreen: '#1a7f37',
-    brightYellow: '#8a4600',
-    brightBlue: '#0969da',
-    brightMagenta: '#8250df',
-    brightCyan: '#1b7c83',
-    brightWhite: '#24292f',
+    black: '#2c3542',
+    red: '#bf4657',
+    green: '#3c7e56',
+    yellow: '#927023',
+    blue: '#4866a3',
+    magenta: '#845695',
+    cyan: '#357f8d',
+    white: '#d2d7df',
+    brightBlack: '#707b8c',
+    brightRed: '#d45f70',
+    brightGreen: '#55946f',
+    brightYellow: '#ad852d',
+    brightBlue: '#5b7cc2',
+    brightMagenta: '#996bac',
+    brightCyan: '#4695a4',
+    brightWhite: '#ecf0f6',
   }
 }
 

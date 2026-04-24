@@ -1,4 +1,5 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
+import { useMemo } from "react"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import {
   getDevAppForAssistantProvider,
@@ -24,7 +25,7 @@ import {
   SIDEBAR_PILL_NESTED_ROW_CLASS,
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
-import { useStore } from "@/stores/assistant-store"
+import { createAssistantThreadSelectorById, useStore } from "@/stores/assistant-store"
 import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarSurfaceTileSummary,
@@ -246,9 +247,11 @@ function resolveAgentStatusPill(input: {
 }
 
 function AgentStatusPill(props: { threadId?: string | null }) {
-  const thread = useStore((state) =>
-    props.threadId ? (state.threads.find((entry) => entry.id === props.threadId) ?? null) : null,
+  const threadSelector = useMemo(
+    () => createAssistantThreadSelectorById(props.threadId),
+    [props.threadId],
   )
+  const thread = useStore(threadSelector)
 
   if (!thread) return null
 

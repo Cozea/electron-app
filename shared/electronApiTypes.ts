@@ -382,6 +382,53 @@ export interface ListFilesResult {
   error?: string
 }
 
+export type ProjectFrameworkId =
+  | 'expo'
+  | 'react-native'
+  | 'nextjs'
+  | 'remix'
+  | 'vite-react'
+  | 'vite-vue'
+  | 'vite-svelte'
+  | 'cra'
+  | 'sveltekit'
+  | 'nuxt'
+  | 'astro'
+  | 'gatsby'
+  | 'angular'
+  | 'solid-start'
+  | 'qwik'
+  | 'unknown'
+
+export type ProjectRouteConvention = 'file-based' | 'config-based' | 'unknown'
+
+export interface ProjectStoredFrameworkInfo {
+  framework?: string | null
+  devCommand?: string | null
+  devPort?: number | null
+}
+
+export interface ProjectScannedRoute {
+  name: string
+  path: string
+  file: string
+  type: 'static' | 'dynamic'
+  description?: string
+}
+
+export interface ProjectRouteScanResult {
+  success: boolean
+  routes: ProjectScannedRoute[]
+  framework: ProjectFrameworkId
+  frameworkDisplayName: string
+  routeConvention: ProjectRouteConvention
+  error?: string
+}
+
+export interface ProjectContextOptionsResult extends ProjectRouteScanResult {
+  files: string[]
+}
+
 export interface RenameFileResult {
   success: boolean
   error?: string
@@ -834,6 +881,8 @@ export interface TerminalSnapshot {
   command?: string
   stdout: string
   stderr: string
+  outputSequence: number
+  updatedAt: number
   exitCode: number | null
   running: boolean
   startedAt: number
@@ -897,6 +946,9 @@ export interface TerminalCreateOptions {
 export interface TerminalOutputEvent {
   terminalId: string
   data: string
+  sequence: number
+  createdAt: number
+  historyData?: string
   runId?: string
 }
 
@@ -1456,6 +1508,10 @@ export interface ElectronAPI {
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
+    getContextOptions: (options: {
+      projectPath: string
+      frameworkInfo?: ProjectStoredFrameworkInfo | null
+    }) => Promise<ProjectContextOptionsResult>
     renameFile: (options: {
       projectPath: string
       oldPath: string
@@ -1746,6 +1802,7 @@ export interface ElectronAPI {
     list: (options: { projectPath: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     getSnapshot: (options: { terminalId: string }) => Promise<TerminalSnapshot | null>
+    getOutputEventsSince: (options: { terminalId: string; afterSequence: number }) => Promise<TerminalOutputEvent[]>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
     onOutputForTerminal: (terminalId: string, callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void

@@ -8,6 +8,8 @@ import type {
   RuntimeKind,
   SyncOp,
   SyncWriteFile,
+  TerminalCreateOptions,
+  TerminalOutputEvent,
   UpdateState,
 } from '../shared/electronApiTypes'
 import type { MessageBoxOptions } from 'electron'
@@ -42,14 +44,20 @@ function resolveAssistantWsUrl(argv: readonly string[]): string | null {
 const windowContext = resolveWindowContext(process.argv)
 const assistantWsUrl = resolveAssistantWsUrl(process.argv)
 
-type TerminalOutputPayload = { terminalId: string; data: string; runId?: string }
+type TerminalOutputPayload = TerminalOutputEvent
+type TerminalOutputIpcPayload =
+  | TerminalOutputPayload
+  | {
+      terminalId: string
+      events: TerminalOutputPayload[]
+    }
 
 function createTerminalOutputBridge() {
   const wildcardSubscribers = new Set<(payload: TerminalOutputPayload) => void>()
   const byTerminalId = new Map<string, Set<(payload: TerminalOutputPayload) => void>>()
   let ipcAttached = false
 
-  const dispatch = (_event: Electron.IpcRendererEvent, data: TerminalOutputPayload) => {
+  const dispatchOne = (data: TerminalOutputPayload) => {
     byTerminalId.get(data.terminalId)?.forEach((cb) => {
       try {
         cb(data)
@@ -64,6 +72,17 @@ function createTerminalOutputBridge() {
         console.error('[preload] terminal:onOutput wildcard subscriber failed', err)
       }
     })
+  }
+
+  const dispatch = (_event: Electron.IpcRendererEvent, payload: TerminalOutputIpcPayload) => {
+    if ('events' in payload) {
+      for (const event of payload.events) {
+        dispatchOne(event)
+      }
+      return
+    }
+
+    dispatchOne(payload)
   }
 
   function ensureIpcListener() {
@@ -509,6 +528,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFileBase64: (options: { projectPath: string; filePath: string }) =>
       ipcRenderer.invoke('project:readFileBase64', options),
     listFiles: (options: { projectPath: string }) => ipcRenderer.invoke('project:listFiles', options),
+    getContextOptions: (options: {
+      projectPath: string
+      frameworkInfo?: import('../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
+    }) => ipcRenderer.invoke('project:getContextOptions', options),
     renameFile: (options: {
       projectPath: string
       oldPath: string
@@ -877,7 +900,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   terminal: {
-    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string; env?: Record<string, string>; activityTracking?: import('../shared/electronApiTypes').TerminalActivityTrackingMode }) =>
+    create: (options: TerminalCreateOptions) =>
       ipcRenderer.invoke('terminal:create', options),
     input: (options: { terminalId: string; data: string }) =>
       ipcRenderer.invoke('terminal:input', options),
@@ -893,11 +916,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('terminal:getInfo', options),
     getSnapshot: (options: { terminalId: string }) =>
       ipcRenderer.invoke('terminal:getSnapshot', options),
-    onOutput: (callback: (data: { terminalId: string; data: string; runId?: string }) => void) =>
+    getOutputEventsSince: (options: { terminalId: string; afterSequence: number }) =>
+      ipcRenderer.invoke('terminal:getOutputEventsSince', options),
+    onOutput: (callback: (data: TerminalOutputEvent) => void) =>
       terminalOutputBridge.onOutput(callback),
     onOutputForTerminal: (
       terminalId: string,
-      callback: (data: { terminalId: string; data: string; runId?: string }) => void,
+      callback: (data: TerminalOutputEvent) => void,
     ) => terminalOutputBridge.onOutputForTerminal(terminalId, callback),
     onExit: (callback: (data: { terminalId: string; exitCode: number | null; runId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; exitCode: number | null; runId?: string }) => callback(data)

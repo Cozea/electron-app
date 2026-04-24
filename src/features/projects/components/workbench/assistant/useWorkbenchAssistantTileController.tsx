@@ -39,7 +39,15 @@ import {
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import { useStore } from "@/stores/assistant-store"
+import {
+  createAssistantProjectSelectorForTile,
+  createAssistantThreadSelectorById,
+  selectAssistantProjectByCwd,
+  selectAssistantProjectById,
+  selectAssistantThreadById,
+  useStore,
+} from "@/stores/assistant-store"
+import type { ChatMessage } from "@/stores/types"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
@@ -49,8 +57,6 @@ import { useAssistantServerConfig } from "./useAssistantServerConfig"
 import {
   type DiffDialogState,
   basenameFromPath,
-  findAssistantProjectForTile,
-  findAssistantThreadById,
   getLiveAssistantTile,
   getProviderModelOptions,
   getProviderSnapshot,
@@ -111,15 +117,61 @@ export function useWorkbenchAssistantTileController(
   const [requestError, setRequestError] = useState<string | null>(null)
   const [diffDialog, setDiffDialog] = useState<DiffDialogState | null>(null)
   const [userInputDrafts, setUserInputDrafts] = useState<UserInputAnswerDrafts>({})
+  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([])
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
   const setThreadError = useStore((state) => state.setError)
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const bindingInFlightRef = useRef(false)
+  const sendInFlightRef = useRef(false)
 
-  const assistantProject = useStore((state) =>
-    findAssistantProjectForTile(state.projects, input.tile, input.projectPath),
+  const assistantProjectSelector = useMemo(
+    () =>
+      createAssistantProjectSelectorForTile({
+        assistantProjectId: input.tile.assistantProjectId,
+        projectPath: input.projectPath,
+      }),
+    [input.projectPath, input.tile.assistantProjectId],
   )
-  const thread = useStore((state) => findAssistantThreadById(state.threads, input.tile.threadId))
+  const threadSelector = useMemo(
+    () => createAssistantThreadSelectorById(input.tile.threadId),
+    [input.tile.threadId],
+  )
+  const assistantProject = useStore(assistantProjectSelector)
+  const thread = useStore(threadSelector)
+
+  useEffect(() => {
+    setOptimisticUserMessages([])
+  }, [thread?.id])
+
+  useEffect(() => {
+    if (!thread || optimisticUserMessages.length === 0) {
+      return
+    }
+    const serverMessageIds = new Set(thread.messages.map((message) => message.id))
+    if (!optimisticUserMessages.some((message) => serverMessageIds.has(message.id))) {
+      return
+    }
+    setOptimisticUserMessages((current) =>
+      current.filter((message) => !serverMessageIds.has(message.id)),
+    )
+  }, [optimisticUserMessages, thread])
+
+  const visibleThread = useMemo(() => {
+    if (!thread || optimisticUserMessages.length === 0) {
+      return thread
+    }
+    const serverMessageIds = new Set(thread.messages.map((message) => message.id))
+    const pendingMessages = optimisticUserMessages.filter(
+      (message) => !serverMessageIds.has(message.id),
+    )
+    if (pendingMessages.length === 0) {
+      return thread
+    }
+    return {
+      ...thread,
+      messages: [...thread.messages, ...pendingMessages],
+    }
+  }, [optimisticUserMessages, thread])
 
   const selectedModelSelection = useMemo(() => {
     return (
@@ -282,15 +334,12 @@ export function useWorkbenchAssistantTileController(
           await refreshAssistantRuntimeSnapshot()
 
           const currentTile = liveTile()
+          const currentAssistantState = useStore.getState()
           let nextProject =
             (currentTile.assistantProjectId
-              ? useStore
-                  .getState()
-                  .projects.find((entry) => entry.id === currentTile.assistantProjectId)
+              ? selectAssistantProjectById(currentAssistantState, currentTile.assistantProjectId)
               : null) ??
-            useStore
-              .getState()
-              .projects.find((entry) => entry.cwd === workspaceRoot) ??
+            selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
             null
 
           if (!nextProject) {
@@ -310,9 +359,10 @@ export function useWorkbenchAssistantTileController(
               createdAt: new Date().toISOString(),
             })
             await refreshAssistantRuntimeSnapshot()
+            const nextAssistantState = useStore.getState()
             nextProject =
-              useStore.getState().projects.find((entry) => entry.id === projectId) ??
-              useStore.getState().projects.find((entry) => entry.cwd === workspaceRoot) ??
+              selectAssistantProjectById(nextAssistantState, projectId) ??
+              selectAssistantProjectByCwd(nextAssistantState, workspaceRoot) ??
               null
           }
 
@@ -323,7 +373,7 @@ export function useWorkbenchAssistantTileController(
           const resolvedTile = liveTile()
           let nextThread =
             (resolvedTile.threadId
-              ? useStore.getState().threads.find((entry) => entry.id === resolvedTile.threadId)
+              ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
               : null) ?? null
 
           if (!nextThread || nextThread.projectId !== nextProject.id) {
@@ -348,7 +398,7 @@ export function useWorkbenchAssistantTileController(
             })
             await refreshAssistantRuntimeSnapshot()
             nextThread =
-              useStore.getState().threads.find((entry) => entry.id === threadId) ?? null
+              selectAssistantThreadById(useStore.getState(), threadId) ?? null
           }
 
           const latestTile = liveTile()
@@ -548,6 +598,10 @@ export function useWorkbenchAssistantTileController(
   }
 
   const handleSend = async () => {
+    if (sendInFlightRef.current) {
+      return
+    }
+
     if (!isRuntimeReady) {
       setSendError(runtimeErrorMessage ?? "Local chat runtime is still starting.")
       return
@@ -564,11 +618,22 @@ export function useWorkbenchAssistantTileController(
 
     const isFirstUserMessage = !thread.messages.some((message) => message.role === "user")
     const nextThreadTitle = truncateTitle(nextPrompt)
+    const messageId = newMessageId()
+    const messageCreatedAt = new Date().toISOString()
+    const optimisticMessage: ChatMessage = {
+      id: messageId,
+      role: "user",
+      text: nextPrompt,
+      createdAt: messageCreatedAt,
+      streaming: false,
+    }
 
+    sendInFlightRef.current = true
     setIsSending(true)
     setSendError(null)
     setComposer("")
     setComposerCursor(0)
+    setOptimisticUserMessages((current) => [...current, optimisticMessage])
 
     try {
       const api = ensureNativeApi()
@@ -594,7 +659,7 @@ export function useWorkbenchAssistantTileController(
         commandId: newCommandId(),
         threadId: thread.id,
         message: {
-          messageId: newMessageId(),
+          messageId,
           role: "user",
           text: nextPrompt,
           attachments: [],
@@ -604,14 +669,18 @@ export function useWorkbenchAssistantTileController(
         interactionMode: selectedInteractionMode,
         ...(isFirstUserMessage && nextThreadTitle ? { titleSeed: nextThreadTitle } : {}),
         skills,
-        createdAt: new Date().toISOString(),
+        createdAt: messageCreatedAt,
       })
       await refreshAssistantRuntimeSnapshot()
     } catch (error) {
+      setOptimisticUserMessages((current) =>
+        current.filter((message) => message.id !== messageId),
+      )
       setComposer(nextPrompt)
       setComposerCursor(nextPrompt.length)
       setSendError(toErrorMessage(error))
     } finally {
+      sendInFlightRef.current = false
       setIsSending(false)
     }
   }
@@ -913,7 +982,7 @@ export function useWorkbenchAssistantTileController(
       isRuntimeReady,
       runtimeErrorMessage,
       projectPath: input.projectPath,
-      thread,
+      thread: visibleThread,
       providerSnapshot,
       isRunning,
       isBinding: visibleBindingState,

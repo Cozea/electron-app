@@ -1,9 +1,12 @@
 // @ts-nocheck
 import { Fragment, type ReactNode, createElement, useEffect } from "react";
-import {
+import type {
+  MessageId,
+  OrchestrationEvent,
+  OrchestrationReadModel,
+  ProjectId,
   ThreadId,
-  type OrchestrationEvent,
-  type OrchestrationReadModel,
+  TurnId,
 } from "@cozea/assistant-contracts";
 import {
   createEmptyOrchestrationReadModel,
@@ -11,16 +14,54 @@ import {
 } from "@/stores/orchestrationReadModelProjector";
 import { resolveModelSlugForProvider } from "@cozea/assistant-shared/model";
 import { create } from "zustand";
-import { type ChatMessage, type Project, type Thread } from "./types";
+import {
+  type ChatMessage,
+  type Project,
+  type ProposedPlan,
+  type Thread,
+  type ThreadSession,
+  type TurnDiffSummary,
+} from "./types";
 import { normalizeThreadSession } from "./threadSession";
 import { Debouncer } from "@tanstack/react-pacer";
 import { resolveWsHttpOrigin } from "@/lib/desktopBridgeClient";
 
 // ── State ────────────────────────────────────────────────────────────
 
+export interface ThreadShell
+  extends Omit<
+    Thread,
+    "session" | "messages" | "proposedPlans" | "latestTurn" | "turnDiffSummaries" | "activities"
+  > {}
+
+export interface ThreadTurnState {
+  latestTurn: Thread["latestTurn"];
+}
+
 export interface AppState {
+  /**
+   * Compatibility collections for existing callers. New hot-path selectors
+   * should prefer the normalized records below so unrelated thread changes do
+   * not fan out through every assistant tile.
+   */
   projects: Project[];
   threads: Thread[];
+  projectIds: ProjectId[];
+  projectById: Record<ProjectId, Project>;
+  projectIdByCwd: Record<string, ProjectId>;
+  threadIds: ThreadId[];
+  threadIdsByProjectId: Record<ProjectId, ThreadId[]>;
+  threadShellById: Record<ThreadId, ThreadShell>;
+  threadSessionById: Record<ThreadId, ThreadSession | null>;
+  threadTurnStateById: Record<ThreadId, ThreadTurnState>;
+  messageIdsByThreadId: Record<ThreadId, MessageId[]>;
+  messageByThreadId: Record<ThreadId, Record<MessageId, ChatMessage>>;
+  activityIdsByThreadId: Record<ThreadId, string[]>;
+  activityByThreadId: Record<ThreadId, Record<string, Thread["activities"][number]>>;
+  proposedPlanIdsByThreadId: Record<ThreadId, string[]>;
+  proposedPlanByThreadId: Record<ThreadId, Record<string, ProposedPlan>>;
+  turnDiffIdsByThreadId: Record<ThreadId, TurnId[]>;
+  turnDiffSummaryByThreadId: Record<ThreadId, Record<TurnId, TurnDiffSummary>>;
   threadsHydrated: boolean;
   /** Canonical server read model; updated by snapshot hydrate + WS domain events. */
   orchestrationReadModel: OrchestrationReadModel;
@@ -28,9 +69,35 @@ export interface AppState {
 
 const PERSISTED_STATE_KEY = "cozea:assistant:renderer-state:v8";
 
+const EMPTY_MESSAGES: ChatMessage[] = [];
+const EMPTY_ACTIVITIES: Thread["activities"] = [];
+const EMPTY_PROPOSED_PLANS: ProposedPlan[] = [];
+const EMPTY_TURN_DIFF_SUMMARIES: TurnDiffSummary[] = [];
+const EMPTY_MESSAGE_MAP: Record<MessageId, ChatMessage> = {};
+const EMPTY_ACTIVITY_MAP: Record<string, Thread["activities"][number]> = {};
+const EMPTY_PROPOSED_PLAN_MAP: Record<string, ProposedPlan> = {};
+const EMPTY_TURN_DIFF_MAP: Record<TurnId, TurnDiffSummary> = {};
+const EMPTY_THREAD_IDS: ThreadId[] = [];
+
 const initialState: AppState = {
   projects: [],
   threads: [],
+  projectIds: [],
+  projectById: {},
+  projectIdByCwd: {},
+  threadIds: [],
+  threadIdsByProjectId: {},
+  threadShellById: {},
+  threadSessionById: {},
+  threadTurnStateById: {},
+  messageIdsByThreadId: {},
+  messageByThreadId: {},
+  activityIdsByThreadId: {},
+  activityByThreadId: {},
+  proposedPlanIdsByThreadId: {},
+  proposedPlanByThreadId: {},
+  turnDiffIdsByThreadId: {},
+  turnDiffSummaryByThreadId: {},
   threadsHydrated: false,
   orchestrationReadModel: createEmptyOrchestrationReadModel(new Date().toISOString()),
 };
@@ -69,13 +136,14 @@ function readPersistedState(): AppState {
 function persistState(state: AppState): void {
   if (typeof window === "undefined") return;
   try {
+    const projects = selectAssistantProjects(state);
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
-        expandedProjectCwds: state.projects
+        expandedProjectCwds: projects
           .filter((project) => project.expanded)
           .map((project) => project.cwd),
-        projectOrderCwds: state.projects.map((project) => project.cwd),
+        projectOrderCwds: projects.map((project) => project.cwd),
       }),
     );
   } catch {
@@ -84,21 +152,107 @@ function persistState(state: AppState): void {
 }
 const debouncedPersistState = new Debouncer(persistState, { wait: 500 });
 
-// ── Pure helpers ──────────────────────────────────────────────────────
+// ── Identity and equality helpers ────────────────────────────────────
 
-function updateThread(
-  threads: Thread[],
-  threadId: ThreadId,
-  updater: (t: Thread) => Thread,
-): Thread[] {
+function shallowRefArrayEqual<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function scalarArrayEqual<T extends string>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function jsonEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function projectScriptsEqual(left: Project["scripts"], right: Project["scripts"]): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  return left.every((script, index) => jsonEqual(script, right[index]));
+}
+
+function projectsEqual(left: Project | undefined, right: Project): boolean {
+  return (
+    left !== undefined &&
+    left.id === right.id &&
+    left.name === right.name &&
+    left.cwd === right.cwd &&
+    jsonEqual(left.defaultModelSelection, right.defaultModelSelection) &&
+    left.expanded === right.expanded &&
+    left.createdAt === right.createdAt &&
+    left.updatedAt === right.updatedAt &&
+    projectScriptsEqual(left.scripts, right.scripts)
+  );
+}
+
+function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): boolean {
+  return (
+    left !== undefined &&
+    left.id === right.id &&
+    left.codexThreadId === right.codexThreadId &&
+    left.projectId === right.projectId &&
+    left.title === right.title &&
+    jsonEqual(left.modelSelection, right.modelSelection) &&
+    left.runtimeMode === right.runtimeMode &&
+    left.interactionMode === right.interactionMode &&
+    left.error === right.error &&
+    left.createdAt === right.createdAt &&
+    left.updatedAt === right.updatedAt &&
+    left.lastVisitedAt === right.lastVisitedAt &&
+    left.branch === right.branch &&
+    left.worktreePath === right.worktreePath
+  );
+}
+
+function threadSessionsEqual(
+  left: ThreadSession | null | undefined,
+  right: ThreadSession | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return false;
+  return (
+    left.provider === right.provider &&
+    left.status === right.status &&
+    left.activeTurnId === right.activeTurnId &&
+    left.createdAt === right.createdAt &&
+    left.updatedAt === right.updatedAt &&
+    left.lastError === right.lastError &&
+    left.orchestrationStatus === right.orchestrationStatus
+  );
+}
+
+function threadTurnStatesEqual(
+  left: ThreadTurnState | undefined,
+  right: ThreadTurnState,
+): boolean {
+  return left !== undefined && jsonEqual(left.latestTurn, right.latestTurn);
+}
+
+function retainThreadScopedRecord<T>(
+  record: Record<ThreadId, T>,
+  retainedThreadIds: ReadonlySet<ThreadId>,
+): Record<ThreadId, T> {
   let changed = false;
-  const next = threads.map((t) => {
-    if (t.id !== threadId) return t;
-    const updated = updater(t);
-    if (updated !== t) changed = true;
-    return updated;
-  });
-  return changed ? next : threads;
+  const next: Record<ThreadId, T> = {};
+  for (const [threadId, value] of Object.entries(record) as Array<[ThreadId, T]>) {
+    if (retainedThreadIds.has(threadId)) {
+      next[threadId] = value;
+    } else {
+      changed = true;
+    }
+  }
+  return changed ? next : record;
+}
+
+// ── Mapping helpers ──────────────────────────────────────────────────
+
+function normalizeModelSelection(selection: OrchestrationReadModel["threads"][number]["modelSelection"]) {
+  return {
+    ...selection,
+    model: resolveModelSlugForProvider(selection.provider, selection.model),
+  };
 }
 
 function mapProjectsFromReadModel(
@@ -125,13 +279,7 @@ function mapProjectsFromReadModel(
       defaultModelSelection:
         existing?.defaultModelSelection ??
         (project.defaultModelSelection
-          ? {
-              ...project.defaultModelSelection,
-              model: resolveModelSlugForProvider(
-                project.defaultModelSelection.provider,
-                project.defaultModelSelection.model,
-              ),
-            }
+          ? normalizeModelSelection(project.defaultModelSelection)
           : null),
       expanded:
         existing?.expanded ??
@@ -160,7 +308,11 @@ function mapProjectsFromReadModel(
       if (byOrder !== 0) return byOrder;
       return a.incomingIndex - b.incomingIndex;
     })
-    .map((entry) => entry.project);
+    .map((entry) => {
+      const existing =
+        previousById.get(entry.project.id) ?? previousByCwd.get(entry.project.cwd);
+      return projectsEqual(existing, entry.project) ? existing : entry.project;
+    });
 }
 
 function toAttachmentPreviewUrl(rawUrl: string): string {
@@ -174,95 +326,585 @@ function attachmentPreviewRoutePath(attachmentId: string): string {
   return `/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
+function mapMessage(message: OrchestrationReadModel["threads"][number]["messages"][number]): ChatMessage {
+  const attachments = message.attachments?.map((attachment) => ({
+    type: "image" as const,
+    id: attachment.id,
+    name: attachment.name,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    previewUrl: toAttachmentPreviewUrl(attachmentPreviewRoutePath(attachment.id)),
+  }));
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.text,
+    createdAt: message.createdAt,
+    streaming: message.streaming,
+    ...(message.streaming ? {} : { completedAt: message.updatedAt }),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
+function mapProposedPlan(proposedPlan: OrchestrationReadModel["threads"][number]["proposedPlans"][number]): ProposedPlan {
+  return {
+    id: proposedPlan.id,
+    turnId: proposedPlan.turnId,
+    planMarkdown: proposedPlan.planMarkdown,
+    implementedAt: proposedPlan.implementedAt,
+    implementationThreadId: proposedPlan.implementationThreadId,
+    createdAt: proposedPlan.createdAt,
+    updatedAt: proposedPlan.updatedAt,
+  };
+}
+
+function mapTurnDiffSummary(checkpoint: OrchestrationReadModel["threads"][number]["checkpoints"][number]): TurnDiffSummary {
+  return {
+    turnId: checkpoint.turnId,
+    completedAt: checkpoint.completedAt,
+    status: checkpoint.status,
+    assistantMessageId: checkpoint.assistantMessageId ?? undefined,
+    checkpointTurnCount: checkpoint.checkpointTurnCount,
+    checkpointRef: checkpoint.checkpointRef,
+    files: checkpoint.files.map((file) => ({ ...file })),
+  };
+}
+
+function mapThreadShell(
+  thread: OrchestrationReadModel["threads"][number],
+  previousShell: ThreadShell | undefined,
+): ThreadShell {
+  return {
+    id: thread.id,
+    codexThreadId: null,
+    projectId: thread.projectId,
+    title: thread.title,
+    modelSelection: normalizeModelSelection(thread.modelSelection),
+    runtimeMode: thread.runtimeMode,
+    interactionMode: thread.interactionMode,
+    error: thread.session?.lastError ?? null,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    lastVisitedAt: previousShell?.lastVisitedAt ?? thread.updatedAt,
+    branch: thread.branch,
+    worktreePath: thread.worktreePath,
+  };
+}
+
+function buildMessageSlice(thread: OrchestrationReadModel["threads"][number]) {
+  const messages = thread.messages.map(mapMessage);
+  return {
+    ids: messages.map((message) => message.id),
+    byId: Object.fromEntries(messages.map((message) => [message.id, message] as const)),
+  };
+}
+
+function buildActivitySlice(thread: OrchestrationReadModel["threads"][number]) {
+  return {
+    ids: thread.activities.map((activity) => activity.id),
+    byId: Object.fromEntries(thread.activities.map((activity) => [activity.id, { ...activity }] as const)),
+  };
+}
+
+function buildProposedPlanSlice(thread: OrchestrationReadModel["threads"][number]) {
+  const proposedPlans = thread.proposedPlans.map(mapProposedPlan);
+  return {
+    ids: proposedPlans.map((plan) => plan.id),
+    byId: Object.fromEntries(proposedPlans.map((plan) => [plan.id, plan] as const)),
+  };
+}
+
+function buildTurnDiffSlice(thread: OrchestrationReadModel["threads"][number]) {
+  const turnDiffSummaries = thread.checkpoints.map(mapTurnDiffSummary);
+  return {
+    ids: turnDiffSummaries.map((summary) => summary.turnId),
+    byId: Object.fromEntries(turnDiffSummaries.map((summary) => [summary.turnId, summary] as const)),
+  };
+}
+
+// ── Thread derivation ────────────────────────────────────────────────
+
+const collectedByIdsCache = new WeakMap<readonly string[], WeakMap<object, readonly unknown[]>>();
+const threadCache = new WeakMap<
+  ThreadShell,
+  {
+    session: ThreadSession | null;
+    turnState: ThreadTurnState | undefined;
+    messages: Thread["messages"];
+    activities: Thread["activities"];
+    proposedPlans: Thread["proposedPlans"];
+    turnDiffSummaries: Thread["turnDiffSummaries"];
+    thread: Thread;
+  }
+>();
+
+function collectByIds<TKey extends string, TValue>(
+  ids: readonly TKey[] | undefined,
+  byId: Record<TKey, TValue> | undefined,
+  emptyValue: TValue[],
+): TValue[] {
+  if (!ids || ids.length === 0 || !byId) {
+    return emptyValue;
+  }
+
+  const cachedByRecord = collectedByIdsCache.get(ids);
+  const cached = cachedByRecord?.get(byId);
+  if (cached) {
+    return cached as TValue[];
+  }
+
+  const nextValues = ids.flatMap((id) => {
+    const value = byId[id];
+    return value ? [value] : [];
+  });
+  const nextCachedByRecord = cachedByRecord ?? new WeakMap<object, readonly unknown[]>();
+  nextCachedByRecord.set(byId, nextValues);
+  if (!cachedByRecord) {
+    collectedByIdsCache.set(ids, nextCachedByRecord);
+  }
+  return nextValues;
+}
+
+function selectThreadMessages(state: AppState, threadId: ThreadId): Thread["messages"] {
+  return collectByIds(
+    state.messageIdsByThreadId[threadId],
+    state.messageByThreadId[threadId] ?? EMPTY_MESSAGE_MAP,
+    EMPTY_MESSAGES,
+  );
+}
+
+function selectThreadActivities(state: AppState, threadId: ThreadId): Thread["activities"] {
+  return collectByIds(
+    state.activityIdsByThreadId[threadId],
+    state.activityByThreadId[threadId] ?? EMPTY_ACTIVITY_MAP,
+    EMPTY_ACTIVITIES,
+  );
+}
+
+function selectThreadProposedPlans(state: AppState, threadId: ThreadId): Thread["proposedPlans"] {
+  return collectByIds(
+    state.proposedPlanIdsByThreadId[threadId],
+    state.proposedPlanByThreadId[threadId] ?? EMPTY_PROPOSED_PLAN_MAP,
+    EMPTY_PROPOSED_PLANS,
+  );
+}
+
+function selectThreadTurnDiffSummaries(
+  state: AppState,
+  threadId: ThreadId,
+): Thread["turnDiffSummaries"] {
+  return collectByIds(
+    state.turnDiffIdsByThreadId[threadId],
+    state.turnDiffSummaryByThreadId[threadId] ?? EMPTY_TURN_DIFF_MAP,
+    EMPTY_TURN_DIFF_SUMMARIES,
+  );
+}
+
+export function getThreadFromAssistantState(
+  state: AppState,
+  threadId: ThreadId | null | undefined,
+): Thread | null {
+  if (!threadId) return null;
+  const shell = state.threadShellById[threadId];
+  if (!shell) return null;
+
+  const session = state.threadSessionById[threadId] ?? null;
+  const turnState = state.threadTurnStateById[threadId];
+  const messages = selectThreadMessages(state, threadId);
+  const activities = selectThreadActivities(state, threadId);
+  const proposedPlans = selectThreadProposedPlans(state, threadId);
+  const turnDiffSummaries = selectThreadTurnDiffSummaries(state, threadId);
+  const cached = threadCache.get(shell);
+
+  if (
+    cached &&
+    cached.session === session &&
+    cached.turnState === turnState &&
+    cached.messages === messages &&
+    cached.activities === activities &&
+    cached.proposedPlans === proposedPlans &&
+    cached.turnDiffSummaries === turnDiffSummaries
+  ) {
+    return cached.thread;
+  }
+
+  const thread: Thread = {
+    ...shell,
+    session,
+    latestTurn: turnState?.latestTurn ?? null,
+    messages,
+    activities,
+    proposedPlans,
+    turnDiffSummaries,
+  };
+
+  threadCache.set(shell, {
+    session,
+    turnState,
+    messages,
+    activities,
+    proposedPlans,
+    turnDiffSummaries,
+    thread,
+  });
+
+  return thread;
+}
+
+export function selectAssistantProjects(state: AppState): Project[] {
+  return state.projectIds.flatMap((projectId) => {
+    const project = state.projectById[projectId];
+    return project ? [project] : [];
+  });
+}
+
+export function selectAssistantThreads(state: AppState): Thread[] {
+  return state.threadIds.flatMap((threadId) => {
+    const thread = getThreadFromAssistantState(state, threadId);
+    return thread ? [thread] : [];
+  });
+}
+
+export function selectAssistantProjectById(
+  state: AppState,
+  projectId: ProjectId | string | null | undefined,
+): Project | null {
+  return projectId ? (state.projectById[projectId] ?? null) : null;
+}
+
+export function selectAssistantProjectByCwd(
+  state: AppState,
+  cwd: string | null | undefined,
+): Project | null {
+  return cwd ? (state.projectById[state.projectIdByCwd[cwd]] ?? null) : null;
+}
+
+export function selectAssistantProjectForTile(
+  state: AppState,
+  tile: { assistantProjectId?: string | null } | null | undefined,
+  projectPath: string | null | undefined,
+): Project | null {
+  return (
+    selectAssistantProjectById(state, tile?.assistantProjectId) ??
+    selectAssistantProjectByCwd(state, projectPath)
+  );
+}
+
+export function selectAssistantThreadById(
+  state: AppState,
+  threadId: ThreadId | string | null | undefined,
+): Thread | null {
+  return getThreadFromAssistantState(state, threadId as ThreadId | null | undefined);
+}
+
+export function createAssistantThreadSelectorById(
+  threadId: ThreadId | string | null | undefined,
+): (state: AppState) => Thread | null {
+  let previousShell: ThreadShell | undefined;
+  let previousSession: ThreadSession | null | undefined;
+  let previousTurnState: ThreadTurnState | undefined;
+  let previousMessageIds: MessageId[] | undefined;
+  let previousMessagesById: Record<MessageId, ChatMessage> | undefined;
+  let previousActivityIds: string[] | undefined;
+  let previousActivitiesById: Record<string, Thread["activities"][number]> | undefined;
+  let previousProposedPlanIds: string[] | undefined;
+  let previousProposedPlansById: Record<string, ProposedPlan> | undefined;
+  let previousTurnDiffIds: TurnId[] | undefined;
+  let previousTurnDiffsById: Record<TurnId, TurnDiffSummary> | undefined;
+  let previousThread: Thread | null = null;
+
+  return (state) => {
+    if (!threadId) return null;
+    const shell = state.threadShellById[threadId];
+    if (!shell) {
+      previousShell = undefined;
+      previousThread = null;
+      return null;
+    }
+    const session = state.threadSessionById[threadId] ?? null;
+    const turnState = state.threadTurnStateById[threadId];
+    const messageIds = state.messageIdsByThreadId[threadId];
+    const messagesById = state.messageByThreadId[threadId];
+    const activityIds = state.activityIdsByThreadId[threadId];
+    const activitiesById = state.activityByThreadId[threadId];
+    const proposedPlanIds = state.proposedPlanIdsByThreadId[threadId];
+    const proposedPlansById = state.proposedPlanByThreadId[threadId];
+    const turnDiffIds = state.turnDiffIdsByThreadId[threadId];
+    const turnDiffsById = state.turnDiffSummaryByThreadId[threadId];
+
+    if (
+      previousThread &&
+      previousShell === shell &&
+      previousSession === session &&
+      previousTurnState === turnState &&
+      previousMessageIds === messageIds &&
+      previousMessagesById === messagesById &&
+      previousActivityIds === activityIds &&
+      previousActivitiesById === activitiesById &&
+      previousProposedPlanIds === proposedPlanIds &&
+      previousProposedPlansById === proposedPlansById &&
+      previousTurnDiffIds === turnDiffIds &&
+      previousTurnDiffsById === turnDiffsById
+    ) {
+      return previousThread;
+    }
+
+    previousShell = shell;
+    previousSession = session;
+    previousTurnState = turnState;
+    previousMessageIds = messageIds;
+    previousMessagesById = messagesById;
+    previousActivityIds = activityIds;
+    previousActivitiesById = activitiesById;
+    previousProposedPlanIds = proposedPlanIds;
+    previousProposedPlansById = proposedPlansById;
+    previousTurnDiffIds = turnDiffIds;
+    previousTurnDiffsById = turnDiffsById;
+    previousThread = getThreadFromAssistantState(state, threadId as ThreadId);
+    return previousThread;
+  };
+}
+
+export function createAssistantProjectSelectorForTile(input: {
+  assistantProjectId?: string | null;
+  projectPath?: string | null;
+}): (state: AppState) => Project | null {
+  return (state) =>
+    selectAssistantProjectForTile(
+      state,
+      { assistantProjectId: input.assistantProjectId ?? null },
+      input.projectPath ?? null,
+    );
+}
+
+function materializeLegacyCollections(state: AppState): AppState {
+  const projects = selectAssistantProjects(state);
+  const threads = selectAssistantThreads(state);
+  let nextState = state;
+  if (!shallowRefArrayEqual(state.projects, projects)) {
+    nextState = { ...nextState, projects };
+  }
+  if (!shallowRefArrayEqual(state.threads, threads)) {
+    nextState = { ...nextState, threads };
+  }
+  return nextState;
+}
+
 // ── Pure state transition functions ────────────────────────────────────
 
-function mapUiThreadsFromReadModel(
+function writeProjectCollection(
+  state: AppState,
+  incoming: OrchestrationReadModel["projects"],
+): AppState {
+  const projects = mapProjectsFromReadModel(incoming, selectAssistantProjects(state));
+  const projectIds = projects.map((project) => project.id);
+  const projectById = Object.fromEntries(projects.map((project) => [project.id, project] as const));
+  const projectIdByCwd = Object.fromEntries(
+    projects.map((project) => [project.cwd, project.id] as const),
+  );
+
+  const sameProjectIds = scalarArrayEqual(state.projectIds, projectIds);
+  const sameProjectObjects =
+    sameProjectIds && projects.every((project) => state.projectById[project.id] === project);
+
+  if (
+    sameProjectIds &&
+    sameProjectObjects &&
+    jsonEqual(state.projectIdByCwd, projectIdByCwd)
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    projectIds,
+    projectById,
+    projectIdByCwd,
+  };
+}
+
+function previousRawThreadById(readModel: OrchestrationReadModel): Map<ThreadId, OrchestrationReadModel["threads"][number]> {
+  return new Map(readModel.threads.map((thread) => [thread.id, thread] as const));
+}
+
+function writeThreadFromReadModel(
+  state: AppState,
+  thread: OrchestrationReadModel["threads"][number],
+  previousRawThread: OrchestrationReadModel["threads"][number] | undefined,
+): AppState {
+  const previousShell = state.threadShellById[thread.id];
+  const nextShell = mapThreadShell(thread, previousShell);
+  const nextSession = normalizeThreadSession(thread.session);
+  const nextTurnState: ThreadTurnState = {
+    latestTurn: thread.latestTurn,
+  };
+
+  let nextState = state;
+
+  if (!threadShellsEqual(previousShell, nextShell)) {
+    nextState = {
+      ...nextState,
+      threadShellById: {
+        ...nextState.threadShellById,
+        [thread.id]: nextShell,
+      },
+    };
+  }
+
+  if (!threadSessionsEqual(nextState.threadSessionById[thread.id] ?? null, nextSession)) {
+    nextState = {
+      ...nextState,
+      threadSessionById: {
+        ...nextState.threadSessionById,
+        [thread.id]: nextSession,
+      },
+    };
+  }
+
+  if (!threadTurnStatesEqual(nextState.threadTurnStateById[thread.id], nextTurnState)) {
+    nextState = {
+      ...nextState,
+      threadTurnStateById: {
+        ...nextState.threadTurnStateById,
+        [thread.id]: nextTurnState,
+      },
+    };
+  }
+
+  if (previousRawThread?.messages !== thread.messages || !nextState.messageIdsByThreadId[thread.id]) {
+    const messageSlice = buildMessageSlice(thread);
+    nextState = {
+      ...nextState,
+      messageIdsByThreadId: {
+        ...nextState.messageIdsByThreadId,
+        [thread.id]: messageSlice.ids,
+      },
+      messageByThreadId: {
+        ...nextState.messageByThreadId,
+        [thread.id]: messageSlice.byId,
+      },
+    };
+  }
+
+  if (previousRawThread?.activities !== thread.activities || !nextState.activityIdsByThreadId[thread.id]) {
+    const activitySlice = buildActivitySlice(thread);
+    nextState = {
+      ...nextState,
+      activityIdsByThreadId: {
+        ...nextState.activityIdsByThreadId,
+        [thread.id]: activitySlice.ids,
+      },
+      activityByThreadId: {
+        ...nextState.activityByThreadId,
+        [thread.id]: activitySlice.byId,
+      },
+    };
+  }
+
+  if (
+    previousRawThread?.proposedPlans !== thread.proposedPlans ||
+    !nextState.proposedPlanIdsByThreadId[thread.id]
+  ) {
+    const proposedPlanSlice = buildProposedPlanSlice(thread);
+    nextState = {
+      ...nextState,
+      proposedPlanIdsByThreadId: {
+        ...nextState.proposedPlanIdsByThreadId,
+        [thread.id]: proposedPlanSlice.ids,
+      },
+      proposedPlanByThreadId: {
+        ...nextState.proposedPlanByThreadId,
+        [thread.id]: proposedPlanSlice.byId,
+      },
+    };
+  }
+
+  if (
+    previousRawThread?.checkpoints !== thread.checkpoints ||
+    !nextState.turnDiffIdsByThreadId[thread.id]
+  ) {
+    const turnDiffSlice = buildTurnDiffSlice(thread);
+    nextState = {
+      ...nextState,
+      turnDiffIdsByThreadId: {
+        ...nextState.turnDiffIdsByThreadId,
+        [thread.id]: turnDiffSlice.ids,
+      },
+      turnDiffSummaryByThreadId: {
+        ...nextState.turnDiffSummaryByThreadId,
+        [thread.id]: turnDiffSlice.byId,
+      },
+    };
+  }
+
+  return nextState;
+}
+
+function writeThreadCollectionsFromReadModel(
+  state: AppState,
   readModel: OrchestrationReadModel,
-  existingThreads: Thread[],
-): Thread[] {
-  const existingThreadById = new Map(existingThreads.map((thread) => [thread.id, thread] as const));
-  return readModel.threads
-    .filter((thread) => thread.deletedAt === null)
-    .map((thread) => {
-      const existing = existingThreadById.get(thread.id);
-      return {
-        id: thread.id,
-        codexThreadId: null,
-        projectId: thread.projectId,
-        title: thread.title,
-        modelSelection: {
-          ...thread.modelSelection,
-          model: resolveModelSlugForProvider(
-            thread.modelSelection.provider,
-            thread.modelSelection.model,
-          ),
-        },
-        runtimeMode: thread.runtimeMode,
-        interactionMode: thread.interactionMode,
-        session: normalizeThreadSession(thread.session),
-        messages: thread.messages.map((message) => {
-          const attachments = message.attachments?.map((attachment) => ({
-            type: "image" as const,
-            id: attachment.id,
-            name: attachment.name,
-            mimeType: attachment.mimeType,
-            sizeBytes: attachment.sizeBytes,
-            previewUrl: toAttachmentPreviewUrl(attachmentPreviewRoutePath(attachment.id)),
-          }));
-          const normalizedMessage: ChatMessage = {
-            id: message.id,
-            role: message.role,
-            text: message.text,
-            createdAt: message.createdAt,
-            streaming: message.streaming,
-            ...(message.streaming ? {} : { completedAt: message.updatedAt }),
-            ...(attachments && attachments.length > 0 ? { attachments } : {}),
-          };
-          return normalizedMessage;
-        }),
-        proposedPlans: thread.proposedPlans.map((proposedPlan) => ({
-          id: proposedPlan.id,
-          turnId: proposedPlan.turnId,
-          planMarkdown: proposedPlan.planMarkdown,
-          implementedAt: proposedPlan.implementedAt,
-          implementationThreadId: proposedPlan.implementationThreadId,
-          createdAt: proposedPlan.createdAt,
-          updatedAt: proposedPlan.updatedAt,
-        })),
-        error: thread.session?.lastError ?? null,
-        createdAt: thread.createdAt,
-        updatedAt: thread.updatedAt,
-        latestTurn: thread.latestTurn,
-        lastVisitedAt: existing?.lastVisitedAt ?? thread.updatedAt,
-        branch: thread.branch,
-        worktreePath: thread.worktreePath,
-        turnDiffSummaries: thread.checkpoints.map((checkpoint) => ({
-          turnId: checkpoint.turnId,
-          completedAt: checkpoint.completedAt,
-          status: checkpoint.status,
-          assistantMessageId: checkpoint.assistantMessageId ?? undefined,
-          checkpointTurnCount: checkpoint.checkpointTurnCount,
-          checkpointRef: checkpoint.checkpointRef,
-          files: checkpoint.files.map((file) => ({ ...file })),
-        })),
-        activities: thread.activities.map((activity) => ({ ...activity })),
-      };
-    });
+  previousReadModel: OrchestrationReadModel,
+): AppState {
+  const activeThreads = readModel.threads.filter((thread) => thread.deletedAt === null);
+  const activeThreadIds = activeThreads.map((thread) => thread.id);
+  const activeThreadIdSet = new Set(activeThreadIds);
+  const threadIdsByProjectId: Record<ProjectId, ThreadId[]> = {};
+
+  for (const thread of activeThreads) {
+    threadIdsByProjectId[thread.projectId] = [
+      ...(threadIdsByProjectId[thread.projectId] ?? EMPTY_THREAD_IDS),
+      thread.id,
+    ];
+  }
+
+  let nextState: AppState = {
+    ...state,
+    threadIds: scalarArrayEqual(state.threadIds, activeThreadIds)
+      ? state.threadIds
+      : activeThreadIds,
+    threadIdsByProjectId: jsonEqual(state.threadIdsByProjectId, threadIdsByProjectId)
+      ? state.threadIdsByProjectId
+      : threadIdsByProjectId,
+    threadShellById: retainThreadScopedRecord(state.threadShellById, activeThreadIdSet),
+    threadSessionById: retainThreadScopedRecord(state.threadSessionById, activeThreadIdSet),
+    threadTurnStateById: retainThreadScopedRecord(state.threadTurnStateById, activeThreadIdSet),
+    messageIdsByThreadId: retainThreadScopedRecord(state.messageIdsByThreadId, activeThreadIdSet),
+    messageByThreadId: retainThreadScopedRecord(state.messageByThreadId, activeThreadIdSet),
+    activityIdsByThreadId: retainThreadScopedRecord(state.activityIdsByThreadId, activeThreadIdSet),
+    activityByThreadId: retainThreadScopedRecord(state.activityByThreadId, activeThreadIdSet),
+    proposedPlanIdsByThreadId: retainThreadScopedRecord(
+      state.proposedPlanIdsByThreadId,
+      activeThreadIdSet,
+    ),
+    proposedPlanByThreadId: retainThreadScopedRecord(state.proposedPlanByThreadId, activeThreadIdSet),
+    turnDiffIdsByThreadId: retainThreadScopedRecord(state.turnDiffIdsByThreadId, activeThreadIdSet),
+    turnDiffSummaryByThreadId: retainThreadScopedRecord(
+      state.turnDiffSummaryByThreadId,
+      activeThreadIdSet,
+    ),
+  };
+
+  const previousThreads = previousRawThreadById(previousReadModel);
+  for (const thread of activeThreads) {
+    nextState = writeThreadFromReadModel(nextState, thread, previousThreads.get(thread.id));
+  }
+
+  return nextState;
 }
 
 export function syncServerReadModel(state: AppState, readModel: OrchestrationReadModel): AppState {
-  const projects = mapProjectsFromReadModel(
-    readModel.projects.filter((project) => project.deletedAt === null),
-    state.projects,
-  );
-  const threads = mapUiThreadsFromReadModel(readModel, state.threads);
-  return {
+  const previousReadModel = state.orchestrationReadModel;
+  let nextState: AppState = {
     ...state,
     orchestrationReadModel: readModel,
-    projects,
-    threads,
     threadsHydrated: true,
   };
+  nextState = writeProjectCollection(
+    nextState,
+    readModel.projects.filter((project) => project.deletedAt === null),
+  );
+  nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
+  return materializeLegacyCollections(nextState);
 }
 
 /**
@@ -314,23 +956,23 @@ export function applyOrchestrationDomainEventsToState(
   if (events.length === 0) {
     return state;
   }
+  const previousReadModel = state.orchestrationReadModel;
   const coalesced = coalesceOrchestrationUiEvents(events);
-  let readModel = state.orchestrationReadModel;
+  let readModel = previousReadModel;
   for (const event of coalesced) {
     readModel = projectOrchestrationReadModelEvent(readModel, event);
   }
-  const projects = mapProjectsFromReadModel(
-    readModel.projects.filter((project) => project.deletedAt === null),
-    state.projects,
-  );
-  const threads = mapUiThreadsFromReadModel(readModel, state.threads);
-  return {
+  let nextState: AppState = {
     ...state,
     orchestrationReadModel: readModel,
-    projects,
-    threads,
     threadsHydrated: true,
   };
+  nextState = writeProjectCollection(
+    nextState,
+    readModel.projects.filter((project) => project.deletedAt === null),
+  );
+  nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
+  return materializeLegacyCollections(nextState);
 }
 
 export function markThreadVisited(
@@ -338,39 +980,55 @@ export function markThreadVisited(
   threadId: ThreadId,
   visitedAt?: string,
 ): AppState {
+  const shell = state.threadShellById[threadId];
+  if (!shell) return state;
   const at = visitedAt ?? new Date().toISOString();
   const visitedAtMs = Date.parse(at);
-  const threads = updateThread(state.threads, threadId, (thread) => {
-    const previousVisitedAtMs = thread.lastVisitedAt ? Date.parse(thread.lastVisitedAt) : NaN;
-    if (
-      Number.isFinite(previousVisitedAtMs) &&
-      Number.isFinite(visitedAtMs) &&
-      previousVisitedAtMs >= visitedAtMs
-    ) {
-      return thread;
-    }
-    return { ...thread, lastVisitedAt: at };
+  const previousVisitedAtMs = shell.lastVisitedAt ? Date.parse(shell.lastVisitedAt) : NaN;
+  if (
+    Number.isFinite(previousVisitedAtMs) &&
+    Number.isFinite(visitedAtMs) &&
+    previousVisitedAtMs >= visitedAtMs
+  ) {
+    return state;
+  }
+
+  return materializeLegacyCollections({
+    ...state,
+    threadShellById: {
+      ...state.threadShellById,
+      [threadId]: {
+        ...shell,
+        lastVisitedAt: at,
+      },
+    },
   });
-  return threads === state.threads ? state : { ...state, threads };
 }
 
 export function markThreadUnread(state: AppState, threadId: ThreadId): AppState {
-  const threads = updateThread(state.threads, threadId, (thread) => {
-    if (!thread.latestTurn?.completedAt) return thread;
-    const latestTurnCompletedAtMs = Date.parse(thread.latestTurn.completedAt);
-    if (Number.isNaN(latestTurnCompletedAtMs)) return thread;
-    const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
-    if (thread.lastVisitedAt === unreadVisitedAt) return thread;
-    return { ...thread, lastVisitedAt: unreadVisitedAt };
+  const shell = state.threadShellById[threadId];
+  const thread = getThreadFromAssistantState(state, threadId);
+  if (!shell || !thread?.latestTurn?.completedAt) return state;
+  const latestTurnCompletedAtMs = Date.parse(thread.latestTurn.completedAt);
+  if (Number.isNaN(latestTurnCompletedAtMs)) return state;
+  const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
+  if (shell.lastVisitedAt === unreadVisitedAt) return state;
+  return materializeLegacyCollections({
+    ...state,
+    threadShellById: {
+      ...state.threadShellById,
+      [threadId]: {
+        ...shell,
+        lastVisitedAt: unreadVisitedAt,
+      },
+    },
   });
-  return threads === state.threads ? state : { ...state, threads };
 }
 
 export function toggleProject(state: AppState, projectId: Project["id"]): AppState {
-  return {
-    ...state,
-    projects: state.projects.map((p) => (p.id === projectId ? { ...p, expanded: !p.expanded } : p)),
-  };
+  const project = state.projectById[projectId];
+  if (!project) return state;
+  return setProjectExpanded(state, projectId, !project.expanded);
 }
 
 export function setProjectExpanded(
@@ -378,13 +1036,18 @@ export function setProjectExpanded(
   projectId: Project["id"],
   expanded: boolean,
 ): AppState {
-  let changed = false;
-  const projects = state.projects.map((p) => {
-    if (p.id !== projectId || p.expanded === expanded) return p;
-    changed = true;
-    return { ...p, expanded };
+  const project = state.projectById[projectId];
+  if (!project || project.expanded === expanded) return state;
+  return materializeLegacyCollections({
+    ...state,
+    projectById: {
+      ...state.projectById,
+      [projectId]: {
+        ...project,
+        expanded,
+      },
+    },
   });
-  return changed ? { ...state, projects } : state;
 }
 
 export function reorderProjects(
@@ -393,22 +1056,32 @@ export function reorderProjects(
   targetProjectId: Project["id"],
 ): AppState {
   if (draggedProjectId === targetProjectId) return state;
-  const draggedIndex = state.projects.findIndex((project) => project.id === draggedProjectId);
-  const targetIndex = state.projects.findIndex((project) => project.id === targetProjectId);
+  const draggedIndex = state.projectIds.findIndex((projectId) => projectId === draggedProjectId);
+  const targetIndex = state.projectIds.findIndex((projectId) => projectId === targetProjectId);
   if (draggedIndex < 0 || targetIndex < 0) return state;
-  const projects = [...state.projects];
-  const [draggedProject] = projects.splice(draggedIndex, 1);
+  const projectIds = [...state.projectIds];
+  const [draggedProject] = projectIds.splice(draggedIndex, 1);
   if (!draggedProject) return state;
-  projects.splice(targetIndex, 0, draggedProject);
-  return { ...state, projects };
+  projectIds.splice(targetIndex, 0, draggedProject);
+  return materializeLegacyCollections({
+    ...state,
+    projectIds,
+  });
 }
 
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
-  const threads = updateThread(state.threads, threadId, (t) => {
-    if (t.error === error) return t;
-    return { ...t, error };
+  const shell = state.threadShellById[threadId];
+  if (!shell || shell.error === error) return state;
+  return materializeLegacyCollections({
+    ...state,
+    threadShellById: {
+      ...state.threadShellById,
+      [threadId]: {
+        ...shell,
+        error,
+      },
+    },
   });
-  return threads === state.threads ? state : { ...state, threads };
 }
 
 export function setThreadBranch(
@@ -417,17 +1090,29 @@ export function setThreadBranch(
   branch: string | null,
   worktreePath: string | null,
 ): AppState {
-  const threads = updateThread(state.threads, threadId, (t) => {
-    if (t.branch === branch && t.worktreePath === worktreePath) return t;
-    const cwdChanged = t.worktreePath !== worktreePath;
-    return {
-      ...t,
-      branch,
-      worktreePath,
-      ...(cwdChanged ? { session: null } : {}),
-    };
+  const shell = state.threadShellById[threadId];
+  if (!shell) return state;
+  if (shell.branch === branch && shell.worktreePath === worktreePath) return state;
+  const cwdChanged = shell.worktreePath !== worktreePath;
+  return materializeLegacyCollections({
+    ...state,
+    threadShellById: {
+      ...state.threadShellById,
+      [threadId]: {
+        ...shell,
+        branch,
+        worktreePath,
+      },
+    },
+    ...(cwdChanged
+      ? {
+          threadSessionById: {
+            ...state.threadSessionById,
+            [threadId]: null,
+          },
+        }
+      : {}),
   });
-  return threads === state.threads ? state : { ...state, threads };
 }
 
 // ── Zustand store ────────────────────────────────────────────────────

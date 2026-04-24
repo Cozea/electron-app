@@ -25,13 +25,29 @@ interface TerminalObserver {
   onActivity?: (event: TerminalActivityEvent & { projectPath: string }) => void
 }
 
-const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
+interface TerminalOutputBatch {
+  terminalId: string
+  events: TerminalOutputEvent[]
+}
+
+const MAX_TERMINAL_OUTPUT_LENGTH = 120_000
+const MAX_TERMINAL_OUTPUT_LINES = 5000
+const MAX_TERMINAL_REPLAY_EVENTS = 500
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
 
 function truncateTerminalOutput(output: string): string {
-  if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
-  const tailLength = Math.max(0, MAX_TERMINAL_OUTPUT_LENGTH - TERMINAL_TRUNCATION_MESSAGE.length)
-  return `${TERMINAL_TRUNCATION_MESSAGE}${output.slice(-tailLength)}`
+  let nextOutput = output
+  if (nextOutput.length > MAX_TERMINAL_OUTPUT_LENGTH) {
+    const tailLength = Math.max(0, MAX_TERMINAL_OUTPUT_LENGTH - TERMINAL_TRUNCATION_MESSAGE.length)
+    nextOutput = `${TERMINAL_TRUNCATION_MESSAGE}${nextOutput.slice(-tailLength)}`
+  }
+
+  const lines = nextOutput.split('\n')
+  if (lines.length <= MAX_TERMINAL_OUTPUT_LINES) {
+    return nextOutput
+  }
+
+  return `${TERMINAL_TRUNCATION_MESSAGE}${lines.slice(-MAX_TERMINAL_OUTPUT_LINES).join('\n')}`
 }
 
 function appendTerminalOutput(current: string, chunk: string): string {
@@ -50,17 +66,13 @@ export class TerminalService {
   private readonly projectTerminals = new Map<string, string[]>()
   private readonly terminalProjectPaths = new Map<string, string>()
   private readonly activeTerminalIds = new Set<string>()
-  private readonly outputBatcher = createIpcOutputBatcher<{
-    terminalId: string
-    data: string
-    runId?: string
-  }>({
+  private readonly terminalOutputEvents = new Map<string, TerminalOutputEvent[]>()
+  private readonly outputBatcher = createIpcOutputBatcher<TerminalOutputBatch>({
     channel: 'terminal:output',
     keyOf: (payload) => payload.terminalId,
     merge: (current, next) => ({
-      ...current,
-      data: current.data + next.data,
-      runId: next.runId ?? current.runId,
+      terminalId: current.terminalId,
+      events: [...current.events, ...next.events],
     }),
   })
 
@@ -116,7 +128,10 @@ export class TerminalService {
         this.outputTargets.delete(target)
         continue
       }
-      this.outputBatcher.enqueue(target, event)
+      this.outputBatcher.enqueue(target, {
+        terminalId: event.terminalId,
+        events: [event],
+      })
     }
   }
 
@@ -179,29 +194,52 @@ export class TerminalService {
     return this.terminalProjectPaths.get(terminalId) ?? this.terminalSnapshots.get(terminalId)?.projectPath ?? ''
   }
 
+  private normalizeSnapshot(snapshot: TerminalSnapshot): TerminalSnapshot {
+    return {
+      ...snapshot,
+      outputSequence: snapshot.outputSequence ?? 0,
+      updatedAt: snapshot.updatedAt ?? snapshot.endedAt ?? snapshot.startedAt,
+    }
+  }
+
   private syncCacheFromSnapshot(snapshot: TerminalSnapshot, info?: TerminalInfo | null): void {
-    this.terminalSnapshots.set(snapshot.id, snapshot)
-    this.terminalProjectPaths.set(snapshot.id, snapshot.projectPath)
+    const normalizedSnapshot = this.normalizeSnapshot(snapshot)
+    this.terminalSnapshots.set(normalizedSnapshot.id, normalizedSnapshot)
+    this.terminalProjectPaths.set(normalizedSnapshot.id, normalizedSnapshot.projectPath)
     if (info) {
-      this.terminalInfos.set(snapshot.id, info)
+      this.terminalInfos.set(normalizedSnapshot.id, info)
     }
 
-    if (snapshot.running) {
-      this.activeTerminalIds.add(snapshot.id)
-      this.addProjectTerminal(snapshot.projectPath, snapshot.id)
+    if (normalizedSnapshot.running) {
+      this.activeTerminalIds.add(normalizedSnapshot.id)
+      this.addProjectTerminal(normalizedSnapshot.projectPath, normalizedSnapshot.id)
       return
     }
 
-    this.activeTerminalIds.delete(snapshot.id)
-    this.removeProjectTerminal(snapshot.projectPath, snapshot.id)
+    this.activeTerminalIds.delete(normalizedSnapshot.id)
+    this.removeProjectTerminal(normalizedSnapshot.projectPath, normalizedSnapshot.id)
+  }
+
+  private recordOutputEvent(event: TerminalOutputEvent): void {
+    const events = this.terminalOutputEvents.get(event.terminalId) ?? []
+    events.push(event)
+    if (events.length > MAX_TERMINAL_REPLAY_EVENTS) {
+      events.splice(0, events.length - MAX_TERMINAL_REPLAY_EVENTS)
+    }
+    this.terminalOutputEvents.set(event.terminalId, events)
   }
 
   private handleRuntimeOutput(event: TerminalOutputEvent): void {
+    this.recordOutputEvent(event)
+
     const cachedSnapshot = this.terminalSnapshots.get(event.terminalId)
     if (cachedSnapshot) {
+      const historyData = event.historyData ?? ''
       this.terminalSnapshots.set(event.terminalId, {
         ...cachedSnapshot,
-        stdout: appendTerminalOutput(cachedSnapshot.stdout, event.data),
+        stdout: historyData ? appendTerminalOutput(cachedSnapshot.stdout, historyData) : cachedSnapshot.stdout,
+        outputSequence: Math.max(cachedSnapshot.outputSequence ?? 0, event.sequence),
+        updatedAt: event.createdAt,
       })
     }
 
@@ -301,11 +339,13 @@ export class TerminalService {
 
     for (const snapshot of activeSnapshots) {
       this.terminalProvenanceService.closeTerminal(snapshot.id)
+      const endedAt = Date.now()
       const nextSnapshot: TerminalSnapshot = {
         ...snapshot,
         running: false,
         exitCode: snapshot.exitCode ?? -1,
-        endedAt: Date.now(),
+        endedAt,
+        updatedAt: endedAt,
       }
       this.terminalSnapshots.set(snapshot.id, nextSnapshot)
       this.broadcastExit({
@@ -370,6 +410,11 @@ export class TerminalService {
 
   getTerminalSnapshot(terminalId: string): TerminalSnapshot | null {
     return this.terminalSnapshots.get(terminalId) ?? null
+  }
+
+  getOutputEventsSince(terminalId: string, afterSequence: number): TerminalOutputEvent[] {
+    const events = this.terminalOutputEvents.get(terminalId) ?? []
+    return events.filter((event) => event.sequence > afterSequence)
   }
 
   async sendInput(terminalId: string, data: string): Promise<boolean> {
@@ -456,6 +501,11 @@ export class TerminalService {
         return snapshot
       }
       return this.getTerminalSnapshot(options.terminalId)
+    })
+
+    ipcMain.handle('terminal:getOutputEventsSince', (event, options: { terminalId: string; afterSequence: number }) => {
+      this.registerOutputTarget(event.sender)
+      return this.getOutputEventsSince(options.terminalId, options.afterSequence)
     })
   }
 

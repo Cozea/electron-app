@@ -108,7 +108,6 @@ function WorkbenchRuntimePreviewTile({
 }: WorkbenchDevServerTileProps) {
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
-  const replaceTerminalOutput = useTerminalStore((state) => state.actions.replaceTerminalOutput)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const updateTerminalDisplay = useTerminalStore((state) => state.actions.updateTerminalDisplay)
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
@@ -300,8 +299,6 @@ function WorkbenchRuntimePreviewTile({
       const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
       if (cancelled) return
 
-      terminalIdRef.current = nextTerminalId
-      setTerminalId(nextTerminalId)
       registerTerminal({
         id: nextTerminalId,
         profileId: info?.profileId ?? "default",
@@ -323,8 +320,9 @@ function WorkbenchRuntimePreviewTile({
         surface: "panel",
         projectPath,
       })
-      replaceTerminalOutput(nextTerminalId, snapshot?.stdout ?? "")
       setTerminalUiAttached(nextTerminalId, true)
+      terminalIdRef.current = nextTerminalId
+      setTerminalId(nextTerminalId)
     })()
 
     return () => {
@@ -339,7 +337,6 @@ function WorkbenchRuntimePreviewTile({
     projectId,
     projectPath,
     registerTerminal,
-    replaceTerminalOutput,
     setTerminalUiAttached,
     storedDevCommand,
     tile.id,
@@ -370,24 +367,6 @@ function WorkbenchRuntimePreviewTile({
       port: devServer.port ?? undefined,
     })
   }, [devServer.port, projectPath, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
-
-  useEffect(() => {
-    if (!terminalId || !panelActivity.visible) {
-      return
-    }
-
-    let cancelled = false
-    void window.electronAPI.terminal.getSnapshot({ terminalId }).then((snapshot) => {
-      if (cancelled) return
-      replaceTerminalOutput(terminalId, snapshot?.stdout ?? "")
-    }).catch(() => {
-      // Ignore snapshot refresh failures when a session is being torn down.
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [panelActivity.visible, replaceTerminalOutput, terminalId, viewMode])
 
   useEffect(() => {
     let cancelled = false
@@ -715,6 +694,8 @@ function WorkbenchRuntimePreviewTile({
     <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
       <TerminalInstance
         terminalId={terminalId}
+        onTerminalError={setTerminalError}
+        projectPath={projectPath}
         className="h-full workbench-terminal-instance"
         shouldAutoFocus={viewMode === "code" && panelActivity.focused}
         gpuActive={viewMode === "code" && panelActivity.visible}
