@@ -235,6 +235,8 @@ export default defineConfig({
     },
     build: {
       emptyOutDir: true,
+      // DevApp PNGs are kept small so they inline as data URLs (no separate asset requests in packaged Electron).
+      assetsInlineLimit: 12_288,
       rollupOptions: {
         input: 'index.html',
         output: {

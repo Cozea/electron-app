@@ -744,7 +744,7 @@ function TaskListRow({
         </Button>
       </div>
 
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+      <CollapsibleContent>
         <div className="space-y-3 pl-7 pt-3">
           {item.description ? (
             <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
