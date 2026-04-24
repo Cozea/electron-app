@@ -3,6 +3,7 @@ import { ipcMain, type WebContents } from 'electron'
 import type {
   TerminalActivityEvent,
   TerminalActivityTrackingMode,
+  TerminalAttachViewResult,
   TerminalCreateOptions,
   TerminalExitEvent,
   TerminalInfo,
@@ -408,6 +409,47 @@ export class TerminalService {
     return result
   }
 
+  async attachView(terminalId: string, cols: number, rows: number): Promise<TerminalAttachViewResult> {
+    const baselineSnapshot = this.getTerminalSnapshot(terminalId)
+    if (baselineSnapshot?.running === false || !this.hasTerminal(terminalId)) {
+      return {
+        success: false,
+        snapshot: baselineSnapshot ?? null,
+        replayEvents: baselineSnapshot
+          ? this.getOutputEventsSince(terminalId, baselineSnapshot.outputSequence)
+          : [],
+      }
+    }
+
+    const runtimeResult = await this.runtimeClient.request<{ success: boolean }>('terminal.attachView', {
+      terminalId,
+      cols,
+      rows,
+    })
+    const snapshot = await this.runtimeClient.request<TerminalSnapshot | null>('terminal.getSnapshot', {
+      terminalId,
+    })
+
+    if (snapshot) {
+      this.syncCacheFromSnapshot(snapshot, this.terminalInfos.get(snapshot.id))
+    }
+
+    const hydratedSnapshot = snapshot ?? this.getTerminalSnapshot(terminalId) ?? baselineSnapshot ?? null
+    return {
+      success: runtimeResult.success,
+      snapshot: hydratedSnapshot,
+      replayEvents: hydratedSnapshot
+        ? this.getOutputEventsSince(terminalId, hydratedSnapshot.outputSequence)
+        : [],
+    }
+  }
+
+  async detachView(terminalId: string): Promise<{ success: boolean }> {
+    return await this.runtimeClient.request<{ success: boolean }>('terminal.detachView', {
+      terminalId,
+    })
+  }
+
   getTerminalSnapshot(terminalId: string): TerminalSnapshot | null {
     return this.terminalSnapshots.get(terminalId) ?? null
   }
@@ -452,6 +494,15 @@ export class TerminalService {
         terminalId: result.terminalId,
         error: result.error,
       }
+    })
+
+    ipcMain.handle('terminal:attachView', async (event, options: { terminalId: string; cols: number; rows: number }) => {
+      this.registerOutputTarget(event.sender)
+      return await this.attachView(options.terminalId, options.cols, options.rows)
+    })
+
+    ipcMain.handle('terminal:detachView', async (_event, options: { terminalId: string }) => {
+      return await this.detachView(options.terminalId)
     })
 
     ipcMain.handle('terminal:input', async (event, options: { terminalId: string; data: string }) => {

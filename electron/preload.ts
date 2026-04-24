@@ -8,6 +8,7 @@ import type {
   RuntimeKind,
   SyncOp,
   SyncWriteFile,
+  TerminalAttachViewResult,
   TerminalCreateOptions,
   TerminalOutputEvent,
   UpdateState,
@@ -902,6 +903,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   terminal: {
     create: (options: TerminalCreateOptions) =>
       ipcRenderer.invoke('terminal:create', options),
+    attachView: (options: { terminalId: string; cols: number; rows: number }) =>
+      ipcRenderer.invoke('terminal:attachView', options) as Promise<TerminalAttachViewResult>,
+    detachView: (options: { terminalId: string }) =>
+      ipcRenderer.invoke('terminal:detachView', options),
     input: (options: { terminalId: string; data: string }) =>
       ipcRenderer.invoke('terminal:input', options),
     resize: (options: { terminalId: string; cols: number; rows: number }) =>

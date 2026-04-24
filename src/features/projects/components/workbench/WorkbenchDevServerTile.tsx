@@ -688,7 +688,7 @@ function WorkbenchRuntimePreviewTile({
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
       {terminalError}
     </div>
-  ) : !terminalId ? (
+  ) : !terminalId || !panelActivity.visible ? (
     terminalShell
   ) : (
     <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">

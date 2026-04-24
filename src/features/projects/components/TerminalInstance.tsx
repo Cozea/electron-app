@@ -11,7 +11,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { extractTerminalLinks, isTerminalLinkActivation, resolvePathLinkTarget } from '@/lib/terminalLinks'
 
-import { SearchAddon } from '@xterm/addon-search'
 import { cn } from '@/lib/utils'
 
 import { useTerminalActions } from '@/stores/useTerminalStore'
@@ -135,6 +134,7 @@ export function TerminalInstance({
   const syncWebglRendererRef = useRef<() => void>(() => {})
   const wantsGpuRendererRef = useRef(gpuActive)
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastMeasuredContainerSizeRef = useRef<{ width: number; height: number } | null>(null)
   const hasInputErrorRef = useRef(false)
   const activeTerminalIdRef = useRef<string | null>(terminalId ?? null)
   const onFocusRef = useRef(onFocus)
@@ -330,6 +330,10 @@ export function TerminalInstance({
     }
 
     const fontSize = 13
+    lastMeasuredContainerSizeRef.current = {
+      width: rect.width,
+      height: rect.height,
+    }
 
     const term = new Terminal({
       theme: buildProjectTerminalTheme(container),
@@ -423,9 +427,6 @@ export function TerminalInstance({
         )
       },
     })
-
-    const searchAddon = new SearchAddon()
-    term.loadAddon(searchAddon)
 
     const sendTerminalInput = (data: string) => {
       const activeTerminalId = activeTerminalIdRef.current
@@ -545,29 +546,22 @@ export function TerminalInstance({
         updateTerminalStatus(event.terminalId, 'exited', event.exitCode)
       })
 
-      void window.electronAPI.terminal.resize({
+      const attachResult = await window.electronAPI.terminal.attachView({
         terminalId: nextTerminalId,
-        cols: term.cols,
-        rows: term.rows,
-      })
-
-      const snapshot =
-        resolution.snapshot !== undefined
-          ? resolution.snapshot
-          : await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
-
-      if (disposed || activeTerminalIdRef.current !== nextTerminalId) return
-
-      applySnapshot(snapshot ?? null)
-
-      const replayEvents = await window.electronAPI.terminal.getOutputEventsSince({
-        terminalId: nextTerminalId,
-        afterSequence: lastAppliedOutputSequence,
+        cols: attachSize.cols,
+        rows: attachSize.rows,
       })
 
       if (disposed || activeTerminalIdRef.current !== nextTerminalId) return
 
-      for (const event of replayEvents) {
+      const snapshot = attachResult.snapshot ?? resolution.snapshot ?? null
+      if (!attachResult.success && snapshot?.running !== false) {
+        throw new Error('Terminal session is no longer available.')
+      }
+
+      applySnapshot(snapshot)
+
+      for (const event of attachResult.replayEvents) {
         applyOutputEvent(event)
       }
 
@@ -621,31 +615,14 @@ export function TerminalInstance({
     const handleFocusEvent = () => onFocusRef.current?.()
     textareaElement?.addEventListener('focus', handleFocusEvent)
 
-    const fitTimeout = setTimeout(() => {
-      try {
-        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY
-        fitAddon.fit()
-        if (wasAtBottom) {
-          term.scrollToBottom()
-        }
-        const { cols: nextCols, rows: nextRows } = term
-        const activeTerminalId = activeTerminalIdRef.current
-        if (activeTerminalId) {
-          void window.electronAPI.terminal.resize({ terminalId: activeTerminalId, cols: nextCols, rows: nextRows })
-        }
-        if (shouldAutoFocusRef.current && !readOnlyRef.current) {
-          term.focus()
-        }
-      } catch (error) {
-        console.error('[Terminal] Fit failed:', error)
-      }
-    }, 30)
-
     return () => {
       disposed = true
-      clearTimeout(fitTimeout)
       unsubscribeOutput?.()
       unsubscribeExit?.()
+      const activeTerminalId = activeTerminalIdRef.current
+      if (activeTerminalId) {
+        void window.electronAPI.terminal.detachView({ terminalId: activeTerminalId }).catch(() => {})
+      }
       inputDisposable.dispose()
       terminalLinksDisposable.dispose()
       textareaElement?.removeEventListener('focus', handleFocusEvent)
@@ -714,6 +691,14 @@ export function TerminalInstance({
 
     const rect = containerRef.current.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
+    const lastMeasuredSize = lastMeasuredContainerSizeRef.current
+    if (
+      lastMeasuredSize &&
+      Math.abs(lastMeasuredSize.width - rect.width) < 0.5 &&
+      Math.abs(lastMeasuredSize.height - rect.height) < 0.5
+    ) {
+      return
+    }
 
     window.requestAnimationFrame(() => {
       if (!fitAddonRef.current || !xtermRef.current) return
@@ -724,6 +709,10 @@ export function TerminalInstance({
         fitAddonRef.current.fit()
         if (wasAtBottom) {
           term.scrollToBottom()
+        }
+        lastMeasuredContainerSizeRef.current = {
+          width: rect.width,
+          height: rect.height,
         }
         const { cols, rows } = term
         const activeTerminalId = activeTerminalIdRef.current

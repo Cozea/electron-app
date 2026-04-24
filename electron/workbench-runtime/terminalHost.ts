@@ -67,6 +67,7 @@ interface ManagedTerminal {
   pendingInputBuffer: string
   lastCommandId?: string
   lastCommandAt?: number
+  attachedViewCount: number
   resizeHistorySuppressionUntil?: number
   hasRunningSubprocess?: boolean
   activityPollTimer?: NodeJS.Timeout
@@ -79,6 +80,8 @@ const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
 const TERMINAL_HISTORY_MAX_ENTRIES = 500
 const windowsExecutableCache = new Map<string, boolean>()
 const DEFAULT_ACTIVITY_TRACKING: TerminalActivityTrackingMode = 'off'
+const DEFAULT_TERMINAL_COLS = 120
+const DEFAULT_TERMINAL_ROWS = 32
 const MIN_TERMINAL_COLS = 2
 const MIN_TERMINAL_ROWS = 1
 const RESIZE_HISTORY_SUPPRESSION_MS = 500
@@ -766,8 +769,8 @@ export class TerminalRuntimeHost extends EventEmitter {
     try {
       const profile = this.getTerminalProfile(options.profileId)
       const candidates = this.getTerminalProfileCandidates(profile)
-      const cols = options.cols || 80
-      const rows = options.rows || 24
+      const cols = normalizeTerminalDimension(options.cols ?? DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS)
+      const rows = normalizeTerminalDimension(options.rows ?? DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS)
       const cwd = options.cwd || options.projectPath
 
       if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
@@ -804,6 +807,7 @@ export class TerminalRuntimeHost extends EventEmitter {
         pendingOutputChunks: [],
         outputDrainScheduled: false,
         pendingInputBuffer: '',
+        attachedViewCount: 0,
       }
 
       let spawnError: unknown = null
@@ -935,6 +939,26 @@ export class TerminalRuntimeHost extends EventEmitter {
 
     terminal.ptyProcess.write(data)
     return true
+  }
+
+  public attachTerminalView(terminalId: string, cols: number, rows: number): { success: boolean } {
+    const terminal = this.terminals.get(terminalId)
+    if (!terminal) {
+      return { success: false }
+    }
+
+    terminal.attachedViewCount += 1
+    return this.resizeTerminal(terminalId, cols, rows)
+  }
+
+  public detachTerminalView(terminalId: string): { success: boolean } {
+    const terminal = this.terminals.get(terminalId)
+    if (!terminal) {
+      return { success: false }
+    }
+
+    terminal.attachedViewCount = Math.max(0, terminal.attachedViewCount - 1)
+    return { success: true }
   }
 
   public resizeTerminal(terminalId: string, cols: number, rows: number): { success: boolean } {

@@ -2,6 +2,8 @@ import {
   type WorkbenchRuntimeRequest,
   type WorkbenchRuntimeResponse,
   type WorkbenchRuntimeTerminalCreateParams,
+  type WorkbenchRuntimeTerminalAttachViewParams,
+  type WorkbenchRuntimeTerminalDetachViewParams,
   type WorkbenchRuntimeTerminalInfoParams,
   type WorkbenchRuntimeTerminalInputParams,
   type WorkbenchRuntimeTerminalKillParams,
@@ -40,6 +42,24 @@ async function handleRequest(request: WorkbenchRuntimeRequest): Promise<Workbenc
           id: request.id,
           ok: true,
           result,
+        }
+      }
+      case 'terminal.attachView': {
+        const params = request.params as WorkbenchRuntimeTerminalAttachViewParams
+        return {
+          type: 'response',
+          id: request.id,
+          ok: true,
+          result: host.attachTerminalView(params.terminalId, params.cols, params.rows),
+        }
+      }
+      case 'terminal.detachView': {
+        const params = request.params as WorkbenchRuntimeTerminalDetachViewParams
+        return {
+          type: 'response',
+          id: request.id,
+          ok: true,
+          result: host.detachTerminalView(params.terminalId),
         }
       }
       case 'terminal.resize': {

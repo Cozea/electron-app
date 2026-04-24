@@ -1,12 +1,8 @@
-import { Activity, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 
 import { Button } from "@/components/ui/button"
-import {
-  TerminalInstance,
-  type TerminalAttachResolution,
-  type TerminalAttachSize,
-} from "@/features/projects/components/TerminalInstance"
+import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { useTerminalStore } from "@/stores/useTerminalStore"
@@ -37,6 +33,7 @@ export function WorkbenchTerminalTile({
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const terminalIdRef = useRef<string | null>(null)
@@ -59,31 +56,22 @@ export function WorkbenchTerminalTile({
   }, [panelActivity.visible, setTerminalUiAttached, terminalId])
 
   useEffect(() => {
-    const activeTerminalId = terminalIdRef.current
-    if (activeTerminalId) {
-      setTerminalUiAttached(activeTerminalId, false)
-    }
-    setTerminalId(null)
-    terminalIdRef.current = null
-    setError(null)
-  }, [laneId, projectId, projectPath, setTerminalUiAttached, tileId, workbenchSession?.sessionKey])
-
-  useEffect(() => {
-    return () => {
+    if (!projectPath || !workbenchSession?.sessionKey) {
       const activeTerminalId = terminalIdRef.current
-      if (!activeTerminalId) return
-      setTerminalUiAttached(activeTerminalId, false)
-      terminalIdRef.current = null
-    }
-  }, [setTerminalUiAttached])
-
-  const resolveTerminal = useCallback(
-    async ({ cols, rows }: TerminalAttachSize): Promise<TerminalAttachResolution> => {
-      if (!projectPath || !workbenchSession?.sessionKey) {
-        throw new Error("Open or relink a local project folder to start a terminal here.")
+      if (activeTerminalId) {
+        setTerminalUiAttached(activeTerminalId, false)
       }
-
+      terminalIdRef.current = null
+      setTerminalId(null)
       setError(null)
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      setError(null)
+      setTerminalId(null)
 
       let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
         sessionKey: workbenchSession.sessionKey,
@@ -102,16 +90,19 @@ export function WorkbenchTerminalTile({
           projectPath,
           cwd: projectPath,
           gitCwd: projectPath,
-          cols,
-          rows,
           sessionKey: workbenchSession.sessionKey,
           laneId,
           terminalKind: "shell",
           activityTracking: "off",
         })
 
+        if (cancelled) {
+          return
+        }
+
         if (!result.success || !result.terminalId) {
-          throw new Error(result.error ?? "Failed to create a terminal")
+          setError(result.error ?? "Failed to prepare the terminal session")
+          return
         }
 
         nextTerminalId = result.terminalId
@@ -128,7 +119,15 @@ export function WorkbenchTerminalTile({
         })
       }
 
+      if (cancelled || !nextTerminalId) {
+        return
+      }
+
       const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
+      if (cancelled) {
+        return
+      }
+      const isVisible = panelApi.isVisible
 
       registerTerminal({
         id: nextTerminalId,
@@ -141,29 +140,40 @@ export function WorkbenchTerminalTile({
         status: snapshot?.running === false ? "exited" : "running",
         exitCode: snapshot?.exitCode ?? null,
         hasOutput: Boolean(snapshot?.stdout?.length),
-        uiAttached: panelActivity.visible,
+        uiAttached: isVisible,
       })
-      setTerminalUiAttached(nextTerminalId, panelActivity.visible)
+      setTerminalUiAttached(nextTerminalId, isVisible)
       terminalIdRef.current = nextTerminalId
       setTerminalId(nextTerminalId)
-
-      return {
-        terminalId: nextTerminalId,
-        snapshot,
-        info,
+    })().catch((nextError) => {
+      if (cancelled) {
+        return
       }
-    },
-    [
-      laneId,
-      panelActivity.visible,
-      projectId,
-      projectPath,
-      registerTerminal,
-      setTerminalUiAttached,
-      tileId,
-      workbenchSession?.sessionKey,
-    ],
-  )
+      const message =
+        nextError instanceof Error
+          ? nextError.message
+          : "Failed to prepare the terminal session"
+      setError(message)
+    })
+
+    return () => {
+      cancelled = true
+      const activeTerminalId = terminalIdRef.current
+      if (!activeTerminalId) return
+      setTerminalUiAttached(activeTerminalId, false)
+      terminalIdRef.current = null
+    }
+  }, [
+    laneId,
+    panelApi,
+    projectId,
+    projectPath,
+    registerTerminal,
+    retryKey,
+    setTerminalUiAttached,
+    tileId,
+    workbenchSession?.sessionKey,
+  ])
 
   let body: ReactNode
 
@@ -186,29 +196,27 @@ export function WorkbenchTerminalTile({
             setError(null)
             setTerminalId(null)
             terminalIdRef.current = null
+            setRetryKey((current) => current + 1)
           }}
         >
           Retry
         </Button>
       </div>
     )
-  } else if (!workbenchSession?.sessionKey) {
+  } else if (!terminalId || !panelActivity.visible) {
     body = terminalShell
   } else {
     body = (
-      <Activity mode={panelActivity.mode} name={`workbench-terminal-${tileId}`}>
-        <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
-          <TerminalInstance
-            key={`${workbenchSession.sessionKey}:${projectId}:${laneId}:${tileId}:${projectPath}`}
-            resolveTerminal={resolveTerminal}
-            onTerminalError={setError}
-            projectPath={projectPath}
-            className="h-full workbench-terminal-instance"
-            shouldAutoFocus={panelActivity.focused}
-            gpuActive={panelActivity.visible}
-          />
-        </div>
-      </Activity>
+      <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
+        <TerminalInstance
+          terminalId={terminalId}
+          onTerminalError={setError}
+          projectPath={projectPath}
+          className="h-full workbench-terminal-instance"
+          shouldAutoFocus={panelActivity.focused}
+          gpuActive={panelActivity.visible}
+        />
+      </div>
     )
   }
 

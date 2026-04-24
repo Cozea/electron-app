@@ -943,6 +943,22 @@ export interface TerminalCreateOptions {
   terminalKind?: TerminalKind
 }
 
+export interface TerminalAttachViewOptions {
+  terminalId: string
+  cols: number
+  rows: number
+}
+
+export interface TerminalDetachViewOptions {
+  terminalId: string
+}
+
+export interface TerminalAttachViewResult {
+  success: boolean
+  snapshot: TerminalSnapshot | null
+  replayEvents: TerminalOutputEvent[]
+}
+
 export interface TerminalOutputEvent {
   terminalId: string
   data: string
@@ -1795,6 +1811,8 @@ export interface ElectronAPI {
   }
   terminal: {
     create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
+    attachView: (options: TerminalAttachViewOptions) => Promise<TerminalAttachViewResult>
+    detachView: (options: TerminalDetachViewOptions) => Promise<{ success: boolean }>
     input: (options: { terminalId: string; data: string }) => Promise<boolean>
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
