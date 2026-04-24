@@ -58,7 +58,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
           projectId: string
           actorId?: string
           actorType?: 'user' | 'agent' | 'system'
-          source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+          source?: 'editor' | 'agent' | 'watcher' | 'remote'
         }
       }
     ): Promise<{
@@ -154,7 +154,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
           projectId: string
           actorId?: string
           actorType?: 'user' | 'agent' | 'system'
-          source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+          source?: 'editor' | 'agent' | 'watcher' | 'remote'
         }
       }
     ): Promise<{

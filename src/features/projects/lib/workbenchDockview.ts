@@ -11,6 +11,7 @@ import type {
   WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
 import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
 export function getDockComponentName(
   type: WorkbenchTileType,
@@ -116,6 +117,12 @@ export function buildDefaultDockview(
   projectId: string,
   laneId: string,
 ) {
+  const startMark = markCozeaInteractionStart("workbench-restore-tiles", {
+    laneId,
+    projectId,
+    tileCount: project.order.length,
+  })
+
   api.clear()
 
   for (const tileId of project.order) {
@@ -123,6 +130,13 @@ export function buildDefaultDockview(
     if (isObsoleteWorkbenchTile(tile)) continue
     api.addPanel(buildAddPanelOptions(api, tile, projectId, laneId))
   }
+
+  markCozeaInteractionEnd("workbench-restore-tiles", startMark, {
+    laneId,
+    panelCount: api.totalPanels,
+    projectId,
+    tileCount: project.order.length,
+  })
 }
 
 export function syncPanelTitles(api: DockviewApi, project: WorkbenchProjectState) {
@@ -146,6 +160,12 @@ export function reconcilePanels(
   ) => api.addPanel(options),
   preservePanelIds: ReadonlySet<string> = new Set<string>(),
 ) {
+  const startMark = markCozeaInteractionStart("workbench-reconcile-panels", {
+    laneId,
+    panelCount: api.totalPanels,
+    projectId,
+    tileCount: project.order.length,
+  })
   const nextTileIds = new Set(project.order)
 
   for (const panel of api.panels) {
@@ -168,4 +188,10 @@ export function reconcilePanels(
   }
 
   syncPanelTitles(api, project)
+  markCozeaInteractionEnd("workbench-reconcile-panels", startMark, {
+    laneId,
+    panelCount: api.totalPanels,
+    projectId,
+    tileCount: project.order.length,
+  })
 }

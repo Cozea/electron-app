@@ -1505,42 +1505,6 @@ body {
 }
 
 /* ============================================
-   Yjs Remote Cursor Styling (y-monaco)
-   ============================================ */
-
-/* Remote user selection highlight */
-.yRemoteSelection {
-  background-color: var(--yjs-cursor-color, rgba(250, 200, 100, 0.4));
-}
-
-/* Remote user cursor head (caret) */
-.yRemoteSelectionHead {
-  position: absolute;
-  border-left: 2px solid var(--yjs-cursor-color, orange);
-  border-top: 2px solid var(--yjs-cursor-color, orange);
-  height: 100%;
-  box-sizing: border-box;
-}
-
-/* Remote user name label above cursor */
-.yRemoteSelectionHead::after {
-  position: absolute;
-  content: attr(data-name);
-  top: -1.2em;
-  left: -2px;
-  font-size: var(--app-copy-font-size);
-  line-height: var(--app-copy-line-height);
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-  padding: 1px 4px;
-  background-color: var(--yjs-cursor-color, orange);
-  color: white;
-  border-radius: 3px 3px 3px 0;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 10;
-}
-
-/* ============================================
    BDry Design Utilities (Gradient Boundaries)
    ============================================ */
 

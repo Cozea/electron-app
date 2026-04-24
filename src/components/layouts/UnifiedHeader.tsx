@@ -1,5 +1,7 @@
 import {
+  lazy,
   type ReactNode,
+  Suspense,
 } from "react";
 
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -10,9 +12,23 @@ import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
 import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
-import { HeaderProjectShareButton } from "./unified-header/HeaderProjectShareButton";
 import { WorkbenchHeaderEditorControl } from "@/features/projects/components/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
+
+const LazyHeaderProjectShareButton = lazy(() =>
+  import("./unified-header/HeaderProjectShareButton").then((module) => ({
+    default: module.HeaderProjectShareButton,
+  })),
+);
+
+function HeaderShareButtonFallback() {
+  return (
+    <div
+      aria-hidden="true"
+      className="h-7 w-8 rounded-lg bg-sidebar transition-colors"
+    />
+  );
+}
 
 interface UnifiedHeaderProps {
   header?: ReactNode;
@@ -109,11 +125,12 @@ export function UnifiedHeader({
           );
         }
         parts.push(
-          <HeaderProjectShareButton
-            key="share"
-            projectId={projectInviteContext.projectId}
-            projectName={projectInviteContext.projectName}
-          />,
+          <Suspense key="share" fallback={<HeaderShareButtonFallback />}>
+            <LazyHeaderProjectShareButton
+              projectId={projectInviteContext.projectId}
+              projectName={projectInviteContext.projectName}
+            />
+          </Suspense>,
         );
         if (shouldShowInbox) {
           parts.push(<HeaderInboxButton key="inbox" />);

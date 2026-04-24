@@ -25,9 +25,7 @@ import {
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 
-const panelSuspenseFallback = (
-  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading panel…</div>
-)
+const panelSuspenseFallback = <div className="h-full bg-background" aria-hidden="true" />
 const DEFAULT_BACKGROUND_UI_DETACH_MS = 45_000
 const DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 250
 const ASSISTANT_BACKGROUND_UI_DETACH_MS = null
@@ -79,7 +77,7 @@ function DormantTilePlaceholder(props: { title: string }) {
   return (
     <WorkbenchPlaceholder
       title={props.title}
-      description="Runtime state is retained. Select this tile to attach the UI."
+      description="Select this tile to reattach the retained UI."
     />
   )
 }

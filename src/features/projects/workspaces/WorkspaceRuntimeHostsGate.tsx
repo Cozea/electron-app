@@ -1,6 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 
 import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import {
+  hasHostableWorkspaceRuntime,
+  hasImmediateWorkspaceRuntimeHost,
+} from "@/features/projects/workspaces/workspaceRuntimePolicy"
 
 const LazyWorkspaceRuntimeHosts = lazy(() =>
   import("@/features/projects/workspaces/WorkspaceRuntimeHosts").then((module) => ({
@@ -10,22 +14,27 @@ const LazyWorkspaceRuntimeHosts = lazy(() =>
 
 export function WorkspaceRuntimeHostsGate() {
   const [canLoadHost, setCanLoadHost] = useState(false)
-  const shouldHostRuntimes = useWorkspaceRuntimeStore(
+  const hostLoadMode = useWorkspaceRuntimeStore(
     useMemo(
-      () => (state) =>
-        Object.values(state.runtimes).some(
-          (record) =>
-            record.lifecycle !== "closed" &&
-            record.lifecycle !== "background-frozen" &&
-            Boolean(record.config.projectId && record.config.userId && record.config.localPath),
-        ),
+      () => (state) => {
+        const records = Object.values(state.runtimes)
+        if (!hasHostableWorkspaceRuntime(records)) {
+          return "none" as const
+        }
+        return hasImmediateWorkspaceRuntimeHost(records) ? "immediate" as const : "idle" as const
+      },
       [],
     ),
   )
+  const shouldHostRuntimes = hostLoadMode !== "none"
 
   useEffect(() => {
     if (!shouldHostRuntimes) {
       setCanLoadHost(false)
+      return
+    }
+    if (hostLoadMode === "immediate") {
+      setCanLoadHost(true)
       return
     }
 
@@ -54,7 +63,7 @@ export function WorkspaceRuntimeHostsGate() {
         idleWindow.cancelIdleCallback?.(idleHandle)
       }
     }
-  }, [shouldHostRuntimes])
+  }, [hostLoadMode, shouldHostRuntimes])
 
   if (!shouldHostRuntimes || !canLoadHost) {
     return null

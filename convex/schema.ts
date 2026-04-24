@@ -669,6 +669,7 @@ export default defineSchema({
     activeTab: v.optional(v.string()), // Which tab they're viewing (editor, pages, etc.)
     activeFile: v.optional(v.string()), // Which file they're editing (if any)
     activeRoute: v.optional(v.string()), // Which preview route they're focused on (if on Pages)
+    // Deprecated legacy editor-typing flag. Keep optional until existing production records are migrated.
     isMonacoTyping: v.optional(v.boolean()),
     isAiTyping: v.optional(v.boolean()),
     isAgentWorking: v.optional(v.boolean()),

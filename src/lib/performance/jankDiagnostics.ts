@@ -15,7 +15,7 @@ interface LongAnimationFrameEntry extends PerformanceEntry {
 let initialized = false
 
 function observeLongAnimationFrames(): void {
-  if (!PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
+  if (!PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame')) {
     return
   }
 
@@ -49,7 +49,7 @@ function observeLongAnimationFrames(): void {
 }
 
 function observeLongTasks(): void {
-  if (!PerformanceObserver.supportedEntryTypes.includes('longtask')) return
+  if (!PerformanceObserver.supportedEntryTypes?.includes('longtask')) return
   const observer = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if (entry.duration < 50) continue
@@ -62,7 +62,6 @@ function observeLongTasks(): void {
 }
 
 export function initJankDiagnostics(): void {
-  return // Diagnostics disabled
   if (initialized) return
   initialized = true
 
@@ -74,4 +73,3 @@ export function initJankDiagnostics(): void {
   observeLongTasks()
   console.info('[Jank] Diagnostics enabled (LoAF + longtask)')
 }
-

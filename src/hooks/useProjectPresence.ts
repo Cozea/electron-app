@@ -26,7 +26,6 @@ export interface PresenceUser {
   activeTab?: string
   activeFile?: string
   activeRoute?: string
-  isMonacoTyping?: boolean
   isAiTyping?: boolean
   isAgentWorking?: boolean
   lastActivityAt?: number
@@ -48,7 +47,6 @@ export function useProjectPresence({
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
   const lastTransitionHeartbeatAtRef = useRef(0)
   const {
-    isMonacoTyping,
     isAiTyping,
     isAgentWorking,
     lastActivityAt,
@@ -58,7 +56,6 @@ export function useProjectPresence({
     activeFile: activeFile ?? null,
     activeRoute: activeRoute ?? null,
     activeTab: "editor",
-    isMonacoTyping,
     isAiTyping,
     isAgentWorking,
     lastActivityAt,
@@ -79,12 +76,11 @@ export function useProjectPresence({
       activeFile: activeFile ?? null,
       activeRoute: activeRoute ?? null,
       activeTab,
-      isMonacoTyping,
       isAiTyping,
       isAgentWorking,
       lastActivityAt,
     }
-  }, [activeFile, activeRoute, activeTab, isMonacoTyping, isAiTyping, isAgentWorking, lastActivityAt])
+  }, [activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking, lastActivityAt])
 
   // Send heartbeat
   const sendHeartbeat = useCallback(async () => {
@@ -101,7 +97,6 @@ export function useProjectPresence({
         activeTab: snapshot.activeTab,
         activeFile: snapshot.activeFile ?? undefined,
         activeRoute: snapshot.activeRoute ?? undefined,
-        isMonacoTyping: snapshot.isMonacoTyping,
         isAiTyping: snapshot.isAiTyping,
         isAgentWorking: snapshot.isAgentWorking,
         lastActivityAt: snapshot.lastActivityAt > 0 ? snapshot.lastActivityAt : undefined,
@@ -162,7 +157,6 @@ export function useProjectPresence({
     activeRoute,
     isAgentWorking,
     isAiTyping,
-    isMonacoTyping,
     projectId,
     sendHeartbeat,
     userEmail,

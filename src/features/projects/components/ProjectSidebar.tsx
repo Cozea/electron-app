@@ -65,10 +65,19 @@ import {
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { primeLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
-import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
-import { ProjectRenameDialog } from "./ProjectRenameDialog";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
+
+const LazyProjectDeleteDialog = React.lazy(() =>
+  import("./ProjectDeleteDialog").then((module) => ({
+    default: module.ProjectDeleteDialog,
+  })),
+);
+const LazyProjectRenameDialog = React.lazy(() =>
+  import("./ProjectRenameDialog").then((module) => ({
+    default: module.ProjectRenameDialog,
+  })),
+);
 
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -789,34 +798,42 @@ export function ProjectSidebar({
 
         <SidebarRail />
       </Sidebar>
-      <ProjectRenameDialog
-        open={projectPendingRename !== null}
-        onOpenChange={(open) => {
-          if (!open && !isRenamingProject) {
-            setProjectPendingRename(null);
-            setRenameError(null);
-          }
-        }}
-        currentName={projectPendingRename?.name ?? ""}
-        value={renameValue}
-        onValueChange={setRenameValue}
-        onConfirm={handleConfirmRenameProject}
-        isSaving={isRenamingProject}
-        errorMessage={renameError}
-      />
-      <ProjectDeleteDialog
-        open={projectPendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open && !isDeletingProject) {
-            setProjectPendingDelete(null);
-            setDeleteError(null);
-          }
-        }}
-        projectName={projectPendingDelete?.name ?? ""}
-        onConfirm={handleConfirmDeleteProject}
-        isDeleting={isDeletingProject}
-        errorMessage={deleteError}
-      />
+      {projectPendingRename ? (
+        <React.Suspense fallback={null}>
+          <LazyProjectRenameDialog
+            open
+            onOpenChange={(open) => {
+              if (!open && !isRenamingProject) {
+                setProjectPendingRename(null);
+                setRenameError(null);
+              }
+            }}
+            currentName={projectPendingRename.name}
+            value={renameValue}
+            onValueChange={setRenameValue}
+            onConfirm={handleConfirmRenameProject}
+            isSaving={isRenamingProject}
+            errorMessage={renameError}
+          />
+        </React.Suspense>
+      ) : null}
+      {projectPendingDelete ? (
+        <React.Suspense fallback={null}>
+          <LazyProjectDeleteDialog
+            open
+            onOpenChange={(open) => {
+              if (!open && !isDeletingProject) {
+                setProjectPendingDelete(null);
+                setDeleteError(null);
+              }
+            }}
+            projectName={projectPendingDelete.name}
+            onConfirm={handleConfirmDeleteProject}
+            isDeleting={isDeletingProject}
+            errorMessage={deleteError}
+          />
+        </React.Suspense>
+      ) : null}
     </>
   );
 }

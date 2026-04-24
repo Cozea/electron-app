@@ -66,7 +66,7 @@ export class SyncCoordinator {
     this.projectId = options.projectId
     this.actorId = options.actorId ?? "unknown"
     this.actorType = options.actorType ?? "system"
-    this.source = options.source ?? "monaco"
+    this.source = options.source ?? "editor"
     this.autoAck = options.autoAck ?? true
   }
 

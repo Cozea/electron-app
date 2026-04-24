@@ -16,8 +16,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
-import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge";
-import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
@@ -30,12 +28,14 @@ import {
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
 import { useProjectGitCwd } from "@/features/projects/hooks/useProjectGitCwd";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
+import { useDeferredActivation } from "@/hooks/useDeferredActivation";
 import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
 } from "@/features/projects/contexts/ProjectRouteContext";
 import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
+import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/projects/components/SettingsSidebar").then((module) => ({
@@ -322,6 +322,11 @@ export function ProjectLayout({
     location.pathname.startsWith("/projects/teams");
   const shouldEnableProjectRuntime = Boolean(effectiveLocalPath);
   const runtimeProjectPath = effectiveLocalPath;
+  const runtimeEffectsReady = useDeferredActivation(shouldEnableProjectRuntime, {
+    delayMs: 250,
+    timeoutMs: 3_000,
+  });
+  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeProjectPath ?? "no-path"}`;
   const collabBranch = useMemo(
     () => resolveProjectSharedBranch(project),
     [project],
@@ -352,14 +357,24 @@ export function ProjectLayout({
     return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
   }, [activeLane, collabBranch, routeProjectIdentity]);
 
-  useDiagnosticsBridge(runtimeProjectPath);
-
   useEffect(() => {
-    setVscodeWorkspaceProjectPath(runtimeProjectPath);
+    const switchStartMark = markCozeaInteractionStart("project-switch", {
+      projectId: routeProjectId ?? null,
+      projectSlug: routeSlug ?? null,
+      hasLocalPath: Boolean(runtimeProjectPath),
+    });
+    const frameId = window.requestAnimationFrame(() => {
+      markCozeaInteractionEnd("project-switch", switchStartMark, {
+        projectId: routeProjectId ?? null,
+        projectSlug: routeSlug ?? null,
+        hasLocalPath: Boolean(runtimeProjectPath),
+      });
+    });
+
     return () => {
-      setVscodeWorkspaceProjectPath(null);
+      window.cancelAnimationFrame(frameId);
     };
-  }, [runtimeProjectPath]);
+  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeProjectPath]);
 
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
@@ -367,10 +382,13 @@ export function ProjectLayout({
 
   // Real-time presence tracking
   const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId: shouldEnableProjectRuntime ? project?._id : null,
-    userId: shouldEnableProjectRuntime ? convexUserId : null,
-    userName: shouldEnableProjectRuntime ? user?.firstName || user?.email || null : null,
-    userEmail: shouldEnableProjectRuntime ? user?.email || null : null,
+    projectId: runtimeEffectsReady && shouldEnableProjectRuntime ? project?._id : null,
+    userId: runtimeEffectsReady && shouldEnableProjectRuntime ? convexUserId : null,
+    userName:
+      runtimeEffectsReady && shouldEnableProjectRuntime
+        ? user?.firstName || user?.email || null
+        : null,
+    userEmail: runtimeEffectsReady && shouldEnableProjectRuntime ? user?.email || null : null,
     userAvatarUrl: shouldEnableProjectRuntime ? user?.profileImageUrl || null : null,
     activeFile: presenceActiveFile,
     activeRoute: presenceActiveRoute,
