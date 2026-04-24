@@ -19,7 +19,7 @@ export interface SyncOpRecord {
   projectId: string
   actorId: string
   actorType: 'user' | 'agent' | 'system'
-  source: 'monaco' | 'agent' | 'watcher' | 'remote'
+  source: SyncOpSource
   kind: 'upsert' | 'delete' | 'rename' | 'chmod' | 'yjs_update'
   path: string
   baseHash?: string
@@ -27,6 +27,16 @@ export interface SyncOpRecord {
   isBinary: boolean
   size: number
   timestamp: number
+}
+
+type SyncOpSource = 'editor' | 'agent' | 'watcher' | 'remote'
+
+function normalizeSyncOpSource(source: unknown): SyncOpSource {
+  if (source === 'agent' || source === 'watcher' || source === 'remote') {
+    return source
+  }
+
+  return 'editor'
 }
 
 export interface MergeCacheRecordPayload {
@@ -514,7 +524,7 @@ function loadSyncStateFromSqlite(): boolean {
       idempotency_key: string
       actor_id: string
       actor_type: 'user' | 'agent' | 'system'
-      source: 'monaco' | 'agent' | 'watcher' | 'remote'
+      source: string
       kind: 'upsert' | 'delete' | 'rename' | 'chmod' | 'yjs_update'
       path: string
       base_hash: string | null
@@ -532,7 +542,7 @@ function loadSyncStateFromSqlite(): boolean {
         projectId: normalizedProjectId,
         actorId: row.actor_id,
         actorType: row.actor_type,
-        source: row.source,
+        source: normalizeSyncOpSource(row.source),
         kind: row.kind,
         path: row.path,
         baseHash: row.base_hash ?? undefined,

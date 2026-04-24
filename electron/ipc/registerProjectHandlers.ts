@@ -38,10 +38,10 @@ import {
   listProjectGitBranches,
 } from '../services/projectGitDesktopService'
 import {
-  EXCLUDED_GENERATED_DIRECTORIES,
   shouldExcludeGeneratedDirectory,
   shouldExcludeGeneratedFile,
 } from '../services/generatedArtifactFilters'
+import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
 interface RegisterProjectHandlersDeps {
@@ -786,39 +786,7 @@ npm-debug.log*
     'project:listFiles',
     async (_event, { projectPath }: { projectPath: string }): Promise<ListFilesResult> => {
       try {
-        const files: { path: string; sizeBytes: number }[] = []
-        const skippedDirectories = new Set(['.git', ...EXCLUDED_GENERATED_DIRECTORIES])
-        const maxFiles = 20000
-
-        function walkDir(dir: string, relativePath = '') {
-          if (!fs.existsSync(dir) || files.length >= maxFiles) return
-
-          const entries = fs.readdirSync(dir, { withFileTypes: true })
-          for (const entry of entries) {
-            if (files.length >= maxFiles) break
-            if (entry.isSymbolicLink()) continue
-
-            const relPath = path.join(relativePath, entry.name)
-            const fullPath = path.join(dir, entry.name)
-            const nameLower = entry.name.toLowerCase()
-            const normalizedPathLower = relPath.replace(/\\/g, '/')
-
-            if (entry.isDirectory()) {
-              if (!skippedDirectories.has(nameLower)) {
-                walkDir(fullPath, relPath)
-              }
-            } else {
-              if (shouldExcludeGeneratedFile(normalizedPathLower)) {
-                continue
-              }
-              const stats = fs.statSync(fullPath)
-              files.push({ path: relPath, sizeBytes: stats.size })
-            }
-          }
-        }
-
-        walkDir(projectPath)
-        return { success: true, files }
+        return await listProjectFilesFromIndex(projectPath)
       } catch (error) {
         console.error('[Project] Failed to list files:', error)
         return {

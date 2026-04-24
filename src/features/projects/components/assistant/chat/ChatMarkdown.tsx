@@ -75,7 +75,7 @@ interface ChatMarkdownProps {
 
 const CODE_FENCE_LANGUAGE_REGEX = /(?:^|\s)language-([^\s]+)/;
 const MAX_HIGHLIGHT_CACHE_ENTRIES = 500;
-const MAX_HIGHLIGHT_CACHE_MEMORY_BYTES = 50 * 1024 * 1024;
+const MAX_HIGHLIGHT_CACHE_MEMORY_BYTES = 16 * 1024 * 1024;
 const highlightedCodeCache = new LRUCache<string>(
   MAX_HIGHLIGHT_CACHE_ENTRIES,
   MAX_HIGHLIGHT_CACHE_MEMORY_BYTES,
@@ -316,19 +316,24 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
         if (!codeBlock) {
           return <pre {...props}>{children}</pre>;
         }
+        const plainCodeBlock = <pre {...props}>{children}</pre>;
 
         return (
           <MarkdownCodeBlock code={codeBlock.code}>
-            <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
-              <Suspense fallback={<pre {...props}>{children}</pre>}>
-                <SuspenseShikiCodeBlock
-                  className={codeBlock.className}
-                  code={codeBlock.code}
-                  themeName={diffThemeName}
-                  isStreaming={isStreaming}
-                />
-              </Suspense>
-            </CodeHighlightErrorBoundary>
+            {isStreaming ? (
+              plainCodeBlock
+            ) : (
+              <CodeHighlightErrorBoundary fallback={plainCodeBlock}>
+                <Suspense fallback={plainCodeBlock}>
+                  <SuspenseShikiCodeBlock
+                    className={codeBlock.className}
+                    code={codeBlock.code}
+                    themeName={diffThemeName}
+                    isStreaming={isStreaming}
+                  />
+                </Suspense>
+              </CodeHighlightErrorBoundary>
+            )}
           </MarkdownCodeBlock>
         );
       },

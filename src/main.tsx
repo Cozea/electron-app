@@ -13,9 +13,11 @@ import { ToastProvider } from './features/projects/components/assistant/ui/toast
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
+import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
+const rendererEntryMark = markCozeaPerformance('renderer:entry')
 
 function applyBootstrapRouteFromSearch(): void {
   if (window.location.protocol !== 'file:') {
@@ -52,6 +54,7 @@ if (platform) {
 
 applyThemeClass(getStoredThemePreference())
 
+const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConvexProvider>
@@ -61,3 +64,11 @@ createRoot(document.getElementById('root')!).render(
     </ConvexProvider>
   </React.StrictMode>,
 )
+
+window.requestAnimationFrame(() => {
+  window.requestAnimationFrame(() => {
+    const firstFrameMark = markCozeaPerformance('renderer:first-frame')
+    measureCozeaPerformance('renderer:entry-to-root-render-start', rendererEntryMark, rootRenderStartMark)
+    measureCozeaPerformance('renderer:entry-to-first-frame', rendererEntryMark, firstFrameMark)
+  })
+})

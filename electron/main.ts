@@ -4,6 +4,7 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import { performance } from 'node:perf_hooks'
 
 import { autoUpdater } from 'electron-updater'
 import { Cause, Effect, Exit, Fiber } from 'effect'
@@ -14,7 +15,6 @@ import { createApplicationMenu } from './menu'
 // Services
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
-import { DiagnosticsService } from './services/DiagnosticsService'
 import { AgentToolService } from './services/AgentToolService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
 import { GitDirtyStateService } from './services/GitDirtyStateService'
@@ -90,6 +90,39 @@ const DEV_SERVER_ORIGIN = (() => {
     return null
   }
 })()
+const MAIN_BOOT_STARTED_AT = performance.now()
+
+function shouldLogBootTimings(): boolean {
+  return !app.isPackaged || process.env.COZEA_BOOT_TIMINGS === '1'
+}
+
+function logBootTiming(label: string, startedAt = MAIN_BOOT_STARTED_AT): void {
+  if (!shouldLogBootTimings()) return
+  console.info('[BootTiming]', label, {
+    elapsedMs: Number((performance.now() - startedAt).toFixed(1)),
+  })
+}
+
+function scheduleBootWork(
+  label: string,
+  work: () => void | Promise<void>,
+  delayMs = 0,
+): void {
+  setTimeout(() => {
+    const startedAt = performance.now()
+    try {
+      const result = work()
+      if (result && typeof (result as Promise<void>).finally === 'function') {
+        void (result as Promise<void>).finally(() => logBootTiming(label, startedAt))
+        return
+      }
+      logBootTiming(label, startedAt)
+    } catch (error) {
+      console.warn(`[Boot] ${label} failed`, error)
+      logBootTiming(`${label}:failed`, startedAt)
+    }
+  }, delayMs)
+}
 const APP_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -1347,6 +1380,7 @@ function createWindow() {
     win?.show()
     win?.focus()
     emitFullScreenChange()
+    logBootTiming('main-window-ready-to-show')
   })
 
   // Update background color on system theme change
@@ -1378,7 +1412,6 @@ function createWindow() {
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
-DiagnosticsService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
 GitDirtyStateService.getInstance().registerIpcHandlers(ipcMain)
 
@@ -1492,22 +1525,30 @@ app.on('activate', () => {
   }
 })
 
-// Sync macOS PATH/SSH without blocking startup (PTY/tools pick up env when ready)
-if (process.platform === 'darwin') {
-  void syncShellEnvironment()
-}
-
 registerAssistantRuntimeBridgeHandlers()
 app.on('gpu-info-update', refreshGpuDiagnostics)
 
 app.whenReady().then(() => {
+  logBootTiming('app-ready')
   refreshGpuDiagnostics()
   loadSyncState()
+  logBootTiming('sync-state-loaded')
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
-  ensureAssistantRuntimeStarted()
   createWindow()
-  startUpdateChecks()
+  logBootTiming('main-window-created')
+
+  scheduleBootWork('shell-environment-synced', () => {
+    if (process.platform === 'darwin') {
+      syncShellEnvironment()
+    }
+  }, 0)
+  scheduleBootWork('assistant-runtime-started', () => {
+    ensureAssistantRuntimeStarted()
+  }, 250)
+  scheduleBootWork('update-checks-started', () => {
+    startUpdateChecks()
+  }, 1_000)
 
   void (async () => {
     const gitHealth = await getGitRuntimeHealth(true)

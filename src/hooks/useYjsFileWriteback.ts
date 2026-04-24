@@ -11,7 +11,7 @@ import { extractRemoteYjsOrigin, type RemoteYjsOrigin } from '@/lib/yjs/origins'
  *
  * When another user's agent edits a file, the change arrives via Yjs.
  * This hook ensures those changes are written to the local filesystem
- * even if the file isn't open in Monaco editor.
+ * even if the file isn't open in a visible editor.
  *
  * Also handles:
  * - File/folder renames from other users

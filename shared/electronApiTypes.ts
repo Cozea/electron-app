@@ -507,25 +507,6 @@ export interface PreviewInspectorMutationResult {
   error?: string
 }
 
-export interface DiagnosticPublishItem {
-  source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-  severity: 'error' | 'warning' | 'info'
-  message: string
-  file?: string
-  line?: number
-  column?: number
-  endLine?: number
-  endColumn?: number
-  code?: string
-  related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-}
-
-export interface DiagnosticPublishPayload {
-  projectPath: string
-  source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-  diagnostics: DiagnosticPublishItem[]
-}
-
 export interface WatchProjectResult {
   success: boolean
   error?: string
@@ -797,7 +778,7 @@ export interface SyncOp {
   projectId: string
   actorId: string
   actorType: 'user' | 'agent' | 'system'
-  source: 'monaco' | 'agent' | 'watcher' | 'remote'
+  source: 'editor' | 'agent' | 'watcher' | 'remote'
   kind: 'upsert' | 'delete' | 'rename' | 'chmod' | 'yjs_update'
   path: string
   baseHash?: string
@@ -1522,7 +1503,7 @@ export interface ElectronAPI {
         projectId: string
         actorId?: string
         actorType?: 'user' | 'agent' | 'system'
-        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+        source?: 'editor' | 'agent' | 'watcher' | 'remote'
       }
     }) => Promise<SyncWriteFilesResult>
     deleteFiles: (options: {
@@ -1532,7 +1513,7 @@ export interface ElectronAPI {
         projectId: string
         actorId?: string
         actorType?: 'user' | 'agent' | 'system'
-        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+        source?: 'editor' | 'agent' | 'watcher' | 'remote'
       }
     }) => Promise<SyncDeleteFilesResult>
     getGitRuntimeHealth: (options?: { force?: boolean }) => Promise<GitRuntimeHealth>
@@ -1798,65 +1779,5 @@ export interface ElectronAPI {
     install: () => Promise<{ success: boolean; error?: string }>
     getState: () => Promise<UpdateState>
     onStatus: (callback: (state: UpdateState) => void) => () => void
-  }
-  diagnostics: {
-    start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
-    stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
-    openFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
-    updateFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
-    closeFile: (options: { projectPath: string; filePath: string }) => Promise<{ success: boolean; error?: string }>
-    refresh: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
-    getDiagnostics: (options: { projectPath: string; filePath?: string }) => Promise<{
-      success: boolean
-      error?: string
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }>
-    getSnapshot: (options: { projectPath: string; filePaths?: string[] }) => Promise<{
-      success: boolean
-      error?: string
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }>
-    checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) => Promise<{
-      success: boolean
-      error?: string
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }>
-    onPublish: (callback: (payload: DiagnosticPublishPayload) => void) => () => void
   }
 }

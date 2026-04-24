@@ -571,7 +571,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         projectId: string
         actorId?: string
         actorType?: 'user' | 'agent' | 'system'
-        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+        source?: 'editor' | 'agent' | 'watcher' | 'remote'
       }
     }) =>
       ipcRenderer.invoke('sync:writeFiles', options),
@@ -582,7 +582,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         projectId: string
         actorId?: string
         actorType?: 'user' | 'agent' | 'system'
-        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+        source?: 'editor' | 'agent' | 'watcher' | 'remote'
       }
     }) =>
       ipcRenderer.invoke('sync:deleteFiles', options),
@@ -946,32 +946,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state)
       ipcRenderer.on('updates:status', handler)
       return () => ipcRenderer.removeListener('updates:status', handler)
-    },
-  },
-  diagnostics: {
-    start: (options: { projectPath: string }) =>
-      ipcRenderer.invoke('diagnostics:start', options),
-    stop: (options: { projectPath: string }) =>
-      ipcRenderer.invoke('diagnostics:stop', options),
-    openFile: (options: { projectPath: string; filePath: string; content: string }) =>
-      ipcRenderer.invoke('diagnostics:openFile', options),
-    updateFile: (options: { projectPath: string; filePath: string; content: string }) =>
-      ipcRenderer.invoke('diagnostics:updateFile', options),
-    closeFile: (options: { projectPath: string; filePath: string }) =>
-      ipcRenderer.invoke('diagnostics:closeFile', options),
-    refresh: (options: { projectPath: string }) =>
-      ipcRenderer.invoke('diagnostics:refresh', options),
-    getDiagnostics: (options: { projectPath: string; filePath?: string }) =>
-      ipcRenderer.invoke('diagnostics:getDiagnostics', options),
-    getSnapshot: (options: { projectPath: string; filePaths?: string[] }) =>
-      ipcRenderer.invoke('diagnostics:getSnapshot', options),
-    checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) =>
-      ipcRenderer.invoke('diagnostics:checkFiles', options),
-    onPublish: (callback: (payload: import('../shared/electronApiTypes').DiagnosticPublishPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: import('../shared/electronApiTypes').DiagnosticPublishPayload) =>
-        callback(payload)
-      ipcRenderer.on('diagnostics:publish', handler)
-      return () => ipcRenderer.removeListener('diagnostics:publish', handler)
     },
   },
 } satisfies ElectronAPI)

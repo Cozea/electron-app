@@ -10,6 +10,7 @@ import {
   useWorkspaceRuntimeStore,
   type WorkspaceRuntimeRecord,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import { selectHostedWorkspaceRuntimeRecords } from "@/features/projects/workspaces/workspaceRuntimePolicy"
 
 function WorkspaceRuntimeObserver({ workspaceId }: { workspaceId: string }) {
   const yjsContext = useYjsProject()
@@ -75,7 +76,7 @@ export function WorkspaceRuntimeHosts() {
     [runtimes],
   )
   const hostedRuntimeRecords = useMemo(
-    () => runtimeRecords.filter((record) => record.lifecycle !== "background-frozen"),
+    () => selectHostedWorkspaceRuntimeRecords(runtimeRecords),
     [runtimeRecords],
   )
 

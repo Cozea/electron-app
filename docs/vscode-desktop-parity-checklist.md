@@ -92,10 +92,9 @@ Acceptance checks:
 - macOS behaviors (reopen/activate/open-file) feel native
 - file reveal/open flows use OS-native integrations
 
-## Phase 6: Runtime and Diagnostics Parity (Rust/Python/TS)
+## Phase 6: Runtime Health Parity (Rust/Python/TS)
 
 - [ ] Keep runtime/toolchain detection in main process and expose capabilities to UI.
-- [ ] Expand diagnostics pipeline to include Rust/Python tool outputs.
 - [ ] Surface runtime health and capability status in tooling/settings/status bar.
 
 Files:
@@ -104,14 +103,12 @@ Files:
 - `electron/runtime/commandResolver.ts`
 - `electron/runtime/capabilityCatalog.ts`
 - `electron/ipc/registerRuntimeHandlers.ts`
-- `electron/services/DiagnosticsService.ts`
-- `src/stores/useProblemsStore.ts`
 - `src/pages/settings/Tooling.tsx`
 - `src/components/StatusBar.tsx`
 
 Acceptance checks:
 - runtime detection is deterministic and cached
-- diagnostics update incrementally without blocking editor
+- runtime health updates without blocking editor surfaces
 - tooling status is visible and actionable from UI
 
 ## Phase 7: Continuous Performance Discipline
@@ -123,7 +120,7 @@ Acceptance checks:
 Files:
 - `src/features/projects/components/FileTree.tsx`
 - `src/features/projects/pages/ProjectPagesPage.tsx`
-- `src/components/editor/CollaborativeMonacoEditor.tsx`
+- `src/components/editor/CollaborativeCodeEditor.tsx`
 
 Acceptance checks:
 - no dropped frames in normal editor/file-tree operations on mid-range hardware
@@ -136,5 +133,4 @@ Acceptance checks:
 2. Phase 3 (main-process offloading)
 3. Phase 2 (local-first sync behavior)
 4. Phase 5 (desktop command/menu parity)
-5. Phase 6 + Phase 7 (runtime/diagnostics/perf hardening)
-
+5. Phase 6 + Phase 7 (runtime/perf hardening)

@@ -972,7 +972,7 @@ Success criteria:
 
 ## Validation Checklist
 
-1. Edit a file in Monaco and confirm:
+1. Edit a file in the editor and confirm:
    - Git dirty snapshot updates
    - Yjs metadata preserves actor identity
    - activity feed shows strong attribution

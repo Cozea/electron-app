@@ -3,6 +3,10 @@ import path from "node:path"
 import { BrowserWindow, webContents } from "electron"
 
 import { GitDirtyStateService } from "./services/GitDirtyStateService"
+import {
+  applyProjectFileDeleteToIndex,
+  applyProjectFileMetaChangeToIndex,
+} from "./services/ProjectFileIndexService"
 
 export interface ExternalFileChangePayload {
   filePath: string
@@ -134,6 +138,7 @@ export function notifyFileChanged(
 }
 
 export function notifyFileMetaChanged(payload: ExternalFileMetaChangePayload): void {
+  applyProjectFileMetaChangeToIndex(payload)
   forEachInterestedWindowForPath(payload.filePath, (window) => {
     window.webContents.send("yjs:external-file-meta-change", payload)
   })
@@ -144,6 +149,7 @@ export function notifyFileDeleted(
   filePath: string,
   options?: { origin?: string | import("../shared/electronApiTypes").FileChangeAttribution },
 ): void {
+  applyProjectFileDeleteToIndex(filePath)
   const payload: ExternalFileDeletePayload = {
     filePath,
     origin: options?.origin,

@@ -14,6 +14,7 @@ import {
   buildWorkspaceIdentityKey,
   normalizeWorkspaceProjectPath,
 } from "@/features/projects/workspaces/workspaceIdentity"
+import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
 const PERSIST_DEBOUNCE_MS = 500
 
@@ -904,6 +905,11 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
         },
         addTile: (projectId, laneId, type, options = {}, projectPath) => {
           let createdTileId = ""
+          const startMark = markCozeaInteractionStart("workbench-add-tile", {
+            laneId,
+            projectId,
+            tileType: type,
+          })
 
           set((state) => {
             const { scopeKey, workbench } = resolveMutableWorkbenchState(
@@ -929,10 +935,22 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             state.workbenches[scopeKey] = workbench
           })
 
+          markCozeaInteractionEnd("workbench-add-tile", startMark, {
+            laneId,
+            projectId,
+            tileId: createdTileId || null,
+            tileType: type,
+          })
           return createdTileId
         },
         openSingletonTile: (projectId, laneId, type, options = {}, projectPath) => {
           let resolvedTileId = ""
+          let reusedExistingTile = false
+          const startMark = markCozeaInteractionStart("workbench-open-singleton-tile", {
+            laneId,
+            projectId,
+            tileType: type,
+          })
 
           set((state) => {
             const { scopeKey, workbench } = resolveMutableWorkbenchState(
@@ -950,6 +968,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
 
             if (existingTile) {
               resolvedTileId = existingTile.id
+              reusedExistingTile = true
               workbench.activeTileId = existingTile.id
               state.workbenches[scopeKey] = workbench
               return
@@ -963,6 +982,13 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             state.workbenches[scopeKey] = workbench
           })
 
+          markCozeaInteractionEnd("workbench-open-singleton-tile", startMark, {
+            laneId,
+            projectId,
+            reusedExistingTile,
+            tileId: resolvedTileId || null,
+            tileType: type,
+          })
           return resolvedTileId
         },
         removeTile: (projectId, laneId, tileId, projectPath) => {
@@ -995,6 +1021,11 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           })
         },
         setActiveTile: (projectId, laneId, tileId, projectPath) => {
+          const startMark = markCozeaInteractionStart("workbench-focus-tile", {
+            laneId,
+            projectId,
+            tileId,
+          })
           set((state) => {
             const { workbench } = resolveMutableWorkbenchState(
               state.workbenches,
@@ -1005,6 +1036,11 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             )
             if (!workbench || workbench.activeTileId === tileId) return
             workbench.activeTileId = tileId
+          })
+          markCozeaInteractionEnd("workbench-focus-tile", startMark, {
+            laneId,
+            projectId,
+            tileId,
           })
         },
         setLayoutSnapshot: (projectId, laneId, layout, projectPath) => {

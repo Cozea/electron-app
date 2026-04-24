@@ -87,31 +87,20 @@ const AI_DOT_SHIMMER_STYLE: CSSProperties = {
 
 function renderActivityBubble(user: PresenceUser) {
   const hasAiActivity = user.isAgentWorking || user.isAiTyping
-  const hasHumanActivity = user.isMonacoTyping
 
-  if (!hasAiActivity && !hasHumanActivity) {
+  if (!hasAiActivity) {
     return null
-  }
-
-  if (hasAiActivity) {
-    return (
-      <span
-        className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm"
-      >
-        <span className="inline-flex h-full items-center justify-center leading-none" style={AI_DOT_SHIMMER_STYLE}>
-          <Shimmer as="span" className="block text-[12px] font-semibold leading-none tracking-[-0.02em]">
-            •••
-          </Shimmer>
-        </span>
-      </span>
-    )
   }
 
   return (
     <span
-      className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm text-secondary-foreground"
+      className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm"
     >
-      <div className="animate-spin bg-muted rounded-full h-4 w-4 border-t-2 border-foreground" />
+      <span className="inline-flex h-full items-center justify-center leading-none" style={AI_DOT_SHIMMER_STYLE}>
+        <Shimmer as="span" className="block text-[12px] font-semibold leading-none tracking-[-0.02em]">
+          •••
+        </Shimmer>
+      </span>
     </span>
   )
 }
@@ -190,9 +179,6 @@ export function PresenceAvatarGroup({
                   )}
                   {user.isAiTyping && (
                     <p className="text-xs text-muted-foreground">Typing in AI panel</p>
-                  )}
-                  {user.isMonacoTyping && (
-                    <p className="text-xs text-muted-foreground">Typing in editor</p>
                   )}
                   {user.activeFile && (
                     <p className="text-xs text-muted-foreground">

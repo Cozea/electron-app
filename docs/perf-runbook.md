@@ -1,65 +1,64 @@
-# Dashboard Performance Runbook
+# Desktop Performance Runbook
 
-This runbook is the canonical way to profile dashboard jank in development.
+This runbook is the canonical loop for keeping Cozea feeling like a fast desktop app instead of a web page with loading states.
 
-## Scope
+## Goals
 
-Target pages:
-- `/projects`
-- `/projects/:projectId/pages`
-- `/teams`
-- `/settings/billing`
-- `/settings/ai`
-- `/workspace/sync`
-
-Primary warnings:
-- `[Violation] 'message' handler took ...`
-- `[Violation] Forced reflow while executing JavaScript took ...`
+- Cold boot paints native chrome quickly.
+- Workspace switching keeps the previous visible UI stable while the next workspace catches up.
+- Opening and restoring tiles avoids long main-thread stalls.
+- Background terminals, dev servers, agents, and sync continue running when they are real work.
+- Passive background UI is budgeted so old projects do not quietly consume renderer/runtime resources forever.
 
 ## Setup
 
-1. Start app in dev mode:
-   - Modernized run: `npm run dev:perf:modern`
-   - Baseline run: `npm run dev:perf:baseline`
-2. Open Chrome DevTools for the renderer window.
-3. Ensure verbose logs are visible (do not filter out warnings).
-4. Run both modes with the same script below and compare warning counts.
+1. Start the app with performance diagnostics:
+   - `bun run dev:perf:modern`
+2. For baseline comparison:
+   - `bun run dev:perf:baseline`
+3. Open renderer DevTools and keep the Performance panel ready.
+4. Keep console output visible for `[BootTiming]`, `[Jank][LoAF]`, and `[Jank][LongTask]` entries.
+5. Summarize saved Chrome traces with:
+   - `bun run perf:trace-summary -- tmp/cozea-cold-boot-trace.json.json.gz`
 
-## Capture Procedure
+## Capture Scenarios
 
-1. Open Performance panel.
-2. Enable screenshots and JS sampling.
-3. Start recording.
-4. Navigate pages in this exact sequence:
-   - Projects -> Project Pages -> Members -> Billing -> AI -> Sync -> Projects
-5. On each page:
-   - Wait 3 seconds after load.
-   - Trigger one interaction (sort/filter/open menu where available).
-6. On `Project Pages`, record both modes:
-   - grid mode cold open
-   - open one focused route
-   - switch through at least 5 thumbnails
-   - reload preview once
-   - toggle inspector once
-7. Stop recording after returning to Projects.
+1. Cold boot:
+   - Start from no running Electron process.
+   - Record until the first workspace is interactive.
+   - Compare `cozea:renderer:entry-to-first-frame` and `[BootTiming] main-window-ready-to-show`.
+2. Rapid workspace switching:
+   - Switch through at least five projects, including one project with restored tiles.
+   - Watch `cozea:interaction:project-switch` measures.
+   - Confirm old workspace UI does not flash a full-page loading state.
+3. Tile opening:
+   - Open Browser, Terminal, Dev Server, Mobile Simulator, and an assistant tile.
+   - Watch `cozea:interaction:workbench-add-tile` and `cozea:interaction:workbench-open-singleton-tile`.
+4. Tile restore:
+   - Relaunch into a project with multiple saved tiles.
+   - Watch `cozea:interaction:workbench-restore-tiles`.
+5. Background multitasking:
+   - Leave a terminal, dev server, or assistant running.
+   - Switch away for several minutes.
+   - Confirm the process stays active while passive warm workspaces are capped by the runtime host policy.
 
 ## What To Compare
 
-- Count of message-handler violations.
-- Count of forced reflow violations.
+- Main-process boot timings.
+- Renderer first-frame timing.
+- Long animation frames over 50ms, especially those with script attribution.
 - Long tasks over 50ms.
-- LoAF console output (when enabled).
-- Project Pages specific checks:
-  - grid mount does not create one live iframe per route
-  - focused mode keeps one live iframe only
-  - thumbnail strip renders a bounded visible window
-  - screenshot/static previews appear before any live fallback for non-focused routes
+- Workspace host count and which workspaces remain hosted.
+- Whether background work kept running without keeping every background UI surface alive.
 
 ## Reporting Format
 
 For each run, include:
-- Git commit hash
-- Date/time
-- Environment (OS, Electron version)
-- Warning counts by page
-- Largest long task duration
+
+- Git commit hash.
+- Date/time and OS.
+- Electron version.
+- Scenario name.
+- Largest LoAF and LongTask durations.
+- Notable `cozea:*` measures from the Performance panel.
+- Whether any visible loading fallback appeared during project switch or tile restore.

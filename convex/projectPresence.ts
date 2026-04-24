@@ -19,7 +19,6 @@ export const heartbeat = mutation({
     activeFile: v.optional(v.string()),
     activeRoute: v.optional(v.string()),
     lastActivityAt: v.optional(v.number()),
-    isMonacoTyping: v.optional(v.boolean()),
     isAiTyping: v.optional(v.boolean()),
     isAgentWorking: v.optional(v.boolean()),
   },
@@ -34,7 +33,6 @@ export const heartbeat = mutation({
       activeFile,
       activeRoute,
       lastActivityAt,
-      isMonacoTyping,
       isAiTyping,
       isAgentWorking,
     } = args
@@ -58,7 +56,6 @@ export const heartbeat = mutation({
         activeTab,
         activeFile,
         activeRoute,
-        isMonacoTyping: isMonacoTyping ?? false,
         isAiTyping: isAiTyping ?? false,
         isAgentWorking: isAgentWorking ?? false,
       })
@@ -75,7 +72,6 @@ export const heartbeat = mutation({
         activeTab,
         activeFile,
         activeRoute,
-        isMonacoTyping: isMonacoTyping ?? false,
         isAiTyping: isAiTyping ?? false,
         isAgentWorking: isAgentWorking ?? false,
       })
@@ -140,7 +136,6 @@ export const getActiveUsers = query({
         activeTab: p.activeTab,
         activeFile: p.activeFile,
         activeRoute: p.activeRoute,
-        isMonacoTyping: p.isMonacoTyping ?? false,
         isAiTyping: p.isAiTyping ?? false,
         isAgentWorking: p.isAgentWorking ?? false,
         lastActivityAt: p.lastActivityAt ?? p.lastHeartbeat,

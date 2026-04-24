@@ -1,6 +1,6 @@
 import type { Id } from "../../../convex/_generated/dataModel"
 
-export type SyncOpSource = "monaco" | "agent" | "watcher" | "remote"
+export type SyncOpSource = "editor" | "agent" | "watcher" | "remote"
 export type SyncActorType = "user" | "agent" | "system"
 export type SyncOpKind = "upsert" | "delete" | "rename" | "chmod" | "yjs_update"
 

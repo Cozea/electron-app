@@ -3,7 +3,6 @@ import type { Id } from '../../convex/_generated/dataModel'
 import type { FileChangeAttribution } from '../../shared/electronApiTypes'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
-import { requestEditorDiagnosticsRefresh } from '@/lib/editor/diagnosticsRefresh'
 
 /**
  * useAgentFileSync - Bridges external file changes (from AI agents) to Yjs.
@@ -138,7 +137,6 @@ export function useAgentFileSync(
 
         // Apply the change to Yjs document
         yjsDoc.applyExternalChange(normalizedPath, content, origin ?? 'agent')
-        requestEditorDiagnosticsRefresh()
         // Only enqueue directly for remote/sync origins because local/agent/external
         // writes are persisted (and enqueued) by ProjectFilesPersistence.
         if (origin === 'sync' || origin === 'remote' || (origin && typeof origin === 'object' && origin.origin === 'remote')) {
@@ -162,7 +160,6 @@ export function useAgentFileSync(
 
         // console.log(`[AgentSync] External file delete: ${normalizedPath}`)
         yjsDoc.deletePath(normalizedPath, origin ?? 'agent')
-        requestEditorDiagnosticsRefresh()
         if (origin === 'sync' || origin === 'remote' || (origin && typeof origin === 'object' && origin.origin === 'remote')) {
           void enqueueDeleteOp(normalizedPath, origin).catch((error) => {
             console.warn(`[AgentSync] Failed to enqueue delete op for ${normalizedPath}:`, error)
