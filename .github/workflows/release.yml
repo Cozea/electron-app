@@ -57,7 +57,7 @@ env:
 jobs:
   plan:
     name: Plan release
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: depot-ubuntu-24.04
     outputs:
       release_tag: ${{ steps.plan.outputs.release_tag }}
       checkout_ref: ${{ steps.plan.outputs.checkout_ref }}
@@ -139,7 +139,7 @@ jobs:
   verify:
     name: Verify release candidate
     needs: plan
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 25
     env:
       COZEA_RUNTIME_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
@@ -229,7 +229,7 @@ jobs:
         include:
           - name: macOS arm64
             artifact_name: macos-arm64
-            runs_on: blacksmith-6vcpu-macos-15
+            runs_on: depot-macos-15
             electron_target: mac
             arch: arm64
             git_bundle_targets: darwin-arm64
@@ -238,14 +238,14 @@ jobs:
             artifact_name: macos-x64
             # Blacksmith currently documents Apple Silicon macOS runners, so the
             # x64 package is built from the same macOS 15 pool with an x64 target.
-            runs_on: blacksmith-6vcpu-macos-15
+            runs_on: depot-macos-15
             electron_target: mac
             arch: x64
             git_bundle_targets: darwin-x64
             runtime_bundle_targets: darwin-x64
           - name: Windows x64
             artifact_name: windows-x64
-            runs_on: blacksmith-4vcpu-windows-2025
+            runs_on: depot-windows-2025-4
             electron_target: win
             arch: x64
             git_bundle_targets: win32-x64
