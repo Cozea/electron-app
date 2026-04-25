@@ -6,6 +6,7 @@ import {
   parseCursorAboutOutput,
   parseCursorCliConfigChannel,
   parseCursorCliConfigCurrentModel,
+  resolveCursorAcpSessionModelConfigValue,
 } from "../../../../../electron/assistant-runtime/provider/Layers/CursorProvider.ts";
 import type { CursorSettings } from "@cozea/assistant-contracts";
 
@@ -25,6 +26,27 @@ const BASE_CURSOR_SETTINGS = {
 } satisfies CursorSettings;
 
 describe("CursorProvider", () => {
+  describe("resolveCursorAcpSessionModelConfigValue", () => {
+    it("maps bare default and auto to default[]", () => {
+      expect(resolveCursorAcpSessionModelConfigValue(undefined)).toBe("default[]");
+      expect(resolveCursorAcpSessionModelConfigValue("")).toBe("default[]");
+      expect(resolveCursorAcpSessionModelConfigValue("  ")).toBe("default[]");
+      expect(resolveCursorAcpSessionModelConfigValue("default")).toBe("default[]");
+      expect(resolveCursorAcpSessionModelConfigValue("auto")).toBe("default[]");
+    });
+
+    it("preserves full bracketed model tokens", () => {
+      expect(resolveCursorAcpSessionModelConfigValue("default[]")).toBe("default[]");
+      expect(resolveCursorAcpSessionModelConfigValue("composer-2[fast=true]")).toBe(
+        "composer-2[fast=true]",
+      );
+    });
+
+    it("passes through bare non-default model ids", () => {
+      expect(resolveCursorAcpSessionModelConfigValue("composer-2")).toBe("composer-2");
+    });
+  });
+
   describe("parseCursorCliConfigChannel", () => {
     it("parses the configured channel", () => {
       expect(parseCursorCliConfigChannel('{ "channel": "lab" }')).toBe("lab");
