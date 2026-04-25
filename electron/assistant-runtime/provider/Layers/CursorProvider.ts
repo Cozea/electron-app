@@ -592,6 +592,24 @@ export function resolveCursorAcpBaseModelId(model: string | null | undefined): s
   return base.includes("[") ? base.slice(0, base.indexOf("[")) : base;
 }
 
+/**
+ * Value for Cursor ACP `session/set_config_option` on the model id. The Agent CLI
+ * rejects bare `default` / `auto` and expects bracketed tokens such as `default[]`.
+ */
+export function resolveCursorAcpSessionModelConfigValue(model: string | null | undefined): string {
+  const trimmed = model?.trim() ?? "";
+  if (trimmed.length === 0 || trimmed === "auto") {
+    return "default[]";
+  }
+  if (trimmed === "default") {
+    return "default[]";
+  }
+  if (trimmed.includes("[")) {
+    return trimmed;
+  }
+  return trimmed;
+}
+
 export function resolveCursorAcpConfigUpdates(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
   modelOptions: CursorModelOptions | null | undefined,

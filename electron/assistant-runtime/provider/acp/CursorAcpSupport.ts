@@ -6,8 +6,8 @@ import type * as EffectAcpErrors from "@cozea/effect-acp/errors";
 
 import {
   CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
-  resolveCursorAcpBaseModelId,
   resolveCursorAcpConfigUpdates,
+  resolveCursorAcpSessionModelConfigValue,
 } from "../Layers/CursorProvider.ts";
 import {
   AcpSessionRuntime,
@@ -82,7 +82,7 @@ export function applyCursorAcpModelSelection<E>(input: {
   readonly mapError: (context: CursorAcpModelSelectionErrorContext) => E;
 }): Effect.Effect<void, E> {
   return Effect.gen(function* () {
-    yield* input.runtime.setModel(resolveCursorAcpBaseModelId(input.model)).pipe(
+    yield* input.runtime.setModel(resolveCursorAcpSessionModelConfigValue(input.model)).pipe(
       Effect.mapError((cause) =>
         input.mapError({
           cause,
