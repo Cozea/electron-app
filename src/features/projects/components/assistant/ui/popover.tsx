@@ -48,6 +48,8 @@ function PopoverPopup({
               "w-fit text-balance rounded-md text-xs shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]",
             className,
           )}
+          data-native-surface-overlay={tooltipStyle ? undefined : "true"}
+          data-native-surface-overlay-reason={tooltipStyle ? undefined : "Popover"}
           data-slot="popover-popup"
           {...props}
         >
