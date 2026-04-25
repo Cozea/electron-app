@@ -211,7 +211,6 @@ function WorkbenchRuntimePreviewTile({
     state: previewState,
     boundsReady,
     overlayPaused,
-    overlayPauseReason,
     placeholderScreenshot,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
@@ -776,7 +775,7 @@ function WorkbenchRuntimePreviewTile({
           />
         </div>
       ) : null}
-      {previewUrl && overlayPaused && overlayPauseReason !== "Split controls" && !previewState.loadError ? (
+      {previewUrl && overlayPaused && !placeholderScreenshot && !previewState.loadError ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
           <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
         </div>

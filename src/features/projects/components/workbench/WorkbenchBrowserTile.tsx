@@ -114,7 +114,6 @@ export function WorkbenchBrowserTile({
     state,
     boundsReady,
     overlayPaused,
-    overlayPauseReason,
     placeholderScreenshot,
     actions,
   } = useWorkbenchBrowserView({
@@ -582,7 +581,7 @@ export function WorkbenchBrowserTile({
                 />
               </div>
             ) : null}
-            {tile.url && overlayPaused && overlayPauseReason !== "Split controls" && !state.loadError ? (
+            {tile.url && overlayPaused && !placeholderScreenshot && !state.loadError ? (
               <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
                 <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
               </div>

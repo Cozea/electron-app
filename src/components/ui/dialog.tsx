@@ -46,6 +46,8 @@ function DialogOverlay({
 }: React.ComponentProps<typeof BaseDialog.Backdrop>) {
   return (
     <BaseDialog.Backdrop
+      data-native-surface-overlay="true"
+      data-native-surface-overlay-reason="Dialog backdrop"
       data-slot="dialog-overlay"
       className={cn(
         "fixed inset-0 z-50 bg-black/50 transition-all",

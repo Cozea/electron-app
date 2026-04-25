@@ -56,6 +56,8 @@ function DropdownMenuContent({
     <BaseMenu.Portal>
       <BaseMenu.Positioner side={side as any} align={align as any} sideOffset={sideOffset}>
         <BaseMenu.Popup
+          data-native-surface-overlay="true"
+          data-native-surface-overlay-reason="Dropdown menu"
           data-slot="dropdown-menu-content"
           className={cn(
             'titlebar-no-drag app-scrollbar bg-secondary text-secondary-foreground z-50 max-h-[min(24rem,80vh)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-[1.25rem] p-1 shadow-xl outline-hidden',
@@ -264,6 +266,8 @@ function DropdownMenuSubContent({
     <BaseMenu.Portal>
       <BaseMenu.Positioner side="right" sideOffset={sideOffset}>
         <BaseMenu.Popup
+          data-native-surface-overlay="true"
+          data-native-surface-overlay-reason="Dropdown menu"
           data-slot="dropdown-menu-sub-content"
           className={cn(
             'titlebar-no-drag bg-secondary text-secondary-foreground z-50 min-w-[8rem] overflow-hidden rounded-[1.25rem] p-1 shadow-xl outline-hidden',

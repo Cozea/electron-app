@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useNativeSurfaceOcclusion } from '@/lib/nativeSurfaceOcclusion'
 import { TaskFocusOverlay } from '@/features/projects/components/TaskFocusOverlay'
 import type { TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
 import type { PageRoute } from '@/features/projects/lib/previewRuntimeTypes'
@@ -107,6 +108,10 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
 
   const streamUrl = sessionState?.streamUrl ?? null
   const interactionEnabled = Boolean(streamUrl && sessionState?.status === 'running')
+  const nativeSurfaceOcclusion = useNativeSurfaceOcclusion(frameSurfaceRef, {
+    enabled: interactionEnabled,
+  })
+  const interactionBlockedByOverlay = nativeSurfaceOcclusion.occluded
 
   const previewShellClassName = useMemo(() => {
     return cn(
@@ -234,7 +239,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
   }, [eventToRatios, onSendTouches, sessionState?.rotation])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!interactionEnabled) {
+    if (!interactionEnabled || interactionBlockedByOverlay) {
       return
     }
 
@@ -253,7 +258,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
     event.currentTarget.setPointerCapture(event.pointerId)
     event.preventDefault()
     void sendTouchFromPointer('start', event)
-  }, [interactionEnabled, sendTouchFromPointer])
+  }, [interactionBlockedByOverlay, interactionEnabled, sendTouchFromPointer])
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (activePanPointerIdRef.current === event.pointerId) {
@@ -261,13 +266,13 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       return
     }
 
-    if (activeTouchPointerIdRef.current !== event.pointerId || !interactionEnabled) {
+    if (activeTouchPointerIdRef.current !== event.pointerId || !interactionEnabled || interactionBlockedByOverlay) {
       return
     }
 
     event.preventDefault()
     void sendTouchFromPointer('move', event)
-  }, [applyPanDelta, interactionEnabled, sendTouchFromPointer])
+  }, [applyPanDelta, interactionBlockedByOverlay, interactionEnabled, sendTouchFromPointer])
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (activePanPointerIdRef.current === event.pointerId) {
@@ -276,7 +281,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       return
     }
 
-    if (activeTouchPointerIdRef.current !== event.pointerId || !interactionEnabled) {
+    if (activeTouchPointerIdRef.current !== event.pointerId || !interactionEnabled || interactionBlockedByOverlay) {
       return
     }
 
@@ -284,7 +289,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
     event.currentTarget.releasePointerCapture(event.pointerId)
     event.preventDefault()
     void sendTouchFromPointer('end', event)
-  }, [interactionEnabled, sendTouchFromPointer])
+  }, [interactionBlockedByOverlay, interactionEnabled, sendTouchFromPointer])
 
   const handlePointerCancel = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (activePanPointerIdRef.current === event.pointerId) {
@@ -292,13 +297,13 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       return
     }
 
-    if (activeTouchPointerIdRef.current !== event.pointerId || !interactionEnabled) {
+    if (activeTouchPointerIdRef.current !== event.pointerId || !interactionEnabled || interactionBlockedByOverlay) {
       return
     }
 
     activeTouchPointerIdRef.current = null
     void sendTouchFromPointer('end', event)
-  }, [interactionEnabled, sendTouchFromPointer])
+  }, [interactionBlockedByOverlay, interactionEnabled, sendTouchFromPointer])
 
   const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (event.ctrlKey || event.metaKey) {
@@ -308,7 +313,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       return
     }
 
-    if (!interactionEnabled) {
+    if (!interactionEnabled || interactionBlockedByOverlay) {
       return
     }
 
@@ -323,10 +328,10 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       deltaX: event.deltaX,
       deltaY: event.deltaY,
     })
-  }, [applyZoomAtPoint, eventToRatios, interactionEnabled, onSendWheel])
+  }, [applyZoomAtPoint, eventToRatios, interactionBlockedByOverlay, interactionEnabled, onSendWheel])
 
   const handleKeyEvent = useCallback((direction: 'down' | 'up', event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!interactionEnabled) {
+    if (!interactionEnabled || interactionBlockedByOverlay) {
       return
     }
 
@@ -347,7 +352,7 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
       direction,
       keyCode,
     })
-  }, [interactionEnabled, onSendKey])
+  }, [interactionBlockedByOverlay, interactionEnabled, onSendKey])
 
   const emptyState = useMemo(() => {
     if (simulatorsLoading) {
@@ -385,7 +390,8 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
           <div
             ref={frameSurfaceRef}
             tabIndex={0}
-            className={previewShellClassName}
+            className={cn(previewShellClassName, interactionBlockedByOverlay && 'pointer-events-none')}
+            data-native-surface-host="ios-simulator-preview"
             style={{ transform: 'translate3d(0px, 0px, 0) scale(1)', transformOrigin: 'center center' }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}

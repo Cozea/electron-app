@@ -41,6 +41,8 @@ function SheetOverlay({
 }) {
   return (
     <SheetPrimitive.Overlay
+      data-native-surface-overlay="true"
+      data-native-surface-overlay-reason="Sheet backdrop"
       data-slot="sheet-overlay"
       className={cn(
         "fixed inset-0 z-50 bg-black/50",

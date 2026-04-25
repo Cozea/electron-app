@@ -11,6 +11,10 @@ import {
   acquireBrowserTileModel,
   releaseBrowserTileModel,
 } from "@/features/projects/browser/browserTileModel"
+import {
+  NATIVE_SURFACE_OVERLAY_SELECTOR,
+  useNativeSurfaceOcclusion,
+} from "@/lib/nativeSurfaceOcclusion"
 
 export interface WorkbenchBrowserViewState {
   tileId: string
@@ -73,19 +77,6 @@ interface UseWorkbenchBrowserViewResult {
   }
 }
 
-function isElementRectVisible(rect: DOMRect): boolean {
-  return rect.width > 0 && rect.height > 0
-}
-
-function isRectOverlapping(a: DOMRect, b: DOMRect): boolean {
-  return !(
-    a.right <= b.left ||
-    b.right <= a.left ||
-    a.bottom <= b.top ||
-    b.bottom <= a.top
-  )
-}
-
 export function useWorkbenchBrowserView(
   options: UseWorkbenchBrowserViewOptions,
 ): UseWorkbenchBrowserViewResult {
@@ -96,7 +87,7 @@ export function useWorkbenchBrowserView(
     projectId,
     laneId,
     visible = true,
-    overlaySelector = '[data-workbench-browser-overlay="true"]',
+    overlaySelector = NATIVE_SURFACE_OVERLAY_SELECTOR,
     storageScope = "workspace",
     workspaceId,
     persistModel = false,
@@ -134,10 +125,14 @@ export function useWorkbenchBrowserView(
     loadError: null,
   })
   const [boundsReady, setBoundsReady] = useState(false)
-  const [hasOverlappingOverlay, setHasOverlappingOverlay] = useState(false)
-  const [overlayPauseReason, setOverlayPauseReason] = useState<string | null>(null)
   const [overlayPaused, setOverlayPaused] = useState(false)
   const [placeholderScreenshot, setPlaceholderScreenshot] = useState<string | null>(null)
+  const nativeSurfaceOcclusion = useNativeSurfaceOcclusion(hostRef, {
+    enabled: visible && Boolean(url),
+    overlaySelector,
+  })
+  const hasOverlappingOverlay = nativeSurfaceOcclusion.occluded
+  const overlayPauseReason = nativeSurfaceOcclusion.reason
   const lastSentBoundsRef = useRef<{ x: number; y: number; w: number; h: number; v: boolean } | null>(null)
   const lastRequestedUrlRef = useRef<string>(url)
   /** Latest `url` from React props — avoids stale closures in the model subscriber vs `tile.url`. */
@@ -284,77 +279,8 @@ export function useWorkbenchBrowserView(
   }, [storageScope, tileId, url, workspaceId])
 
   useEffect(() => {
-    if (!visible || !url) {
-      setHasOverlappingOverlay(false)
-      setOverlayPauseReason(null)
-      return
-    }
-
-    const element = hostRef.current
-    if (!element) return
-
-    let frame = 0
-
-    const readOverlappingOverlay = () => {
-      const hostRect = element.getBoundingClientRect()
-      if (!isElementRectVisible(hostRect)) {
-        setHasOverlappingOverlay(false)
-        setOverlayPauseReason(null)
-        return
-      }
-
-      const overlays = Array.from(document.querySelectorAll<HTMLElement>(overlaySelector))
-      const match = overlays.find((candidate) => {
-        if (candidate === element || candidate.contains(element) || element.contains(candidate)) {
-          return false
-        }
-        const style = window.getComputedStyle(candidate)
-        if (style.display === "none" || style.visibility === "hidden") {
-          return false
-        }
-        const overlayRect = candidate.getBoundingClientRect()
-        if (!isElementRectVisible(overlayRect)) {
-          return false
-        }
-        return isRectOverlapping(hostRect, overlayRect)
-      })
-
-      setHasOverlappingOverlay(Boolean(match))
-      setOverlayPauseReason(match?.dataset.workbenchBrowserOverlayReason?.trim() || null)
-    }
-
-    const schedule = () => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(readOverlappingOverlay)
-    }
-
-    const resizeObserver = new ResizeObserver(schedule)
-    resizeObserver.observe(element)
-    const mutationObserver = new MutationObserver(schedule)
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden", "data-workbench-browser-overlay"],
-    })
-
-    window.addEventListener("resize", schedule)
-    window.addEventListener("scroll", schedule, true)
-    schedule()
-
-    return () => {
-      cancelAnimationFrame(frame)
-      resizeObserver.disconnect()
-      mutationObserver.disconnect()
-      window.removeEventListener("resize", schedule)
-      window.removeEventListener("scroll", schedule, true)
-    }
-  }, [overlaySelector, url, visible])
-
-  useEffect(() => {
     if (!url) {
       setOverlayPaused(false)
-      setOverlayPauseReason(null)
       setPlaceholderScreenshot(null)
     }
   }, [url])
@@ -365,6 +291,7 @@ export function useWorkbenchBrowserView(
 
     let cancelled = false
     let frame = 0
+    let pauseTimer = 0
 
     if (!hasOverlappingOverlay || !url || state.loadError) {
       setOverlayPaused(false)
@@ -372,32 +299,39 @@ export function useWorkbenchBrowserView(
       return () => {
         cancelled = true
         cancelAnimationFrame(frame)
+        window.clearTimeout(pauseTimer)
       }
     }
 
-    if (overlayPauseReason === "Split controls") {
-      const captureAndPause = async () => {
-        const screenshot = await model.captureScreenshot().catch(() => null)
-        if (cancelled) return
-        if (screenshot) {
-          setPlaceholderScreenshot(screenshot)
-          // Use requestAnimationFrame to delay pausing by one frame so the DOM updates first
-          frame = requestAnimationFrame(() => {
-            if (cancelled) return
-            setOverlayPaused(true)
-          })
-        } else {
-          setOverlayPaused(true)
-        }
+    const captureAndPause = async () => {
+      let pauseScheduled = false
+      const pauseNativeSurface = () => {
+        if (cancelled || pauseScheduled) return
+        pauseScheduled = true
+        setOverlayPaused(true)
       }
-      void captureAndPause()
-    } else {
-      setOverlayPaused(true)
+
+      pauseTimer = window.setTimeout(pauseNativeSurface, 50)
+      const screenshot = await model.captureScreenshot().catch(() => null)
+      if (cancelled) return
+      window.clearTimeout(pauseTimer)
+      if (screenshot) {
+        setPlaceholderScreenshot(screenshot)
+        // Delay pausing by one frame so the DOM placeholder is ready before the native view hides.
+        frame = requestAnimationFrame(() => {
+          if (cancelled) return
+          pauseNativeSurface()
+        })
+      } else {
+        pauseNativeSurface()
+      }
     }
+    void captureAndPause()
 
     return () => {
       cancelled = true
       cancelAnimationFrame(frame)
+      window.clearTimeout(pauseTimer)
     }
   }, [hasOverlappingOverlay, overlayPauseReason, state.loadError, url])
 

@@ -80,6 +80,8 @@ function SelectContent({
     <BaseSelect.Portal>
       <BaseSelect.Positioner align={align as any} sideOffset={4}>
         <BaseSelect.Popup
+          data-native-surface-overlay="true"
+          data-native-surface-overlay-reason="Select menu"
           data-slot="select-content"
           className={cn(
             "app-scrollbar bg-secondary text-secondary-foreground relative z-50 max-h-[min(24rem,80vh)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-md shadow-xl outline-hidden",
