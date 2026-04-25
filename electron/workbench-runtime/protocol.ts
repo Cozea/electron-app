@@ -11,6 +11,8 @@ import type {
 
 export type WorkbenchRuntimeMethod =
   | 'terminal.create'
+  | 'terminal.attachView'
+  | 'terminal.detachView'
   | 'terminal.input'
   | 'terminal.resize'
   | 'terminal.kill'
@@ -94,6 +96,16 @@ export interface WorkbenchRuntimeTerminalInputParams {
   data: string
 }
 
+export interface WorkbenchRuntimeTerminalAttachViewParams {
+  terminalId: string
+  cols: number
+  rows: number
+}
+
+export interface WorkbenchRuntimeTerminalDetachViewParams {
+  terminalId: string
+}
+
 export interface WorkbenchRuntimeTerminalResizeParams {
   terminalId: string
   cols: number
@@ -125,6 +137,8 @@ export interface WorkbenchRuntimeTerminalCreateParams extends TerminalCreateOpti
 
 export interface WorkbenchRuntimeMethodResultMap {
   'terminal.create': WorkbenchRuntimeTerminalCreateResult
+  'terminal.attachView': { success: boolean }
+  'terminal.detachView': { success: boolean }
   'terminal.input': boolean
   'terminal.resize': { success: boolean }
   'terminal.kill': { success: boolean }

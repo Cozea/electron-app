@@ -677,7 +677,11 @@ export function ProjectSidebar({
             <div className="mb-4 space-y-1">
               <button
                 type="button"
-                className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, "px-1.5")}
+                className={cn(
+                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                  "px-1.5",
+                  "[&>svg]:text-current",
+                )}
                 onClick={(event) => void openProjectCreationMenu(event)}
               >
                 <HugeiconsIcon icon={__FolderAddHugeIcon} />
@@ -689,6 +693,7 @@ export function ProjectSidebar({
                   SIDEBAR_NAV_ROW_BUTTON_CLASS,
                   "px-1.5",
                   isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS,
+                  "[&>svg]:text-current",
                 )}
                 onClick={handleOpenMarketplace}
               >
@@ -783,7 +788,7 @@ export function ProjectSidebar({
             <Button
               type="button"
               variant="ghost"
-              className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+              className="h-7 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
               onClick={() => navigate(`${buildProjectPath(currentProjectId)}/workbench`)}
             >
               <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/80" />

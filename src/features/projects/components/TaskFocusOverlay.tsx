@@ -169,7 +169,7 @@ export function TaskFocusOverlay({
           </div>
         </div>
 
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+        <CollapsibleContent>
           <div className="space-y-3">
             <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
               {activeTask.description}

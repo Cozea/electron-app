@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
-import type { GpuAccelerationDiagnostics } from '@shared/electronApiTypes'
+import type {
+  GpuAccelerationDiagnostics,
+  TerminalInfo,
+  TerminalOutputEvent,
+  TerminalSnapshot,
+} from '@shared/electronApiTypes'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { extractTerminalLinks, isTerminalLinkActivation, resolvePathLinkTarget } from '@/lib/terminalLinks'
 
-import { SearchAddon } from '@xterm/addon-search'
 import { cn } from '@/lib/utils'
 
-import { useTerminalActions, useTerminalStore } from '@/stores/useTerminalStore'
+import { useTerminalActions } from '@/stores/useTerminalStore'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
   buildAnsiPalette,
@@ -25,8 +29,23 @@ import {
   XTERM_UNICODE_VERSION,
 } from '@/lib/xtermTheme'
 
-interface TerminalInstanceProps {
+export interface TerminalAttachSize {
+  cols: number
+  rows: number
+}
+
+export interface TerminalAttachResolution {
   terminalId: string
+  snapshot?: TerminalSnapshot | null
+  info?: TerminalInfo | null
+}
+
+interface TerminalInstanceProps {
+  terminalId?: string | null
+  resolveTerminal?: (size: TerminalAttachSize) => Promise<TerminalAttachResolution>
+  onTerminalResolved?: (resolution: TerminalAttachResolution) => void
+  onTerminalError?: (message: string) => void
+  projectPath?: string | null
   className?: string
   onFocus?: () => void
   shouldAutoFocus?: boolean
@@ -96,6 +115,10 @@ const buildProjectTerminalTheme = (container: HTMLElement) => {
 
 export function TerminalInstance({
   terminalId,
+  resolveTerminal,
+  onTerminalResolved,
+  onTerminalError,
+  projectPath,
   className,
   onFocus,
   shouldAutoFocus = true,
@@ -111,16 +134,31 @@ export function TerminalInstance({
   const syncWebglRendererRef = useRef<() => void>(() => {})
   const wantsGpuRendererRef = useRef(gpuActive)
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const renderedOutputCountRef = useRef(0)
+  const lastMeasuredContainerSizeRef = useRef<{ width: number; height: number } | null>(null)
   const hasInputErrorRef = useRef(false)
+  const activeTerminalIdRef = useRef<string | null>(terminalId ?? null)
+  const onFocusRef = useRef(onFocus)
+  const readOnlyRef = useRef(readOnly)
+  const shouldAutoFocusRef = useRef(shouldAutoFocus)
+  const onTerminalResolvedRef = useRef(onTerminalResolved)
+  const onTerminalErrorRef = useRef(onTerminalError)
+  const projectPathRef = useRef(projectPath ?? '')
+  const resolveTerminalRef = useRef(resolveTerminal)
   const [initRetry, setInitRetry] = useState(0)
   const [gpuDiagnostics, setGpuDiagnostics] = useState<GpuAccelerationDiagnostics | null>(null)
   const eventClientPosRef = useRef({ x: 0, y: 0 })
   const { theme } = useTheme()
-  
 
-  // Bypass React renders for output streaming
-  const { appendTerminalOutput, updateTerminalStatus } = useTerminalActions()
+  onFocusRef.current = onFocus
+  readOnlyRef.current = readOnly
+  shouldAutoFocusRef.current = shouldAutoFocus
+  onTerminalResolvedRef.current = onTerminalResolved
+  onTerminalErrorRef.current = onTerminalError
+  projectPathRef.current = projectPath ?? ''
+  resolveTerminalRef.current = resolveTerminal
+
+  // Keep the terminal output path imperative; React state only tracks metadata.
+  const { updateTerminalStatus } = useTerminalActions()
   const shouldUseGpuRenderer = gpuActive && canUseGpuTerminalRenderer(gpuDiagnostics)
 
   const disposeWebglRenderer = useCallback(() => {
@@ -169,7 +207,12 @@ export function TerminalInstance({
 
     if (result.action === 'askAI') {
       // TODO: rich context
-      console.log('Sending to AI:', { terminalId, lineStart, lineEnd, text: normalizedText })
+      console.log('Sending to AI:', {
+        terminalId: activeTerminalIdRef.current,
+        lineStart,
+        lineEnd,
+        text: normalizedText,
+      })
       term.clearSelection()
       term.focus()
     } else if (result.action === 'explainError') {
@@ -177,7 +220,7 @@ export function TerminalInstance({
       term.clearSelection()
       term.focus()
     }
-  }, [terminalId])
+  }, [])
 
   useEffect(() => {
     wantsGpuRendererRef.current = shouldUseGpuRenderer
@@ -254,11 +297,14 @@ export function TerminalInstance({
         if (wasAtBottom) {
           activeTerminal.scrollToBottom()
         }
-        void window.electronAPI.terminal.resize({
-          terminalId,
-          cols: activeTerminal.cols,
-          rows: activeTerminal.rows,
-        })
+        const activeTerminalId = activeTerminalIdRef.current
+        if (activeTerminalId) {
+          void window.electronAPI.terminal.resize({
+            terminalId: activeTerminalId,
+            cols: activeTerminal.cols,
+            rows: activeTerminal.rows,
+          })
+        }
       } catch (error) {
         console.error('[Terminal] WebGL post-load fit failed:', error)
       }
@@ -271,7 +317,6 @@ export function TerminalInstance({
 
   
 
-    
   useEffect(() => {
     const container = containerRef.current
     if (!container || xtermRef.current) return
@@ -285,6 +330,10 @@ export function TerminalInstance({
     }
 
     const fontSize = 13
+    lastMeasuredContainerSizeRef.current = {
+      width: rect.width,
+      height: rect.height,
+    }
 
     const term = new Terminal({
       theme: buildProjectTerminalTheme(container),
@@ -298,7 +347,7 @@ export function TerminalInstance({
       rescaleOverlappingGlyphs: XTERM_RESCALE_OVERLAPPING_GLYPHS,
       cursorBlink: true,
       cursorStyle: 'block',
-      scrollback: 1000,
+      scrollback: 5000,
       scrollSensitivity: 1,
       fastScrollSensitivity: 5,
       smoothScrollDuration: 0,
@@ -310,7 +359,7 @@ export function TerminalInstance({
       },
       allowProposedApi: true,
       drawBoldTextInBrightColors: true,
-      disableStdin: readOnly,
+      disableStdin: readOnlyRef.current,
     })
 
     const fitAddon = new FitAddon()
@@ -320,7 +369,6 @@ export function TerminalInstance({
     if (term.unicode.activeVersion !== XTERM_UNICODE_VERSION) {
       term.unicode.activeVersion = XTERM_UNICODE_VERSION
     }
-    const projectPath = useTerminalStore.getState().terminals[terminalId]?.projectPath || ''
     
     const terminalLinksDisposable = term.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
@@ -358,7 +406,7 @@ export function TerminalInstance({
                 return
               }
 
-              const target = resolvePathLinkTarget(match.text, projectPath)
+              const target = resolvePathLinkTarget(match.text, projectPathRef.current)
               const [filePath, lineStr] = target.split(':')
               const line = lineStr ? parseInt(lineStr, 10) : undefined
 
@@ -380,16 +428,18 @@ export function TerminalInstance({
       },
     })
 
-    const searchAddon = new SearchAddon()
-    term.loadAddon(searchAddon)
-
+    const sendTerminalInput = (data: string) => {
+      const activeTerminalId = activeTerminalIdRef.current
+      if (!activeTerminalId) return
+      void window.electronAPI.terminal.input({ terminalId: activeTerminalId, data })
+    }
     
     term.attachCustomKeyEventHandler((event) => {
       // Cmd+K / Ctrl+K to clear terminal natively
       if (event.key === 'k' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
         event.preventDefault()
         if (event.type === 'keydown') {
-          void window.electronAPI.terminal.input({ terminalId, data: '\u000c' })
+          sendTerminalInput('\u000c')
         }
         return false
       }
@@ -398,12 +448,12 @@ export function TerminalInstance({
       if (event.type === 'keydown' && event.altKey && !event.metaKey && !event.ctrlKey) {
         if (event.key === 'ArrowLeft') {
           event.preventDefault()
-          void window.electronAPI.terminal.input({ terminalId, data: '\x1bb' })
+          sendTerminalInput('\x1bb')
           return false
         }
         if (event.key === 'ArrowRight') {
           event.preventDefault()
-          void window.electronAPI.terminal.input({ terminalId, data: '\x1bf' })
+          sendTerminalInput('\x1bf')
           return false
         }
       }
@@ -412,12 +462,12 @@ export function TerminalInstance({
       if (event.type === 'keydown' && event.metaKey && !event.altKey && !event.ctrlKey) {
         if (event.key === 'ArrowLeft') {
           event.preventDefault()
-          void window.electronAPI.terminal.input({ terminalId, data: '\x1bOH' })
+          sendTerminalInput('\x1bOH')
           return false
         }
         if (event.key === 'ArrowRight') {
           event.preventDefault()
-          void window.electronAPI.terminal.input({ terminalId, data: '\x1bOF' })
+          sendTerminalInput('\x1bOF')
           return false
         }
       }
@@ -429,68 +479,150 @@ export function TerminalInstance({
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    void window.electronAPI.terminal.resize({
-      terminalId,
-      cols: term.cols,
-      rows: term.rows,
-    })
+    let disposed = false
+    let hydrated = false
+    let lastAppliedOutputSequence = 0
+    let queuedOutputEvents: TerminalOutputEvent[] = []
+    let exitMessageWritten = false
+    let unsubscribeOutput: (() => void) | null = null
+    let unsubscribeExit: (() => void) | null = null
 
-    // Initialize with existing history from Zustand without subscribing to changes
-    const existingHistory = useTerminalStore.getState().outputBuffers[terminalId] ?? []
-    if (existingHistory.length > 0) {
-      term.write(existingHistory.join(''))
+    const writeExitMessage = (exitCode: number | null) => {
+      if (exitMessageWritten) return
+      exitMessageWritten = true
+      term.write(`\r\n\x1b[90m[Process exited with code ${exitCode ?? 'unknown'}]\x1b[0m\r\n`)
     }
 
-    // Stream new data directly from backend, bypassing React renders
-    const unsubscribeOutput = window.electronAPI.terminal.onOutputForTerminal(terminalId, ({ data }) => {
-      term.write(data)
+    const applyOutputEvent = (event: TerminalOutputEvent) => {
+      if (event.sequence <= lastAppliedOutputSequence) {
+        return
+      }
+      term.write(event.data)
+      lastAppliedOutputSequence = event.sequence
+    }
+
+    const applySnapshot = (snapshot: TerminalSnapshot | null) => {
+      term.reset()
+      if (snapshot?.stdout) {
+        term.write(snapshot.stdout)
+      }
+      lastAppliedOutputSequence = snapshot?.outputSequence ?? 0
+      if (snapshot?.running === false) {
+        writeExitMessage(snapshot.exitCode)
+      }
+    }
+
+    const attachToTerminal = async () => {
+      const attachSize = { cols: term.cols, rows: term.rows }
+      const resolver = resolveTerminalRef.current
+      const resolution =
+        terminalId
+          ? { terminalId }
+          : resolver
+            ? await resolver(attachSize)
+            : null
+
+      if (disposed) return
+      if (!resolution?.terminalId) {
+        throw new Error('Terminal could not be attached because no terminal id was provided.')
+      }
+
+      const nextTerminalId = resolution.terminalId
+      activeTerminalIdRef.current = nextTerminalId
+      onTerminalResolvedRef.current?.(resolution)
+
+      unsubscribeOutput = window.electronAPI.terminal.onOutputForTerminal(nextTerminalId, (event) => {
+        if (disposed) return
+        if (!hydrated) {
+          queuedOutputEvents.push(event)
+          return
+        }
+        applyOutputEvent(event)
+      })
+
+      unsubscribeExit = window.electronAPI.terminal.onExit((event) => {
+        if (disposed || event.terminalId !== activeTerminalIdRef.current) return
+        writeExitMessage(event.exitCode)
+        updateTerminalStatus(event.terminalId, 'exited', event.exitCode)
+      })
+
+      const attachResult = await window.electronAPI.terminal.attachView({
+        terminalId: nextTerminalId,
+        cols: attachSize.cols,
+        rows: attachSize.rows,
+      })
+
+      if (disposed || activeTerminalIdRef.current !== nextTerminalId) return
+
+      const snapshot = attachResult.snapshot ?? resolution.snapshot ?? null
+      if (!attachResult.success && snapshot?.running !== false) {
+        throw new Error('Terminal session is no longer available.')
+      }
+
+      applySnapshot(snapshot)
+
+      for (const event of attachResult.replayEvents) {
+        applyOutputEvent(event)
+      }
+
+      const pendingEvents = queuedOutputEvents
+      queuedOutputEvents = []
+      for (const event of pendingEvents) {
+        applyOutputEvent(event)
+      }
+
+      hydrated = true
+      term.scrollToBottom()
+
+      if (shouldAutoFocusRef.current && !readOnlyRef.current) {
+        term.focus()
+      }
+    }
+
+    void attachToTerminal().catch((error) => {
+      if (disposed) return
+      const message = error instanceof Error ? error.message : 'Failed to attach terminal'
+      console.error('[Terminal] Failed to attach terminal:', error)
+      onTerminalErrorRef.current?.(message)
+      term.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`)
     })
 
     const inputDisposable = term.onData((data) => {
-      if (readOnly) return
+      if (readOnlyRef.current) return
+      const activeTerminalId = activeTerminalIdRef.current
+      if (!activeTerminalId) return
 
       void window.electronAPI.terminal
-        .input({ terminalId, data })
+        .input({ terminalId: activeTerminalId, data })
         .then((accepted) => {
           if (accepted || hasInputErrorRef.current) return
 
           hasInputErrorRef.current = true
-          appendTerminalOutput(terminalId, '\r\n\x1b[90m[Session is no longer active]\x1b[0m\r\n')
-          updateTerminalStatus(terminalId, 'exited')
+          term.write('\r\n\x1b[90m[Session is no longer active]\x1b[0m\r\n')
+          updateTerminalStatus(activeTerminalId, 'exited')
         })
         .catch((error) => {
           if (hasInputErrorRef.current) return
           hasInputErrorRef.current = true
           console.error('[Terminal] Failed to forward input to PTY:', error)
-          updateTerminalStatus(terminalId, 'error')
+          term.write('\r\n\x1b[31m[Failed to send input to terminal]\x1b[0m\r\n')
+          updateTerminalStatus(activeTerminalId, 'error')
         })
     })
 
     
     const textareaElement = container.querySelector('textarea')
-    const handleFocusEvent = () => onFocus?.()
+    const handleFocusEvent = () => onFocusRef.current?.()
     textareaElement?.addEventListener('focus', handleFocusEvent)
 
-    const fitTimeout = setTimeout(() => {
-      try {
-        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY
-        fitAddon.fit()
-        if (wasAtBottom) {
-          term.scrollToBottom()
-        }
-        const { cols: nextCols, rows: nextRows } = term
-        void window.electronAPI.terminal.resize({ terminalId, cols: nextCols, rows: nextRows })
-        if (shouldAutoFocus && !readOnly) {
-          term.focus()
-        }
-      } catch (error) {
-        console.error('[Terminal] Fit failed:', error)
-      }
-    }, 30)
-
     return () => {
-      clearTimeout(fitTimeout)
-      unsubscribeOutput()
+      disposed = true
+      unsubscribeOutput?.()
+      unsubscribeExit?.()
+      const activeTerminalId = activeTerminalIdRef.current
+      if (activeTerminalId) {
+        void window.electronAPI.terminal.detachView({ terminalId: activeTerminalId }).catch(() => {})
+      }
       inputDisposable.dispose()
       terminalLinksDisposable.dispose()
       textareaElement?.removeEventListener('focus', handleFocusEvent)
@@ -499,10 +631,11 @@ export function TerminalInstance({
       xtermRef.current = null
       fitAddonRef.current = null
       hasInputErrorRef.current = false
-      renderedOutputCountRef.current = 0
+      activeTerminalIdRef.current = null
       
     }
-  }, [appendTerminalOutput, disposeWebglRenderer, initRetry, onFocus, readOnly, shouldAutoFocus, terminalId, updateTerminalStatus])
+    // Focus/read-only changes are handled through refs/effects; they must not recreate xterm.
+  }, [disposeWebglRenderer, initRetry, terminalId, updateTerminalStatus])
 
   useEffect(() => {
     const term = xtermRef.current
@@ -558,6 +691,14 @@ export function TerminalInstance({
 
     const rect = containerRef.current.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
+    const lastMeasuredSize = lastMeasuredContainerSizeRef.current
+    if (
+      lastMeasuredSize &&
+      Math.abs(lastMeasuredSize.width - rect.width) < 0.5 &&
+      Math.abs(lastMeasuredSize.height - rect.height) < 0.5
+    ) {
+      return
+    }
 
     window.requestAnimationFrame(() => {
       if (!fitAddonRef.current || !xtermRef.current) return
@@ -569,13 +710,20 @@ export function TerminalInstance({
         if (wasAtBottom) {
           term.scrollToBottom()
         }
+        lastMeasuredContainerSizeRef.current = {
+          width: rect.width,
+          height: rect.height,
+        }
         const { cols, rows } = term
-        void window.electronAPI.terminal.resize({ terminalId, cols, rows })
+        const activeTerminalId = activeTerminalIdRef.current
+        if (activeTerminalId) {
+          void window.electronAPI.terminal.resize({ terminalId: activeTerminalId, cols, rows })
+        }
       } catch (error) {
         console.error('[Terminal] Resize failed:', error)
       }
     })
-  }, [terminalId])
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current

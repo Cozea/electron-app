@@ -20,6 +20,11 @@ This runbook is the canonical loop for keeping Cozea feeling like a fast desktop
 4. Keep console output visible for `[BootTiming]`, `[Jank][LoAF]`, and `[Jank][LongTask]` entries.
 5. Summarize saved Chrome traces with:
    - `bun run perf:trace-summary -- tmp/cozea-cold-boot-trace.json.json.gz`
+6. After production builds, summarize renderer chunk weight with:
+   - `bun run perf:bundle-summary`
+7. For the LegendList agent timeline experiment, enable optional list diagnostics in DevTools:
+   - `localStorage.setItem("cozea:legend-list-agent-timeline:debug", "1")`
+   - Recycling is enabled by default and can be disabled with `localStorage.setItem("cozea:legend-list-agent-timeline:recycle", "0")`.
 
 ## Capture Scenarios
 
@@ -50,6 +55,7 @@ This runbook is the canonical loop for keeping Cozea feeling like a fast desktop
 - Long tasks over 50ms.
 - Workspace host count and which workspaces remain hosted.
 - Whether background work kept running without keeping every background UI surface alive.
+- Renderer entry chunk gzip size, largest async chunk, and whether heavy code-highlighting/workbench chunks stayed off the startup path.
 
 ## Reporting Format
 

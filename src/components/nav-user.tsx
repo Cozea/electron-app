@@ -157,17 +157,18 @@ export function NavUser({
           variant="pill"
           size="default"
           type="button"
+          className="[&_svg]:text-sidebar-foreground"
           onClick={handleMenuClick}
           aria-label="Open user menu"
           title="Open user menu"
         >
           <HugeiconsIcon
             icon={__SettingsHugeIcon}
-            className="size-3.5 shrink-0 text-muted-foreground"
+            className="size-3.5 shrink-0 text-sidebar-foreground"
             aria-hidden
           />
-          <div className="flex min-w-0 flex-1 items-center text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="block w-full truncate font-normal text-sidebar-foreground">{menuTitle}</span>
+          <div className="flex min-w-0 flex-1 items-center text-left text-xs leading-none group-data-[collapsible=icon]:hidden">
+            <span className="block w-full truncate font-normal leading-none text-sidebar-foreground">{menuTitle}</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>

@@ -1,6 +1,7 @@
 import {
   lazy,
   memo,
+  startTransition,
   Suspense,
   useEffect,
   useRef,
@@ -27,40 +28,128 @@ import {
 
 const panelSuspenseFallback = <div className="h-full bg-background" aria-hidden="true" />
 const DEFAULT_BACKGROUND_UI_DETACH_MS = 45_000
-const DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 250
+const DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 520
+const RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 650
+const ASSISTANT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 900
+const BACKGROUND_UI_HYDRATE_STAGGER_MS = 140
+const BACKGROUND_UI_HYDRATE_SEQUENCE_RESET_MS = 1_500
+const BACKGROUND_UI_PREFETCH_LEAD_MS = 220
 const ASSISTANT_BACKGROUND_UI_DETACH_MS = null
 const SELECTION_BACKGROUND_UI_DETACH_MS = 0
 
-const LazyWorkbenchAssistantChatTile = lazy(() =>
+type HydratableWorkbenchTileType =
+  | "selection"
+  | "browser"
+  | "terminal"
+  | "devServer"
+  | "mobileSimulator"
+  | "assistantChat"
+
+let backgroundHydrationSequence = 0
+let backgroundHydrationResetHandle: number | null = null
+
+function getNextBackgroundHydrationDelay(baseDelayMs: number): number {
+  const sequence = backgroundHydrationSequence
+  backgroundHydrationSequence = Math.min(backgroundHydrationSequence + 1, 12)
+  if (backgroundHydrationResetHandle !== null) {
+    window.clearTimeout(backgroundHydrationResetHandle)
+  }
+  backgroundHydrationResetHandle = window.setTimeout(() => {
+    backgroundHydrationSequence = 0
+    backgroundHydrationResetHandle = null
+  }, BACKGROUND_UI_HYDRATE_SEQUENCE_RESET_MS)
+  return baseDelayMs + sequence * BACKGROUND_UI_HYDRATE_STAGGER_MS
+}
+
+function scheduleIdleWork(callback: () => void, timeoutMs: number): () => void {
+  const win = window as Window & {
+    requestIdleCallback?: (
+      callback: IdleRequestCallback,
+      options?: IdleRequestOptions,
+    ) => number
+    cancelIdleCallback?: (handle: number) => void
+  }
+  let cancelled = false
+  let idleHandle: number | null = null
+  let timeoutHandle: number | null = null
+
+  const run = () => {
+    if (!cancelled) {
+      callback()
+    }
+  }
+
+  if (win.requestIdleCallback) {
+    idleHandle = win.requestIdleCallback(run, { timeout: timeoutMs })
+  } else {
+    timeoutHandle = window.setTimeout(run, 0)
+  }
+
+  return () => {
+    cancelled = true
+    if (idleHandle !== null) {
+      win.cancelIdleCallback?.(idleHandle)
+    }
+    if (timeoutHandle !== null) {
+      window.clearTimeout(timeoutHandle)
+    }
+  }
+}
+
+const loadWorkbenchAssistantChatTile = () =>
   import("@/features/projects/components/workbench/WorkbenchAssistantChatTile").then((m) => ({
     default: m.WorkbenchAssistantChatTile,
-  })),
-)
-const LazyWorkbenchBrowserTile = lazy(() =>
+  }))
+const loadWorkbenchBrowserTile = () =>
   import("@/features/projects/components/workbench/WorkbenchBrowserTile").then((m) => ({
     default: m.WorkbenchBrowserTile,
-  })),
-)
-const LazyWorkbenchDevServerTile = lazy(() =>
+  }))
+const loadWorkbenchDevServerTile = () =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchDevServerTile,
-  })),
-)
-const LazyWorkbenchMobileSimulatorTile = lazy(() =>
+  }))
+const loadWorkbenchMobileSimulatorTile = () =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchMobileSimulatorTile,
-  })),
-)
-const LazyWorkbenchSelectionTile = lazy(() =>
+  }))
+const loadWorkbenchSelectionTile = () =>
   import("@/features/projects/components/workbench/WorkbenchSelectionTile").then((m) => ({
     default: m.WorkbenchSelectionTile,
-  })),
-)
-const LazyWorkbenchTerminalTile = lazy(() =>
+  }))
+const loadWorkbenchTerminalTile = () =>
   import("@/features/projects/components/workbench/WorkbenchTerminalTile").then((m) => ({
     default: m.WorkbenchTerminalTile,
-  })),
-)
+  }))
+
+const LazyWorkbenchAssistantChatTile = lazy(loadWorkbenchAssistantChatTile)
+const LazyWorkbenchBrowserTile = lazy(loadWorkbenchBrowserTile)
+const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
+const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
+const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
+const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
+
+function preloadWorkbenchTileComponent(tileType: HydratableWorkbenchTileType): void {
+  switch (tileType) {
+    case "assistantChat":
+      void loadWorkbenchAssistantChatTile()
+      return
+    case "browser":
+      void loadWorkbenchBrowserTile()
+      return
+    case "devServer":
+      void loadWorkbenchDevServerTile()
+      return
+    case "mobileSimulator":
+      void loadWorkbenchMobileSimulatorTile()
+      return
+    case "selection":
+      void loadWorkbenchSelectionTile()
+      return
+    case "terminal":
+      void loadWorkbenchTerminalTile()
+      return
+  }
+}
 
 function WorkbenchPlaceholder(props: { title: string; description: string }) {
   return (
@@ -86,11 +175,15 @@ function usePanelUiHydration(
   api: IDockviewPanelProps<WorkbenchDockPanelParams>["api"],
   options: {
     detachAfterHiddenMs: number | null
+    tileType: HydratableWorkbenchTileType
     visibleHydrateDelayMs: number
   },
 ) {
   const detachTimerRef = useRef<number | null>(null)
   const hydrateTimerRef = useRef<number | null>(null)
+  const prefetchTimerRef = useRef<number | null>(null)
+  const cancelIdleHydrationRef = useRef<(() => void) | null>(null)
+  const cancelIdlePrefetchRef = useRef<(() => void) | null>(null)
   const [shouldHydrate, setShouldHydrate] = useState(() => {
     if (api.isActive) return true
     if (!api.isVisible) return false
@@ -108,42 +201,90 @@ function usePanelUiHydration(
       window.clearTimeout(hydrateTimerRef.current)
       hydrateTimerRef.current = null
     }
-
-    const hydrateNow = () => {
+    const clearPrefetchTimer = () => {
+      if (prefetchTimerRef.current === null) return
+      window.clearTimeout(prefetchTimerRef.current)
+      prefetchTimerRef.current = null
+    }
+    const clearIdleWork = () => {
+      cancelIdleHydrationRef.current?.()
+      cancelIdleHydrationRef.current = null
+      cancelIdlePrefetchRef.current?.()
+      cancelIdlePrefetchRef.current = null
+    }
+    const clearScheduledWork = () => {
       clearDetachTimer()
       clearHydrateTimer()
-      setShouldHydrate(true)
+      clearPrefetchTimer()
+      clearIdleWork()
+    }
+    const setHydrated = (hydrated: boolean, urgent: boolean) => {
+      if (urgent) {
+        setShouldHydrate(hydrated)
+        return
+      }
+      startTransition(() => {
+        setShouldHydrate(hydrated)
+      })
+    }
+    const schedulePrefetch = (delayMs: number) => {
+      clearPrefetchTimer()
+      cancelIdlePrefetchRef.current?.()
+      cancelIdlePrefetchRef.current = null
+
+      prefetchTimerRef.current = window.setTimeout(() => {
+        prefetchTimerRef.current = null
+        cancelIdlePrefetchRef.current = scheduleIdleWork(
+          () => {
+            cancelIdlePrefetchRef.current = null
+            preloadWorkbenchTileComponent(options.tileType)
+          },
+          1_000,
+        )
+      }, Math.max(0, delayMs))
+    }
+
+    const hydrateNow = () => {
+      clearScheduledWork()
+      preloadWorkbenchTileComponent(options.tileType)
+      setHydrated(true, true)
     }
 
     const scheduleVisibleHydration = () => {
-      clearDetachTimer()
-      clearHydrateTimer()
+      clearScheduledWork()
       if (api.isActive || options.visibleHydrateDelayMs <= 0) {
         hydrateNow()
         return
       }
 
+      const hydrationDelayMs = getNextBackgroundHydrationDelay(options.visibleHydrateDelayMs)
+      schedulePrefetch(hydrationDelayMs - BACKGROUND_UI_PREFETCH_LEAD_MS)
       hydrateTimerRef.current = window.setTimeout(() => {
         hydrateTimerRef.current = null
-        setShouldHydrate(true)
-      }, options.visibleHydrateDelayMs)
+        cancelIdleHydrationRef.current = scheduleIdleWork(
+          () => {
+            cancelIdleHydrationRef.current = null
+            setHydrated(true, false)
+          },
+          1_200,
+        )
+      }, hydrationDelayMs)
     }
 
     const scheduleDetach = () => {
-      clearDetachTimer()
-      clearHydrateTimer()
+      clearScheduledWork()
       if (options.detachAfterHiddenMs === null) {
         return
       }
 
       if (options.detachAfterHiddenMs <= 0) {
-        setShouldHydrate(false)
+        setHydrated(false, false)
         return
       }
 
       detachTimerRef.current = window.setTimeout(() => {
         detachTimerRef.current = null
-        setShouldHydrate(false)
+        setHydrated(false, false)
       }, options.detachAfterHiddenMs)
     }
 
@@ -172,12 +313,11 @@ function usePanelUiHydration(
     })
 
     return () => {
-      clearDetachTimer()
-      clearHydrateTimer()
+      clearScheduledWork()
       visibilityDisposable.dispose()
       activeDisposable.dispose()
     }
-  }, [api, options.detachAfterHiddenMs, options.visibleHydrateDelayMs])
+  }, [api, options.detachAfterHiddenMs, options.tileType, options.visibleHydrateDelayMs])
 
   return shouldHydrate
 }
@@ -186,17 +326,20 @@ function TileUiHydrationBoundary({
   children,
   detachAfterHiddenMs = DEFAULT_BACKGROUND_UI_DETACH_MS,
   panelApi,
+  tileType,
   title,
   visibleHydrateDelayMs = DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS,
 }: {
   children: ReactNode
   detachAfterHiddenMs?: number | null
   panelApi: IDockviewPanelProps<WorkbenchDockPanelParams>["api"]
+  tileType: HydratableWorkbenchTileType
   title: string
   visibleHydrateDelayMs?: number
 }) {
   const shouldHydrate = usePanelUiHydration(panelApi, {
     detachAfterHiddenMs,
+    tileType,
     visibleHydrateDelayMs,
   })
 
@@ -293,7 +436,9 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
       <TileUiHydrationBoundary
         detachAfterHiddenMs={SELECTION_BACKGROUND_UI_DETACH_MS}
         panelApi={props.api}
+        tileType="selection"
         title={selectionTile.title}
+        visibleHydrateDelayMs={0}
       >
         <LazyWorkbenchSelectionTile
           tile={selectionTile}
@@ -333,7 +478,12 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
   }
 
   return (
-    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
+    <TileUiHydrationBoundary
+      panelApi={props.api}
+      tileType="browser"
+      title={tile.title}
+      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
+    >
       <LazyWorkbenchBrowserTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -374,7 +524,12 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
   }
 
   return (
-    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
+    <TileUiHydrationBoundary
+      panelApi={props.api}
+      tileType="terminal"
+      title={tile.title}
+      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
+    >
       <LazyWorkbenchTerminalTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -412,7 +567,12 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
   }
 
   return (
-    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
+    <TileUiHydrationBoundary
+      panelApi={props.api}
+      tileType="devServer"
+      title={tile.title}
+      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
+    >
       <LazyWorkbenchDevServerTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -456,7 +616,12 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   }
 
   return (
-    <TileUiHydrationBoundary panelApi={props.api} title={tile.title}>
+    <TileUiHydrationBoundary
+      panelApi={props.api}
+      tileType="mobileSimulator"
+      title={tile.title}
+      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
+    >
       <LazyWorkbenchMobileSimulatorTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -503,7 +668,9 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
     <TileUiHydrationBoundary
       detachAfterHiddenMs={ASSISTANT_BACKGROUND_UI_DETACH_MS}
       panelApi={props.api}
+      tileType="assistantChat"
       title={tile.title}
+      visibleHydrateDelayMs={ASSISTANT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
     >
       <LazyWorkbenchAssistantChatTile
         projectId={props.params.projectId}

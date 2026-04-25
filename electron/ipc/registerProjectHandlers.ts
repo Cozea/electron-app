@@ -42,6 +42,7 @@ import {
   shouldExcludeGeneratedFile,
 } from '../services/generatedArtifactFilters'
 import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
+import { getProjectContextOptionsFromAnalysis } from '../services/ProjectAnalysisService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
 interface RegisterProjectHandlersDeps {
@@ -795,6 +796,22 @@ npm-debug.log*
         }
       }
     }
+  )
+
+  ipcMain.handle(
+    'project:getContextOptions',
+    async (
+      _event,
+      {
+        projectPath,
+        frameworkInfo,
+      }: {
+        projectPath: string
+        frameworkInfo?: import('../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
+      },
+    ) => {
+      return await getProjectContextOptionsFromAnalysis({ projectPath, frameworkInfo })
+    },
   )
 
   ipcMain.handle(

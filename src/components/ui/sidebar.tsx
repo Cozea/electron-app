@@ -552,7 +552,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        "text-sidebar-foreground/70 ring-sidebar-ring flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-normal leading-none outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-3.5 [&>svg]:shrink-0",
+        "text-sidebar-foreground/70 ring-sidebar-ring flex h-7 shrink-0 items-center rounded-md px-2 text-[11px] font-normal leading-none outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-3.5 [&>svg]:shrink-0",
         "group-data-[collapsible=icon]:hidden",
         className
       )}
@@ -627,15 +627,15 @@ const sidebarMenuButtonVariants = cva(
       variant: {
         default:
           "text-sidebar-foreground/70 hover:bg-transparent hover:text-primary active:bg-transparent active:text-primary data-[active=true]:bg-transparent data-[active=true]:text-primary data-[state=open]:hover:bg-transparent data-[state=open]:hover:text-primary",
-        /** Match `SIDEBAR_NAV_ROW_BUTTON_CLASS` / project list: `px-2` + h-8, not base `p-2` */
+        /** Match `SIDEBAR_NAV_ROW_BUTTON_CLASS` / project list: `px-2` + h-7, not base `p-2` */
         pill:
           "rounded-md p-0 px-2 font-normal text-sidebar-foreground/70 hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)] active:bg-[var(--sidebar-pill-hover-bg)] active:text-[var(--sidebar-pill-hover-fg)] data-[active=true]:bg-[var(--sidebar-pill-hover-bg)] data-[active=true]:text-[var(--sidebar-pill-hover-fg)] data-[active=true]:font-normal data-[active=true]:before:hidden [&>svg]:text-muted-foreground/75 data-[active=true]:[&>svg]:text-[var(--sidebar-pill-hover-fg)] data-[state=open]:hover:bg-[var(--sidebar-pill-hover-bg)] data-[state=open]:hover:text-[var(--sidebar-pill-hover-fg)]",
         outline:
           "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-transparent hover:text-primary hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
       },
       size: {
-        default: "h-8 text-xs",
-        sm: "h-7 text-[11px]",
+        default: "h-7 text-xs",
+        sm: "h-6 text-[11px]",
         lg: "h-12 text-xs group-data-[collapsible=icon]:p-0!",
       },
     },
@@ -766,7 +766,7 @@ function SidebarMenuSkeleton({
     <div
       data-slot="sidebar-menu-skeleton"
       data-sidebar="menu-skeleton"
-      className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)}
+      className={cn("flex h-7 items-center gap-2 rounded-md px-2", className)}
       {...props}
     >
       {showIcon && (

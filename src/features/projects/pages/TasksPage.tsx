@@ -12,7 +12,7 @@ import {
   type TaskOverlayLocationState,
   type TaskOverlayPayload,
 } from '@/features/projects/lib/taskFocusOverlay'
-import { scanForRoutes, type ScannedRoute } from '@/utils/routeScanner'
+import type { ProjectScannedRoute } from '@shared/electronApiTypes'
 import { GroupedVirtuoso } from 'react-virtuoso'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
@@ -744,7 +744,7 @@ function TaskListRow({
         </Button>
       </div>
 
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+      <CollapsibleContent>
         <div className="space-y-3 pl-7 pt-3">
           {item.description ? (
             <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
@@ -802,7 +802,7 @@ export function TasksPage({
   const [draftClaimantSearch, setDraftClaimantSearch] = useState('')
   const [draftMarkerRows, setDraftMarkerRows] = useState<string[]>(() => createDraftMarkerRows())
   const [draftProjectFiles, setDraftProjectFiles] = useState<string[]>([])
-  const [draftScannedRoutes, setDraftScannedRoutes] = useState<ScannedRoute[]>([])
+  const [draftScannedRoutes, setDraftScannedRoutes] = useState<ProjectScannedRoute[]>([])
   const [draftContextFilesLoading, setDraftContextFilesLoading] = useState(false)
   const [draftContextPagesLoading, setDraftContextPagesLoading] = useState(false)
   const [isCreatingTask, setIsCreatingTask] = useState(false)
@@ -1018,24 +1018,22 @@ export function TasksPage({
       setDraftContextPagesLoading(true)
 
       try {
-        const [fileResult, routeResult] = await Promise.all([
-          window.electronAPI?.project
-            ? window.electronAPI.project.listFiles({ projectPath })
-            : Promise.resolve(null),
-          scanForRoutes(projectPath, storedFrameworkInfo).catch((error) => {
-            console.error('Failed to scan task routes:', error)
-            return null
-          }),
-        ])
+        const contextResult = window.electronAPI?.project
+          ? await window.electronAPI.project.getContextOptions({
+            projectPath,
+            frameworkInfo: storedFrameworkInfo,
+          })
+          : null
 
         if (isCancelled) return
 
-        if (fileResult?.success) {
-          setDraftProjectFiles((fileResult.files ?? []).map((file) => file.path))
+        if (contextResult?.success) {
+          setDraftProjectFiles(contextResult.files ?? [])
+          setDraftScannedRoutes(contextResult.routes ?? [])
         }
 
-        if (routeResult) {
-          setDraftScannedRoutes(routeResult.routes)
+        if (contextResult && !contextResult.success) {
+          console.error('Failed to load task context options:', contextResult.error)
         }
       } catch (error) {
         if (!isCancelled) {

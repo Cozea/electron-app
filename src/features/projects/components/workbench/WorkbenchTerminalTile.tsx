@@ -1,4 +1,4 @@
-import { Activity, useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 
 import { Button } from "@/components/ui/button"
@@ -33,8 +33,8 @@ export function WorkbenchTerminalTile({
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
-  const replaceTerminalOutput = useTerminalStore((state) => state.actions.replaceTerminalOutput)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const terminalIdRef = useRef<string | null>(null)
 
@@ -57,7 +57,13 @@ export function WorkbenchTerminalTile({
 
   useEffect(() => {
     if (!projectPath || !workbenchSession?.sessionKey) {
+      const activeTerminalId = terminalIdRef.current
+      if (activeTerminalId) {
+        setTerminalUiAttached(activeTerminalId, false)
+      }
+      terminalIdRef.current = null
       setTerminalId(null)
+      setError(null)
       return
     }
 
@@ -65,6 +71,7 @@ export function WorkbenchTerminalTile({
 
     void (async () => {
       setError(null)
+      setTerminalId(null)
 
       let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
         sessionKey: workbenchSession.sessionKey,
@@ -94,7 +101,7 @@ export function WorkbenchTerminalTile({
         }
 
         if (!result.success || !result.terminalId) {
-          setError(result.error ?? "Failed to create a terminal")
+          setError(result.error ?? "Failed to prepare the terminal session")
           return
         }
 
@@ -105,21 +112,23 @@ export function WorkbenchTerminalTile({
           laneId,
           tileId,
           terminalId: result.terminalId,
+          projectPath,
         })
         snapshot = await window.electronAPI.terminal.getSnapshot({
           terminalId: result.terminalId,
         })
       }
 
-      if (!nextTerminalId || cancelled) {
+      if (cancelled || !nextTerminalId) {
         return
       }
 
       const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
-      if (cancelled) return
+      if (cancelled) {
+        return
+      }
+      const isVisible = panelApi.isVisible
 
-      terminalIdRef.current = nextTerminalId
-      setTerminalId(nextTerminalId)
       registerTerminal({
         id: nextTerminalId,
         profileId: info?.profileId ?? "default",
@@ -131,11 +140,21 @@ export function WorkbenchTerminalTile({
         status: snapshot?.running === false ? "exited" : "running",
         exitCode: snapshot?.exitCode ?? null,
         hasOutput: Boolean(snapshot?.stdout?.length),
-        uiAttached: true,
+        uiAttached: isVisible,
       })
-      replaceTerminalOutput(nextTerminalId, snapshot?.stdout ?? "")
-      setTerminalUiAttached(nextTerminalId, true)
-    })()
+      setTerminalUiAttached(nextTerminalId, isVisible)
+      terminalIdRef.current = nextTerminalId
+      setTerminalId(nextTerminalId)
+    })().catch((nextError) => {
+      if (cancelled) {
+        return
+      }
+      const message =
+        nextError instanceof Error
+          ? nextError.message
+          : "Failed to prepare the terminal session"
+      setError(message)
+    })
 
     return () => {
       cancelled = true
@@ -146,10 +165,11 @@ export function WorkbenchTerminalTile({
     }
   }, [
     laneId,
+    panelApi,
     projectId,
     projectPath,
     registerTerminal,
-    replaceTerminalOutput,
+    retryKey,
     setTerminalUiAttached,
     tileId,
     workbenchSession?.sessionKey,
@@ -176,26 +196,27 @@ export function WorkbenchTerminalTile({
             setError(null)
             setTerminalId(null)
             terminalIdRef.current = null
+            setRetryKey((current) => current + 1)
           }}
         >
           Retry
         </Button>
       </div>
     )
-  } else if (!terminalId) {
+  } else if (!terminalId || !panelActivity.visible) {
     body = terminalShell
   } else {
     body = (
-      <Activity mode={panelActivity.mode} name={`workbench-terminal-${tileId}`}>
-        <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
-          <TerminalInstance
-            terminalId={terminalId}
-            className="h-full workbench-terminal-instance"
-            shouldAutoFocus={panelActivity.focused}
-            gpuActive={panelActivity.visible}
-          />
-        </div>
-      </Activity>
+      <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
+        <TerminalInstance
+          terminalId={terminalId}
+          onTerminalError={setError}
+          projectPath={projectPath}
+          className="h-full workbench-terminal-instance"
+          shouldAutoFocus={panelActivity.focused}
+          gpuActive={panelActivity.visible}
+        />
+      </div>
     )
   }
 

@@ -1,4 +1,5 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
+import { useMemo } from "react"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import {
   getDevAppForAssistantProvider,
@@ -24,7 +25,7 @@ import {
   SIDEBAR_PILL_NESTED_ROW_CLASS,
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
-import { useStore } from "@/stores/assistant-store"
+import { createAssistantThreadSelectorById, useStore } from "@/stores/assistant-store"
 import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarSurfaceTileSummary,
@@ -42,7 +43,7 @@ function SurfaceTileGlyph(props: {
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
 }) {
-  const className = props.className ?? "size-3.5 shrink-0 text-muted-foreground/75"
+  const className = props.className ?? "size-4 shrink-0 text-muted-foreground/75"
   const devApp = getDevAppForSurfaceTileType(props.type)
 
   switch (props.type) {
@@ -52,14 +53,14 @@ function SurfaceTileGlyph(props: {
           <img
             src={props.favicon}
             alt=""
-            className={cn("size-3.5 shrink-0 rounded-sm object-contain", className)}
+            className={cn("size-4 shrink-0 rounded-sm object-contain", className)}
             aria-hidden
           />
         )
       }
       if (devApp) {
         return (
-          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+          <span className={SIDEBAR_APP_ICON_CLASS}>
             <DevAppIcon app={devApp} />
           </span>
         )
@@ -68,7 +69,7 @@ function SurfaceTileGlyph(props: {
     case "devServer":
       if (devApp) {
         return (
-          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+          <span className={SIDEBAR_APP_ICON_CLASS}>
             <DevAppIcon app={devApp} />
           </span>
         )
@@ -77,7 +78,7 @@ function SurfaceTileGlyph(props: {
     case "mobileSimulator":
       if (devApp) {
         return (
-          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+          <span className={SIDEBAR_APP_ICON_CLASS}>
             <DevAppIcon app={devApp} />
           </span>
         )
@@ -87,7 +88,7 @@ function SurfaceTileGlyph(props: {
     default:
       if (devApp) {
         return (
-          <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+          <span className={SIDEBAR_APP_ICON_CLASS}>
             <DevAppIcon app={devApp} />
           </span>
         )
@@ -110,14 +111,14 @@ interface SidebarAgentStatusPill {
 }
 
 function ProviderGlyph(props: { provider?: string | null; className?: string }) {
-  const className = props.className ?? "size-3.5"
+  const className = props.className ?? "size-4"
   const devApp = getDevAppForAssistantProvider(
     typeof props.provider === "string" ? (props.provider as ProviderKind) : null,
   )
 
   if (devApp) {
     return (
-      <span className={cn(SIDEBAR_APP_ICON_CLASS, className)}>
+      <span className={SIDEBAR_APP_ICON_CLASS}>
         <DevAppIcon app={devApp} />
       </span>
     )
@@ -246,9 +247,11 @@ function resolveAgentStatusPill(input: {
 }
 
 function AgentStatusPill(props: { threadId?: string | null }) {
-  const thread = useStore((state) =>
-    props.threadId ? (state.threads.find((entry) => entry.id === props.threadId) ?? null) : null,
+  const threadSelector = useMemo(
+    () => createAssistantThreadSelectorById(props.threadId),
+    [props.threadId],
   )
+  const thread = useStore(threadSelector)
 
   if (!thread) return null
 
@@ -321,7 +324,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
             <ProviderGlyph
               provider={tile.provider}
               className={cn(
-                "size-3.5 shrink-0",
+                "size-4 shrink-0",
                 providerGlyphColorClass(tile.provider, resolvedActiveTileId === tile.id),
               )}
             />
@@ -346,7 +349,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
               favicon={tile.favicon}
               type={tile.type}
               className={cn(
-                "size-3.5 shrink-0 text-muted-foreground/75",
+                "size-4 shrink-0 text-muted-foreground/75",
                 resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
               )}
             />
