@@ -82,6 +82,59 @@ const sharedAliases: Alias[] = [
   },
 ]
 
+function normalizeModuleId(id: string): string {
+  return id.split(path.sep).join('/')
+}
+
+function rendererManualChunks(id: string): string | undefined {
+  const normalizedId = normalizeModuleId(id)
+  if (!normalizedId.includes('/node_modules/')) {
+    return undefined
+  }
+
+  if (normalizedId.includes('/node_modules/@xterm/')) {
+    return 'vendor-terminal'
+  }
+  if (normalizedId.includes('/node_modules/dockview/')) {
+    return 'vendor-workbench-dockview'
+  }
+  if (
+    normalizedId.includes('/node_modules/@codemirror/') ||
+    normalizedId.includes('/node_modules/codemirror/')
+  ) {
+    return 'vendor-codemirror'
+  }
+  if (
+    /\/node_modules\/(?:@tanstack\/react-router|@tanstack\/react-query|@tanstack\/router-core|@tanstack\/history)\//.test(
+      normalizedId,
+    )
+  ) {
+    return 'vendor-tanstack'
+  }
+  if (/\/node_modules\/(?:react|react-dom|react-is|scheduler)\//.test(normalizedId)) {
+    return 'vendor-react'
+  }
+  if (
+    normalizedId.includes('/node_modules/@radix-ui/') ||
+    normalizedId.includes('/node_modules/@base-ui/') ||
+    normalizedId.includes('/node_modules/cmdk/') ||
+    normalizedId.includes('/node_modules/framer-motion/') ||
+    normalizedId.includes('/node_modules/motion/') ||
+    normalizedId.includes('/node_modules/@hugeicons/') ||
+    normalizedId.includes('/node_modules/@react-symbols/')
+  ) {
+    return 'vendor-ui'
+  }
+  if (
+    normalizedId.includes('/node_modules/lexical/') ||
+    normalizedId.includes('/node_modules/@lexical/')
+  ) {
+    return 'vendor-editor'
+  }
+
+  return undefined
+}
+
 export default defineConfig({
   main: {
     resolve: {
@@ -182,8 +235,13 @@ export default defineConfig({
     },
     build: {
       emptyOutDir: true,
+      // DevApp PNGs are kept small so they inline as data URLs (no separate asset requests in packaged Electron).
+      assetsInlineLimit: 12_288,
       rollupOptions: {
         input: 'index.html',
+        output: {
+          manualChunks: rendererManualChunks,
+        },
       },
     },
   },

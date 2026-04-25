@@ -26,7 +26,7 @@ export const SIDEBAR_GROUP_LABEL_CLASS =
  * Primary nav row: same height, gap, label + icon color rules as `SidebarMenuButton variant="pill"`.
  * Inactive: label `text-sidebar-foreground/70`, icons `muted-foreground/75`. Active: pill fg via `SIDEBAR_PILL_ACTIVE_CLASS`.
  */
-export const SIDEBAR_NAV_ROW_LAYOUT_CLASS = "flex h-8 min-h-8 w-full items-center gap-2 text-left"
+export const SIDEBAR_NAV_ROW_LAYOUT_CLASS = "flex h-7 min-h-7 w-full items-center gap-2 text-left"
 export const SIDEBAR_NAV_ROW_TEXT_CLASS =
   "text-xs font-normal text-sidebar-foreground/70 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground/75"
 
@@ -48,7 +48,7 @@ export const SETTINGS_DRAWER_NAV_ROW_CLASS = cn(
  */
 export const SIDEBAR_PILL_NESTED_ROW_CLASS = cn(
   SIDEBAR_PILL_HOVER_CLASS,
-  "flex h-8 min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground/70",
+  "flex h-7 min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground/70",
 )
 
 /** Indented block inside a nested row (icon + primary label) — pill stays full width */

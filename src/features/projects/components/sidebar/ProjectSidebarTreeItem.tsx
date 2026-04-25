@@ -223,7 +223,7 @@ export const ProjectSidebarTreeItem = React.memo(
       <Collapsible open={isLanesOpen}>
         <div
           className={cn(
-            "group/project-item flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-sidebar-foreground/70",
+            "group/project-item flex min-h-7 items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70",
             SIDEBAR_PILL_HOVER_CLASS,
             (selection.activeSelectionLevel === "project" ||
               (!selection.isExpanded && context.isCurrentProject)) &&
@@ -241,7 +241,7 @@ export const ProjectSidebarTreeItem = React.memo(
                   : `${project.name}, lanes collapsed. Press to expand.`
             }
             className={cn(
-              "group flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             )}
             onClick={handleProjectRowClick}
           >
@@ -255,7 +255,7 @@ export const ProjectSidebarTreeItem = React.memo(
             type="button"
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0 rounded-md p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-transparent hover:text-foreground"
+            className="-mr-0.5 size-6 shrink-0 rounded-md p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-transparent hover:text-foreground"
             onClick={handleProjectMenuClick}
             aria-label={`${project.name} options`}
           >
@@ -263,7 +263,7 @@ export const ProjectSidebarTreeItem = React.memo(
           </Button>
         </div>
 
-        <CollapsibleContent className="overflow-hidden">
+        <CollapsibleContent>
           <SidebarLaneTiles
             activeLaneSummary={activeLaneSummary}
             activeSelectionLevel={selection.activeSelectionLevel}

@@ -10,6 +10,7 @@ export default defineConfig({
         __dirname,
         './shared/assistant-contracts/index.ts',
       ),
+      '@cozea/assistant-shared': path.resolve(__dirname, './shared/assistant-shared'),
     },
   },
   test: {

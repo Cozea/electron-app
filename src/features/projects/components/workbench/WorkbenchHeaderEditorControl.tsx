@@ -232,22 +232,19 @@ export function WorkbenchHeaderEditorControl({
           </Button>
 
           {orderedEditors.length > 1 ? (
-            <>
-              <div
-                className={cn("h-full w-px shrink-0", adjacentOpenSidebar ? "bg-sidebar-border" : "bg-border/60")}
-                aria-hidden
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                className={cn("h-full w-7 shrink-0 rounded-none bg-transparent px-0 shadow-none inline-flex", chromeButtonClass)}
-                aria-label="Choose editor"
-                aria-haspopup="menu"
-                onClick={handleShowEditorPicker}
-              >
-                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn(
+                "inline-flex h-full w-5 shrink-0 items-center justify-center rounded-none bg-transparent px-0 shadow-none",
+                chromeButtonClass,
+              )}
+              aria-label="Choose editor"
+              aria-haspopup="menu"
+              onClick={handleShowEditorPicker}
+            >
+              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+            </Button>
           ) : null}
         </div>
       </TooltipTrigger>

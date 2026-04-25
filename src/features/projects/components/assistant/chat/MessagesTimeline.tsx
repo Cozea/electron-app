@@ -3,20 +3,22 @@ import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant
 import {
   memo,
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ComponentType,
+  type RefObject,
   type ReactNode,
   type SVGProps,
 } from "react";
 import {
-  measureElement as measureVirtualElement,
-  type VirtualItem,
-  useVirtualizer,
-} from "@tanstack/react-virtual";
+  LegendList,
+  type LegendListMetrics,
+  type LegendListRef,
+  type LegendListRenderItemProps,
+  type OnViewableItemsChangedInfo,
+} from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
 import { deriveTimelineEntries } from "./session-logic";
@@ -36,7 +38,6 @@ type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
-import { clamp } from "effect/Number";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -82,7 +83,7 @@ interface MessagesTimelineProps {
   selectedProvider: ProviderKind | null;
   activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
-  scrollContainer: HTMLDivElement | null;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
@@ -96,8 +97,38 @@ interface MessagesTimelineProps {
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   markdownCwd: string | undefined;
+  dockedComposerScrollInsetPx?: number;
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
+}
+
+const LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY = "cozea:legend-list-agent-timeline:debug";
+const LEGEND_LIST_AGENT_TIMELINE_RECYCLE_KEY = "cozea:legend-list-agent-timeline:recycle";
+const LEGEND_LIST_DRAW_DISTANCE_PX = 1_200;
+const LEGEND_LIST_DEFAULT_HEIGHT_PX = 640;
+const LEGEND_LIST_DEFAULT_WIDTH_PX = 720;
+const LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX = 48;
+const LEGEND_LIST_TAIL_PADDING_PX = 16;
+
+function readLegendListBooleanPreference(key: string, fallback: boolean): boolean {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (raw === null) return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function shouldLogLegendListDiagnostics(): boolean {
+  return readLegendListBooleanPreference(
+    LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY,
+    false,
+  );
+}
+
+function shouldRecycleLegendListItems(): boolean {
+  return readLegendListBooleanPreference(LEGEND_LIST_AGENT_TIMELINE_RECYCLE_KEY, true);
 }
 
 function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined): LucideIcon {
@@ -123,7 +154,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   selectedProvider,
   activeTurnInProgress,
   activeTurnStartedAt,
-  scrollContainer,
+  scrollContainerRef,
   timelineEntries,
   completionDividerBeforeEntryId,
   completionSummary,
@@ -137,31 +168,46 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isRevertingCheckpoint,
   onImageExpand,
   markdownCwd,
+  dockedComposerScrollInsetPx = 0,
   resolvedTheme,
   workspaceRoot,
 }: MessagesTimelineProps) {
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
+  const legendListRef = useRef<LegendListRef | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
+  const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(null);
+  const [allDirectoriesExpandedByTurnId, setAllDirectoriesExpandedByTurnId] = useState<
+    Record<string, boolean>
+  >({});
+  const [expandedUserMessageIds, setExpandedUserMessageIds] = useState<Record<string, boolean>>({});
   const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
     const timelineRoot = timelineRootRef.current;
     if (!timelineRoot) return;
 
-    const updateWidth = (nextWidth: number) => {
-      setTimelineWidthPx((previousWidth) => {
-        if (previousWidth !== null && Math.abs(previousWidth - nextWidth) < 0.5) {
-          return previousWidth;
+    const updateSize = (nextWidth: number, nextHeight: number) => {
+      setTimelineWidthPx((previousValue) => {
+        if (previousValue !== null && Math.abs(previousValue - nextWidth) < 0.5) {
+          return previousValue;
         }
         return nextWidth;
       });
+      setTimelineHeightPx((previousValue) => {
+        if (previousValue !== null && Math.abs(previousValue - nextHeight) < 0.5) {
+          return previousValue;
+        }
+        return nextHeight;
+      });
     };
 
-    updateWidth(timelineRoot.getBoundingClientRect().width);
+    const initialRect = timelineRoot.getBoundingClientRect();
+    updateSize(initialRect.width, initialRect.height);
 
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      updateWidth(timelineRoot.getBoundingClientRect().width);
+      const rect = timelineRoot.getBoundingClientRect();
+      updateSize(rect.width, rect.height);
     });
     observer.observe(timelineRoot);
     return () => {
@@ -234,7 +280,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return nextRows;
   }, [timelineEntries, completionDividerBeforeEntryId, isWorking, activeTurnStartedAt]);
 
-  const firstUnvirtualizedRowIndex = useMemo(() => {
+  const firstAlwaysRenderedRowIndex = useMemo(() => {
     const firstTailRowIndex = Math.max(rows.length - ALWAYS_UNVIRTUALIZED_TAIL_ROWS, 0);
     if (!activeTurnInProgress) return firstTailRowIndex;
 
@@ -272,65 +318,135 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return Math.min(firstCurrentTurnRowIndex, firstTailRowIndex);
   }, [activeTurnInProgress, activeTurnStartedAt, rows]);
 
-  const virtualizedRowCount = clamp(firstUnvirtualizedRowIndex, {
-    minimum: 0,
-    maximum: rows.length,
-  });
-
-  const rowVirtualizer = useVirtualizer({
-    count: virtualizedRowCount,
-    getScrollElement: () => scrollContainer,
-    // Use stable row ids so virtual measurements do not leak across thread switches.
-    getItemKey: (index: number) => rows[index]?.id ?? index,
-    estimateSize: (index: number) => {
+  const alwaysRenderKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (let index = firstAlwaysRenderedRowIndex; index < rows.length; index += 1) {
       const row = rows[index];
-      if (!row) return 96;
-      if (row.kind === "work") return 112;
-      if (row.kind === "proposed-plan") return estimateTimelineProposedPlanHeight(row.proposedPlan);
-      if (row.kind === "working") return 40;
-      return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
-    },
-    measureElement: measureVirtualElement,
-    useAnimationFrameWithResizeObserver: true,
-    overscan: 8,
-  });
-  useEffect(() => {
-    if (timelineWidthPx === null) return;
-    rowVirtualizer.measure();
-  }, [rowVirtualizer, timelineWidthPx]);
-  useEffect(() => {
-    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (_item, _delta, instance) => {
-      const viewportHeight = instance.scrollRect?.height ?? 0;
-      const scrollOffset = instance.scrollOffset ?? 0;
-      const remainingDistance = instance.getTotalSize() - (scrollOffset + viewportHeight);
-      return remainingDistance > AUTO_SCROLL_BOTTOM_THRESHOLD_PX;
-    };
-    return () => {
-      rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
-    };
-  }, [rowVirtualizer]);
-  const pendingMeasureFrameRef = useRef<number | null>(null);
-  const onTimelineImageLoad = useCallback(() => {
-    if (pendingMeasureFrameRef.current !== null) return;
-    pendingMeasureFrameRef.current = window.requestAnimationFrame(() => {
-      pendingMeasureFrameRef.current = null;
-      rowVirtualizer.measure();
-    });
-  }, [rowVirtualizer]);
-  useEffect(() => {
-    return () => {
-      const frame = pendingMeasureFrameRef.current;
-      if (frame !== null) {
-        window.cancelAnimationFrame(frame);
+      if (row) keys.add(row.id);
+    }
+    for (const row of rows) {
+      if (row.kind === "working") {
+        keys.add(row.id);
       }
-    };
-  }, []);
+      if (row.kind === "message" && row.message.streaming) {
+        keys.add(row.id);
+      }
+    }
+    return Array.from(keys);
+  }, [firstAlwaysRenderedRowIndex, rows]);
 
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const nonVirtualizedRows = rows.slice(virtualizedRowCount);
-  const [allDirectoriesExpandedByTurnId, setAllDirectoriesExpandedByTurnId] = useState<
-    Record<string, boolean>
-  >({});
+  const recycleItems = useMemo(() => shouldRecycleLegendListItems(), []);
+  const estimatedListSize = useMemo(
+    () => ({
+      height: timelineHeightPx ?? LEGEND_LIST_DEFAULT_HEIGHT_PX,
+      width: timelineWidthPx ?? LEGEND_LIST_DEFAULT_WIDTH_PX,
+    }),
+    [timelineHeightPx, timelineWidthPx],
+  );
+  const maintainScrollAtEndThreshold = useMemo(() => {
+    const height = Math.max(timelineHeightPx ?? LEGEND_LIST_DEFAULT_HEIGHT_PX, 1);
+    return Math.max(0.04, AUTO_SCROLL_BOTTOM_THRESHOLD_PX / height);
+  }, [timelineHeightPx]);
+  const bottomPaddingPx = useMemo(() => {
+    if (!Number.isFinite(dockedComposerScrollInsetPx) || dockedComposerScrollInsetPx <= 0) {
+      return LEGEND_LIST_TAIL_PADDING_PX;
+    }
+    return Math.max(LEGEND_LIST_TAIL_PADDING_PX, Math.ceil(dockedComposerScrollInsetPx));
+  }, [dockedComposerScrollInsetPx]);
+  const dataVersion = useMemo(() => {
+    const lastRow = rows.at(-1);
+    return [
+      rows.length,
+      lastRow?.id ?? "none",
+      lastRow?.kind ?? "none",
+      activeTurnInProgress ? "active" : "idle",
+      isWorking ? "working" : "settled",
+      completionDividerBeforeEntryId ?? "no-divider",
+    ].join(":");
+  }, [activeTurnInProgress, completionDividerBeforeEntryId, isWorking, rows]);
+  const legendListExtraData = useMemo(
+    () => ({
+      allDirectoriesExpandedByTurnId,
+      completionSummary,
+      expandedUserMessageIds,
+      expandedWorkGroups,
+      isRevertingCheckpoint,
+      isWorking,
+      nowIso,
+      resolvedTheme,
+      turnDiffSummaryVersion: turnDiffSummaryByAssistantMessageId.size,
+    }),
+    [
+      allDirectoriesExpandedByTurnId,
+      completionSummary,
+      expandedUserMessageIds,
+      expandedWorkGroups,
+      isRevertingCheckpoint,
+      isWorking,
+      nowIso,
+      resolvedTheme,
+      turnDiffSummaryByAssistantMessageId.size,
+    ],
+  );
+  const getEstimatedItemSize = useCallback(
+    (row: TimelineRow) => estimateTimelineRowHeight(row, timelineWidthPx),
+    [timelineWidthPx],
+  );
+  const getItemType = useCallback((row: TimelineRow): TimelineRow["kind"] => row.kind, []);
+  const keyExtractor = useCallback((row: TimelineRow) => row.id, []);
+  const shouldRestoreVisiblePosition = useCallback((row: TimelineRow) => row.kind !== "working", []);
+  const itemsAreEqual = useCallback(
+    (previousRow: TimelineRow, nextRow: TimelineRow) =>
+      areTimelineRowsEquivalent(previousRow, nextRow),
+    [],
+  );
+  const onTimelineImageLoad = useCallback(() => {
+    // Legend List measures row size with ResizeObserver; this hook preserves the old image load contract.
+  }, []);
+  const onLegendListLoad = useCallback((info: { elapsedTimeInMs: number }) => {
+    if (!shouldLogLegendListDiagnostics()) return;
+    console.info("[LegendList][AgentTimeline] load", {
+      elapsedTimeInMs: info.elapsedTimeInMs,
+    });
+  }, []);
+  const onLegendListMetricsChange = useCallback((metrics: LegendListMetrics) => {
+    if (!shouldLogLegendListDiagnostics()) return;
+    console.info("[LegendList][AgentTimeline] metrics", {
+      ...metrics,
+    });
+  }, []);
+  const onLegendListItemSizeChanged = useCallback(
+    (info: {
+      size: number;
+      previous: number;
+      index: number;
+      itemKey: string;
+      itemData: TimelineRow;
+    }) => {
+      if (!shouldLogLegendListDiagnostics()) return;
+      const delta = Math.abs(info.size - info.previous);
+      if (delta < LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX) return;
+      console.info("[LegendList][AgentTimeline] item-size", {
+        delta,
+        index: info.index,
+        itemKey: info.itemKey,
+        kind: info.itemData.kind,
+        previous: info.previous,
+        size: info.size,
+      });
+    },
+    [],
+  );
+  const onLegendListViewableItemsChanged = useCallback(
+    (info: OnViewableItemsChangedInfo<TimelineRow>) => {
+      if (!shouldLogLegendListDiagnostics()) return;
+      console.info("[LegendList][AgentTimeline] viewable", {
+        changed: info.changed.length,
+        viewable: info.viewableItems.length,
+      });
+    },
+    [],
+  );
   const onToggleAllDirectories = useCallback((turnId: TurnId) => {
     setAllDirectoriesExpandedByTurnId((current) => ({
       ...current,
@@ -338,7 +454,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }));
   }, []);
 
-  const [expandedUserMessageIds, setExpandedUserMessageIds] = useState<Record<string, boolean>>({});
   const toggleUserMessageExpanded = useCallback((messageId: MessageId) => {
     setExpandedUserMessageIds((prev) => ({
       ...prev,
@@ -384,16 +499,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
                       aria-expanded={isExpanded}
                       aria-label={
                         isExpanded
                           ? "Collapse work log"
                           : `Expand to show ${hiddenCount} more ${onlyToolEntries ? "tool calls" : "entries"}`
                       }
+                      title={isExpanded ? "Show less" : `Show ${hiddenCount} more`}
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
-                      {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                      <HugeiconsIcon
+                        icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
+                        className="size-3 stroke-[2.2]"
+                        aria-hidden="true"
+                      />
                     </button>
                   )}
                 </div>
@@ -676,35 +796,72 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     <div
       ref={timelineRootRef}
       data-timeline-root="true"
-      className="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
+      data-timeline-engine="legend-list"
+      data-legend-list-recycle-items={recycleItems ? "true" : "false"}
+      className="h-full min-h-0 w-full min-w-0 overflow-hidden"
     >
-      {virtualizedRowCount > 0 && (
-        <div className="relative" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
-          {virtualRows.map((virtualRow: VirtualItem) => {
-            const row = rows[virtualRow.index];
-            if (!row) return null;
-
-            return (
-              <div
-                key={`virtual-row:${row.id}`}
-                data-index={virtualRow.index}
-                ref={rowVirtualizer.measureElement}
-                className="absolute left-0 top-0 w-full"
-                style={{ transform: `translateY(${virtualRow.start}px)` }}
-              >
-                {renderRowContent(row)}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {nonVirtualizedRows.map((row) => (
-        <div key={`non-virtual-row:${row.id}`}>{renderRowContent(row)}</div>
-      ))}
-
-      {/* Match t3 LegendList ListFooterComponent breathing room at end of transcript */}
-      <div className="h-3 shrink-0 sm:h-4" aria-hidden />
+      <LegendList<TimelineRow>
+        ref={legendListRef}
+        refScrollView={scrollContainerRef}
+        data={rows}
+        dataVersion={dataVersion}
+        extraData={legendListExtraData}
+        renderItem={({ item: row }: LegendListRenderItemProps<TimelineRow>) => (
+          <div key={`legend-row:${row.id}`}>{renderRowContent(row)}</div>
+        )}
+        keyExtractor={keyExtractor}
+        itemsAreEqual={itemsAreEqual}
+        getItemType={getItemType}
+        estimatedItemSize={112}
+        estimatedListSize={estimatedListSize}
+        getEstimatedItemSize={getEstimatedItemSize}
+        alwaysRender={{
+          bottom: ALWAYS_UNVIRTUALIZED_TAIL_ROWS,
+          keys: alwaysRenderKeys,
+        }}
+        drawDistance={LEGEND_LIST_DRAW_DISTANCE_PX}
+        initialContainerPoolRatio={1}
+        initialScrollAtEnd
+        maintainScrollAtEnd={{
+          animated: false,
+          on: {
+            dataChange: true,
+            itemLayout: true,
+            layout: true,
+          },
+        }}
+        maintainScrollAtEndThreshold={maintainScrollAtEndThreshold}
+        maintainVisibleContentPosition={{
+          data: true,
+          size: true,
+          shouldRestorePosition: shouldRestoreVisiblePosition,
+        }}
+        recycleItems={recycleItems}
+        onEndReached={() => {
+          if (shouldLogLegendListDiagnostics()) {
+            console.info("[LegendList][AgentTimeline] end-reached");
+          }
+        }}
+        onEndReachedThreshold={0.2}
+        onItemSizeChanged={onLegendListItemSizeChanged}
+        onLoad={onLegendListLoad}
+        onMetricsChange={onLegendListMetricsChange}
+        onStartReached={() => {
+          if (shouldLogLegendListDiagnostics()) {
+            console.info("[LegendList][AgentTimeline] start-reached");
+          }
+        }}
+        onStartReachedThreshold={0.2}
+        onViewableItemsChanged={onLegendListViewableItemsChanged}
+        className="h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
+        contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
+        contentContainerStyle={{
+          paddingBottom: bottomPaddingPx,
+          paddingTop: 16,
+          transition: "padding-bottom 200ms ease-out",
+        }}
+        showsVerticalScrollIndicator
+      />
     </div>
   );
 });
@@ -739,6 +896,70 @@ type TimelineRow =
 function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan): number {
   const estimatedLines = Math.max(1, Math.ceil(proposedPlan.planMarkdown.length / 72));
   return 120 + Math.min(estimatedLines * 22, 880);
+}
+
+function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | null): number {
+  switch (row.kind) {
+    case "work": {
+      const visibleEntryCount = Math.min(row.groupedEntries.length, MAX_VISIBLE_WORK_LOG_ENTRIES);
+      const overflowHeaderHeight = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES ? 24 : 0;
+      return 28 + overflowHeaderHeight + visibleEntryCount * 28;
+    }
+    case "message":
+      return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
+    case "proposed-plan":
+      return estimateTimelineProposedPlanHeight(row.proposedPlan);
+    case "working":
+      return 40;
+  }
+}
+
+function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRow): boolean {
+  if (previousRow.kind !== nextRow.kind || previousRow.id !== nextRow.id) {
+    return false;
+  }
+
+  if (previousRow.kind === "work" && nextRow.kind === "work") {
+    if (previousRow.groupedEntries.length !== nextRow.groupedEntries.length) {
+      return false;
+    }
+    const previousLastEntry = previousRow.groupedEntries.at(-1);
+    const nextLastEntry = nextRow.groupedEntries.at(-1);
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousLastEntry?.id === nextLastEntry?.id &&
+      previousLastEntry?.label === nextLastEntry?.label &&
+      previousLastEntry?.detail === nextLastEntry?.detail &&
+      previousLastEntry?.command === nextLastEntry?.command &&
+      previousLastEntry?.tone === nextLastEntry?.tone
+    );
+  }
+
+  if (previousRow.kind === "message" && nextRow.kind === "message") {
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousRow.durationStart === nextRow.durationStart &&
+      previousRow.showCompletionDivider === nextRow.showCompletionDivider &&
+      previousRow.message.id === nextRow.message.id &&
+      previousRow.message.role === nextRow.message.role &&
+      previousRow.message.text === nextRow.message.text &&
+      previousRow.message.streaming === nextRow.message.streaming &&
+      (previousRow.message.attachments?.length ?? 0) === (nextRow.message.attachments?.length ?? 0)
+    );
+  }
+
+  if (previousRow.kind === "proposed-plan" && nextRow.kind === "proposed-plan") {
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousRow.proposedPlan.planMarkdown === nextRow.proposedPlan.planMarkdown
+    );
+  }
+
+  if (previousRow.kind === "working" && nextRow.kind === "working") {
+    return previousRow.createdAt === nextRow.createdAt;
+  }
+
+  return false;
 }
 
 function formatWorkingTimer(startIso: string, endIso: string): string | null {

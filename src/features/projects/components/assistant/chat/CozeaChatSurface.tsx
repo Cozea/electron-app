@@ -17,7 +17,9 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 
@@ -71,6 +73,9 @@ export interface ProviderModelOptionsByProvider {
   cursor: ReadonlyArray<{ slug: string; name: string }>
   opencode: ReadonlyArray<{ slug: string; name: string }>
 }
+
+const DOCKED_COMPOSER_SCROLL_GAP_PX = 16
+const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128
 
 interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
@@ -238,6 +243,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   >({})
   const [composerDockHover, setComposerDockHover] = useState(false)
   const [composerDockFocused, setComposerDockFocused] = useState(false)
+  const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
+  const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
 
   const activeTurn = props.thread?.latestTurn ?? null
   const latestTurnSettled = isLatestTurnSettled(activeTurn, props.thread?.session ?? null)
@@ -445,6 +452,58 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   const reserveScrollSpaceForDockedComposer =
     dockComposerOnHover && dockComposerChromeReasons
+
+  useLayoutEffect(() => {
+    if (!dockComposerOnHover || !reserveScrollSpaceForDockedComposer) {
+      setDockedComposerMeasuredInsetPx(0)
+      return
+    }
+
+    const frame = dockedComposerFrameRef.current
+    if (!frame) {
+      return
+    }
+
+    let animationFrameId: number | null = null
+    const updateInset = () => {
+      const nextInset = Math.ceil(frame.getBoundingClientRect().height + DOCKED_COMPOSER_SCROLL_GAP_PX)
+      setDockedComposerMeasuredInsetPx((currentInset) => {
+        if (Math.abs(currentInset - nextInset) < 1) {
+          return currentInset
+        }
+        return nextInset
+      })
+    }
+
+    updateInset()
+    animationFrameId = window.requestAnimationFrame(updateInset)
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        if (animationFrameId !== null) {
+          window.cancelAnimationFrame(animationFrameId)
+        }
+      }
+    }
+
+    const resizeObserver = new ResizeObserver(updateInset)
+    resizeObserver.observe(frame)
+    const dockContent = frame.querySelector("[data-chat-composer-dock-content]")
+    if (dockContent instanceof HTMLElement) {
+      resizeObserver.observe(dockContent)
+    }
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+      }
+      resizeObserver.disconnect()
+    }
+  }, [dockComposerOnHover, reserveScrollSpaceForDockedComposer])
+
+  const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
+    ? dockedComposerMeasuredInsetPx || DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX
+    : 0
 
   useEffect(() => {
     if (!isWorking) {
@@ -866,15 +925,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
           </div>
         ) : (
-          <div
-            ref={props.timelineRef}
-            className={cn(
-              "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 sm:px-5",
-              reserveScrollSpaceForDockedComposer
-                ? "pt-3 pb-28 transition-[padding-bottom] duration-200 ease-out sm:pt-4 sm:pb-32"
-                : "py-3 sm:py-4",
-            )}
-          >
+          <div className="min-h-0 flex-1 overflow-hidden">
             <MessagesTimeline
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}
@@ -882,7 +933,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               selectedProvider={props.selectedProvider}
               activeTurnInProgress={isWorking || !latestTurnSettled}
               activeTurnStartedAt={activeTurnStartedAt}
-              scrollContainer={props.timelineRef.current}
+              scrollContainerRef={props.timelineRef}
               timelineEntries={timelineEntries}
               completionDividerBeforeEntryId={completionDividerBeforeEntryId}
               completionSummary={completionSummary}
@@ -896,6 +947,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               isRevertingCheckpoint={Boolean(props.isRevertingCheckpoint)}
               onImageExpand={handleExpandImage}
               markdownCwd={markdownCwd}
+              dockedComposerScrollInsetPx={dockedComposerScrollInsetPx}
               resolvedTheme={resolvedTheme}
               workspaceRoot={workspaceRoot}
             />
@@ -903,6 +955,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
         {dockComposerOnHover ? (
           <div
+            ref={dockedComposerFrameRef}
             className={cn(
               "pointer-events-none absolute bottom-0 left-0 right-3 z-10 px-3 pb-4 sm:right-4 sm:px-5 sm:pb-5",
             )}
@@ -920,6 +973,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 aria-hidden
               />
               <div
+                data-chat-composer-dock-content="true"
                 className={cn(
                   "relative z-[1] w-full space-y-2 overflow-hidden transition-all duration-200 ease-out",
                   showComposerDockChrome

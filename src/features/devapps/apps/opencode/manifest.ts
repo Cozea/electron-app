@@ -10,7 +10,6 @@ export const openCodeDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "OpenCode",
-    frameClassName: "bg-white p-1.5 rounded-[12px]",
   },
   launcher: {
     enabled: true,

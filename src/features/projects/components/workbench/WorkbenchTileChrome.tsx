@@ -28,7 +28,7 @@ const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminal
 const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
 const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
-const WORKBENCH_PILL_APP_ICON_CLASS = "size-4 shrink-0 overflow-hidden rounded-[4px]"
+const WORKBENCH_PILL_APP_ICON_CLASS = "size-5 shrink-0 overflow-hidden rounded-[5px]"
 const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-md"
 
 interface WorkbenchTileChromeProps {
@@ -175,7 +175,7 @@ export function WorkbenchTileChrome({
   const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
 
   const tileFallbackIconClassName = cn(
-    "h-4 w-4 shrink-0",
+    "h-5 w-5 shrink-0",
     tileType === "assistantChat"
       ? resolveAssistantProviderIconClass(assistantProvider)
       : "text-muted-foreground",
