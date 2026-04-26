@@ -411,6 +411,15 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
         ctx.stopped = true;
         yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
         yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
+        // Always try to cancel an active ACP turn first so in-flight
+        // tool executions do not continue after the user presses Stop.
+        yield* Effect.ignore(
+          ctx.acp.cancel.pipe(
+            Effect.mapError((error) =>
+              mapAcpToAdapterError(PROVIDER, ctx.threadId, "session/cancel", error),
+            ),
+          ),
+        );
         if (ctx.notificationFiber) {
           yield* Fiber.interrupt(ctx.notificationFiber);
         }

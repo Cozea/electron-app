@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEventHandler, type ComponentProps } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEventHandler, type ComponentProps } from "react"
 
 import {
 
+  ApprovalRequestId,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type OrchestrationGetTurnDiffResult,
+  type ProviderApprovalDecision,
   type ProviderInteractionMode,
   type ProviderKind,
   type RuntimeMode,
@@ -13,18 +17,24 @@ import {
   resolveSelectableModel,
 } from "@cozea/assistant-shared/model"
 
+import { Button } from "@/components/ui/button"
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
-} from "@/features/projects/components/assistant/chat/pendingRequests"
-import { inferCheckpointTurnCountByTurnId } from "@/features/projects/components/assistant/chat/turnDiffDerivations"
+  inferCheckpointTurnCountByTurnId,
+} from "@/features/projects/components/assistant/chat/session-logic"
 import {
   CozeaChatSurface,
+  type ComposerImageDraft,
   type ProviderModelOptionsByProvider,
+  type UserInputAnswerDrafts,
 } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
 import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   newCommandId,
+  newMessageId,
+  newProjectId,
+  newThreadId,
 } from "@/features/projects/components/assistant/lib/utils"
 import {
   refreshAssistantRuntimeSnapshot,
@@ -35,31 +45,35 @@ import { ensureNativeApi } from "@/lib/nativeApi"
 import {
   createAssistantProjectSelectorForTile,
   createAssistantThreadSelectorById,
+  selectAssistantProjectByCwd,
+  selectAssistantProjectById,
+  selectAssistantThreadById,
   useStore,
 } from "@/stores/assistant-store"
+import type { ChatMessage } from "@/stores/types"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
-import { useAssistantApprovals } from "./useAssistantApprovals"
-import { useAssistantRequestSync } from "./useAssistantRequestSync"
-import { useAssistantTileBinding } from "./useAssistantTileBinding"
-import { useAssistantTurnSend } from "./useAssistantTurnSend"
-import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
-import { useOptimisticThreadMessages } from "./useOptimisticThreadMessages"
 import {
   type DiffDialogState,
+  basenameFromPath,
+  getLiveAssistantTile,
   getProviderModelOptions,
   getProviderSnapshot,
   resolveInteractionMode,
   resolvePreferredModelSelection,
   resolveRuntimeMode,
   toErrorMessage,
+  truncateTitle,
+  withWorkspaceBindingLock,
   withModelSelectionModel,
 } from "./workbenchAssistantShared"
-import { WorkbenchAssistantComposerStatus } from "./WorkbenchAssistantComposerStatus"
+
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-icons'
 
 interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
@@ -74,6 +88,30 @@ interface WorkbenchAssistantTileControllerResult {
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("Could not read image data."))
+    })
+    reader.addEventListener("error", () => {
+      reject(reader.error ?? new Error("Failed to read image."))
+    })
+    reader.readAsDataURL(file)
+  })
+}
+
+function revokeBlobPreviewUrl(previewUrl: string | undefined): void {
+  if (!previewUrl || typeof URL === "undefined" || !previewUrl.startsWith("blob:")) {
+    return
+  }
+  URL.revokeObjectURL(previewUrl)
 }
 
 export function useWorkbenchAssistantTileController(
@@ -96,16 +134,23 @@ export function useWorkbenchAssistantTileController(
   const [composer, setComposer] = useState("")
   const [composerCursor, setComposerCursor] = useState(0)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [composerImages, setComposerImages] = useState<ComposerImageDraft[]>([])
+  const [bindingError, setBindingError] = useState<string | null>(null)
+  const [isBinding, setIsBinding] = useState(false)
+  const [bindingRevision, setBindingRevision] = useState(0)
+  const [isSending, setIsSending] = useState(false)
+  const [isInterrupting, setIsInterrupting] = useState(false)
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
-  const {
-    activeRequestKey,
-    requestError,
-    runRequestSync: runMetaSync,
-  } = useAssistantRequestSync()
+  const [activeRequestKey, setActiveRequestKey] = useState<string | null>(null)
+  const [requestError, setRequestError] = useState<string | null>(null)
   const [diffDialog, setDiffDialog] = useState<DiffDialogState | null>(null)
+  const [userInputDrafts, setUserInputDrafts] = useState<UserInputAnswerDrafts>({})
+  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([])
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
   const setThreadError = useStore((state) => state.setError)
   const timelineRef = useRef<HTMLDivElement | null>(null)
+  const bindingInFlightRef = useRef(false)
+  const sendInFlightRef = useRef(false)
 
   const assistantProjectSelector = useMemo(
     () =>
@@ -121,20 +166,54 @@ export function useWorkbenchAssistantTileController(
   )
   const assistantProject = useStore(assistantProjectSelector)
   const thread = useStore(threadSelector)
-  const {
-    visibleThread,
-    addOptimisticUserMessage,
-    removeOptimisticUserMessage,
-  } = useOptimisticThreadMessages(thread)
-  const {
-    userInputDrafts,
-    handleApprovalDecision,
-    handleUserInputDraftChange,
-    handleSubmitUserInput,
-  } = useAssistantApprovals({
-    thread,
-    runMetaSync,
-  })
+
+  useEffect(() => {
+    setOptimisticUserMessages([])
+    setComposerImages((current) => {
+      for (const image of current) {
+        revokeBlobPreviewUrl(image.previewUrl)
+      }
+      return []
+    })
+  }, [thread?.id])
+
+  useEffect(() => {
+    if (!thread || optimisticUserMessages.length === 0) {
+      return
+    }
+    const serverMessageIds = new Set(thread.messages.map((message) => message.id))
+    if (!optimisticUserMessages.some((message) => serverMessageIds.has(message.id))) {
+      return
+    }
+    setOptimisticUserMessages((current) => {
+      const removed = current.filter((message) => serverMessageIds.has(message.id))
+      for (const message of removed) {
+        if (!message.attachments) continue
+        for (const attachment of message.attachments) {
+          if (attachment.type !== "image") continue
+          revokeBlobPreviewUrl(attachment.previewUrl)
+        }
+      }
+      return current.filter((message) => !serverMessageIds.has(message.id))
+    })
+  }, [optimisticUserMessages, thread])
+
+  const visibleThread = useMemo(() => {
+    if (!thread || optimisticUserMessages.length === 0) {
+      return thread
+    }
+    const serverMessageIds = new Set(thread.messages.map((message) => message.id))
+    const pendingMessages = optimisticUserMessages.filter(
+      (message) => !serverMessageIds.has(message.id),
+    )
+    if (pendingMessages.length === 0) {
+      return thread
+    }
+    return {
+      ...thread,
+      messages: [...thread.messages, ...pendingMessages],
+    }
+  }, [optimisticUserMessages, thread])
 
   const selectedModelSelection = useMemo(() => {
     return (
@@ -199,67 +278,7 @@ export function useWorkbenchAssistantTileController(
     thread?.session?.orchestrationStatus === "running" ||
     thread?.session?.orchestrationStatus === "starting"
   const hasBoundThread = Boolean(input.tile.threadId && thread)
-  const {
-    bindingError,
-    isBinding,
-    setBindingRevision,
-  } = useAssistantTileBinding({
-    projectId: input.projectId,
-    laneId: input.laneId,
-    projectPath: input.projectPath,
-    tile: input.tile,
-    config,
-    isRuntimeReady,
-    hasBoundThread,
-    updateAssistantTile,
-  })
   const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
-  const {
-    isInterrupting,
-    isForceStopAvailable,
-    isTurnStartPending,
-    isTurnBusy,
-    clearPendingTurnStart,
-    notePendingTurnStart,
-    handleInterrupt,
-  } = useAssistantTurnLifecycle({
-    thread,
-    isRuntimeReady,
-    runtimeErrorMessage,
-    isRunning,
-    onError: setSendError,
-  })
-  const { isSending, handleSend } = useAssistantTurnSend({
-    thread,
-    composer,
-    isRuntimeReady,
-    runtimeErrorMessage,
-    isTurnBusy,
-    isBinding: visibleBindingState,
-    isRevertingCheckpoint,
-    providerSkills: providerSnapshot?.skills,
-    selectedDispatchModelSelection,
-    selectedRuntimeMode,
-    selectedInteractionMode,
-    updateAssistantTile,
-    projectId: input.projectId,
-    laneId: input.laneId,
-    tileId: input.tile.id,
-    projectPath: input.projectPath,
-    onComposerReset: () => {
-      setComposer("")
-      setComposerCursor(0)
-    },
-    onComposerRestore: (value) => {
-      setComposer(value)
-      setComposerCursor(value.length)
-    },
-    onError: setSendError,
-    addOptimisticUserMessage,
-    removeOptimisticUserMessage,
-    clearPendingTurnStart,
-    notePendingTurnStart,
-  })
   const chatTitle =
     thread?.title?.trim() ||
     input.tile.agentLabel?.trim() ||
@@ -269,6 +288,15 @@ export function useWorkbenchAssistantTileController(
     isRunning ||
     assistantRuntime.phase === "starting" ||
     (visibleBindingState && !bindingError)
+
+  useEffect(() => {
+    if (isRuntimeReady) {
+      return
+    }
+
+    bindingInFlightRef.current = false
+    setIsBinding(false)
+  }, [isRuntimeReady])
 
   useEffect(() => {
     if (!thread) {
@@ -318,6 +346,181 @@ export function useWorkbenchAssistantTileController(
     pendingApprovals.length,
     pendingUserInputs.length,
   ])
+
+  useEffect(() => {
+    if (!isRuntimeReady || !input.projectPath) {
+      return
+    }
+    const workspaceRoot = input.projectPath
+    if (bindingInFlightRef.current) {
+      return
+    }
+    if (hasBoundThread) {
+      setBindingError(null)
+      setIsBinding(false)
+      return
+    }
+
+    let cancelled = false
+    bindingInFlightRef.current = true
+    setIsBinding(true)
+
+    const ensureBinding = async () => {
+      try {
+        await withWorkspaceBindingLock(workspaceRoot, async () => {
+          const api = ensureNativeApi()
+          const liveTile = () =>
+            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.projectPath) ?? input.tile
+          const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
+
+          await refreshAssistantRuntimeSnapshot()
+
+          const currentTile = liveTile()
+          const currentAssistantState = useStore.getState()
+          let nextProject =
+            (currentTile.assistantProjectId
+              ? selectAssistantProjectById(currentAssistantState, currentTile.assistantProjectId)
+              : null) ??
+            selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
+            null
+
+          if (!nextProject) {
+            const projectId = newProjectId()
+            const defaultModelSelection = resolvePreferredModelSelection({
+              config: liveConfig,
+              tile: currentTile,
+              projectModelSelection: null,
+            })
+            await api.orchestration.dispatchCommand({
+              type: "project.create",
+              commandId: newCommandId(),
+              projectId,
+              title: basenameFromPath(workspaceRoot),
+              workspaceRoot,
+              defaultModelSelection,
+              createdAt: new Date().toISOString(),
+            })
+            await refreshAssistantRuntimeSnapshot()
+            const nextAssistantState = useStore.getState()
+            nextProject =
+              selectAssistantProjectById(nextAssistantState, projectId) ??
+              selectAssistantProjectByCwd(nextAssistantState, workspaceRoot) ??
+              null
+          }
+
+          if (!nextProject) {
+            throw new Error("Unable to create an assistant project for this workspace.")
+          }
+
+          const resolvedTile = liveTile()
+          let nextThread =
+            (resolvedTile.threadId
+              ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
+              : null) ?? null
+
+          if (!nextThread || nextThread.projectId !== nextProject.id) {
+            const threadId = newThreadId()
+            const modelSelection = resolvePreferredModelSelection({
+              config: liveConfig,
+              tile: resolvedTile,
+              projectModelSelection: nextProject.defaultModelSelection,
+            })
+            await api.orchestration.dispatchCommand({
+              type: "thread.create",
+              commandId: newCommandId(),
+              threadId,
+              projectId: nextProject.id,
+              title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
+              modelSelection,
+              runtimeMode: resolveRuntimeMode(resolvedTile),
+              interactionMode: resolveInteractionMode(resolvedTile),
+              branch: null,
+              worktreePath: null,
+              createdAt: new Date().toISOString(),
+            })
+            await refreshAssistantRuntimeSnapshot()
+            nextThread =
+              selectAssistantThreadById(useStore.getState(), threadId) ?? null
+          }
+
+          const latestTile = liveTile()
+          const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
+
+          if (latestTile.assistantProjectId !== nextProject.id) {
+            patch.assistantProjectId = nextProject.id
+          }
+          if (nextThread && latestTile.threadId !== nextThread.id) {
+            patch.threadId = nextThread.id
+          }
+          if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
+            patch.provider = nextThread.modelSelection.provider
+          }
+          if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
+            patch.model = nextThread.modelSelection.model
+          }
+          if (latestTile.runtimeMode !== resolveRuntimeMode(latestTile)) {
+            patch.runtimeMode = resolveRuntimeMode(latestTile)
+          }
+          if (latestTile.interactionMode !== resolveInteractionMode(latestTile)) {
+            patch.interactionMode = resolveInteractionMode(latestTile)
+          }
+
+          if (!cancelled && Object.keys(patch).length > 0) {
+            updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
+          }
+
+          if (!cancelled) {
+            setBindingError(null)
+          }
+        })
+      } catch (error) {
+        if (!cancelled) {
+          setBindingError(toErrorMessage(error))
+        }
+      } finally {
+        bindingInFlightRef.current = false
+        if (!cancelled) {
+          setIsBinding(false)
+        }
+      }
+    }
+
+    void ensureBinding()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    bindingRevision,
+    config,
+    hasBoundThread,
+    input.laneId,
+    input.projectId,
+    input.projectPath,
+    input.tile,
+    isRuntimeReady,
+    updateAssistantTile,
+  ])
+
+  const runMetaSync = async (
+    mutate: () => Promise<void>,
+    options?: { requestKey?: string },
+  ) => {
+    if (options?.requestKey) {
+      setActiveRequestKey(options.requestKey)
+    }
+    setRequestError(null)
+    try {
+      await mutate()
+      await refreshAssistantRuntimeSnapshot()
+    } catch (error) {
+      setRequestError(toErrorMessage(error))
+    } finally {
+      if (options?.requestKey) {
+        setActiveRequestKey(null)
+      }
+    }
+  }
 
   const handleProviderChange = async (
     nextProviderValue: string,
@@ -436,6 +639,233 @@ export function useWorkbenchAssistantTileController(
     })
   }
 
+  const handleSend = async () => {
+    if (sendInFlightRef.current) {
+      return
+    }
+
+    if (!isRuntimeReady) {
+      setSendError(runtimeErrorMessage ?? "Local chat runtime is still starting.")
+      return
+    }
+
+    if (!thread) {
+      return
+    }
+
+    const nextPrompt = composer.trim()
+    const hasImages = composerImages.length > 0
+    if (!nextPrompt && !hasImages) {
+      return
+    }
+
+    const isFirstUserMessage = !thread.messages.some((message) => message.role === "user")
+    const nextThreadTitle = truncateTitle(nextPrompt)
+    const messageId = newMessageId()
+    const messageCreatedAt = new Date().toISOString()
+    const optimisticMessage: ChatMessage = {
+      id: messageId,
+      role: "user",
+      text: nextPrompt,
+      ...(hasImages
+        ? {
+            attachments: composerImages.map((image) => ({
+              type: "image" as const,
+              id: image.id,
+              name: image.name,
+              mimeType: image.mimeType,
+              sizeBytes: image.sizeBytes,
+              previewUrl: image.previewUrl,
+            })),
+          }
+        : {}),
+      createdAt: messageCreatedAt,
+      streaming: false,
+    }
+    const composerImagesSnapshot = [...composerImages]
+
+    sendInFlightRef.current = true
+    setIsSending(true)
+    setSendError(null)
+    setComposer("")
+    setComposerCursor(0)
+    setComposerImages([])
+    setOptimisticUserMessages((current) => [...current, optimisticMessage])
+
+    try {
+      const api = ensureNativeApi()
+      if (isFirstUserMessage && nextThreadTitle) {
+        updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+          title: nextThreadTitle,
+        }, input.projectPath)
+
+        await api.orchestration.dispatchCommand({
+          type: "thread.meta.update",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          title: nextThreadTitle,
+        })
+      }
+
+      const SKILL_TOKEN_REGEX = /(^|\\s)\\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\\s|$)/g
+      const extractedSkillNames = Array.from(nextPrompt.matchAll(SKILL_TOKEN_REGEX)).map((m) => m[2])
+      const skills = providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? []
+      const uploadAttachments = await Promise.all(
+        composerImagesSnapshot.map(async (image) => {
+          if (!image.file) {
+            throw new Error(`Attachment '${image.name}' is no longer available.`)
+          }
+          return {
+            type: "image" as const,
+            name: image.name,
+            mimeType: image.mimeType,
+            sizeBytes: image.sizeBytes,
+            dataUrl: await readFileAsDataUrl(image.file),
+          }
+        }),
+      )
+
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId: thread.id,
+        message: {
+          messageId,
+          role: "user",
+          text: nextPrompt,
+          attachments: uploadAttachments,
+        },
+        modelSelection: selectedDispatchModelSelection,
+        runtimeMode: selectedRuntimeMode,
+        interactionMode: selectedInteractionMode,
+        ...(isFirstUserMessage && nextThreadTitle ? { titleSeed: nextThreadTitle } : {}),
+        skills,
+        createdAt: messageCreatedAt,
+      })
+      await refreshAssistantRuntimeSnapshot()
+    } catch (error) {
+      setOptimisticUserMessages((current) =>
+        current.filter((message) => message.id !== messageId),
+      )
+      setComposer(nextPrompt)
+      setComposerCursor(nextPrompt.length)
+      setComposerImages(composerImagesSnapshot)
+      setSendError(toErrorMessage(error))
+    } finally {
+      sendInFlightRef.current = false
+      setIsSending(false)
+    }
+  }
+
+  const handleInterrupt = async () => {
+    if (!isRuntimeReady) {
+      setSendError(runtimeErrorMessage ?? "Local chat runtime is unavailable.")
+      return
+    }
+
+    if (!thread) {
+      return
+    }
+
+    setIsInterrupting(true)
+    setSendError(null)
+
+    try {
+      const api = ensureNativeApi()
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.interrupt",
+        commandId: newCommandId(),
+        threadId: thread.id,
+        turnId: thread.session?.activeTurnId,
+        createdAt: new Date().toISOString(),
+      })
+      await refreshAssistantRuntimeSnapshot()
+    } catch (error) {
+      setSendError(toErrorMessage(error))
+    } finally {
+      setIsInterrupting(false)
+    }
+  }
+
+  const handleApprovalDecision = async (
+    requestId: string,
+    decision: ProviderApprovalDecision,
+  ) => {
+    if (!thread) {
+      return
+    }
+
+    await runMetaSync(
+      async () => {
+        const api = ensureNativeApi()
+        await api.orchestration.dispatchCommand({
+          type: "thread.approval.respond",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          requestId: ApprovalRequestId.makeUnsafe(requestId),
+          decision,
+          createdAt: new Date().toISOString(),
+        })
+      },
+      { requestKey: requestId },
+    )
+  }
+
+  const handleUserInputDraftChange = (
+    requestId: string,
+    questionId: string,
+    value: string,
+  ) => {
+    setUserInputDrafts((current) => ({
+      ...current,
+      [requestId]: {
+        ...current[requestId],
+        [questionId]: value,
+      },
+    }))
+  }
+
+  const handleSubmitUserInput = async (requestId: string) => {
+    if (!thread) {
+      return
+    }
+
+    const answers = userInputDrafts[requestId]
+    if (!answers) {
+      return
+    }
+
+    const normalizedAnswers = Object.fromEntries(
+      Object.entries(answers)
+        .map(([questionId, answer]) => [questionId, answer.trim()])
+        .filter((entry) => entry[1].length > 0),
+    )
+
+    if (Object.keys(normalizedAnswers).length === 0) {
+      return
+    }
+
+    await runMetaSync(
+      async () => {
+        const api = ensureNativeApi()
+        await api.orchestration.dispatchCommand({
+          type: "thread.user-input.respond",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          requestId: ApprovalRequestId.makeUnsafe(requestId),
+          answers: normalizedAnswers,
+          createdAt: new Date().toISOString(),
+        })
+        setUserInputDrafts((current) => {
+          const next = { ...current }
+          delete next[requestId]
+          return next
+        })
+      },
+      { requestKey: requestId },
+    )
+  }
+
   const openDiffDialog = async (dialogInput: {
     title: string
     request: () => Promise<OrchestrationGetTurnDiffResult>
@@ -485,7 +915,73 @@ export function useWorkbenchAssistantTileController(
     return false
   }
 
-  const handleComposerPaste: ClipboardEventHandler<HTMLElement> = () => {}
+  const addComposerImages = useCallback((files: File[]) => {
+    if (files.length === 0) return
+    if (!thread) return
+    if (pendingUserInputs.length > 0) {
+      setSendError("Attach images after answering pending questions.")
+      return
+    }
+    const currentImageCount = composerImages.length
+    const nextImages: ComposerImageDraft[] = []
+    let nextImageCount = currentImageCount
+    let error: string | null = null
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        error = `Unsupported file type for '${file.name}'. Attach image files only.`
+        continue
+      }
+      if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+        const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))
+        error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`
+        continue
+      }
+      if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+        error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`
+        break
+      }
+      nextImages.push({
+        id: newMessageId(),
+        name: file.name || "image",
+        mimeType: file.type,
+        sizeBytes: file.size,
+        previewUrl: URL.createObjectURL(file),
+        file,
+      })
+      nextImageCount += 1
+    }
+
+    if (nextImages.length > 0) {
+      setComposerImages((current) => [...current, ...nextImages])
+    }
+    if (error) {
+      setSendError(error)
+    }
+  }, [composerImages.length, pendingUserInputs.length, thread])
+
+  const removeComposerImage = useCallback((imageId: string) => {
+    setComposerImages((current) => {
+      const next: ComposerImageDraft[] = []
+      for (const image of current) {
+        if (image.id === imageId) {
+          revokeBlobPreviewUrl(image.previewUrl)
+          continue
+        }
+        next.push(image)
+      }
+      return next
+    })
+  }, [])
+
+  const handleComposerPaste: ClipboardEventHandler<HTMLElement> = (event) => {
+    const files = Array.from(event.clipboardData.files)
+    if (files.length === 0) return
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"))
+    if (imageFiles.length === 0) return
+    event.preventDefault()
+    addComposerImages(imageFiles)
+  }
 
   const toggleInteractionMode = async () => {
     const nextInteractionMode =
@@ -566,19 +1062,51 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
-  const composerStatus = (
-    <WorkbenchAssistantComposerStatus
-      runtimeErrorMessage={runtimeErrorMessage}
-      bindingError={bindingError}
-      sendError={sendError}
-      requestError={requestError}
-      threadError={thread?.error}
-      configError={configError}
-      hasConfig={Boolean(config)}
-      onRetryBinding={() => setBindingRevision((current) => current + 1)}
-      onDismissThreadError={handleDismissThreadError}
-    />
-  )
+  const composerStatus = (() => {
+    if (runtimeErrorMessage) {
+      return (
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
+          {runtimeErrorMessage}
+        </div>
+      )
+    }
+
+    if (bindingError) {
+      return (
+        <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2 min-w-0 flex-1">{bindingError}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 shrink-0 px-2 text-destructive"
+            onClick={() => setBindingRevision((current) => current + 1)}
+          >
+            Retry
+          </Button>
+        </div>
+      )
+    }
+
+    if (sendError || requestError) {
+      return (
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
+          {sendError ?? requestError}
+        </div>
+      )
+    }
+
+    if (configError && !config) {
+      return (
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
+          {configError}
+        </div>
+      )
+    }
+
+    return null
+  })()
 
   return {
     chatTitle,
@@ -607,9 +1135,9 @@ export function useWorkbenchAssistantTileController(
       composerStatus,
       composer,
       composerCursor,
-      isSending: isSending || isTurnStartPending,
+      composerImages,
+      isSending,
       isInterrupting,
-      isForceStopAvailable,
       isRevertingCheckpoint,
       selectedProvider,
       selectedModelSelection,
@@ -633,6 +1161,8 @@ export function useWorkbenchAssistantTileController(
       onComposerChange: handleComposerChange,
       onComposerCommandKey: handleComposerCommandKey,
       onComposerPaste: handleComposerPaste,
+      onAttachFiles: addComposerImages,
+      onRemoveComposerImage: removeComposerImage,
       onSend: () => {
         void handleSend()
       },
