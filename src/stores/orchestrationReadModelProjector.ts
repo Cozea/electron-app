@@ -325,11 +325,44 @@ export function projectOrchestrationReadModelEvent(
           )
         : [...thread.messages, message];
       const cappedMessages = messages.slice(-MAX_THREAD_MESSAGES);
+      const latestTurn =
+        payload.role === "assistant" &&
+        payload.turnId !== null &&
+        (thread.latestTurn === null || thread.latestTurn.turnId === payload.turnId)
+          ? {
+              turnId: payload.turnId,
+              state: payload.streaming
+                ? ("running" as const)
+                : thread.latestTurn?.state === "interrupted"
+                  ? ("interrupted" as const)
+                  : thread.latestTurn?.state === "error"
+                    ? ("error" as const)
+                    : ("completed" as const),
+              requestedAt:
+                thread.latestTurn?.turnId === payload.turnId
+                  ? thread.latestTurn.requestedAt
+                  : payload.createdAt,
+              startedAt:
+                thread.latestTurn?.turnId === payload.turnId
+                  ? (thread.latestTurn.startedAt ?? payload.createdAt)
+                  : payload.createdAt,
+              completedAt: payload.streaming
+                ? thread.latestTurn?.turnId === payload.turnId
+                  ? (thread.latestTurn.completedAt ?? null)
+                  : null
+                : payload.updatedAt,
+              assistantMessageId: payload.messageId,
+              ...(thread.latestTurn?.sourceProposedPlan !== undefined
+                ? { sourceProposedPlan: thread.latestTurn.sourceProposedPlan }
+                : {}),
+            }
+          : thread.latestTurn;
 
       return {
         ...nextBase,
         threads: updateOrchestrationThread(nextBase.threads, payload.threadId, {
           messages: cappedMessages,
+          latestTurn,
           updatedAt: event.occurredAt,
         }),
       };

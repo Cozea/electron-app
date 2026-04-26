@@ -1,0 +1,51 @@
+{
+  "name": "@effect/sql",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./Migrator": {
+      "types": "./Migrator.d.ts",
+      "default": "./Migrator.js"
+    },
+    "./SqlClient": {
+      "types": "./SqlClient.d.ts",
+      "default": "./SqlClient.js"
+    },
+    "./SqlConnection": {
+      "types": "./SqlConnection.d.ts",
+      "default": "./SqlConnection.js"
+    },
+    "./SqlError": {
+      "types": "./SqlError.d.ts",
+      "default": "./SqlError.js"
+    },
+    "./SqlModel": {
+      "types": "./SqlModel.d.ts",
+      "default": "./SqlModel.js"
+    },
+    "./SqlResolver": {
+      "types": "./SqlResolver.d.ts",
+      "default": "./SqlResolver.js"
+    },
+    "./SqlSchema": {
+      "types": "./SqlSchema.d.ts",
+      "default": "./SqlSchema.js"
+    },
+    "./SqlStream": {
+      "types": "./SqlStream.d.ts",
+      "default": "./SqlStream.js"
+    },
+    "./Statement": {
+      "types": "./Statement.d.ts",
+      "default": "./Statement.js"
+    }
+  },
+  "peerDependencies": {
+    "effect": "^4.0.0-beta.25"
+  }
+}

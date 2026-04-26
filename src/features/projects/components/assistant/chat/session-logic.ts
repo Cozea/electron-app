@@ -37,6 +37,7 @@ export const PROVIDER_OPTIONS: ReadonlyArray<{
 export interface WorkLogEntry {
   id: string;
   createdAt: string;
+  turnId?: TurnId | null;
   label: string;
   detail?: string;
   command?: string;
@@ -549,6 +550,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
+    turnId: activity.turnId,
     label,
     tone:
       activity.kind === "task.progress"
@@ -624,6 +626,9 @@ function shouldCollapseToolLifecycleEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {
+  if (previous.turnId !== next.turnId) {
+    return false;
+  }
   if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
     return false;
   }
@@ -1018,7 +1023,12 @@ function extractToolDetail(
   heading: string,
 ): string | null {
   const rawDetail = asTrimmedString(payload?.detail);
-  const detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
+  let detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
+
+  if (detail && /^[\s\[\]\{\}",:]+$/.test(detail)) {
+    detail = null;
+  }
+
   const normalizedHeading = normalizePreviewForComparison(heading);
   const normalizedDetail = normalizePreviewForComparison(detail);
 

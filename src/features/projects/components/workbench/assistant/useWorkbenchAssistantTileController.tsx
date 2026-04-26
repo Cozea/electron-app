@@ -5,6 +5,7 @@ import {
   ApprovalRequestId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  type ModelSelection,
   type OrchestrationGetTurnDiffResult,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
@@ -14,7 +15,6 @@ import {
 } from "@cozea/assistant-contracts"
 import {
   buildProviderOptionSelectionsFromDescriptors,
-  createModelSelection,
   getModelSelectionOptionDescriptors,
   resolveModelSlugForProvider,
   resolveSelectableModel,
@@ -73,6 +73,7 @@ import {
   getLiveAssistantTile,
   getProviderModelOptions,
   getProviderSnapshot,
+  normalizeModelSelection,
   resolveInteractionMode,
   resolvePreferredModelSelection,
   resolveRuntimeMode,
@@ -321,6 +322,7 @@ export function useWorkbenchAssistantTileController(
     isInterrupting,
     isForceStopAvailable,
     isTurnStartPending,
+    pendingTurnStartStartedAtIso,
     clearPendingTurnStart,
     notePendingTurnStart,
     handleInterrupt,
@@ -442,13 +444,14 @@ export function useWorkbenchAssistantTileController(
 
           if (!nextProject) {
             const projectId = newProjectId()
-            const defaultModelSelection =
+            const defaultModelSelection = normalizeDraftModelSelection(
               getAssistantComposerDraft(currentTile.id)?.modelSelection ??
-              resolvePreferredModelSelection({
-                config: liveConfig,
-                tile: currentTile,
-                projectModelSelection: null,
-              })
+                resolvePreferredModelSelection({
+                  config: liveConfig,
+                  tile: currentTile,
+                  projectModelSelection: null,
+                }),
+            )
             await api.orchestration.dispatchCommand({
               type: "project.create",
               commandId: newCommandId(),
@@ -479,13 +482,14 @@ export function useWorkbenchAssistantTileController(
           if (!nextThread || nextThread.projectId !== nextProject.id) {
             const threadId = newThreadId()
             const threadDraft = getAssistantComposerDraft(resolvedTile.id)
-            const modelSelection =
+            const modelSelection = normalizeDraftModelSelection(
               threadDraft?.modelSelection ??
-              resolvePreferredModelSelection({
-                config: liveConfig,
-                tile: resolvedTile,
-                projectModelSelection: nextProject.defaultModelSelection,
-              })
+                resolvePreferredModelSelection({
+                  config: liveConfig,
+                  tile: resolvedTile,
+                  projectModelSelection: nextProject.defaultModelSelection,
+                }),
+            )
             await api.orchestration.dispatchCommand({
               type: "thread.create",
               commandId: newCommandId(),
@@ -585,11 +589,11 @@ export function useWorkbenchAssistantTileController(
   }
 
   const normalizeDraftModelSelection = useCallback(
-    (selection: typeof selectedModelSelection) =>
-      createModelSelection(
-        selection.provider,
-        selection.model,
-        buildProviderOptionSelectionsFromDescriptors(
+    (selection: ModelSelection) =>
+      normalizeModelSelection({
+        provider: selection.provider,
+        model: selection.model,
+        options: buildProviderOptionSelectionsFromDescriptors(
           getModelSelectionOptionDescriptors(
             selection,
             getProviderModelCapabilities(
@@ -599,7 +603,7 @@ export function useWorkbenchAssistantTileController(
             ),
           ),
         ),
-      ),
+      }),
     [config],
   )
 
@@ -688,11 +692,11 @@ export function useWorkbenchAssistantTileController(
 
   const handleModelOptionChange = async (optionId: string, value: string | boolean) => {
     const nextModelSelection = normalizeDraftModelSelection(
-      createModelSelection(
-        selectedProvider,
-        selectedModelSelection.model,
-        setProviderOptionSelectionValue(selectedModelSelection.options, optionId, value),
-      ),
+      normalizeModelSelection({
+        provider: selectedProvider,
+        model: selectedModelSelection.model,
+        options: setProviderOptionSelectionValue(selectedModelSelection.options, optionId, value),
+      }),
     )
     upsertComposerDraft(draftTargetKey, {
       modelSelection: nextModelSelection,
@@ -1257,6 +1261,7 @@ export function useWorkbenchAssistantTileController(
       composerCursor,
       composerImages,
       isSending: isSending || isTurnStartPending,
+      pendingTurnStartStartedAtIso,
       isInterrupting,
       isForceStopAvailable,
       isRevertingCheckpoint,

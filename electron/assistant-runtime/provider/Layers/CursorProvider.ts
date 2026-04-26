@@ -855,10 +855,15 @@ export const discoverCursorSlashCommandsViaAcp = (cursorSettings: CursorSettings
         (next): next is Extract<AcpParsedSessionEvent, { readonly _tag: "AvailableCommandsUpdated" }> =>
           next._tag === "AvailableCommandsUpdated",
       ).pipe(Stream.runHead, Effect.timeoutOption(CURSOR_ACP_COMMAND_DISCOVERY_TIMEOUT));
-      if (Option.isNone(event)) {
-        return [];
-      }
-      return mapAcpAvailableCommandsToSlashCommands(event.value.commands);
+      return Option.match(event, {
+        onNone: () => [],
+        onSome: (maybeAvailableCommandsEvent) =>
+          Option.match(maybeAvailableCommandsEvent, {
+            onNone: () => [],
+            onSome: (availableCommandsEvent) =>
+              mapAcpAvailableCommandsToSlashCommands(availableCommandsEvent.commands),
+          }),
+      });
     }).pipe(Effect.withSpan("cursor-acp-command-discovery", {})),
   );
 

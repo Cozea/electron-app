@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  deriveActiveWorkStartedAt,
   derivePhase,
   deriveWorkLogEntries,
   hasToolActivityForTurn,
@@ -823,6 +824,43 @@ describe("deriveWorkLogEntries", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["tool-1-complete", "tool-2-complete"]);
   });
 
+  it("keeps historical tool rows from separate turns from collapsing together", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "turn-1-update",
+        turnId: "turn-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "tool.updated",
+        summary: "Tool call",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'Read: {"file_path":"/tmp/app.ts"}',
+        },
+      }),
+      makeActivity({
+        id: "turn-2-complete",
+        turnId: "turn-2",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "tool.completed",
+        summary: "Tool call completed",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'Read: {"file_path":"/tmp/app.ts"}',
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries.map((entry) => entry.id)).toEqual(["turn-1-update", "turn-2-complete"]);
+    expect(entries.map((entry) => entry.turnId)).toEqual([
+      TurnId.makeUnsafe("turn-1"),
+      TurnId.makeUnsafe("turn-2"),
+    ]);
+  });
+
   it("collapses same-timestamp lifecycle rows even when completed sorts before updated by id", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
@@ -955,5 +993,27 @@ describe("derivePhase", () => {
     expect(derivePhase(makeSession("interrupted"))).toBe("interrupted");
     expect(derivePhase(makeSession("stopped"))).toBe("stopped");
     expect(derivePhase(makeSession("error"))).toBe("error");
+  });
+});
+
+describe("deriveActiveWorkStartedAt", () => {
+  it("prefers the pending send timestamp when the previous turn is already settled", () => {
+    const startedAt = deriveActiveWorkStartedAt(
+      {
+        turnId: TurnId.makeUnsafe("turn-previous"),
+        startedAt: "2026-02-23T00:00:00.000Z",
+        completedAt: "2026-02-23T00:00:05.000Z",
+      },
+      {
+        provider: "codex",
+        status: "connecting",
+        orchestrationStatus: "idle",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        updatedAt: "2026-02-23T00:00:05.000Z",
+      },
+      "2026-02-23T00:00:07.000Z",
+    );
+
+    expect(startedAt).toBe("2026-02-23T00:00:07.000Z");
   });
 });

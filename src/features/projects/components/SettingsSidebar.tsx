@@ -92,7 +92,6 @@ export function SettingsSidebar({ user, className, ...props }: SettingsSidebarPr
           )}
         />
       }
-      fillLayout
       rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
       className="h-full min-w-0 z-20 sidebar-glass"
       {...props}

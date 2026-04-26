@@ -164,6 +164,7 @@ interface CozeaChatSurfaceProps {
   composerCursor: number
   composerImages: ReadonlyArray<ComposerImageDraft>
   isSending: boolean
+  pendingTurnStartStartedAtIso?: string | null
   isInterrupting: boolean
   isForceStopAvailable?: boolean
   isRevertingCheckpoint?: boolean
@@ -344,13 +345,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
 
   const {
+    activeTurn,
     latestTurnSettled,
     phase,
     isWorking,
-    activeTurnStartedAt,
+    activeWorkStartedAt,
+    activeWorkCompletedAt,
+    isWorkActive,
     timelineEntries,
     completionDividerBeforeEntryId,
     completionSummary,
+    completionSummariesByMessageId,
     turnDiffSummaryByAssistantMessageId,
     revertTurnCountByUserMessageId,
     activeProposedPlan,
@@ -360,6 +365,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isRunning: props.isRunning,
     isSending: props.isSending,
     isInterrupting: props.isInterrupting,
+    pendingTurnStartStartedAtIso: props.pendingTurnStartStartedAtIso,
     isRevertingCheckpoint: props.isRevertingCheckpoint,
     pendingUserInputs: props.pendingUserInputs,
     selectedInteractionMode: props.selectedInteractionMode,
@@ -611,8 +617,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
     ? dockedComposerMeasuredInsetPx || DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX
     : 0
-  const nowIso = new Date().toISOString()
-
   useEffect(() => {
     if (!activePendingUserInput) {
       return
@@ -1486,13 +1490,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               hasMessages={timelineEntries.length > 0}
               isWorking={isWorking}
               selectedProvider={props.selectedProvider}
-              nowIso={nowIso}
               activeTurnInProgress={isWorking || !latestTurnSettled}
-              activeTurnStartedAt={activeTurnStartedAt}
+              activeTurnId={activeTurn?.turnId ?? null}
+              activeWorkStartedAt={activeWorkStartedAt}
+              activeWorkCompletedAt={activeWorkCompletedAt}
+              isWorkActive={isWorkActive}
               scrollContainerRef={props.timelineRef}
               timelineEntries={timelineEntries}
               completionDividerBeforeEntryId={completionDividerBeforeEntryId}
               completionSummary={completionSummary}
+              completionSummariesByMessageId={completionSummariesByMessageId}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
               expandedWorkGroups={expandedWorkGroups}
               onToggleWorkGroup={toggleWorkGroup}

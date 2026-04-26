@@ -3,4 +3,5 @@ export {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
   deriveCompletionDividerBeforeEntryId,
+  deriveCompletionSummariesByMessageId,
 } from "./threadTimelineDerivations"

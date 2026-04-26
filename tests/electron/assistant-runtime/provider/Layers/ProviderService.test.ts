@@ -19,7 +19,6 @@ import {
   TurnId,
 } from "@cozea/assistant-contracts";
 import { it, assert, vi } from "@effect/vitest";
-import { assertFailure } from "@effect/vitest/utils";
 
 import { Effect, Fiber, Layer, Option, PubSub, Ref, Stream } from "effect";
 import * as SqlClient from "@effect/sql/SqlClient";
@@ -768,9 +767,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.deepEqual(startPayload.modelSelection, {
           provider: "claudeAgent",
           model: "claude-opus-4-6",
-          options: {
-            effort: "max",
-          },
+          options: [{ id: "effort", value: "max" }],
         });
         assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
         assert.equal(startPayload.threadId, initial.threadId);

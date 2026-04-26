@@ -340,6 +340,7 @@ function mapMessage(message: OrchestrationReadModel["threads"][number]["messages
     id: message.id,
     role: message.role,
     text: message.text,
+    turnId: message.turnId,
     createdAt: message.createdAt,
     streaming: message.streaming,
     ...(message.streaming ? {} : { completedAt: message.updatedAt }),
