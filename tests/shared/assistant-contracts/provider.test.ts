@@ -30,8 +30,10 @@ describe("ProviderSessionStartInput", () => {
     if (parsed.modelSelection?.provider !== "codex") {
       throw new Error("Expected codex modelSelection");
     }
-    expect(parsed.modelSelection.options?.reasoningEffort).toBe("high");
-    expect(parsed.modelSelection.options?.fastMode).toBe(true);
+    expect(parsed.modelSelection.options).toEqual([
+      { id: "effort", value: "high" },
+      { id: "fastMode", value: true },
+    ]);
   });
 
   it("rejects payloads without runtime mode", () => {
@@ -65,9 +67,11 @@ describe("ProviderSessionStartInput", () => {
     if (parsed.modelSelection?.provider !== "claudeAgent") {
       throw new Error("Expected claude modelSelection");
     }
-    expect(parsed.modelSelection.options?.thinking).toBe(true);
-    expect(parsed.modelSelection.options?.effort).toBe("max");
-    expect(parsed.modelSelection.options?.fastMode).toBe(true);
+    expect(parsed.modelSelection.options).toEqual([
+      { id: "thinking", value: true },
+      { id: "effort", value: "max" },
+      { id: "fastMode", value: true },
+    ]);
     expect(parsed.runtimeMode).toBe("full-access");
   });
 });
@@ -91,8 +95,10 @@ describe("ProviderSendTurnInput", () => {
     if (parsed.modelSelection?.provider !== "codex") {
       throw new Error("Expected codex modelSelection");
     }
-    expect(parsed.modelSelection.options?.reasoningEffort).toBe("xhigh");
-    expect(parsed.modelSelection.options?.fastMode).toBe(true);
+    expect(parsed.modelSelection.options).toEqual([
+      { id: "effort", value: "xhigh" },
+      { id: "fastMode", value: true },
+    ]);
   });
 
   it("accepts claude modelSelection including ultrathink", () => {
@@ -112,7 +118,9 @@ describe("ProviderSendTurnInput", () => {
     if (parsed.modelSelection?.provider !== "claudeAgent") {
       throw new Error("Expected claude modelSelection");
     }
-    expect(parsed.modelSelection.options?.effort).toBe("ultrathink");
-    expect(parsed.modelSelection.options?.fastMode).toBe(true);
+    expect(parsed.modelSelection.options).toEqual([
+      { id: "effort", value: "ultrathink" },
+      { id: "fastMode", value: true },
+    ]);
   });
 });

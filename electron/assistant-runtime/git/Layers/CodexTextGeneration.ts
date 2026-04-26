@@ -5,6 +5,10 @@ import { Effect, FileSystem, Layer, Option, Path, Schema, Scope, Stream } from "
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { CodexModelSelection } from "@cozea/assistant-contracts";
+import {
+  getModelSelectionBooleanOptionValue,
+  getModelSelectionStringOptionValue,
+} from "@cozea/assistant-shared/model";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@cozea/assistant-shared/git";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
@@ -163,7 +167,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           modelSelection.options,
         );
         const reasoningEffort =
-          modelSelection.options?.reasoningEffort ?? CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT;
+          getModelSelectionStringOptionValue(modelSelection, "effort") ??
+          CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT;
         const command = ChildProcess.make(
           codexSettings?.binaryPath || "codex",
           [
@@ -175,7 +180,12 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             modelSelection.model,
             "--config",
             `model_reasoning_effort="${reasoningEffort}"`,
-            ...(normalizedOptions?.fastMode ? ["--config", `service_tier="fast"`] : []),
+            ...(getModelSelectionBooleanOptionValue(
+              { ...modelSelection, options: normalizedOptions } as CodexModelSelection,
+              "fastMode",
+            )
+              ? ["--config", `service_tier="fast"`]
+              : []),
             "--output-schema",
             schemaPath,
             "--output-last-message",

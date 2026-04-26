@@ -14,7 +14,111 @@ function asTrimmedString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeCommandValue(value: unknown): string | undefined {
+function trimMatchingOuterQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+  ) {
+    const unquoted = trimmed.slice(1, -1).trim();
+    return unquoted.length > 0 ? unquoted : trimmed;
+  }
+  return trimmed;
+}
+
+function executableBasename(value: string): string | undefined {
+  const trimmed = trimMatchingOuterQuotes(value);
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  const normalized = trimmed.replace(/\\/gu, "/");
+  const lastSegment = normalized.split("/").at(-1)?.trim().toLowerCase();
+  return lastSegment && lastSegment.length > 0 ? lastSegment : undefined;
+}
+
+function splitExecutableAndRest(value: string): { executable: string; rest: string } | undefined {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  if (trimmed.startsWith('"') || trimmed.startsWith("'")) {
+    const quote = trimmed.charAt(0);
+    const closeIndex = trimmed.indexOf(quote, 1);
+    if (closeIndex <= 0) {
+      return undefined;
+    }
+    return {
+      executable: trimmed.slice(0, closeIndex + 1),
+      rest: trimmed.slice(closeIndex + 1).trim(),
+    };
+  }
+
+  const firstWhitespace = trimmed.search(/\s/u);
+  if (firstWhitespace < 0) {
+    return {
+      executable: trimmed,
+      rest: "",
+    };
+  }
+
+  return {
+    executable: trimmed.slice(0, firstWhitespace),
+    rest: trimmed.slice(firstWhitespace).trim(),
+  };
+}
+
+const SHELL_WRAPPER_SPECS = [
+  {
+    executables: ["pwsh", "pwsh.exe", "powershell", "powershell.exe"],
+    wrapperFlagPattern: /(?:^|\s)-command\s+/iu,
+  },
+  {
+    executables: ["cmd", "cmd.exe"],
+    wrapperFlagPattern: /(?:^|\s)\/c\s+/u,
+  },
+  {
+    executables: ["bash", "sh", "zsh"],
+    wrapperFlagPattern: /(?:^|\s)-(?:l)?c\s+/u,
+  },
+] as const;
+
+function unwrapCommandRemainder(value: string, wrapperFlagPattern: RegExp): string | undefined {
+  const match = wrapperFlagPattern.exec(value);
+  if (!match) {
+    return undefined;
+  }
+  const command = value.slice(match.index + match[0].length).trim();
+  if (command.length === 0) {
+    return undefined;
+  }
+  const unwrapped = trimMatchingOuterQuotes(command);
+  return unwrapped.length > 0 ? unwrapped : undefined;
+}
+
+function unwrapKnownShellCommandWrapper(value: string): string {
+  const split = splitExecutableAndRest(value);
+  if (!split || split.rest.length === 0) {
+    return value;
+  }
+  const shell = executableBasename(split.executable);
+  if (!shell) {
+    return value;
+  }
+  const spec = SHELL_WRAPPER_SPECS.find((candidate) =>
+    candidate.executables.some((executable) => executable === shell),
+  );
+  if (!spec) {
+    return value;
+  }
+  return unwrapCommandRemainder(split.rest, spec.wrapperFlagPattern) ?? value;
+}
+
+function formatCommandArrayPart(value: string): string {
+  return /[\s"'`]/u.test(value) ? `"${value.replace(/"/gu, '\\"')}"` : value;
+}
+
+function formatCommandValue(value: unknown): string | undefined {
   const direct = asTrimmedString(value);
   if (direct) {
     return direct;
@@ -25,7 +129,20 @@ function normalizeCommandValue(value: unknown): string | undefined {
   const parts = value
     .map((entry) => asTrimmedString(entry))
     .filter((entry): entry is string => entry !== undefined);
-  return parts.length > 0 ? parts.join(" ") : undefined;
+  return parts.length > 0 ? parts.map((part) => formatCommandArrayPart(part)).join(" ") : undefined;
+}
+
+function normalizeCommandValue(value: unknown): string | undefined {
+  const formatted = formatCommandValue(value);
+  return formatted ? unwrapKnownShellCommandWrapper(formatted) : undefined;
+}
+
+function rawCommandValue(value: unknown, normalizedCommand: string | undefined): string | undefined {
+  const formatted = formatCommandValue(value);
+  if (!formatted || !normalizedCommand || formatted === normalizedCommand) {
+    return undefined;
+  }
+  return formatted;
 }
 
 function stripTrailingExitCode(value: string | undefined): string | undefined {
@@ -46,31 +163,50 @@ function extractCommandFromTitle(title: string | undefined): string | undefined 
   return backtickMatch?.[1]?.trim() || undefined;
 }
 
-function extractToolCommand(data: Record<string, unknown> | undefined, title: string | undefined) {
+function extractToolCommand(
+  data: Record<string, unknown> | undefined,
+  title: string | undefined,
+): {
+  command?: string;
+  rawCommand?: string;
+} {
   const item = asRecord(data?.item);
   const itemInput = asRecord(item?.input);
   const itemResult = asRecord(item?.result);
   const rawInput = asRecord(data?.rawInput);
-  const candidates = [
-    normalizeCommandValue(item?.command),
-    normalizeCommandValue(itemInput?.command),
-    normalizeCommandValue(itemResult?.command),
-    normalizeCommandValue(data?.command),
-    normalizeCommandValue(rawInput?.command),
+  const commandCandidates = [
+    { command: normalizeCommandValue(item?.command), rawCommand: rawCommandValue(item?.command, normalizeCommandValue(item?.command)) },
+    { command: normalizeCommandValue(itemInput?.command), rawCommand: rawCommandValue(itemInput?.command, normalizeCommandValue(itemInput?.command)) },
+    { command: normalizeCommandValue(itemResult?.command), rawCommand: rawCommandValue(itemResult?.command, normalizeCommandValue(itemResult?.command)) },
+    { command: normalizeCommandValue(data?.command), rawCommand: rawCommandValue(data?.command, normalizeCommandValue(data?.command)) },
+    { command: normalizeCommandValue(rawInput?.command), rawCommand: rawCommandValue(rawInput?.command, normalizeCommandValue(rawInput?.command)) },
   ];
-  const direct = candidates.find((candidate) => candidate !== undefined);
-  if (direct) {
+  const direct = commandCandidates.find((candidate) => candidate.command !== undefined);
+  if (direct?.command) {
     return direct;
   }
   const executable = asTrimmedString(rawInput?.executable);
   const args = normalizeCommandValue(rawInput?.args);
   if (executable && args) {
-    return `${executable} ${args}`;
+    const rawExecutableValue = rawInput?.executable;
+    const rawArgsValue = rawInput?.args;
+    const rawExecutable = formatCommandValue(rawExecutableValue) ?? executable;
+    const rawArgs = formatCommandValue(rawArgsValue);
+    const rawCommand =
+      rawArgs && rawExecutable ? `${rawExecutable} ${rawArgs}` : rawExecutable;
+    const command = `${executable} ${args}`;
+    return {
+      command,
+      ...(rawCommand !== command ? { rawCommand } : {}),
+    };
   }
   if (executable) {
-    return executable;
+    return {
+      command: executable,
+    };
   }
-  return extractCommandFromTitle(title);
+  const titleCommand = extractCommandFromTitle(title);
+  return titleCommand ? { command: titleCommand } : {};
 }
 
 function maybePathLike(value: string | undefined): string | undefined {
@@ -116,7 +252,24 @@ function collectPaths(value: unknown, paths: string[], seen: Set<string>, depth:
       return;
     }
   }
-  for (const nestedKey of ["locations", "item", "input", "result", "rawInput", "data", "changes"]) {
+  for (const nestedKey of [
+    "locations",
+    "item",
+    "input",
+    "result",
+    "rawInput",
+    "rawOutput",
+    "data",
+    "changes",
+    "args",
+    "resolution",
+    "files",
+    "failed",
+    "edits",
+    "patch",
+    "patches",
+    "operations",
+  ]) {
     if (!(nestedKey in record)) {
       continue;
     }
@@ -127,10 +280,14 @@ function collectPaths(value: unknown, paths: string[], seen: Set<string>, depth:
   }
 }
 
-function extractPrimaryPath(data: Record<string, unknown> | undefined): string | undefined {
+function extractChangedPaths(data: Record<string, unknown> | undefined): string[] {
   const paths: string[] = [];
   collectPaths(data, paths, new Set<string>(), 0);
-  return paths[0];
+  return paths;
+}
+
+function extractPrimaryPath(data: Record<string, unknown> | undefined): string | undefined {
+  return extractChangedPaths(data)[0];
 }
 
 function normalizeEquivalentValue(value: string | undefined): string | undefined {
@@ -190,17 +347,66 @@ export interface ToolActivityPresentationInput {
 export interface ToolActivityPresentation {
   readonly summary: string;
   readonly detail?: string | undefined;
+  readonly command?: string | undefined;
+  readonly rawCommand?: string | undefined;
+  readonly primaryPath?: string | undefined;
+  readonly changedPaths?: ReadonlyArray<string> | undefined;
+}
+
+function summarizeToolTextOutput(value: string): string | undefined {
+  const lines = value
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line !== "```");
+  const firstLine = lines[0];
+  if (firstLine) {
+    return firstLine;
+  }
+  if (lines.length > 1) {
+    return `${lines.length} lines`;
+  }
+  return undefined;
+}
+
+function summarizeRawOutput(data: Record<string, unknown> | undefined): string | undefined {
+  const rawOutput = asRecord(data?.rawOutput);
+  if (!rawOutput) {
+    return undefined;
+  }
+
+  const totalFiles =
+    typeof rawOutput.totalFiles === "number" && Number.isFinite(rawOutput.totalFiles)
+      ? rawOutput.totalFiles
+      : undefined;
+  if (totalFiles !== undefined) {
+    const suffix = rawOutput.truncated === true ? "+" : "";
+    return `${totalFiles} file${totalFiles === 1 ? "" : "s"}${suffix}`;
+  }
+
+  const content = asTrimmedString(rawOutput.content) ?? asTrimmedString(rawOutput.stdout);
+  if (content) {
+    return summarizeToolTextOutput(content);
+  }
+
+  return undefined;
 }
 
 export function deriveToolActivityPresentation(
   input: ToolActivityPresentationInput,
 ): ToolActivityPresentation {
   const title = asTrimmedString(input.title);
-  const detail = stripTrailingExitCode(asTrimmedString(input.detail));
+  let detail = stripTrailingExitCode(asTrimmedString(input.detail));
+
+  if (detail && /^[\s\[\]\{\}",:]+$/.test(detail)) {
+    detail = undefined;
+  }
+
   const fallbackSummary = asTrimmedString(input.fallbackSummary) ?? "Tool";
   const data = asRecord(input.data);
-  const command = extractToolCommand(data, title);
+  const commandInfo = extractToolCommand(data, title);
   const primaryPath = extractPrimaryPath(data);
+  const changedPaths = extractChangedPaths(data);
+  const rawOutputSummary = summarizeRawOutput(data);
   const action = classifyToolAction({
     itemType: input.itemType,
     title,
@@ -210,7 +416,9 @@ export function deriveToolActivityPresentation(
   if (action === "command") {
     return {
       summary: "Ran command",
-      ...(command ? { detail: command } : {}),
+      ...(commandInfo.command ? { detail: commandInfo.command } : {}),
+      ...(commandInfo.command ? { command: commandInfo.command } : {}),
+      ...(commandInfo.rawCommand ? { rawCommand: commandInfo.rawCommand } : {}),
     };
   }
 
@@ -219,6 +427,14 @@ export function deriveToolActivityPresentation(
       return {
         summary: "Read file",
         detail: primaryPath,
+        primaryPath,
+        ...(changedPaths.length > 0 ? { changedPaths } : {}),
+      };
+    }
+    if (rawOutputSummary) {
+      return {
+        summary: "Read file",
+        detail: rawOutputSummary,
       };
     }
     return {
@@ -230,6 +446,8 @@ export function deriveToolActivityPresentation(
     return {
       summary: "Changed files",
       ...(primaryPath ? { detail: primaryPath } : {}),
+      ...(primaryPath ? { primaryPath } : {}),
+      ...(changedPaths.length > 0 ? { changedPaths } : {}),
     };
   }
 
@@ -240,7 +458,7 @@ export function deriveToolActivityPresentation(
       asTrimmedString(asRecord(data?.rawInput)?.searchTerm);
     return {
       summary: "Searched files",
-      ...(query ? { detail: query } : {}),
+      ...(query ? { detail: query } : rawOutputSummary ? { detail: rawOutputSummary } : {}),
     };
   }
 
@@ -248,10 +466,23 @@ export function deriveToolActivityPresentation(
     return {
       summary: title ?? fallbackSummary,
       detail,
+      ...(commandInfo.command ? { command: commandInfo.command } : {}),
+      ...(commandInfo.rawCommand ? { rawCommand: commandInfo.rawCommand } : {}),
+      ...(primaryPath ? { primaryPath } : {}),
+      ...(changedPaths.length > 0 ? { changedPaths } : {}),
     };
   }
 
   return {
     summary: title ?? fallbackSummary,
+    ...(rawOutputSummary &&
+    !isEquivalent(rawOutputSummary, title) &&
+    !isEquivalent(rawOutputSummary, fallbackSummary)
+      ? { detail: rawOutputSummary }
+      : {}),
+    ...(commandInfo.command ? { command: commandInfo.command } : {}),
+    ...(commandInfo.rawCommand ? { rawCommand: commandInfo.rawCommand } : {}),
+    ...(primaryPath ? { primaryPath } : {}),
+    ...(changedPaths.length > 0 ? { changedPaths } : {}),
   };
 }

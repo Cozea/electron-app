@@ -117,6 +117,30 @@ describe("AcpCoreRuntimeEvents", () => {
     });
 
     expect(
+      makeAcpToolCallEvent({
+        stamp,
+        provider: "cursor",
+        threadId: "thread-1" as never,
+        turnId,
+        toolCall: {
+          toolCallId: "tool-2",
+          kind: "execute",
+          status: "cancelled",
+          title: "Run tests",
+          detail: "bun run test",
+          data: { command: "bun run test" },
+        },
+        rawPayload: { sessionId: "session-1" },
+      }),
+    ).toMatchObject({
+      type: "item.completed",
+      payload: {
+        itemType: "command_execution",
+        status: "cancelled",
+      },
+    });
+
+    expect(
       makeAcpContentDeltaEvent({
         stamp,
         provider: "cursor",

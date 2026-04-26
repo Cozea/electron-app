@@ -39,15 +39,20 @@ import {
   RuntimeTaskId,
   ThreadId,
   TurnId,
+  type ToolLifecycleItemType,
   type UserInputQuestion,
   ClaudeCodeEffort,
 } from "@cozea/assistant-contracts";
 import {
   applyClaudePromptEffortPrefix,
+  getModelSelectionBooleanOptionValue,
+  getModelSelectionStringOptionValue,
+  resolvePromptInjectedEffort,
   resolveApiModelId,
   resolveEffort,
   trimOrNull,
 } from "@cozea/assistant-shared/model";
+import { deriveToolActivityPresentation } from "@cozea/assistant-shared/toolActivity";
 import {
   Cause,
   DateTime,
@@ -500,6 +505,47 @@ function titleForTool(itemType: CanonicalItemType): string {
   }
 }
 
+function buildClaudeToolData(input: {
+  readonly itemId: string;
+  readonly toolName: string;
+  readonly toolInput?: Record<string, unknown>;
+  readonly result?: unknown;
+}): Record<string, unknown> {
+  return {
+    toolCallId: input.itemId,
+    kind: input.toolName,
+    ...(input.toolInput ? { input: input.toolInput, rawInput: input.toolInput } : {}),
+    ...(input.result !== undefined ? { result: input.result } : {}),
+  };
+}
+
+function buildClaudeToolPresentation(input: {
+  readonly itemId: string;
+  readonly itemType: CanonicalItemType;
+  readonly toolName: string;
+  readonly title: string;
+  readonly detail?: string;
+  readonly toolInput?: Record<string, unknown>;
+  readonly result?: unknown;
+}) {
+  const data = buildClaudeToolData({
+    itemId: input.itemId,
+    toolName: input.toolName,
+    toolInput: input.toolInput,
+    result: input.result,
+  });
+  return {
+    presentation: deriveToolActivityPresentation({
+      itemType: input.itemType as ToolLifecycleItemType,
+      title: input.title,
+      detail: input.detail,
+      data,
+      fallbackSummary: input.title,
+    }),
+    data,
+  };
+}
+
 const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
   "image/gif",
   "image/jpeg",
@@ -514,16 +560,14 @@ const CLAUDE_SETTING_SOURCES = [
 
 function buildPromptText(input: ProviderSendTurnInput): string {
   const rawEffort =
-    input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.options?.effort : null;
+    input.modelSelection?.provider === "claudeAgent"
+      ? getModelSelectionStringOptionValue(input.modelSelection, "effort")
+      : null;
   const claudeModel =
     input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.model : undefined;
   const caps = getClaudeModelCapabilities(claudeModel);
 
-  // For prompt injection, we check if the raw effort is a prompt-injected level (e.g. "ultrathink").
-  // resolveEffort strips prompt-injected values (returning the default instead), so we check the raw value directly.
-  const trimmedEffort = trimOrNull(rawEffort);
-  const promptEffort =
-    trimmedEffort && caps.promptInjectedEffortLevels.includes(trimmedEffort) ? trimmedEffort : null;
+  const promptEffort = resolvePromptInjectedEffort(caps, rawEffort);
   return applyClaudePromptEffortPrefix(input.input?.trim() ?? "", promptEffort);
 }
 
@@ -1719,6 +1763,14 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               lastEmittedInputFingerprint: nextFingerprint,
             };
             context.inFlightTools.set(event.index, nextTool);
+            const { presentation, data } = buildClaudeToolPresentation({
+              itemId: nextTool.itemId,
+              itemType: nextTool.itemType,
+              toolName: nextTool.toolName,
+              title: nextTool.title,
+              detail: nextTool.detail,
+              toolInput: nextTool.input,
+            });
 
             const stamp = yield* makeEventStamp();
             yield* offerRuntimeEvent({
@@ -1732,12 +1784,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               payload: {
                 itemType: nextTool.itemType,
                 status: "inProgress",
-                title: nextTool.title,
-                ...(nextTool.detail ? { detail: nextTool.detail } : {}),
-                data: {
-                  toolName: nextTool.toolName,
-                  input: nextTool.input,
-                },
+                title: presentation.summary,
+                ...(presentation.detail ? { detail: presentation.detail } : {}),
+                data,
               },
               providerRefs: nativeProviderRefs(context, { providerItemId: nextTool.itemId }),
               raw: {
@@ -1788,6 +1837,14 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             ...(inputFingerprint ? { lastEmittedInputFingerprint: inputFingerprint } : {}),
           };
           context.inFlightTools.set(index, tool);
+          const { presentation, data } = buildClaudeToolPresentation({
+            itemId: tool.itemId,
+            itemType: tool.itemType,
+            toolName: tool.toolName,
+            title: tool.title,
+            detail: tool.detail,
+            toolInput: tool.input,
+          });
 
           const stamp = yield* makeEventStamp();
           yield* offerRuntimeEvent({
@@ -1801,12 +1858,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             payload: {
               itemType: tool.itemType,
               status: "inProgress",
-              title: tool.title,
-              ...(tool.detail ? { detail: tool.detail } : {}),
-              data: {
-                toolName: tool.toolName,
-                input: toolInput,
-              },
+              title: presentation.summary,
+              ...(presentation.detail ? { detail: presentation.detail } : {}),
+              data,
             },
             providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
             raw: {
@@ -1859,11 +1913,15 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
           const [index, tool] = toolEntry;
           const itemStatus = toolResult.isError ? "failed" : "completed";
-          const toolData = {
+          const { presentation, data: toolData } = buildClaudeToolPresentation({
+            itemId: tool.itemId,
+            itemType: tool.itemType,
             toolName: tool.toolName,
-            input: tool.input,
+            title: tool.title,
+            detail: tool.detail,
+            toolInput: tool.input,
             result: toolResult.block,
-          };
+          });
 
           const updatedStamp = yield* makeEventStamp();
           yield* offerRuntimeEvent({
@@ -1877,8 +1935,8 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             payload: {
               itemType: tool.itemType,
               status: toolResult.isError ? "failed" : "inProgress",
-              title: tool.title,
-              ...(tool.detail ? { detail: tool.detail } : {}),
+              title: presentation.summary,
+              ...(presentation.detail ? { detail: presentation.detail } : {}),
               data: toolData,
             },
             providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
@@ -1925,8 +1983,8 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             payload: {
               itemType: tool.itemType,
               status: itemStatus,
-              title: tool.title,
-              ...(tool.detail ? { detail: tool.detail } : {}),
+              title: presentation.summary,
+              ...(presentation.detail ? { detail: presentation.detail } : {}),
               data: toolData,
             },
             providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
@@ -2702,7 +2760,16 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
               const requestId = ApprovalRequestId.makeUnsafe(yield* Random.nextUUIDv4);
               const requestType = classifyRequestType(toolName);
-              const detail = summarizeToolRequest(toolName, toolInput);
+              const toolActivity = buildClaudeToolPresentation({
+                itemId: callbackOptions.toolUseID ?? requestId,
+                itemType: classifyToolItemType(toolName),
+                toolName,
+                title: titleForTool(classifyToolItemType(toolName)),
+                detail: summarizeToolRequest(toolName, toolInput),
+                toolInput,
+              });
+              const detail =
+                toolActivity.presentation.detail ?? toolActivity.presentation.summary;
               const decisionDeferred = yield* Deferred.make<ProviderApprovalDecision>();
               const pendingApproval: PendingApproval = {
                 requestType,
@@ -2827,12 +2894,15 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
         const caps = getClaudeModelCapabilities(modelSelection?.model);
         const apiModelId = modelSelection ? resolveApiModelId(modelSelection) : undefined;
-        const effort = (resolveEffort(caps, modelSelection?.options?.effort) ??
+        const effort = (resolveEffort(caps, getModelSelectionStringOptionValue(modelSelection, "effort")) ??
           null) as ClaudeCodeEffort | null;
-        const fastMode = modelSelection?.options?.fastMode === true && caps.supportsFastMode;
+        const fastMode =
+          getModelSelectionBooleanOptionValue(modelSelection, "fastMode") === true &&
+          caps.supportsFastMode;
         const thinking =
-          typeof modelSelection?.options?.thinking === "boolean" && caps.supportsThinkingToggle
-            ? modelSelection.options.thinking
+          typeof getModelSelectionBooleanOptionValue(modelSelection, "thinking") === "boolean" &&
+          caps.supportsThinkingToggle
+            ? getModelSelectionBooleanOptionValue(modelSelection, "thinking")
             : undefined;
         const effectiveEffort = getEffectiveClaudeCodeEffort(effort);
         const permissionMode =

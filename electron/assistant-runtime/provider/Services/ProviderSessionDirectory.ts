@@ -8,6 +8,7 @@ import type {
 import { Option, ServiceMap } from "effect";
 import type { Effect } from "effect";
 
+import type { ProviderSessionRuntimePayload } from "../../persistence/Services/ProviderSessionRuntime.ts";
 import type {
   ProviderSessionDirectoryPersistenceError,
   ProviderValidationError,
@@ -19,7 +20,7 @@ export interface ProviderRuntimeBinding {
   readonly adapterKey?: string;
   readonly status?: ProviderSessionRuntimeStatus;
   readonly resumeCursor?: unknown | null;
-  readonly runtimePayload?: unknown | null;
+  readonly runtimePayload?: ProviderSessionRuntimePayload | null;
   readonly runtimeMode?: RuntimeMode;
 }
 

@@ -31,4 +31,28 @@ describe("normalizeThreadSession", () => {
 
     expect(session?.provider).toBe("codex");
   });
+
+  it("preserves interrupted and stopped orchestration statuses", () => {
+    const interrupted = normalizeThreadSession({
+      threadId: ThreadId.makeUnsafe("thread-1"),
+      status: "interrupted",
+      providerName: "cursor",
+      runtimeMode: "full-access",
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const stopped = normalizeThreadSession({
+      threadId: ThreadId.makeUnsafe("thread-1"),
+      status: "stopped",
+      providerName: "cursor",
+      runtimeMode: "full-access",
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect(interrupted?.status).toBe("interrupted");
+    expect(stopped?.status).toBe("stopped");
+  });
 });

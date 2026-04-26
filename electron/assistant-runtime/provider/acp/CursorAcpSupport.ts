@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type CursorModelOptions, type CursorSettings } from "@cozea/assistant-contracts";
+import { type ModelSelection, type CursorSettings } from "@cozea/assistant-contracts";
 import { Effect, Layer, Scope } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import type * as EffectAcpErrors from "@cozea/effect-acp/errors";
@@ -78,7 +78,7 @@ interface CursorAcpModelSelectionRuntime {
 export function applyCursorAcpModelSelection<E>(input: {
   readonly runtime: CursorAcpModelSelectionRuntime;
   readonly model: string | null | undefined;
-  readonly modelOptions: CursorModelOptions | null | undefined;
+  readonly modelOptions: ModelSelection["options"] | null | undefined;
   readonly mapError: (context: CursorAcpModelSelectionErrorContext) => E;
 }): Effect.Effect<void, E> {
   return Effect.gen(function* () {

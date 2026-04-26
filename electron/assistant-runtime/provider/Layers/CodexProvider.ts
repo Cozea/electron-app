@@ -1,9 +1,10 @@
 // @ts-nocheck
 import * as OS from "node:os";
 import type {
-  CodexModelOptions,
   CodexSettings,
   ModelCapabilities,
+  ModelSelection,
+  ProviderOptionSelection,
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
@@ -23,7 +24,13 @@ import {
   Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { resolveEffort } from "@cozea/assistant-shared/model";
+import {
+  createModelCapabilities,
+  getProviderOptionBooleanSelectionValue,
+  getProviderOptionStringSelectionValue,
+  resolveEffort,
+  setProviderOptionSelectionValue,
+} from "@cozea/assistant-shared/model";
 
 import {
   buildServerProvider,
@@ -52,18 +59,32 @@ import { probeCodexDiscovery } from "../codexAppServer.ts";
 import { CodexProvider } from "../Services/CodexProvider.ts";
 import { ServerSettingsError, ServerSettingsService } from "../../serverSettings.ts";
 
-const DEFAULT_CODEX_MODEL_CAPABILITIES: ModelCapabilities = {
-  reasoningEffortLevels: [
-    { value: "xhigh", label: "Extra High" },
-    { value: "high", label: "High", isDefault: true },
-    { value: "medium", label: "Medium" },
-    { value: "low", label: "Low" },
-  ],
-  supportsFastMode: true,
-  supportsThinkingToggle: false,
-  contextWindowOptions: [],
-  promptInjectedEffortLevels: [],
-};
+const CODEX_REASONING_OPTIONS = [
+  { id: "xhigh", label: "Extra High" },
+  { id: "high", label: "High", isDefault: true },
+  { id: "medium", label: "Medium" },
+  { id: "low", label: "Low" },
+] as const;
+
+function makeCodexCapabilities(): ModelCapabilities {
+  return createModelCapabilities({
+    optionDescriptors: [
+      {
+        id: "effort",
+        type: "select",
+        label: "Effort",
+        options: CODEX_REASONING_OPTIONS.map((option) => ({ ...option })),
+      },
+      {
+        id: "fastMode",
+        type: "boolean",
+        label: "Fast mode",
+      },
+    ],
+  });
+}
+
+const DEFAULT_CODEX_MODEL_CAPABILITIES = makeCodexCapabilities();
 
 const PROVIDER = "codex" as const;
 const OPENAI_AUTH_PROVIDERS = new Set(["openai"]);
@@ -72,103 +93,37 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
     slug: "gpt-5.4",
     name: "GPT-5.4",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "xhigh", label: "Extra High" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    },
+    capabilities: makeCodexCapabilities(),
   },
   {
     slug: "gpt-5.4-mini",
     name: "GPT-5.4 Mini",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "xhigh", label: "Extra High" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    },
+    capabilities: makeCodexCapabilities(),
   },
   {
     slug: "gpt-5.3-codex",
     name: "GPT-5.3 Codex",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "xhigh", label: "Extra High" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    },
+    capabilities: makeCodexCapabilities(),
   },
   {
     slug: "gpt-5.3-codex-spark",
     name: "GPT-5.3 Codex Spark",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "xhigh", label: "Extra High" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    },
+    capabilities: makeCodexCapabilities(),
   },
   {
     slug: "gpt-5.2-codex",
     name: "GPT-5.2 Codex",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "xhigh", label: "Extra High" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    },
+    capabilities: makeCodexCapabilities(),
   },
   {
     slug: "gpt-5.2",
     name: "GPT-5.2",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "xhigh", label: "Extra High" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    },
+    capabilities: makeCodexCapabilities(),
   },
 ];
 
@@ -182,18 +137,18 @@ export function getCodexModelCapabilities(model: string | null | undefined): Mod
 
 export function normalizeCodexModelOptions(
   model: string | null | undefined,
-  modelOptions: CodexModelOptions | null | undefined,
-): CodexModelOptions | undefined {
+  modelOptions: ModelSelection["options"] | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
   const caps = getCodexModelCapabilities(model);
-  const reasoningEffort = resolveEffort(caps, modelOptions?.reasoningEffort);
-  const fastModeEnabled = modelOptions?.fastMode === true;
-  const nextOptions: CodexModelOptions = {
-    ...(reasoningEffort
-      ? { reasoningEffort: reasoningEffort as CodexModelOptions["reasoningEffort"] }
-      : {}),
-    ...(fastModeEnabled ? { fastMode: true } : {}),
-  };
-  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
+  const reasoningEffort = resolveEffort(
+    caps,
+    getProviderOptionStringSelectionValue(modelOptions, "effort"),
+  );
+  const fastModeEnabled = getProviderOptionBooleanSelectionValue(modelOptions, "fastMode") === true;
+  let nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "effort", reasoningEffort);
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "fastMode", fastModeEnabled ? true : undefined);
+  return nextOptions;
 }
 
 export function parseAuthStatusFromOutput(result: CommandResult): {

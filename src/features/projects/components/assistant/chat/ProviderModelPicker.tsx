@@ -1,49 +1,25 @@
-import { HugeiconsIcon } from '@hugeicons/react'
-import { ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  CheckmarkCircle02Icon as __CheckIconHugeIcon,
+  ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon,
+} from "@hugeicons/core-free-icons";
+import { memo, useEffect, useMemo, useState } from "react";
+import type { VariantProps } from "class-variance-authority";
 import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
 import { resolveSelectableModel } from "@cozea/assistant-shared/model";
-import { memo, useMemo, useState } from "react";
-import type { VariantProps } from "class-variance-authority";
-import { type ProviderPickerKind, PROVIDER_OPTIONS } from "./session-logic";
-import { Button, buttonVariants } from "../ui/button";
-import {
-  Menu,
-  MenuGroup,
-  MenuItem,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator as MenuDivider,
-  MenuSub,
-  MenuSubPopup,
-  MenuSubTrigger,
-  MenuTrigger,
-} from "../ui/menu";
-import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
-import type { Icon } from "../Icons";
+
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { getProviderSnapshot } from "../../providerModels";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
-const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
-  codex: OpenAI,
-  claudeAgent: ClaudeAI,
-  cursor: CursorIcon,
-  opencode: OpenCodeIcon,
-};
+import { getProviderSnapshot } from "../../providerModels";
+import { Button, buttonVariants } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+import type { Icon } from "../Icons";
+import { type ProviderPickerKind, PROVIDER_OPTIONS } from "./session-logic";
 
-const COMING_SOON_PROVIDER_OPTIONS = [
-  { id: "gemini", label: "Gemini", icon: Gemini },
-] as const;
-
-function providerIconClassName(
-  provider: ProviderKind | ProviderPickerKind,
-  fallbackClassName: string,
-): string {
-  return provider === "claudeAgent" ? "text-[#d97757]" : fallbackClassName;
-}
-
-export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+interface ProviderModelPickerProps {
   provider: ProviderKind;
   model: string;
   lockedProvider: ProviderKind | null;
@@ -55,10 +31,64 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
   onProviderModelChange: (provider: ProviderKind, model: string) => void;
-}) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+}
+
+interface ProviderModelPickerOption {
+  value: ProviderKind;
+  label: string;
+  icon: Icon;
+  modelOptions: ReadonlyArray<{ slug: string; name: string }>;
+  isSelectable: boolean;
+  unavailableLabel: string | null;
+}
+
+const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
+  codex: OpenAI,
+  claudeAgent: ClaudeAI,
+  cursor: CursorIcon,
+  opencode: OpenCodeIcon,
+};
+
+const COMING_SOON_PROVIDER_OPTIONS = [{ id: "gemini", label: "Gemini", icon: Gemini }] as const;
+
+function providerIconClassName(
+  provider: ProviderKind | ProviderPickerKind,
+  fallbackClassName: string,
+): string {
+  return provider === "claudeAgent" ? "text-[#d97757]" : fallbackClassName;
+}
+
+function matchesSearch(
+  query: string,
+  option: ProviderModelPickerOption,
+  modelOption: { slug: string; name: string },
+): boolean {
+  if (!query) {
+    return true;
+  }
+  const haystack = `${option.label} ${modelOption.name} ${modelOption.slug}`.toLowerCase();
+  return haystack.includes(query);
+}
+
+export const ProviderModelPicker = memo(function ProviderModelPicker(
+  props: ProviderModelPickerProps,
+) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const activeProvider = props.lockedProvider ?? props.provider;
-  const providerMenuOptions = useMemo(
+  const [providerFilter, setProviderFilter] = useState<ProviderKind>(activeProvider);
+
+  useEffect(() => {
+    setProviderFilter(activeProvider);
+  }, [activeProvider]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery("");
+    }
+  }, [isOpen]);
+
+  const providerMenuOptions = useMemo<ReadonlyArray<ProviderModelPickerOption>>(
     () =>
       PROVIDER_OPTIONS.map((option) => {
         const liveProvider = props.providers
@@ -69,6 +99,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         if (!props.providers) {
           return {
             ...option,
+            icon: PROVIDER_ICON_BY_PROVIDER[option.value],
             modelOptions,
             isSelectable: modelOptions.length > 0,
             unavailableLabel: modelOptions.length > 0 ? null : "Unavailable",
@@ -78,6 +109,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         if (!liveProvider) {
           return {
             ...option,
+            icon: PROVIDER_ICON_BY_PROVIDER[option.value],
             modelOptions,
             isSelectable: false,
             unavailableLabel: "Loading",
@@ -87,6 +119,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         if (!liveProvider.enabled || liveProvider.status === "disabled") {
           return {
             ...option,
+            icon: PROVIDER_ICON_BY_PROVIDER[option.value],
             modelOptions,
             isSelectable: false,
             unavailableLabel: "Disabled",
@@ -96,6 +129,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         if (!liveProvider.installed) {
           return {
             ...option,
+            icon: PROVIDER_ICON_BY_PROVIDER[option.value],
             modelOptions,
             isSelectable: false,
             unavailableLabel: "Not installed",
@@ -105,6 +139,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         if (liveProvider.status === "error") {
           return {
             ...option,
+            icon: PROVIDER_ICON_BY_PROVIDER[option.value],
             modelOptions,
             isSelectable: false,
             unavailableLabel: "Unavailable",
@@ -114,6 +149,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         if (modelOptions.length <= 0) {
           return {
             ...option,
+            icon: PROVIDER_ICON_BY_PROVIDER[option.value],
             modelOptions,
             isSelectable: false,
             unavailableLabel:
@@ -123,6 +159,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 
         return {
           ...option,
+          icon: PROVIDER_ICON_BY_PROVIDER[option.value],
           modelOptions,
           isSelectable: true,
           unavailableLabel: null,
@@ -130,6 +167,64 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       }),
     [props.modelOptionsByProvider, props.providers],
   );
+
+  const selectableProviders = providerMenuOptions.filter((option) => option.isSelectable);
+  const unavailableProviders = providerMenuOptions.filter((option) => !option.isSelectable);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const selectedProviderOption =
+    providerMenuOptions.find((option) => option.value === providerFilter) ??
+    providerMenuOptions.find((option) => option.value === activeProvider) ??
+    providerMenuOptions[0];
+
+  const visibleGroups = useMemo(() => {
+    if (props.lockedProvider !== null) {
+      const lockedOption = providerMenuOptions.find(
+        (option) => option.value === props.lockedProvider,
+      );
+      if (!lockedOption) {
+        return [];
+      }
+      return [
+        {
+          option: lockedOption,
+          models: lockedOption.modelOptions.filter((modelOption) =>
+            matchesSearch(normalizedQuery, lockedOption, modelOption),
+          ),
+        },
+      ];
+    }
+
+    if (!normalizedQuery) {
+      return selectedProviderOption
+        ? [
+            {
+              option: selectedProviderOption,
+              models: selectedProviderOption.modelOptions,
+            },
+          ]
+        : [];
+    }
+
+    return selectableProviders.flatMap((option) => {
+      const matchingModels = option.modelOptions.filter((modelOption) =>
+        matchesSearch(normalizedQuery, option, modelOption),
+      );
+      if (matchingModels.length > 0) {
+        return [{ option, models: matchingModels }];
+      }
+      if (option.label.toLowerCase().includes(normalizedQuery)) {
+        return [{ option, models: option.modelOptions }];
+      }
+      return [];
+    });
+  }, [
+    normalizedQuery,
+    props.lockedProvider,
+    providerMenuOptions,
+    selectableProviders,
+    selectedProviderOption,
+  ]);
+
   const selectedProviderOptions = props.modelOptionsByProvider[activeProvider];
   const selectedModelLabel =
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ?? props.model;
@@ -141,6 +236,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     return getOverflowTitle(selectedModelLabel, reservedWidth);
   }, [getOverflowTitle, selectedModelLabel]);
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
+
   const handleModelChange = (provider: ProviderKind, value: string) => {
     if (props.disabled) return;
     if (!value) return;
@@ -151,21 +247,21 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     );
     if (!resolvedModel) return;
     props.onProviderModelChange(provider, resolvedModel);
-    setIsMenuOpen(false);
+    setIsOpen(false);
   };
 
   return (
-    <Menu
-      open={isMenuOpen}
+    <Popover
+      open={isOpen}
       onOpenChange={(open) => {
         if (props.disabled) {
-          setIsMenuOpen(false);
+          setIsOpen(false);
           return;
         }
-        setIsMenuOpen(open);
+        setIsOpen(open);
       }}
     >
-      <MenuTrigger
+      <PopoverTrigger
         render={
           <Button
             size="sm"
@@ -197,97 +293,177 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <span className="min-w-0 flex-1 truncate" title={selectedModelTitle}>
             {selectedModelLabel}
           </span>
-          <HugeiconsIcon icon={__ChevronDownIconHugeIcon} aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+          <HugeiconsIcon
+            icon={__ChevronDownIconHugeIcon}
+            aria-hidden="true"
+            className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+          />
         </span>
-      </MenuTrigger>
-      <MenuPopup align="start">
-        {props.lockedProvider !== null ? (
-          <MenuGroup>
-            <MenuRadioGroup
-              value={props.model}
-              onValueChange={(value) => handleModelChange(props.lockedProvider!, value)}
-            >
-              {props.modelOptionsByProvider[props.lockedProvider].map((modelOption) => (
-                <MenuRadioItem
-                  key={`${props.lockedProvider}:${modelOption.slug}`}
-                  value={modelOption.slug}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {modelOption.name}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuGroup>
-        ) : (
-          <>
-            {providerMenuOptions.map((option) => {
-              const OptionIcon = PROVIDER_ICON_BY_PROVIDER[option.value];
-              if (!option.isSelectable) {
-                return (
-                  <MenuItem key={option.value} disabled>
-                    <OptionIcon
-                      aria-hidden="true"
+      </PopoverTrigger>
+
+      <PopoverPopup
+        align="start"
+        sideOffset={6}
+        className="w-[min(36rem,calc(100vw-1.5rem))] p-0 [--viewport-inline-padding:0]"
+      >
+        <div className="flex min-h-0 flex-col">
+          <div className="border-b border-border/60 px-3 py-3">
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search models or providers"
+              className="h-8 border-border/60 bg-background/80 text-sm"
+              autoFocus
+            />
+          </div>
+
+          {props.lockedProvider === null ? (
+            <div className="border-b border-border/60 px-3 py-2">
+              <div className="flex flex-wrap gap-1.5">
+                {selectableProviders.map((option) => {
+                  const OptionIcon = option.icon;
+                  const isActive = option.value === providerFilter;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
                       className={cn(
-                        "size-4 shrink-0 opacity-80",
-                        providerIconClassName(option.value, "text-muted-foreground/85"),
+                        "inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors",
+                        isActive
+                          ? "border-border bg-accent text-foreground"
+                          : "border-transparent bg-secondary/70 text-muted-foreground hover:bg-accent/80 hover:text-foreground",
                       )}
-                    />
-                    <span>{option.label}</span>
-                    <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
-                      {option.unavailableLabel}
-                    </span>
-                  </MenuItem>
-                );
-              }
-              return (
-                <MenuSub key={option.value}>
-                  <MenuSubTrigger>
-                    <OptionIcon
-                      aria-hidden="true"
-                      className={cn(
-                        "size-4 shrink-0",
-                        providerIconClassName(option.value, "text-muted-foreground/85"),
-                      )}
-                    />
-                    {option.label}
-                  </MenuSubTrigger>
-                  <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
-                    <MenuGroup>
-                      <MenuRadioGroup
-                        value={props.provider === option.value ? props.model : ""}
-                        onValueChange={(value) => handleModelChange(option.value, value)}
+                      onClick={() => setProviderFilter(option.value)}
+                    >
+                      <OptionIcon
+                        className={cn(
+                          "size-3.5 shrink-0",
+                          providerIconClassName(option.value, "text-muted-foreground/80"),
+                        )}
+                      />
+                      <span>{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {unavailableProviders.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {unavailableProviders.map((option) => {
+                    const OptionIcon = option.icon;
+                    return (
+                      <span
+                        key={`${option.value}:unavailable`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-transparent bg-secondary/55 px-2 py-1 text-[11px] text-muted-foreground/65"
+                        title={option.unavailableLabel ?? undefined}
                       >
-                        {option.modelOptions.map((modelOption) => (
-                          <MenuRadioItem
-                            key={`${option.value}:${modelOption.slug}`}
-                            value={modelOption.slug}
-                            onClick={() => setIsMenuOpen(false)}
-                          >
-                            {modelOption.name}
-                          </MenuRadioItem>
-                        ))}
-                      </MenuRadioGroup>
-                    </MenuGroup>
-                  </MenuSubPopup>
-                </MenuSub>
-              );
-            })}
-            <MenuDivider />
-            {COMING_SOON_PROVIDER_OPTIONS.map((option) => {
-              const OptionIcon = option.icon;
-              return (
-                <MenuItem key={option.id} disabled>
-                  <OptionIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />
-                  <span>{option.label}</span>
-                  <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
-                    Coming soon
+                        <OptionIcon
+                          className={cn(
+                            "size-3.5 shrink-0 opacity-80",
+                            providerIconClassName(option.value, "text-muted-foreground/70"),
+                          )}
+                        />
+                        <span>{option.label}</span>
+                        <span className="uppercase tracking-[0.08em]">
+                          {option.unavailableLabel}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="max-h-[22rem] overflow-y-auto px-2 py-2">
+            {visibleGroups.length === 0 ? (
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                No matching models.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {visibleGroups.map(({ option, models }) => {
+                  const OptionIcon = option.icon;
+                  return (
+                    <div key={`group:${option.value}`} className="space-y-1">
+                      {props.lockedProvider === null &&
+                      (normalizedQuery.length > 0 || visibleGroups.length > 1) ? (
+                        <div className="flex items-center gap-2 px-2 pt-1 pb-0.5">
+                          <OptionIcon
+                            className={cn(
+                              "size-3.5 shrink-0",
+                              providerIconClassName(option.value, "text-muted-foreground/75"),
+                            )}
+                          />
+                          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">
+                            {option.label}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-0.5">
+                        {models.map((modelOption) => {
+                          const isSelected =
+                            props.provider === option.value && props.model === modelOption.slug;
+                          return (
+                            <button
+                              key={`${option.value}:${modelOption.slug}`}
+                              type="button"
+                              className={cn(
+                                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
+                                isSelected
+                                  ? "bg-accent text-foreground"
+                                  : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+                              )}
+                              onClick={() => handleModelChange(option.value, modelOption.slug)}
+                            >
+                              <OptionIcon
+                                className={cn(
+                                  "mt-0.5 size-4 shrink-0",
+                                  providerIconClassName(option.value, "text-muted-foreground/75"),
+                                )}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm">{modelOption.name}</div>
+                                <div className="truncate text-[11px] text-muted-foreground/70">
+                                  {normalizedQuery ? `${option.label} • ${modelOption.slug}` : modelOption.slug}
+                                </div>
+                              </div>
+                              {isSelected ? (
+                                <HugeiconsIcon
+                                  icon={__CheckIconHugeIcon}
+                                  className="size-4 shrink-0 text-foreground/85"
+                                />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-border/60 px-3 py-2">
+            <div className="flex flex-wrap gap-1.5">
+              {COMING_SOON_PROVIDER_OPTIONS.map((option) => {
+                const OptionIcon = option.icon;
+                return (
+                  <span
+                    key={option.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-transparent bg-secondary/55 px-2 py-1 text-[11px] text-muted-foreground/65"
+                  >
+                    <OptionIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-80" />
+                    <span>{option.label}</span>
+                    <span className="uppercase tracking-[0.08em]">Coming soon</span>
                   </span>
-                </MenuItem>
-              );
-            })}
-          </>
-        )}
-      </MenuPopup>
-    </Menu>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 });

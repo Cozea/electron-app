@@ -22,6 +22,7 @@ import {
   ThreadId,
   TurnId,
 } from "@cozea/assistant-contracts";
+import { deriveToolActivityPresentation } from "@cozea/assistant-shared/toolActivity";
 import { Effect, FileSystem, Layer, Queue, Schema, ServiceMap, Stream } from "effect";
 
 import {
@@ -41,6 +42,10 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import {
+  buildCodexSendTurnInput,
+  buildCodexStartSessionInput,
+} from "./CodexSessionRuntime.ts";
 
 const PROVIDER = "codex" as const;
 
@@ -548,7 +553,14 @@ function mapItemLifecycle(
     return undefined;
   }
 
-  const detail = itemDetail(source, payload ?? {});
+  const defaultTitle = itemTitle(itemType);
+  const presentation = deriveToolActivityPresentation({
+    itemType: itemType === "unknown" ? undefined : itemType,
+    title: defaultTitle,
+    detail: itemDetail(source, payload ?? {}),
+    data: event.payload,
+    fallbackSummary: defaultTitle ?? "Tool",
+  });
   const status =
     lifecycle === "item.started"
       ? "inProgress"
@@ -562,8 +574,8 @@ function mapItemLifecycle(
     payload: {
       itemType,
       ...(status ? { status } : {}),
-      ...(itemTitle(itemType) ? { title: itemTitle(itemType) } : {}),
-      ...(detail ? { detail } : {}),
+      ...(presentation.summary ? { title: presentation.summary } : {}),
+      ...(presentation.detail ? { detail: presentation.detail } : {}),
       ...(event.payload !== undefined ? { data: event.payload } : {}),
     },
   };
@@ -1369,21 +1381,15 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       );
       const binaryPath = codexSettings.binaryPath;
       const homePath = codexSettings.homePath;
-      const managerInput: CodexAppServerStartSessionInput = {
+      const managerInput: CodexAppServerStartSessionInput = buildCodexStartSessionInput({
         threadId: input.threadId,
-        provider: "codex",
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         runtimeMode: input.runtimeMode,
         binaryPath,
         ...(homePath ? { homePath } : {}),
-        ...(input.modelSelection?.provider === "codex"
-          ? { model: input.modelSelection.model }
-          : {}),
-        ...(input.modelSelection?.provider === "codex" && input.modelSelection.options?.fastMode
-          ? { serviceTier: "fast" }
-          : {}),
-      };
+        modelSelection: input.modelSelection,
+      });
 
       return yield* Effect.tryPromise({
         try: () => manager.startSession(managerInput),
@@ -1435,25 +1441,15 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
         return yield* Effect.tryPromise({
           try: () => {
-            const managerInput = {
+            const managerInput = buildCodexSendTurnInput({
               threadId: input.threadId,
               ...(input.input !== undefined ? { input: input.input } : {}),
-              ...(input.modelSelection?.provider === "codex"
-                ? { model: input.modelSelection.model }
-                : {}),
-              ...(input.modelSelection?.provider === "codex" &&
-              input.modelSelection.options?.reasoningEffort !== undefined
-                ? { effort: input.modelSelection.options.reasoningEffort }
-                : {}),
-              ...(input.modelSelection?.provider === "codex" &&
-              input.modelSelection.options?.fastMode
-                ? { serviceTier: "fast" }
-                : {}),
+              modelSelection: input.modelSelection,
               ...(input.interactionMode !== undefined
                 ? { interactionMode: input.interactionMode }
                 : {}),
               ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
-            };
+            });
             return manager.sendTurn(managerInput);
           },
           catch: (cause) => toRequestError(input.threadId, "turn/start", cause),

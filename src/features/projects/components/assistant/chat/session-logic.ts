@@ -37,15 +37,23 @@ export const PROVIDER_OPTIONS: ReadonlyArray<{
 export interface WorkLogEntry {
   id: string;
   createdAt: string;
+  turnId?: TurnId | null;
   label: string;
   detail?: string;
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
+  savedFiles?: ReadonlyArray<string>;
+  failedFiles?: ReadonlyArray<{
+    path: string;
+    error?: string;
+  }>;
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  activityKind?: OrchestrationThreadActivity["kind"];
+  status?: "inProgress" | "completed" | "failed" | "declined" | "cancelled";
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -473,7 +481,6 @@ export function deriveWorkLogEntries(
     .map(toDerivedWorkLogEntry);
   return collapseDerivedWorkLogEntries(entries).map(
     ({
-      activityKind: _activityKind,
       collapseKey: _collapseKey,
       toolCallId: _toolCallId,
       ...entry
@@ -500,8 +507,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       : null;
   const commandPreview = extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
+  const persistedFiles = extractPersistedFiles(payload);
   const title = extractToolTitle(payload);
+  const status = extractWorkLogStatus(payload);
   const isTaskActivity = activity.kind === "task.progress" || activity.kind === "task.completed";
+  const isToolProgressActivity =
+    activity.kind === "tool.progress" || activity.kind === "tool.summary";
+  const isPersistedFilesActivity = activity.kind === "files.persisted";
+  const runtimeDetail = extractRuntimeActivityDetail(activity.kind, payload, changedFiles);
   const taskSummary =
     isTaskActivity && typeof payload?.summary === "string" && payload.summary.length > 0
       ? payload.summary
@@ -521,15 +534,32 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       payload.detail.length > 0
       ? stripTrailingExitCode(payload.detail).output
       : null
-    : extractToolDetail(payload, title ?? activity.summary);
+    : isToolProgressActivity
+      ? extractToolProgressDetail(payload)
+      : isPersistedFilesActivity
+        ? extractPersistedFilesDetail(payload)
+        : runtimeDetail ?? extractToolDetail(payload, title ?? activity.summary);
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
+  const label =
+    taskLabel ??
+    deriveRuntimeActivityLabel({
+      activityKind: activity.kind,
+      activitySummary: activity.summary,
+      payload,
+    });
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
-    label: taskLabel || activity.summary,
+    turnId: activity.turnId,
+    label,
     tone:
       activity.kind === "task.progress"
         ? "thinking"
+        : status === "failed" ||
+            (isPersistedFilesActivity && persistedFiles.failedFiles.length > 0)
+          ? "error"
+        : status === "cancelled" || status === "declined"
+          ? "info"
         : activity.tone === "approval"
           ? "info"
           : activity.tone,
@@ -549,11 +579,20 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (changedFiles.length > 0) {
     entry.changedFiles = changedFiles;
   }
+  if (persistedFiles.savedFiles.length > 0) {
+    entry.savedFiles = persistedFiles.savedFiles;
+  }
+  if (persistedFiles.failedFiles.length > 0) {
+    entry.failedFiles = persistedFiles.failedFiles;
+  }
   if (title) {
     entry.toolTitle = title;
   }
   if (itemType) {
     entry.itemType = itemType;
+  }
+  if (status) {
+    entry.status = status;
   }
   if (requestKind) {
     entry.requestKind = requestKind;
@@ -587,6 +626,9 @@ function shouldCollapseToolLifecycleEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {
+  if (previous.turnId !== next.turnId) {
+    return false;
+  }
   if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
     return false;
   }
@@ -981,7 +1023,12 @@ function extractToolDetail(
   heading: string,
 ): string | null {
   const rawDetail = asTrimmedString(payload?.detail);
-  const detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
+  let detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
+
+  if (detail && /^[\s\[\]\{\}",:]+$/.test(detail)) {
+    detail = null;
+  }
+
   const normalizedHeading = normalizePreviewForComparison(heading);
   const normalizedDetail = normalizePreviewForComparison(detail);
 
@@ -1066,12 +1113,15 @@ function collectChangedFiles(value: unknown, target: string[], seen: Set<string>
   pushChangedFile(target, seen, record.oldPath);
 
   for (const nestedKey of [
+    "args",
+    "resolution",
     "item",
     "result",
     "input",
     "data",
     "changes",
     "files",
+    "failed",
     "edits",
     "patch",
     "patches",
@@ -1090,8 +1140,267 @@ function collectChangedFiles(value: unknown, target: string[], seen: Set<string>
 function extractChangedFiles(payload: Record<string, unknown> | null): string[] {
   const changedFiles: string[] = [];
   const seen = new Set<string>();
-  collectChangedFiles(asRecord(payload?.data), changedFiles, seen, 0);
+  collectChangedFiles(payload, changedFiles, seen, 0);
   return changedFiles;
+}
+
+function extractPersistedFiles(payload: Record<string, unknown> | null): {
+  savedFiles: string[];
+  failedFiles: Array<{
+    path: string;
+    error?: string;
+  }>;
+} {
+  const savedFiles: string[] = [];
+  const failedFiles: Array<{
+    path: string;
+    error?: string;
+  }> = [];
+
+  if (Array.isArray(payload?.files)) {
+    for (const entry of payload.files) {
+      const record = asRecord(entry);
+      const filename = asTrimmedString(record?.filename);
+      if (filename) {
+        savedFiles.push(filename);
+      }
+    }
+  }
+
+  if (Array.isArray(payload?.failed)) {
+    for (const entry of payload.failed) {
+      const record = asRecord(entry);
+      const filename = asTrimmedString(record?.filename);
+      if (!filename) {
+        continue;
+      }
+      const error = asTrimmedString(record?.error) ?? undefined;
+      failedFiles.push(
+        error
+          ? {
+              path: filename,
+              error,
+            }
+          : {
+              path: filename,
+            },
+      );
+    }
+  }
+
+  return { savedFiles, failedFiles };
+}
+
+function normalizeWorkLogStatus(
+  value: unknown,
+): "inProgress" | "completed" | "failed" | "declined" | "cancelled" | null {
+  switch (value) {
+    case "in_progress":
+    case "inProgress":
+    case "pending":
+      return "inProgress";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "declined":
+      return "declined";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return null;
+  }
+}
+
+function extractWorkLogStatus(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["status"] | undefined {
+  const directStatus = normalizeWorkLogStatus(payload?.status);
+  if (directStatus) {
+    return directStatus;
+  }
+  const data = asRecord(payload?.data);
+  return normalizeWorkLogStatus(data?.status) ?? undefined;
+}
+
+function extractFirstFailedPersistedFileError(
+  payload: Record<string, unknown> | null,
+): string | null {
+  const failed = payload?.failed;
+  if (!Array.isArray(failed)) {
+    return null;
+  }
+  for (const entry of failed) {
+    const record = asRecord(entry);
+    const filename = asTrimmedString(record?.filename);
+    const error = asTrimmedString(record?.error);
+    if (filename && error) {
+      return `${filename}: ${error}`;
+    }
+    if (filename) {
+      return filename;
+    }
+    if (error) {
+      return error;
+    }
+  }
+  return null;
+}
+
+function extractPersistedFilesDetail(payload: Record<string, unknown> | null): string | null {
+  const failure = extractFirstFailedPersistedFileError(payload);
+  if (failure) {
+    return failure;
+  }
+  const files = Array.isArray(payload?.files) ? payload.files.length : 0;
+  return files > 0 ? null : "No files were persisted";
+}
+
+function formatElapsedSeconds(value: unknown): string | null {
+  const seconds = asNumber(value);
+  if (seconds === null || seconds < 0) {
+    return null;
+  }
+  if (seconds >= 60) {
+    const wholeSeconds = Math.round(seconds);
+    const minutes = Math.floor(wholeSeconds / 60);
+    const remainder = wholeSeconds % 60;
+    return remainder > 0 ? `${minutes}m ${remainder}s` : `${minutes}m`;
+  }
+  return seconds >= 10 ? `${Math.round(seconds)}s` : `${seconds.toFixed(1)}s`;
+}
+
+function extractToolProgressDetail(payload: Record<string, unknown> | null): string | null {
+  const toolName = asTrimmedString(payload?.toolName);
+  const elapsed = formatElapsedSeconds(payload?.elapsedSeconds);
+  if (toolName && elapsed) {
+    return `${toolName} - ${elapsed}`;
+  }
+  if (toolName) {
+    return toolName;
+  }
+  return elapsed;
+}
+
+function extractRuntimeActivityDetail(
+  activityKind: string,
+  payload: Record<string, unknown> | null,
+  changedFiles: ReadonlyArray<string>,
+): string | null {
+  switch (activityKind) {
+    case "model.rerouted": {
+      const fromModel = asTrimmedString(payload?.fromModel);
+      const toModel = asTrimmedString(payload?.toModel);
+      const reason = asTrimmedString(payload?.reason);
+      const route =
+        fromModel && toModel ? `${fromModel} -> ${toModel}` : toModel ?? fromModel ?? null;
+      if (route && reason) {
+        return `${route} - ${reason}`;
+      }
+      return route ?? reason;
+    }
+    case "config.warning":
+    case "deprecation.notice": {
+      const details = asTrimmedString(payload?.details);
+      const path = asTrimmedString(payload?.path);
+      return details ?? path;
+    }
+    case "auth.status": {
+      const error = asTrimmedString(payload?.error);
+      if (error) {
+        return error;
+      }
+      if (Array.isArray(payload?.output)) {
+        const lines = payload.output
+          .map((entry) => asTrimmedString(entry))
+          .filter((entry): entry is string => entry !== null);
+        if (lines.length > 0) {
+          return lines[0];
+        }
+      }
+      return null;
+    }
+    case "approval.requested": {
+      const detail = asTrimmedString(payload?.detail);
+      if (detail) {
+        return detail;
+      }
+      return changedFiles[0] ?? null;
+    }
+    case "approval.resolved": {
+      return changedFiles[0] ?? null;
+    }
+    case "mcp.oauth.completed": {
+      const name = asTrimmedString(payload?.name);
+      const error = asTrimmedString(payload?.error);
+      return error ?? name;
+    }
+    case "runtime.warning": {
+      const message = asTrimmedString(payload?.message);
+      const detail = asTrimmedString(payload?.detail);
+      return detail ?? message;
+    }
+    default:
+      return null;
+  }
+}
+
+function deriveRuntimeActivityLabel(input: {
+  activityKind: string;
+  activitySummary: string;
+  payload: Record<string, unknown> | null;
+}): string {
+  const { activityKind, activitySummary, payload } = input;
+  switch (activityKind) {
+    case "tool.progress":
+      return (
+        asTrimmedString(payload?.summary) ??
+        (asTrimmedString(payload?.toolName)
+          ? `Running ${asTrimmedString(payload?.toolName)}`
+          : "Tool in progress")
+      );
+    case "tool.summary":
+      return asTrimmedString(payload?.summary) ?? activitySummary;
+    case "files.persisted": {
+      const savedCount = Array.isArray(payload?.files) ? payload.files.length : 0;
+      const failedCount = Array.isArray(payload?.failed) ? payload.failed.length : 0;
+      if (savedCount > 0 && failedCount > 0) {
+        return "Saved files with issues";
+      }
+      if (failedCount > 0) {
+        return "Failed to save files";
+      }
+      return "Saved files";
+    }
+    case "model.rerouted":
+      return "Model rerouted";
+    case "config.warning":
+      return asTrimmedString(payload?.summary) ?? "Configuration warning";
+    case "deprecation.notice":
+      return asTrimmedString(payload?.summary) ?? "Deprecation notice";
+    case "auth.status":
+      return asTrimmedString(payload?.error)
+        ? "Authentication failed"
+        : payload?.isAuthenticating === true
+          ? "Authenticating provider"
+          : "Authentication updated";
+    case "account.updated":
+      return "Account updated";
+    case "account.rate-limits.updated":
+      return "Rate limits updated";
+    case "mcp.status.updated":
+      return "MCP status updated";
+    case "mcp.oauth.completed":
+      return payload?.success === false ? "MCP sign-in failed" : "MCP sign-in completed";
+    case "runtime.warning":
+      return asTrimmedString(payload?.message) ?? "Runtime warning";
+    case "approval.requested":
+      return activitySummary;
+    case "approval.resolved":
+      return activitySummary;
+    default:
+      return activitySummary;
+  }
 }
 
 function compareActivitiesByOrder(
@@ -1188,5 +1497,8 @@ export function derivePhase(session: ThreadSession | null): SessionPhase {
   if (!session || session.status === "closed") return "disconnected";
   if (session.status === "connecting") return "connecting";
   if (session.status === "running") return "running";
+  if (session.status === "interrupted") return "interrupted";
+  if (session.status === "stopped") return "stopped";
+  if (session.status === "error") return "error";
   return "ready";
 }
