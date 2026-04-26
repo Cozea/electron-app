@@ -532,7 +532,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
               {showHeader && (
-                <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+                <div className="mb-1.5 flex items-center justify-between gap-2 -mx-1 -mt-0.5">
                   <p
                     className="inline-flex min-h-5 shrink-0 items-center justify-center rounded-full bg-muted/90 px-2.5 py-1 text-sm font-medium tabular-nums leading-none text-muted-foreground"
                     aria-label={
