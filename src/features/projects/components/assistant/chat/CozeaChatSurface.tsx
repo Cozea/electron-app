@@ -61,7 +61,7 @@ import { ensureNativeApi } from "@/lib/nativeApi"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon } from '@hugeicons/core-free-icons'
+import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, ImageAdd01Icon as __ImageAdd01IconHugeIcon } from '@hugeicons/core-free-icons'
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
@@ -334,7 +334,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   >({})
   const [composerDockHover, setComposerDockHover] = useState(false)
   const [composerDockFocused, setComposerDockFocused] = useState(false)
-  const [isDragOverComposer, setIsDragOverComposer] = useState(false)
+  const [isDragOverSurface, setIsDragOverSurface] = useState(false)
   const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
   const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
@@ -808,35 +808,35 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     ? expandedImage.images[expandedImage.index] ?? null
     : null
 
-  const handleComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleSurfaceDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return
     event.preventDefault()
     dragDepthRef.current += 1
-    setIsDragOverComposer(true)
+    setIsDragOverSurface(true)
   }
 
-  const handleComposerDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleSurfaceDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
-    setIsDragOverComposer(true)
+    setIsDragOverSurface(true)
   }
 
-  const handleComposerDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleSurfaceDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return
     event.preventDefault()
     const nextTarget = event.relatedTarget
     if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return
-    // Leaving the composer container should fully clear drag state.
+    // Leaving the container should fully clear drag state.
     dragDepthRef.current = 0
-    setIsDragOverComposer(false)
+    setIsDragOverSurface(false)
   }
 
-  const handleComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleSurfaceDrop = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return
     event.preventDefault()
     dragDepthRef.current = 0
-    setIsDragOverComposer(false)
+    setIsDragOverSurface(false)
     const files = Array.from(event.dataTransfer.files)
     if (files.length === 0) return
     props.onAttachFiles(files)
@@ -969,7 +969,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   useEffect(() => {
     const clearDragState = () => {
       dragDepthRef.current = 0
-      setIsDragOverComposer(false)
+      setIsDragOverSurface(false)
     }
     window.addEventListener("drop", clearDragState)
     window.addEventListener("dragend", clearDragState)
@@ -1004,12 +1004,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         className={cn(
           "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
-          isDragOverComposer && "border-primary/70 bg-accent/30",
         )}
-        onDragEnter={handleComposerDragEnter}
-        onDragOver={handleComposerDragOver}
-        onDragLeave={handleComposerDragLeave}
-        onDrop={handleComposerDrop}
       >
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
@@ -1402,7 +1397,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasProviderBanner = props.providerSnapshot && props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled";
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background relative"
+      onDragEnter={handleSurfaceDragEnter}
+      onDragOver={handleSurfaceDragOver}
+      onDragLeave={handleSurfaceDragLeave}
+      onDrop={handleSurfaceDrop}
+    >
+      {isDragOverSurface && (
+        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-sm text-center rounded-[inherit]">
+          <HugeiconsIcon icon={__ImageAdd01IconHugeIcon} className="size-7 text-muted-foreground mb-4" />
+          <h3 className="text-base font-medium text-foreground">Drop images to attach</h3>
+          <p className="text-sm text-muted-foreground mt-1">Images will be added to your draft</p>
+        </div>
+      )}
       <div
         className={cn(
           "relative flex min-h-0 flex-1 flex-col",
