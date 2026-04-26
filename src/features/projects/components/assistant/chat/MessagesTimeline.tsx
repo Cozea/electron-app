@@ -21,7 +21,7 @@ import {
   type OnViewableItemsChangedInfo,
 } from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
+import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon, Image01Icon as __ImageIconHugeIcon } from '@hugeicons/core-free-icons'
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/stores/types";
@@ -72,6 +72,7 @@ const GlobeIcon = asHugeIcon(__GlobeIconHugeIcon)
 const SquarePenIcon = asHugeIcon(__SquarePenIconHugeIcon)
 const HammerIcon = asHugeIcon(__HammerIconHugeIcon)
 const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon)
+const ImageIcon = asHugeIcon(__ImageIconHugeIcon)
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
@@ -188,6 +189,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     Record<string, boolean>
   >({});
   const [expandedUserMessageIds, setExpandedUserMessageIds] = useState<Record<string, boolean>>({});
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
   const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
@@ -455,6 +457,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const onTimelineImageLoad = useCallback(() => {
     // Legend List measures row size with ResizeObserver; this hook preserves the old image load contract.
   }, []);
+  const onTimelineImageError = useCallback((imageId: string) => {
+    setFailedImageIds((prev) => {
+      const next = new Set(prev);
+      next.add(imageId);
+      return next;
+    });
+  }, []);
+
   const onLegendListLoad = useCallback((info: { elapsedTimeInMs: number }) => {
     if (!shouldLogLegendListDiagnostics()) return;
     console.info("[LegendList][AgentTimeline] load", {
@@ -612,84 +622,90 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="w-full min-w-0">
               <div className="group flex w-full min-w-0 flex-col gap-1">
-                <div className="relative w-full min-w-0 rounded-md bg-secondary px-3.5 py-2.5">
                   {userImages.length > 0 && (
-                    <div className="mb-2 grid w-full max-w-full grid-cols-2 gap-2">
+                    <div className="mb-1 flex w-full flex-wrap justify-end gap-2 pl-12">
                       {userImages.map(
-                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                          <div
-                            key={image.id}
-                            className="overflow-hidden rounded-md bg-background/70"
-                          >
-                            {image.previewUrl ? (
-                              <button
-                                type="button"
-                                className="h-full w-full cursor-zoom-in"
-                                aria-label={`Preview ${image.name}`}
-                                onClick={() => {
-                                  const preview = buildExpandedImagePreview(userImages, image.id);
-                                  if (!preview) return;
-                                  onImageExpand(preview);
-                                }}
-                              >
-                                <img
-                                  src={image.previewUrl}
-                                  alt={image.name}
-                                  className="h-full max-h-[220px] w-full object-cover"
-                                  onLoad={onTimelineImageLoad}
-                                  onError={onTimelineImageLoad}
-                                />
-                              </button>
-                            ) : (
-                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                                {image.name}
-                              </div>
-                            )}
-                          </div>
-                        ),
+                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => {
+                          const isFailed = failedImageIds.has(image.id);
+                          return (
+                            <div
+                              key={image.id}
+                              className="relative overflow-hidden rounded-md border border-border/40 bg-transparent h-24 w-32 shrink-0"
+                            >
+                              {image.previewUrl && !isFailed ? (
+                                <button
+                                  type="button"
+                                  className="h-full w-full cursor-zoom-in"
+                                  aria-label={`Preview ${image.name}`}
+                                  onClick={() => {
+                                    const preview = buildExpandedImagePreview(userImages, image.id);
+                                    if (!preview) return;
+                                    onImageExpand(preview);
+                                  }}
+                                >
+                                  <img
+                                    src={image.previewUrl}
+                                    alt={image.name}
+                                    className="h-full w-full object-cover"
+                                    onLoad={onTimelineImageLoad}
+                                    onError={() => onTimelineImageError(image.id)}
+                                  />
+                                </button>
+                              ) : (
+                                <div className="flex h-full w-full flex-col items-center justify-center border border-dashed border-border/70 bg-secondary/30 px-2 py-2 text-center text-muted-foreground">
+                                  <ImageIcon className="mb-1.5 size-5 opacity-50" />
+                                  <span className="truncate w-full text-[9px] font-medium leading-tight">
+                                    {image.name}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        },
                       )}
                     </div>
                   )}
                   {(displayedUserMessage.visibleText.trim().length > 0 ||
                     terminalContexts.length > 0) && (
-                    <div className="flex w-full min-w-0 items-start gap-1">
-                      <div
-                        className={cn(
-                          "min-w-0 flex-1 text-left",
-                          needsUserBodyTruncate &&
-                            !userMessageExpanded &&
-                            "line-clamp-6 overflow-hidden",
-                        )}
-                      >
-                        <UserMessageBody
-                          text={displayedUserMessage.visibleText}
-                          terminalContexts={terminalContexts}
-                        />
-                      </div>
-                      {needsUserBodyTruncate ? (
-                        <button
-                          type="button"
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
-                          aria-expanded={userMessageExpanded}
-                          aria-label={
-                            userMessageExpanded ? "Collapse user message" : "Expand user message"
-                          }
-                          title={userMessageExpanded ? "Show less" : "Show full message"}
-                          onClick={() => toggleUserMessageExpanded(messageId)}
+                    <div className="relative w-full min-w-0 rounded-md bg-secondary px-3.5 py-2.5">
+                      <div className="flex w-full min-w-0 items-start gap-1">
+                        <div
+                          className={cn(
+                            "min-w-0 flex-1 text-left",
+                            needsUserBodyTruncate &&
+                              !userMessageExpanded &&
+                              "line-clamp-6 overflow-hidden",
+                          )}
                         >
-                          <HugeiconsIcon
-                            icon={
-                              userMessageExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon
-                            }
-                            className="size-3.5 stroke-[2.1]"
+                          <UserMessageBody
+                            text={displayedUserMessage.visibleText}
+                            terminalContexts={terminalContexts}
                           />
-                        </button>
-                      ) : null}
+                        </div>
+                        {needsUserBodyTruncate ? (
+                          <button
+                            type="button"
+                            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
+                            aria-expanded={userMessageExpanded}
+                            aria-label={
+                              userMessageExpanded ? "Collapse user message" : "Expand user message"
+                            }
+                            title={userMessageExpanded ? "Show less" : "Show full message"}
+                            onClick={() => toggleUserMessageExpanded(messageId)}
+                          >
+                            <HugeiconsIcon
+                              icon={
+                                userMessageExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon
+                              }
+                              className="size-3.5 stroke-[2.1]"
+                            />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   )}
-                </div>
 
-                <div className="mt-0.5 flex w-full min-w-0 items-center justify-start gap-2 px-1">
+                <div className="mt-0.5 flex w-full min-w-0 items-center justify-end gap-2 px-1">
                   <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
                     {displayedUserMessage.copyText && (
                       <MessageCopyButton text={displayedUserMessage.copyText} />
