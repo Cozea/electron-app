@@ -1,7 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, Folder01Icon as __FolderClosedIconHugeIcon, Folder01Icon as __FolderIconHugeIcon } from '@hugeicons/core-free-icons'
+import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon } from '@hugeicons/core-free-icons'
 
 // @ts-nocheck
 import { type TurnId } from "@cozea/assistant-contracts";
@@ -11,6 +11,8 @@ import { buildTurnDiffTree, type TurnDiffTreeNode } from "./turnDiffTree";
 import { cn } from "@/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
+import { NativeProjectFolderIcon } from "../../NativeProjectFolderIcon";
 
 export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   turnId: TurnId;
@@ -20,6 +22,9 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
+  const { containerRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
+    font: "13px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  });
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
@@ -49,6 +54,12 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
 
   const renderTreeNode = (node: TurnDiffTreeNode, depth: number) => {
     const leftPadding = 8 + depth * 14;
+    const getNodeTitle = (hasStat: boolean) => {
+      const leadingGlyphSpace = 14 + 6 + 14 + 6;
+      const trailingSpace = hasStat ? 72 : 8;
+      const reservedWidth = leftPadding + leadingGlyphSpace + trailingSpace;
+      return getOverflowTitle(node.name, reservedWidth);
+    };
     if (node.kind === "directory") {
       const isExpanded = expandedDirectories[node.path] ?? depth === 0;
       return (
@@ -66,12 +77,11 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
                 isExpanded && "rotate-90",
               )}
             />
-            {isExpanded ? (
-              <HugeiconsIcon icon={__FolderIconHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75" />
-            ) : (
-              <HugeiconsIcon icon={__FolderClosedIconHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75" />
-            )}
-            <span className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90">
+            <NativeProjectFolderIcon folderPath={node.path} className="size-3.5" imgClassName="size-3.5" />
+            <span
+              className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90"
+              title={getNodeTitle(Boolean(node.stat && hasNonZeroStat(node.stat)))}
+            >
               {node.name}
             </span>
             {hasNonZeroStat(node.stat) && (
@@ -104,7 +114,10 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
           theme={resolvedTheme}
           className="size-3.5 text-muted-foreground/70"
         />
-        <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
+        <span
+          className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90"
+          title={getNodeTitle(Boolean(node.stat))}
+        >
           {node.name}
         </span>
         {node.stat && (
@@ -116,7 +129,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     );
   };
 
-  return <div className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
+  return <div ref={containerRef} className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
 });
 
 function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {

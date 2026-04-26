@@ -1,6 +1,9 @@
 
 import { cn } from "@/lib/utils"
-import projectSidebarIcon from "@/assets/project-icons/project-sidebar-icon.png"
+import { useTheme } from "@/contexts/ThemeContext"
+import { resolveAppliedTheme } from "@/lib/theme"
+import projectSidebarIconLight from "@/assets/project-icons/project-sidebar-icon-light.png"
+import projectSidebarIconDark from "@/assets/project-icons/project-sidebar-icon-dark.png"
 
 export interface NativeProjectFolderIconProps {
   /** Local project folder path; kept for compatibility with existing call sites. */
@@ -24,8 +27,12 @@ export function NativeProjectFolderIcon({
   isOpen = false,
   className,
   imgClassName,
-  fallbackClassName = "size-3.5 text-muted-foreground/75",
+  fallbackClassName = "size-4 text-muted-foreground/75",
 }: NativeProjectFolderIconProps) {
+  const { theme } = useTheme()
+  const appliedTheme = resolveAppliedTheme(theme)
+  const projectSidebarIcon = appliedTheme === "light" ? projectSidebarIconLight : projectSidebarIconDark
+
   return (
     <span className={cn("inline-flex shrink-0 items-center justify-center", className)}>
       {isOpen ? (
@@ -37,7 +44,7 @@ export function NativeProjectFolderIcon({
           src={projectSidebarIcon}
           alt=""
           aria-hidden
-          className={cn("size-3.5 shrink-0 object-contain", imgClassName ?? fallbackClassName)}
+          className={cn("size-4 shrink-0 object-contain", imgClassName ?? fallbackClassName)}
         />
       )}
     </span>

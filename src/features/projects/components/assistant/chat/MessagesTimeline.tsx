@@ -3,6 +3,7 @@ import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -36,6 +37,7 @@ import {
 import { asHugeIcon } from '@/lib/icons/asHugeIcon'
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
@@ -58,6 +60,7 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+import { exceedsTextLineCountAtWidth } from "@/lib/text/pretextMeasure";
 
 const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
 const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
@@ -74,8 +77,8 @@ const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon)
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 /** Long user bubbles: collapse with expand control (same pattern as work log overflow). */
-const USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD = 420;
-const USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD = 10;
+const USER_MESSAGE_TRUNCATE_LINE_THRESHOLD = 6;
+const USER_MESSAGE_FONT = "13px Inter";
 
 interface MessagesTimelineProps {
   hasMessages: boolean;
@@ -88,7 +91,6 @@ interface MessagesTimelineProps {
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
-  nowIso: string;
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -159,7 +161,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   completionDividerBeforeEntryId,
   completionSummary,
   turnDiffSummaryByAssistantMessageId,
-  nowIso,
   expandedWorkGroups,
   onToggleWorkGroup,
   onOpenTurnDiff,
@@ -372,7 +373,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       expandedWorkGroups,
       isRevertingCheckpoint,
       isWorking,
-      nowIso,
       resolvedTheme,
       turnDiffSummaryVersion: turnDiffSummaryByAssistantMessageId.size,
     }),
@@ -383,7 +383,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       expandedWorkGroups,
       isRevertingCheckpoint,
       isWorking,
-      nowIso,
       resolvedTheme,
       turnDiffSummaryByAssistantMessageId.size,
     ],
@@ -487,7 +486,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {showHeader && (
                 <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
                   <p
-                    className="inline-flex min-h-4 shrink-0 items-center justify-center rounded-full bg-muted/90 px-1.5 py-px text-[7px] font-medium tabular-nums leading-none text-muted-foreground"
+                    className="inline-flex min-h-4 shrink-0 items-center justify-center rounded-full bg-muted/90 px-1.5 py-px text-[10px] font-medium tabular-nums leading-none text-muted-foreground"
                     aria-label={
                       onlyToolEntries
                         ? `${groupedEntries.length} tool calls`
@@ -544,10 +543,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const measurePayload = [terminalCtxPrefix, displayedUserMessage.visibleText]
             .filter((part) => part.length > 0)
             .join("\n");
-          const newlineCount = (measurePayload.match(/\n/g) ?? []).length;
-          const needsUserBodyTruncate =
-            measurePayload.length > USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD ||
-            newlineCount >= USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD;
+          const estimatedBubbleContentWidth = Math.max(
+            120,
+            (timelineWidthPx ?? LEGEND_LIST_DEFAULT_WIDTH_PX) - 28, // list horizontal padding + bubble insets
+          );
+          const needsUserBodyTruncate = exceedsTextLineCountAtWidth(
+            measurePayload,
+            USER_MESSAGE_FONT,
+            estimatedBubbleContentWidth,
+            USER_MESSAGE_TRUNCATE_LINE_THRESHOLD,
+            { whiteSpace: "pre-wrap" },
+          );
           const userMessageExpanded = expandedUserMessageIds[messageId] ?? false;
           return (
             <div className="w-full min-w-0">
@@ -593,19 +599,31 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   {(displayedUserMessage.visibleText.trim().length > 0 ||
                     terminalContexts.length > 0) && (
                     <div className="flex w-full min-w-0 items-start gap-1">
-                      <div
-                        className={cn(
-                          "min-w-0 flex-1 text-left",
-                          needsUserBodyTruncate &&
-                            !userMessageExpanded &&
-                            "line-clamp-6 overflow-hidden",
-                        )}
-                      >
-                        <UserMessageBody
-                          text={displayedUserMessage.visibleText}
-                          terminalContexts={terminalContexts}
-                        />
-                      </div>
+                      {needsUserBodyTruncate ? (
+                        <Collapsible open={userMessageExpanded} className="min-w-0 flex-1 text-left">
+                          {!userMessageExpanded && (
+                            <div className="line-clamp-6 overflow-hidden">
+                              <UserMessageBody
+                                text={displayedUserMessage.visibleText}
+                                terminalContexts={terminalContexts}
+                              />
+                            </div>
+                          )}
+                          <CollapsibleContent className="min-w-0">
+                            <UserMessageBody
+                              text={displayedUserMessage.visibleText}
+                              terminalContexts={terminalContexts}
+                            />
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ) : (
+                        <div className="min-w-0 flex-1 text-left">
+                          <UserMessageBody
+                            text={displayedUserMessage.visibleText}
+                            terminalContexts={terminalContexts}
+                          />
+                        </div>
+                      )}
                       {needsUserBodyTruncate ? (
                         <button
                           type="button"
@@ -690,19 +708,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   return (
                     <div className="mt-2 rounded-lg bg-secondary p-2.5">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                          <span>Changed files ({changedFileCountLabel})</span>
-                          {hasNonZeroStat(summaryStat) && (
-                            <>
-                              <span className="mx-1">•</span>
-                              <DiffStatLabel
-                                additions={summaryStat.additions}
-                                deletions={summaryStat.deletions}
-                              />
-                            </>
-                          )}
-                        </p>
                         <div className="flex items-center gap-1.5">
+                          <p className="text-[10px] text-muted-foreground/65">
+                            Changed Files
+                          </p>
+                          <span
+                            className="inline-flex min-h-4 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/90 px-1.5 py-px text-[10px] font-medium tabular-nums leading-none text-foreground/80"
+                            aria-label={`${changedFileCountLabel} changed files`}
+                          >
+                            {changedFileCountLabel}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
                             type="button"
                             size="icon-sm"
@@ -714,19 +731,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                           >
                             <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                           </Button>
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-                            onClick={() =>
-                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                            }
-                            title="View diff"
-                            aria-label="View diff"
-                          >
-                            <EyeIcon className="size-3.5" />
-                          </Button>
+                          {hasNonZeroStat(summaryStat) && (
+                            <span className="text-[10px] leading-none">
+                              <DiffStatLabel
+                                additions={summaryStat.additions}
+                                deletions={summaryStat.deletions}
+                              />
+                            </span>
+                          )}
                         </div>
                       </div>
                       <ChangedFilesTree
@@ -764,9 +776,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
             </span>
             <span>
-              {row.createdAt
-                ? `Working for ${formatWorkingTimer(row.createdAt, nowIso) ?? "0s"}`
-                : "Working..."}
+              {row.createdAt ? <WorkingDurationLabel startIso={row.createdAt} /> : "Working..."}
             </span>
           </div>
         </div>
@@ -984,6 +994,22 @@ function formatWorkingTimer(startIso: string, endIso: string): string | null {
 
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
+
+const WorkingDurationLabel = memo(function WorkingDurationLabel(props: { startIso: string }) {
+  const [nowIso, setNowIso] = useState(() => new Date().toISOString());
+
+  useEffect(() => {
+    setNowIso(new Date().toISOString());
+    const intervalId = window.setInterval(() => {
+      setNowIso(new Date().toISOString());
+    }, 1000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [props.startIso]);
+
+  return <>Working for {formatWorkingTimer(props.startIso, nowIso) ?? "0s"}</>;
+});
 
 const UserMessageTerminalContextInlineLabel = memo(
   function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {

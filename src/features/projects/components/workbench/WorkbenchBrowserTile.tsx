@@ -378,10 +378,10 @@ export function WorkbenchBrowserTile({
           <img
             src={state.favicon}
             alt=""
-            className="size-3.5 shrink-0 rounded-sm object-contain"
+            className="size-[18px] shrink-0 rounded-sm object-contain"
           />
         ) : draftUrl.startsWith("https://") ? (
-          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
+          <HugeiconsIcon icon={__LockHugeIcon} className="size-[18px] shrink-0 text-muted-foreground" />
         ) : null}
         <Input
           ref={urlInputRef}

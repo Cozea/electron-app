@@ -206,6 +206,7 @@ function WorkbenchRuntimePreviewTile({
   const showEmbeddedPreview =
     viewMode === "preview" && (isMobileSimulatorSurface || previewDestination === "cozea")
   const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
+  const [suppressPreviewUrl, setSuppressPreviewUrl] = useState(false)
   const {
     hostRef,
     state: previewState,
@@ -214,7 +215,7 @@ function WorkbenchRuntimePreviewTile({
     placeholderScreenshot,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
-    url: showWebEmbeddedPreview ? displayUrl : "",
+    url: showWebEmbeddedPreview && !suppressPreviewUrl ? displayUrl : "",
     sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
@@ -350,6 +351,31 @@ function WorkbenchRuntimePreviewTile({
     }
     setTerminalUiAttached(terminalId, panelActivity.visible)
   }, [panelActivity.visible, setTerminalUiAttached, terminalId])
+
+  /**
+   * When the dev server transitions back into `ready` (e.g. after stop -> start),
+   * the embedded browser view often keeps an `ERR_CONNECTION_REFUSED` snapshot
+   * or stays blank because the URL hasn't actually changed. Briefly suspend the
+   * preview URL so the browser view re-initializes and re-syncs bounds, the
+   * same effect as navigating to the terminal tab and back.
+   */
+  const previousDevServerStatusRef = useRef<DevServerStatus>(devServer.status)
+  useEffect(() => {
+    const previousStatus = previousDevServerStatusRef.current
+    previousDevServerStatusRef.current = devServer.status
+    if (devServer.status !== "ready" || previousStatus === "ready") {
+      return
+    }
+    if (!showWebEmbeddedPreview) return
+    if (!previewUrl) return
+    setSuppressPreviewUrl(true)
+    const restoreFrame = window.requestAnimationFrame(() => {
+      setSuppressPreviewUrl(false)
+    })
+    return () => {
+      window.cancelAnimationFrame(restoreFrame)
+    }
+  }, [devServer.status, previewUrl, showWebEmbeddedPreview, tile.id])
 
   useEffect(() => {
     if (!terminalId) {

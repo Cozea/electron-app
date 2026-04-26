@@ -8,6 +8,10 @@ import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon } from '@hugeicons
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import type * as React from "react";
 
+import {
+  preflightNativeSurfaceOcclusion,
+  useNativeSurfaceOverlayLifecycle,
+} from "@/lib/nativeSurfaceOcclusion";
 import { cn } from "@/lib/utils";
 
 const MenuCreateHandle = MenuPrimitive.createHandle;
@@ -16,9 +20,29 @@ const Menu = MenuPrimitive.Root;
 
 const MenuPortal = MenuPrimitive.Portal;
 
-function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Props) {
+function MenuTrigger({
+  className,
+  children,
+  onKeyDownCapture,
+  onPointerDownCapture,
+  ...props
+}: MenuPrimitive.Trigger.Props) {
   return (
-    <MenuPrimitive.Trigger className={className} data-slot="menu-trigger" {...props}>
+    <MenuPrimitive.Trigger
+      className={className}
+      data-slot="menu-trigger"
+      onKeyDownCapture={(event) => {
+        if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+          preflightNativeSurfaceOcclusion("Menu opening");
+        }
+        onKeyDownCapture?.(event);
+      }}
+      onPointerDownCapture={(event) => {
+        preflightNativeSurfaceOcclusion("Menu opening");
+        onPointerDownCapture?.(event);
+      }}
+      {...props}
+    >
       {children}
     </MenuPrimitive.Trigger>
   );
@@ -40,6 +64,8 @@ function MenuPopup({
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
 }) {
+  useNativeSurfaceOverlayLifecycle();
+
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner

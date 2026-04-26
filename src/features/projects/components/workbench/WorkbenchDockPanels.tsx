@@ -25,6 +25,7 @@ import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { cn } from "@/lib/utils"
 
 const panelSuspenseFallback = <div className="h-full bg-background" aria-hidden="true" />
 const DEFAULT_BACKGROUND_UI_DETACH_MS = 45_000
@@ -342,12 +343,50 @@ function TileUiHydrationBoundary({
     tileType,
     visibleHydrateDelayMs,
   })
+  const [showDormantPlaceholder, setShowDormantPlaceholder] = useState(!shouldHydrate)
+  const [showHydratedUi, setShowHydratedUi] = useState(shouldHydrate)
 
-  if (!shouldHydrate) {
-    return <DormantTilePlaceholder title={title} />
-  }
+  useEffect(() => {
+    if (!shouldHydrate) {
+      setShowDormantPlaceholder(true)
+      setShowHydratedUi(false)
+      return
+    }
 
-  return <Suspense fallback={panelSuspenseFallback}>{children}</Suspense>
+    setShowHydratedUi(true)
+    const timer = window.setTimeout(() => {
+      setShowDormantPlaceholder(false)
+    }, 160)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [shouldHydrate])
+
+  return (
+    <div className="relative h-full min-h-0">
+      {showDormantPlaceholder ? (
+        <div
+          className={cn(
+            "absolute inset-0 transition-opacity duration-150 ease-out",
+            shouldHydrate ? "opacity-0" : "opacity-100",
+          )}
+        >
+          <DormantTilePlaceholder title={title} />
+        </div>
+      ) : null}
+      {showHydratedUi ? (
+        <div
+          className={cn(
+            "absolute inset-0 transition-opacity duration-150 ease-out",
+            shouldHydrate ? "opacity-100" : "opacity-0",
+          )}
+        >
+          <Suspense fallback={panelSuspenseFallback}>{children}</Suspense>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function MissingTilePlaceholder() {

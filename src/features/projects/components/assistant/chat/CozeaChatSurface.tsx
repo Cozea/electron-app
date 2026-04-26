@@ -1,7 +1,7 @@
 import {
 
   ApprovalRequestId,
-  MessageId,
+  type MessageId,
   type ModelSelection,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
@@ -36,21 +36,8 @@ import type {
 import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
-import { ThreadErrorBanner } from "@/features/projects/components/assistant/chat/ThreadErrorBanner"
-import {
-  deriveActiveWorkStartedAt,
-  derivePhase,
-  deriveTimelineEntries,
-  deriveWorkLogEntries,
-  findLatestProposedPlan,
-  formatElapsed,
-  hasActionableProposedPlan,
-  hasToolActivityForTurn,
-  inferCheckpointTurnCountByTurnId,
-  isLatestTurnSettled,
-  type PendingApproval,
-  type PendingUserInput,
-} from "@/features/projects/components/assistant/chat/session-logic"
+import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
+import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/projects/components/assistant/chat/ComposerPromptEditor"
 import type { ContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
@@ -98,6 +85,7 @@ interface CozeaChatSurfaceProps {
   composerCursor: number
   isSending: boolean
   isInterrupting: boolean
+  isForceStopAvailable?: boolean
   isRevertingCheckpoint?: boolean
   selectedProvider: ProviderKind
   selectedModelSelection: ModelSelection
@@ -235,7 +223,6 @@ function renderSendIcon(isBusy: boolean) {
 
 export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
   const resolvedTheme = resolveTimelineTheme()
-  const [nowTick, setNowTick] = useState(() => Date.now())
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
   const [pendingQuestionIndexByRequestId, setPendingQuestionIndexByRequestId] = useState<
@@ -246,123 +233,27 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
 
-  const activeTurn = props.thread?.latestTurn ?? null
-  const latestTurnSettled = isLatestTurnSettled(activeTurn, props.thread?.session ?? null)
-  const phase = props.thread ? derivePhase(props.thread.session ?? null) : "disconnected"
-  const isWorking =
-    props.isRunning || props.isSending || props.isInterrupting || Boolean(props.isRevertingCheckpoint)
-  const nowIso = new Date(nowTick).toISOString()
-  const activeTurnStartedAt = deriveActiveWorkStartedAt(
-    activeTurn,
-    props.thread?.session ?? null,
-    null,
-  )
-  const threadActivities = props.thread?.activities ?? []
-  const workLogEntries = useMemo(
-    () => deriveWorkLogEntries(threadActivities, activeTurn?.turnId ?? undefined),
-    [activeTurn?.turnId, threadActivities],
-  )
-  const timelineEntries = useMemo(
-    () => deriveTimelineEntries(props.thread?.messages ?? [], props.thread?.proposedPlans ?? [], workLogEntries),
-    [props.thread?.messages, props.thread?.proposedPlans, workLogEntries],
-  )
-  const latestTurnHasToolActivity = useMemo(
-    () => hasToolActivityForTurn(threadActivities, activeTurn?.turnId),
-    [activeTurn?.turnId, threadActivities],
-  )
-  const inferredCheckpointTurnCountByTurnId = useMemo(
-    () => inferCheckpointTurnCountByTurnId(props.thread?.turnDiffSummaries ?? []),
-    [props.thread?.turnDiffSummaries],
-  )
-  const turnDiffSummaryByAssistantMessageId = useMemo(() => {
-    const byMessageId = new Map<MessageId, Thread["turnDiffSummaries"][number]>()
-    for (const summary of props.thread?.turnDiffSummaries ?? []) {
-      if (!summary.assistantMessageId) {
-        continue
-      }
-      byMessageId.set(summary.assistantMessageId, summary)
-    }
-    return byMessageId
-  }, [props.thread?.turnDiffSummaries])
-  const revertTurnCountByUserMessageId = useMemo(() => {
-    const byUserMessageId = new Map<MessageId, number>()
-
-    for (let index = 0; index < timelineEntries.length; index += 1) {
-      const entry = timelineEntries[index]
-      if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
-        continue
-      }
-
-      for (let nextIndex = index + 1; nextIndex < timelineEntries.length; nextIndex += 1) {
-        const nextEntry = timelineEntries[nextIndex]
-        if (!nextEntry || nextEntry.kind !== "message") {
-          continue
-        }
-        if (nextEntry.message.role === "user") {
-          break
-        }
-        const summary = turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id)
-        if (!summary) {
-          continue
-        }
-        const turnCount =
-          summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId]
-        if (typeof turnCount !== "number") {
-          break
-        }
-        byUserMessageId.set(entry.message.id, Math.max(0, turnCount - 1))
-        break
-      }
-    }
-
-    return byUserMessageId
-  }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId])
-  const completionSummary = useMemo(() => {
-    if (!latestTurnSettled) return null
-    if (!activeTurn?.startedAt || !activeTurn.completedAt) return null
-    if (!latestTurnHasToolActivity) return null
-
-    const elapsed = formatElapsed(activeTurn.startedAt, activeTurn.completedAt)
-    return elapsed ? `Worked for ${elapsed}` : null
-  }, [activeTurn?.completedAt, activeTurn?.startedAt, latestTurnHasToolActivity, latestTurnSettled])
-  const completionDividerBeforeEntryId = useMemo(() => {
-    if (!latestTurnSettled) return null
-    if (!activeTurn?.startedAt || !activeTurn.completedAt || !completionSummary) return null
-
-    const turnStartedAt = Date.parse(activeTurn.startedAt)
-    const turnCompletedAt = Date.parse(activeTurn.completedAt)
-    if (Number.isNaN(turnStartedAt) || Number.isNaN(turnCompletedAt)) {
-      return null
-    }
-
-    let inRangeMatch: string | null = null
-    let fallbackMatch: string | null = null
-
-    for (const entry of timelineEntries) {
-      if (entry.kind !== "message" || entry.message.role !== "assistant") {
-        continue
-      }
-      const messageAt = Date.parse(entry.message.createdAt)
-      if (Number.isNaN(messageAt) || messageAt < turnStartedAt) {
-        continue
-      }
-      fallbackMatch = entry.id
-      if (messageAt <= turnCompletedAt) {
-        inRangeMatch = entry.id
-      }
-    }
-
-    return inRangeMatch ?? fallbackMatch
-  }, [activeTurn?.completedAt, activeTurn?.startedAt, completionSummary, latestTurnSettled, timelineEntries])
-  const activeProposedPlan = useMemo(
-    () => findLatestProposedPlan(props.thread?.proposedPlans ?? [], activeTurn?.turnId ?? null),
-    [activeTurn?.turnId, props.thread?.proposedPlans],
-  )
-  const showPlanFollowUpPrompt =
-    props.pendingUserInputs.length === 0 &&
-    props.selectedInteractionMode === "plan" &&
-    latestTurnSettled &&
-    hasActionableProposedPlan(activeProposedPlan)
+  const {
+    latestTurnSettled,
+    phase,
+    isWorking,
+    activeTurnStartedAt,
+    timelineEntries,
+    completionDividerBeforeEntryId,
+    completionSummary,
+    turnDiffSummaryByAssistantMessageId,
+    revertTurnCountByUserMessageId,
+    activeProposedPlan,
+    showPlanFollowUpPrompt,
+  } = useAssistantThreadViewModel({
+    thread: props.thread,
+    isRunning: props.isRunning,
+    isSending: props.isSending,
+    isInterrupting: props.isInterrupting,
+    isRevertingCheckpoint: props.isRevertingCheckpoint,
+    pendingUserInputs: props.pendingUserInputs,
+    selectedInteractionMode: props.selectedInteractionMode,
+  })
   const activePendingApproval = props.pendingApprovals[0] ?? null
   const activePendingUserInput = props.pendingUserInputs[0] ?? null
   const activePendingDraftAnswers = useMemo(
@@ -424,9 +315,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isComposerApprovalState ||
     activePendingIsResponding ||
     (!activePendingProgress && props.isSending)
+  const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
   const markdownCwd = props.thread?.worktreePath ?? props.projectPath ?? undefined
   const workspaceRoot = props.projectPath ?? undefined
-  const threadError = props.thread?.error ?? null
 
   const dockComposerOnHover = Boolean(props.dockComposerOnHover)
   const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
@@ -464,9 +355,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       return
     }
 
+    const findDockContent = () =>
+      frame.querySelector<HTMLElement>("[data-chat-composer-dock-content]")
+
     let animationFrameId: number | null = null
     const updateInset = () => {
-      const nextInset = Math.ceil(frame.getBoundingClientRect().height + DOCKED_COMPOSER_SCROLL_GAP_PX)
+      const dockContent = findDockContent()
+      const measuredHeight = dockContent
+        ? dockContent.getBoundingClientRect().height
+        : frame.getBoundingClientRect().height
+      const nextInset = Math.ceil(measuredHeight + DOCKED_COMPOSER_SCROLL_GAP_PX)
       setDockedComposerMeasuredInsetPx((currentInset) => {
         if (Math.abs(currentInset - nextInset) < 1) {
           return currentInset
@@ -487,10 +385,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
 
     const resizeObserver = new ResizeObserver(updateInset)
-    resizeObserver.observe(frame)
-    const dockContent = frame.querySelector("[data-chat-composer-dock-content]")
-    if (dockContent instanceof HTMLElement) {
+    const dockContent = findDockContent()
+    if (dockContent) {
       resizeObserver.observe(dockContent)
+    } else {
+      resizeObserver.observe(frame)
     }
 
     return () => {
@@ -504,21 +403,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
     ? dockedComposerMeasuredInsetPx || DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX
     : 0
-
-  useEffect(() => {
-    if (!isWorking) {
-      setNowTick(Date.now())
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      setNowTick(Date.now())
-    }, 1000)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [isWorking])
 
   useEffect(() => {
     if (!activePendingUserInput) {
@@ -649,11 +533,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         event.preventDefault()
         void props.onSend()
       }}
-      className="mx-auto w-full min-w-0 max-w-3xl"
+      className="mx-auto flex h-full max-h-full min-h-0 w-full min-w-0 max-w-3xl flex-col"
     >
-      {props.composerStatus}
+      {props.composerStatus ? (
+        <div className="shrink-0">{props.composerStatus}</div>
+      ) : null}
 
-      <div className="mt-3 overflow-hidden rounded-2xl border border-sidebar-border/50 bg-secondary">
+      <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-sidebar-border/50 bg-secondary">
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
             <ComposerPendingApprovalPanel
@@ -662,7 +548,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             />
           </div>
         ) : activePendingUserInput ? (
-          <div className="border-b border-border/30 bg-background/10">
+          <div className="min-h-0 flex-1 overflow-hidden border-b border-border/30 bg-background/10">
             <ComposerPendingUserInputPanel
               pendingUserInputs={props.pendingUserInputs}
               respondingRequestIds={
@@ -687,7 +573,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
         <div
           className={cn(
-            "relative px-3 pb-2",
+            "relative shrink-0 px-3 pb-2",
             hasComposerHeader ? "pt-2.5" : "pt-3",
           )}
         >
@@ -719,7 +605,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         </div>
 
         {activePendingApproval ? (
-          <div className="mb-2 flex items-center justify-end gap-2 px-2">
+          <div className="mb-2 shrink-0 flex items-center justify-end gap-2 px-2">
             <ComposerPendingApprovalActions
               requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
               isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
@@ -731,7 +617,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : (
           <div
             data-chat-composer-footer="true"
-            className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
+            className="mb-2 shrink-0 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
           >
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
               <ProviderModelPicker
@@ -794,10 +680,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   onClick={() => {
                     void props.onInterrupt()
                   }}
-                  aria-label="Stop generation"
-                  disabled={!props.isRuntimeReady || props.isInterrupting}
+                  aria-label={stopButtonLabel}
+                  title={stopButtonLabel}
+                  disabled={
+                    !props.isRuntimeReady ||
+                    (props.isInterrupting && !props.isForceStopAvailable)
+                  }
                 >
-                  {props.isInterrupting ? (
+                  {props.isInterrupting && !props.isForceStopAvailable ? (
                     <div className="loader" />
                   ) : (
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
@@ -835,7 +725,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       </div>
 
       {!activePendingApproval ? (
-        <div className="flex items-center justify-between gap-3 px-1 pt-2">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-1 pt-2">
           <div className="flex min-w-0 items-center gap-1">
             <Button
               variant="ghost"
@@ -889,7 +779,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   )
 
   const hasProviderBanner = props.providerSnapshot && props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled";
-  const showBannersContainer = threadError || hasProviderBanner;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background">
@@ -919,10 +808,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               This agent tile needs a local project path before it can start a thread.
             </div>
           </div>
-        ) : showBannersContainer ? (
+        ) : hasProviderBanner ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8">
             <ProviderStatusBanner status={props.providerSnapshot} />
-            <ThreadErrorBanner error={threadError} onDismiss={props.onDismissThreadError} />
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -938,7 +826,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               completionDividerBeforeEntryId={completionDividerBeforeEntryId}
               completionSummary={completionSummary}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
-              nowIso={nowIso}
               expandedWorkGroups={expandedWorkGroups}
               onToggleWorkGroup={toggleWorkGroup}
               onOpenTurnDiff={props.onOpenTurnDiff}
@@ -957,17 +844,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <div
             ref={dockedComposerFrameRef}
             className={cn(
-              "pointer-events-none absolute bottom-0 left-0 right-3 z-10 px-3 pb-4 sm:right-4 sm:px-5 sm:pb-5",
+              "pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex flex-col justify-end px-3 pb-4 sm:px-5 sm:pb-5",
             )}
           >
             <div
               className={cn(
-                "relative mx-auto w-full min-w-0 max-w-3xl",
+                "relative mx-auto flex min-h-0 w-full min-w-0 max-w-3xl flex-col justify-end",
               )}
             >
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-[-0.75rem] bottom-[-1rem] top-[-4.5rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:inset-x-[-1rem] sm:bottom-[-1.25rem] sm:top-[-5rem]",
+                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-4.5rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-5rem]",
                   showComposerDockChrome ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden
@@ -975,7 +862,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <div
                 data-chat-composer-dock-content="true"
                 className={cn(
-                  "relative z-[1] w-full space-y-2 overflow-hidden transition-all duration-200 ease-out",
+                  "relative z-[1] flex w-full min-h-0 flex-col overflow-hidden transition-all duration-200 ease-out",
                   showComposerDockChrome
                     ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
                     : "max-h-0 translate-y-1 opacity-0 pointer-events-none",

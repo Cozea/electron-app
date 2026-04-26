@@ -111,7 +111,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentProjectPath = projectSyncContext?.projectPath ?? projectRouteContext?.localPath ?? null;
+  const currentProjectPath = projectRouteContext?.localPath ?? projectSyncContext?.projectPath ?? null;
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
@@ -239,15 +239,22 @@ export function ProjectSidebar({
     projectPath: currentProjectPath,
     collabBranch: currentCollabBranch,
   });
+  const displayedCurrentLaneState = projectRouteContext?.laneState ?? currentLaneState;
+  const displayedCurrentActiveLane = projectRouteContext?.activeLane ?? currentActiveLane;
   const currentVisibleActiveTileId = useProjectWorkbenchStore(
     React.useMemo(
       () =>
         selectVisibleActiveWorkbenchTileId(
           currentProjectId,
-          currentActiveLane?.id ?? null,
-          currentActiveLane?.projectPath ?? currentProjectPath,
+          displayedCurrentActiveLane?.id ?? null,
+          displayedCurrentActiveLane?.projectPath ?? currentProjectPath,
         ),
-      [currentActiveLane?.id, currentActiveLane?.projectPath, currentProjectId, currentProjectPath],
+      [
+        displayedCurrentActiveLane?.id,
+        displayedCurrentActiveLane?.projectPath,
+        currentProjectId,
+        currentProjectPath,
+      ],
     ),
   );
 
@@ -294,7 +301,7 @@ export function ProjectSidebar({
       const workbenchProjectPath =
         options?.projectPath ??
         (project.id === currentProjectId
-          ? (currentActiveLane?.projectPath ?? currentProjectPath)
+          ? (displayedCurrentActiveLane?.projectPath ?? currentProjectPath)
           : null);
       workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchProjectPath);
 
@@ -332,7 +339,7 @@ export function ProjectSidebar({
         }),
       });
     },
-    [currentActiveLane?.projectPath, currentProjectId, currentProjectPath, navigate],
+    [displayedCurrentActiveLane?.projectPath, currentProjectId, currentProjectPath, navigate],
   );
 
   const handleSyncCurrentProject = React.useCallback(async () => {
@@ -756,9 +763,9 @@ export function ProjectSidebar({
                       project.id === currentProjectId ? currentProjectPath : null,
                     isSyncingProject: project.id === currentProjectId && isSyncingProject,
                     prefetchedLaneState:
-                      project.id === currentProjectId ? currentLaneState : undefined,
+                      project.id === currentProjectId ? displayedCurrentLaneState : undefined,
                     prefetchedActiveLane:
-                      project.id === currentProjectId ? currentActiveLane : undefined,
+                      project.id === currentProjectId ? displayedCurrentActiveLane : undefined,
                   }}
                   actions={{
                     toggleExpanded: toggleExpandedProject,

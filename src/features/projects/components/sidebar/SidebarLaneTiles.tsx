@@ -19,6 +19,7 @@ import {
   hasActionableProposedPlan,
   isLatestTurnSettled,
 } from "@/features/projects/components/assistant/chat/session-logic"
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { cn } from "@/lib/utils"
 import {
   SIDEBAR_PILL_ACTIVE_CLASS,
@@ -36,14 +37,15 @@ import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
-const SIDEBAR_APP_ICON_CLASS = "size-4 shrink-0 overflow-hidden rounded-[4px]"
+const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[5px]"
+const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 
 function SurfaceTileGlyph(props: {
   favicon?: string | null
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
 }) {
-  const className = props.className ?? "size-4 shrink-0 text-muted-foreground/75"
+  const className = props.className ?? "size-[18px] shrink-0 text-muted-foreground/75"
   const devApp = getDevAppForSurfaceTileType(props.type)
 
   switch (props.type) {
@@ -53,7 +55,7 @@ function SurfaceTileGlyph(props: {
           <img
             src={props.favicon}
             alt=""
-            className={cn("size-4 shrink-0 rounded-sm object-contain", className)}
+            className={cn("size-[18px] shrink-0 rounded-sm object-contain", className)}
             aria-hidden
           />
         )
@@ -111,7 +113,7 @@ interface SidebarAgentStatusPill {
 }
 
 function ProviderGlyph(props: { provider?: string | null; className?: string }) {
-  const className = props.className ?? "size-4"
+  const className = props.className ?? "size-[18px]"
   const devApp = getDevAppForAssistantProvider(
     typeof props.provider === "string" ? (props.provider as ProviderKind) : null,
   )
@@ -302,13 +304,26 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
   const agents = activeLaneSummary?.agents ?? []
   const surfaces = activeLaneSummary?.surfaces ?? []
   const resolvedActiveTileId = activeSelectionLevel === "tile" ? activeTileId : null
+  const { containerRef: rootRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
+    font: SIDEBAR_LANE_LABEL_FONT,
+  })
 
   if (agents.length === 0 && surfaces.length === 0) {
     return null
   }
 
+  const shouldShowAgentTitle = (title: string): boolean => {
+    const reservedWidth = 24 + 12 + 84
+    return Boolean(getOverflowTitle(title, reservedWidth))
+  }
+
+  const shouldShowSurfaceTitle = (title: string): boolean => {
+    const reservedWidth = 24 + 12
+    return Boolean(getOverflowTitle(title, reservedWidth))
+  }
+
   return (
-    <div className="w-full space-y-0.5 pt-0.5">
+    <div ref={rootRef} className="w-full space-y-0.5 pt-0.5">
       {agents.map((tile) => (
         <button
           key={tile.id}
@@ -324,11 +339,13 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
             <ProviderGlyph
               provider={tile.provider}
               className={cn(
-                "size-4 shrink-0",
+                "size-[18px] shrink-0",
                 providerGlyphColorClass(tile.provider, resolvedActiveTileId === tile.id),
               )}
             />
-            <span className="min-w-0 flex-1 truncate">{tile.title}</span>
+            <span className="min-w-0 flex-1 truncate" title={shouldShowAgentTitle(tile.title) ? tile.title : undefined}>
+              {tile.title}
+            </span>
           </div>
           <AgentStatusPill threadId={tile.threadId} />
         </button>
@@ -349,11 +366,13 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
               favicon={tile.favicon}
               type={tile.type}
               className={cn(
-                "size-4 shrink-0 text-muted-foreground/75",
+                "size-[18px] shrink-0 text-muted-foreground/75",
                 resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
               )}
             />
-            <span className="min-w-0 flex-1 truncate">{tile.title}</span>
+            <span className="min-w-0 flex-1 truncate" title={shouldShowSurfaceTitle(tile.title) ? tile.title : undefined}>
+              {tile.title}
+            </span>
           </div>
         </button>
       ))}

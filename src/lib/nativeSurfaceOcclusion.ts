@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 export const NATIVE_SURFACE_OVERLAY_SELECTOR =
   '[data-native-surface-overlay="true"], [data-workbench-browser-overlay="true"]'
@@ -36,6 +36,7 @@ interface RegisterNativeSurfaceOptions {
 
 interface UseNativeSurfaceOcclusionOptions extends RegisterNativeSurfaceOptions {
   enabled?: boolean
+  onStateChange?: (state: NativeSurfaceOcclusionState) => void
 }
 
 const UNOCCLUDED_STATE: NativeSurfaceOcclusionState = {
@@ -51,6 +52,8 @@ let animationFrame = 0
 let mutationObserver: MutationObserver | null = null
 let surfaceResizeObserver: ResizeObserver | null = null
 let overlayResizeObserver: ResizeObserver | null = null
+let preflightOcclusionState: NativeSurfaceOcclusionState | null = null
+let preflightTimer = 0
 
 function isBrowserRuntimeAvailable(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined'
@@ -165,16 +168,35 @@ function refreshObservedOverlays(): void {
   }
 }
 
+function commitOcclusionState(
+  registration: NativeSurfaceRegistration,
+  nextState: NativeSurfaceOcclusionState,
+): void {
+  if (statesEqual(registration.lastState, nextState)) return
+  registration.lastState = nextState
+  registration.callback(nextState)
+}
+
 function refreshOcclusionState(): void {
   animationFrame = 0
   refreshObservedOverlays()
 
   for (const registration of registrations.values()) {
+    if (preflightOcclusionState) {
+      commitOcclusionState(registration, preflightOcclusionState)
+      continue
+    }
+
     const nextState = readOcclusionState(registration)
-    if (statesEqual(registration.lastState, nextState)) continue
-    registration.lastState = nextState
-    registration.callback(nextState)
+    commitOcclusionState(registration, nextState)
   }
+}
+
+function refreshOcclusionStateImmediately(): void {
+  if (!isBrowserRuntimeAvailable()) return
+  window.cancelAnimationFrame(animationFrame)
+  animationFrame = 0
+  refreshOcclusionState()
 }
 
 function scheduleOcclusionRefresh(): void {
@@ -195,7 +217,7 @@ function ensureObservers(): void {
   }
 
   if (!mutationObserver && document.body) {
-    mutationObserver = new MutationObserver(scheduleOcclusionRefresh)
+    mutationObserver = new MutationObserver(refreshOcclusionStateImmediately)
     mutationObserver.observe(document.body, {
       childList: true,
       subtree: true,
@@ -225,6 +247,9 @@ function cleanupObserversIfIdle(): void {
 
   window.cancelAnimationFrame(animationFrame)
   animationFrame = 0
+  window.clearTimeout(preflightTimer)
+  preflightTimer = 0
+  preflightOcclusionState = null
 
   mutationObserver?.disconnect()
   mutationObserver = null
@@ -270,7 +295,7 @@ export function registerNativeSurfaceOcclusionTarget(
 
   registrations.set(id, registration)
   surfaceResizeObserver?.observe(element)
-  scheduleOcclusionRefresh()
+  refreshOcclusionStateImmediately()
 
   return () => {
     surfaceResizeObserver?.unobserve(element)
@@ -286,25 +311,75 @@ export function useNativeSurfaceOcclusion<TElement extends HTMLElement>(
   const enabled = options.enabled ?? true
   const overlaySelector = options.overlaySelector ?? NATIVE_SURFACE_OVERLAY_SELECTOR
   const overlayMargin = options.overlayMargin ?? DEFAULT_OVERLAY_MARGIN
+  const onStateChangeRef = useRef(options.onStateChange)
   const [state, setState] = useState<NativeSurfaceOcclusionState>(UNOCCLUDED_STATE)
+  onStateChangeRef.current = options.onStateChange
 
   useLayoutEffect(() => {
     if (!enabled) {
       setState(UNOCCLUDED_STATE)
+      onStateChangeRef.current?.(UNOCCLUDED_STATE)
       return
     }
 
     const element = ref.current
     if (!element) {
       setState(UNOCCLUDED_STATE)
+      onStateChangeRef.current?.(UNOCCLUDED_STATE)
       return
     }
 
-    return registerNativeSurfaceOcclusionTarget(element, setState, {
-      overlaySelector,
-      overlayMargin,
-    })
+    return registerNativeSurfaceOcclusionTarget(
+      element,
+      (nextState) => {
+        onStateChangeRef.current?.(nextState)
+        setState(nextState)
+      },
+      {
+        overlaySelector,
+        overlayMargin,
+      },
+    )
   }, [enabled, overlayMargin, overlaySelector, ref])
 
   return state
+}
+
+export function notifyNativeSurfaceOverlayChanged(): void {
+  if (isBrowserRuntimeAvailable() && preflightOcclusionState) {
+    window.clearTimeout(preflightTimer)
+    preflightTimer = 0
+    preflightOcclusionState = null
+  }
+  refreshOcclusionStateImmediately()
+}
+
+export function preflightNativeSurfaceOcclusion(
+  reason = 'Overlay opening',
+  durationMs = 160,
+): void {
+  if (!isBrowserRuntimeAvailable() || registrations.size === 0) return
+
+  preflightOcclusionState = {
+    occluded: true,
+    reason,
+    overlayRect: null,
+  }
+
+  refreshOcclusionStateImmediately()
+
+  window.clearTimeout(preflightTimer)
+  preflightTimer = window.setTimeout(() => {
+    preflightTimer = 0
+    preflightOcclusionState = null
+    refreshOcclusionStateImmediately()
+  }, Math.max(16, durationMs))
+}
+
+export function useNativeSurfaceOverlayLifecycle(active = true): void {
+  useLayoutEffect(() => {
+    if (!active) return
+    notifyNativeSurfaceOverlayChanged()
+    return notifyNativeSurfaceOverlayChanged
+  }, [active])
 }

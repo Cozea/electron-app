@@ -1,7 +1,6 @@
 // @ts-nocheck
 import {
   type ChatAttachment,
-  CommandId,
   EventId,
   type ModelSelection,
   type OrchestrationEvent,
@@ -12,7 +11,7 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@cozea/assistant-contracts";
-import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Schema, Stream } from "effect";
+import { Cache, Cause, Duration, Effect, Equal, Exit, Layer, Option, Schema, Stream } from "effect";
 import { makeDrainableWorker } from "@cozea/assistant-shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
@@ -20,6 +19,8 @@ import { GitCore } from "../../git/Services/GitCore.ts";
 import { ProviderAdapterRequestError, ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { serverCommandId } from "../commandIds.ts";
+import { providerSessionStatusToOrchestrationStatus } from "../sessionStatus.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import {
   ProviderCommandReactor,
@@ -45,29 +46,8 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function mapProviderSessionStatusToOrchestrationStatus(
-  status: "connecting" | "ready" | "running" | "error" | "closed",
-): OrchestrationSession["status"] {
-  switch (status) {
-    case "connecting":
-      return "starting";
-    case "running":
-      return "running";
-    case "error":
-      return "error";
-    case "closed":
-      return "stopped";
-    case "ready":
-    default:
-      return "ready";
-  }
-}
-
 const turnStartKeyForEvent = (event: ProviderIntentEvent): string =>
   event.commandId !== null ? `command:${event.commandId}` : `event:${event.eventId}`;
-
-const serverCommandId = (tag: string): CommandId =>
-  CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
 
 const HANDLED_TURN_START_KEY_MAX = 10_000;
 const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
@@ -166,6 +146,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+  const activeTurnStartThreadIds = new Set<string>();
 
   const appendProviderFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -279,7 +260,7 @@ const make = Effect.gen(function* () {
         threadId,
         session: {
           threadId,
-          status: mapProviderSessionStatusToOrchestrationStatus(session.status),
+          status: providerSessionStatusToOrchestrationStatus(session.status),
           providerName: session.provider,
           runtimeMode: desiredRuntimeMode,
           // Provider turn ids are not orchestration turn ids.
@@ -548,6 +529,20 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    const activeTurnStartThreadId = String(event.payload.threadId);
+    if (activeTurnStartThreadIds.has(activeTurnStartThreadId)) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start skipped",
+        detail: "A turn is already active for this thread.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+      });
+      return;
+    }
+    activeTurnStartThreadIds.add(activeTurnStartThreadId);
+
     yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
       threadId: event.payload.threadId,
       branch: thread.branch,
@@ -588,7 +583,10 @@ const make = Effect.gen(function* () {
           createdAt: event.payload.createdAt,
         }),
       ),
-    );
+      Effect.ensuring(Effect.sync(() => {
+        activeTurnStartThreadIds.delete(activeTurnStartThreadId);
+      })),
+    ).pipe(Effect.forkScoped);
   });
 
   const processTurnInterruptRequested = Effect.fnUntraced(function* (
@@ -714,7 +712,31 @@ const make = Effect.gen(function* () {
 
     const now = event.payload.createdAt;
     if (thread.session && thread.session.status !== "stopped") {
-      yield* providerService.stopSession({ threadId: thread.id });
+      const stopExit = yield* Effect.exit(
+        providerService.stopSession({ threadId: thread.id }).pipe(
+          Effect.timeoutOption(Duration.seconds(2)),
+        ),
+      );
+
+      if (Exit.isFailure(stopExit)) {
+        yield* appendProviderFailureActivity({
+          threadId: thread.id,
+          kind: "provider.session.stop.failed",
+          summary: "Provider session stop failed",
+          detail: Cause.pretty(stopExit.cause),
+          turnId: thread.session.activeTurnId ?? null,
+          createdAt: now,
+        });
+      } else if (Option.isNone(stopExit.value)) {
+        yield* appendProviderFailureActivity({
+          threadId: thread.id,
+          kind: "provider.session.stop.failed",
+          summary: "Provider session stop timed out",
+          detail: "The provider did not acknowledge session stop within 2 seconds. The session was marked stopped locally.",
+          turnId: thread.session.activeTurnId ?? null,
+          createdAt: now,
+        });
+      }
     }
 
     yield* setThreadSession({

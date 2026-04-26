@@ -61,6 +61,11 @@
 
 .cozea-workbench-dockview .dv-groupview {
   border: 0;
+  transition:
+    top 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    left 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cozea-workbench-dockview .dv-groupview.dv-active-group {

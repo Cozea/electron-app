@@ -47,6 +47,10 @@ function withEventBase(
   };
 }
 
+function isThreadTurnBusy(thread: OrchestrationReadModel["threads"][number]): boolean {
+  return thread.session?.status === "running" || thread.session?.status === "starting";
+}
+
 export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand")(function* ({
   command,
   readModel,
@@ -271,6 +275,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      if (isThreadTurnBusy(targetThread)) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Thread '${command.threadId}' already has an active turn. Interrupt or wait for it to finish before starting another turn.`,
+        });
+      }
       const sourceProposedPlan = command.sourceProposedPlan;
       const sourceThread = sourceProposedPlan
         ? yield* requireThread({

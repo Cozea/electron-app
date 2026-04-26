@@ -165,7 +165,11 @@ export function useProjectWorkbenchSearchParamSync(
         projectPath,
       )(useProjectWorkbenchStore.getState())
 
-    if (liveWorkbench?.tiles[intent.requestedFocusTileId]) {
+    if (!liveWorkbench) {
+      return
+    }
+
+    if (liveWorkbench.tiles[intent.requestedFocusTileId]) {
       focusWorkbenchTile(intent.requestedFocusTileId)
     }
 
@@ -173,7 +177,7 @@ export function useProjectWorkbenchSearchParamSync(
     nextParams.delete("lane")
     nextParams.delete("focusTile")
     replaceSearchParams(nextParams)
-  }, [activeLaneId, focusWorkbenchTile, projectId, replaceSearchParams, searchParams])
+  }, [activeLaneId, focusWorkbenchTile, projectId, projectPath, replaceSearchParams, searchParams])
 
   useEffect(() => {
     if (!projectId) return

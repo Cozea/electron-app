@@ -14,9 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGitDirtySnapshot } from "@/hooks/useGitDirtySnapshot";
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { GitCompareIcon as __GitCompareHugeIcon } from '@hugeicons/core-free-icons'
-
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();
   const location = useLocation();
@@ -51,6 +48,10 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   }, [convex, projectId]);
 
   if (!projectId) return null;
+
+  const hasDisplayableDiff =
+    diffStats != null && (diffStats.additions > 0 || diffStats.deletions > 0);
+  if (!hasDisplayableDiff) return null;
 
   const workbenchPath = buildProjectPath(String(projectId), "workbench");
   const currentParams = new URLSearchParams(location.search);
@@ -92,13 +93,10 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             });
           }}
         >
-          <HugeiconsIcon icon={__GitCompareHugeIcon} className="size-4 shrink-0" />
-          {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) ? (
-            <span className="inline-flex items-center gap-1 text-[9px] tabular-nums">
-              <span className="text-success">+{diffStats.additions}</span>
-              <span className="text-destructive">-{diffStats.deletions}</span>
-            </span>
-          ) : null}
+          <span className="inline-flex items-center gap-1 text-[9px] tabular-nums">
+            <span className="text-success">+{diffStats.additions}</span>
+            <span className="text-destructive">-{diffStats.deletions}</span>
+          </span>
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">Open changes</TooltipContent>

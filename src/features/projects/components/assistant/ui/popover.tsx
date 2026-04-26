@@ -2,14 +2,37 @@
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
+import {
+  preflightNativeSurfaceOcclusion,
+  useNativeSurfaceOverlayLifecycle,
+} from "@/lib/nativeSurfaceOcclusion";
 import { cn } from "@/lib/utils";
 
 const PopoverCreateHandle = PopoverPrimitive.createHandle;
 
 const Popover = PopoverPrimitive.Root;
 
-function PopoverTrigger(props: PopoverPrimitive.Trigger.Props) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
+function PopoverTrigger({
+  onKeyDownCapture,
+  onPointerDownCapture,
+  ...props
+}: PopoverPrimitive.Trigger.Props) {
+  return (
+    <PopoverPrimitive.Trigger
+      data-slot="popover-trigger"
+      onKeyDownCapture={(event) => {
+        if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+          preflightNativeSurfaceOcclusion("Popover opening");
+        }
+        onKeyDownCapture?.(event);
+      }}
+      onPointerDownCapture={(event) => {
+        preflightNativeSurfaceOcclusion("Popover opening");
+        onPointerDownCapture?.(event);
+      }}
+      {...props}
+    />
+  );
 }
 
 function PopoverPopup({
@@ -30,6 +53,8 @@ function PopoverPopup({
   tooltipStyle?: boolean;
   anchor?: PopoverPrimitive.Positioner.Props["anchor"];
 }) {
+  useNativeSurfaceOverlayLifecycle(!tooltipStyle);
+
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner

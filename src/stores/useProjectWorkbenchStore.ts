@@ -52,7 +52,25 @@ function createDebouncedStorage(backing: Storage): StateStorage {
   }
 }
 
-const debouncedLocalStorage = createDebouncedStorage(window.localStorage)
+function createMemoryStorage(): StateStorage {
+  const items = new Map<string, string>()
+  return {
+    getItem(name) {
+      return items.get(name) ?? null
+    },
+    setItem(name, value) {
+      items.set(name, value)
+    },
+    removeItem(name) {
+      items.delete(name)
+    },
+  }
+}
+
+const workbenchStorage =
+  typeof window === "undefined"
+    ? createMemoryStorage()
+    : createDebouncedStorage(window.localStorage)
 
 export type WorkbenchTileType =
   | "browser"
@@ -331,12 +349,39 @@ function resolveWorkbenchScopeKey(
       )
       .map(([scopeKey]) => scopeKey)
 
-    if (matchingScopeKeys.length === 1) {
-      return matchingScopeKeys[0]
+    if (matchingScopeKeys.length > 0) {
+      return pickMostRecentlyUsedWorkbenchScopeKey(workbenches, matchingScopeKeys)
     }
   }
 
   return pathAwareScopeKey
+}
+
+function getWorkbenchActivityTime(workbench: WorkbenchProjectState | null | undefined): number {
+  if (!workbench) {
+    return 0
+  }
+
+  return Math.max(
+    0,
+    ...Object.values(workbench.tiles ?? {}).map((tile) =>
+      typeof tile.createdAt === "number" ? tile.createdAt : 0,
+    ),
+  )
+}
+
+function pickMostRecentlyUsedWorkbenchScopeKey(
+  workbenches: Record<string, WorkbenchProjectState>,
+  scopeKeys: string[],
+): string {
+  return [...scopeKeys].sort((left, right) => {
+    const rightActivity = getWorkbenchActivityTime(workbenches[right])
+    const leftActivity = getWorkbenchActivityTime(workbenches[left])
+    if (rightActivity !== leftActivity) {
+      return rightActivity - leftActivity
+    }
+    return left.localeCompare(right)
+  })[0]!
 }
 
 function promoteLegacyWorkbenchIfNeeded(
@@ -537,6 +582,15 @@ function createDefaultWorkbenchState(
       [selectionTile.id]: selectionTile,
     },
   }
+}
+
+function isEmptySelectionWorkbench(workbench: WorkbenchProjectState | null | undefined): boolean {
+  if (!workbench || workbench.order.length !== 1) {
+    return false
+  }
+
+  const onlyTile = workbench.tiles[workbench.order[0]!]
+  return onlyTile?.type === "selection"
 }
 
 function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProjectState {
@@ -762,11 +816,20 @@ export function selectProjectLaneWorkbenches(projectId: string | null | undefine
   return (state: ProjectWorkbenchState): Record<string, WorkbenchProjectState> => {
     if (!projectId) return {}
 
-    return Object.fromEntries(
-      Object.values(state.workbenches)
-        .filter((workbench) => workbench.projectId === projectId)
-        .map((workbench) => [workbench.laneId, workbench] as const),
-    )
+    const byLane: Record<string, WorkbenchProjectState> = {}
+    for (const workbench of Object.values(state.workbenches)) {
+      if (workbench.projectId !== projectId) {
+        continue
+      }
+
+      const laneId = normalizeLaneId(workbench.laneId)
+      const existing = byLane[laneId]
+      if (!existing || getWorkbenchActivityTime(workbench) >= getWorkbenchActivityTime(existing)) {
+        byLane[laneId] = workbench
+      }
+    }
+
+    return byLane
   }
 }
 
@@ -892,7 +955,10 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
                 normalizedTargetProjectPath,
               )
 
-              if (state.workbenches[targetScopeKey]) {
+              if (
+                state.workbenches[targetScopeKey] &&
+                !isEmptySelectionWorkbench(state.workbenches[targetScopeKey])
+              ) {
                 continue
               }
 
@@ -1016,7 +1082,11 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             }
 
             if (workbench.activeTileId === tileId) {
-              workbench.activeTileId = workbench.order[workbench.order.length - 1] ?? null
+              const fallbackIndex = Math.min(
+                orderIndex === -1 ? workbench.order.length - 1 : orderIndex,
+                workbench.order.length - 1,
+              )
+              workbench.activeTileId = fallbackIndex >= 0 ? (workbench.order[fallbackIndex] ?? null) : null
             }
           })
         },
@@ -1035,6 +1105,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               { createIfMissing: false },
             )
             if (!workbench || workbench.activeTileId === tileId) return
+            if (tileId !== null && !workbench.tiles[tileId]) return
             workbench.activeTileId = tileId
           })
           markCozeaInteractionEnd("workbench-focus-tile", startMark, {
@@ -1129,7 +1200,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     {
       name: "cozea:project-workbench",
       version: 2,
-      storage: createJSONStorage(() => debouncedLocalStorage),
+      storage: createJSONStorage(() => workbenchStorage),
       migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
       partialize: (state) => ({
         workbenches: sanitizePersistedWorkbenches(state.workbenches),

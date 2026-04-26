@@ -3,28 +3,55 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import {
+  preflightNativeSurfaceOcclusion,
+  useNativeSurfaceOverlayLifecycle,
+} from "@/lib/nativeSurfaceOcclusion"
 
 const AlertDialog = AlertDialogPrimitive.Root
 
-const AlertDialogTrigger = AlertDialogPrimitive.Trigger
+const AlertDialogTrigger = React.forwardRef<
+  React.ElementRef<typeof AlertDialogPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Trigger>
+>(({ onKeyDownCapture, onPointerDownCapture, ...props }, ref) => (
+  <AlertDialogPrimitive.Trigger
+    ref={ref}
+    onKeyDownCapture={(event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        preflightNativeSurfaceOcclusion("Alert dialog opening")
+      }
+      onKeyDownCapture?.(event)
+    }}
+    onPointerDownCapture={(event) => {
+      preflightNativeSurfaceOcclusion("Alert dialog opening")
+      onPointerDownCapture?.(event)
+    }}
+    {...props}
+  />
+))
+AlertDialogTrigger.displayName = AlertDialogPrimitive.Trigger.displayName
 
 const AlertDialogPortal = AlertDialogPrimitive.Portal
 
 const AlertDialogOverlay = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Overlay
-    data-native-surface-overlay="true"
-    data-native-surface-overlay-reason="Alert dialog backdrop"
-    className={cn(
-      "fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      className
-    )}
-    {...props}
-    ref={ref}
-  />
-))
+>(({ className, ...props }, ref) => {
+  useNativeSurfaceOverlayLifecycle()
+
+  return (
+    <AlertDialogPrimitive.Overlay
+      data-native-surface-overlay="true"
+      data-native-surface-overlay-reason="Alert dialog backdrop"
+      className={cn(
+        "fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        className
+      )}
+      {...props}
+      ref={ref}
+    />
+  )
+})
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 
 const AlertDialogContent = React.forwardRef<
