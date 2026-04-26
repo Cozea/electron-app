@@ -61,9 +61,12 @@ interface UseWorkbenchDockviewRuntimeResult {
   handleDockviewReady: (event: DockviewReadyEvent) => void;
 }
 
+import { useTranslation } from "@/lib/i18n";
+
 export function useWorkbenchDockviewRuntime(
   input: UseWorkbenchDockviewRuntimeInput,
 ): UseWorkbenchDockviewRuntimeResult {
+  const { t } = useTranslation();
   const dockviewApiRef = useRef<DockviewApi | null>(null);
   const dockviewHostRef = useRef<HTMLDivElement | null>(null);
   const hydratedProjectKeyRef = useRef<string | null>(null);
@@ -472,7 +475,7 @@ export function useWorkbenchDockviewRuntime(
         input.activeLaneId,
         "selection",
         {
-          title: "Add DevApp",
+          title: t("workbench.selection.addDevApp"),
         },
         input.projectPath,
       );

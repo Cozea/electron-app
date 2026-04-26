@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm } from "react-icons/si"
 import { VscVscodeInsiders } from "react-icons/vsc"
@@ -124,6 +125,7 @@ export function WorkbenchHeaderEditorControl({
   projectPath,
   adjacentOpenSidebar = false,
 }: WorkbenchHeaderEditorControlProps) {
+  const { t } = useTranslation()
   const [availableEditors, setAvailableEditors] = useState<AvailableExternalEditor[]>([])
   const [selectedEditorId, setSelectedEditorId] = useState<ExternalEditorId | null>(() =>
     readStoredExternalEditorPreference(),
@@ -224,8 +226,8 @@ export function WorkbenchHeaderEditorControl({
             disabled={!projectPath || !selectedEditorOption}
             aria-label={
               selectedEditorOption
-                ? `Open in ${selectedEditorOption.editor.name}`
-                : "No supported external editor detected"
+                ? t("workbench.editor.openIn").replace("{editor}", selectedEditorOption.editor.name)
+                : t("workbench.editor.noEditor")
             }
           >
             <SelectedEditorIcon className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
@@ -249,7 +251,7 @@ export function WorkbenchHeaderEditorControl({
         </div>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {selectedEditorOption ? `Open in ${selectedEditorOption.editor.name}` : "No supported external editor detected"}
+        {selectedEditorOption ? t("workbench.editor.openIn").replace("{editor}", selectedEditorOption.editor.name) : t("workbench.editor.noEditor")}
       </TooltipContent>
     </Tooltip>
   )

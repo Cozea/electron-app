@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
+import { useTranslation } from "@/lib/i18n";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Alert01Icon as __AlertTriangleHugeIcon, Delete02Icon as __Trash2HugeIcon } from '@hugeicons/core-free-icons'
@@ -42,6 +43,7 @@ interface AccountProps {
 
 export function Account({ surface = "page", route: _route }: AccountProps) {
   const { user, convexUserId } = useAuth();
+  const { t } = useTranslation();
 
   const profile = useQuery(api.users.getById, convexUserId ? { userId: convexUserId } : "skip");
 
@@ -65,7 +67,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     ? `${profile.firstName} ${profile.lastName || ""}`.trim()
     : user?.firstName
       ? `${user.firstName} ${user.lastName || ""}`.trim()
-      : user?.email?.split("@")[0] || "User";
+      : user?.email?.split("@")[0] || t("common.user");
   const isLocalDeviceProfile = Boolean(
     user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
   );
@@ -92,7 +94,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   return (
     <SettingsPageBody surface={surface}>
       <section>
-        <SettingsSectionTitle>{isLocalDeviceProfile ? "Device profile" : "Profile"}</SettingsSectionTitle>
+        <SettingsSectionTitle>{isLocalDeviceProfile ? t("settings.account.deviceProfileTitle") : t("settings.account.profileTitle")}</SettingsSectionTitle>
         <SettingsGroup>
           <div className="flex items-center gap-4 px-4 py-3">
             <div className="min-w-0 flex-1">
@@ -101,7 +103,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 <p className="truncate text-[11px] text-muted-foreground">{profile.jobTitle}</p>
               ) : null}
               <p className="truncate text-[11px] text-muted-foreground">
-                {isLocalDeviceProfile ? "Local trusted device" : user?.email}
+                {isLocalDeviceProfile ? t("settings.account.localTrustedDevice") : user?.email}
               </p>
             </div>
           </div>
@@ -110,23 +112,23 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
       <section>
         <div className="mb-1 flex items-center justify-between gap-2 px-1">
-          <SettingsSectionTitle className="mb-0">My devices</SettingsSectionTitle>
+          <SettingsSectionTitle className="mb-0">{t("settings.account.myDevices")}</SettingsSectionTitle>
           <Button variant="outline" size="sm" className="h-7 shrink-0 text-[11px]" disabled>
-            + Add device
+            {t("settings.account.addDevice")}
           </Button>
         </div>
         <SettingsSectionDescription>
-          Devices linked to your account. Collaboration keys are scoped per device.
+          {t("settings.account.devicesDescription")}
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
-              <span className="text-xs font-medium text-foreground">This device</span>
-              <p className="text-[11px] text-muted-foreground">Active now</p>
+              <span className="text-xs font-medium text-foreground">{t("settings.account.thisDevice")}</span>
+              <p className="text-[11px] text-muted-foreground">{t("settings.account.activeNow")}</p>
             </div>
             <SettingsRowControl>
               <Button variant="ghost" size="sm" className="h-7 text-[11px] text-muted-foreground" disabled>
-                Revoke
+                {t("common.revoke")}
               </Button>
             </SettingsRowControl>
           </SettingsRow>
@@ -134,12 +136,12 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       </section>
 
       <section>
-        <SettingsSectionTitle>Notifications</SettingsSectionTitle>
+        <SettingsSectionTitle>{t("settings.account.notifications")}</SettingsSectionTitle>
         <SettingsGroup>
           <SettingsRow isFirst>
             <SettingsRowLabel
-              title="Email notifications"
-              description="Receive updates via email"
+              title={t("settings.account.emailNotifications")}
+              description={t("settings.account.emailNotificationsDesc")}
             />
             <SettingsRowControl>
               <Switch
@@ -151,8 +153,8 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           </SettingsRow>
           <SettingsRow>
             <SettingsRowLabel
-              title="Push notifications"
-              description="Receive in-app notifications"
+              title={t("settings.account.pushNotifications")}
+              description={t("settings.account.pushNotificationsDesc")}
             />
             <SettingsRowControl>
               <Switch
@@ -168,16 +170,16 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       <section>
         <SettingsSectionTitle variant="danger">
           <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="size-3.5" aria-hidden />
-          {isLocalDeviceProfile ? "Local device controls" : "Danger zone"}
+          {isLocalDeviceProfile ? t("settings.account.localDeviceControls") : t("settings.account.dangerZone")}
         </SettingsSectionTitle>
         <SettingsDangerGroup>
           <SettingsRow isFirst borderClassName="border-destructive/20">
             <SettingsRowLabel
-              title={isLocalDeviceProfile ? "Reset device identity" : "Delete account"}
+              title={isLocalDeviceProfile ? t("settings.account.resetDeviceIdentity") : t("settings.account.deleteAccount")}
               description={
                 isLocalDeviceProfile
-                  ? "Reserved for future local-identity reset flows."
-                  : "Permanently delete your account and all data"
+                  ? t("settings.account.resetDeviceDesc")
+                  : t("settings.account.deleteAccountDesc")
               }
             />
             <SettingsRowControl>
@@ -185,36 +187,36 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 <DialogTrigger asChild>
                   <Button variant="destructive" size="sm" className="h-7 gap-1.5 text-[11px]" disabled>
                     <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
-                    Delete
+                    {t("common.delete")}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>
-                      {isLocalDeviceProfile ? "Reset device identity" : "Delete account"}
+                      {isLocalDeviceProfile ? t("settings.account.resetConfirmTitle") : t("settings.account.deleteConfirmTitle")}
                     </DialogTitle>
                     <DialogDescription>
                       {isLocalDeviceProfile
-                        ? "This workflow is not available yet."
-                        : "This action cannot be undone. All your data will be permanently deleted."}
+                        ? t("settings.account.resetConfirmDesc")
+                        : t("settings.account.deleteConfirmDesc")}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>
                         {isLocalDeviceProfile
-                          ? "Device identity reset is currently disabled"
-                          : "Type \"delete my account\" to confirm"}
+                          ? t("settings.account.resetConfirmLabel")
+                          : t("settings.account.deleteConfirmLabel")}
                       </Label>
                       <Input
-                        placeholder={isLocalDeviceProfile ? "Unavailable" : "delete my account"}
+                        placeholder={isLocalDeviceProfile ? t("settings.account.resetConfirmPlaceholder") : t("settings.account.deleteConfirmPlaceholder")}
                         disabled={isLocalDeviceProfile}
                       />
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline">Cancel</Button>
-                    <Button variant="destructive">Delete account</Button>
+                    <Button variant="outline">{t("common.cancel")}</Button>
+                    <Button variant="destructive">{t("settings.account.deleteAccount")}</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

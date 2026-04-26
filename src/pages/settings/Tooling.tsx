@@ -7,6 +7,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Switch } from '../../components/ui/switch'
 import type { GitRuntimeHealth, RuntimeHealth, RuntimeKind } from '../../types/electron'
+import { useTranslation } from '@/lib/i18n'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
@@ -26,14 +27,6 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   python: 'Python',
   rust: 'Rust (cargo)',
   go: 'Go',
-}
-
-function getRuntimeBadgeLabel(runtime: RuntimeHealth): string {
-  if (runtime.available) {
-    if (runtime.source === 'override') return 'Override'
-    return 'System'
-  }
-  return 'Install on system'
 }
 
 let cachedRuntimeStatus: { target: string; runtimes: RuntimeHealth[] } | null = null
@@ -98,6 +91,7 @@ function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
 }
 
 export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
+  const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(!cachedRuntimeStatus)
   const [error, setError] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(
@@ -189,14 +183,22 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
     [previewHeaderCompatibilityEnabled]
   )
 
+  function getRuntimeBadgeLabel(runtime: RuntimeHealth): string {
+    if (runtime.available) {
+      if (runtime.source === 'override') return t('settings.tooling.override')
+      return t('settings.tooling.system')
+    }
+    return t('settings.tooling.installOnSystem')
+  }
+
   const content = (
     <SettingsPageBody surface={surface} className="space-y-6">
         <div className="px-1 py-1">
           <div className="flex flex-wrap items-start gap-4">
             <div>
-              <h2 className="text-base font-medium">Tooling and Framework Support</h2>
+              <h2 className="text-base font-medium">{t('settings.tooling.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                This page reflects what your current Cozea instance can execute on this device.
+                {t('settings.tooling.description')}
               </p>
             </div>
           </div>
@@ -210,7 +212,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium">Git Runtime</h3>
+            <h3 className="text-sm font-medium">{t('settings.tooling.gitRuntime')}</h3>
           </div>
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
             {gitRuntimeHealth ? (
@@ -240,13 +242,12 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                     ) : (
                       <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3 w-3" />
                     )}
-                    {gitRuntimeHealth.available ? 'Available' : 'Not available'}
+                    {gitRuntimeHealth.available ? t('settings.tooling.available') : t('settings.tooling.notAvailable')}
                   </Badge>
                 </div>
                 {!gitRuntimeHealth.available && (
                   <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
-                    Git is required for project sync and source control. Install Git and restart Cozea, or set
-                    `COZEA_GIT_EXECUTABLE` to an absolute git binary path.
+                    {t('settings.tooling.gitRequired')}
                     {gitRuntimeHealth.error ? ` (${gitRuntimeHealth.error})` : ''}
                   </div>
                 )}
@@ -254,8 +255,8 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
             ) : (
               <p className="text-sm text-muted-foreground">
                 {isLoading
-                  ? 'Git runtime details will appear here.'
-                  : 'Git runtime status unavailable.'}
+                  ? t('settings.tooling.gitLoadingPlaceholder')
+                  : t('settings.tooling.gitUnavailable')}
               </p>
             )}
           </div>
@@ -265,9 +266,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-medium">Preview Embed Compatibility</h3>
+                <h3 className="text-sm font-medium">{t('settings.tooling.previewEmbedCompatibility')}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Helps localhost previews load inside Cozea&apos;s embedded browser.
+                  {t('settings.tooling.previewEmbedDesc')}
                 </p>
               </div>
               <Switch
@@ -276,7 +277,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                   void handlePreviewHeaderCompatibilityChange(checked)
                 }}
                 disabled={isSavingPreviewHeaderCompatibility}
-                aria-label="Toggle preview embed compatibility"
+                aria-label={t('settings.tooling.previewEmbedCompatibility')}
               />
             </div>
             {previewHeaderCompatibilityError && (
@@ -287,17 +288,16 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium">Runtime Inventory</h3>
+            <h3 className="text-sm font-medium">{t('settings.tooling.runtimeInventory')}</h3>
           </div>
           <div className="rounded-2xl border border-border/50 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
-            Cozea resolves developer toolchains from your system PATH or explicit runtime overrides. If a runtime is
-            missing, install it on your machine and restart the app.
+            {t('settings.tooling.runtimeInventoryDesc')}
           </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
             <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
-              <span>Runtime</span>
-              <span>Path</span>
-              <span className="text-right">Action</span>
+              <span>{t('settings.tooling.colRuntime')}</span>
+              <span>{t('settings.tooling.colPath')}</span>
+              <span className="text-right">{t('settings.tooling.colAction')}</span>
             </div>
             <div className="space-y-1 px-1 pb-1">
               {(() => {
@@ -306,8 +306,8 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                   return (
                     <div className="px-3 py-4 text-sm text-muted-foreground">
                       {isLoading
-                        ? 'Runtime inventory will appear here.'
-                        : 'No runtime data available.'}
+                        ? t('settings.tooling.runtimeLoadingPlaceholder')
+                        : t('settings.tooling.noRuntimeData')}
                     </div>
                   )
                 }
@@ -358,7 +358,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                     {totalPages > 1 && (
                       <div className="mt-2 flex items-center justify-between border-t border-border/40 px-3 pt-3 pb-1">
                         <span className="text-xs text-muted-foreground">
-                          Page {currentPage} of {totalPages}
+                          {t('common.page')} {currentPage} {t('common.of')} {totalPages}
                         </span>
                         <div className="flex items-center gap-2">
                           <Button
@@ -368,7 +368,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
                           >
-                            Previous
+                            {t('common.previous')}
                           </Button>
                           <Button
                             variant="outline"
@@ -377,7 +377,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                             disabled={currentPage === totalPages}
                           >
-                            Next
+                            {t('common.next')}
                           </Button>
                         </div>
                       </div>

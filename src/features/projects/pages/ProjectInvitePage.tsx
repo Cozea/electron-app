@@ -5,6 +5,7 @@ import { useParams } from "@/lib/router"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
+import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { Button } from "@/components/ui/button"
@@ -31,11 +32,11 @@ function formatName(input: {
   firstName?: string | null
   lastName?: string | null
   email?: string | null
-} | null | undefined): string {
+} | null | undefined, t: any): string {
   const first = input?.firstName?.trim() ?? ""
   const last = input?.lastName?.trim() ?? ""
   const fullName = `${first} ${last}`.trim()
-  return fullName || input?.email?.trim() || "A Cozea collaborator"
+  return fullName || input?.email?.trim() || t('invite.fallback.name')
 }
 
 function isLikelyConvexId(value: string): boolean {
@@ -44,6 +45,7 @@ function isLikelyConvexId(value: string): boolean {
 
 export function ProjectInvitePage() {
   const navigate = useViewTransitionNavigate()
+  const { t } = useTranslation()
   const { inviteId: inviteIdParam } = useParams()
   const { convexUserId, isLoading } = useAuth()
   const acceptInvite = useMutation(api.projectInvites.acceptInvite)
@@ -78,7 +80,7 @@ export function ProjectInvitePage() {
       })
       navigate(buildProjectPath(String(invite.project.id), "workbench"), { replace: true })
     } catch (error) {
-      setActionError(cleanConvexError(error, "Unable to accept this invite."))
+      setActionError(cleanConvexError(error, t('invite.error.accept')))
     } finally {
       setIsSubmitting(null)
     }
@@ -94,7 +96,7 @@ export function ProjectInvitePage() {
       })
       navigate("/projects", { replace: true })
     } catch (error) {
-      setActionError(cleanConvexError(error, "Unable to decline this invite."))
+      setActionError(cleanConvexError(error, t('invite.error.decline')))
     } finally {
       setIsSubmitting(null)
     }
@@ -108,12 +110,12 @@ export function ProjectInvitePage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
               <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
-            <CardTitle>Invalid Invite</CardTitle>
-            <CardDescription>The project invite link is malformed.</CardDescription>
+            <CardTitle>{t('invite.invalid.title')}</CardTitle>
+            <CardDescription>{t('invite.invalid.desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
-              Go to Projects
+              {t('invite.action.goToProjects')}
             </Button>
           </CardContent>
         </Card>
@@ -129,8 +131,8 @@ export function ProjectInvitePage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <div className="loader text-primary" />
             </div>
-            <CardTitle>Loading Invite...</CardTitle>
-            <CardDescription>Checking this project invite now.</CardDescription>
+            <CardTitle>{t('invite.loading.title')}</CardTitle>
+            <CardDescription>{t('invite.loading.desc')}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -145,14 +147,14 @@ export function ProjectInvitePage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
               <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-7 w-7 text-destructive" />
             </div>
-            <CardTitle>Invite Not Available</CardTitle>
+            <CardTitle>{t('invite.unavailable.title')}</CardTitle>
             <CardDescription>
-              This project invite is missing, cancelled, or points to a project that no longer exists.
+              {t('invite.unavailable.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
-              Go to Projects
+              {t('invite.action.goToProjects')}
             </Button>
           </CardContent>
         </Card>
@@ -168,8 +170,8 @@ export function ProjectInvitePage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <div className="loader text-primary" />
             </div>
-            <CardTitle>Preparing This Device...</CardTitle>
-            <CardDescription>Finishing the local device setup so this invite can be applied.</CardDescription>
+            <CardTitle>{t('invite.setup.title')}</CardTitle>
+            <CardDescription>{t('invite.setup.desc')}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -184,14 +186,14 @@ export function ProjectInvitePage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted/70">
               <HugeiconsIcon icon={__UserPlusHugeIcon} className="h-7 w-7 text-muted-foreground" />
             </div>
-            <CardTitle>Invite No Longer Pending</CardTitle>
+            <CardTitle>{t('invite.processed.title')}</CardTitle>
             <CardDescription>
-              This invite has already been processed. You can open the project if access is already in place.
+              {t('invite.processed.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button className="w-full" onClick={() => navigate(projectHref, { replace: true })}>
-              Open project
+              {t('invite.action.openProject')}
             </Button>
           </CardContent>
         </Card>
@@ -208,14 +210,15 @@ export function ProjectInvitePage() {
           </div>
           <CardTitle>{invite.project.name}</CardTitle>
           <CardDescription>
-            {formatName(invite.inviter)} invited you to join this project as a{" "}
-            {invite.role.replace(/_/g, " ")}.
+            {t('invite.details.invitedYou')
+              .replace('{name}', formatName(invite.inviter, t))
+              .replace('{role}', invite.role.replace(/_/g, " "))}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-            Invite address: <span className="font-medium text-foreground">{invite.email}</span>.
-            Accepting will authorize the current device for this project.
+            {t('invite.details.address')} <span className="font-medium text-foreground">{invite.email}</span>.
+            {t('invite.details.authorize')}
           </div>
 
           {actionError ? (
@@ -236,7 +239,7 @@ export function ProjectInvitePage() {
               {isSubmitting === "decline" ? (
                 <div className="loader mr-2" />
               ) : null}
-              Decline
+              {t('invite.action.decline')}
             </Button>
             <Button
               className="flex-1"
@@ -248,7 +251,7 @@ export function ProjectInvitePage() {
               {isSubmitting === "accept" ? (
                 <div className="loader mr-2" />
               ) : null}
-              Accept invite
+              {t('invite.action.accept')}
             </Button>
           </div>
         </CardContent>

@@ -45,6 +45,7 @@ import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
+import { useTranslation } from "@/lib/i18n";
 
 const LazyChangesPage = lazy(() =>
   import("@/features/projects/pages/ChangesPage").then((module) => ({
@@ -69,11 +70,12 @@ const LazyWorkbenchDockviewCanvas = lazy(() =>
 );
 
 function WorkbenchOverlayLoading() {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
       <div className="flex items-center gap-2">
         <div className="loader" />
-        <span>Loading…</span>
+        <span>{t('workbench.surface.loading')}</span>
       </div>
     </div>
   );
@@ -84,6 +86,7 @@ function getTaskOverlayKey(task: TaskOverlayPayload): string {
 }
 
 export function ProjectWorkbenchSurface() {
+  const { t } = useTranslation();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project, projectIdParam } = useAccessibleProject();
   const syncContext = useOptionalProjectSyncContext();
@@ -376,7 +379,7 @@ export function ProjectWorkbenchSurface() {
   if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading workbench…
+        {t('workbench.surface.loadingWorkbench')}
       </div>
     );
   }
@@ -422,7 +425,7 @@ export function ProjectWorkbenchSurface() {
               <>
                 <button
                   type="button"
-                  aria-label="Close changes"
+                  aria-label={t('workbench.surface.closeChanges')}
                   data-workbench-browser-overlay="true"
                   data-workbench-browser-overlay-reason="Changes overlay"
                   className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
@@ -447,7 +450,7 @@ export function ProjectWorkbenchSurface() {
               <>
                 <button
                   type="button"
-                  aria-label="Close settings"
+                  aria-label={t('workbench.surface.closeSettings')}
                   data-workbench-browser-overlay="true"
                   data-workbench-browser-overlay-reason="Settings overlay"
                   className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
@@ -472,9 +475,9 @@ export function ProjectWorkbenchSurface() {
               <aside className="flex w-[320px] shrink-0 flex-col border-l border-border/60">
                 <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Selected Tasks</p>
+                    <p className="text-sm font-medium text-foreground">{t('workbench.surface.selectedTasks')}</p>
                     <p className="text-xs text-muted-foreground">
-                      Context cards stay beside the workbench.
+                      {t('workbench.surface.contextCardsDesc')}
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground">{taskCards.length}</span>
