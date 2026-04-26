@@ -245,6 +245,9 @@ export function useAssistantTurnLifecycle({
     isInterrupting,
     isForceStopAvailable,
     isTurnStartPending,
+    pendingTurnStartStartedAtIso: pendingTurnStart
+      ? new Date(pendingTurnStart.startedAt).toISOString()
+      : null,
     isTurnBusy,
     clearPendingTurnStart,
     notePendingTurnStart,

@@ -24,6 +24,7 @@ import { makeCursorAdapterLive } from "./provider/Layers/CursorAdapter";
 import { makeOpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
+import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger";
@@ -94,9 +95,14 @@ export function makeServerProviderLayer(): Layer.Layer<
       Layer.provide(openCodeAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
-    return makeProviderServiceLive(
+    const providerServiceLayer = makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
     ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
+    const providerSessionReaperLayer = ProviderSessionReaperLive.pipe(
+      Layer.provide(adapterRegistryLayer),
+      Layer.provide(providerSessionDirectoryLayer),
+    );
+    return Layer.mergeAll(providerServiceLayer, providerSessionReaperLayer);
   }).pipe(Layer.unwrap);
 }
 

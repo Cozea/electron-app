@@ -592,7 +592,11 @@ const handleSessionUpdate = ({
           const previous = current.get(event.toolCall.toolCallId);
           const nextToolCall = mergeToolCallState(previous, event.toolCall);
           const next = new Map(current);
-          if (nextToolCall.status === "completed" || nextToolCall.status === "failed") {
+          if (
+            nextToolCall.status === "completed" ||
+            nextToolCall.status === "failed" ||
+            nextToolCall.status === "cancelled"
+          ) {
             next.delete(nextToolCall.toolCallId);
           } else {
             next.set(nextToolCall.toolCallId, nextToolCall);
@@ -648,7 +652,11 @@ function shouldEmitToolCallUpdate(
   previous: AcpToolCallState | undefined,
   next: AcpToolCallState,
 ): boolean {
-  if (next.status === "completed" || next.status === "failed") {
+  if (
+    next.status === "completed" ||
+    next.status === "failed" ||
+    next.status === "cancelled"
+  ) {
     return true;
   }
   if (!next.detail) {

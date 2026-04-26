@@ -12,6 +12,7 @@ import type {
   RuntimeMode,
   ServerProviderModel,
 } from "@cozea/assistant-contracts";
+import { createModelCapabilities } from "@cozea/assistant-shared/model";
 import {
   createOpencodeClient,
   type Agent,
@@ -31,13 +32,9 @@ const OPENAI_VARIANTS = ["none", "minimal", "low", "medium", "high", "xhigh"];
 const ANTHROPIC_VARIANTS = ["high", "max"];
 const GOOGLE_VARIANTS = ["low", "high"];
 
-export const DEFAULT_OPENCODE_MODEL_CAPABILITIES: ModelCapabilities = {
-  reasoningEffortLevels: [],
-  supportsFastMode: false,
-  supportsThinkingToggle: false,
-  contextWindowOptions: [],
-  promptInjectedEffortLevels: [],
-};
+export const DEFAULT_OPENCODE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
+  optionDescriptors: [],
+});
 
 export interface OpenCodeServerProcess {
   readonly url: string;
@@ -170,11 +167,38 @@ function openCodeCapabilitiesForModel(input: {
 }): ModelCapabilities {
   const variantOptions = buildVariantOptions(input.providerID, input.model);
   const agentOptions = buildAgentOptions(input.agents);
-  return {
-    ...DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-    ...(variantOptions.length > 0 ? { variantOptions } : {}),
-    ...(agentOptions.length > 0 ? { agentOptions } : {}),
-  };
+  return createModelCapabilities({
+    optionDescriptors: [
+      ...(variantOptions.length > 0
+        ? [
+            {
+              id: "variant",
+              type: "select" as const,
+              label: "Variant",
+              options: variantOptions.map((option) => ({
+                id: option.value,
+                label: option.label,
+                ...(option.isDefault ? { isDefault: true } : {}),
+              })),
+            },
+          ]
+        : []),
+      ...(agentOptions.length > 0
+        ? [
+            {
+              id: "agent",
+              type: "select" as const,
+              label: "Agent",
+              options: agentOptions.map((option) => ({
+                id: option.value,
+                label: option.label,
+                ...(option.isDefault ? { isDefault: true } : {}),
+              })),
+            },
+          ]
+        : []),
+    ],
+  });
 }
 
 export function parseOpenCodeModelSlug(

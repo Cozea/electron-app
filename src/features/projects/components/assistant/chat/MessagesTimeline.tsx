@@ -21,8 +21,8 @@ import {
   type OnViewableItemsChangedInfo,
 } from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
-import { deriveTimelineEntries } from "./session-logic";
+import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon, Image01Icon as __ImageIconHugeIcon } from '@hugeicons/core-free-icons'
+import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/stores/types";
 import { summarizeTurnDiffStats } from "./turnDiffTree";
@@ -37,7 +37,6 @@ import {
 import { asHugeIcon } from '@/lib/icons/asHugeIcon'
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
@@ -48,6 +47,7 @@ import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { computeMessageDurationStart, normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import { PersistedFilesList } from "./PersistedFilesList";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import {
   deriveDisplayedUserMessageState,
@@ -60,7 +60,6 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
-import { exceedsTextLineCountAtWidth } from "@/lib/text/pretextMeasure";
 
 const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
 const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
@@ -73,23 +72,28 @@ const GlobeIcon = asHugeIcon(__GlobeIconHugeIcon)
 const SquarePenIcon = asHugeIcon(__SquarePenIconHugeIcon)
 const HammerIcon = asHugeIcon(__HammerIconHugeIcon)
 const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon)
+const ImageIcon = asHugeIcon(__ImageIconHugeIcon)
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 /** Long user bubbles: collapse with expand control (same pattern as work log overflow). */
-const USER_MESSAGE_TRUNCATE_LINE_THRESHOLD = 6;
-const USER_MESSAGE_FONT = "13px Inter";
+const USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD = 420;
+const USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD = 10;
 
 interface MessagesTimelineProps {
   hasMessages: boolean;
   isWorking: boolean;
   selectedProvider: ProviderKind | null;
   activeTurnInProgress: boolean;
-  activeTurnStartedAt: string | null;
+  activeTurnId?: TurnId | null;
+  activeWorkStartedAt: string | null;
+  activeWorkCompletedAt: string | null;
+  isWorkActive: boolean;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
+  completionSummariesByMessageId: ReadonlyMap<MessageId, string>;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
@@ -155,11 +159,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   selectedProvider,
   activeTurnInProgress,
-  activeTurnStartedAt,
+  activeTurnId,
+  activeWorkStartedAt,
+  activeWorkCompletedAt,
+  isWorkActive,
   scrollContainerRef,
   timelineEntries,
   completionDividerBeforeEntryId,
   completionSummary,
+  completionSummariesByMessageId,
   turnDiffSummaryByAssistantMessageId,
   expandedWorkGroups,
   onToggleWorkGroup,
@@ -181,6 +189,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     Record<string, boolean>
   >({});
   const [expandedUserMessageIds, setExpandedUserMessageIds] = useState<Record<string, boolean>>({});
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
   const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
@@ -218,6 +227,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
+    let activeCompletionSummaryAttached = false;
     const durationStartByMessageId = computeMessageDurationStart(
       timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
     );
@@ -257,6 +267,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         continue;
       }
 
+      const inlineCompletionSummary =
+        timelineEntry.message.role === "assistant"
+          ? completionSummariesByMessageId.get(timelineEntry.message.id) ??
+            (completionDividerBeforeEntryId === timelineEntry.id ? completionSummary : null)
+          : null;
+      if (
+        inlineCompletionSummary &&
+        activeTurnId &&
+        timelineEntry.message.turnId === activeTurnId
+      ) {
+        activeCompletionSummaryAttached = true;
+      }
+
       nextRows.push({
         kind: "message",
         id: timelineEntry.id,
@@ -264,29 +287,50 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         message: timelineEntry.message,
         durationStart:
           durationStartByMessageId.get(timelineEntry.message.id) ?? timelineEntry.message.createdAt,
-        showCompletionDivider:
-          timelineEntry.message.role === "assistant" &&
-          completionDividerBeforeEntryId === timelineEntry.id,
+        completionSummary: inlineCompletionSummary,
       });
     }
 
-    if (isWorking) {
+    if (
+      completionSummary &&
+      activeWorkCompletedAt &&
+      !activeCompletionSummaryAttached &&
+      !completionDividerBeforeEntryId
+    ) {
+      nextRows.push({
+        kind: "completion",
+        id: `completion-summary-row:${activeWorkCompletedAt}`,
+        createdAt: activeWorkCompletedAt,
+        summary: completionSummary,
+      });
+    }
+
+    if (isWorkActive) {
       nextRows.push({
         kind: "working",
         id: "working-indicator-row",
-        createdAt: activeTurnStartedAt,
+        createdAt: activeWorkStartedAt,
       });
     }
 
     return nextRows;
-  }, [timelineEntries, completionDividerBeforeEntryId, isWorking, activeTurnStartedAt]);
+  }, [
+    activeWorkCompletedAt,
+    activeWorkStartedAt,
+    activeTurnId,
+    completionDividerBeforeEntryId,
+    completionSummariesByMessageId,
+    completionSummary,
+    isWorkActive,
+    timelineEntries,
+  ]);
 
   const firstAlwaysRenderedRowIndex = useMemo(() => {
     const firstTailRowIndex = Math.max(rows.length - ALWAYS_UNVIRTUALIZED_TAIL_ROWS, 0);
     if (!activeTurnInProgress) return firstTailRowIndex;
 
     const turnStartedAtMs =
-      typeof activeTurnStartedAt === "string" ? Date.parse(activeTurnStartedAt) : Number.NaN;
+      typeof activeWorkStartedAt === "string" ? Date.parse(activeWorkStartedAt) : Number.NaN;
     let firstCurrentTurnRowIndex = -1;
     if (!Number.isNaN(turnStartedAtMs)) {
       firstCurrentTurnRowIndex = rows.findIndex((row) => {
@@ -317,7 +361,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
 
     return Math.min(firstCurrentTurnRowIndex, firstTailRowIndex);
-  }, [activeTurnInProgress, activeTurnStartedAt, rows]);
+  }, [activeTurnInProgress, activeWorkStartedAt, rows]);
 
   const alwaysRenderKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -363,12 +407,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       activeTurnInProgress ? "active" : "idle",
       isWorking ? "working" : "settled",
       completionDividerBeforeEntryId ?? "no-divider",
+      completionSummariesByMessageId.size,
     ].join(":");
-  }, [activeTurnInProgress, completionDividerBeforeEntryId, isWorking, rows]);
+  }, [
+    activeTurnInProgress,
+    completionDividerBeforeEntryId,
+    completionSummariesByMessageId.size,
+    isWorking,
+    rows,
+  ]);
   const legendListExtraData = useMemo(
     () => ({
       allDirectoriesExpandedByTurnId,
       completionSummary,
+      completionSummaryVersion: [...completionSummariesByMessageId.entries()]
+        .map(([messageId, summary]) => `${messageId}:${summary}`)
+        .join("|"),
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
@@ -379,6 +433,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [
       allDirectoriesExpandedByTurnId,
       completionSummary,
+      completionSummariesByMessageId,
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
@@ -402,6 +457,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const onTimelineImageLoad = useCallback(() => {
     // Legend List measures row size with ResizeObserver; this hook preserves the old image load contract.
   }, []);
+  const onTimelineImageError = useCallback((imageId: string) => {
+    setFailedImageIds((prev) => {
+      const next = new Set(prev);
+      next.add(imageId);
+      return next;
+    });
+  }, []);
+
   const onLegendListLoad = useCallback((info: { elapsedTimeInMs: number }) => {
     if (!shouldLogLegendListDiagnostics()) return;
     console.info("[LegendList][AgentTimeline] load", {
@@ -473,20 +536,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const groupedEntries = row.groupedEntries;
           const isExpanded = expandedWorkGroups[groupId] ?? false;
           const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-          const visibleEntries =
-            hasOverflow && !isExpanded
-              ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-              : groupedEntries;
-          const hiddenCount = groupedEntries.length - visibleEntries.length;
           const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
           const showHeader = hasOverflow || !onlyToolEntries;
 
           return (
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
               {showHeader && (
-                <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+                <div className="mb-1.5 flex items-center justify-between gap-2 -mx-1 -mt-0.5">
                   <p
-                    className="inline-flex min-h-4 shrink-0 items-center justify-center rounded-full bg-muted/90 px-1.5 py-px text-[10px] font-medium tabular-nums leading-none text-muted-foreground"
+                    className="inline-flex min-h-5 shrink-0 items-center justify-center rounded-full bg-muted/90 px-2.5 py-1 text-sm font-medium tabular-nums leading-none text-muted-foreground"
                     aria-label={
                       onlyToolEntries
                         ? `${groupedEntries.length} tool calls`
@@ -498,31 +556,44 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
                       aria-expanded={isExpanded}
                       aria-label={
                         isExpanded
                           ? "Collapse work log"
-                          : `Expand to show ${hiddenCount} more ${onlyToolEntries ? "tool calls" : "entries"}`
+                          : `Expand to show all ${onlyToolEntries ? "tool calls" : "entries"}`
                       }
-                      title={isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                      title={isExpanded ? "Show less" : `Show all`}
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
                       <HugeiconsIcon
                         icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
-                        className="size-3 stroke-[2.2]"
+                        className="size-4 stroke-[2.2]"
                         aria-hidden="true"
                       />
                     </button>
                   )}
                 </div>
               )}
-              <div className="space-y-0.5">
-                {visibleEntries.map((workEntry) => (
+              <div
+                className={cn(
+                  "space-y-0.5 overflow-y-auto overscroll-contain flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+                  !isExpanded && hasOverflow
+                    ? "max-h-[160px] [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]"
+                    : "max-h-none"
+                )}
+                ref={(node) => {
+                  if (node && !isExpanded) {
+                    node.scrollTop = node.scrollHeight;
+                  }
+                }}
+              >
+                {groupedEntries.map((workEntry) => (
                   <SimpleWorkEntryRow
                     key={`work-row:${workEntry.id}`}
                     workEntry={workEntry}
                     workspaceRoot={workspaceRoot}
+                    resolvedTheme={resolvedTheme}
                   />
                 ))}
               </div>
@@ -543,111 +614,98 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const measurePayload = [terminalCtxPrefix, displayedUserMessage.visibleText]
             .filter((part) => part.length > 0)
             .join("\n");
-          const estimatedBubbleContentWidth = Math.max(
-            120,
-            (timelineWidthPx ?? LEGEND_LIST_DEFAULT_WIDTH_PX) - 28, // list horizontal padding + bubble insets
-          );
-          const needsUserBodyTruncate = exceedsTextLineCountAtWidth(
-            measurePayload,
-            USER_MESSAGE_FONT,
-            estimatedBubbleContentWidth,
-            USER_MESSAGE_TRUNCATE_LINE_THRESHOLD,
-            { whiteSpace: "pre-wrap" },
-          );
+          const newlineCount = (measurePayload.match(/\n/g) ?? []).length;
+          const needsUserBodyTruncate =
+            measurePayload.length > USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD ||
+            newlineCount >= USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD;
           const userMessageExpanded = expandedUserMessageIds[messageId] ?? false;
           return (
             <div className="w-full min-w-0">
               <div className="group flex w-full min-w-0 flex-col gap-1">
-                <div className="relative w-full min-w-0 rounded-md bg-secondary px-3.5 py-2.5">
                   {userImages.length > 0 && (
-                    <div className="mb-2 grid w-full max-w-full grid-cols-2 gap-2">
+                    <div className="mb-1 flex w-full flex-wrap justify-end gap-2 pl-12">
                       {userImages.map(
-                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                          <div
-                            key={image.id}
-                            className="overflow-hidden rounded-md bg-background/70"
-                          >
-                            {image.previewUrl ? (
-                              <button
-                                type="button"
-                                className="h-full w-full cursor-zoom-in"
-                                aria-label={`Preview ${image.name}`}
-                                onClick={() => {
-                                  const preview = buildExpandedImagePreview(userImages, image.id);
-                                  if (!preview) return;
-                                  onImageExpand(preview);
-                                }}
-                              >
-                                <img
-                                  src={image.previewUrl}
-                                  alt={image.name}
-                                  className="h-full max-h-[220px] w-full object-cover"
-                                  onLoad={onTimelineImageLoad}
-                                  onError={onTimelineImageLoad}
-                                />
-                              </button>
-                            ) : (
-                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                                {image.name}
-                              </div>
-                            )}
-                          </div>
-                        ),
+                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => {
+                          const isFailed = failedImageIds.has(image.id);
+                          return (
+                            <div
+                              key={image.id}
+                              className="relative overflow-hidden rounded-md border border-border/40 bg-transparent h-24 w-32 shrink-0"
+                            >
+                              {image.previewUrl && !isFailed ? (
+                                <button
+                                  type="button"
+                                  className="h-full w-full cursor-zoom-in"
+                                  aria-label={`Preview ${image.name}`}
+                                  onClick={() => {
+                                    const preview = buildExpandedImagePreview(userImages, image.id);
+                                    if (!preview) return;
+                                    onImageExpand(preview);
+                                  }}
+                                >
+                                  <img
+                                    src={image.previewUrl}
+                                    alt={image.name}
+                                    className="h-full w-full object-cover"
+                                    onLoad={onTimelineImageLoad}
+                                    onError={() => onTimelineImageError(image.id)}
+                                  />
+                                </button>
+                              ) : (
+                                <div className="flex h-full w-full flex-col items-center justify-center border border-dashed border-border/70 bg-secondary/30 px-2 py-2 text-center text-muted-foreground">
+                                  <ImageIcon className="mb-1.5 size-5 opacity-50" />
+                                  <span className="truncate w-full text-[9px] font-medium leading-tight">
+                                    {image.name}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        },
                       )}
                     </div>
                   )}
                   {(displayedUserMessage.visibleText.trim().length > 0 ||
                     terminalContexts.length > 0) && (
-                    <div className="flex w-full min-w-0 items-start gap-1">
-                      {needsUserBodyTruncate ? (
-                        <Collapsible open={userMessageExpanded} className="min-w-0 flex-1 text-left">
-                          {!userMessageExpanded && (
-                            <div className="line-clamp-6 overflow-hidden">
-                              <UserMessageBody
-                                text={displayedUserMessage.visibleText}
-                                terminalContexts={terminalContexts}
-                              />
-                            </div>
+                    <div className="relative w-full min-w-0 rounded-md bg-secondary px-3.5 py-2.5">
+                      <div className="flex w-full min-w-0 items-start gap-1">
+                        <div
+                          className={cn(
+                            "min-w-0 flex-1 text-left",
+                            needsUserBodyTruncate &&
+                              !userMessageExpanded &&
+                              "line-clamp-6 overflow-hidden",
                           )}
-                          <CollapsibleContent className="min-w-0">
-                            <UserMessageBody
-                              text={displayedUserMessage.visibleText}
-                              terminalContexts={terminalContexts}
-                            />
-                          </CollapsibleContent>
-                        </Collapsible>
-                      ) : (
-                        <div className="min-w-0 flex-1 text-left">
+                        >
                           <UserMessageBody
                             text={displayedUserMessage.visibleText}
                             terminalContexts={terminalContexts}
                           />
                         </div>
-                      )}
-                      {needsUserBodyTruncate ? (
-                        <button
-                          type="button"
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
-                          aria-expanded={userMessageExpanded}
-                          aria-label={
-                            userMessageExpanded ? "Collapse user message" : "Expand user message"
-                          }
-                          title={userMessageExpanded ? "Show less" : "Show full message"}
-                          onClick={() => toggleUserMessageExpanded(messageId)}
-                        >
-                          <HugeiconsIcon
-                            icon={
-                              userMessageExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon
+                        {needsUserBodyTruncate ? (
+                          <button
+                            type="button"
+                            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
+                            aria-expanded={userMessageExpanded}
+                            aria-label={
+                              userMessageExpanded ? "Collapse user message" : "Expand user message"
                             }
-                            className="size-3.5 stroke-[2.1]"
-                          />
-                        </button>
-                      ) : null}
+                            title={userMessageExpanded ? "Show less" : "Show full message"}
+                            onClick={() => toggleUserMessageExpanded(messageId)}
+                          >
+                            <HugeiconsIcon
+                              icon={
+                                userMessageExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon
+                              }
+                              className="size-3.5 stroke-[2.1]"
+                            />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   )}
-                </div>
 
-                <div className="mt-0.5 flex w-full min-w-0 items-center justify-start gap-2 px-1">
+                <div className="mt-0.5 flex w-full min-w-0 items-center justify-end gap-2 px-1">
                   <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
                     {displayedUserMessage.copyText && (
                       <MessageCopyButton text={displayedUserMessage.copyText} />
@@ -679,15 +737,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
           return (
             <>
-              {row.showCompletionDivider && (
-                <div className="my-4 px-1">
-                  <div className="text-[13px] text-muted-foreground/88">
-                    <span className="font-medium">
-                      {completionSummary ?? "Response ready"}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-px bg-border/70" />
-                </div>
+              {row.completionSummary && (
+                <CompletionSummaryRow summary={row.completionSummary} />
               )}
               <div className="min-w-0 px-1 py-0.5">
                 <ChatMarkdown
@@ -708,18 +759,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   return (
                     <div className="mt-2 rounded-lg bg-secondary p-2.5">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                          <span>Changed files ({changedFileCountLabel})</span>
+                          {hasNonZeroStat(summaryStat) && (
+                            <>
+                              <span className="mx-1">•</span>
+                              <DiffStatLabel
+                                additions={summaryStat.additions}
+                                deletions={summaryStat.deletions}
+                              />
+                            </>
+                          )}
+                        </p>
                         <div className="flex items-center gap-1.5">
-                          <p className="text-[10px] text-muted-foreground/65">
-                            Changed Files
-                          </p>
-                          <span
-                            className="inline-flex min-h-4 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/90 px-1.5 py-px text-[10px] font-medium tabular-nums leading-none text-foreground/80"
-                            aria-label={`${changedFileCountLabel} changed files`}
-                          >
-                            {changedFileCountLabel}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-end gap-1.5">
                           <Button
                             type="button"
                             size="icon-sm"
@@ -731,14 +783,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                           >
                             <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
                           </Button>
-                          {hasNonZeroStat(summaryStat) && (
-                            <span className="text-[10px] leading-none">
-                              <DiffStatLabel
-                                additions={summaryStat.additions}
-                                deletions={summaryStat.deletions}
-                              />
-                            </span>
-                          )}
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+                            onClick={() =>
+                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
+                            }
+                            title="View diff"
+                            aria-label="View diff"
+                          >
+                            <EyeIcon className="size-3.5" />
+                          </Button>
                         </div>
                       </div>
                       <ChangedFilesTree
@@ -767,19 +824,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         </div>
       )}
 
+      {row.kind === "completion" && <CompletionSummaryRow summary={row.summary} />}
+
       {row.kind === "working" && (
-        <div className="py-0.5 pl-1.5">
-          <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-            <span className="inline-flex items-center gap-[3px]">
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-            </span>
-            <span>
-              {row.createdAt ? <WorkingDurationLabel startIso={row.createdAt} /> : "Working..."}
-            </span>
-          </div>
-        </div>
+        <WorkingIndicatorRow startedAtIso={row.createdAt} />
       )}
     </div>
   );
@@ -893,13 +941,19 @@ type TimelineRow =
       createdAt: string;
       message: TimelineMessage;
       durationStart: string;
-      showCompletionDivider: boolean;
+      completionSummary: string | null;
     }
   | {
       kind: "proposed-plan";
       id: string;
       createdAt: string;
       proposedPlan: TimelineProposedPlan;
+    }
+  | {
+      kind: "completion";
+      id: string;
+      createdAt: string;
+      summary: string;
     }
   | { kind: "working"; id: string; createdAt: string | null };
 
@@ -911,14 +965,22 @@ function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan):
 function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | null): number {
   switch (row.kind) {
     case "work": {
-      const visibleEntryCount = Math.min(row.groupedEntries.length, MAX_VISIBLE_WORK_LOG_ENTRIES);
-      const overflowHeaderHeight = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES ? 24 : 0;
-      return 28 + overflowHeaderHeight + visibleEntryCount * 28;
+      const hasOverflow = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+      const overflowHeaderHeight = hasOverflow ? 24 : 0;
+      const variableHeight = hasOverflow
+        ? 160
+        : row.groupedEntries.reduce((total, entry) => total + estimateWorkEntryHeight(entry), 0);
+      return 24 + overflowHeaderHeight + variableHeight;
     }
     case "message":
-      return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
+      return (
+        estimateTimelineMessageHeight(row.message, { timelineWidthPx }) +
+        (row.completionSummary ? 40 : 0)
+      );
     case "proposed-plan":
       return estimateTimelineProposedPlanHeight(row.proposedPlan);
+    case "completion":
+      return 40;
     case "working":
       return 40;
   }
@@ -949,7 +1011,7 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
     return (
       previousRow.createdAt === nextRow.createdAt &&
       previousRow.durationStart === nextRow.durationStart &&
-      previousRow.showCompletionDivider === nextRow.showCompletionDivider &&
+      previousRow.completionSummary === nextRow.completionSummary &&
       previousRow.message.id === nextRow.message.id &&
       previousRow.message.role === nextRow.message.role &&
       previousRow.message.text === nextRow.message.text &&
@@ -965,6 +1027,10 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
     );
   }
 
+  if (previousRow.kind === "completion" && nextRow.kind === "completion") {
+    return previousRow.createdAt === nextRow.createdAt && previousRow.summary === nextRow.summary;
+  }
+
   if (previousRow.kind === "working" && nextRow.kind === "working") {
     return previousRow.createdAt === nextRow.createdAt;
   }
@@ -972,44 +1038,82 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
   return false;
 }
 
-function formatWorkingTimer(startIso: string, endIso: string): string | null {
+function formatLiveElapsed(startIso: string, nowMs: number): string | null {
   const startedAtMs = Date.parse(startIso);
-  const endedAtMs = Date.parse(endIso);
-  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
+  if (!Number.isFinite(startedAtMs)) {
     return null;
   }
-
-  const elapsedSeconds = Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000));
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
+  if (elapsedMs < 10_000) {
+    return `${(elapsedMs / 1_000).toFixed(1)}s`;
   }
-
-  const hours = Math.floor(elapsedSeconds / 3600);
-  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-  const seconds = elapsedSeconds % 60;
-
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  return formatDuration(elapsedMs);
 }
 
-const WorkingDurationLabel = memo(function WorkingDurationLabel(props: { startIso: string }) {
-  const [nowIso, setNowIso] = useState(() => new Date().toISOString());
+const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
+  startedAtIso: string | null;
+}) {
+  const { startedAtIso } = props;
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    setNowIso(new Date().toISOString());
+    if (!startedAtIso) {
+      return;
+    }
+    setNowMs(Date.now());
     const intervalId = window.setInterval(() => {
-      setNowIso(new Date().toISOString());
-    }, 1000);
+      setNowMs(Date.now());
+    }, 250);
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [props.startIso]);
+  }, [startedAtIso]);
 
-  return <>Working for {formatWorkingTimer(props.startIso, nowIso) ?? "0s"}</>;
+  const elapsedLabel = startedAtIso ? formatLiveElapsed(startedAtIso, nowMs) : null;
+
+  return (
+    <div className="py-0.5 pl-1.5">
+      <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
+        <span className="inline-flex items-center gap-[3px]">
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
+        </span>
+        <span>{elapsedLabel ? `Working for ${elapsedLabel}` : "Working..."}</span>
+      </div>
+    </div>
+  );
 });
+
+const CompletionSummaryRow = memo(function CompletionSummaryRow(props: {
+  summary: string;
+}) {
+  return (
+    <div className="my-4 px-1">
+      <div className="text-[13px] text-muted-foreground/88">
+        <span className="font-medium">{props.summary}</span>
+      </div>
+      <div className="mt-2 h-px bg-border/70" />
+    </div>
+  );
+});
+
+function estimateWorkEntryHeight(workEntry: TimelineWorkEntry): number {
+  let height = 28;
+  const changedFileCount = workEntry.changedFiles?.length ?? 0;
+  const persistedFileCount =
+    (workEntry.savedFiles?.length ?? 0) + (workEntry.failedFiles?.length ?? 0);
+  if (changedFileCount > 0) {
+    height += workEntry.activityKind === "files.persisted" ? 28 : 20;
+  }
+  if (persistedFileCount > 3) {
+    height += 18;
+  }
+  if (workEntry.status === "cancelled" || workEntry.status === "failed") {
+    height += 4;
+  }
+  return height;
+}
 
 const UserMessageTerminalContextInlineLabel = memo(
   function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {
@@ -1115,14 +1219,20 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   );
 });
 
-function workToneIcon(tone: TimelineWorkEntry["tone"]): {
+function workToneIcon(tone: TimelineWorkEntry["tone"], status?: TimelineWorkEntry["status"]): {
   icon: LucideIcon;
   className: string;
 } {
+  if (status === "failed") {
+    return {
+      icon: CircleAlertIcon,
+      className: "text-destructive",
+    };
+  }
   if (tone === "error") {
     return {
       icon: CircleAlertIcon,
-      className: "text-foreground/92",
+      className: "text-rose-300/50 dark:text-rose-300/50",
     };
   }
   if (tone === "thinking") {
@@ -1143,7 +1253,8 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   };
 }
 
-function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
+function workToneClass(tone: "thinking" | "tool" | "info" | "error", status?: TimelineWorkEntry["status"]): string {
+  if (status === "failed") return "text-destructive";
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
   if (tone === "tool") return "text-muted-foreground/70";
   if (tone === "thinking") return "text-muted-foreground/50";
@@ -1165,6 +1276,27 @@ function workEntryPreview(
     : `${displayPath} +${workEntry.changedFiles!.length - 1} more`;
 }
 
+function normalizePathLikeValue(value: string): string {
+  return value.trim().replace(/\\/g, "/");
+}
+
+function workEntryPreviewDuplicatesSingleChangedFile(
+  workEntry: Pick<TimelineWorkEntry, "changedFiles">,
+  preview: string | null,
+  workspaceRoot: string | undefined,
+): boolean {
+  if (!preview) return false;
+  if ((workEntry.changedFiles?.length ?? 0) !== 1) return false;
+  const [firstPath] = workEntry.changedFiles ?? [];
+  if (!firstPath) return false;
+  const displayPath = formatWorkspaceRelativePath(firstPath, workspaceRoot);
+  const normalizedPreview = normalizePathLikeValue(preview);
+  return (
+    normalizedPreview === normalizePathLikeValue(firstPath) ||
+    normalizedPreview === normalizePathLikeValue(displayPath)
+  );
+}
+
 function workEntryRawCommand(
   workEntry: Pick<TimelineWorkEntry, "command" | "rawCommand">,
 ): string | null {
@@ -1176,6 +1308,7 @@ function workEntryRawCommand(
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
+  if (workEntry.status === "failed") return CircleAlertIcon;
   if (workEntry.requestKind === "command") return TerminalIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
@@ -1200,6 +1333,20 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   return workToneIcon(workEntry.tone).icon;
 }
 
+function isRunningWorkEntry(workEntry: Pick<TimelineWorkEntry, "activityKind" | "status">): boolean {
+  return workEntry.activityKind === "tool.progress" || workEntry.status === "inProgress";
+}
+
+function isCommandLikeWorkEntry(
+  workEntry: Pick<TimelineWorkEntry, "requestKind" | "itemType" | "command">,
+): boolean {
+  return (
+    workEntry.requestKind === "command" ||
+    workEntry.itemType === "command_execution" ||
+    Boolean(workEntry.command)
+  );
+}
+
 function capitalizePhrase(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
@@ -1209,19 +1356,68 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
+  if (isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry)) {
+    return "Running command";
+  }
+  if (workEntry.status === "failed") {
+    if (!workEntry.toolTitle) {
+      return `Failed to ${normalizeCompactToolLabel(workEntry.label).toLowerCase()}`;
+    }
+    return `Failed to ${normalizeCompactToolLabel(workEntry.toolTitle).toLowerCase()}`;
+  }
   if (!workEntry.toolTitle) {
     return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
   }
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
 }
 
+function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
+  label: string;
+  className: string;
+} | null {
+  if (workEntry.status === "cancelled") {
+    return {
+      label: "Cancelled",
+      className:
+        "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    };
+  }
+  if (
+    workEntry.activityKind === "runtime.warning" ||
+    workEntry.activityKind === "config.warning" ||
+    workEntry.activityKind === "deprecation.notice"
+  ) {
+    return {
+      label: "Warning",
+      className:
+        "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    };
+  }
+  if (workEntry.activityKind === "model.rerouted") {
+    return {
+      label: "Rerouted",
+      className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    };
+  }
+  if (isRunningWorkEntry(workEntry) && !isCommandLikeWorkEntry(workEntry)) {
+    return {
+      label: "Running",
+      className: "border-border/60 bg-background/80 text-muted-foreground",
+    };
+  }
+  return null;
+}
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
+  resolvedTheme: "light" | "dark";
 }) {
-  const { workEntry, workspaceRoot } = props;
-  const iconConfig = workToneIcon(workEntry.tone);
+  const { workEntry, workspaceRoot, resolvedTheme } = props;
+  const iconConfig = workToneIcon(workEntry.tone, workEntry.status);
   const EntryIcon = workEntryIcon(workEntry);
+  const showRunningCommandSpinner =
+    isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
   const preview =
@@ -1231,9 +1427,17 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ? null
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
+  const statusBadge = workEntryStatusBadge(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const hasPersistedFileGroups =
+    (workEntry.savedFiles?.length ?? 0) > 0 || (workEntry.failedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
+  const duplicateChangedFileDisplay = workEntryPreviewDuplicatesSingleChangedFile(
+    workEntry,
+    preview,
+    workspaceRoot,
+  );
 
   return (
     <div className="rounded-lg px-1 py-1">
@@ -1241,7 +1445,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <span
           className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
         >
-          <EntryIcon className="size-3" />
+          {showRunningCommandSpinner ? (
+            <div className="loader" aria-hidden="true" />
+          ) : (
+            <EntryIcon className="size-3" />
+          )}
         </span>
         <div className="min-w-0 flex-1 overflow-hidden">
           {rawCommand ? (
@@ -1249,12 +1457,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               <p
                 className={cn(
                   "truncate text-[11px] leading-5",
-                  workToneClass(workEntry.tone),
+                  workToneClass(workEntry.tone, workEntry.status),
                   preview ? "text-muted-foreground/70" : "",
                 )}
                 title={displayText}
               >
-                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                <span className={cn(workEntry.status === "failed" ? "text-destructive" : "text-foreground/80", workToneClass(workEntry.tone, workEntry.status))}>
                   {heading}
                 </span>
                 {preview && (
@@ -1289,12 +1497,24 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   <p
                     className={cn(
                       "truncate text-[11px] leading-5",
-                      workToneClass(workEntry.tone),
+                      workToneClass(workEntry.tone, workEntry.status),
                       preview ? "text-muted-foreground/70" : "",
                     )}
                   >
-                    <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                      {heading}
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <span className={cn("truncate", workEntry.status === "failed" ? "text-destructive" : "text-foreground/80", workToneClass(workEntry.tone, workEntry.status))}>
+                        {heading}
+                      </span>
+                      {statusBadge ? (
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-[9px] font-medium leading-4",
+                            statusBadge.className,
+                          )}
+                        >
+                          {statusBadge.label}
+                        </span>
+                      ) : null}
                     </span>
                     {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
                   </p>
@@ -1307,7 +1527,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           )}
         </div>
       </div>
-      {hasChangedFiles && !previewIsChangedFiles && (
+      {hasPersistedFileGroups ? (
+        <PersistedFilesList
+          savedFiles={workEntry.savedFiles}
+          failedFiles={workEntry.failedFiles}
+          workspaceRoot={workspaceRoot}
+          resolvedTheme={resolvedTheme}
+        />
+      ) : hasChangedFiles && !previewIsChangedFiles && !duplicateChangedFileDisplay ? (
         <div className="mt-1 flex flex-wrap gap-1 pl-6">
           {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
             const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
@@ -1327,7 +1554,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             </span>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 });

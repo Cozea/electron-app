@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Schema } from "effect";
+import { Effect, Schema, SchemaTransformation } from "effect";
 
 import { TrimmedNonEmptyString } from "./baseSchemas";
 import type { ProviderKind } from "./orchestration";
@@ -12,6 +12,8 @@ export const CURSOR_REASONING_OPTIONS = ["low", "medium", "high", "max", "xhigh"
 export const CursorReasoningOption = Schema.Literals(CURSOR_REASONING_OPTIONS);
 export type CursorReasoningOption = typeof CursorReasoningOption.Type;
 
+// Legacy provider-shaped option structs remain readable for older persisted
+// payloads and for compatibility with code paths that still construct them.
 export const CursorModelOptions = Schema.Struct({
   reasoning: Schema.optional(CursorReasoningOption),
   fastMode: Schema.optional(Schema.Boolean),
@@ -64,12 +66,126 @@ export const ContextWindowOption = Schema.Struct({
 });
 export type ContextWindowOption = typeof ContextWindowOption.Type;
 
+export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
+export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
+
+export const ProviderOptionChoice = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  description: Schema.optional(TrimmedNonEmptyString),
+  isDefault: Schema.optional(Schema.Boolean),
+});
+export type ProviderOptionChoice = typeof ProviderOptionChoice.Type;
+
+const ProviderOptionDescriptorBase = {
+  id: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  description: Schema.optional(TrimmedNonEmptyString),
+} as const;
+
+export const SelectProviderOptionDescriptor = Schema.Struct({
+  ...ProviderOptionDescriptorBase,
+  type: Schema.Literal("select"),
+  options: Schema.Array(ProviderOptionChoice),
+  currentValue: Schema.optional(TrimmedNonEmptyString),
+  promptInjectedValues: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type SelectProviderOptionDescriptor = typeof SelectProviderOptionDescriptor.Type;
+
+export const BooleanProviderOptionDescriptor = Schema.Struct({
+  ...ProviderOptionDescriptorBase,
+  type: Schema.Literal("boolean"),
+  currentValue: Schema.optional(Schema.Boolean),
+});
+export type BooleanProviderOptionDescriptor = typeof BooleanProviderOptionDescriptor.Type;
+
+export const ProviderOptionDescriptor = Schema.Union([
+  SelectProviderOptionDescriptor,
+  BooleanProviderOptionDescriptor,
+]);
+export type ProviderOptionDescriptor = typeof ProviderOptionDescriptor.Type;
+
+export const ProviderOptionSelectionValue = Schema.Union([TrimmedNonEmptyString, Schema.Boolean]);
+export type ProviderOptionSelectionValue = typeof ProviderOptionSelectionValue.Type;
+
+export const ProviderOptionSelection = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  value: ProviderOptionSelectionValue,
+});
+export type ProviderOptionSelection = typeof ProviderOptionSelection.Type;
+
+const LEGACY_OPTION_ID_ALIASES: Record<string, string> = {
+  reasoningEffort: "effort",
+  reasoning: "effort",
+};
+
+function canonicalizeOptionId(id: string): string {
+  const trimmed = id.trim();
+  return LEGACY_OPTION_ID_ALIASES[trimmed] ?? trimmed;
+}
+
+const LegacyProviderOptionSelectionsObject = Schema.Record(Schema.String, Schema.Unknown);
+
+function coerceLegacyOptionsObjectToArray(
+  record: Record<string, unknown>,
+): ReadonlyArray<ProviderOptionSelection> {
+  const entries: Array<ProviderOptionSelection> = [];
+  for (const [rawKey, rawValue] of Object.entries(record)) {
+    const id = typeof rawKey === "string" ? canonicalizeOptionId(rawKey) : "";
+    if (!id) continue;
+    if (typeof rawValue === "string") {
+      const trimmed = rawValue.trim();
+      if (trimmed) {
+        entries.push({ id, value: trimmed });
+      }
+      continue;
+    }
+    if (typeof rawValue === "boolean") {
+      entries.push({ id, value: rawValue });
+    }
+  }
+  return entries;
+}
+
+function canonicalSelectionsToLegacyObject(
+  selections: ReadonlyArray<ProviderOptionSelection>,
+): Record<string, string | boolean> {
+  const out: Record<string, string | boolean> = {};
+  for (const { id, value } of selections) {
+    out[canonicalizeOptionId(id)] = value;
+  }
+  return out;
+}
+
+const ProviderOptionSelectionsFromLegacyObject = LegacyProviderOptionSelectionsObject.pipe(
+  Schema.decodeTo(
+    Schema.Array(ProviderOptionSelection),
+    SchemaTransformation.transformOrFail({
+      decode: (record) => Effect.succeed(coerceLegacyOptionsObjectToArray(record)),
+      encode: (selections) => Effect.succeed(canonicalSelectionsToLegacyObject(selections)),
+    }),
+  ),
+);
+
+export const ProviderOptionSelections = Schema.Union([
+  Schema.Array(ProviderOptionSelection),
+  ProviderOptionSelectionsFromLegacyObject,
+]);
+export type ProviderOptionSelections = typeof ProviderOptionSelections.Type;
+
 export const ModelCapabilities = Schema.Struct({
-  reasoningEffortLevels: Schema.Array(EffortOption),
-  supportsFastMode: Schema.Boolean,
-  supportsThinkingToggle: Schema.Boolean,
-  contextWindowOptions: Schema.Array(ContextWindowOption),
-  promptInjectedEffortLevels: Schema.Array(TrimmedNonEmptyString),
+  optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
+  reasoningEffortLevels: Schema.Array(EffortOption).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
+  supportsFastMode: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  supportsThinkingToggle: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  contextWindowOptions: Schema.Array(ContextWindowOption).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
+  promptInjectedEffortLevels: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;
 
@@ -128,8 +244,6 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
   },
   opencode: {},
 };
-
-// ── Provider display names ────────────────────────────────────────────
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",

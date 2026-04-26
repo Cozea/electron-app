@@ -1,14 +1,20 @@
 // @ts-nocheck
 import {
   DEFAULT_MODEL_BY_PROVIDER,
-  type ClaudeModelOptions,
-  type CodexModelOptions,
   type ModelCapabilities,
   type ProviderKind,
+  type ProviderOptionSelection,
   type ServerProvider,
   type ServerProviderModel,
 } from "@cozea/assistant-contracts"
-import { normalizeModelSlug, resolveContextWindow, resolveEffort } from "@cozea/assistant-shared/model"
+import {
+  getProviderOptionBooleanSelectionValue,
+  getProviderOptionStringSelectionValue,
+  normalizeModelSlug,
+  resolveContextWindow,
+  resolveEffort,
+  setProviderOptionSelectionValue,
+} from "@cozea/assistant-shared/model"
 
 const EMPTY_CAPABILITIES: ModelCapabilities = {
   reasoningEffortLevels: [],
@@ -74,35 +80,37 @@ export function getDefaultServerModel(
 
 export function normalizeCodexModelOptionsWithCapabilities(
   caps: ModelCapabilities,
-  modelOptions: CodexModelOptions | null | undefined,
-): CodexModelOptions | undefined {
-  const reasoningEffort = resolveEffort(caps, modelOptions?.reasoningEffort)
-  const fastModeEnabled = modelOptions?.fastMode === true
-  const nextOptions: CodexModelOptions = {
-    ...(reasoningEffort
-      ? { reasoningEffort: reasoningEffort as CodexModelOptions["reasoningEffort"] }
-      : {}),
-    ...(fastModeEnabled ? { fastMode: true } : {}),
-  }
-
-  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined
+  modelOptions: ReadonlyArray<ProviderOptionSelection> | Record<string, unknown> | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
+  const reasoningEffort = resolveEffort(caps, getProviderOptionStringSelectionValue(modelOptions, "effort"))
+  const fastModeEnabled = getProviderOptionBooleanSelectionValue(modelOptions, "fastMode") === true
+  let nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "effort", reasoningEffort)
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "fastMode", fastModeEnabled ? true : undefined)
+  return nextOptions
 }
 
 export function normalizeClaudeModelOptionsWithCapabilities(
   caps: ModelCapabilities,
-  modelOptions: ClaudeModelOptions | null | undefined,
-): ClaudeModelOptions | undefined {
-  const effort = resolveEffort(caps, modelOptions?.effort)
+  modelOptions: ReadonlyArray<ProviderOptionSelection> | Record<string, unknown> | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
+  const effort = resolveEffort(caps, getProviderOptionStringSelectionValue(modelOptions, "effort"))
   const thinking =
-    caps.supportsThinkingToggle && modelOptions?.thinking === false ? false : undefined
-  const fastMode = caps.supportsFastMode && modelOptions?.fastMode === true ? true : undefined
-  const contextWindow = resolveContextWindow(caps, modelOptions?.contextWindow)
-  const nextOptions: ClaudeModelOptions = {
-    ...(thinking === false ? { thinking: false } : {}),
-    ...(effort ? { effort: effort as ClaudeModelOptions["effort"] } : {}),
-    ...(fastMode ? { fastMode: true } : {}),
-    ...(contextWindow ? { contextWindow } : {}),
-  }
-
-  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined
+    caps.supportsThinkingToggle && getProviderOptionBooleanSelectionValue(modelOptions, "thinking") === false
+      ? false
+      : undefined
+  const fastMode =
+    caps.supportsFastMode && getProviderOptionBooleanSelectionValue(modelOptions, "fastMode") === true
+      ? true
+      : undefined
+  const contextWindow = resolveContextWindow(
+    caps,
+    getProviderOptionStringSelectionValue(modelOptions, "contextWindow"),
+  )
+  let nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "thinking", thinking)
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "effort", effort)
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "fastMode", fastMode)
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "contextWindow", contextWindow)
+  return nextOptions
 }

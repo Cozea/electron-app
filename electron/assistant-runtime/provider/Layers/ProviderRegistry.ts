@@ -17,6 +17,7 @@ import { CodexProvider } from "../Services/CodexProvider";
 import { CursorProvider } from "../Services/CursorProvider";
 import { OpenCodeProvider } from "../Services/OpenCodeProvider";
 import { ProviderRegistry, type ProviderRegistryShape } from "../Services/ProviderRegistry";
+import { buildBuiltInProviderCatalog, type ProviderSnapshotSource } from "../builtInProviderCatalog";
 import {
   hydrateCachedProvider,
   PROVIDER_CACHE_IDS,
@@ -26,13 +27,6 @@ import {
   writeProviderStatusCache,
 } from "../providerStatusCache";
 
-type ProviderSnapshotSource = {
-  readonly provider: ProviderKind;
-  readonly getSnapshot: Effect.Effect<ServerProvider>;
-  readonly refresh: Effect.Effect<ServerProvider>;
-  readonly streamChanges: Stream.Stream<ServerProvider>;
-};
-
 const loadProviders = (
   providerSources: ReadonlyArray<ProviderSnapshotSource>,
 ): Effect.Effect<ReadonlyArray<ServerProvider>> =>
@@ -41,6 +35,7 @@ const loadProviders = (
   });
 
 const hasModelCapabilities = (model: ServerProvider["models"][number]): boolean =>
+  (model.capabilities?.optionDescriptors?.length ?? 0) > 0 ||
   (model.capabilities?.reasoningEffortLevels.length ?? 0) > 0 ||
   model.capabilities?.supportsFastMode === true ||
   model.capabilities?.supportsThinkingToggle === true ||
@@ -136,32 +131,12 @@ const ProviderRegistryLiveBase = Layer.effect(
     const path = yield* Path.Path;
     const cursorProvider = yield* CursorProvider;
 
-    const providerSources = [
-      {
-        provider: "codex",
-        getSnapshot: codexProvider.getSnapshot,
-        refresh: codexProvider.refresh,
-        streamChanges: codexProvider.streamChanges,
-      },
-      {
-        provider: "claudeAgent",
-        getSnapshot: claudeProvider.getSnapshot,
-        refresh: claudeProvider.refresh,
-        streamChanges: claudeProvider.streamChanges,
-      },
-      {
-        provider: "opencode",
-        getSnapshot: openCodeProvider.getSnapshot,
-        refresh: openCodeProvider.refresh,
-        streamChanges: openCodeProvider.streamChanges,
-      },
-      {
-        provider: "cursor",
-        getSnapshot: cursorProvider.getSnapshot,
-        refresh: cursorProvider.refresh,
-        streamChanges: cursorProvider.streamChanges,
-      },
-    ] satisfies ReadonlyArray<ProviderSnapshotSource>;
+    const providerSources = buildBuiltInProviderCatalog({
+      codexProvider,
+      claudeProvider,
+      openCodeProvider,
+      cursorProvider,
+    });
     const activeProviders = PROVIDER_CACHE_IDS;
     const changesPubSub = yield* Effect.acquireRelease(
       PubSub.unbounded<ReadonlyArray<ServerProvider>>(),

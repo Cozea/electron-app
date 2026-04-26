@@ -1,13 +1,18 @@
 import {
 
   ApprovalRequestId,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type MessageId,
   type ModelSelection,
+  type ProviderOptionDescriptor,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
   type ProviderKind,
   type RuntimeMode,
   type ServerProvider,
+  type ServerProviderSkill,
+  type ServerProviderSlashCommand,
   type TurnId,
 } from "@cozea/assistant-contracts"
 import {
@@ -33,12 +38,17 @@ import type {
   ExpandedImageItem,
   ExpandedImagePreview,
 } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
+import { buildExpandedImagePreview } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
 import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
+import { ProviderOptionControls } from "@/features/projects/components/assistant/chat/ProviderOptionControls"
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
+import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
 import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
 import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/projects/components/assistant/chat/ComposerPromptEditor"
+import { detectComposerTrigger, replaceTextRange } from "@/features/projects/components/assistant/composer-logic"
+import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/projects/components/assistant/vscode-icons"
 import type { ContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   buildPendingUserInputAnswers,
@@ -47,10 +57,11 @@ import {
   type PendingUserInputDraftAnswer,
 } from "@/features/projects/components/assistant/pendingUserInput"
 import { type Thread } from "@/stores/types"
+import { ensureNativeApi } from "@/lib/nativeApi"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon } from '@hugeicons/core-free-icons'
+import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, ImageAdd01Icon as __ImageAdd01IconHugeIcon } from '@hugeicons/core-free-icons'
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
@@ -61,8 +72,76 @@ export interface ProviderModelOptionsByProvider {
   opencode: ReadonlyArray<{ slug: string; name: string }>
 }
 
+export interface ComposerImageDraft {
+  id: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  previewUrl: string
+  file?: File
+}
+
+type ComposerPathMenuItem = {
+  id: string
+  type: "path"
+  path: string
+  kind: "file" | "directory"
+  description: string
+}
+
+type ComposerSlashMenuItem =
+  | {
+      id: string
+      type: "slash-command"
+      command: "model" | "plan" | "default"
+      label: string
+      description: string
+    }
+  | {
+      id: string
+      type: "provider-slash-command"
+      command: ServerProviderSlashCommand
+      label: string
+      description: string
+    }
+  | {
+      id: string
+      type: "model"
+      provider: ProviderKind
+      model: string
+      label: string
+      description: string
+    }
+
+type ComposerSkillMenuItem = {
+  id: string
+  type: "skill"
+  skill: ServerProviderSkill
+  label: string
+  description: string
+}
+
+type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerSkillMenuItem
+
 const DOCKED_COMPOSER_SCROLL_GAP_PX = 16
 const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128
+
+function includesNormalized(value: string, query: string): boolean {
+  return value.toLowerCase().includes(query.toLowerCase())
+}
+
+function filterSlashItems<T extends { label: string; description: string }>(
+  items: ReadonlyArray<T>,
+  query: string,
+): T[] {
+  const normalizedQuery = query.trim().replace(/^\/+/, "").toLowerCase()
+  if (!normalizedQuery) return [...items]
+  return items.filter(
+    (item) =>
+      includesNormalized(item.label, normalizedQuery) ||
+      includesNormalized(item.description, normalizedQuery),
+  )
+}
 
 interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
@@ -83,7 +162,9 @@ interface CozeaChatSurfaceProps {
   composerStatus: ReactNode
   composer: string
   composerCursor: number
+  composerImages: ReadonlyArray<ComposerImageDraft>
   isSending: boolean
+  pendingTurnStartStartedAtIso?: string | null
   isInterrupting: boolean
   isForceStopAvailable?: boolean
   isRevertingCheckpoint?: boolean
@@ -93,7 +174,9 @@ interface CozeaChatSurfaceProps {
   selectedInteractionMode: ProviderInteractionMode
   providers: ReadonlyArray<ServerProvider>
   modelOptionsByProvider: ProviderModelOptionsByProvider
+  modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>
   onProviderModelChange: (provider: ProviderKind, model: string) => void | Promise<void>
+  onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>
   onToggleInteractionMode: () => void | Promise<void>
   onToggleRuntimeMode: () => void | Promise<void>
   onComposerChange: (nextValue: string, nextCursor: number) => void
@@ -102,6 +185,8 @@ interface CozeaChatSurfaceProps {
     event: KeyboardEvent,
   ) => boolean
   onComposerPaste: ClipboardEventHandler<HTMLElement>
+  onAttachFiles: (files: File[]) => void
+  onRemoveComposerImage: (imageId: string) => void
   onSend: () => void | Promise<void>
   onInterrupt: () => void | Promise<void>
   onApprovalDecision: (
@@ -221,6 +306,25 @@ function renderSendIcon(isBusy: boolean) {
   )
 }
 
+function SkillGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.85"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
+    </svg>
+  )
+}
+
 export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
   const resolvedTheme = resolveTimelineTheme()
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
@@ -230,17 +334,28 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   >({})
   const [composerDockHover, setComposerDockHover] = useState(false)
   const [composerDockFocused, setComposerDockFocused] = useState(false)
+  const [isDragOverSurface, setIsDragOverSurface] = useState(false)
+  const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
+  const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false)
+  const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
+  const dragDepthRef = useRef(0)
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null)
+  const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
 
   const {
+    activeTurn,
     latestTurnSettled,
     phase,
     isWorking,
-    activeTurnStartedAt,
+    activeWorkStartedAt,
+    activeWorkCompletedAt,
+    isWorkActive,
     timelineEntries,
     completionDividerBeforeEntryId,
     completionSummary,
+    completionSummariesByMessageId,
     turnDiffSummaryByAssistantMessageId,
     revertTurnCountByUserMessageId,
     activeProposedPlan,
@@ -250,6 +365,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isRunning: props.isRunning,
     isSending: props.isSending,
     isInterrupting: props.isInterrupting,
+    pendingTurnStartStartedAtIso: props.pendingTurnStartStartedAtIso,
     isRevertingCheckpoint: props.isRevertingCheckpoint,
     pendingUserInputs: props.pendingUserInputs,
     selectedInteractionMode: props.selectedInteractionMode,
@@ -307,6 +423,90 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasComposerHeader =
     isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt
   const composerValue = activePendingProgress?.customAnswer ?? props.composer
+  const composerTrigger = useMemo(
+    () => detectComposerTrigger(composerValue, props.composerCursor),
+    [composerValue, props.composerCursor],
+  )
+  const composerPathTrigger = composerTrigger?.kind === "path" ? composerTrigger : null
+  const composerSlashTrigger = composerTrigger?.kind === "slash-command" ? composerTrigger : null
+  const composerModelTrigger = composerTrigger?.kind === "slash-model" ? composerTrigger : null
+  const composerSkillTrigger = composerTrigger?.kind === "skill" ? composerTrigger : null
+  const slashMenuItems = useMemo<ComposerSlashMenuItem[]>(() => {
+    const builtInItems: ComposerSlashMenuItem[] = [
+      {
+        id: "slash:model",
+        type: "slash-command",
+        command: "model",
+        label: "/model",
+        description: "Switch response model for this thread",
+      },
+      {
+        id: "slash:plan",
+        type: "slash-command",
+        command: "plan",
+        label: "/plan",
+        description: "Switch this thread into plan mode",
+      },
+      {
+        id: "slash:default",
+        type: "slash-command",
+        command: "default",
+        label: "/default",
+        description: "Switch this thread back to chat mode",
+      },
+    ]
+    const providerItems: ComposerSlashMenuItem[] = (props.providerSnapshot?.slashCommands ?? []).map(
+      (command) => ({
+        id: `provider-slash-command:${props.selectedProvider}:${command.name}`,
+        type: "provider-slash-command",
+        command,
+        label: `/${command.name}`,
+        description: command.description ?? command.input?.hint ?? "Run provider command",
+      }),
+    )
+    return filterSlashItems([...builtInItems, ...providerItems], composerSlashTrigger?.query ?? "")
+  }, [composerSlashTrigger?.query, props.providerSnapshot?.slashCommands, props.selectedProvider])
+  const modelMenuItems = useMemo<ComposerSlashMenuItem[]>(() => {
+    const allItems = (Object.entries(props.modelOptionsByProvider) as Array<
+      [ProviderKind, ReadonlyArray<{ slug: string; name: string }>]
+    >).flatMap(([provider, models]) =>
+      models.map((model) => ({
+        id: `model:${provider}:${model.slug}`,
+        type: "model" as const,
+        provider,
+        model: model.slug,
+        label: model.name,
+        description: `${provider} · ${model.slug}`,
+      })),
+    )
+    return filterSlashItems(allItems, composerModelTrigger?.query ?? "")
+  }, [composerModelTrigger?.query, props.modelOptionsByProvider])
+  const skillMenuItems = useMemo<ComposerSkillMenuItem[]>(() => {
+    const allItems = (props.providerSnapshot?.skills ?? [])
+      .filter((skill) => skill.enabled)
+      .map((skill) => ({
+        id: `skill:${props.selectedProvider}:${skill.name}`,
+        type: "skill" as const,
+        skill,
+        label: skill.displayName ?? skill.name,
+        description: skill.shortDescription ?? skill.description ?? skill.scope ?? "Provider skill",
+      }))
+    return filterSlashItems(allItems, composerSkillTrigger?.query ?? "")
+  }, [composerSkillTrigger?.query, props.providerSnapshot?.skills, props.selectedProvider])
+  const composerMenuItems = composerPathTrigger
+    ? composerPathMenuItems
+    : composerSlashTrigger
+      ? slashMenuItems
+      : composerModelTrigger
+        ? modelMenuItems
+        : composerSkillTrigger
+          ? skillMenuItems
+          : []
+  const composerMenuOpen = Boolean(
+    composerPathTrigger || composerSlashTrigger || composerModelTrigger || composerSkillTrigger,
+  )
+  const visibleComposerMenuItems = composerMenuItems.slice(0, composerPathTrigger ? 3 : 6)
+  const hiddenComposerMenuItemCount = Math.max(0, composerMenuItems.length - visibleComposerMenuItems.length)
   const hasThread = Boolean(props.thread)
   const composerDisabled =
     !props.isRuntimeReady ||
@@ -316,8 +516,21 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     activePendingIsResponding ||
     (!activePendingProgress && props.isSending)
   const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
+  const attachDisabled =
+    !props.isRuntimeReady ||
+    props.isRunning ||
+    isComposerApprovalState ||
+    activePendingUserInput !== null
+  const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`
   const markdownCwd = props.thread?.worktreePath ?? props.projectPath ?? undefined
   const workspaceRoot = props.projectPath ?? undefined
+  const threadRuntimeBannerState = props.isInterrupting
+    ? "interrupting"
+    : phase === "error" || phase === "interrupted" || phase === "stopped" || phase === "connecting"
+      ? phase
+      : null
+  const threadRuntimeDetail =
+    props.thread?.session?.lastError ?? props.thread?.error ?? props.runtimeErrorMessage ?? null
 
   const dockComposerOnHover = Boolean(props.dockComposerOnHover)
   const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
@@ -335,6 +548,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     showPlanFollowUpPrompt ||
     isNonEmptyReactNode(props.composerStatus) ||
     props.composer.trim().length > 0 ||
+    props.composerImages.length > 0 ||
     props.isRunning ||
     props.isSending ||
     props.isInterrupting
@@ -403,7 +617,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
     ? dockedComposerMeasuredInsetPx || DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX
     : 0
-
   useEffect(() => {
     if (!activePendingUserInput) {
       return
@@ -431,6 +644,74 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       return Object.fromEntries(nextEntries)
     })
   }, [props.pendingUserInputs])
+
+  useEffect(() => {
+    if (!composerPathTrigger || !props.projectPath) {
+      setComposerPathMenuItems([])
+      setIsComposerMenuLoading(false)
+      return
+    }
+    const projectPath = props.projectPath
+
+    const normalizedQuery = composerPathTrigger.query.trim()
+    const effectiveQuery = normalizedQuery.length > 0 ? normalizedQuery : "."
+    const cacheKey = `${projectPath}::${effectiveQuery.toLowerCase()}`
+    const cached = composerQueryCacheRef.current.get(cacheKey)
+    if (cached) {
+      setComposerPathMenuItems(cached)
+      setIsComposerMenuLoading(false)
+    } else {
+      setIsComposerMenuLoading(true)
+    }
+
+    let cancelled = false
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const api = ensureNativeApi()
+          const result = await api.projects.searchEntries({
+            cwd: projectPath,
+            query: effectiveQuery,
+            limit: 80,
+          })
+          if (cancelled) return
+          const nextItems = result.entries.map((entry) => ({
+            id: `${entry.kind}:${entry.path}`,
+            type: "path" as const,
+            path: entry.path,
+            kind: entry.kind,
+            description: entry.parentPath ?? "",
+          }))
+          composerQueryCacheRef.current.set(cacheKey, nextItems)
+          setComposerPathMenuItems(nextItems)
+          setIsComposerMenuLoading(false)
+        } catch {
+          if (cancelled) return
+          setComposerPathMenuItems([])
+          setIsComposerMenuLoading(false)
+        }
+      })()
+    }, 120)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [composerPathTrigger, props.projectPath])
+
+  useEffect(() => {
+    if (!composerMenuOpen) {
+      setComposerHighlightedItemId(null)
+      return
+    }
+    if (composerMenuItems.length === 0) {
+      setComposerHighlightedItemId(null)
+      return
+    }
+    setComposerHighlightedItemId((current) =>
+      current && composerMenuItems.some((item) => item.id === current) ? current : composerMenuItems[0]!.id,
+    )
+  }, [composerMenuItems, composerMenuOpen])
 
   const toggleWorkGroup = (groupId: string) => {
     setExpandedWorkGroups((current) => ({
@@ -527,19 +808,204 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     ? expandedImage.images[expandedImage.index] ?? null
     : null
 
+  const handleSurfaceDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return
+    event.preventDefault()
+    dragDepthRef.current += 1
+    setIsDragOverSurface(true)
+  }
+
+  const handleSurfaceDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "copy"
+    setIsDragOverSurface(true)
+  }
+
+  const handleSurfaceDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return
+    event.preventDefault()
+    const nextTarget = event.relatedTarget
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return
+    // Leaving the container should fully clear drag state.
+    dragDepthRef.current = 0
+    setIsDragOverSurface(false)
+  }
+
+  const handleSurfaceDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return
+    event.preventDefault()
+    dragDepthRef.current = 0
+    setIsDragOverSurface(false)
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length === 0) return
+    props.onAttachFiles(files)
+  }
+
+  const applyComposerMentionItem = (item: { path: string }) => {
+    if (!composerPathTrigger) return
+    const replacement = `@${item.path} `
+    const replacementRangeEnd =
+      composerValue[composerPathTrigger.rangeEnd] === " "
+        ? composerPathTrigger.rangeEnd + 1
+        : composerPathTrigger.rangeEnd
+    const next = replaceTextRange(
+      composerValue,
+      composerPathTrigger.rangeStart,
+      replacementRangeEnd,
+      replacement,
+    )
+    props.onComposerChange(next.text, next.cursor)
+    setComposerHighlightedItemId(null)
+  }
+
+  const clearComposerTriggerRange = (rangeStart: number, rangeEnd: number) => {
+    const next = replaceTextRange(composerValue, rangeStart, rangeEnd, "")
+    props.onComposerChange(next.text, next.cursor)
+    setComposerHighlightedItemId(null)
+  }
+
+  const applyComposerSlashItem = (item: ComposerSlashMenuItem) => {
+    if (item.type === "model") {
+      if (!composerModelTrigger) return
+      void props.onProviderModelChange(item.provider, item.model)
+      clearComposerTriggerRange(composerModelTrigger.rangeStart, composerModelTrigger.rangeEnd)
+      return
+    }
+
+    if (!composerSlashTrigger) return
+
+    if (item.type === "slash-command") {
+      if (item.command === "model") {
+        const next = replaceTextRange(
+          composerValue,
+          composerSlashTrigger.rangeStart,
+          composerSlashTrigger.rangeEnd,
+          "/model ",
+        )
+        props.onComposerChange(next.text, next.cursor)
+        setComposerHighlightedItemId(null)
+        return
+      }
+
+      if (item.command === "plan" && props.selectedInteractionMode !== "plan") {
+        void props.onToggleInteractionMode()
+      }
+      if (item.command === "default" && props.selectedInteractionMode === "plan") {
+        void props.onToggleInteractionMode()
+      }
+      clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
+      return
+    }
+
+    const replacement = `/${item.command.name} `
+    const replacementRangeEnd =
+      composerValue[composerSlashTrigger.rangeEnd] === " "
+        ? composerSlashTrigger.rangeEnd + 1
+        : composerSlashTrigger.rangeEnd
+    const next = replaceTextRange(
+      composerValue,
+      composerSlashTrigger.rangeStart,
+      replacementRangeEnd,
+      replacement,
+    )
+    props.onComposerChange(next.text, next.cursor)
+    setComposerHighlightedItemId(null)
+  }
+
+  const applyComposerMenuItem = (item: ComposerMenuItem) => {
+    if (item.type === "path") {
+      applyComposerMentionItem(item)
+      return
+    }
+    if (item.type === "skill") {
+      if (!composerSkillTrigger) return
+      const replacement = `$${item.skill.name} `
+      const replacementRangeEnd =
+        composerValue[composerSkillTrigger.rangeEnd] === " "
+          ? composerSkillTrigger.rangeEnd + 1
+          : composerSkillTrigger.rangeEnd
+      const next = replaceTextRange(
+        composerValue,
+        composerSkillTrigger.rangeStart,
+        replacementRangeEnd,
+        replacement,
+      )
+      props.onComposerChange(next.text, next.cursor)
+      setComposerHighlightedItemId(null)
+      return
+    }
+    applyComposerSlashItem(item)
+  }
+
+  const handleComposerCommandKey = (
+    key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
+    event: KeyboardEvent,
+  ) => {
+    if (composerMenuOpen && composerMenuItems.length > 0) {
+      if (key === "ArrowDown" || key === "ArrowUp") {
+        const currentIndex = composerMenuItems.findIndex((item) => item.id === composerHighlightedItemId)
+        const fallbackIndex = key === "ArrowDown" ? -1 : 0
+        const normalizedIndex = currentIndex >= 0 ? currentIndex : fallbackIndex
+        const offset = key === "ArrowDown" ? 1 : -1
+        const nextIndex =
+          (normalizedIndex + offset + composerMenuItems.length) % composerMenuItems.length
+        setComposerHighlightedItemId(composerMenuItems[nextIndex]?.id ?? null)
+        return true
+      }
+      if (key === "Enter" || key === "Tab") {
+        const selected =
+          composerMenuItems.find((item) => item.id === composerHighlightedItemId) ??
+          composerMenuItems[0]
+        if (selected) {
+          applyComposerMenuItem(selected)
+          return true
+        }
+      }
+    }
+    return props.onComposerCommandKey(key, event)
+  }
+
+  useEffect(() => {
+    const clearDragState = () => {
+      dragDepthRef.current = 0
+      setIsDragOverSurface(false)
+    }
+    window.addEventListener("drop", clearDragState)
+    window.addEventListener("dragend", clearDragState)
+    return () => {
+      window.removeEventListener("drop", clearDragState)
+      window.removeEventListener("dragend", clearDragState)
+    }
+  }, [])
+
+  const handleComposerFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.currentTarget.files ? Array.from(event.currentTarget.files) : []
+    if (files.length > 0) {
+      props.onAttachFiles(files)
+    }
+    // Allow selecting the same file repeatedly.
+    event.currentTarget.value = ""
+  }
+
   const composerForm = (
     <form
       onSubmit={(event) => {
         event.preventDefault()
         void props.onSend()
       }}
-      className="mx-auto flex h-full max-h-full min-h-0 w-full min-w-0 max-w-3xl flex-col"
+      className="relative z-30 mx-auto flex h-full max-h-full min-h-0 w-full min-w-0 max-w-3xl flex-col"
     >
       {props.composerStatus ? (
         <div className="shrink-0">{props.composerStatus}</div>
       ) : null}
 
-      <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-sidebar-border/50 bg-secondary">
+      <div
+        className={cn(
+          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
+          composerMenuOpen ? "overflow-visible" : "overflow-hidden",
+        )}
+      >
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
             <ComposerPendingApprovalPanel
@@ -571,12 +1037,152 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : null}
 
+        {composerMenuOpen ? (
+          <div className="shrink-0 border-b border-border/30 bg-background/10 py-1 pl-1 pr-8">
+            <div className="w-[min(34rem,calc(100%-2rem))]">
+              <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  {composerPathTrigger
+                    ? "Files & Folders"
+                    : composerModelTrigger
+                      ? "Models"
+                      : composerSkillTrigger
+                        ? "Skills"
+                        : "Commands"}
+              </div>
+              {isComposerMenuLoading ? (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching files...</div>
+              ) : composerMenuItems.length === 0 ? (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {composerPathTrigger
+                    ? "No matching files or folders."
+                    : composerModelTrigger
+                      ? "No matching models."
+                      : composerSkillTrigger
+                        ? "No matching skills."
+                        : "No matching commands."}
+                </div>
+              ) : (
+                <>
+                  {visibleComposerMenuItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full cursor-default items-start gap-3 rounded-sm px-2 py-1.5 text-left outline-none",
+                        composerHighlightedItemId === item.id
+                          ? "bg-accent text-accent-foreground"
+                          : "text-foreground hover:bg-accent hover:text-accent-foreground",
+                      )}
+                      onMouseEnter={() => {
+                        setComposerHighlightedItemId(item.id)
+                      }}
+                      onClick={() => {
+                        applyComposerMenuItem(item)
+                      }}
+                    >
+                      {item.type === "path" ? (
+                        <img
+                          src={getVscodeIconUrlForEntry(item.path, item.kind, resolvedTheme)}
+                          alt=""
+                          aria-hidden="true"
+                          className="mt-0.5 size-4 shrink-0"
+                        />
+                      ) : item.type === "model" ? (
+                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border border-border/70 text-[9px] text-muted-foreground">
+                          M
+                        </span>
+                      ) : item.type === "skill" ? (
+                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                          <SkillGlyph className="size-3.5" />
+                        </span>
+                      ) : item.type === "provider-slash-command" ? (
+                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                          <SkillGlyph className="size-3.5" />
+                        </span>
+                      ) : (
+                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                          <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4" />
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium text-foreground">
+                          {item.type === "path" ? basenameOfPath(item.path) : item.label}
+                        </span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {item.type === "path" ? (item.description || item.path) : item.description}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                  {hiddenComposerMenuItemCount > 0 ? (
+                    <div className="px-2 pt-1 text-[11px] text-muted-foreground/80">
+                      Show {hiddenComposerMenuItemCount} more
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {!isComposerApprovalState &&
+        !activePendingUserInput &&
+        props.composerImages.length > 0 ? (
+          <div className="px-3 pt-3">
+            <div className="flex flex-wrap gap-2">
+              {props.composerImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
+                >
+                  <button
+                    type="button"
+                    className="h-full w-full cursor-zoom-in"
+                    aria-label={`Preview ${image.name}`}
+                    onClick={() => {
+                      const preview = buildExpandedImagePreview(props.composerImages, image.id)
+                      if (!preview) return
+                      handleExpandImage(preview)
+                    }}
+                  >
+                    <img
+                      src={image.previewUrl}
+                      alt={image.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
+                    onClick={() => {
+                      props.onRemoveComposerImage(image.id)
+                    }}
+                    aria-label={`Remove ${image.name}`}
+                  >
+                    <HugeiconsIcon icon={__XIconHugeIcon} className="size-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div
           className={cn(
             "relative shrink-0 px-3 pb-2",
             hasComposerHeader ? "pt-2.5" : "pt-3",
           )}
         >
+          <input
+            ref={composerFileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleComposerFileInputChange}
+            tabIndex={-1}
+          />
           <ComposerPromptEditor
             value={composerValue}
             cursor={props.composerCursor}
@@ -584,7 +1190,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             terminalContexts={[]}
             onRemoveTerminalContext={() => {}}
             onChange={handleComposerChange}
-            onCommandKeyDown={props.onComposerCommandKey}
+            onCommandKeyDown={handleComposerCommandKey}
             onPaste={props.onComposerPaste}
             placeholder={
               isComposerApprovalState
@@ -593,10 +1199,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   ? "Type your own answer, or leave this blank to use the selected option"
                   : showPlanFollowUpPrompt
                     ? "Add feedback to refine the plan"
+                    : props.isInterrupting
+                      ? props.isForceStopAvailable
+                        ? "The run is still stopping. Force stop if it does not settle."
+                        : "Stopping the current run..."
                     : props.runtimeErrorMessage
                       ? "Local chat runtime unavailable. Waiting for recovery..."
+                      : phase === "error"
+                        ? "The last run hit an error. Fix the issue or send a follow-up."
+                        : phase === "interrupted"
+                          ? "The last run was interrupted. Send a message to continue."
+                          : phase === "stopped"
+                            ? "The agent session stopped. Send a message to start a new run."
                       : phase === "disconnected"
-                        ? "Ask for follow-up changes or attach images"
+                        ? "Ask for follow-up changes"
                         : "Ask anything, @tag files/folders, or use / to show available commands"
             }
             className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
@@ -620,6 +1236,40 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             className="mb-2 shrink-0 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
           >
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground transition-colors hover:border-border/60 hover:bg-accent/80 hover:text-foreground sm:text-xs"
+                disabled={attachDisabled}
+                onClick={() => {
+                  composerFileInputRef.current?.click()
+                }}
+                title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  className="mr-1 shrink-0"
+                >
+                  <path
+                    d="M21.44 11.05l-8.49 8.49a6 6 0 11-8.49-8.49l8.49-8.49a4 4 0 115.66 5.66l-8.5 8.49a2 2 0 11-2.82-2.83l7.78-7.78"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Attach
+                {props.composerImages.length > 0 ? (
+                  <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] leading-none text-primary">
+                    {props.composerImages.length}
+                  </span>
+                ) : null}
+              </Button>
               <ProviderModelPicker
                 provider={props.selectedProvider}
                 model={props.selectedModelSelection.model}
@@ -702,7 +1352,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   disabled={
                     !props.isRuntimeReady ||
                     !props.thread ||
-                    !props.composer.trim() ||
+                    (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
                     props.isSending ||
                     props.isBinding
                   }
@@ -727,45 +1377,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       {!activePendingApproval ? (
         <div className="flex shrink-0 items-center justify-between gap-3 px-1 pt-2">
           <div className="flex min-w-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              size="sm"
-              type="button"
+            <ProviderOptionControls
+              descriptors={props.modelOptionDescriptors}
               disabled={!props.isRuntimeReady || props.isRunning}
-              onClick={() => {
-                void props.onToggleInteractionMode()
-              }}
-              title={
-                props.selectedInteractionMode === "plan"
-                  ? "Plan mode - click to return to normal chat mode"
-                  : "Default mode - click to enter plan mode"
-              }
-            >
-              {props.selectedInteractionMode === "plan" ? <HugeiconsIcon icon={__ListTodoIconHugeIcon} /> : <HugeiconsIcon icon={__ChatIconHugeIcon} />}
-              <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              size="sm"
-              type="button"
-              disabled={!props.isRuntimeReady || props.isRunning}
-              onClick={() => {
-                void props.onToggleRuntimeMode()
-              }}
-              title={
-                props.selectedRuntimeMode === "full-access"
-                  ? "Full access - click to require approvals"
-                  : "Approval required - click for full access"
-              }
-            >
-              {props.selectedRuntimeMode === "full-access" ? <HugeiconsIcon icon={__LockOpenIconHugeIcon} /> : <HugeiconsIcon icon={__LockIconHugeIcon} />}
-              <span>
-                {props.selectedRuntimeMode === "full-access" ? "Full access" : "Supervised"}
-              </span>
-            </Button>
+              onOptionChange={props.onModelOptionChange}
+            />
           </div>
 
           {props.activeContextWindow ? (
@@ -781,7 +1397,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasProviderBanner = props.providerSnapshot && props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled";
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background relative"
+      onDragEnter={handleSurfaceDragEnter}
+      onDragOver={handleSurfaceDragOver}
+      onDragLeave={handleSurfaceDragLeave}
+      onDrop={handleSurfaceDrop}
+    >
+      {isDragOverSurface && (
+        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-sm text-center rounded-[inherit]">
+          <HugeiconsIcon icon={__ImageAdd01IconHugeIcon} className="size-7 text-muted-foreground mb-4" />
+          <h3 className="text-base font-medium text-foreground">Drop images to attach</h3>
+          <p className="text-sm text-muted-foreground mt-1">Images will be added to your draft</p>
+        </div>
+      )}
       <div
         className={cn(
           "relative flex min-h-0 flex-1 flex-col",
@@ -814,17 +1443,32 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
+            {threadRuntimeBannerState ? (
+              <div className="px-3 pt-3 sm:px-5 sm:pt-4">
+                <div className="mx-auto w-full max-w-3xl">
+                  <ThreadRuntimeBanner
+                    state={threadRuntimeBannerState}
+                    detail={threadRuntimeDetail}
+                    isForceStopAvailable={props.isForceStopAvailable}
+                  />
+                </div>
+              </div>
+            ) : null}
             <MessagesTimeline
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}
               isWorking={isWorking}
               selectedProvider={props.selectedProvider}
               activeTurnInProgress={isWorking || !latestTurnSettled}
-              activeTurnStartedAt={activeTurnStartedAt}
+              activeTurnId={activeTurn?.turnId ?? null}
+              activeWorkStartedAt={activeWorkStartedAt}
+              activeWorkCompletedAt={activeWorkCompletedAt}
+              isWorkActive={isWorkActive}
               scrollContainerRef={props.timelineRef}
               timelineEntries={timelineEntries}
               completionDividerBeforeEntryId={completionDividerBeforeEntryId}
               completionSummary={completionSummary}
+              completionSummariesByMessageId={completionSummariesByMessageId}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
               expandedWorkGroups={expandedWorkGroups}
               onToggleWorkGroup={toggleWorkGroup}
@@ -854,7 +1498,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             >
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-4.5rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-5rem]",
+                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
                   showComposerDockChrome ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden

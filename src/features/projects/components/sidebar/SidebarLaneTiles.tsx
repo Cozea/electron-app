@@ -103,6 +103,9 @@ interface SidebarAgentStatusPill {
   label:
     | "Working"
     | "Connecting"
+    | "Interrupted"
+    | "Stopped"
+    | "Error"
     | "Completed"
     | "Pending Approval"
     | "Awaiting Input"
@@ -216,6 +219,33 @@ function resolveAgentStatusPill(input: {
       colorClass: "text-muted-foreground",
       dotClass: "bg-muted-foreground",
       pulse: true,
+    }
+  }
+
+  if (thread.session?.status === "error") {
+    return {
+      label: "Error",
+      colorClass: "text-rose-600 dark:text-rose-300/90",
+      dotClass: "bg-rose-500 dark:bg-rose-300/90",
+      pulse: false,
+    }
+  }
+
+  if (thread.session?.status === "interrupted") {
+    return {
+      label: "Interrupted",
+      colorClass: "text-amber-600 dark:text-amber-300/90",
+      dotClass: "bg-amber-500 dark:bg-amber-300/90",
+      pulse: false,
+    }
+  }
+
+  if (thread.session?.status === "stopped") {
+    return {
+      label: "Stopped",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground",
+      pulse: false,
     }
   }
 

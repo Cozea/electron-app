@@ -21,7 +21,7 @@ export interface AcpToolCallState {
   readonly toolCallId: string;
   readonly kind?: string;
   readonly title?: string;
-  readonly status?: "pending" | "inProgress" | "completed" | "failed";
+  readonly status?: "pending" | "inProgress" | "completed" | "failed" | "cancelled";
   readonly command?: string;
   readonly detail?: string;
   readonly data: Record<string, unknown>;
@@ -39,6 +39,12 @@ export interface AcpPermissionRequest {
   readonly kind: string | "unknown";
   readonly detail?: string;
   readonly toolCall?: AcpToolCallState;
+}
+
+export interface AcpAvailableCommand {
+  readonly name: string;
+  readonly description: string;
+  readonly inputHint?: string;
 }
 
 export type AcpParsedSessionEvent =
@@ -68,6 +74,11 @@ export type AcpParsedSessionEvent =
       readonly _tag: "ContentDelta";
       readonly itemId?: string;
       readonly text: string;
+      readonly rawPayload: unknown;
+    }
+  | {
+      readonly _tag: "AvailableCommandsUpdated";
+      readonly commands: ReadonlyArray<AcpAvailableCommand>;
       readonly rawPayload: unknown;
     };
 
@@ -162,8 +173,8 @@ function normalizePlanStepStatus(raw: unknown): "pending" | "inProgress" | "comp
 
 function normalizeToolCallStatus(
   raw: unknown,
-  fallback?: "pending" | "inProgress" | "completed" | "failed",
-): "pending" | "inProgress" | "completed" | "failed" | undefined {
+  fallback?: "pending" | "inProgress" | "completed" | "failed" | "cancelled",
+): "pending" | "inProgress" | "completed" | "failed" | "cancelled" | undefined {
   switch (raw) {
     case "pending":
       return "pending";
@@ -174,6 +185,8 @@ function normalizeToolCallStatus(
       return "completed";
     case "failed":
       return "failed";
+    case "cancelled":
+      return "cancelled";
     default:
       return fallback;
   }
@@ -269,7 +282,7 @@ function makeToolCallState(
     readonly locations?: ReadonlyArray<EffectAcpSchema.ToolCallLocation> | null | undefined;
   },
   options?: {
-    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed";
+    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed" | "cancelled";
   },
 ): AcpToolCallState | undefined {
   const toolCallId = input.toolCallId.trim();
@@ -334,7 +347,7 @@ function makeToolCallState(
 function parseTypedToolCallState(
   event: AcpToolCallUpdate,
   options?: {
-    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed";
+    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed" | "cancelled";
   },
 ): AcpToolCallState | undefined {
   return makeToolCallState(
@@ -350,6 +363,20 @@ function parseTypedToolCallState(
     },
     options,
   );
+}
+
+function parseAvailableCommand(command: EffectAcpSchema.AvailableCommand): AcpAvailableCommand | undefined {
+  const name = command.name.trim();
+  const description = command.description.trim();
+  if (!name || !description) {
+    return undefined;
+  }
+  const inputHint = command.input?.hint?.trim() || undefined;
+  return {
+    name,
+    description,
+    ...(inputHint ? { inputHint } : {}),
+  };
 }
 
 export function mergeToolCallState(
@@ -414,6 +441,17 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
   let modeId: string | undefined;
 
   switch (upd.sessionUpdate) {
+    case "available_commands_update": {
+      const commands = upd.availableCommands
+        .map(parseAvailableCommand)
+        .filter((command): command is AcpAvailableCommand => command !== undefined);
+      events.push({
+        _tag: "AvailableCommandsUpdated",
+        commands,
+        rawPayload: params,
+      });
+      break;
+    }
     case "current_mode_update": {
       modeId = upd.currentModeId.trim();
       if (modeId) {

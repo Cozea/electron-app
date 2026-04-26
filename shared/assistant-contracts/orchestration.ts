@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Option, Schema, SchemaIssue } from "effect";
 
-import { ClaudeModelOptions, CodexModelOptions, CursorModelOptions, OpenCodeModelOptions } from "./model";
+import { ProviderOptionSelections } from "./model";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -49,45 +49,45 @@ export const DEFAULT_PROVIDER_KIND: ProviderKind = "codex";
 export const CodexModelSelection = Schema.Struct({
   provider: Schema.Literal("codex"),
   model: TrimmedNonEmptyString,
-  options: Schema.optional(CodexModelOptions),
+  options: Schema.optional(ProviderOptionSelections),
 });
 export interface CodexModelSelection {
   provider: "codex";
   model: string;
-  options?: CodexModelOptions;
+  options?: ProviderOptionSelections;
 }
 
 export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
   model: TrimmedNonEmptyString,
-  options: Schema.optional(ClaudeModelOptions),
+  options: Schema.optional(ProviderOptionSelections),
 });
 export interface ClaudeModelSelection {
   provider: "claudeAgent";
   model: string;
-  options?: ClaudeModelOptions;
+  options?: ProviderOptionSelections;
 }
 
 export const CursorModelSelection = Schema.Struct({
   provider: Schema.Literal("cursor"),
   model: TrimmedNonEmptyString,
-  options: CursorModelOptions.pipe(Schema.withDecodingDefault(() => ({}))),
+  options: ProviderOptionSelections.pipe(Schema.withDecodingDefault(() => [])),
 });
 export interface CursorModelSelection {
   provider: "cursor";
   model: string;
-  options?: CursorModelOptions;
+  options?: ProviderOptionSelections;
 }
 
 export const OpenCodeModelSelection = Schema.Struct({
   provider: Schema.Literal("opencode"),
   model: TrimmedNonEmptyString,
-  options: OpenCodeModelOptions.pipe(Schema.withDecodingDefault(() => ({}))),
+  options: ProviderOptionSelections.pipe(Schema.withDecodingDefault(() => [])),
 });
 export interface OpenCodeModelSelection {
   provider: "opencode";
   model: string;
-  options?: OpenCodeModelOptions;
+  options?: ProviderOptionSelections;
 }
 
 export const ModelSelection = Schema.Union([

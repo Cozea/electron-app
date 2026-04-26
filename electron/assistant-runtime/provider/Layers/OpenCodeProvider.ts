@@ -4,6 +4,7 @@ import { Cause, Effect, Equal, Layer, Stream } from "effect";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { compareCliVersions } from "../cliVersion.ts";
 import {
   buildServerProvider,
   isCommandMissingCause,
@@ -21,6 +22,7 @@ import {
 } from "../opencodeRuntime.ts";
 
 const PROVIDER = "opencode" as const;
+const MINIMUM_OPENCODE_VERSION = "1.14.19";
 
 class OpenCodeProbePromiseError extends Error {
   override readonly cause: unknown;
@@ -244,6 +246,34 @@ export function checkOpenCodeProviderStatus(input: {
         return fallback(Cause.squash(versionExit.cause));
       }
       version = parseGenericCliVersion(versionExit.value.stdout) ?? null;
+      if (!version) {
+        return fallback(
+          new Error(
+            `Unable to determine OpenCode version from \`opencode --version\` output. Cozea requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          ),
+          null,
+        );
+      }
+      if (compareCliVersions(version, MINIMUM_OPENCODE_VERSION) < 0) {
+        return buildServerProvider({
+          provider: PROVIDER,
+          enabled: input.settings.enabled,
+          checkedAt,
+          models: providerModelsFromSettings(
+            [],
+            PROVIDER,
+            customModels,
+            DEFAULT_OPENCODE_MODEL_CAPABILITIES,
+          ),
+          probe: {
+            installed: true,
+            version,
+            status: "error",
+            auth: { status: "unknown" },
+            message: `OpenCode v${version} is too old. Upgrade to v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          },
+        });
+      }
     }
 
     const inventoryExit = yield* Effect.exit(

@@ -4,11 +4,19 @@ import { DEFAULT_MODEL_BY_PROVIDER, type ModelCapabilities } from "@cozea/assist
 
 import {
   applyClaudePromptEffortPrefix,
+  buildProviderOptionSelectionsFromDescriptors,
+  createModelCapabilities,
+  createModelSelection,
   getDefaultContextWindow,
   getDefaultEffort,
+  getModelSelectionOptionDescriptors,
+  getProviderOptionBooleanSelectionValue,
+  getProviderOptionCurrentLabel,
+  getProviderOptionSelectionValue,
   hasContextWindowOption,
   hasEffortLevel,
   isClaudeUltrathinkPrompt,
+  mergeProviderOptionSelections,
   normalizeModelSlug,
   resolveApiModelId,
   resolveContextWindow,
@@ -225,5 +233,91 @@ describe("resolveApiModelId", () => {
 
   it("returns the model as-is for Codex selections", () => {
     expect(resolveApiModelId({ provider: "codex", model: "gpt-5.4" })).toBe("gpt-5.4");
+  });
+});
+
+describe("descriptor-backed option helpers", () => {
+  const descriptorCaps = createModelCapabilities({
+    optionDescriptors: [
+      {
+        id: "effort",
+        type: "select",
+        label: "Effort",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High", isDefault: true },
+        ],
+      },
+      {
+        id: "fastMode",
+        type: "boolean",
+        label: "Fast mode",
+      },
+    ],
+  });
+
+  it("derives legacy capability fields from descriptors", () => {
+    expect(descriptorCaps.reasoningEffortLevels).toEqual([
+      { value: "low", label: "Low" },
+      { value: "high", label: "High", isDefault: true },
+    ]);
+    expect(descriptorCaps.supportsFastMode).toBe(true);
+  });
+
+  it("canonicalizes legacy option ids in selection readers", () => {
+    expect(
+      getProviderOptionSelectionValue(
+        [
+          { id: "reasoningEffort", value: "high" },
+          { id: "fastMode", value: true },
+        ],
+        "effort",
+      ),
+    ).toBe("high");
+    expect(
+      getProviderOptionBooleanSelectionValue({ fastMode: true }, "fastMode"),
+    ).toBe(true);
+  });
+
+  it("overlays model selection values onto descriptors", () => {
+    const descriptors = getModelSelectionOptionDescriptors(
+      createModelSelection("codex", "gpt-5.4", [
+        { id: "effort", value: "low" },
+        { id: "fastMode", value: true },
+      ]),
+      descriptorCaps,
+    );
+
+    expect(getProviderOptionCurrentLabel(descriptors[0])).toBe("Low");
+    expect(descriptors[1]).toMatchObject({
+      id: "fastMode",
+      type: "boolean",
+      currentValue: true,
+    });
+  });
+
+  it("builds and merges canonical option selections", () => {
+    const builtSelections = buildProviderOptionSelectionsFromDescriptors(
+      getModelSelectionOptionDescriptors(
+        createModelSelection("codex", "gpt-5.4", { reasoningEffort: "high" }),
+        descriptorCaps,
+      ),
+    );
+    expect(builtSelections).toEqual([
+      { id: "effort", value: "high" },
+    ]);
+
+    expect(
+      mergeProviderOptionSelections(
+        [
+          { id: "effort", value: "high" },
+          { id: "fastMode", value: true },
+        ],
+        [{ id: "fastMode", value: false }],
+      ),
+    ).toEqual([
+      { id: "effort", value: "high" },
+      { id: "fastMode", value: false },
+    ]);
   });
 });

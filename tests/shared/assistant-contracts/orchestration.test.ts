@@ -253,8 +253,10 @@ it.effect("accepts provider-scoped model options in thread.turn.start", () =>
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.modelSelection?.provider, "codex");
-    assert.strictEqual(parsed.modelSelection?.options?.reasoningEffort, "high");
-    assert.strictEqual(parsed.modelSelection?.options?.fastMode, true);
+    assert.deepStrictEqual(parsed.modelSelection?.options, [
+      { id: "effort", value: "high" },
+      { id: "fastMode", value: true },
+    ]);
   }),
 );
 

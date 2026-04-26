@@ -8,14 +8,30 @@
  */
 import {
   IsoDateTime,
+  ModelSelection,
+  ProviderInteractionMode,
   ProviderSessionRuntimeStatus,
   RuntimeMode,
   ThreadId,
+  TurnId,
 } from "@cozea/assistant-contracts";
 import { Option, Schema, ServiceMap } from "effect";
 import type { Effect } from "effect";
 
 import type { ProviderSessionRuntimeRepositoryError } from "../Errors.ts";
+
+export const ProviderSessionRuntimePayload = Schema.Struct({
+  cwd: Schema.NullOr(Schema.String),
+  model: Schema.NullOr(Schema.String),
+  modelSelection: Schema.optional(ModelSelection),
+  interactionMode: Schema.optional(ProviderInteractionMode),
+  activeTurnId: Schema.NullOr(TurnId),
+  lastError: Schema.NullOr(Schema.String),
+  lastRuntimeEvent: Schema.optional(Schema.String),
+  lastRuntimeEventAt: Schema.optional(IsoDateTime),
+  sessionUpdatedAt: Schema.optional(IsoDateTime),
+});
+export type ProviderSessionRuntimePayload = typeof ProviderSessionRuntimePayload.Type;
 
 export const ProviderSessionRuntime = Schema.Struct({
   threadId: ThreadId,
@@ -25,7 +41,7 @@ export const ProviderSessionRuntime = Schema.Struct({
   status: ProviderSessionRuntimeStatus,
   lastSeenAt: IsoDateTime,
   resumeCursor: Schema.NullOr(Schema.Unknown),
-  runtimePayload: Schema.NullOr(Schema.Unknown),
+  runtimePayload: Schema.NullOr(ProviderSessionRuntimePayload),
 });
 export type ProviderSessionRuntime = typeof ProviderSessionRuntime.Type;
 

@@ -1,15 +1,12 @@
 // @ts-nocheck
 import {
   ServerSettings,
-  type ClaudeModelOptions,
-  type CodexModelOptions,
-  type CursorModelOptions,
-  type OpenCodeModelOptions,
   type ServerSettingsPatch,
 } from "@cozea/assistant-contracts";
 import { Schema } from "effect";
 
 import { deepMerge } from "./Struct";
+import { createModelSelection, mergeProviderOptionSelections } from "./model";
 import { fromLenientJson } from "./schemaJson";
 
 const ServerSettingsJson = fromLenientJson(ServerSettings);
@@ -49,59 +46,32 @@ export function parsePersistedServerObservabilitySettings(
   }
 }
 
-function shouldReplaceTextGenerationModelSelection(
-  patch: ServerSettingsPatch["textGenerationModelSelection"] | undefined,
-): boolean {
-  return Boolean(patch && (patch.provider !== undefined || patch.model !== undefined));
-}
-
-const withModelSelectionOptions = <Options>(options: Options | undefined) =>
-  options ? { options } : {};
-
 export function applyServerSettingsPatch(
   current: ServerSettings,
   patch: ServerSettingsPatch,
 ): ServerSettings {
   const selectionPatch = patch.textGenerationModelSelection;
   const next = deepMerge(current, patch);
-  if (!selectionPatch || !shouldReplaceTextGenerationModelSelection(selectionPatch)) {
+  if (!selectionPatch) {
     return next;
   }
 
   const provider = selectionPatch.provider ?? current.textGenerationModelSelection.provider;
   const model = selectionPatch.model ?? current.textGenerationModelSelection.model;
+  const shouldReplaceSelection =
+    selectionPatch.provider !== undefined || selectionPatch.model !== undefined;
+  if (!shouldReplaceSelection && selectionPatch.options === undefined) {
+    return next;
+  }
+  const nextOptions = shouldReplaceSelection
+    ? selectionPatch.options
+    : mergeProviderOptionSelections(
+        current.textGenerationModelSelection.options,
+        selectionPatch.options,
+      );
 
   return {
     ...next,
-    textGenerationModelSelection:
-      provider === "codex"
-        ? {
-            provider,
-            model,
-            ...withModelSelectionOptions(selectionPatch.options as CodexModelOptions | undefined),
-          }
-        : provider === "claudeAgent"
-          ? {
-              provider,
-              model,
-              ...withModelSelectionOptions(
-                selectionPatch.options as ClaudeModelOptions | undefined,
-              ),
-            }
-          : provider === "cursor"
-            ? {
-                provider,
-                model,
-                ...withModelSelectionOptions(
-                  selectionPatch.options as CursorModelOptions | undefined,
-                ),
-              }
-            : {
-                provider,
-                model,
-                ...withModelSelectionOptions(
-                  selectionPatch.options as OpenCodeModelOptions | undefined,
-                ),
-              },
+    textGenerationModelSelection: createModelSelection(provider, model, nextOptions),
   };
 }
