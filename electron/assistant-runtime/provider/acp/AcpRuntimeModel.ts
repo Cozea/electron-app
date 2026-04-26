@@ -41,6 +41,12 @@ export interface AcpPermissionRequest {
   readonly toolCall?: AcpToolCallState;
 }
 
+export interface AcpAvailableCommand {
+  readonly name: string;
+  readonly description: string;
+  readonly inputHint?: string;
+}
+
 export type AcpParsedSessionEvent =
   | {
       readonly _tag: "ModeChanged";
@@ -68,6 +74,11 @@ export type AcpParsedSessionEvent =
       readonly _tag: "ContentDelta";
       readonly itemId?: string;
       readonly text: string;
+      readonly rawPayload: unknown;
+    }
+  | {
+      readonly _tag: "AvailableCommandsUpdated";
+      readonly commands: ReadonlyArray<AcpAvailableCommand>;
       readonly rawPayload: unknown;
     };
 
@@ -352,6 +363,20 @@ function parseTypedToolCallState(
   );
 }
 
+function parseAvailableCommand(command: EffectAcpSchema.AvailableCommand): AcpAvailableCommand | undefined {
+  const name = command.name.trim();
+  const description = command.description.trim();
+  if (!name || !description) {
+    return undefined;
+  }
+  const inputHint = command.input?.hint?.trim() || undefined;
+  return {
+    name,
+    description,
+    ...(inputHint ? { inputHint } : {}),
+  };
+}
+
 export function mergeToolCallState(
   previous: AcpToolCallState | undefined,
   next: AcpToolCallState,
@@ -414,6 +439,17 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
   let modeId: string | undefined;
 
   switch (upd.sessionUpdate) {
+    case "available_commands_update": {
+      const commands = upd.availableCommands
+        .map(parseAvailableCommand)
+        .filter((command): command is AcpAvailableCommand => command !== undefined);
+      events.push({
+        _tag: "AvailableCommandsUpdated",
+        commands,
+        rawPayload: params,
+      });
+      break;
+    }
     case "current_mode_update": {
       modeId = upd.currentModeId.trim();
       if (modeId) {

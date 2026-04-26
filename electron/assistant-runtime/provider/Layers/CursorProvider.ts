@@ -10,6 +10,7 @@ import type {
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
+  ServerProviderSlashCommand,
   ServerProviderState,
 } from "@cozea/assistant-contracts";
 import { ServerSettingsError } from "../../serverSettings.ts";
@@ -28,6 +29,7 @@ import {
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { CursorProvider } from "../Services/CursorProvider.ts";
 import { AcpSessionRuntime, layerAcpSessionRuntime } from "../acp/AcpSessionRuntime.ts";
+import type { AcpAvailableCommand, AcpParsedSessionEvent } from "../acp/AcpRuntimeModel.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import { getCodexModelCapabilities } from "./CodexProvider.ts";
@@ -43,6 +45,7 @@ const EMPTY_CAPABILITIES: ModelCapabilities = {
 
 const CURSOR_ACP_MODEL_DISCOVERY_TIMEOUT_MS = 30_000;
 const CURSOR_ACP_MODEL_CAPABILITY_TIMEOUT = "4 seconds";
+const CURSOR_ACP_COMMAND_DISCOVERY_TIMEOUT = "4 seconds";
 const CURSOR_ACP_MODEL_DISCOVERY_CONCURRENCY = 4;
 const CURSOR_REFRESH_INTERVAL = "1 hour";
 const CURSOR_PARAMETERIZED_MODEL_PICKER_MIN_VERSION_DATE = 2026_04_08;
@@ -790,6 +793,42 @@ export const discoverCursorModelCapabilitiesViaAcp = (
     }).pipe(Effect.withSpan("cursor-acp-model-capability-discovery", {})),
   );
 
+function mapAcpAvailableCommandsToSlashCommands(
+  commands: ReadonlyArray<AcpAvailableCommand>,
+): ReadonlyArray<ServerProviderSlashCommand> {
+  const commandsByName = new Map<string, ServerProviderSlashCommand>();
+  for (const command of commands) {
+    const name = command.name.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (commandsByName.has(key)) continue;
+    const description = command.description.trim();
+    const inputHint = command.inputHint?.trim();
+    commandsByName.set(key, {
+      name,
+      ...(description ? { description } : {}),
+      ...(inputHint ? { input: { hint: inputHint } } : {}),
+    });
+  }
+  return [...commandsByName.values()];
+}
+
+export const discoverCursorSlashCommandsViaAcp = (cursorSettings: CursorSettings) =>
+  withCursorAcpProbeRuntime(cursorSettings, (acp) =>
+    Effect.gen(function* () {
+      yield* acp.start();
+      const event = yield* Stream.filter(
+        acp.getEvents(),
+        (next): next is Extract<AcpParsedSessionEvent, { readonly _tag: "AvailableCommandsUpdated" }> =>
+          next._tag === "AvailableCommandsUpdated",
+      ).pipe(Stream.runHead, Effect.timeoutOption(CURSOR_ACP_COMMAND_DISCOVERY_TIMEOUT));
+      if (Option.isNone(event)) {
+        return [];
+      }
+      return mapAcpAvailableCommandsToSlashCommands(event.value.commands);
+    }).pipe(Effect.withSpan("cursor-acp-command-discovery", {})),
+  );
+
 export function getCursorFallbackModels(
   cursorSettings: Pick<CursorSettings, "customModels">,
 ): ReadonlyArray<ServerProviderModel> {
@@ -852,6 +891,7 @@ export function buildCursorProviderSnapshot(input: {
   readonly cursorSettings: CursorSettings;
   readonly parsed: CursorAboutResult;
   readonly discoveredModels?: ReadonlyArray<ServerProviderModel>;
+  readonly slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   readonly discoveryWarning?: string;
 }): ServerProvider {
   const message = joinProviderMessages(input.parsed.message, input.discoveryWarning);
@@ -869,6 +909,7 @@ export function buildCursorProviderSnapshot(input: {
     enabled: input.cursorSettings.enabled,
     checkedAt: input.checkedAt,
     models,
+    slashCommands: input.slashCommands,
     probe: {
       installed: true,
       version: input.parsed.version,
@@ -885,6 +926,7 @@ export function buildRecoveredCursorProviderSnapshot(input: {
   readonly cursorSettings: CursorSettings;
   readonly parsed: CursorAboutResult;
   readonly discoveredModels: ReadonlyArray<ServerProviderModel>;
+  readonly slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   readonly fallbackVersion?: string | null;
   readonly discoveryWarning?: string;
 }): ServerProvider {
@@ -898,6 +940,7 @@ export function buildRecoveredCursorProviderSnapshot(input: {
       input.cursorSettings.customModels,
       EMPTY_CAPABILITIES,
     ),
+    slashCommands: input.slashCommands,
     probe: {
       installed: true,
       version: input.parsed.version ?? input.fallbackVersion ?? null,
@@ -1545,6 +1588,18 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
       parsed.auth.status === "unauthenticated"
         ? { discoveredModels: [] as const, discoveryWarning: undefined }
         : yield* discoverCursorModelsWithWarning(cursorSettings);
+    const slashCommands =
+      parsed.auth.status === "unauthenticated"
+        ? []
+        : yield* discoverCursorSlashCommandsViaAcp(cursorSettings).pipe(
+            Effect.timeoutOption(CURSOR_ACP_COMMAND_DISCOVERY_TIMEOUT),
+            Effect.flatMap((result) => (Option.isSome(result) ? Effect.succeed(result.value) : Effect.succeed([]))),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Cursor ACP command discovery failed", {
+                cause: Cause.pretty(cause),
+              }).pipe(Effect.as([] as ReadonlyArray<ServerProviderSlashCommand>)),
+            ),
+          );
 
     if (parsed.status === "error" && parsed.auth.status !== "unauthenticated" && discoveredModels.length > 0) {
       return buildRecoveredCursorProviderSnapshot({
@@ -1552,6 +1607,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
         cursorSettings,
         parsed,
         discoveredModels,
+        slashCommands,
         fallbackVersion,
         ...(discoveryWarning ? { discoveryWarning } : {}),
       });
@@ -1562,6 +1618,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
       cursorSettings,
       parsed,
       discoveredModels,
+      slashCommands,
       ...(discoveryWarning ? { discoveryWarning } : {}),
     });
   },
