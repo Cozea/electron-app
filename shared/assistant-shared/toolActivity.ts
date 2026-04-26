@@ -106,7 +106,7 @@ function unwrapKnownShellCommandWrapper(value: string): string {
     return value;
   }
   const spec = SHELL_WRAPPER_SPECS.find((candidate) =>
-    candidate.executables.includes(shell),
+    candidate.executables.some((executable) => executable === shell),
   );
   if (!spec) {
     return value;
@@ -188,8 +188,10 @@ function extractToolCommand(
   const executable = asTrimmedString(rawInput?.executable);
   const args = normalizeCommandValue(rawInput?.args);
   if (executable && args) {
-    const rawExecutable = formatCommandValue(rawInput.executable) ?? executable;
-    const rawArgs = formatCommandValue(rawInput.args);
+    const rawExecutableValue = rawInput?.executable;
+    const rawArgsValue = rawInput?.args;
+    const rawExecutable = formatCommandValue(rawExecutableValue) ?? executable;
+    const rawArgs = formatCommandValue(rawArgsValue);
     const rawCommand =
       rawArgs && rawExecutable ? `${rawExecutable} ${rawArgs}` : rawExecutable;
     const command = `${executable} ${args}`;
@@ -393,7 +395,12 @@ export function deriveToolActivityPresentation(
   input: ToolActivityPresentationInput,
 ): ToolActivityPresentation {
   const title = asTrimmedString(input.title);
-  const detail = stripTrailingExitCode(asTrimmedString(input.detail));
+  let detail = stripTrailingExitCode(asTrimmedString(input.detail));
+
+  if (detail && /^[\s\[\]\{\}",:]+$/.test(detail)) {
+    detail = undefined;
+  }
+
   const fallbackSummary = asTrimmedString(input.fallbackSummary) ?? "Tool";
   const data = asRecord(input.data);
   const commandInfo = extractToolCommand(data, title);

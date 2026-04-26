@@ -10,20 +10,19 @@ Completed in repo:
 - Slice 1.1 event projection in `ProviderRuntimeIngestion.ts`
 - Slice 1.3 session/work-log support in `session-logic.ts`
 - Slice 1.4 richer work-row rendering in `MessagesTimeline.tsx`
-- Slice 1.5 inline persisted-file rendering improvements in the timeline and work-log derivation
+- Slice 1.5 dedicated persisted-file list rendering in `PersistedFilesList.tsx` and the timeline
 - Slice 2.6 through 2.13 stop lifecycle wiring and state visibility
 - Slice 3.14 through 3.18 Cursor ACP cancelled-tool fidelity
 - Slice 4 foundation: shared tool canonicalization in `shared/assistant-shared/toolActivity.ts`
 - Slice 4 adapter normalization in `ClaudeAdapter.ts`, `CodexAdapter.ts`, `CursorAdapter.ts`, and `OpenCodeAdapter.ts`
 - Slice 5 provider persistence/observability work in `ProviderService.ts`, `ProviderSessionRuntime.ts`, `ProviderSessionDirectory.ts`, `ProviderSessionReaper.ts`, `serverLayers.ts`, and `OpenCodeProvider.ts`
 - Slice 6 provider architecture cleanup via `CodexSessionRuntime.ts` and `builtInProviderCatalog.ts`
-- Slice 7 descriptor-based model options, draft state, and UI controls in `shared/assistant-contracts/model.ts`, `shared/assistant-shared/model.ts`, `composerDraftStore.ts`, `ProviderOptionControls.tsx`, and `useWorkbenchAssistantTileController.tsx`
-- Slice 8 coverage for ingestion/session-logic/thread-session/ACP runtime event mapping, shared model helpers, server settings merging, and Codex session runtime input building
+- Slice 7 descriptor-based model options, draft state, searchable picker UX, and UI controls in `shared/assistant-contracts/model.ts`, `shared/assistant-shared/model.ts`, `composerDraftStore.ts`, `ProviderOptionControls.tsx`, `ProviderModelPicker.tsx`, and `useWorkbenchAssistantTileController.tsx`
+- Slice 8 coverage for ingestion/session-logic/thread-session/ACP runtime event mapping, shared model helpers, server settings merging, Codex session runtime input building, and provider service/registry behavior
+- Local `@effect/sql` compatibility package in `packages/effect-sql` so the assistant-runtime test stack resolves the SQL client modules it already imports
 
 Still open:
-- A dedicated persisted-file tree/list abstraction in place of the inline timeline treatment
-- A more ambitious searchable provider/model/traits picker UX if we want to match or exceed the latest upstream `t3code` picker
-- Repo-wide typecheck and the blocked assistant-runtime import/test issues that predate this work
+- No remaining items from this checklist. Follow-on work from here is optional product polish rather than backend/runtime/UI-CLI gap closure.
 
 ## Slice 1: Immediate Event Projection And Tool Display Wins
 

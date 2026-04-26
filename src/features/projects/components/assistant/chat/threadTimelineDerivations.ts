@@ -1,7 +1,12 @@
-import type { MessageId } from "@cozea/assistant-contracts"
+import type {
+  MessageId,
+  OrchestrationLatestTurn,
+  OrchestrationThreadActivity,
+} from "@cozea/assistant-contracts"
 
 import type { TimelineEntry } from "@/features/projects/components/assistant/chat/timelineDerivations"
 import type { Thread, TurnDiffSummary } from "@/stores/types"
+import { formatElapsed, hasToolActivityForTurn } from "./session-logic"
 
 export function buildTurnDiffSummaryByAssistantMessageId(
   summaries: ReadonlyArray<TurnDiffSummary>,
@@ -67,17 +72,31 @@ export function deriveCompletionDividerBeforeEntryId({
   latestTurnSettled,
   activeTurnStartedAt,
   activeTurnCompletedAt,
+  assistantMessageId,
   completionSummary,
   timelineEntries,
 }: {
   latestTurnSettled: boolean
   activeTurnStartedAt?: string | null
   activeTurnCompletedAt?: string | null
+  assistantMessageId?: MessageId | null
   completionSummary: string | null
   timelineEntries: ReadonlyArray<TimelineEntry>
 }): string | null {
   if (!latestTurnSettled) return null
   if (!activeTurnStartedAt || !activeTurnCompletedAt || !completionSummary) return null
+
+  if (assistantMessageId) {
+    const exactMatch = timelineEntries.find(
+      (entry) =>
+        entry.kind === "message" &&
+        entry.message.role === "assistant" &&
+        entry.message.id === assistantMessageId,
+    )
+    if (exactMatch) {
+      return exactMatch.id
+    }
+  }
 
   const turnStartedAt = Date.parse(activeTurnStartedAt)
   const turnCompletedAt = Date.parse(activeTurnCompletedAt)
@@ -103,4 +122,59 @@ export function deriveCompletionDividerBeforeEntryId({
   }
 
   return inRangeMatch ?? fallbackMatch
+}
+
+export function deriveCompletionSummariesByMessageId({
+  messages,
+  activities,
+  activeTurn,
+  latestTurnSettled,
+}: {
+  messages: ReadonlyArray<Thread["messages"][number]>
+  activities: ReadonlyArray<OrchestrationThreadActivity>
+  activeTurn: OrchestrationLatestTurn | null
+  latestTurnSettled: boolean
+}): Map<MessageId, string> {
+  const byMessageId = new Map<MessageId, string>()
+
+  for (const message of messages) {
+    if (message.role !== "assistant" || message.streaming || !message.turnId) {
+      continue
+    }
+    if (!hasToolActivityForTurn(activities, message.turnId)) {
+      continue
+    }
+
+    const isActiveTurnMessage = activeTurn?.turnId === message.turnId
+    if (isActiveTurnMessage && !latestTurnSettled) {
+      continue
+    }
+
+    const startedAt = isActiveTurnMessage
+      ? (activeTurn?.startedAt ?? message.createdAt)
+      : message.createdAt
+    const completedAt = isActiveTurnMessage
+      ? (activeTurn?.completedAt ?? message.completedAt)
+      : message.completedAt
+    if (!completedAt) {
+      continue
+    }
+
+    const elapsed = formatElapsed(startedAt, completedAt)
+    if (!elapsed) {
+      continue
+    }
+
+    if (isActiveTurnMessage && activeTurn?.state === "interrupted") {
+      byMessageId.set(message.id, `Stopped after ${elapsed}`)
+      continue
+    }
+    if (isActiveTurnMessage && activeTurn?.state === "error") {
+      byMessageId.set(message.id, `Failed after ${elapsed}`)
+      continue
+    }
+    byMessageId.set(message.id, `Worked for ${elapsed}`)
+  }
+
+  return byMessageId
 }

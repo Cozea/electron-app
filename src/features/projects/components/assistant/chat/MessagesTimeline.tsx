@@ -3,6 +3,7 @@ import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -21,7 +22,7 @@ import {
 } from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon } from '@hugeicons/core-free-icons'
-import { deriveTimelineEntries } from "./session-logic";
+import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/stores/types";
 import { summarizeTurnDiffStats } from "./turnDiffTree";
@@ -46,6 +47,7 @@ import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { computeMessageDurationStart, normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import { PersistedFilesList } from "./PersistedFilesList";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import {
   deriveDisplayedUserMessageState,
@@ -82,13 +84,16 @@ interface MessagesTimelineProps {
   isWorking: boolean;
   selectedProvider: ProviderKind | null;
   activeTurnInProgress: boolean;
-  activeTurnStartedAt: string | null;
+  activeTurnId?: TurnId | null;
+  activeWorkStartedAt: string | null;
+  activeWorkCompletedAt: string | null;
+  isWorkActive: boolean;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
+  completionSummariesByMessageId: ReadonlyMap<MessageId, string>;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
-  nowIso: string;
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -153,13 +158,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   selectedProvider,
   activeTurnInProgress,
-  activeTurnStartedAt,
+  activeTurnId,
+  activeWorkStartedAt,
+  activeWorkCompletedAt,
+  isWorkActive,
   scrollContainerRef,
   timelineEntries,
   completionDividerBeforeEntryId,
   completionSummary,
+  completionSummariesByMessageId,
   turnDiffSummaryByAssistantMessageId,
-  nowIso,
   expandedWorkGroups,
   onToggleWorkGroup,
   onOpenTurnDiff,
@@ -217,6 +225,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
+    let activeCompletionSummaryAttached = false;
     const durationStartByMessageId = computeMessageDurationStart(
       timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
     );
@@ -256,6 +265,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         continue;
       }
 
+      const inlineCompletionSummary =
+        timelineEntry.message.role === "assistant"
+          ? completionSummariesByMessageId.get(timelineEntry.message.id) ??
+            (completionDividerBeforeEntryId === timelineEntry.id ? completionSummary : null)
+          : null;
+      if (
+        inlineCompletionSummary &&
+        activeTurnId &&
+        timelineEntry.message.turnId === activeTurnId
+      ) {
+        activeCompletionSummaryAttached = true;
+      }
+
       nextRows.push({
         kind: "message",
         id: timelineEntry.id,
@@ -263,29 +285,50 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         message: timelineEntry.message,
         durationStart:
           durationStartByMessageId.get(timelineEntry.message.id) ?? timelineEntry.message.createdAt,
-        showCompletionDivider:
-          timelineEntry.message.role === "assistant" &&
-          completionDividerBeforeEntryId === timelineEntry.id,
+        completionSummary: inlineCompletionSummary,
       });
     }
 
-    if (isWorking) {
+    if (
+      completionSummary &&
+      activeWorkCompletedAt &&
+      !activeCompletionSummaryAttached &&
+      !completionDividerBeforeEntryId
+    ) {
+      nextRows.push({
+        kind: "completion",
+        id: `completion-summary-row:${activeWorkCompletedAt}`,
+        createdAt: activeWorkCompletedAt,
+        summary: completionSummary,
+      });
+    }
+
+    if (isWorkActive) {
       nextRows.push({
         kind: "working",
         id: "working-indicator-row",
-        createdAt: activeTurnStartedAt,
+        createdAt: activeWorkStartedAt,
       });
     }
 
     return nextRows;
-  }, [timelineEntries, completionDividerBeforeEntryId, isWorking, activeTurnStartedAt]);
+  }, [
+    activeWorkCompletedAt,
+    activeWorkStartedAt,
+    activeTurnId,
+    completionDividerBeforeEntryId,
+    completionSummariesByMessageId,
+    completionSummary,
+    isWorkActive,
+    timelineEntries,
+  ]);
 
   const firstAlwaysRenderedRowIndex = useMemo(() => {
     const firstTailRowIndex = Math.max(rows.length - ALWAYS_UNVIRTUALIZED_TAIL_ROWS, 0);
     if (!activeTurnInProgress) return firstTailRowIndex;
 
     const turnStartedAtMs =
-      typeof activeTurnStartedAt === "string" ? Date.parse(activeTurnStartedAt) : Number.NaN;
+      typeof activeWorkStartedAt === "string" ? Date.parse(activeWorkStartedAt) : Number.NaN;
     let firstCurrentTurnRowIndex = -1;
     if (!Number.isNaN(turnStartedAtMs)) {
       firstCurrentTurnRowIndex = rows.findIndex((row) => {
@@ -316,7 +359,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
 
     return Math.min(firstCurrentTurnRowIndex, firstTailRowIndex);
-  }, [activeTurnInProgress, activeTurnStartedAt, rows]);
+  }, [activeTurnInProgress, activeWorkStartedAt, rows]);
 
   const alwaysRenderKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -362,28 +405,37 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       activeTurnInProgress ? "active" : "idle",
       isWorking ? "working" : "settled",
       completionDividerBeforeEntryId ?? "no-divider",
+      completionSummariesByMessageId.size,
     ].join(":");
-  }, [activeTurnInProgress, completionDividerBeforeEntryId, isWorking, rows]);
+  }, [
+    activeTurnInProgress,
+    completionDividerBeforeEntryId,
+    completionSummariesByMessageId.size,
+    isWorking,
+    rows,
+  ]);
   const legendListExtraData = useMemo(
     () => ({
       allDirectoriesExpandedByTurnId,
       completionSummary,
+      completionSummaryVersion: [...completionSummariesByMessageId.entries()]
+        .map(([messageId, summary]) => `${messageId}:${summary}`)
+        .join("|"),
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
       isWorking,
-      nowIso,
       resolvedTheme,
       turnDiffSummaryVersion: turnDiffSummaryByAssistantMessageId.size,
     }),
     [
       allDirectoriesExpandedByTurnId,
       completionSummary,
+      completionSummariesByMessageId,
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
       isWorking,
-      nowIso,
       resolvedTheme,
       turnDiffSummaryByAssistantMessageId.size,
     ],
@@ -474,11 +526,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const groupedEntries = row.groupedEntries;
           const isExpanded = expandedWorkGroups[groupId] ?? false;
           const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-          const visibleEntries =
-            hasOverflow && !isExpanded
-              ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-              : groupedEntries;
-          const hiddenCount = groupedEntries.length - visibleEntries.length;
           const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
           const showHeader = hasOverflow || !onlyToolEntries;
 
@@ -487,7 +534,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {showHeader && (
                 <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
                   <p
-                    className="inline-flex min-h-4 shrink-0 items-center justify-center rounded-full bg-muted/90 px-1.5 py-px text-[7px] font-medium tabular-nums leading-none text-muted-foreground"
+                    className="inline-flex min-h-5 shrink-0 items-center justify-center rounded-full bg-muted/90 px-2.5 py-1 text-sm font-medium tabular-nums leading-none text-muted-foreground"
                     aria-label={
                       onlyToolEntries
                         ? `${groupedEntries.length} tool calls`
@@ -499,31 +546,44 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
                       aria-expanded={isExpanded}
                       aria-label={
                         isExpanded
                           ? "Collapse work log"
-                          : `Expand to show ${hiddenCount} more ${onlyToolEntries ? "tool calls" : "entries"}`
+                          : `Expand to show all ${onlyToolEntries ? "tool calls" : "entries"}`
                       }
-                      title={isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                      title={isExpanded ? "Show less" : `Show all`}
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
                       <HugeiconsIcon
                         icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
-                        className="size-3 stroke-[2.2]"
+                        className="size-4 stroke-[2.2]"
                         aria-hidden="true"
                       />
                     </button>
                   )}
                 </div>
               )}
-              <div className="space-y-0.5">
-                {visibleEntries.map((workEntry) => (
+              <div
+                className={cn(
+                  "space-y-0.5 overflow-y-auto overscroll-contain flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+                  !isExpanded && hasOverflow
+                    ? "max-h-[160px] [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]"
+                    : "max-h-none"
+                )}
+                ref={(node) => {
+                  if (node && !isExpanded) {
+                    node.scrollTop = node.scrollHeight;
+                  }
+                }}
+              >
+                {groupedEntries.map((workEntry) => (
                   <SimpleWorkEntryRow
                     key={`work-row:${workEntry.id}`}
                     workEntry={workEntry}
                     workspaceRoot={workspaceRoot}
+                    resolvedTheme={resolvedTheme}
                   />
                 ))}
               </div>
@@ -661,15 +721,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
           return (
             <>
-              {row.showCompletionDivider && (
-                <div className="my-4 px-1">
-                  <div className="text-[13px] text-muted-foreground/88">
-                    <span className="font-medium">
-                      {completionSummary ?? "Response ready"}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-px bg-border/70" />
-                </div>
+              {row.completionSummary && (
+                <CompletionSummaryRow summary={row.completionSummary} />
               )}
               <div className="min-w-0 px-1 py-0.5">
                 <ChatMarkdown
@@ -755,21 +808,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         </div>
       )}
 
+      {row.kind === "completion" && <CompletionSummaryRow summary={row.summary} />}
+
       {row.kind === "working" && (
-        <div className="py-0.5 pl-1.5">
-          <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-            <span className="inline-flex items-center gap-[3px]">
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-            </span>
-            <span>
-              {row.createdAt
-                ? `Working for ${formatWorkingTimer(row.createdAt, nowIso) ?? "0s"}`
-                : "Working..."}
-            </span>
-          </div>
-        </div>
+        <WorkingIndicatorRow startedAtIso={row.createdAt} />
       )}
     </div>
   );
@@ -883,13 +925,19 @@ type TimelineRow =
       createdAt: string;
       message: TimelineMessage;
       durationStart: string;
-      showCompletionDivider: boolean;
+      completionSummary: string | null;
     }
   | {
       kind: "proposed-plan";
       id: string;
       createdAt: string;
       proposedPlan: TimelineProposedPlan;
+    }
+  | {
+      kind: "completion";
+      id: string;
+      createdAt: string;
+      summary: string;
     }
   | { kind: "working"; id: string; createdAt: string | null };
 
@@ -901,17 +949,22 @@ function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan):
 function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | null): number {
   switch (row.kind) {
     case "work": {
-      const visibleEntryCount = Math.min(row.groupedEntries.length, MAX_VISIBLE_WORK_LOG_ENTRIES);
-      const overflowHeaderHeight = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES ? 24 : 0;
-      const variableHeight = row.groupedEntries
-        .slice(-visibleEntryCount)
-        .reduce((total, entry) => total + estimateWorkEntryHeight(entry), 0);
+      const hasOverflow = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+      const overflowHeaderHeight = hasOverflow ? 24 : 0;
+      const variableHeight = hasOverflow
+        ? 160
+        : row.groupedEntries.reduce((total, entry) => total + estimateWorkEntryHeight(entry), 0);
       return 24 + overflowHeaderHeight + variableHeight;
     }
     case "message":
-      return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
+      return (
+        estimateTimelineMessageHeight(row.message, { timelineWidthPx }) +
+        (row.completionSummary ? 40 : 0)
+      );
     case "proposed-plan":
       return estimateTimelineProposedPlanHeight(row.proposedPlan);
+    case "completion":
+      return 40;
     case "working":
       return 40;
   }
@@ -942,7 +995,7 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
     return (
       previousRow.createdAt === nextRow.createdAt &&
       previousRow.durationStart === nextRow.durationStart &&
-      previousRow.showCompletionDivider === nextRow.showCompletionDivider &&
+      previousRow.completionSummary === nextRow.completionSummary &&
       previousRow.message.id === nextRow.message.id &&
       previousRow.message.role === nextRow.message.role &&
       previousRow.message.text === nextRow.message.text &&
@@ -958,6 +1011,10 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
     );
   }
 
+  if (previousRow.kind === "completion" && nextRow.kind === "completion") {
+    return previousRow.createdAt === nextRow.createdAt && previousRow.summary === nextRow.summary;
+  }
+
   if (previousRow.kind === "working" && nextRow.kind === "working") {
     return previousRow.createdAt === nextRow.createdAt;
   }
@@ -965,28 +1022,65 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
   return false;
 }
 
-function formatWorkingTimer(startIso: string, endIso: string): string | null {
+function formatLiveElapsed(startIso: string, nowMs: number): string | null {
   const startedAtMs = Date.parse(startIso);
-  const endedAtMs = Date.parse(endIso);
-  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
+  if (!Number.isFinite(startedAtMs)) {
     return null;
   }
-
-  const elapsedSeconds = Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000));
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
+  if (elapsedMs < 10_000) {
+    return `${(elapsedMs / 1_000).toFixed(1)}s`;
   }
-
-  const hours = Math.floor(elapsedSeconds / 3600);
-  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-  const seconds = elapsedSeconds % 60;
-
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  return formatDuration(elapsedMs);
 }
+
+const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
+  startedAtIso: string | null;
+}) {
+  const { startedAtIso } = props;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!startedAtIso) {
+      return;
+    }
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [startedAtIso]);
+
+  const elapsedLabel = startedAtIso ? formatLiveElapsed(startedAtIso, nowMs) : null;
+
+  return (
+    <div className="py-0.5 pl-1.5">
+      <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
+        <span className="inline-flex items-center gap-[3px]">
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
+        </span>
+        <span>{elapsedLabel ? `Working for ${elapsedLabel}` : "Working..."}</span>
+      </div>
+    </div>
+  );
+});
+
+const CompletionSummaryRow = memo(function CompletionSummaryRow(props: {
+  summary: string;
+}) {
+  return (
+    <div className="my-4 px-1">
+      <div className="text-[13px] text-muted-foreground/88">
+        <span className="font-medium">{props.summary}</span>
+      </div>
+      <div className="mt-2 h-px bg-border/70" />
+    </div>
+  );
+});
 
 function estimateWorkEntryHeight(workEntry: TimelineWorkEntry): number {
   let height = 28;
@@ -1109,14 +1203,20 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   );
 });
 
-function workToneIcon(tone: TimelineWorkEntry["tone"]): {
+function workToneIcon(tone: TimelineWorkEntry["tone"], status?: TimelineWorkEntry["status"]): {
   icon: LucideIcon;
   className: string;
 } {
+  if (status === "failed") {
+    return {
+      icon: CircleAlertIcon,
+      className: "text-destructive",
+    };
+  }
   if (tone === "error") {
     return {
       icon: CircleAlertIcon,
-      className: "text-foreground/92",
+      className: "text-rose-300/50 dark:text-rose-300/50",
     };
   }
   if (tone === "thinking") {
@@ -1137,7 +1237,8 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   };
 }
 
-function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
+function workToneClass(tone: "thinking" | "tool" | "info" | "error", status?: TimelineWorkEntry["status"]): string {
+  if (status === "failed") return "text-destructive";
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
   if (tone === "tool") return "text-muted-foreground/70";
   if (tone === "thinking") return "text-muted-foreground/50";
@@ -1159,6 +1260,27 @@ function workEntryPreview(
     : `${displayPath} +${workEntry.changedFiles!.length - 1} more`;
 }
 
+function normalizePathLikeValue(value: string): string {
+  return value.trim().replace(/\\/g, "/");
+}
+
+function workEntryPreviewDuplicatesSingleChangedFile(
+  workEntry: Pick<TimelineWorkEntry, "changedFiles">,
+  preview: string | null,
+  workspaceRoot: string | undefined,
+): boolean {
+  if (!preview) return false;
+  if ((workEntry.changedFiles?.length ?? 0) !== 1) return false;
+  const [firstPath] = workEntry.changedFiles ?? [];
+  if (!firstPath) return false;
+  const displayPath = formatWorkspaceRelativePath(firstPath, workspaceRoot);
+  const normalizedPreview = normalizePathLikeValue(preview);
+  return (
+    normalizedPreview === normalizePathLikeValue(firstPath) ||
+    normalizedPreview === normalizePathLikeValue(displayPath)
+  );
+}
+
 function workEntryRawCommand(
   workEntry: Pick<TimelineWorkEntry, "command" | "rawCommand">,
 ): string | null {
@@ -1170,6 +1292,7 @@ function workEntryRawCommand(
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
+  if (workEntry.status === "failed") return CircleAlertIcon;
   if (workEntry.requestKind === "command") return TerminalIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
@@ -1194,6 +1317,20 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   return workToneIcon(workEntry.tone).icon;
 }
 
+function isRunningWorkEntry(workEntry: Pick<TimelineWorkEntry, "activityKind" | "status">): boolean {
+  return workEntry.activityKind === "tool.progress" || workEntry.status === "inProgress";
+}
+
+function isCommandLikeWorkEntry(
+  workEntry: Pick<TimelineWorkEntry, "requestKind" | "itemType" | "command">,
+): boolean {
+  return (
+    workEntry.requestKind === "command" ||
+    workEntry.itemType === "command_execution" ||
+    Boolean(workEntry.command)
+  );
+}
+
 function capitalizePhrase(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
@@ -1203,6 +1340,15 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
+  if (isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry)) {
+    return "Running command";
+  }
+  if (workEntry.status === "failed") {
+    if (!workEntry.toolTitle) {
+      return `Failed to ${normalizeCompactToolLabel(workEntry.label).toLowerCase()}`;
+    }
+    return `Failed to ${normalizeCompactToolLabel(workEntry.toolTitle).toLowerCase()}`;
+  }
   if (!workEntry.toolTitle) {
     return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
   }
@@ -1218,12 +1364,6 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
       label: "Cancelled",
       className:
         "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    };
-  }
-  if (workEntry.status === "failed") {
-    return {
-      label: "Failed",
-      className: "border-destructive/30 bg-destructive/10 text-destructive",
     };
   }
   if (
@@ -1243,7 +1383,7 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
       className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
     };
   }
-  if (workEntry.activityKind === "tool.progress" || workEntry.status === "inProgress") {
+  if (isRunningWorkEntry(workEntry) && !isCommandLikeWorkEntry(workEntry)) {
     return {
       label: "Running",
       className: "border-border/60 bg-background/80 text-muted-foreground",
@@ -1252,20 +1392,16 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
   return null;
 }
 
-function workEntryFileChipClassName(kind: "saved" | "failed"): string {
-  if (kind === "failed") {
-    return "border-destructive/25 bg-destructive/8 text-destructive";
-  }
-  return "border-emerald-500/20 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300";
-}
-
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
+  resolvedTheme: "light" | "dark";
 }) {
-  const { workEntry, workspaceRoot } = props;
-  const iconConfig = workToneIcon(workEntry.tone);
+  const { workEntry, workspaceRoot, resolvedTheme } = props;
+  const iconConfig = workToneIcon(workEntry.tone, workEntry.status);
   const EntryIcon = workEntryIcon(workEntry);
+  const showRunningCommandSpinner =
+    isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
   const preview =
@@ -1281,6 +1417,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const hasPersistedFileGroups =
     (workEntry.savedFiles?.length ?? 0) > 0 || (workEntry.failedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
+  const duplicateChangedFileDisplay = workEntryPreviewDuplicatesSingleChangedFile(
+    workEntry,
+    preview,
+    workspaceRoot,
+  );
 
   return (
     <div className="rounded-lg px-1 py-1">
@@ -1288,7 +1429,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <span
           className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
         >
-          <EntryIcon className="size-3" />
+          {showRunningCommandSpinner ? (
+            <div className="loader" aria-hidden="true" />
+          ) : (
+            <EntryIcon className="size-3" />
+          )}
         </span>
         <div className="min-w-0 flex-1 overflow-hidden">
           {rawCommand ? (
@@ -1296,12 +1441,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               <p
                 className={cn(
                   "truncate text-[11px] leading-5",
-                  workToneClass(workEntry.tone),
+                  workToneClass(workEntry.tone, workEntry.status),
                   preview ? "text-muted-foreground/70" : "",
                 )}
                 title={displayText}
               >
-                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                <span className={cn(workEntry.status === "failed" ? "text-destructive" : "text-foreground/80", workToneClass(workEntry.tone, workEntry.status))}>
                   {heading}
                 </span>
                 {preview && (
@@ -1336,12 +1481,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   <p
                     className={cn(
                       "truncate text-[11px] leading-5",
-                      workToneClass(workEntry.tone),
+                      workToneClass(workEntry.tone, workEntry.status),
                       preview ? "text-muted-foreground/70" : "",
                     )}
                   >
                     <span className="inline-flex min-w-0 items-center gap-1.5">
-                      <span className={cn("truncate text-foreground/80", workToneClass(workEntry.tone))}>
+                      <span className={cn("truncate", workEntry.status === "failed" ? "text-destructive" : "text-foreground/80", workToneClass(workEntry.tone, workEntry.status))}>
                         {heading}
                       </span>
                       {statusBadge ? (
@@ -1367,57 +1512,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         </div>
       </div>
       {hasPersistedFileGroups ? (
-        <div className="mt-1 space-y-1 pl-6">
-          {(workEntry.savedFiles?.length ?? 0) > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {workEntry.savedFiles?.slice(0, 6).map((filePath) => {
-                const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
-                return (
-                  <span
-                    key={`${workEntry.id}:saved:${filePath}`}
-                    className={cn(
-                      "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
-                      workEntryFileChipClassName("saved"),
-                    )}
-                    title={displayPath}
-                  >
-                    {displayPath}
-                  </span>
-                );
-              })}
-              {(workEntry.savedFiles?.length ?? 0) > 6 ? (
-                <span className="px-1 text-[10px] text-muted-foreground/55">
-                  +{(workEntry.savedFiles?.length ?? 0) - 6}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          {(workEntry.failedFiles?.length ?? 0) > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {workEntry.failedFiles?.slice(0, 4).map((file) => {
-                const displayPath = formatWorkspaceRelativePath(file.path, workspaceRoot);
-                return (
-                  <span
-                    key={`${workEntry.id}:failed:${file.path}`}
-                    className={cn(
-                      "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
-                      workEntryFileChipClassName("failed"),
-                    )}
-                    title={file.error ? `${displayPath}: ${file.error}` : displayPath}
-                  >
-                    {displayPath}
-                  </span>
-                );
-              })}
-              {(workEntry.failedFiles?.length ?? 0) > 4 ? (
-                <span className="px-1 text-[10px] text-muted-foreground/55">
-                  +{(workEntry.failedFiles?.length ?? 0) - 4}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ) : hasChangedFiles && !previewIsChangedFiles ? (
+        <PersistedFilesList
+          savedFiles={workEntry.savedFiles}
+          failedFiles={workEntry.failedFiles}
+          workspaceRoot={workspaceRoot}
+          resolvedTheme={resolvedTheme}
+        />
+      ) : hasChangedFiles && !previewIsChangedFiles && !duplicateChangedFileDisplay ? (
         <div className="mt-1 flex flex-wrap gap-1 pl-6">
           {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
             const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
