@@ -18,9 +18,11 @@ import {
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/projects/lib/lastWorkbenchRoute"
+import { useTranslation } from "@/lib/i18n"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()
+  const { t } = useTranslation()
   const workspaceSelectionId = user?.id ?? "local-device"
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const lastWorkbenchRoute =
@@ -83,15 +85,15 @@ export function ProjectsLaunchPage() {
 
   const shortcutRows = [
     {
-      label: "Open Chat",
+      label: t("projects.shortcutOpenChat"),
       keys: isMac ? ["⌃", "⌘", "I"] : ["Ctrl", "Alt", "I"],
     },
     {
-      label: "Show All Commands",
+      label: t("projects.shortcutShowCommands"),
       keys: isMac ? ["⇧", "⌘", "P"] : ["Ctrl", "Shift", "P"],
     },
     {
-      label: "Toggle Terminal",
+      label: t("projects.shortcutToggleTerminal"),
       keys: isMac ? ["⌃", "`"] : ["Ctrl", "`"],
     },
   ] as const
@@ -102,16 +104,16 @@ export function ProjectsLaunchPage() {
         <Empty className="py-6">
           {hasProjects ? (
             <EmptyHeader>
-              <EmptyTitle>Select a project</EmptyTitle>
+              <EmptyTitle>{t("projects.selectProject")}</EmptyTitle>
               <EmptyDescription>
-                Choose a project from the sidebar to continue in its workbench.
+                {t("projects.selectProjectDesc")}
               </EmptyDescription>
             </EmptyHeader>
           ) : (
             <EmptyHeader>
-              <EmptyTitle>Welcome to Cozea</EmptyTitle>
+              <EmptyTitle>{t("projects.welcomeToCozea")}</EmptyTitle>
               <EmptyDescription>
-                Create a new project from the sidebar to get started.
+                {t("projects.createProjectDesc")}
               </EmptyDescription>
             </EmptyHeader>
           )}

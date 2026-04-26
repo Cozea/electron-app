@@ -23,6 +23,7 @@ import {
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
+import { useTranslation } from '@/lib/i18n'
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
   if (section === 'account') {
@@ -38,6 +39,7 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 }
 
 export function SettingsDrawer() {
+  const { t, language } = useTranslation()
   const isOpen = useSettingsDrawerStore((state) => state.isOpen)
   const section = useSettingsDrawerStore((state) => state.section)
   const route = useSettingsDrawerStore((state) => state.route)
@@ -54,7 +56,8 @@ export function SettingsDrawer() {
   const resolvedDrawerSurface = resolveSettingsSurfaceFromRoute(routePath, {
     placement: 'drawer',
   })
-  const navSections = useMemo(() => resolveSettingsNavigationSections('drawer'), [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const navSections = useMemo(() => resolveSettingsNavigationSections('drawer'), [language])
 
   const preloadSurface = useCallback((route: string, preload?: () => Promise<unknown>) => {
     if (!preload) return
@@ -129,9 +132,9 @@ export function SettingsDrawer() {
         closeClassName="hidden"
       >
         <SheetHeader className="sr-only">
-          <SheetTitle>Settings</SheetTitle>
+          <SheetTitle>{t('settings.drawer.title')}</SheetTitle>
           <SheetDescription>
-            Browse and update device, appearance, and tooling settings.
+            {t('settings.drawer.description')}
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -200,7 +203,7 @@ export function SettingsDrawer() {
             <div className="mt-auto p-2 pb-3">
               <button type="button" onClick={close} className={SETTINGS_DRAWER_NAV_ROW_CLASS}>
                 <HugeiconsIcon icon={__ChevronLeftHugeIcon} className="h-4 w-4" />
-                <span>Back</span>
+                <span>{t('common.back')}</span>
               </button>
             </div>
           </aside>

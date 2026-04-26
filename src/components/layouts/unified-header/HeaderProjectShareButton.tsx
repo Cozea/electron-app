@@ -49,6 +49,8 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon as __PlusHugeIcon, AddTeamIcon as __AddTeamHugeIcon, MoreVerticalIcon as __MoreVerticalHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __CopyHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SentIcon as __SendHugeIcon, Shield01Icon as __ShieldOffHugeIcon } from '@hugeicons/core-free-icons'
 
+import { useTranslation } from "@/lib/i18n"
+
 function isLocalDeviceEmail(email: string | null | undefined): boolean {
   return typeof email === "string" && email.trim().toLowerCase().endsWith("@local.cozea.app");
 }
@@ -60,6 +62,7 @@ export function HeaderProjectShareButton({
   projectId: Id<"projects"> | null;
   projectName?: string | null;
 }) {
+  const { t } = useTranslation();
   const { convexUserId } = useAuth();
   const convex = useConvex();
   const syncContext = useOptionalProjectSyncContext();
@@ -560,8 +563,8 @@ export function HeaderProjectShareButton({
               variant="ghost"
               className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
               disabled={!projectId || roleCheckPending || shareStatePending}
-              aria-label="Share project"
-              title="Share project"
+              aria-label={t("header.shareProject")}
+              title={t("header.shareProject")}
               onMouseEnter={prewarmPersonalContacts}
               onFocus={prewarmPersonalContacts}
               onPointerDown={prewarmPersonalContacts}
@@ -574,14 +577,14 @@ export function HeaderProjectShareButton({
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Share project</TooltipContent>
+        <TooltipContent side="bottom">{t("header.shareProject")}</TooltipContent>
       </Tooltip>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Share project</DialogTitle>
+          <DialogTitle>{t("header.shareProject")}</DialogTitle>
           <DialogDescription>
-            Invite collaborators to{" "}
-            <span className="font-normal text-foreground">{projectName ?? "this project"}</span>.
+            {t("share.inviteCollaborators")}
+            <span className="font-normal text-foreground">{projectName ?? t("share.thisProject")}</span>.
           </DialogDescription>
         </DialogHeader>
 
@@ -624,7 +627,7 @@ export function HeaderProjectShareButton({
             <>
               <Input
                 type="email"
-                placeholder="Enter email addresses..."
+                placeholder={t("share.enterEmails")}
                   value={emailInput}
                   onChange={(event) => {
                     setEmailInput(event.target.value);
@@ -710,9 +713,7 @@ export function HeaderProjectShareButton({
                                       existingMember.userId === convexUserId
                                     }
                                   >
-                                    {PROJECT_INVITE_ROLE_OPTIONS.find(
-                                      (option) => option.value === existingMember.role,
-                                    )?.label ?? "Role"}
+                                    {(t as any)("share.role." + existingMember.role) ?? "Role"}
                                     <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -736,7 +737,7 @@ export function HeaderProjectShareButton({
                                       existingMember.role !== option.value ? (
                                         <div className="loader mr-2" />
                                       ) : null}
-                                      {option.label}
+                                      {(t as any)(`share.role.${option.value}`) ?? option.label}
                                     </DropdownMenuItem>
                                   ))}
                                 </DropdownMenuContent>
@@ -889,7 +890,7 @@ export function HeaderProjectShareButton({
                                         handleUpdateRole(index, option.value);
                                       }}
                                     >
-                                      {option.label}
+                                      {(t as any)(`share.role.${option.value}`) ?? option.label}
                                     </DropdownMenuItem>
                                   ))}
                                 </DropdownMenuContent>
@@ -917,8 +918,7 @@ export function HeaderProjectShareButton({
 
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-sm text-muted-foreground">
-                    <span className="font-normal tabular-nums text-foreground">{inviteMembers.length}</span>{" "}
-                    members added
+                    {t("share.membersAdded").replace("{count}", String(inviteMembers.length))}
                   </span>
                   <Button
                     type="button"
@@ -932,7 +932,7 @@ export function HeaderProjectShareButton({
                     ) : (
                       <HugeiconsIcon icon={__SendHugeIcon} className="mr-2 h-2.5 w-2.5" />
                     )}
-                    Send invites
+                    {t("share.sendInvites")}
                   </Button>
                 </div>
 
@@ -954,7 +954,7 @@ export function HeaderProjectShareButton({
                         <SelectContent>
                           {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
-                              {option.label}
+                              {(t as any)(`share.role.${option.value}`) ?? option.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1029,7 +1029,7 @@ export function HeaderProjectShareButton({
                   </div>
 
                   <p className="mt-2 pl-[52px] text-xs text-muted-foreground">
-                    {getLinkPermissionDescription(joinLinkRole)}
+                    {(t as any)(`share.linkDesc.${joinLinkRole}`) ?? getLinkPermissionDescription(joinLinkRole)}
                   </p>
                 </div>
             </>

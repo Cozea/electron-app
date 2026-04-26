@@ -6,6 +6,7 @@ import type {
   SettingsSurfaceDefinition,
   SettingsSurfaceId,
 } from "@/lib/settings/settingsSurfaceTypes"
+import { getTranslation, getStoredLanguage, type TranslationKey } from "@/lib/i18n"
 
 import { asHugeIcon } from "@/lib/icons/asHugeIcon"
 import {
@@ -30,6 +31,19 @@ const preloadAppearancePage = () => import("@/pages/settings/Appearance")
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
   await module.prewarmToolingSettings?.()
+}
+
+/** Translation keys for each settings surface label. */
+const SURFACE_LABEL_KEYS: Record<SettingsSurfaceId, TranslationKey> = {
+  account: "settings.nav.account",
+  appearance: "settings.nav.appearance",
+  tooling: "settings.nav.localEnvironment",
+}
+
+/** Resolve a surface label for the current language. */
+export function getLocalizedSurfaceLabel(surfaceId: SettingsSurfaceId): string {
+  const key = SURFACE_LABEL_KEYS[surfaceId]
+  return getTranslation(getStoredLanguage(), key)
 }
 
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
@@ -170,11 +184,11 @@ export function getSettingsSurfaceDisplayLabel(
     includeScopePrefix?: boolean
   }
 ): string {
-  return surface.label
+  return getLocalizedSurfaceLabel(surface.id)
 }
 
 export function getSettingsScopeLabel(_scopeKind: SettingsScopeKind): string {
-  return "Settings"
+  return getTranslation(getStoredLanguage(), "common.settings")
 }
 
 export function getSettingsSurfaceBreadcrumbs(

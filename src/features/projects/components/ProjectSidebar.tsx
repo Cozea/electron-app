@@ -27,6 +27,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useTranslation } from "@/lib/i18n";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { buildProjectPath } from "../lib/projectRoutes";
@@ -99,6 +100,7 @@ export function ProjectSidebar({
   className,
   ...props
 }: ProjectSidebarProps) {
+  const { t } = useTranslation();
   const navigate = useViewTransitionNavigate();
   const location = useLocation();
   const { openProjectCreationMenu } = useProjectCreationMenu();
@@ -692,7 +694,7 @@ export function ProjectSidebar({
                 onClick={(event) => void openProjectCreationMenu(event)}
               >
                 <HugeiconsIcon icon={__FolderAddHugeIcon} />
-                <span className="truncate">New project</span>
+                <span className="truncate">{t('nav.newProject')}</span>
               </button>
               <button
                 type="button"
@@ -705,14 +707,14 @@ export function ProjectSidebar({
                 onClick={handleOpenMarketplace}
               >
                 <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
-                <span className="truncate">DevApps Store</span>
+                <span className="truncate">{t('nav.devAppsStore')}</span>
               </button>
             </div>
           )}
 
           <div className="mb-3">
             <div className={SIDEBAR_GROUP_LABEL_CLASS}>
-              {isOnCurrentProjectSettings ? "Project Settings" : "Projects"}
+              {isOnCurrentProjectSettings ? t('projects.projectSettings') : t('projects.projects')}
             </div>
           </div>
 
@@ -737,11 +739,11 @@ export function ProjectSidebar({
               })
             ) : isProjectsLoading ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">
-                Projects will appear here as this workspace finishes syncing.
+                {t('projects.projectsSyncing')}
               </div>
             ) : sortedProjects.length === 0 ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">
-                Create a project to get started.
+                {t('projects.createToGetStarted')}
               </div>
             ) : (
               sortedProjects.map((project, index) => (
