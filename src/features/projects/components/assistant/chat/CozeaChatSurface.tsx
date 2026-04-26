@@ -1286,11 +1286,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
                 onProviderModelChange={props.onProviderModelChange}
               />
-              <ProviderOptionControls
-                descriptors={props.modelOptionDescriptors}
-                disabled={!props.isRuntimeReady || props.isRunning}
-                onOptionChange={props.onModelOptionChange}
-              />
             </div>
 
             <div data-chat-composer-actions="right" className="flex shrink-0 items-center gap-2">
@@ -1387,45 +1382,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       {!activePendingApproval ? (
         <div className="flex shrink-0 items-center justify-between gap-3 px-1 pt-2">
           <div className="flex min-w-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              size="sm"
-              type="button"
+            <ProviderOptionControls
+              descriptors={props.modelOptionDescriptors}
               disabled={!props.isRuntimeReady || props.isRunning}
-              onClick={() => {
-                void props.onToggleInteractionMode()
-              }}
-              title={
-                props.selectedInteractionMode === "plan"
-                  ? "Plan mode - click to return to normal chat mode"
-                  : "Default mode - click to enter plan mode"
-              }
-            >
-              {props.selectedInteractionMode === "plan" ? <HugeiconsIcon icon={__ListTodoIconHugeIcon} /> : <HugeiconsIcon icon={__ChatIconHugeIcon} />}
-              <span>{props.selectedInteractionMode === "plan" ? "Plan" : "Chat"}</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              size="sm"
-              type="button"
-              disabled={!props.isRuntimeReady || props.isRunning}
-              onClick={() => {
-                void props.onToggleRuntimeMode()
-              }}
-              title={
-                props.selectedRuntimeMode === "full-access"
-                  ? "Full access - click to require approvals"
-                  : "Approval required - click for full access"
-              }
-            >
-              {props.selectedRuntimeMode === "full-access" ? <HugeiconsIcon icon={__LockOpenIconHugeIcon} /> : <HugeiconsIcon icon={__LockIconHugeIcon} />}
-              <span>
-                {props.selectedRuntimeMode === "full-access" ? "Full access" : "Supervised"}
-              </span>
-            </Button>
+              onOptionChange={props.onModelOptionChange}
+            />
           </div>
 
           {props.activeContextWindow ? (
@@ -1529,7 +1490,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             >
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-4.5rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-5rem]",
+                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
                   showComposerDockChrome ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden
