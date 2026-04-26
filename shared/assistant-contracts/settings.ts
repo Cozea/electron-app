@@ -3,11 +3,8 @@ import { Effect, Schema, SchemaTransformation } from "effect";
 
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas";
 import {
-  ClaudeModelOptions,
-  CodexModelOptions,
-  CursorModelOptions,
-  OpenCodeModelOptions,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
+  ProviderOptionSelections,
 } from "./model";
 import { ModelSelection } from "./orchestration";
 
@@ -154,30 +151,6 @@ export const DEFAULT_UNIFIED_SETTINGS: UnifiedSettings = {
 
 // ── Server Settings Patch (replace with a Schema.deepPartial if available) ──────────────────────────────────────────
 
-const CodexModelOptionsPatch = Schema.Struct({
-  reasoningEffort: Schema.optional(CodexModelOptions.fields.reasoningEffort),
-  fastMode: Schema.optional(CodexModelOptions.fields.fastMode),
-});
-
-const ClaudeModelOptionsPatch = Schema.Struct({
-  thinking: Schema.optional(ClaudeModelOptions.fields.thinking),
-  effort: Schema.optional(ClaudeModelOptions.fields.effort),
-  fastMode: Schema.optional(ClaudeModelOptions.fields.fastMode),
-});
-
-
-const CursorModelOptionsPatch = Schema.Struct({
-  reasoning: Schema.optional(CursorModelOptions.fields.reasoning),
-  fastMode: Schema.optional(CursorModelOptions.fields.fastMode),
-  thinking: Schema.optional(CursorModelOptions.fields.thinking),
-  contextWindow: Schema.optional(CursorModelOptions.fields.contextWindow),
-});
-
-const OpenCodeModelOptionsPatch = Schema.Struct({
-  variant: Schema.optional(OpenCodeModelOptions.fields.variant),
-  agent: Schema.optional(OpenCodeModelOptions.fields.agent),
-});
-
 const CursorSettingsPatch = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),
   binaryPath: Schema.optional(Schema.String),
@@ -197,22 +170,22 @@ const ModelSelectionPatch = Schema.Union([
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("codex")),
     model: Schema.optional(TrimmedNonEmptyString),
-    options: Schema.optional(CodexModelOptionsPatch),
+    options: Schema.optional(ProviderOptionSelections),
   }),
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("claudeAgent")),
     model: Schema.optional(TrimmedNonEmptyString),
-    options: Schema.optional(ClaudeModelOptionsPatch),
+    options: Schema.optional(ProviderOptionSelections),
   }),
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("cursor")),
     model: Schema.optional(TrimmedNonEmptyString),
-    options: Schema.optional(CursorModelOptionsPatch),
+    options: Schema.optional(ProviderOptionSelections),
   }),
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("opencode")),
     model: Schema.optional(TrimmedNonEmptyString),
-    options: Schema.optional(OpenCodeModelOptionsPatch),
+    options: Schema.optional(ProviderOptionSelections),
   }),
 ]);
 

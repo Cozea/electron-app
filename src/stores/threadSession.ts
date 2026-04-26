@@ -27,11 +27,13 @@ function deriveThreadSessionStatus(
       return "running";
     case "error":
       return "error";
-    case "ready":
     case "interrupted":
+      return "interrupted";
+    case "ready":
       return "ready";
-    case "idle":
     case "stopped":
+      return "stopped";
+    case "idle":
       return "closed";
   }
 }

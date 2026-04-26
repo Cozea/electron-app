@@ -166,4 +166,27 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.payload.usage.maxTokens).toBe(200000);
     expect(parsed.payload.usage.usedTokens).toBe(31251);
   });
+
+  it("decodes cancelled runtime item statuses", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "item.completed",
+      eventId: "event-item-cancelled-1",
+      provider: "cursor",
+      createdAt: "2026-02-28T00:00:05.000Z",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      payload: {
+        itemType: "command_execution",
+        status: "cancelled",
+        title: "Run tests",
+      },
+    });
+
+    expect(parsed.type).toBe("item.completed");
+    if (parsed.type !== "item.completed") {
+      throw new Error("expected item.completed");
+    }
+    expect(parsed.payload.status).toBe("cancelled");
+  });
 });

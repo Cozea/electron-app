@@ -21,7 +21,7 @@ export interface AcpToolCallState {
   readonly toolCallId: string;
   readonly kind?: string;
   readonly title?: string;
-  readonly status?: "pending" | "inProgress" | "completed" | "failed";
+  readonly status?: "pending" | "inProgress" | "completed" | "failed" | "cancelled";
   readonly command?: string;
   readonly detail?: string;
   readonly data: Record<string, unknown>;
@@ -173,8 +173,8 @@ function normalizePlanStepStatus(raw: unknown): "pending" | "inProgress" | "comp
 
 function normalizeToolCallStatus(
   raw: unknown,
-  fallback?: "pending" | "inProgress" | "completed" | "failed",
-): "pending" | "inProgress" | "completed" | "failed" | undefined {
+  fallback?: "pending" | "inProgress" | "completed" | "failed" | "cancelled",
+): "pending" | "inProgress" | "completed" | "failed" | "cancelled" | undefined {
   switch (raw) {
     case "pending":
       return "pending";
@@ -185,6 +185,8 @@ function normalizeToolCallStatus(
       return "completed";
     case "failed":
       return "failed";
+    case "cancelled":
+      return "cancelled";
     default:
       return fallback;
   }
@@ -280,7 +282,7 @@ function makeToolCallState(
     readonly locations?: ReadonlyArray<EffectAcpSchema.ToolCallLocation> | null | undefined;
   },
   options?: {
-    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed";
+    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed" | "cancelled";
   },
 ): AcpToolCallState | undefined {
   const toolCallId = input.toolCallId.trim();
@@ -345,7 +347,7 @@ function makeToolCallState(
 function parseTypedToolCallState(
   event: AcpToolCallUpdate,
   options?: {
-    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed";
+    readonly fallbackStatus?: "pending" | "inProgress" | "completed" | "failed" | "cancelled";
   },
 ): AcpToolCallState | undefined {
   return makeToolCallState(

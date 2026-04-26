@@ -9,15 +9,10 @@ import * as nodePath from "node:path";
 import {
   ApprovalRequestId,
   EventId,
-  type CursorModelOptions,
-  ProviderItemId,
+  type ModelSelection,
   type ProviderRuntimeEvent,
-  type ProviderRuntimeTurnStatus,
-  type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderUserInputAnswers,
-  type RuntimeContentStreamKind,
-  RuntimeItemId,
   RuntimeRequestId,
   ThreadId,
   TurnId,
@@ -110,6 +105,8 @@ interface CursorSessionContext {
   notificationFiber: Fiber.Fiber<void, never> | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
+  readonly openToolCalls: Map<string, import("../acp/AcpRuntimeModel.ts").AcpToolCallState>;
+  readonly syntheticCancelledToolCallIds: Set<string>;
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   lastPlanFingerprint: string | undefined;
   activeTurnId: TurnId | undefined;
@@ -228,7 +225,7 @@ function applyRequestedSessionConfiguration<E>(input: {
   readonly modelSelection:
     | {
         readonly model: string;
-        readonly options?: CursorModelOptions | null | undefined;
+        readonly options?: ModelSelection["options"] | null | undefined;
       }
     | undefined;
   readonly mapError: (context: {
@@ -312,6 +309,54 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
 
     const offerRuntimeEvent = (event: ProviderRuntimeEvent) =>
       PubSub.publish(runtimeEventPubSub, event).pipe(Effect.asVoid);
+
+    const isTerminalToolCallStatus = (
+      status: import("../acp/AcpRuntimeModel.ts").AcpToolCallState["status"],
+    ) => status === "completed" || status === "failed" || status === "cancelled";
+
+    const recordOpenToolCall = (
+      ctx: CursorSessionContext,
+      toolCall: import("../acp/AcpRuntimeModel.ts").AcpToolCallState,
+    ) => {
+      if (isTerminalToolCallStatus(toolCall.status)) {
+        ctx.openToolCalls.delete(toolCall.toolCallId);
+        return;
+      }
+      ctx.openToolCalls.set(toolCall.toolCallId, toolCall);
+    };
+
+    const emitCancelledOpenToolCalls = (
+      ctx: CursorSessionContext,
+      reason: string,
+      rawPayload: unknown,
+    ) =>
+      Effect.gen(function* () {
+        const openToolCalls = Array.from(ctx.openToolCalls.values());
+        ctx.openToolCalls.clear();
+        if (openToolCalls.length === 0) {
+          return;
+        }
+        for (const toolCall of openToolCalls) {
+          ctx.syntheticCancelledToolCallIds.add(toolCall.toolCallId);
+          yield* offerRuntimeEvent(
+            makeAcpToolCallEvent({
+              stamp: yield* makeEventStamp(),
+              provider: PROVIDER,
+              threadId: ctx.threadId,
+              turnId: ctx.activeTurnId,
+              toolCall: {
+                ...toolCall,
+                status: "cancelled",
+                data: {
+                  ...toolCall.data,
+                  cancelReason: reason,
+                },
+              },
+              rawPayload,
+            }),
+          );
+        }
+      });
 
     const getThreadSemaphore = (threadId: string) =>
       SynchronizedRef.modifyEffect(threadLocksRef, (current) => {
@@ -411,6 +456,9 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
         ctx.stopped = true;
         yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
         yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
+        yield* emitCancelledOpenToolCalls(ctx, "Session stopped by user", {
+          source: "cursor.adapter.stopSession",
+        });
         // Always try to cancel an active ACP turn first so in-flight
         // tool executions do not continue after the user presses Stop.
         yield* Effect.ignore(
@@ -702,6 +750,8 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
             notificationFiber: undefined,
             pendingApprovals,
             pendingUserInputs,
+            openToolCalls: new Map(),
+            syntheticCancelledToolCallIds: new Set(),
             turns: [],
             lastPlanFingerprint: undefined,
             activeTurnId: undefined,
@@ -754,6 +804,15 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
                     );
                     return;
                   case "ToolCallUpdated":
+                    if (
+                      event.toolCall.status === "cancelled" &&
+                      ctx.syntheticCancelledToolCallIds.has(event.toolCall.toolCallId)
+                    ) {
+                      ctx.syntheticCancelledToolCallIds.delete(event.toolCall.toolCallId);
+                      recordOpenToolCall(ctx, event.toolCall);
+                      return;
+                    }
+                    recordOpenToolCall(ctx, event.toolCall);
                     yield* logNative(
                       ctx.threadId,
                       "session/update",
@@ -950,6 +1009,9 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
         const ctx = yield* requireSession(threadId);
         yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
         yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
+        yield* emitCancelledOpenToolCalls(ctx, "Run cancelled by user", {
+          source: "cursor.adapter.interruptTurn",
+        });
         yield* Effect.ignore(
           ctx.acp.cancel.pipe(
             Effect.mapError((error) =>

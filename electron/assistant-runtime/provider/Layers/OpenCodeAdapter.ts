@@ -12,6 +12,8 @@ import {
   TurnId,
   type UserInputQuestion,
 } from "@cozea/assistant-contracts";
+import { getModelSelectionStringOptionValue } from "@cozea/assistant-shared/model";
+import { deriveToolActivityPresentation } from "@cozea/assistant-shared/toolActivity";
 import { Cause, Effect, Layer, Queue, Stream } from "effect";
 import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2";
 
@@ -323,6 +325,29 @@ function detailFromToolPart(part: Extract<Part, { type: "tool" }>): string | und
   }
 }
 
+function toolDataFromPart(part: Extract<Part, { type: "tool" }>): Record<string, unknown> {
+  const partRecord = part as unknown as Record<string, unknown>;
+  const stateRecord = part.state as unknown as Record<string, unknown>;
+  const data: Record<string, unknown> = {
+    toolCallId: part.callID,
+    kind: part.tool,
+    state: part.state,
+  };
+  if (stateRecord.input !== undefined) {
+    data.input = stateRecord.input;
+    data.rawInput = stateRecord.input;
+  } else if (partRecord.input !== undefined) {
+    data.input = partRecord.input;
+    data.rawInput = partRecord.input;
+  }
+  if (typeof stateRecord.output === "string" && stateRecord.output.trim().length > 0) {
+    data.rawOutput = { content: stateRecord.output };
+  } else if (typeof stateRecord.error === "string" && stateRecord.error.trim().length > 0) {
+    data.rawOutput = { content: stateRecord.error };
+  }
+  return data;
+}
+
 function toolStateCreatedAt(part: Extract<Part, { type: "tool" }>): string | undefined {
   switch (part.state.status) {
     case "running":
@@ -621,9 +646,17 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
 
                   if (part.type === "tool") {
                     const itemType = toToolLifecycleItemType(part.tool);
-                    const title =
+                    const toolTitle =
                       part.state.status === "running" ? (part.state.title ?? part.tool) : part.tool;
                     const detail = detailFromToolPart(part);
+                    const data = toolDataFromPart(part);
+                    const presentation = deriveToolActivityPresentation({
+                      itemType,
+                      title: toolTitle,
+                      detail,
+                      data,
+                      fallbackSummary: toolTitle,
+                    });
                     const payload = {
                       itemType,
                       ...(part.state.status === "error"
@@ -631,12 +664,9 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
                         : part.state.status === "completed"
                           ? { status: "completed" as const }
                           : { status: "inProgress" as const }),
-                      ...(title ? { title } : {}),
-                      ...(detail ? { detail } : {}),
-                      data: {
-                        tool: part.tool,
-                        state: part.state,
-                      },
+                      ...(presentation.summary ? { title: presentation.summary } : {}),
+                      ...(presentation.detail ? { detail: presentation.detail } : {}),
+                      data,
                     };
                     const runtimeEvent: ProviderRuntimeEvent = {
                       ...buildEventBase({
@@ -1015,11 +1045,11 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
 
         const agent =
           input.modelSelection?.provider === PROVIDER
-            ? input.modelSelection.options?.agent
+            ? getModelSelectionStringOptionValue(input.modelSelection, "agent")
             : undefined;
         const variant =
           input.modelSelection?.provider === PROVIDER
-            ? input.modelSelection.options?.variant
+            ? getModelSelectionStringOptionValue(input.modelSelection, "variant")
             : undefined;
 
         context.activeTurnId = turnId;

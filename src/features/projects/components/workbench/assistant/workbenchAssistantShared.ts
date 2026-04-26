@@ -1,10 +1,6 @@
 import type {
-  ClaudeModelOptions,
   ClientOrchestrationCommand,
-  CodexModelOptions,
-  CursorModelOptions,
   ModelSelection,
-  OpenCodeModelOptions,
   ProviderInteractionMode,
   ProviderKind,
   RuntimeMode,
@@ -17,6 +13,7 @@ import {
   DEFAULT_RUNTIME_MODE,
 } from "@cozea/assistant-contracts"
 import {
+  createModelSelection,
   resolveModelSlugForProvider,
   resolveSelectableModel,
 } from "@cozea/assistant-shared/model"
@@ -237,66 +234,11 @@ export function resolvePreferredModelSelection(input: {
 }
 
 export function normalizeModelSelection(input: {
-  provider: "codex"
-  model: string
-  options?: CodexModelOptions
-}): StrictModelSelection
-export function normalizeModelSelection(input: {
-  provider: "claudeAgent"
-  model: string
-  options?: ClaudeModelOptions
-}): StrictModelSelection
-export function normalizeModelSelection(input: {
-  provider: "cursor"
-  model: string
-  options?: CursorModelOptions
-}): StrictModelSelection
-export function normalizeModelSelection(input: {
-  provider: "opencode"
-  model: string
-  options?: OpenCodeModelOptions
-}): StrictModelSelection
-export function normalizeModelSelection(input: {
   provider: ProviderKind
   model: string
-  options?:
-    | CodexModelOptions
-    | ClaudeModelOptions
-    | CursorModelOptions
-    | OpenCodeModelOptions
+  options?: ModelSelection["options"]
 }): StrictModelSelection {
-  switch (input.provider) {
-    case "codex":
-      return input.options
-        ? { provider: "codex", model: input.model, options: input.options as CodexModelOptions }
-        : { provider: "codex", model: input.model }
-    case "claudeAgent":
-      return input.options
-        ? {
-            provider: "claudeAgent",
-            model: input.model,
-            options: input.options as ClaudeModelOptions,
-          }
-        : { provider: "claudeAgent", model: input.model }
-    case "cursor":
-      return {
-        provider: "cursor",
-        model: input.model,
-        options:
-          input.options && typeof input.options === "object"
-            ? (input.options as CursorModelOptions)
-            : {},
-      }
-    case "opencode":
-      return {
-        provider: "opencode",
-        model: input.model,
-        options:
-          input.options && typeof input.options === "object"
-            ? (input.options as OpenCodeModelOptions)
-            : {},
-      }
-  }
+  return createModelSelection(input.provider, input.model, input.options) as StrictModelSelection
 }
 
 export function withModelSelectionModel(

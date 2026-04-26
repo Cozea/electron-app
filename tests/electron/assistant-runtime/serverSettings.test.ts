@@ -40,9 +40,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         }),
         {
           textGenerationModelSelection: {
-            options: {
-              fastMode: false,
-            },
+            options: [{ id: "fastMode", value: false }],
           },
         },
       );
@@ -101,10 +99,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: "codex",
         model: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
-        options: {
-          reasoningEffort: "high",
-          fastMode: false,
-        },
+        options: [
+          { id: "effort", value: "high" },
+          { id: "fastMode", value: false },
+        ],
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
@@ -136,9 +134,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: "codex",
         model: "gpt-5.4",
-        options: {
-          reasoningEffort: "high",
-        },
+        options: [{ id: "effort", value: "high" }],
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );

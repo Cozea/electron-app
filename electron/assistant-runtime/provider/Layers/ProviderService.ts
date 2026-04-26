@@ -35,6 +35,7 @@ import {
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { type ProviderSessionRuntimePayload } from "../../persistence/Services/ProviderSessionRuntime.ts";
 
 export interface ProviderServiceLiveOptions {
   readonly canonicalEventLogPath?: string;
@@ -92,21 +93,25 @@ function toRuntimeStatus(session: ProviderSession): "starting" | "running" | "st
 function toRuntimePayloadFromSession(
   session: ProviderSession,
   extra?: {
-    readonly modelSelection?: unknown;
+    readonly modelSelection?: ModelSelection;
+    readonly interactionMode?: ProviderSessionRuntimePayload["interactionMode"];
     readonly lastRuntimeEvent?: string;
     readonly lastRuntimeEventAt?: string;
+    readonly sessionUpdatedAt?: string;
   },
-): Record<string, unknown> {
+): ProviderSessionRuntimePayload {
   return {
     cwd: session.cwd ?? null,
     model: session.model ?? null,
+    ...(extra?.modelSelection !== undefined ? { modelSelection: extra.modelSelection } : {}),
+    ...(extra?.interactionMode !== undefined ? { interactionMode: extra.interactionMode } : {}),
     activeTurnId: session.activeTurnId ?? null,
     lastError: session.lastError ?? null,
-    ...(extra?.modelSelection !== undefined ? { modelSelection: extra.modelSelection } : {}),
     ...(extra?.lastRuntimeEvent !== undefined ? { lastRuntimeEvent: extra.lastRuntimeEvent } : {}),
     ...(extra?.lastRuntimeEventAt !== undefined
       ? { lastRuntimeEventAt: extra.lastRuntimeEventAt }
       : {}),
+    ...(extra?.sessionUpdatedAt !== undefined ? { sessionUpdatedAt: extra.sessionUpdatedAt } : {}),
   };
 }
 
@@ -132,6 +137,65 @@ function readPersistedCwd(
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function runtimePayloadFromEvent(event: ProviderRuntimeEvent): ProviderSessionRuntimePayload {
+  const payload = event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+    ? event.payload
+    : undefined;
+  const state = typeof payload?.state === "string" ? payload.state : undefined;
+  const reason = typeof payload?.reason === "string" ? payload.reason : undefined;
+  const message = typeof payload?.message === "string" ? payload.message : undefined;
+
+  return {
+    cwd: null,
+    model: null,
+    activeTurnId:
+      event.type === "turn.completed" || event.type === "turn.aborted"
+        ? null
+        : (event.turnId ?? null),
+    lastError:
+      event.type === "runtime.error"
+        ? message ?? reason ?? null
+        : state === "error"
+          ? reason ?? message ?? null
+          : null,
+    lastRuntimeEvent: event.type,
+    lastRuntimeEventAt: event.createdAt,
+    sessionUpdatedAt: event.createdAt,
+  };
+}
+
+function runtimeStatusFromEvent(
+  event: ProviderRuntimeEvent,
+): ProviderRuntimeBinding["status"] | undefined {
+  const payload = event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+    ? event.payload
+    : undefined;
+  const state = typeof payload?.state === "string" ? payload.state.toLowerCase() : undefined;
+
+  if (event.type === "runtime.error") {
+    return "error";
+  }
+  if (event.type === "session.exited") {
+    return "stopped";
+  }
+  if (event.type === "turn.started" || event.type === "session.started" || event.type === "thread.started") {
+    return "running";
+  }
+  if (event.type === "turn.completed" || event.type === "turn.aborted") {
+    return "running";
+  }
+  if (event.type === "session.state.changed" || event.type === "thread.state.changed") {
+    if (state === "error" || state === "failed") {
+      return "error";
+    }
+    if (state === "closed" || state === "stopped" || state === "idle" || state === "exited") {
+      return "stopped";
+    }
+    return "running";
+  }
+  return undefined;
+}
+
 const makeProviderService = (options?: ProviderServiceLiveOptions) =>
   Effect.gen(function* () {
     const analytics = yield* Effect.service(AnalyticsService);
@@ -149,6 +213,28 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
 
+    const withOperationAnalytics = <A, E>(input: {
+      readonly operation: string;
+      readonly details?: Record<string, unknown>;
+      readonly effect: Effect.Effect<A, E>;
+    }): Effect.Effect<A, E> =>
+      Effect.gen(function* () {
+        const startedAt = Date.now();
+        const exit = yield* Effect.exit(input.effect);
+        const durationMs = Date.now() - startedAt;
+        const success = exit._tag === "Success";
+        yield* analytics.record("provider.operation", {
+          operation: input.operation,
+          success,
+          durationMs,
+          ...input.details,
+        });
+        if (success) {
+          return exit.value;
+        }
+        return yield* Effect.failCause(exit.cause);
+      });
+
     const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
       Effect.succeed(event).pipe(
         Effect.tap((canonicalEvent) =>
@@ -164,7 +250,8 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       session: ProviderSession,
       threadId: ThreadId,
       extra?: {
-        readonly modelSelection?: unknown;
+        readonly modelSelection?: ModelSelection;
+        readonly interactionMode?: ProviderSessionRuntimePayload["interactionMode"];
         readonly lastRuntimeEvent?: string;
         readonly lastRuntimeEventAt?: string;
       },
@@ -175,7 +262,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         runtimeMode: session.runtimeMode,
         status: toRuntimeStatus(session),
         ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
-        runtimePayload: toRuntimePayloadFromSession(session, extra),
+        runtimePayload: toRuntimePayloadFromSession(session, {
+          ...extra,
+          sessionUpdatedAt: session.updatedAt,
+        }),
       });
 
     const providers = yield* registry.listProviders();
@@ -183,7 +273,23 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       registry.getByProvider(provider),
     );
     const processRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
-      publishRuntimeEvent(event);
+      directory
+        .upsert({
+          threadId: event.threadId,
+          provider: event.provider,
+          ...(runtimeStatusFromEvent(event) ? { status: runtimeStatusFromEvent(event) } : {}),
+          runtimePayload: runtimePayloadFromEvent(event),
+        })
+        .pipe(
+          Effect.catchCause(() =>
+            Effect.logWarning("provider.runtime-event.persist-failed", {
+              threadId: event.threadId,
+              provider: event.provider,
+              eventType: event.type,
+            }),
+          ),
+          Effect.flatMap(() => publishRuntimeEvent(event)),
+        );
 
     const worker = Effect.forever(
       Queue.take(runtimeEventQueue).pipe(Effect.flatMap(processRuntimeEvent)),
@@ -318,7 +424,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       );
 
     const startSession: ProviderServiceShape["startSession"] = (threadId, rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.startSession",
+        details: { threadId },
+        effect: Effect.gen(function* () {
         const parsed = yield* decodeInputOrValidationError({
           operation: "ProviderService.startSession",
           schema: ProviderSessionStartInput,
@@ -382,10 +491,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         });
 
         return session;
+        }),
       });
 
     const sendTurn: ProviderServiceShape["sendTurn"] = (rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.sendTurn",
+        effect: Effect.gen(function* () {
         const parsed = yield* decodeInputOrValidationError({
           operation: "ProviderService.sendTurn",
           schema: ProviderSendTurnInput,
@@ -415,9 +527,11 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
           runtimePayload: {
             ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+            ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
             activeTurnId: turn.turnId,
             lastRuntimeEvent: "provider.sendTurn",
             lastRuntimeEventAt: new Date().toISOString(),
+            sessionUpdatedAt: new Date().toISOString(),
           },
         });
         yield* analytics.record("provider.turn.sent", {
@@ -428,10 +542,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           hasInput: typeof input.input === "string" && input.input.trim().length > 0,
         });
         return turn;
+        }),
       });
 
     const interruptTurn: ProviderServiceShape["interruptTurn"] = (rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.interruptTurn",
+        effect: Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
           operation: "ProviderService.interruptTurn",
           schema: ProviderInterruptTurnInput,
@@ -446,10 +563,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         yield* analytics.record("provider.turn.interrupted", {
           provider: routed.adapter.provider,
         });
+        }),
       });
 
     const respondToRequest: ProviderServiceShape["respondToRequest"] = (rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.respondToRequest",
+        effect: Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
           operation: "ProviderService.respondToRequest",
           schema: ProviderRespondToRequestInput,
@@ -465,10 +585,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           provider: routed.adapter.provider,
           decision: input.decision,
         });
+        }),
       });
 
     const respondToUserInput: ProviderServiceShape["respondToUserInput"] = (rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.respondToUserInput",
+        effect: Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
           operation: "ProviderService.respondToUserInput",
           schema: ProviderRespondToUserInputInput,
@@ -480,10 +603,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           allowRecovery: true,
         });
         yield* routed.adapter.respondToUserInput(routed.threadId, input.requestId, input.answers);
+        }),
       });
 
     const stopSession: ProviderServiceShape["stopSession"] = (rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.stopSession",
+        effect: Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
           operation: "ProviderService.stopSession",
           schema: ProviderStopSessionInput,
@@ -503,11 +629,15 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           status: "stopped",
           runtimePayload: {
             activeTurnId: null,
+            lastRuntimeEvent: "provider.stopSession",
+            lastRuntimeEventAt: new Date().toISOString(),
+            sessionUpdatedAt: new Date().toISOString(),
           },
         });
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
         });
+        }),
       });
 
     const listSessions: ProviderServiceShape["listSessions"] = () =>
@@ -561,7 +691,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       registry.getByProvider(provider).pipe(Effect.map((adapter) => adapter.capabilities));
 
     const rollbackConversation: ProviderServiceShape["rollbackConversation"] = (rawInput) =>
-      Effect.gen(function* () {
+      withOperationAnalytics({
+        operation: "provider.rollbackConversation",
+        effect: Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
           operation: "ProviderService.rollbackConversation",
           schema: ProviderRollbackConversationInput,
@@ -580,6 +712,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           provider: routed.adapter.provider,
           turns: input.numTurns,
         });
+        }),
       });
 
     const runStopAll = () =>

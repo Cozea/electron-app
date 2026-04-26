@@ -1,9 +1,10 @@
 // @ts-nocheck
 import type {
-  ClaudeModelOptions,
   ClaudeModelSelection,
   ClaudeSettings,
   ModelCapabilities,
+  ModelSelection,
+  ProviderOptionSelection,
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
@@ -16,7 +17,15 @@ import {
   query as claudeQuery,
   type SlashCommand as ClaudeSlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
-import { resolveContextWindow, resolveEffort } from "@cozea/assistant-shared/model";
+import {
+  createModelCapabilities,
+  getModelSelectionStringOptionValue,
+  getProviderOptionBooleanSelectionValue,
+  getProviderOptionStringSelectionValue,
+  resolveContextWindow,
+  resolveEffort,
+  setProviderOptionSelectionValue,
+} from "@cozea/assistant-shared/model";
 import { decodeJsonResult } from "@cozea/assistant-shared/schemaJson";
 
 import {
@@ -35,13 +44,76 @@ import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { ClaudeProvider } from "../Services/ClaudeProvider.ts";
 import { ServerSettingsError, ServerSettingsService } from "../../serverSettings.ts";
 
-const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = {
-  reasoningEffortLevels: [],
-  supportsFastMode: false,
-  supportsThinkingToggle: false,
-  contextWindowOptions: [],
-  promptInjectedEffortLevels: [],
-};
+function makeClaudeCapabilities(input?: {
+  readonly effortOptions?: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly isDefault?: boolean;
+  }>;
+  readonly contextWindowOptions?: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly isDefault?: boolean;
+  }>;
+  readonly promptInjectedEffortValues?: ReadonlyArray<string>;
+  readonly supportsFastMode?: boolean;
+  readonly supportsThinkingToggle?: boolean;
+}): ModelCapabilities {
+  const optionDescriptors: Array<{
+    readonly id: string;
+    readonly type: "select" | "boolean";
+    readonly label: string;
+    readonly options?: ReadonlyArray<{
+      readonly id: string;
+      readonly label: string;
+      readonly isDefault?: boolean;
+    }>;
+    readonly promptInjectedValues?: ReadonlyArray<string>;
+  }> = [];
+
+  if (input?.effortOptions && input.effortOptions.length > 0) {
+    optionDescriptors.push({
+      id: "effort",
+      type: "select",
+      label: "Effort",
+      options: input.effortOptions.map((option) => ({ ...option })),
+      ...(input.promptInjectedEffortValues?.length
+        ? { promptInjectedValues: [...input.promptInjectedEffortValues] }
+        : {}),
+    });
+  }
+
+  if (input?.contextWindowOptions && input.contextWindowOptions.length > 0) {
+    optionDescriptors.push({
+      id: "contextWindow",
+      type: "select",
+      label: "Context",
+      options: input.contextWindowOptions.map((option) => ({ ...option })),
+    });
+  }
+
+  if (input?.supportsFastMode) {
+    optionDescriptors.push({
+      id: "fastMode",
+      type: "boolean",
+      label: "Fast mode",
+    });
+  }
+
+  if (input?.supportsThinkingToggle) {
+    optionDescriptors.push({
+      id: "thinking",
+      type: "boolean",
+      label: "Thinking",
+    });
+  }
+
+  return createModelCapabilities({
+    optionDescriptors,
+  });
+}
+
+const DEFAULT_CLAUDE_MODEL_CAPABILITIES = makeClaudeCapabilities();
 
 const PROVIDER = "claudeAgent" as const;
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
@@ -50,93 +122,81 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
     slug: "claude-opus-4-7",
     name: "Claude Opus 4.7",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "low", label: "Low" },
-        { value: "medium", label: "Medium" },
-        { value: "high", label: "High" },
-        { value: "xhigh", label: "Extra High", isDefault: true },
-        { value: "max", label: "Max" },
-        { value: "ultrathink", label: "Ultrathink" },
+    capabilities: makeClaudeCapabilities({
+      effortOptions: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High" },
+        { id: "xhigh", label: "Extra High", isDefault: true },
+        { id: "max", label: "Max" },
+        { id: "ultrathink", label: "Ultrathink" },
       ],
-      supportsFastMode: false,
-      supportsThinkingToggle: false,
       contextWindowOptions: [
-        { value: "200k", label: "200k", isDefault: true },
-        { value: "1m", label: "1M" },
+        { id: "200k", label: "200k", isDefault: true },
+        { id: "1m", label: "1M" },
       ],
-      promptInjectedEffortLevels: ["ultrathink"],
-    } satisfies ModelCapabilities,
+      promptInjectedEffortValues: ["ultrathink"],
+    }),
   },
   {
     slug: "claude-opus-4-6",
     name: "Claude Opus 4.6",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "low", label: "Low" },
-        { value: "medium", label: "Medium" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "max", label: "Max" },
-        { value: "ultrathink", label: "Ultrathink" },
+    capabilities: makeClaudeCapabilities({
+      effortOptions: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High", isDefault: true },
+        { id: "max", label: "Max" },
+        { id: "ultrathink", label: "Ultrathink" },
       ],
-      supportsFastMode: true,
-      supportsThinkingToggle: false,
       contextWindowOptions: [
-        { value: "200k", label: "200k", isDefault: true },
-        { value: "1m", label: "1M" },
+        { id: "200k", label: "200k", isDefault: true },
+        { id: "1m", label: "1M" },
       ],
-      promptInjectedEffortLevels: ["ultrathink"],
-    } satisfies ModelCapabilities,
+      promptInjectedEffortValues: ["ultrathink"],
+      supportsFastMode: true,
+    }),
   },
   {
     slug: "claude-opus-4-5",
     name: "Claude Opus 4.5",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "low", label: "Low" },
-        { value: "medium", label: "Medium" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "max", label: "Max" },
+    capabilities: makeClaudeCapabilities({
+      effortOptions: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High", isDefault: true },
+        { id: "max", label: "Max" },
       ],
       supportsFastMode: true,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    } satisfies ModelCapabilities,
+    }),
   },
   {
     slug: "claude-sonnet-4-6",
     name: "Claude Sonnet 4.6",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [
-        { value: "low", label: "Low" },
-        { value: "medium", label: "Medium" },
-        { value: "high", label: "High", isDefault: true },
-        { value: "ultrathink", label: "Ultrathink" },
+    capabilities: makeClaudeCapabilities({
+      effortOptions: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High", isDefault: true },
+        { id: "ultrathink", label: "Ultrathink" },
       ],
-      supportsFastMode: false,
-      supportsThinkingToggle: false,
       contextWindowOptions: [
-        { value: "200k", label: "200k", isDefault: true },
-        { value: "1m", label: "1M" },
+        { id: "200k", label: "200k", isDefault: true },
+        { id: "1m", label: "1M" },
       ],
-      promptInjectedEffortLevels: ["ultrathink"],
-    } satisfies ModelCapabilities,
+      promptInjectedEffortValues: ["ultrathink"],
+    }),
   },
   {
     slug: "claude-haiku-4-5",
     name: "Claude Haiku 4.5",
     isCustom: false,
-    capabilities: {
-      reasoningEffortLevels: [],
-      supportsFastMode: false,
+    capabilities: makeClaudeCapabilities({
       supportsThinkingToggle: true,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    } satisfies ModelCapabilities,
+    }),
   },
 ];
 
@@ -168,25 +228,33 @@ export function getClaudeModelCapabilities(model: string | null | undefined): Mo
 
 export function normalizeClaudeModelOptions(
   model: string | null | undefined,
-  modelOptions: ClaudeModelOptions | null | undefined,
-): ClaudeModelOptions | undefined {
+  modelOptions: ModelSelection["options"] | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
   const caps = getClaudeModelCapabilities(model);
-  const effort = resolveEffort(caps, modelOptions?.effort);
+  const effort = resolveEffort(caps, getProviderOptionStringSelectionValue(modelOptions, "effort"));
   const thinking =
-    caps.supportsThinkingToggle && modelOptions?.thinking === false ? false : undefined;
-  const fastMode = caps.supportsFastMode && modelOptions?.fastMode === true ? true : undefined;
-  const contextWindow = resolveContextWindow(caps, modelOptions?.contextWindow);
-  const nextOptions: ClaudeModelOptions = {
-    ...(thinking === false ? { thinking: false } : {}),
-    ...(effort ? { effort: effort as ClaudeModelOptions["effort"] } : {}),
-    ...(fastMode ? { fastMode: true } : {}),
-    ...(contextWindow ? { contextWindow } : {}),
-  };
-  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
+    caps.supportsThinkingToggle &&
+    getProviderOptionBooleanSelectionValue(modelOptions, "thinking") === false
+      ? false
+      : undefined;
+  const fastMode =
+    caps.supportsFastMode && getProviderOptionBooleanSelectionValue(modelOptions, "fastMode") === true
+      ? true
+      : undefined;
+  const contextWindow = resolveContextWindow(
+    caps,
+    getProviderOptionStringSelectionValue(modelOptions, "contextWindow"),
+  );
+  let nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "thinking", thinking);
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "effort", effort);
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "fastMode", fastMode);
+  nextOptions = setProviderOptionSelectionValue(nextOptions, "contextWindow", contextWindow);
+  return nextOptions;
 }
 
 export function resolveClaudeApiModelId(modelSelection: ClaudeModelSelection): string {
-  switch (modelSelection.options?.contextWindow) {
+  switch (getModelSelectionStringOptionValue(modelSelection, "contextWindow")) {
     case "1m":
       return `${modelSelection.model}[1m]`;
     default:
