@@ -164,6 +164,38 @@ describe("AcpRuntimeModel", () => {
     }
   });
 
+  it("accepts cancelled ACP tool updates as terminal tool states", () => {
+    const cancelled = parseSessionUpdateEvent({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-1",
+        status: "cancelled",
+      },
+    } as EffectAcpSchema.SessionNotification);
+
+    expect(cancelled.events).toEqual([
+      {
+        _tag: "ToolCallUpdated",
+        toolCall: {
+          toolCallId: "tool-1",
+          status: "cancelled",
+          data: {
+            toolCallId: "tool-1",
+          },
+        },
+        rawPayload: {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "tool-1",
+            status: "cancelled",
+          },
+        },
+      },
+    ]);
+  });
+
   it("trims padded current mode updates before emitting a mode change", () => {
     const result = parseSessionUpdateEvent({
       sessionId: "session-1",

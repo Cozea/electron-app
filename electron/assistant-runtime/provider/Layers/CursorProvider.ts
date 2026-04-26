@@ -4,9 +4,9 @@ import * as nodePath from "node:path";
 import * as nodeChildProcess from "node:child_process";
 
 import type {
-  CursorModelOptions,
   CursorSettings,
   ModelCapabilities,
+  ModelSelection,
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
@@ -17,6 +17,12 @@ import { ServerSettingsError } from "../../serverSettings.ts";
 import type * as EffectAcpSchema from "@cozea/effect-acp/schema";
 import { Cause, Effect, Equal, Exit, Layer, Option, Result, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import {
+  createModelCapabilities,
+  getProviderOptionBooleanSelectionValue,
+  getProviderOptionStringSelectionValue,
+  getProviderOptionDescriptors,
+} from "@cozea/assistant-shared/model";
 
 import {
   buildServerProvider,
@@ -42,6 +48,27 @@ const EMPTY_CAPABILITIES: ModelCapabilities = {
   contextWindowOptions: [],
   promptInjectedEffortLevels: [],
 };
+
+function createCursorCapabilities(input: {
+  readonly reasoningEffortLevels: ModelCapabilities["reasoningEffortLevels"];
+  readonly supportsFastMode: boolean;
+  readonly supportsThinkingToggle: boolean;
+  readonly contextWindowOptions: ModelCapabilities["contextWindowOptions"];
+  readonly promptInjectedEffortLevels: ModelCapabilities["promptInjectedEffortLevels"];
+}): ModelCapabilities {
+  return createModelCapabilities({
+    optionDescriptors: getProviderOptionDescriptors({
+      caps: {
+        optionDescriptors: [],
+        reasoningEffortLevels: input.reasoningEffortLevels.map((option) => ({ ...option })),
+        supportsFastMode: input.supportsFastMode,
+        supportsThinkingToggle: input.supportsThinkingToggle,
+        contextWindowOptions: input.contextWindowOptions.map((option) => ({ ...option })),
+        promptInjectedEffortLevels: [...input.promptInjectedEffortLevels],
+      },
+    }),
+  });
+}
 
 const CURSOR_ACP_MODEL_DISCOVERY_TIMEOUT_MS = 30_000;
 const CURSOR_ACP_MODEL_CAPABILITY_TIMEOUT = "4 seconds";
@@ -122,13 +149,13 @@ const COMMON_CURSOR_REASONING_EFFORT_LEVELS: ReadonlyArray<CursorCapabilityOptio
 ];
 
 function cloneCursorCapabilities(capabilities: ModelCapabilities): ModelCapabilities {
-  return {
+  return createCursorCapabilities({
     reasoningEffortLevels: capabilities.reasoningEffortLevels.map((option) => ({ ...option })),
     supportsFastMode: capabilities.supportsFastMode,
     supportsThinkingToggle: capabilities.supportsThinkingToggle,
     contextWindowOptions: capabilities.contextWindowOptions.map((option) => ({ ...option })),
     promptInjectedEffortLevels: [...capabilities.promptInjectedEffortLevels],
-  };
+  });
 }
 
 function parseCursorModelSlug(modelSlug: string): ParsedCursorModelSlug {
@@ -221,7 +248,7 @@ function mergeCursorCapabilities(
   primary: ModelCapabilities,
   fallback: ModelCapabilities,
 ): ModelCapabilities {
-  return {
+  return createCursorCapabilities({
     reasoningEffortLevels:
       primary.reasoningEffortLevels.length > 0
         ? primary.reasoningEffortLevels.map((option) => ({ ...option }))
@@ -236,7 +263,7 @@ function mergeCursorCapabilities(
       primary.promptInjectedEffortLevels.length > 0
         ? [...primary.promptInjectedEffortLevels]
         : [...fallback.promptInjectedEffortLevels],
-  };
+  });
 }
 
 export function inferCursorCapabilitiesFromModelSlug(modelSlug: string): ModelCapabilities {
@@ -278,13 +305,13 @@ export function inferCursorCapabilitiesFromModelSlug(modelSlug: string): ModelCa
     supportsThinkingToggle = true;
   }
 
-  return {
+  return createCursorCapabilities({
     reasoningEffortLevels,
     supportsFastMode,
     supportsThinkingToggle,
     contextWindowOptions,
     promptInjectedEffortLevels,
-  };
+  });
 }
 
 function shouldProbeCursorModelCapabilities(model: ServerProviderModel): boolean {
@@ -457,13 +484,13 @@ export function buildCursorCapabilitiesFromConfigOptions(
     (option) => option.category === "model_config" && isCursorThinkingConfigOption(option),
   );
 
-  return {
+  return createCursorCapabilities({
     reasoningEffortLevels,
     supportsFastMode: fastOption ? isBooleanLikeConfigOption(fastOption) : false,
     supportsThinkingToggle: thinkingOption ? isBooleanLikeConfigOption(thinkingOption) : false,
     contextWindowOptions,
     promptInjectedEffortLevels: [],
-  };
+  });
 }
 
 function buildCursorDiscoveredModels(
@@ -488,6 +515,7 @@ function buildCursorDiscoveredModels(
 
 function hasCursorModelCapabilities(model: Pick<ServerProviderModel, "capabilities">): boolean {
   return (
+    (model.capabilities?.optionDescriptors?.length ?? 0) > 0 ||
     (model.capabilities?.reasoningEffortLevels.length ?? 0) > 0 ||
     model.capabilities?.supportsFastMode === true ||
     model.capabilities?.supportsThinkingToggle === true ||
@@ -615,7 +643,7 @@ export function resolveCursorAcpSessionModelConfigValue(model: string | null | u
 
 export function resolveCursorAcpConfigUpdates(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
-  modelOptions: CursorModelOptions | null | undefined,
+  modelOptions: ModelSelection["options"] | null | undefined,
 ): ReadonlyArray<{ readonly configId: string; readonly value: string | boolean }> {
   if (!configOptions || configOptions.length === 0) {
     return [];
@@ -624,7 +652,9 @@ export function resolveCursorAcpConfigUpdates(
   const updates: Array<{ readonly configId: string; readonly value: string | boolean }> = [];
 
   const reasoningOption = findCursorEffortConfigOption(configOptions);
-  const requestedReasoning = normalizeCursorReasoningValue(modelOptions?.reasoning);
+  const requestedReasoning = normalizeCursorReasoningValue(
+    getProviderOptionStringSelectionValue(modelOptions, "effort"),
+  );
   if (reasoningOption && requestedReasoning) {
     const value = findCursorSelectOptionValue(reasoningOption, (option) => {
       const normalizedValue = normalizeCursorReasoningValue(option.value);
@@ -639,14 +669,15 @@ export function resolveCursorAcpConfigUpdates(
   const contextOption = configOptions.find(
     (option) => option.category === "model_config" && isCursorContextConfigOption(option),
   );
-  if (contextOption && modelOptions?.contextWindow) {
+  const requestedContextWindow = getProviderOptionStringSelectionValue(modelOptions, "contextWindow");
+  if (contextOption && requestedContextWindow) {
     const value = findCursorSelectOptionValue(
       contextOption,
       (option) =>
         normalizeCursorConfigOptionToken(option.value) ===
-          normalizeCursorConfigOptionToken(modelOptions.contextWindow) ||
+          normalizeCursorConfigOptionToken(requestedContextWindow) ||
         normalizeCursorConfigOptionToken(option.name) ===
-          normalizeCursorConfigOptionToken(modelOptions.contextWindow),
+          normalizeCursorConfigOptionToken(requestedContextWindow),
     );
     if (value) {
       updates.push({ configId: contextOption.id, value });
@@ -656,8 +687,9 @@ export function resolveCursorAcpConfigUpdates(
   const fastOption = configOptions.find(
     (option) => option.category === "model_config" && isCursorFastConfigOption(option),
   );
-  if (fastOption && typeof modelOptions?.fastMode === "boolean") {
-    const value = findCursorBooleanConfigValue(fastOption, modelOptions.fastMode);
+  const requestedFastMode = getProviderOptionBooleanSelectionValue(modelOptions, "fastMode");
+  if (fastOption && typeof requestedFastMode === "boolean") {
+    const value = findCursorBooleanConfigValue(fastOption, requestedFastMode);
     if (value !== undefined) {
       updates.push({ configId: fastOption.id, value });
     }
@@ -666,8 +698,9 @@ export function resolveCursorAcpConfigUpdates(
   const thinkingOption = configOptions.find(
     (option) => option.category === "model_config" && isCursorThinkingConfigOption(option),
   );
-  if (thinkingOption && typeof modelOptions?.thinking === "boolean") {
-    const value = findCursorBooleanConfigValue(thinkingOption, modelOptions.thinking);
+  const requestedThinking = getProviderOptionBooleanSelectionValue(modelOptions, "thinking");
+  if (thinkingOption && typeof requestedThinking === "boolean") {
+    const value = findCursorBooleanConfigValue(thinkingOption, requestedThinking);
     if (value !== undefined) {
       updates.push({ configId: thinkingOption.id, value });
     }

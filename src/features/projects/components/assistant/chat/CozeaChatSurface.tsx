@@ -5,6 +5,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type MessageId,
   type ModelSelection,
+  type ProviderOptionDescriptor,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
   type ProviderKind,
@@ -39,8 +40,10 @@ import type {
 } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
 import { buildExpandedImagePreview } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
 import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
+import { ProviderOptionControls } from "@/features/projects/components/assistant/chat/ProviderOptionControls"
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
+import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
 import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
 import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/projects/components/assistant/chat/ComposerPromptEditor"
@@ -170,7 +173,9 @@ interface CozeaChatSurfaceProps {
   selectedInteractionMode: ProviderInteractionMode
   providers: ReadonlyArray<ServerProvider>
   modelOptionsByProvider: ProviderModelOptionsByProvider
+  modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>
   onProviderModelChange: (provider: ProviderKind, model: string) => void | Promise<void>
+  onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>
   onToggleInteractionMode: () => void | Promise<void>
   onToggleRuntimeMode: () => void | Promise<void>
   onComposerChange: (nextValue: string, nextCursor: number) => void
@@ -513,6 +518,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`
   const markdownCwd = props.thread?.worktreePath ?? props.projectPath ?? undefined
   const workspaceRoot = props.projectPath ?? undefined
+  const threadRuntimeBannerState = props.isInterrupting
+    ? "interrupting"
+    : phase === "error" || phase === "interrupted" || phase === "stopped" || phase === "connecting"
+      ? phase
+      : null
+  const threadRuntimeDetail =
+    props.thread?.session?.lastError ?? props.thread?.error ?? props.runtimeErrorMessage ?? null
 
   const dockComposerOnHover = Boolean(props.dockComposerOnHover)
   const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
@@ -1188,8 +1200,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   ? "Type your own answer, or leave this blank to use the selected option"
                   : showPlanFollowUpPrompt
                     ? "Add feedback to refine the plan"
+                    : props.isInterrupting
+                      ? props.isForceStopAvailable
+                        ? "The run is still stopping. Force stop if it does not settle."
+                        : "Stopping the current run..."
                     : props.runtimeErrorMessage
                       ? "Local chat runtime unavailable. Waiting for recovery..."
+                      : phase === "error"
+                        ? "The last run hit an error. Fix the issue or send a follow-up."
+                        : phase === "interrupted"
+                          ? "The last run was interrupted. Send a message to continue."
+                          : phase === "stopped"
+                            ? "The agent session stopped. Send a message to start a new run."
                       : phase === "disconnected"
                         ? "Ask for follow-up changes"
                         : "Ask anything, @tag files/folders, or use / to show available commands"
@@ -1259,6 +1281,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 disabled={!props.isRuntimeReady || props.isRunning}
                 triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
                 onProviderModelChange={props.onProviderModelChange}
+              />
+              <ProviderOptionControls
+                descriptors={props.modelOptionDescriptors}
+                disabled={!props.isRuntimeReady || props.isRunning}
+                onOptionChange={props.onModelOptionChange}
               />
             </div>
 
@@ -1443,6 +1470,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
+            {threadRuntimeBannerState ? (
+              <div className="px-3 pt-3 sm:px-5 sm:pt-4">
+                <div className="mx-auto w-full max-w-3xl">
+                  <ThreadRuntimeBanner
+                    state={threadRuntimeBannerState}
+                    detail={threadRuntimeDetail}
+                    isForceStopAvailable={props.isForceStopAvailable}
+                  />
+                </div>
+              </div>
+            ) : null}
             <MessagesTimeline
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}

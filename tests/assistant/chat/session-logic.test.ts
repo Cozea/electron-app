@@ -6,9 +6,41 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  derivePhase,
   deriveWorkLogEntries,
   hasToolActivityForTurn,
 } from "@/features/projects/components/assistant/chat/session-logic";
+import type { ThreadSession } from "@/stores/types";
+
+const globalWithCanvas = globalThis as typeof globalThis & {
+  OffscreenCanvas?: new (width: number, height: number) => {
+    getContext: (contextId: string) => { measureText: (text: string) => { width: number } } | null;
+  };
+};
+
+if (typeof globalWithCanvas.OffscreenCanvas === "undefined") {
+  class MockOffscreenCanvas {
+    constructor(
+      readonly width: number,
+      readonly height: number,
+    ) {}
+
+    getContext(contextId: string) {
+      if (contextId !== "2d") {
+        return null;
+      }
+      return {
+        font: "",
+        measureText(text: string) {
+          return { width: text.length * 6 };
+        },
+      };
+    }
+  }
+
+  globalWithCanvas.OffscreenCanvas =
+    MockOffscreenCanvas as unknown as typeof globalWithCanvas.OffscreenCanvas;
+}
 
 function makeActivity(overrides: {
   id?: string;
@@ -381,6 +413,112 @@ describe("deriveWorkLogEntries", () => {
       "apps/web/src/components/ChatView.tsx",
       "apps/web/src/session-logic.ts",
     ]);
+  });
+
+  it("surfaces persisted filenames from runtime events", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "files-persisted",
+        kind: "files.persisted",
+        summary: "Saved files",
+        tone: "tool",
+        payload: {
+          files: [
+            { filename: "src/features/chat/MessagesTimeline.tsx", fileId: "file-1" },
+            { filename: "src/features/chat/session-logic.ts", fileId: "file-2" },
+          ],
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      label: "Saved files",
+      changedFiles: [
+        "src/features/chat/MessagesTimeline.tsx",
+        "src/features/chat/session-logic.ts",
+      ],
+      savedFiles: [
+        "src/features/chat/MessagesTimeline.tsx",
+        "src/features/chat/session-logic.ts",
+      ],
+    });
+  });
+
+  it("keeps failed persisted files separate from saved ones", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "files-persisted-mixed",
+        kind: "files.persisted",
+        summary: "Saved files",
+        tone: "tool",
+        payload: {
+          files: [{ filename: "src/features/chat/MessagesTimeline.tsx", fileId: "file-1" }],
+          failed: [{ filename: "src/features/chat/CozeaChatSurface.tsx", error: "permission denied" }],
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      tone: "error",
+      savedFiles: ["src/features/chat/MessagesTimeline.tsx"],
+      failedFiles: [
+        {
+          path: "src/features/chat/CozeaChatSurface.tsx",
+          error: "permission denied",
+        },
+      ],
+    });
+  });
+
+  it("marks cancelled tool completions distinctly for UI rendering", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "tool-cancelled",
+        kind: "tool.completed",
+        summary: "Run tests",
+        payload: {
+          itemType: "command_execution",
+          status: "cancelled",
+          title: "Run tests",
+          detail: "bun run test",
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      status: "cancelled",
+      tone: "info",
+      activityKind: "tool.completed",
+    });
+  });
+
+  it("extracts changed files from approval request args", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "approval-opened",
+        kind: "approval.requested",
+        summary: "File-change approval requested",
+        tone: "approval",
+        payload: {
+          requestKind: "file-change",
+          requestType: "file_change_approval",
+          args: {
+            changes: [{ path: "src/features/chat/CozeaChatSurface.tsx" }],
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      label: "File-change approval requested",
+      requestKind: "file-change",
+      changedFiles: ["src/features/chat/CozeaChatSurface.tsx"],
+      detail: "src/features/chat/CozeaChatSurface.tsx",
+    });
   });
 
   it("drops duplicated tool detail when it only repeats the title", () => {
@@ -797,3 +935,25 @@ describe("hasToolActivityForTurn", () => {
   });
 });
 
+describe("derivePhase", () => {
+  function makeSession(status: ThreadSession["status"]): ThreadSession {
+    return {
+      provider: "codex",
+      status,
+      orchestrationStatus:
+        status === "connecting"
+          ? "starting"
+          : status === "closed"
+            ? "idle"
+            : status,
+      createdAt: "2026-02-23T00:00:00.000Z",
+      updatedAt: "2026-02-23T00:00:00.000Z",
+    };
+  }
+
+  it("preserves interrupted, stopped, and error states", () => {
+    expect(derivePhase(makeSession("interrupted"))).toBe("interrupted");
+    expect(derivePhase(makeSession("stopped"))).toBe("stopped");
+    expect(derivePhase(makeSession("error"))).toBe("error");
+  });
+});

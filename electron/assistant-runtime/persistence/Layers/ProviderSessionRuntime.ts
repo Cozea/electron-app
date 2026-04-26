@@ -10,6 +10,7 @@ import {
   type ProviderSessionRuntimeRepositoryError,
 } from "../Errors.ts";
 import {
+  ProviderSessionRuntimePayload,
   ProviderSessionRuntime,
   ProviderSessionRuntimeRepository,
   type ProviderSessionRuntimeRepositoryShape,
@@ -18,7 +19,7 @@ import {
 const ProviderSessionRuntimeDbRowSchema = ProviderSessionRuntime.mapFields(
   Struct.assign({
     resumeCursor: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
-    runtimePayload: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
+    runtimePayload: Schema.NullOr(Schema.fromJsonString(ProviderSessionRuntimePayload)),
   }),
 );
 

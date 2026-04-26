@@ -903,7 +903,10 @@ function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | n
     case "work": {
       const visibleEntryCount = Math.min(row.groupedEntries.length, MAX_VISIBLE_WORK_LOG_ENTRIES);
       const overflowHeaderHeight = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES ? 24 : 0;
-      return 28 + overflowHeaderHeight + visibleEntryCount * 28;
+      const variableHeight = row.groupedEntries
+        .slice(-visibleEntryCount)
+        .reduce((total, entry) => total + estimateWorkEntryHeight(entry), 0);
+      return 24 + overflowHeaderHeight + variableHeight;
     }
     case "message":
       return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
@@ -983,6 +986,23 @@ function formatWorkingTimer(startIso: string, endIso: string): string | null {
   }
 
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function estimateWorkEntryHeight(workEntry: TimelineWorkEntry): number {
+  let height = 28;
+  const changedFileCount = workEntry.changedFiles?.length ?? 0;
+  const persistedFileCount =
+    (workEntry.savedFiles?.length ?? 0) + (workEntry.failedFiles?.length ?? 0);
+  if (changedFileCount > 0) {
+    height += workEntry.activityKind === "files.persisted" ? 28 : 20;
+  }
+  if (persistedFileCount > 3) {
+    height += 18;
+  }
+  if (workEntry.status === "cancelled" || workEntry.status === "failed") {
+    height += 4;
+  }
+  return height;
 }
 
 const UserMessageTerminalContextInlineLabel = memo(
@@ -1189,6 +1209,56 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
 }
 
+function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
+  label: string;
+  className: string;
+} | null {
+  if (workEntry.status === "cancelled") {
+    return {
+      label: "Cancelled",
+      className:
+        "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    };
+  }
+  if (workEntry.status === "failed") {
+    return {
+      label: "Failed",
+      className: "border-destructive/30 bg-destructive/10 text-destructive",
+    };
+  }
+  if (
+    workEntry.activityKind === "runtime.warning" ||
+    workEntry.activityKind === "config.warning" ||
+    workEntry.activityKind === "deprecation.notice"
+  ) {
+    return {
+      label: "Warning",
+      className:
+        "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    };
+  }
+  if (workEntry.activityKind === "model.rerouted") {
+    return {
+      label: "Rerouted",
+      className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    };
+  }
+  if (workEntry.activityKind === "tool.progress" || workEntry.status === "inProgress") {
+    return {
+      label: "Running",
+      className: "border-border/60 bg-background/80 text-muted-foreground",
+    };
+  }
+  return null;
+}
+
+function workEntryFileChipClassName(kind: "saved" | "failed"): string {
+  if (kind === "failed") {
+    return "border-destructive/25 bg-destructive/8 text-destructive";
+  }
+  return "border-emerald-500/20 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300";
+}
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
@@ -1205,8 +1275,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ? null
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
+  const statusBadge = workEntryStatusBadge(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const hasPersistedFileGroups =
+    (workEntry.savedFiles?.length ?? 0) > 0 || (workEntry.failedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
 
   return (
@@ -1267,8 +1340,20 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                       preview ? "text-muted-foreground/70" : "",
                     )}
                   >
-                    <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                      {heading}
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <span className={cn("truncate text-foreground/80", workToneClass(workEntry.tone))}>
+                        {heading}
+                      </span>
+                      {statusBadge ? (
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-[9px] font-medium leading-4",
+                            statusBadge.className,
+                          )}
+                        >
+                          {statusBadge.label}
+                        </span>
+                      ) : null}
                     </span>
                     {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
                   </p>
@@ -1281,7 +1366,58 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           )}
         </div>
       </div>
-      {hasChangedFiles && !previewIsChangedFiles && (
+      {hasPersistedFileGroups ? (
+        <div className="mt-1 space-y-1 pl-6">
+          {(workEntry.savedFiles?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {workEntry.savedFiles?.slice(0, 6).map((filePath) => {
+                const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
+                return (
+                  <span
+                    key={`${workEntry.id}:saved:${filePath}`}
+                    className={cn(
+                      "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+                      workEntryFileChipClassName("saved"),
+                    )}
+                    title={displayPath}
+                  >
+                    {displayPath}
+                  </span>
+                );
+              })}
+              {(workEntry.savedFiles?.length ?? 0) > 6 ? (
+                <span className="px-1 text-[10px] text-muted-foreground/55">
+                  +{(workEntry.savedFiles?.length ?? 0) - 6}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          {(workEntry.failedFiles?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {workEntry.failedFiles?.slice(0, 4).map((file) => {
+                const displayPath = formatWorkspaceRelativePath(file.path, workspaceRoot);
+                return (
+                  <span
+                    key={`${workEntry.id}:failed:${file.path}`}
+                    className={cn(
+                      "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+                      workEntryFileChipClassName("failed"),
+                    )}
+                    title={file.error ? `${displayPath}: ${file.error}` : displayPath}
+                  >
+                    {displayPath}
+                  </span>
+                );
+              })}
+              {(workEntry.failedFiles?.length ?? 0) > 4 ? (
+                <span className="px-1 text-[10px] text-muted-foreground/55">
+                  +{(workEntry.failedFiles?.length ?? 0) - 4}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : hasChangedFiles && !previewIsChangedFiles ? (
         <div className="mt-1 flex flex-wrap gap-1 pl-6">
           {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
             const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
@@ -1301,7 +1437,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             </span>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 });

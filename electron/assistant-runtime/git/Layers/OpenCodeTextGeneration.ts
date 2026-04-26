@@ -6,6 +6,7 @@ import {
   type ChatAttachment,
   type OpenCodeModelSelection,
 } from "@cozea/assistant-contracts";
+import { getModelSelectionStringOptionValue } from "@cozea/assistant-shared/model";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@cozea/assistant-shared/git";
 
 import { ServerConfig } from "../../config.ts";
@@ -238,11 +239,11 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
           const result = await client.session.prompt({
             sessionID: session.data.id,
             model: parsedModel,
-            ...(input.modelSelection.options?.agent
-              ? { agent: input.modelSelection.options.agent }
+            ...(getModelSelectionStringOptionValue(input.modelSelection, "agent")
+              ? { agent: getModelSelectionStringOptionValue(input.modelSelection, "agent") }
               : {}),
-            ...(input.modelSelection.options?.variant
-              ? { variant: input.modelSelection.options.variant }
+            ...(getModelSelectionStringOptionValue(input.modelSelection, "variant")
+              ? { variant: getModelSelectionStringOptionValue(input.modelSelection, "variant") }
               : {}),
             format: {
               type: "json_schema",

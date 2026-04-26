@@ -296,6 +296,49 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("turn failed");
   });
 
+  it("maps cancelled turn completions into interrupted session state", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-cancelled"),
+      provider: "codex",
+      threadId: asThreadId("thread-1"),
+      createdAt: now,
+      turnId: asTurnId("turn-cancelled"),
+    });
+
+    await waitForThread(
+      harness.engine,
+      (thread) =>
+        thread.session?.status === "running" && thread.session?.activeTurnId === "turn-cancelled",
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-cancelled"),
+      provider: "codex",
+      threadId: asThreadId("thread-1"),
+      createdAt: new Date().toISOString(),
+      turnId: asTurnId("turn-cancelled"),
+      payload: {
+        state: "cancelled",
+        stopReason: "user_cancelled",
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.session?.status === "interrupted" &&
+        entry.session?.activeTurnId === null &&
+        entry.session?.lastError === null,
+    );
+    expect(thread.session?.status).toBe("interrupted");
+    expect(thread.session?.lastError).toBeNull();
+  });
+
   it("applies provider session.state.changed transitions directly", async () => {
     const harness = await createHarness();
     const waitingAt = new Date().toISOString();
@@ -1617,6 +1660,10 @@ describe("ProviderRuntimeIngestion", () => {
       payload: {
         requestType: "command_execution_approval",
         detail: "pwd",
+        args: {
+          command: ["pwd"],
+          cwd: "/tmp/workspace",
+        },
       },
     });
 
@@ -1630,6 +1677,9 @@ describe("ProviderRuntimeIngestion", () => {
       payload: {
         requestType: "command_execution_approval",
         decision: "accept",
+        resolution: {
+          approvedBy: "user",
+        },
       },
     });
 
@@ -1657,6 +1707,10 @@ describe("ProviderRuntimeIngestion", () => {
         : undefined;
     expect(requestedPayload?.requestKind).toBe("command");
     expect(requestedPayload?.requestType).toBe("command_execution_approval");
+    expect(requestedPayload?.args).toEqual({
+      command: ["pwd"],
+      cwd: "/tmp/workspace",
+    });
 
     const resolved = thread?.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-request-resolved",
@@ -1667,6 +1721,9 @@ describe("ProviderRuntimeIngestion", () => {
         : undefined;
     expect(resolvedPayload?.requestKind).toBe("command");
     expect(resolvedPayload?.requestType).toBe("command_execution_approval");
+    expect(resolvedPayload?.resolution).toEqual({
+      approvedBy: "user",
+    });
   });
 
   it("maps runtime.error into errored session state", async () => {
@@ -1694,6 +1751,110 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("runtime exploded");
+  });
+
+  it("maps intentional abort runtime errors into interrupted session state", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-runtime-abort-turn-started"),
+      provider: "codex",
+      threadId: asThreadId("thread-1"),
+      createdAt: now,
+      turnId: asTurnId("turn-abort"),
+    });
+
+    await waitForThread(
+      harness.engine,
+      (thread) => thread.session?.status === "running" && thread.session?.activeTurnId === "turn-abort",
+    );
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("evt-runtime-error-abort"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-abort"),
+      payload: {
+        message: "Interrupted by user",
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.session?.status === "interrupted" &&
+        entry.session?.activeTurnId === null &&
+        entry.session?.lastError === null,
+    );
+    expect(thread.session?.status).toBe("interrupted");
+    expect(thread.session?.lastError).toBeNull();
+  });
+
+  it("projects files persisted and reroute events into thread activities", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "files.persisted",
+      eventId: asEventId("evt-files-persisted"),
+      provider: "claudeAgent",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-files"),
+      payload: {
+        files: [
+          { filename: "src/features/projects/components/assistant/chat/MessagesTimeline.tsx", fileId: "file-1" },
+        ],
+        failed: [{ filename: "src/features/projects/components/assistant/chat/session-logic.ts", error: "permission denied" }],
+      },
+    });
+
+    harness.emit({
+      type: "model.rerouted",
+      eventId: asEventId("evt-model-rerouted"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-files"),
+      payload: {
+        fromModel: "gpt-5-codex",
+        toModel: "gpt-5-mini",
+        reason: "capacity",
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.activities.some((activity) => activity.id === "evt-files-persisted") &&
+        entry.activities.some((activity) => activity.id === "evt-model-rerouted"),
+    );
+
+    const filesPersisted = thread.activities.find((activity) => activity.id === "evt-files-persisted");
+    const filesPersistedPayload =
+      filesPersisted?.payload && typeof filesPersisted.payload === "object"
+        ? (filesPersisted.payload as Record<string, unknown>)
+        : undefined;
+    expect(filesPersisted?.kind).toBe("files.persisted");
+    expect(filesPersisted?.tone).toBe("tool");
+    expect(filesPersistedPayload?.files).toEqual([
+      {
+        filename: "src/features/projects/components/assistant/chat/MessagesTimeline.tsx",
+        fileId: "file-1",
+      },
+    ]);
+
+    const rerouted = thread.activities.find((activity) => activity.id === "evt-model-rerouted");
+    const reroutedPayload =
+      rerouted?.payload && typeof rerouted.payload === "object"
+        ? (rerouted.payload as Record<string, unknown>)
+        : undefined;
+    expect(rerouted?.kind).toBe("model.rerouted");
+    expect(reroutedPayload?.toModel).toBe("gpt-5-mini");
   });
 
   it("keeps the session running when a runtime.warning arrives during an active turn", async () => {

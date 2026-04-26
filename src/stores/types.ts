@@ -16,7 +16,14 @@ import type {
   RuntimeMode,
 } from "@cozea/assistant-contracts";
 
-export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
+export type SessionPhase =
+  | "disconnected"
+  | "connecting"
+  | "ready"
+  | "running"
+  | "interrupted"
+  | "stopped"
+  | "error";
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 
 export const DEFAULT_INTERACTION_MODE: ProviderInteractionMode = "default";
@@ -113,7 +120,7 @@ export interface Thread {
 
 export interface ThreadSession {
   provider: ProviderKind;
-  status: SessionPhase | "error" | "closed";
+  status: Exclude<SessionPhase, "disconnected"> | "closed";
   activeTurnId?: TurnId | undefined;
   createdAt: string;
   updatedAt: string;

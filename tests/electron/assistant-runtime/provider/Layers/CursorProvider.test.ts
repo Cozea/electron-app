@@ -74,6 +74,7 @@ describe("CursorProvider", () => {
         name: "Composer 2 Fast",
         isCustom: false,
         capabilities: {
+          optionDescriptors: [],
           reasoningEffortLevels: [],
           supportsFastMode: false,
           supportsThinkingToggle: false,

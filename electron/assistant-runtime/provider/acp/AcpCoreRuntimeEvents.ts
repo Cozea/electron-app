@@ -62,7 +62,7 @@ function canonicalItemTypeFromAcpToolKind(kind: string | undefined): ToolLifecyc
 
 function runtimeItemStatusFromAcpToolStatus(
   status: AcpToolCallState["status"],
-): "inProgress" | "completed" | "failed" | undefined {
+): "inProgress" | "completed" | "failed" | "cancelled" | undefined {
   switch (status) {
     case "pending":
     case "inProgress":
@@ -71,6 +71,8 @@ function runtimeItemStatusFromAcpToolStatus(
       return "completed";
     case "failed":
       return "failed";
+    case "cancelled":
+      return "cancelled";
     default:
       return undefined;
   }
@@ -168,7 +170,9 @@ export function makeAcpToolCallEvent(input: {
   const runtimeStatus = runtimeItemStatusFromAcpToolStatus(input.toolCall.status);
   return {
     type:
-      input.toolCall.status === "completed" || input.toolCall.status === "failed"
+      input.toolCall.status === "completed" ||
+      input.toolCall.status === "failed" ||
+      input.toolCall.status === "cancelled"
         ? "item.completed"
         : "item.updated",
     ...input.stamp,

@@ -12,7 +12,11 @@ import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { ClaudeModelSelection } from "@cozea/assistant-contracts";
-import { resolveApiModelId } from "@cozea/assistant-shared/model";
+import {
+  getProviderOptionBooleanSelectionValue,
+  getProviderOptionStringSelectionValue,
+  resolveApiModelId,
+} from "@cozea/assistant-shared/model";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@cozea/assistant-shared/git";
 
 import { TextGenerationError } from "../Errors.ts";
@@ -90,10 +94,17 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
         modelSelection.options,
       );
       const settings = {
-        ...(typeof normalizedOptions?.thinking === "boolean"
-          ? { alwaysThinkingEnabled: normalizedOptions.thinking }
+        ...(typeof getProviderOptionBooleanSelectionValue(normalizedOptions, "thinking") === "boolean"
+          ? {
+              alwaysThinkingEnabled: getProviderOptionBooleanSelectionValue(
+                normalizedOptions,
+                "thinking",
+              ),
+            }
           : {}),
-        ...(normalizedOptions?.fastMode ? { fastMode: true } : {}),
+        ...(getProviderOptionBooleanSelectionValue(normalizedOptions, "fastMode")
+          ? { fastMode: true }
+          : {}),
       };
 
       const claudeSettings = yield* Effect.map(
@@ -112,7 +123,9 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
             jsonSchemaStr,
             "--model",
             resolveApiModelId(modelSelection),
-            ...(normalizedOptions?.effort ? ["--effort", normalizedOptions.effort] : []),
+            ...(getProviderOptionStringSelectionValue(normalizedOptions, "effort")
+              ? ["--effort", getProviderOptionStringSelectionValue(normalizedOptions, "effort")]
+              : []),
             ...(Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : []),
             "--dangerously-skip-permissions",
           ],

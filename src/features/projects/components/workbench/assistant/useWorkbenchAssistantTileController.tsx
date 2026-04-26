@@ -13,8 +13,12 @@ import {
   type TurnId,
 } from "@cozea/assistant-contracts"
 import {
+  buildProviderOptionSelectionsFromDescriptors,
+  createModelSelection,
+  getModelSelectionOptionDescriptors,
   resolveModelSlugForProvider,
   resolveSelectableModel,
+  setProviderOptionSelectionValue,
 } from "@cozea/assistant-shared/model"
 
 import { Button } from "@/components/ui/button"
@@ -29,6 +33,10 @@ import {
   type ProviderModelOptionsByProvider,
   type UserInputAnswerDrafts,
 } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
+import {
+  getAssistantComposerDraft,
+  useAssistantComposerDraftStore,
+} from "@/features/projects/components/assistant/chat/composerDraftStore"
 import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   newCommandId,
@@ -42,6 +50,7 @@ import {
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
 import { ensureNativeApi } from "@/lib/nativeApi"
+import { getProviderModelCapabilities } from "@/stores/providerModels"
 import {
   createAssistantProjectSelectorForTile,
   createAssistantThreadSelectorById,
@@ -57,6 +66,7 @@ import {
 } from "@/stores/useProjectWorkbenchStore"
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
+import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
 import {
   type DiffDialogState,
   basenameFromPath,
@@ -139,7 +149,6 @@ export function useWorkbenchAssistantTileController(
   const [isBinding, setIsBinding] = useState(false)
   const [bindingRevision, setBindingRevision] = useState(0)
   const [isSending, setIsSending] = useState(false)
-  const [isInterrupting, setIsInterrupting] = useState(false)
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
   const [activeRequestKey, setActiveRequestKey] = useState<string | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
@@ -147,6 +156,8 @@ export function useWorkbenchAssistantTileController(
   const [userInputDrafts, setUserInputDrafts] = useState<UserInputAnswerDrafts>({})
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([])
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
+  const upsertComposerDraft = useAssistantComposerDraftStore((state) => state.upsertDraft)
+  const adoptComposerDraft = useAssistantComposerDraftStore((state) => state.adoptDraft)
   const setThreadError = useStore((state) => state.setError)
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const bindingInFlightRef = useRef(false)
@@ -166,6 +177,20 @@ export function useWorkbenchAssistantTileController(
   )
   const assistantProject = useStore(assistantProjectSelector)
   const thread = useStore(threadSelector)
+  const draftTargetKey = thread?.id ?? input.tile.id
+  const composerDraft = useAssistantComposerDraftStore(
+    useCallback(
+      (state) => state.draftsByTargetKey[draftTargetKey] ?? null,
+      [draftTargetKey],
+    ),
+  )
+
+  useEffect(() => {
+    if (!thread?.id) {
+      return
+    }
+    adoptComposerDraft(input.tile.id, thread.id)
+  }, [adoptComposerDraft, input.tile.id, thread?.id])
 
   useEffect(() => {
     setOptimisticUserMessages([])
@@ -215,24 +240,26 @@ export function useWorkbenchAssistantTileController(
     }
   }, [optimisticUserMessages, thread])
 
-  const selectedModelSelection = useMemo(() => {
-    return (
-      thread?.modelSelection ??
+  const fallbackModelSelection = useMemo(
+    () =>
       resolvePreferredModelSelection({
         config,
         tile: input.tile,
         projectModelSelection: assistantProject?.defaultModelSelection,
-      })
-    )
-  }, [assistantProject?.defaultModelSelection, config, input.tile, thread?.modelSelection])
+      }),
+    [assistantProject?.defaultModelSelection, config, input.tile],
+  )
+  const selectedModelSelection =
+    composerDraft?.modelSelection ?? thread?.modelSelection ?? fallbackModelSelection
   const selectedDispatchModelSelection = useMemo(
     () => withModelSelectionModel(selectedModelSelection, selectedModelSelection.model),
     [selectedModelSelection],
   )
 
-  const selectedRuntimeMode = thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
+  const selectedRuntimeMode =
+    composerDraft?.runtimeMode ?? thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
   const selectedInteractionMode =
-    thread?.interactionMode ?? resolveInteractionMode(input.tile)
+    composerDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
   const selectedProvider = selectedModelSelection.provider
   const providerSnapshot = getProviderSnapshot(config, selectedProvider)
   const modelOptionsByProvider = useMemo<ProviderModelOptionsByProvider>(
@@ -257,6 +284,19 @@ export function useWorkbenchAssistantTileController(
       ...options,
     ]
   }, [config, selectedModelSelection.model, selectedProvider])
+  const selectedModelCapabilities = useMemo(
+    () =>
+      getProviderModelCapabilities(
+        providerSnapshot?.models ?? [],
+        selectedModelSelection.model,
+        selectedProvider,
+      ),
+    [providerSnapshot?.models, selectedModelSelection.model, selectedProvider],
+  )
+  const selectedModelOptionDescriptors = useMemo(
+    () => getModelSelectionOptionDescriptors(selectedModelSelection, selectedModelCapabilities),
+    [selectedModelCapabilities, selectedModelSelection],
+  )
   const latestTurnId = thread?.latestTurn?.turnId
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(thread?.activities ?? []),
@@ -277,6 +317,20 @@ export function useWorkbenchAssistantTileController(
   const isRunning =
     thread?.session?.orchestrationStatus === "running" ||
     thread?.session?.orchestrationStatus === "starting"
+  const {
+    isInterrupting,
+    isForceStopAvailable,
+    isTurnStartPending,
+    clearPendingTurnStart,
+    notePendingTurnStart,
+    handleInterrupt,
+  } = useAssistantTurnLifecycle({
+    thread,
+    isRuntimeReady,
+    runtimeErrorMessage,
+    isRunning,
+    onError: setSendError,
+  })
   const hasBoundThread = Boolean(input.tile.threadId && thread)
   const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
   const chatTitle =
@@ -286,6 +340,8 @@ export function useWorkbenchAssistantTileController(
     "AI Agent"
   const showTitleSpinner =
     isRunning ||
+    isTurnStartPending ||
+    isInterrupting ||
     assistantRuntime.phase === "starting" ||
     (visibleBindingState && !bindingError)
 
@@ -386,11 +442,13 @@ export function useWorkbenchAssistantTileController(
 
           if (!nextProject) {
             const projectId = newProjectId()
-            const defaultModelSelection = resolvePreferredModelSelection({
-              config: liveConfig,
-              tile: currentTile,
-              projectModelSelection: null,
-            })
+            const defaultModelSelection =
+              getAssistantComposerDraft(currentTile.id)?.modelSelection ??
+              resolvePreferredModelSelection({
+                config: liveConfig,
+                tile: currentTile,
+                projectModelSelection: null,
+              })
             await api.orchestration.dispatchCommand({
               type: "project.create",
               commandId: newCommandId(),
@@ -420,11 +478,14 @@ export function useWorkbenchAssistantTileController(
 
           if (!nextThread || nextThread.projectId !== nextProject.id) {
             const threadId = newThreadId()
-            const modelSelection = resolvePreferredModelSelection({
-              config: liveConfig,
-              tile: resolvedTile,
-              projectModelSelection: nextProject.defaultModelSelection,
-            })
+            const threadDraft = getAssistantComposerDraft(resolvedTile.id)
+            const modelSelection =
+              threadDraft?.modelSelection ??
+              resolvePreferredModelSelection({
+                config: liveConfig,
+                tile: resolvedTile,
+                projectModelSelection: nextProject.defaultModelSelection,
+              })
             await api.orchestration.dispatchCommand({
               type: "thread.create",
               commandId: newCommandId(),
@@ -432,8 +493,9 @@ export function useWorkbenchAssistantTileController(
               projectId: nextProject.id,
               title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
               modelSelection,
-              runtimeMode: resolveRuntimeMode(resolvedTile),
-              interactionMode: resolveInteractionMode(resolvedTile),
+              runtimeMode: threadDraft?.runtimeMode ?? resolveRuntimeMode(resolvedTile),
+              interactionMode:
+                threadDraft?.interactionMode ?? resolveInteractionMode(resolvedTile),
               branch: null,
               worktreePath: null,
               createdAt: new Date().toISOString(),
@@ -522,6 +584,25 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
+  const normalizeDraftModelSelection = useCallback(
+    (selection: typeof selectedModelSelection) =>
+      createModelSelection(
+        selection.provider,
+        selection.model,
+        buildProviderOptionSelectionsFromDescriptors(
+          getModelSelectionOptionDescriptors(
+            selection,
+            getProviderModelCapabilities(
+              getProviderSnapshot(config, selection.provider)?.models ?? [],
+              selection.model,
+              selection.provider,
+            ),
+          ),
+        ),
+      ),
+    [config],
+  )
+
   const handleProviderChange = async (
     nextProviderValue: string,
     nextModelValue?: string,
@@ -537,7 +618,8 @@ export function useWorkbenchAssistantTileController(
       projectModelSelection: assistantProject?.defaultModelSelection,
       provider: nextProvider,
     })
-    const nextModelSelection = withModelSelectionModel(
+    const nextModelSelection = normalizeDraftModelSelection(
+      withModelSelectionModel(
       preferredModelSelection,
       (nextModelValue
         ? resolveSelectableModel(
@@ -546,7 +628,11 @@ export function useWorkbenchAssistantTileController(
             getProviderModelOptions(config, nextProvider),
           ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue)
         : null) ?? preferredModelSelection.model,
+      ),
     )
+    upsertComposerDraft(draftTargetKey, {
+      modelSelection: nextModelSelection,
+    })
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
@@ -569,11 +655,16 @@ export function useWorkbenchAssistantTileController(
   }
 
   const handleModelChange = async (nextModel: string) => {
-    const nextModelSelection = withModelSelectionModel(
-      selectedModelSelection,
-      resolveSelectableModel(selectedProvider, nextModel, providerModelOptions) ??
-        resolveModelSlugForProvider(selectedProvider, nextModel),
+    const nextModelSelection = normalizeDraftModelSelection(
+      withModelSelectionModel(
+        selectedModelSelection,
+        resolveSelectableModel(selectedProvider, nextModel, providerModelOptions) ??
+          resolveModelSlugForProvider(selectedProvider, nextModel),
+      ),
     )
+    upsertComposerDraft(draftTargetKey, {
+      modelSelection: nextModelSelection,
+    })
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
@@ -595,8 +686,38 @@ export function useWorkbenchAssistantTileController(
     })
   }
 
+  const handleModelOptionChange = async (optionId: string, value: string | boolean) => {
+    const nextModelSelection = normalizeDraftModelSelection(
+      createModelSelection(
+        selectedProvider,
+        selectedModelSelection.model,
+        setProviderOptionSelectionValue(selectedModelSelection.options, optionId, value),
+      ),
+    )
+    upsertComposerDraft(draftTargetKey, {
+      modelSelection: nextModelSelection,
+    })
+
+    if (!thread) {
+      return
+    }
+
+    await runMetaSync(async () => {
+      const api = ensureNativeApi()
+      await api.orchestration.dispatchCommand({
+        type: "thread.meta.update",
+        commandId: newCommandId(),
+        threadId: thread.id,
+        modelSelection: nextModelSelection,
+      })
+    })
+  }
+
   const handleRuntimeModeChange = async (nextValue: string) => {
     const nextRuntimeMode = nextValue as RuntimeMode
+    upsertComposerDraft(draftTargetKey, {
+      runtimeMode: nextRuntimeMode,
+    })
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       runtimeMode: nextRuntimeMode,
     }, input.projectPath)
@@ -619,6 +740,9 @@ export function useWorkbenchAssistantTileController(
 
   const handleInteractionModeChange = async (nextValue: string) => {
     const nextInteractionMode = nextValue as ProviderInteractionMode
+    upsertComposerDraft(draftTargetKey, {
+      interactionMode: nextInteractionMode,
+    })
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       interactionMode: nextInteractionMode,
     }, input.projectPath)
@@ -742,8 +866,10 @@ export function useWorkbenchAssistantTileController(
         skills,
         createdAt: messageCreatedAt,
       })
+      notePendingTurnStart(messageId, thread.id)
       await refreshAssistantRuntimeSnapshot()
     } catch (error) {
+      clearPendingTurnStart()
       setOptimisticUserMessages((current) =>
         current.filter((message) => message.id !== messageId),
       )
@@ -754,36 +880,6 @@ export function useWorkbenchAssistantTileController(
     } finally {
       sendInFlightRef.current = false
       setIsSending(false)
-    }
-  }
-
-  const handleInterrupt = async () => {
-    if (!isRuntimeReady) {
-      setSendError(runtimeErrorMessage ?? "Local chat runtime is unavailable.")
-      return
-    }
-
-    if (!thread) {
-      return
-    }
-
-    setIsInterrupting(true)
-    setSendError(null)
-
-    try {
-      const api = ensureNativeApi()
-      await api.orchestration.dispatchCommand({
-        type: "thread.turn.interrupt",
-        commandId: newCommandId(),
-        threadId: thread.id,
-        turnId: thread.session?.activeTurnId,
-        createdAt: new Date().toISOString(),
-      })
-      await refreshAssistantRuntimeSnapshot()
-    } catch (error) {
-      setSendError(toErrorMessage(error))
-    } finally {
-      setIsInterrupting(false)
     }
   }
 
@@ -1097,6 +1193,30 @@ export function useWorkbenchAssistantTileController(
       )
     }
 
+    if (thread?.session?.status === "error" && thread.session.lastError) {
+      return (
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
+          {thread.session.lastError}
+        </div>
+      )
+    }
+
+    if (thread?.session?.status === "interrupted") {
+      return (
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
+          The last run was interrupted. Send another message to continue.
+        </div>
+      )
+    }
+
+    if (thread?.session?.status === "stopped") {
+      return (
+        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
+          The agent session stopped. Send a message to start a new run.
+        </div>
+      )
+    }
+
     if (configError && !config) {
       return (
         <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
@@ -1136,8 +1256,9 @@ export function useWorkbenchAssistantTileController(
       composer,
       composerCursor,
       composerImages,
-      isSending,
+      isSending: isSending || isTurnStartPending,
       isInterrupting,
+      isForceStopAvailable,
       isRevertingCheckpoint,
       selectedProvider,
       selectedModelSelection,
@@ -1145,12 +1266,16 @@ export function useWorkbenchAssistantTileController(
       selectedInteractionMode,
       providers: config?.providers ?? [],
       modelOptionsByProvider,
+      modelOptionDescriptors: selectedModelOptionDescriptors,
       onProviderModelChange: (provider, model) => {
         if (provider !== selectedProvider) {
           void handleProviderChange(provider, model)
           return
         }
         void handleModelChange(model)
+      },
+      onModelOptionChange: (id, value) => {
+        void handleModelOptionChange(id, value)
       },
       onToggleInteractionMode: () => {
         void toggleInteractionMode()

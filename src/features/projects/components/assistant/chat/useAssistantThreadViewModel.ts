@@ -88,7 +88,14 @@ export function useAssistantThreadViewModel({
     if (!latestTurnHasToolActivity) return null
 
     const elapsed = formatElapsed(activeTurn.startedAt, activeTurn.completedAt)
-    return elapsed ? `Worked for ${elapsed}` : null
+    if (!elapsed) return null
+    if (activeTurn.state === "interrupted") {
+      return `Stopped after ${elapsed}`
+    }
+    if (activeTurn.state === "error") {
+      return `Failed after ${elapsed}`
+    }
+    return `Worked for ${elapsed}`
   }, [activeTurn?.completedAt, activeTurn?.startedAt, latestTurnHasToolActivity, latestTurnSettled])
   const completionDividerBeforeEntryId = useMemo(
     () =>
