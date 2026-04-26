@@ -23,6 +23,8 @@ import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/Projectio
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
+import { providerCommandId } from "../commandIds.ts";
+import { runtimeStateToOrchestrationSessionStatus } from "../sessionStatus.ts";
 import {
   ProviderRuntimeIngestionService,
   type ProviderRuntimeIngestionShape,
@@ -30,9 +32,6 @@ import {
 import { ServerSettingsService } from "../../serverSettings.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
-const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
-  CommandId.makeUnsafe(`provider:${event.eventId}:${tag}:${crypto.randomUUID()}`);
-
 const TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY = 10_000;
 const TURN_MESSAGE_IDS_BY_TURN_TTL = Duration.minutes(120);
 const BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_CACHE_CAPACITY = 20_000;
@@ -152,24 +151,26 @@ function runtimeErrorMessageFromEvent(event: ProviderRuntimeEvent): string | und
   return payloadMessage;
 }
 
-function orchestrationSessionStatusFromRuntimeState(
-  state: "starting" | "running" | "waiting" | "ready" | "interrupted" | "stopped" | "error",
-): "starting" | "running" | "ready" | "interrupted" | "stopped" | "error" {
-  switch (state) {
-    case "starting":
-      return "starting";
-    case "running":
-    case "waiting":
-      return "running";
-    case "ready":
-      return "ready";
-    case "interrupted":
-      return "interrupted";
-    case "stopped":
-      return "stopped";
-    case "error":
-      return "error";
+function isIntentionalAbortMessage(message: string | undefined): boolean {
+  const normalized = message?.trim().toLowerCase();
+  if (!normalized) {
+    return false;
   }
+
+  return (
+    normalized === "aborted" ||
+    normalized === "aborterror" ||
+    normalized.includes("request was aborted") ||
+    normalized.includes("operation was aborted") ||
+    normalized.includes("turn aborted") ||
+    normalized.includes("interrupted by user") ||
+    normalized.includes("user cancelled") ||
+    normalized.includes("user canceled")
+  );
+}
+
+function isIntentionalAbortRuntimeError(event: ProviderRuntimeEvent): boolean {
+  return event.type === "runtime.error" && isIntentionalAbortMessage(runtimeErrorMessageFromEvent(event));
 }
 
 function requestKindFromCanonicalRequestType(
@@ -256,7 +257,7 @@ function runtimeEventToActivities(
 
     case "runtime.error": {
       const message = runtimeErrorMessageFromEvent(event);
-      if (!message) {
+      if (!message || isIntentionalAbortMessage(message)) {
         return [];
       }
       return [
@@ -936,6 +937,7 @@ const make = Effect.gen(function* () {
           case "turn.started":
             return !conflictsWithActiveTurn;
           case "turn.completed":
+          case "turn.aborted":
             if (conflictsWithActiveTurn || missingTurnForActiveTurn) {
               return false;
             }
@@ -960,24 +962,27 @@ const make = Effect.gen(function* () {
         event.type === "session.exited" ||
         event.type === "thread.started" ||
         event.type === "turn.started" ||
-        event.type === "turn.completed"
+        event.type === "turn.completed" ||
+        event.type === "turn.aborted"
       ) {
         const nextActiveTurnId =
           event.type === "turn.started"
             ? (eventTurnId ?? null)
-            : event.type === "turn.completed" || event.type === "session.exited"
+            : event.type === "turn.completed" || event.type === "turn.aborted" || event.type === "session.exited"
               ? null
               : activeTurnId;
         const status = (() => {
           switch (event.type) {
             case "session.state.changed":
-              return orchestrationSessionStatusFromRuntimeState(event.payload.state);
+              return runtimeStateToOrchestrationSessionStatus(event.payload.state);
             case "turn.started":
               return "running";
             case "session.exited":
               return "stopped";
             case "turn.completed":
               return runtimeTurnState(event) === "failed" ? "error" : "ready";
+            case "turn.aborted":
+              return "ready";
             case "session.started":
             case "thread.started":
               // Provider thread/session start notifications can arrive during an
@@ -1193,11 +1198,11 @@ const make = Effect.gen(function* () {
             threadId: thread.id,
             session: {
               threadId: thread.id,
-              status: "error",
+              status: isIntentionalAbortRuntimeError(event) ? "ready" : "error",
               providerName: event.provider,
               runtimeMode: thread.session?.runtimeMode ?? "full-access",
-              activeTurnId: eventTurnId ?? null,
-              lastError: runtimeErrorMessage,
+              activeTurnId: isIntentionalAbortRuntimeError(event) ? null : (eventTurnId ?? null),
+              lastError: isIntentionalAbortRuntimeError(event) ? null : runtimeErrorMessage,
               updatedAt: now,
             },
             createdAt: now,

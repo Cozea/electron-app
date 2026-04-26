@@ -20,6 +20,7 @@ import type {
   ThreadSession,
   TurnDiffSummary,
 } from "@/stores/types";
+import { truncateTextToWidth } from "@/lib/text/pretextMeasure";
 
 export type ProviderPickerKind = ProviderKind;
 
@@ -903,11 +904,15 @@ function normalizeInlinePreview(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function truncateInlinePreview(value: string, maxLength = 84): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+const INLINE_PREVIEW_FONT = "400 11px Inter";
+// Matches timeline preview rows (`text-[11px]`) with a practical single-line width budget.
+const INLINE_PREVIEW_MAX_WIDTH_PX = 540;
+
+function truncateInlinePreview(value: string, maxWidth = INLINE_PREVIEW_MAX_WIDTH_PX): string {
+  return truncateTextToWidth(value, INLINE_PREVIEW_FONT, maxWidth, {
+    suffix: "…",
+    pretextOptions: { whiteSpace: "normal" },
+  });
 }
 
 function normalizePreviewForComparison(value: string | null | undefined): string | null {

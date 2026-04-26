@@ -1,6 +1,5 @@
 // @ts-nocheck
 import {
-  CommandId,
   EventId,
   MessageId,
   type ProjectId,
@@ -26,6 +25,7 @@ import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
 import { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import { OrchestrationDispatchError } from "../Errors.ts";
 import { isGitRepository } from "../../git/Utils.ts";
+import { serverCommandId } from "../commandIds.ts";
 
 type ReactorInput =
   | {
@@ -60,9 +60,6 @@ function checkpointStatusFromRuntime(status: string | undefined): "ready" | "mis
       return "ready";
   }
 }
-
-const serverCommandId = (tag: string): CommandId =>
-  CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
 
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;

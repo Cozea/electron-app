@@ -8,6 +8,10 @@ import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 import * as React from "react"
 import { Dialog as BaseDialog } from "@base-ui/react"
 
+import {
+  preflightNativeSurfaceOcclusion,
+  useNativeSurfaceOverlayLifecycle,
+} from "@/lib/nativeSurfaceOcclusion"
 import { cn } from "@/lib/utils"
 
 function Dialog({ ...props }: React.ComponentProps<typeof BaseDialog.Root>) {
@@ -17,12 +21,41 @@ function Dialog({ ...props }: React.ComponentProps<typeof BaseDialog.Root>) {
 function DialogTrigger({
   asChild,
   children,
+  onKeyDownCapture,
+  onPointerDownCapture,
   ...props
 }: React.ComponentProps<typeof BaseDialog.Trigger> & { asChild?: boolean }) {
-  if (asChild) {
-    return <BaseDialog.Trigger data-slot="dialog-trigger" render={children as any} {...props} />
+  const triggerProps: Pick<
+    React.ComponentProps<typeof BaseDialog.Trigger>,
+    "onKeyDownCapture" | "onPointerDownCapture"
+  > = {
+    onKeyDownCapture: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        preflightNativeSurfaceOcclusion("Dialog opening")
+      }
+      onKeyDownCapture?.(event)
+    },
+    onPointerDownCapture: (event) => {
+      preflightNativeSurfaceOcclusion("Dialog opening")
+      onPointerDownCapture?.(event)
+    },
   }
-  return <BaseDialog.Trigger data-slot="dialog-trigger" {...props}>{children}</BaseDialog.Trigger>
+
+  if (asChild) {
+    return (
+      <BaseDialog.Trigger
+        data-slot="dialog-trigger"
+        render={children as any}
+        {...triggerProps}
+        {...props}
+      />
+    )
+  }
+  return (
+    <BaseDialog.Trigger data-slot="dialog-trigger" {...triggerProps} {...props}>
+      {children}
+    </BaseDialog.Trigger>
+  )
 }
 
 function DialogPortal({ ...props }: React.ComponentProps<typeof BaseDialog.Portal>) {
@@ -44,6 +77,8 @@ function DialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof BaseDialog.Backdrop>) {
+  useNativeSurfaceOverlayLifecycle()
+
   return (
     <BaseDialog.Backdrop
       data-native-surface-overlay="true"

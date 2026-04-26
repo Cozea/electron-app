@@ -226,6 +226,7 @@ export function projectOrchestrationReadModelEvent(
         updatedAt: payload.updatedAt,
         deletedAt: null,
         messages: [],
+        proposedPlans: [],
         activities: [],
         checkpoints: [],
         session: null,

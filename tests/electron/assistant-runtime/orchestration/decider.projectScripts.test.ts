@@ -6,6 +6,7 @@ import {
   MessageId,
   ProjectId,
   ThreadId,
+  TurnId,
 } from "@cozea/assistant-contracts";
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
@@ -16,6 +17,7 @@ import { createEmptyReadModel, projectEvent } from "../../../../electron/assista
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
 const asProjectId = (value: string): ProjectId => ProjectId.makeUnsafe(value);
 const asMessageId = (value: string): MessageId => MessageId.makeUnsafe(value);
+const asTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
 
 describe("decider project scripts", () => {
   it("emits empty scripts on project.create", async () => {
@@ -202,6 +204,112 @@ describe("decider project scripts", () => {
       },
       runtimeMode: "approval-required",
     });
+  });
+
+  it("rejects thread.turn.start while a thread already has an active turn", async () => {
+    const now = new Date().toISOString();
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create-active-turn"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-active-turn"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create-active-turn"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create-active-turn"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-active-turn"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const withThread = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create-active-turn"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-active-turn"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-active-turn"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-active-turn"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-active-turn"),
+          projectId: asProjectId("project-active-turn"),
+          title: "Thread",
+          modelSelection: {
+            provider: "codex",
+            model: "gpt-5-codex",
+          },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withThread, {
+        sequence: 3,
+        eventId: asEventId("evt-session-running-active-turn"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-active-turn"),
+        type: "thread.session-set",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-session-running-active-turn"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-session-running-active-turn"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-active-turn"),
+          session: {
+            threadId: ThreadId.makeUnsafe("thread-active-turn"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: asTurnId("turn-active"),
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        decideOrchestrationCommand({
+          command: {
+            type: "thread.turn.start",
+            commandId: CommandId.makeUnsafe("cmd-turn-start-overlap"),
+            threadId: ThreadId.makeUnsafe("thread-active-turn"),
+            message: {
+              messageId: asMessageId("message-overlap"),
+              role: "user",
+              text: "overlap",
+              attachments: [],
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: now,
+          },
+          readModel,
+        }),
+      ),
+    ).rejects.toThrow("already has an active turn");
   });
 
   it("emits thread.runtime-mode-set from thread.runtime-mode.set", async () => {

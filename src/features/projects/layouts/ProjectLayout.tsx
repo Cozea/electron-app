@@ -170,6 +170,7 @@ export function ProjectLayout({
   const { localPath: candidateLocalPath } = useLocalProjectPath({
     initialPath: navigationLocalPath,
     preferInitialPath: Boolean(navigationLocalPath),
+    verifySeededPath: Boolean(navigationLocalPath),
     projectId: project?._id ? String(project._id) : routeProjectId,
     projectSlug,
     cloudPathHint: projectCloudLocalPath,
@@ -180,6 +181,12 @@ export function ProjectLayout({
   );
 
   useEffect(() => {
+    const normalizedCandidatePath = normalizeProjectPath(candidateLocalPath);
+    if (normalizedCandidatePath) {
+      setEffectiveLocalPath(normalizedCandidatePath);
+      return;
+    }
+
     if (trustedNavigationPath) {
       setEffectiveLocalPath(trustedNavigationPath);
       return;

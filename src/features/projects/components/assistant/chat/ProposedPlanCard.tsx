@@ -4,7 +4,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { AlignHorizontalCenterIcon as __EllipsisIconHugeIcon } from '@hugeicons/core-free-icons'
 
 // @ts-nocheck
-import { memo, useState, useId } from "react";
+import { memo, useState, useId, useMemo } from "react";
 import {
   buildCollapsedProposedPlanPreviewMarkdown,
   buildProposedPlanMarkdownFilename,
@@ -30,6 +30,7 @@ import {
 } from "../ui/dialog";
 import { toastManager } from "../ui/toast";
 import { readNativeApi } from "@/lib/nativeApi";
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
   planMarkdown,
@@ -54,6 +55,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     : null;
   const downloadFilename = buildProposedPlanMarkdownFilename(planMarkdown);
   const saveContents = normalizePlanMarkdownForExport(planMarkdown);
+  const { containerRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
+    font: "13px Inter",
+  });
+  const titleTooltip = useMemo(() => {
+    const reservedWidth = 92;
+    return getOverflowTitle(title, reservedWidth);
+  }, [getOverflowTitle, title]);
 
   const handleDownload = () => {
     downloadPlanAsTextFile(downloadFilename, saveContents);
@@ -121,9 +129,11 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   return (
     <div className="rounded-[24px] border border-border/80 bg-card/70 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
+        <div ref={containerRef} className="flex min-w-0 items-center gap-2">
           <Badge variant="secondary">Plan</Badge>
-          <p className="truncate text-sm font-medium text-foreground">{title}</p>
+          <p className="truncate text-sm font-medium text-foreground" title={titleTooltip}>
+            {title}
+          </p>
         </div>
         <Menu>
           <MenuTrigger

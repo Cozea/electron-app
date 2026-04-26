@@ -23,6 +23,7 @@ import {
   type TurnDiffSummary,
 } from "./types";
 import { normalizeThreadSession } from "./threadSession";
+import { normalizeThreadError } from "@/features/projects/components/assistant/lib/assistantErrors";
 import { Debouncer } from "@tanstack/react-pacer";
 import { resolveWsHttpOrigin } from "@/lib/desktopBridgeClient";
 
@@ -382,7 +383,7 @@ function mapThreadShell(
     modelSelection: normalizeModelSelection(thread.modelSelection),
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
-    error: thread.session?.lastError ?? null,
+    error: normalizeThreadError(thread.session?.lastError),
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
     lastVisitedAt: previousShell?.lastVisitedAt ?? thread.updatedAt,

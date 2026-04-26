@@ -23,6 +23,7 @@ import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
 import type { Icon } from "../Icons";
 import { cn } from "@/lib/utils";
 import { getProviderSnapshot } from "../../providerModels";
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
@@ -132,6 +133,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const selectedProviderOptions = props.modelOptionsByProvider[activeProvider];
   const selectedModelLabel =
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ?? props.model;
+  const { containerRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLSpanElement>({
+    font: "13px Inter",
+  });
+  const selectedModelTitle = useMemo(() => {
+    const reservedWidth = 16 + 8 + 12 + 8;
+    return getOverflowTitle(selectedModelLabel, reservedWidth);
+  }, [getOverflowTitle, selectedModelLabel]);
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
   const handleModelChange = (provider: ProviderKind, value: string) => {
     if (props.disabled) return;
@@ -172,6 +180,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         }
       >
         <span
+          ref={containerRef}
           className={cn(
             "flex min-w-0 w-full items-center gap-2 overflow-hidden",
             props.compact ? "max-w-36" : undefined,
@@ -185,7 +194,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               props.activeProviderIconClassName,
             )}
           />
-          <span className="min-w-0 flex-1 truncate">{selectedModelLabel}</span>
+          <span className="min-w-0 flex-1 truncate" title={selectedModelTitle}>
+            {selectedModelLabel}
+          </span>
           <HugeiconsIcon icon={__ChevronDownIconHugeIcon} aria-hidden="true" className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
       </MenuTrigger>

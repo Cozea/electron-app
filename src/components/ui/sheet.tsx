@@ -8,6 +8,10 @@ import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 
+import {
+  preflightNativeSurfaceOcclusion,
+  useNativeSurfaceOverlayLifecycle,
+} from "@/lib/nativeSurfaceOcclusion"
 import { cn } from "@/lib/utils"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
@@ -15,9 +19,26 @@ function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
 }
 
 function SheetTrigger({
+  onKeyDownCapture,
+  onPointerDownCapture,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
+  return (
+    <SheetPrimitive.Trigger
+      data-slot="sheet-trigger"
+      onKeyDownCapture={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          preflightNativeSurfaceOcclusion("Sheet opening")
+        }
+        onKeyDownCapture?.(event)
+      }}
+      onPointerDownCapture={(event) => {
+        preflightNativeSurfaceOcclusion("Sheet opening")
+        onPointerDownCapture?.(event)
+      }}
+      {...props}
+    />
+  )
 }
 
 function SheetClose({
@@ -39,6 +60,8 @@ function SheetOverlay({
 }: React.ComponentProps<typeof SheetPrimitive.Overlay> & {
   disableAnimation?: boolean
 }) {
+  useNativeSurfaceOverlayLifecycle()
+
   return (
     <SheetPrimitive.Overlay
       data-native-surface-overlay="true"

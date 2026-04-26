@@ -125,7 +125,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   }
 
   return (
-    <div className="px-4 py-3 sm:px-5">
+    <div className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           {prompt.questions.length > 1 ? (
@@ -139,7 +139,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         </div>
       </div>
       <p className="mt-1.5 text-sm text-foreground/90">{activeQuestion.question}</p>
-      <div className="mt-3 space-y-1">
+      <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
         {activeQuestion.options.map((option, index) => {
           const isSelected = progress.selectedOptionLabel === option.label;
           const shortcutKey = index < 9 ? index + 1 : null;
@@ -177,7 +177,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   </span>
                 ) : null}
               </div>
-              {isSelected ? <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 shrink-0 text-blue-400" /> : null}
+              {isSelected ? (
+                <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 shrink-0 text-blue-400" />
+              ) : null}
             </button>
           );
         })}

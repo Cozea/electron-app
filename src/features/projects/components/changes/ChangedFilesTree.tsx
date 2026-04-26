@@ -2,8 +2,6 @@ import { memo, useCallback, useMemo, useState } from "react";
 import { HugeiconsIcon } from '@hugeicons/react';
 import { 
   ArrowRight01Icon as __ChevronRightHugeIcon, 
-  Folder01Icon as __FolderClosedIconHugeIcon, 
-  Folder03Icon as __FolderOpenIconHugeIcon,
   File01Icon as __FileIconHugeIcon
 } from '@hugeicons/core-free-icons';
 
@@ -11,8 +9,11 @@ import { cn } from "@/lib/utils";
 import { buildTurnDiffTree, type TurnDiffTreeNode } from "../../lib/turnDiffTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import type { ActivityFeedItem } from "../../pages/ChangesPage";
+import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon";
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
+const TREE_LABEL_FONT = "13px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
 export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   files: ReadonlyArray<ActivityFeedItem>;
@@ -20,6 +21,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   onOpenFile: (filePath: string) => void;
 }) {
   const { files, allDirectoriesExpanded, onOpenFile } = props;
+  const { containerRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({ font: TREE_LABEL_FONT });
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
@@ -56,6 +58,17 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     [allDirectoriesExpanded, expansionStateKey],
   );
 
+  const getTreeLabelTitle = useCallback(
+    (name: string, depth: number, hasStat: boolean) => {
+      const leftPadding = 8 + depth * 14;
+      const leadingGlyphSpace = 14 + 6 + 16 + 6; // chevron + gaps + folder icon
+      const trailingSpace = hasStat ? 72 : 8; // stat chip + right padding, or padding only
+      const reservedWidth = leftPadding + leadingGlyphSpace + trailingSpace;
+      return getOverflowTitle(name, reservedWidth);
+    },
+    [getOverflowTitle],
+  );
+
   const renderTreeNode = (node: TurnDiffTreeNode, depth: number) => {
     const leftPadding = 8 + depth * 14;
     if (node.kind === "directory") {
@@ -75,12 +88,16 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
                 isExpanded && "rotate-90",
               )}
             />
-            {isExpanded ? (
-              <HugeiconsIcon icon={__FolderOpenIconHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75" />
-            ) : (
-              <HugeiconsIcon icon={__FolderClosedIconHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75" />
-            )}
-            <span className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90">
+            <NativeProjectFolderIcon
+              folderPath={null}
+              isOpen={false}
+              className="size-4 shrink-0"
+              imgClassName="size-4 shrink-0 object-contain"
+            />
+            <span
+              className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90"
+              title={getTreeLabelTitle(node.name, depth, Boolean(node.stat && hasNonZeroStat(node.stat)))}
+            >
               {node.name}
             </span>
             {node.stat && hasNonZeroStat(node.stat) && (
@@ -111,7 +128,10 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
           icon={__FileIconHugeIcon}
           className="size-3.5 text-muted-foreground/70"
         />
-        <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
+        <span
+          className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90"
+          title={getTreeLabelTitle(node.name, depth, Boolean(node.stat))}
+        >
           {node.name}
         </span>
         {node.stat && (
@@ -123,7 +143,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     );
   };
 
-  return <div className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
+  return <div ref={containerRef} className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
 });
 
 function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {

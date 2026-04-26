@@ -4,6 +4,7 @@ interface UseLocalProjectPathOptions {
   initialPath?: string | null
   lookupOnMount?: boolean
   preferInitialPath?: boolean
+  verifySeededPath?: boolean
   projectId?: string | null
   projectSlug?: string | null
   cloudPathHint?: string | null
@@ -282,6 +283,7 @@ export function useLocalProjectPath({
   initialPath = null,
   lookupOnMount = true,
   preferInitialPath = false,
+  verifySeededPath = false,
   projectId = null,
   projectSlug = null,
   cloudPathHint = null,
@@ -347,7 +349,7 @@ export function useLocalProjectPath({
     })
     writeCachedProjectPath(seededPath, projectId, projectSlug)
 
-    if (seededPath || !lookupOnMount || (!projectId && !projectSlug)) {
+    if ((seededPath && !verifySeededPath) || !lookupOnMount || (!projectId && !projectSlug)) {
       return
     }
 
@@ -386,6 +388,7 @@ export function useLocalProjectPath({
     projectId,
     projectSlug,
     seededPath,
+    verifySeededPath,
   ])
 
   const refreshLocalPath = useCallback(async () => {

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
@@ -26,6 +27,8 @@ import {
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreVerticalIcon as __EllipsisVerticalHugeIcon } from '@hugeicons/core-free-icons'
+
+const SIDEBAR_PROJECT_LABEL_FONT = "13px Inter"
 
 async function showNativeSidebarMenu<T extends string>(
   event: React.MouseEvent<HTMLElement>,
@@ -96,6 +99,13 @@ export const ProjectSidebarTreeItem = React.memo(
       return activeLaneSummary.agents.length === 0 && activeLaneSummary.surfaces.length === 0
     }, [activeLaneSummary])
     const isLanesOpen = context.isCurrentProject && selection.isExpanded
+    const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
+      font: SIDEBAR_PROJECT_LABEL_FONT,
+    })
+    const projectNameTitle = React.useMemo(() => {
+      const reservedWidth = 18 + 8 + 24 + 8 + 8
+      return getOverflowTitle(project.name, reservedWidth)
+    }, [getOverflowTitle, project.name])
 
     const handleProjectRowClick = React.useCallback(() => {
       void actions.openProject(project, localPath)
@@ -222,6 +232,7 @@ export const ProjectSidebarTreeItem = React.memo(
     return (
       <Collapsible open={isLanesOpen}>
         <div
+          ref={projectRowRef}
           className={cn(
             "group/project-item flex min-h-7 items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70",
             SIDEBAR_PILL_HOVER_CLASS,
@@ -249,7 +260,9 @@ export const ProjectSidebarTreeItem = React.memo(
               folderPath={localPath}
               isOpen={rowClickOpensProject ? false : isLanesOpen}
             />
-            <span className="min-w-0 flex-1 truncate font-normal">{project.name}</span>
+            <span className="min-w-0 flex-1 truncate font-normal" title={projectNameTitle}>
+              {project.name}
+            </span>
           </button>
           <Button
             type="button"
