@@ -30,7 +30,7 @@ const WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH = 680
 const LAUNCHER_CONFIG = {
   tileWidth: 96,
   iconSize: 58,
-  iconRadius: 18,
+  iconRadius: 185.4,
   iconGlyphSize: 24,
   cellWidth: 96,
   cellHeight: 102,
@@ -278,7 +278,7 @@ function SelectionLauncherButton({
       onClick={() => onChoose({ appId: option.id })}
     >
       <div
-        className="shrink-0 overflow-hidden rounded-[18px] ring-1 ring-black/5 transition-transform group-hover:scale-[1.03]"
+        className="shrink-0 overflow-hidden ring-1 ring-black/5 transition-transform group-hover:scale-[1.03]"
         style={{
           height: `${LAUNCHER_CONFIG.iconSize}px`,
           width: `${LAUNCHER_CONFIG.iconSize}px`,
@@ -308,7 +308,7 @@ function SelectionListButton({
 }) {
   const { t } = useTranslation()
   const iconSize = 42
-  const iconRadius = 14
+  const iconRadius = 185.4
 
   const appNameKey = `devApp.name.${option.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`
   const localizedName = (t as any)(appNameKey) ?? option.name
