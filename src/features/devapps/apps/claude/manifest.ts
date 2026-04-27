@@ -10,6 +10,7 @@ export const claudeDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Claude",
+    className: "scale-[1.25] bg-white dark:bg-white",
   },
   launcher: {
     enabled: true,
