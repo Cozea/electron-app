@@ -1076,11 +1076,25 @@ const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
   return (
     <div className="py-0.5 pl-1.5">
       <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-        <span className="inline-flex items-center gap-[3px]">
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-        </span>
+        <div
+          className="preview-loading-spinner"
+          style={
+            {
+              "--square": "3.5px",
+              "--offset": "4.5px",
+              margin: "0",
+              width: "calc(3 * var(--offset) + var(--square))",
+              height: "calc(2 * var(--offset) + var(--square))",
+              opacity: 0.7,
+            } as React.CSSProperties
+          }
+        >
+          <div className="preview-loading-spinner-square bg-muted-foreground" />
+          <div className="preview-loading-spinner-square bg-muted-foreground" />
+          <div className="preview-loading-spinner-square bg-muted-foreground" />
+          <div className="preview-loading-spinner-square bg-muted-foreground" />
+          <div className="preview-loading-spinner-square bg-muted-foreground" />
+        </div>
         <span>{elapsedLabel ? `Working for ${elapsedLabel}` : "Working..."}</span>
       </div>
     </div>
