@@ -188,9 +188,10 @@ export function AppStorePage() {
                   >
                     <div
                       className={cn(
-                        "flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-gradient-to-br",
+                        "flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br",
                         app.store.accentClassName,
                       )}
+                      style={{ borderRadius: 56 * 0.22265625 }}
                     >
                       <DevAppIcon app={app} />
                     </div>

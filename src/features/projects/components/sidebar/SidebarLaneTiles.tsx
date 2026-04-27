@@ -37,7 +37,7 @@ import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
-const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[5px]"
+const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
 const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 
 function SurfaceTileGlyph(props: {
