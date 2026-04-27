@@ -25,6 +25,7 @@ import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 const panelSuspenseFallback = <div className="h-full bg-background" aria-hidden="true" />
@@ -421,6 +422,7 @@ function useSyncPanelTitle(
 }
 
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+  const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
   const storedTile = useWorkbenchTile(
     props.params.projectId,
@@ -448,7 +450,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
   if (!tile || tile.type !== "selection") {
     return (
       <WorkbenchTileChrome
-        title="Add DevApp"
+        title={t('workbench.selection.addDevApp')}
         panelApi={props.api}
         containerApi={props.containerApi}
         chromeVariant="pill"

@@ -3,6 +3,8 @@ import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTranslation } from '@/lib/i18n'
+import type { TranslationKey } from '@/lib/i18n/en'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { Badge } from '@/components/ui/badge'
@@ -49,12 +51,11 @@ interface TeamTableRow {
   inviteId?: Id<'projectInvites'>
 }
 
-const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
-
-  { value: 'project_manager', label: 'Project Manager' },
-  { value: 'developer', label: 'Developer' },
-  { value: 'designer', label: 'Designer' },
-  { value: 'viewer', label: 'Viewer' },
+const ROLE_OPTIONS: Array<{ value: ProjectRole; labelKey: TranslationKey }> = [
+  { value: 'project_manager', labelKey: 'team.role.project_manager' },
+  { value: 'developer', labelKey: 'team.role.developer' },
+  { value: 'designer', labelKey: 'team.role.designer' },
+  { value: 'viewer', labelKey: 'team.role.viewer' },
 ]
 
 function cleanConvexError(error: unknown, fallback: string): string {
@@ -62,10 +63,10 @@ function cleanConvexError(error: unknown, fallback: string): string {
   return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
 }
 
-function getRoleLabel(role: ProjectRole | null | undefined): string {
-  if (!role) return 'Unknown'
+function getRoleLabel(role: ProjectRole | null | undefined, t: any): string {
+  if (!role) return t('team.role.unknown')
   const match = ROLE_OPTIONS.find((option) => option.value === role)
-  return match?.label ?? role.replace(/_/g, ' ')
+  return match?.labelKey ? t(match.labelKey) : role.replace(/_/g, ' ')
 }
 
 function formatMemberName(member: {
@@ -134,6 +135,7 @@ function formatDate(timestamp: number): string {
 export function ProjectTeamPage() {
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
+  const { t } = useTranslation()
 
   const cancelInvite = useMutation(api.projectInvites.cancelInvite)
   const resendInvite = useMutation(api.projectInvites.resendInvite)
@@ -242,7 +244,7 @@ export function ProjectTeamPage() {
           newRole: nextRole,
         })
       } catch (error) {
-        setTeamError(cleanConvexError(error, 'Failed to update member role'))
+        setTeamError(cleanConvexError(error, t('team.error.updateRole')))
       } finally {
         setTeamActionKey(null)
       }
@@ -268,7 +270,7 @@ export function ProjectTeamPage() {
           memberUserId,
         })
       } catch (error) {
-        setTeamError(cleanConvexError(error, 'Failed to remove member'))
+        setTeamError(cleanConvexError(error, t('team.error.removeMember')))
       } finally {
         setTeamActionKey(null)
       }
@@ -293,7 +295,7 @@ export function ProjectTeamPage() {
           actorUserId: convexUserId,
         })
       } catch (error) {
-        setTeamError(cleanConvexError(error, 'Failed to cancel invite'))
+        setTeamError(cleanConvexError(error, t('team.error.cancelInvite')))
       } finally {
         setTeamActionKey(null)
       }
@@ -313,7 +315,7 @@ export function ProjectTeamPage() {
           actorUserId: convexUserId,
         })
       } catch (error) {
-        setTeamError(cleanConvexError(error, 'Failed to resend invite'))
+        setTeamError(cleanConvexError(error, t('team.error.resendInvite')))
       } finally {
         setTeamActionKey(null)
       }
@@ -328,14 +330,14 @@ export function ProjectTeamPage() {
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
               <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
-              {roleFilter === 'all' ? 'All Roles' : getRoleLabel(roleFilter)}
+              {roleFilter === 'all' ? t('team.filter.allRoles') : getRoleLabel(roleFilter, t)}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setRoleFilter('all')}>All Roles</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setRoleFilter('all')}>{t('team.filter.allRoles')}</DropdownMenuItem>
             {ROLE_OPTIONS.map((option) => (
               <DropdownMenuItem key={option.value} onClick={() => setRoleFilter(option.value)}>
-                {option.label}
+                {t(option.labelKey)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -345,25 +347,25 @@ export function ProjectTeamPage() {
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
               <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
-              {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
+              {sortField === 'date' ? t('team.sort.date') : sortField === 'name' ? t('team.sort.name') : t('team.sort.role')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortField('date')}>Date</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortField('name')}>Name</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortField('role')}>Role</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortField('date')}>{t('team.sort.date')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortField('name')}>{t('team.sort.name')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortField('role')}>{t('team.sort.role')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
-              {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
+              {sortDirection === 'asc' ? t('team.sort.asc') : t('team.sort.desc')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortDirection('asc')}>Ascending</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortDirection('desc')}>Descending</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortDirection('asc')}>{t('team.sort.ascending')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortDirection('desc')}>{t('team.sort.descending')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -376,7 +378,7 @@ export function ProjectTeamPage() {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         <div className="loader mr-2" />
-        Loading project team…
+        {t('team.loading')}
       </div>
     )
   }
@@ -384,7 +386,7 @@ export function ProjectTeamPage() {
   if (project === null) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Project not found
+        {t('team.error.projectNotFound')}
       </div>
     )
   }
@@ -401,10 +403,10 @@ export function ProjectTeamPage() {
           <Table className="[&_th]:px-4 [&_td]:px-4">
           <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
             <TableRow>
-              <TableHead className="w-[40%]">Collaborator</TableHead>
-              <TableHead className="w-[22%]">Role</TableHead>
-              <TableHead className="w-[16%]">Project</TableHead>
-              <TableHead className="w-[16%]">Date</TableHead>
+              <TableHead className="w-[40%]">{t('team.header.collaborator')}</TableHead>
+              <TableHead className="w-[22%]">{t('team.sort.role')}</TableHead>
+              <TableHead className="w-[16%]">{t('team.header.project')}</TableHead>
+              <TableHead className="w-[16%]">{t('team.sort.date')}</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -446,13 +448,13 @@ export function ProjectTeamPage() {
                     <TableCell className="overflow-hidden">
                       <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                         <Badge className="max-w-full shrink justify-start border-0 bg-primary/10 text-primary">
-                          <span className="truncate">{getRoleLabel(row.role)}</span>
+                          <span className="truncate">{getRoleLabel(row.role, t)}</span>
                         </Badge>
                         {row.isSelf ? (
                           <>
                             <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden="true" />
                             <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                              you
+                              {t('team.badge.you')}
                             </span>
                           </>
                         ) : null}
@@ -470,7 +472,7 @@ export function ProjectTeamPage() {
                             row.status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'
                           }`}
                         >
-                          {row.status === 'active' ? 'Active' : 'Pending'}
+                          {row.status === 'active' ? t('team.status.active') : t('team.status.pending')}
                         </span>
                       </div>
                     </TableCell>
@@ -490,7 +492,7 @@ export function ProjectTeamPage() {
                                   disabled={!canManageTeam || row.isSelf || !row.userId}
                                 >
                                   <HugeiconsIcon icon={__ShieldHugeIcon} className="mr-2 h-4 w-4" />
-                                  Change Role
+                                  {t('team.action.changeRole')}
                                 </DropdownMenuSubTrigger>
                                 <DropdownMenuSubContent>
                                   {ROLE_OPTIONS.map((option) => (
@@ -509,9 +511,9 @@ export function ProjectTeamPage() {
                                       {teamActionKey === roleActionKey && row.role !== option.value ? (
                                         <div className="loader mr-2" />
                                       ) : null}
-                                      {option.label}
+                                      {t(option.labelKey)}
                                       {row.role === option.value ? (
-                                        <span className="ml-2 text-muted-foreground">(current)</span>
+                                        <span className="ml-2 text-muted-foreground">{t('team.action.current')}</span>
                                       ) : null}
                                     </DropdownMenuItem>
                                   ))}
@@ -536,7 +538,7 @@ export function ProjectTeamPage() {
                                 ) : (
                                   <HugeiconsIcon icon={__UserMinusHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
-                                {row.isSelf ? "Can't remove yourself" : 'Remove'}
+                                {row.isSelf ? t('team.action.cantRemove') : t('team.action.remove')}
                               </DropdownMenuItem>
                             </>
                           ) : (
@@ -553,7 +555,7 @@ export function ProjectTeamPage() {
                                 ) : (
                                   <HugeiconsIcon icon={__RotateCcwHugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
-                                Resend
+                                {t('team.action.resend')}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
@@ -568,7 +570,7 @@ export function ProjectTeamPage() {
                                 ) : (
                                   <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-3.5 w-3.5" />
                                 )}
-                                Cancel
+                                {t('team.action.cancel')}
                               </DropdownMenuItem>
                             </>
                           )}
@@ -581,7 +583,7 @@ export function ProjectTeamPage() {
             ) : hasResolvedTeamRows ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                  No members or pending invites yet.
+                  {t('team.empty.noMembers')}
                 </TableCell>
               </TableRow>
             ) : null}

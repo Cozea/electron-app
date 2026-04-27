@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Logo } from "@/components/Logo"
+import { useTranslation } from "@/lib/i18n"
 
 interface LoginFormProps extends React.ComponentProps<"div"> {
   onLogin: () => void
@@ -16,13 +17,15 @@ export function LoginForm({
   errorMessage,
   ...props
 }: LoginFormProps) {
+  const { t } = useTranslation()
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <FieldGroup>
         <div className="flex flex-col items-center gap-2 text-center">
           <Logo size={48} />
-          <h1 className="text-xl font-bold">Welcome to Cozea</h1>
-          <FieldDescription>Initialize this device to continue</FieldDescription>
+          <h1 className="text-xl font-bold">{t("login.welcome")}</h1>
+          <FieldDescription>{t("login.initializeDevice")}</FieldDescription>
         </div>
         <Button
           onClick={onLogin}
@@ -34,10 +37,10 @@ export function LoginForm({
           {isLoading ? (
             <>
               <div className="loader" />
-              Preparing device...
+              {t("login.preparingDevice")}
             </>
           ) : (
-            "Continue on this device"
+            t("login.continueOnDevice")
           )}
         </Button>
         {errorMessage ? (
@@ -47,7 +50,7 @@ export function LoginForm({
         ) : null}
       </FieldGroup>
       <FieldDescription className="px-6 text-center">
-        Cozea uses a local trusted device identity by default. Collaboration access is granted per project.
+        {t("login.localIdentityNote")}
       </FieldDescription>
     </div>
   )

@@ -14,6 +14,7 @@ import {
 } from '@/features/projects/lib/taskFocusOverlay'
 import type { ProjectScannedRoute } from '@shared/electronApiTypes'
 import { GroupedVirtuoso } from 'react-virtuoso'
+import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
@@ -201,26 +202,26 @@ const DEFAULT_COLLAPSED_GROUPS: Record<BoardStatus, boolean> = {
 const STATUS_META: Record<
   BoardStatus,
   {
-    ariaLabel: string
+    ariaLabelKey: 'tasks.status.backlog' | 'tasks.status.inProgress' | 'tasks.status.done'
     icon: typeof ListTodo
     iconClassName: string
     surfaceClassName: string
   }
 > = {
   planned: {
-    ariaLabel: 'Backlog',
+    ariaLabelKey: 'tasks.status.backlog',
     icon: ListTodo,
     iconClassName: 'text-amber-700 dark:text-amber-900',
     surfaceClassName: 'bg-amber-200 dark:bg-amber-300',
   },
   active: {
-    ariaLabel: 'In progress',
+    ariaLabelKey: 'tasks.status.inProgress',
     icon: Clock3,
     iconClassName: 'text-sky-700 dark:text-sky-900',
     surfaceClassName: 'bg-sky-200 dark:bg-sky-300',
   },
   done: {
-    ariaLabel: 'Done',
+    ariaLabelKey: 'tasks.status.done',
     icon: CheckCircle2,
     iconClassName: 'text-emerald-700 dark:text-emerald-900',
     surfaceClassName: 'bg-emerald-200 dark:bg-emerald-300',
@@ -288,11 +289,11 @@ function normalizeManualTaskMarkers(value: unknown): ManualTaskMarkerRecord[] {
   return markers.length > 0 ? markers : createDefaultManualTaskMarkers()
 }
 
-function createDefaultManualTaskMarkers(): ManualTaskMarkerRecord[] {
+function createDefaultManualTaskMarkers(t?: any): ManualTaskMarkerRecord[] {
   return [
-    { id: 'scope', label: 'Scope the work' },
-    { id: 'build', label: 'Implement the task' },
-    { id: 'review', label: 'Review and ship' },
+    { id: 'scope', label: t ? t('tasks.markers.scope') : 'Scope the work' },
+    { id: 'build', label: t ? t('tasks.markers.implement') : 'Implement the task' },
+    { id: 'review', label: t ? t('tasks.markers.review') : 'Review and ship' },
   ]
 }
 
@@ -445,13 +446,13 @@ function getFileSelectionPriority(filePath: string): number {
   return 4
 }
 
-function getDeadlineMeta(deadlineTimestamp: number | null | undefined): {
+function getDeadlineMeta(deadlineTimestamp: number | null | undefined, t: any): {
   label: string
   className: string
 } {
   if (!deadlineTimestamp) {
     return {
-      label: 'No deadline',
+      label: t('tasks.deadline.none'),
       className: 'text-muted-foreground',
     }
   }
@@ -462,27 +463,27 @@ function getDeadlineMeta(deadlineTimestamp: number | null | undefined): {
 
   if (diffDays < 0) {
     return {
-      label: `${Math.abs(diffDays)}d overdue`,
+      label: t('tasks.deadline.overdue').replace('{days}', String(Math.abs(diffDays))),
       className: 'text-rose-700 dark:text-rose-400',
     }
   }
 
   if (diffDays === 0) {
     return {
-      label: 'Due today',
+      label: t('tasks.deadline.today'),
       className: 'text-amber-700 dark:text-amber-400',
     }
   }
 
   if (diffDays === 1) {
     return {
-      label: '1d left',
+      label: t('tasks.deadline.tomorrow'),
       className: 'text-amber-700 dark:text-amber-400',
     }
   }
 
   return {
-    label: `${diffDays}d left`,
+    label: t('tasks.deadline.daysLeft').replace('{days}', String(diffDays)),
     className: 'text-foreground',
   }
 }
@@ -641,15 +642,17 @@ function TaskListRow({
   projectId,
   projectPath,
   onToggleMarker,
+  t,
 }: {
   item: BoardItem
   projectId: string
   projectPath: string | null
   onToggleMarker: (item: BoardItem, markerId: string) => void
+  t: any
 }) {
   const navigate = useViewTransitionNavigate()
   const [isOpen, setIsOpen] = useState(item.status !== 'done')
-  const deadlineMeta = getDeadlineMeta(item.deadlineTimestamp)
+  const deadlineMeta = getDeadlineMeta(item.deadlineTimestamp, t)
   const fileIconName = item.context.title.split('/').filter(Boolean).pop() ?? item.context.title
   const taskOverlay: TaskOverlayPayload = {
     projectId,
@@ -692,7 +695,7 @@ function TaskListRow({
           <button
             type="button"
             className="group flex min-w-0 flex-1 items-start gap-3 text-left"
-            aria-label={`${isOpen ? 'Collapse' : 'Expand'} task ${item.title}`}
+            aria-label={`${isOpen ? t('tasks.action.collapse') : t('tasks.action.expand')} task ${item.title}`}
           >
             <HugeiconsIcon icon={__ChevronDownHugeIcon}
               className={cn(
@@ -722,8 +725,8 @@ function TaskListRow({
 
                 <span className="truncate">
                   {item.claimants.length > 0
-                    ? `Assigned to ${item.claimants.map((claimant) => claimant.name).join(', ')}`
-                    : 'Unassigned'}
+                    ? t('tasks.assignee.assignedTo').replace('{names}', item.claimants.map((claimant) => claimant.name).join(', '))
+                    : t('tasks.assignee.unassigned')}
                 </span>
               </div>
             </div>
@@ -781,6 +784,7 @@ export function TasksPage({
   presentation = 'modal',
   onRequestClose = null,
 }: TasksPageProps = {}) {
+  const { t } = useTranslation()
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
@@ -1397,7 +1401,7 @@ export function TasksPage({
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         <div className="loader mr-2" />
-        Loading tasks…
+        {t('tasks.loading')}
       </div>
     )
   }
@@ -1420,10 +1424,10 @@ export function TasksPage({
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <h1 id="tasks-modal-title" className="text-xl font-semibold text-foreground">
-                  Tasks
+                  {t('tasks.header.title')}
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Track shared work, objectives, deadlines, and linked context for this project.
+                  {t('tasks.header.desc')}
                 </p>
               </div>
 
@@ -1438,13 +1442,13 @@ export function TasksPage({
                   }}
                 >
                   <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
-                  {isCreatingTask ? 'Adding...' : 'Add Task'}
+                  {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
                 </Button>
                 <button
                   type="button"
                   onClick={closeTasksModal}
                   className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  aria-label="Close tasks"
+                  aria-label={t('tasks.action.close')}
                 >
                   <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
                 </button>
@@ -1460,8 +1464,8 @@ export function TasksPage({
                   <Badge
                     key={status}
                     variant="outline"
-                    title={statusMeta.ariaLabel}
-                    aria-label={`${statusMeta.ariaLabel}: ${count}`}
+                    title={t(statusMeta.ariaLabelKey)}
+                    aria-label={`${t(statusMeta.ariaLabelKey)}: ${count}`}
                     className={cn(
                       'gap-1.5 rounded-full border-transparent px-2.5 py-1',
                       statusMeta.surfaceClassName,
@@ -1485,8 +1489,8 @@ export function TasksPage({
                   <Badge
                     key={status}
                     variant="outline"
-                    title={statusMeta.ariaLabel}
-                    aria-label={`${statusMeta.ariaLabel}: ${count}`}
+                    title={t(statusMeta.ariaLabelKey)}
+                    aria-label={`${t(statusMeta.ariaLabelKey)}: ${count}`}
                     className={cn(
                       'gap-1.5 rounded-full border-transparent px-2.5 py-1',
                       statusMeta.surfaceClassName,
@@ -1508,7 +1512,7 @@ export function TasksPage({
               }}
             >
               <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
-              {isCreatingTask ? 'Adding...' : 'Add Task'}
+              {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
             </Button>
           </div>
         )}
@@ -1522,9 +1526,9 @@ export function TasksPage({
                 <EmptyMedia>
                   <ListTodo className="h-8 w-8" />
                 </EmptyMedia>
-                <EmptyTitle>Project not found</EmptyTitle>
+                <EmptyTitle>{t('tasks.empty.projectNotFound')}</EmptyTitle>
                 <EmptyDescription>
-                  The task board needs a valid project before it can show tasks.
+                  {t('tasks.empty.projectNotFoundDesc')}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -1536,11 +1540,11 @@ export function TasksPage({
                 <EmptyMedia>
                   <ListTodo className="h-8 w-8" />
                 </EmptyMedia>
-                <EmptyTitle>No tasks yet</EmptyTitle>
+                <EmptyTitle>{t('tasks.empty.title')}</EmptyTitle>
                 <EmptyDescription>
                   {isSyncingLocalTasks
-                    ? 'Syncing your existing local tasks into the shared board...'
-                    : 'Create a task to assign work, track objectives, and keep progress shared with the project.'}
+                    ? t('tasks.empty.syncing')
+                    : t('tasks.empty.desc')}
                 </EmptyDescription>
               </EmptyHeader>
               {!isSyncingLocalTasks ? (
@@ -1548,14 +1552,14 @@ export function TasksPage({
                   <Button
                     type="button"
                     className="gap-2"
-                    disabled={!convexUserId || isCreatingTask}
+                    disabled={!convexUserId || isCreatingTask || project === null}
                     onClick={() => {
                       resetDraft()
                       setIsCreateDialogOpen(true)
                     }}
                   >
-                    <HugeiconsIcon icon={__PlusHugeIcon} className="h-4 w-4" />
-                    {isCreatingTask ? 'Adding...' : 'Add Task'}
+                    <HugeiconsIcon icon={__PlusHugeIcon} className="mr-2 h-4 w-4" />
+                    {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
                   </Button>
                 </EmptyContent>
               ) : null}
@@ -1586,8 +1590,8 @@ export function TasksPage({
                   <div className="flex items-center gap-3 pt-4 first:pt-0">
                     <button
                       type="button"
-                      title={statusMeta.ariaLabel}
-                      aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${statusMeta.ariaLabel}`}
+                      title={t(statusMeta.ariaLabelKey)}
+                      aria-label={`${isCollapsed ? t('tasks.action.expand') : t('tasks.action.collapse')} ${t(statusMeta.ariaLabelKey)}`}
                       className="group inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                       onClick={() =>
                         setCollapsedGroups((current) => ({
@@ -1605,7 +1609,7 @@ export function TasksPage({
                       <span className="inline-flex h-7 w-7 items-center justify-center">
                         <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
                       </span>
-                      <span className="font-medium text-foreground">{statusMeta.ariaLabel}</span>
+                      <span className="font-medium text-foreground">{t(statusMeta.ariaLabelKey)}</span>
                       <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sidebar-accent/80 px-2 text-xs tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
                         {section.items.length}
                       </span>
@@ -1621,6 +1625,7 @@ export function TasksPage({
                     projectId={projectId ?? ""}
                     projectPath={projectPath}
                     onToggleMarker={handleToggleMarker}
+                    t={t}
                   />
                 </div>
               )}
@@ -1662,42 +1667,42 @@ export function TasksPage({
             <button
               type="button"
               className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent/70 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/85 dark:bg-sidebar-accent/80 dark:hover:bg-sidebar-accent"
-              aria-label="Close"
+              aria-label={t('tasks.action.close')}
             >
               <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
             </button>
           </DialogClose>
           <DialogHeader>
-            <DialogTitle>Add Task</DialogTitle>
+            <DialogTitle>{t('tasks.create.title')}</DialogTitle>
             <DialogDescription>
-              Create a task with a deadline, objectives, an optional assignee, and a linked file or preview.
+              {t('tasks.create.desc')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="task-title">Title</Label>
+                <Label htmlFor="task-title">{t('tasks.label.title')}</Label>
                 <Input
                   id="task-title"
                   value={draftTitle}
                   onChange={(event) => setDraftTitle(event.target.value)}
-                  placeholder="Ship billing settings"
+                  placeholder={t('tasks.placeholder.title')}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="task-description">Description</Label>
+                <Label htmlFor="task-description">{t('tasks.label.desc')}</Label>
                 <Textarea
                   id="task-description"
                   value={draftDescription}
                   onChange={(event) => setDraftDescription(event.target.value)}
-                  placeholder="Short context for this task"
+                  placeholder={t('tasks.placeholder.desc')}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="task-deadline">Deadline</Label>
+                <Label htmlFor="task-deadline">{t('tasks.label.deadline')}</Label>
                 <Input
                   id="task-deadline"
                   type="date"
@@ -1707,14 +1712,14 @@ export function TasksPage({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="task-claimants-search">Assignee</Label>
+                <Label htmlFor="task-claimants-search">{t('tasks.label.assignee')}</Label>
 
                 <div className="relative">
                   <Input
                     id="task-claimants-search"
                     value={draftClaimantSearch}
                     onChange={(event) => setDraftClaimantSearch(event.target.value)}
-                    placeholder="Search people..."
+                    placeholder={t('tasks.placeholder.searchPeople')}
                     disabled={claimantCandidatesLoading ? false : claimantCandidates.length === 0}
                   />
 
@@ -1723,15 +1728,15 @@ export function TasksPage({
                       <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                         {claimantCandidatesLoading ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
-                            Loading people...
+                            {t('tasks.loadingPeople')}
                           </div>
                         ) : claimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
-                            No people available.
+                            {t('tasks.noPeople')}
                           </div>
                         ) : filteredClaimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
-                            No matching people.
+                            {t('tasks.noMatchingPeople')}
                           </div>
                         ) : (
                           filteredClaimantCandidates.map((candidate) => {
@@ -1799,7 +1804,7 @@ export function TasksPage({
                             type="button"
                             className="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
                             onClick={() => handleRemoveDraftClaimant(identityKey)}
-                            aria-label={`Remove ${claimant.name}`}
+                            aria-label={t('tasks.action.removeAssignee')}
                           >
                             <HugeiconsIcon icon={__XHugeIcon} className="h-3 w-3" />
                           </button>
@@ -1818,7 +1823,7 @@ export function TasksPage({
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label>Tied to</Label>
+                  <Label>{t('tasks.label.tiedTo')}</Label>
                 </div>
 
                 <div className="space-y-2">
@@ -1829,8 +1834,8 @@ export function TasksPage({
                       onChange={(event) => setDraftContextSearch(event.target.value)}
                       placeholder={
                         draftContextKind === 'page'
-                          ? 'Search previews...'
-                          : 'Search files...'
+                          ? t('tasks.placeholder.searchPreviews')
+                          : t('tasks.placeholder.searchFiles')
                       }
                     />
                     <div className="absolute right-1 top-1/2 -translate-y-1/2">
@@ -1854,8 +1859,8 @@ export function TasksPage({
                           setDraftContextKind('page')
                           setDraftContextSearch('')
                         }}
-                        aria-label="Choose preview"
-                        title="Choose preview"
+                        aria-label={t('tasks.action.choosePreview')}
+                        title={t('tasks.action.choosePreview')}
                       >
                         <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5" />
                       </button>
@@ -1871,8 +1876,8 @@ export function TasksPage({
                           setDraftContextKind('file')
                           setDraftContextSearch('')
                         }}
-                        aria-label="Choose file"
-                        title="Choose file"
+                        aria-label={t('tasks.action.chooseFile')}
+                        title={t('tasks.action.chooseFile')}
                       >
                         <HugeiconsIcon icon={__FileTextHugeIcon} className="h-3.5 w-3.5" />
                       </button>
@@ -1885,11 +1890,11 @@ export function TasksPage({
                           {isVisibleContextLoading ? (
                             <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
                               <div className="loader" />
-                              Loading {draftContextKind === 'page' ? 'previews' : 'files'}...
+                              {t('tasks.loadingContext')}
                             </div>
                           ) : visibleContextOptions.length === 0 ? (
                             <div className="px-3 py-3 text-sm text-muted-foreground">
-                              No matching {draftContextKind === 'page' ? 'previews' : 'files'}.
+                              {t('tasks.noMatchingContext')}
                             </div>
                           ) : (
                             visibleContextOptions.map((option) => {
@@ -1970,7 +1975,7 @@ export function TasksPage({
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <Label>Objectives</Label>
+                  <Label>{t('tasks.label.objectives')}</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -1979,7 +1984,7 @@ export function TasksPage({
                     onClick={handleAddDraftMarkerRow}
                   >
                     <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
-                    Add row
+                    {t('tasks.action.addRow')}
                   </Button>
                 </div>
 
@@ -1990,7 +1995,7 @@ export function TasksPage({
                         className="pr-10"
                         value={marker}
                         onChange={(event) => handleDraftMarkerRowChange(index, event.target.value)}
-                        placeholder={`Objective ${index + 1}`}
+                        placeholder={`${t('tasks.placeholder.objective')} ${index + 1}`}
                       />
                       <Button
                         type="button"

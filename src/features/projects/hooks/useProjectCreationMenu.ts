@@ -1,4 +1,5 @@
 import { useCallback, type MouseEvent } from "react"
+import { useTranslation } from "@/lib/i18n"
 
 import {
   canShowDesktopContextMenu,
@@ -35,6 +36,7 @@ function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: n
 }
 
 export function useProjectCreationMenu() {
+  const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const { importLocalFolder, importPickedLocalFolder } = useLocalProjectImport()
 
@@ -58,8 +60,8 @@ export function useProjectCreationMenu() {
 
       const selection = await showDesktopContextMenu<ProjectCreationMenuAction>(
         [
-          { id: "empty", label: "Empty project" },
-          { id: "local", label: "Import local folder" },
+          { id: "empty", label: t("menu.emptyProject") },
+          { id: "local", label: t("menu.importLocalFolder") },
         ],
         resolveMenuPosition(event),
       )
@@ -79,7 +81,7 @@ export function useProjectCreationMenu() {
 
       openCreateProjectDialog({ mode: selection })
     },
-    [importLocalFolder, importPickedLocalFolder, openCreateProjectDialog],
+    [importLocalFolder, importPickedLocalFolder, openCreateProjectDialog, t],
   )
 
   return {

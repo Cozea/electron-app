@@ -4,7 +4,8 @@ import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { invalidateCollabSession, useCollabSession } from '@/hooks/useCollabSession'
+import { useCollabSession, invalidateCollabSession } from '@/hooks/useCollabSession'
+import { useTranslation } from '@/lib/i18n'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
@@ -65,6 +66,7 @@ export function ProjectSettingsPage({
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
+  const { t } = useTranslation()
 
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
@@ -206,7 +208,7 @@ export function ProjectSettingsPage({
 
     const devices = options?.devices ?? collaborationDevices
     if (!devices || devices.length === 0) {
-      throw new Error('No active trusted devices are available for key rotation.')
+      throw new Error(t('settings.error.noTrustedDevices'))
     }
 
     const { roomKeyBase64: currentRoomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
@@ -280,7 +282,7 @@ export function ProjectSettingsPage({
     }
 
     if (wrappedKeys.length === 0) {
-      throw new Error('No active trusted devices are available for key rotation.')
+      throw new Error(t('settings.error.noTrustedDevices'))
     }
 
     const nextSnapshotBytes = envelopeToBytes(nextSnapshotEnvelope)
@@ -331,7 +333,7 @@ export function ProjectSettingsPage({
 
     const nextName = name.trim()
     if (!nextName) {
-      setSaveError('Project name is required.')
+      setSaveError(t('settings.error.nameRequired'))
       return
     }
     if (!hasChanges) return
@@ -347,7 +349,7 @@ export function ProjectSettingsPage({
         description,
       })
     } catch (error) {
-      setSaveError(cleanConvexError(error, 'Failed to save project settings'))
+      setSaveError(cleanConvexError(error, t('settings.error.saveFailed')))
     } finally {
       setIsSaving(false)
     }
@@ -373,7 +375,7 @@ export function ProjectSettingsPage({
       setShowArchiveDialog(false)
       navigate('/projects')
     } catch (error) {
-      setArchiveError(cleanConvexError(error, 'Failed to archive project'))
+      setArchiveError(cleanConvexError(error, t('settings.error.archiveFailed')))
     } finally {
       setIsArchiving(false)
     }
@@ -452,10 +454,10 @@ export function ProjectSettingsPage({
         })
       }
 
-      setCollabNotice('Pending devices can now join encrypted collaboration.')
+      setCollabNotice(t('settings.notice.shared'))
       await collabSessionResult.refresh()
     } catch (error) {
-      setCollabError(cleanConvexError(error, 'Failed to share encrypted room keys'))
+      setCollabError(cleanConvexError(error, t('settings.error.shareFailed')))
     } finally {
       setCollabAction(null)
     }
@@ -492,13 +494,13 @@ export function ProjectSettingsPage({
         await rotateRoomKeyWithCurrentRoom({
           devices: nextDevices,
         })
-        setCollabNotice('Device access revoked and the shared room key was rotated automatically.')
+        setCollabNotice(t('settings.notice.revokedAndRotated'))
       } else {
-        setCollabNotice('Device access revoked for future encrypted collaboration.')
+        setCollabNotice(t('settings.notice.revokedFuture'))
       }
       await collabSessionResult.refresh()
     } catch (error) {
-      setCollabError(cleanConvexError(error, 'Failed to revoke collaboration device'))
+      setCollabError(cleanConvexError(error, t('settings.error.revokeFailed')))
     } finally {
       setCollabAction(null)
     }
@@ -523,9 +525,9 @@ export function ProjectSettingsPage({
 
     try {
       await rotateRoomKeyWithCurrentRoom()
-      setCollabNotice('Encrypted room keys rotated. Shared-branch devices will refresh onto the new key automatically.')
+      setCollabNotice(t('settings.notice.rotated'))
     } catch (error) {
-      setCollabError(cleanConvexError(error, 'Failed to rotate encrypted room keys'))
+      setCollabError(cleanConvexError(error, t('settings.error.rotateFailed')))
     } finally {
       setCollabAction(null)
     }
@@ -559,9 +561,9 @@ export function ProjectSettingsPage({
         keyVersion: collabBootstrap.activeKeyVersion ?? 1,
       })
 
-      setCollabNotice(activeRecoveryKit ? 'Recovery code regenerated. Save the new code somewhere safe.' : 'Recovery code generated. Save it somewhere safe.')
+      setCollabNotice(activeRecoveryKit ? t('settings.notice.recoveryRegenerated') : t('settings.notice.recoveryGenerated'))
     } catch (error) {
-      setCollabError(cleanConvexError(error, 'Failed to generate recovery code'))
+      setCollabError(cleanConvexError(error, t('settings.error.generateRecoveryFailed')))
     } finally {
       setCollabAction(null)
     }
@@ -620,9 +622,9 @@ export function ProjectSettingsPage({
       invalidateCollabSession(String(project._id))
       await collabSessionResult.refresh()
       setRecoveryCodeInput('')
-      setCollabNotice('This device recovered access to the encrypted collaboration room.')
+      setCollabNotice(t('settings.notice.recovered'))
     } catch (error) {
-      setCollabError(cleanConvexError(error, 'Failed to recover room access with the recovery code'))
+      setCollabError(cleanConvexError(error, t('settings.error.recoverFailed')))
     } finally {
       setCollabAction(null)
     }
@@ -661,10 +663,10 @@ export function ProjectSettingsPage({
 
       invalidateCollabSession(String(project._id))
       await collabSessionResult.refresh()
-      setCollabNotice('Encrypted collaboration room reset. Re-open the shared branch to initialize a fresh shared room from local project state.')
+      setCollabNotice(t('settings.notice.reset'))
       setShowCollabResetDialog(false)
     } catch (error) {
-      setCollabError(cleanConvexError(error, 'Failed to reset encrypted collaboration room'))
+      setCollabError(cleanConvexError(error, t('settings.error.resetFailed')))
     } finally {
       setCollabAction(null)
     }
@@ -689,7 +691,7 @@ export function ProjectSettingsPage({
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         <div className="loader mr-2" />
-        Loading project settings…
+        {t('settings.loading')}
       </div>
     )
   }
@@ -697,7 +699,7 @@ export function ProjectSettingsPage({
   if (project === null) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Project not found
+        {t('settings.error.projectNotFound')}
       </div>
     )
   }
@@ -718,7 +720,7 @@ export function ProjectSettingsPage({
           type="button"
           onClick={closeSettingsModal}
           className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
-          aria-label="Close settings"
+          aria-label={t('settings.action.close')}
         >
           <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
         </button>
@@ -731,38 +733,38 @@ export function ProjectSettingsPage({
                 <div className="min-w-0 space-y-6">
                   <section>
                     <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
-                      General
+                      {t('settings.section.general')}
                     </h3>
                     <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
                       <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
-                        <Label htmlFor="name" className="text-xs font-medium text-foreground whitespace-nowrap">Project Name</Label>
+                        <Label htmlFor="name" className="text-xs font-medium text-foreground whitespace-nowrap">{t('settings.label.projectName')}</Label>
                         <Input
                           id="name"
                           value={name}
                           onChange={(event) => {
                             setName(event.target.value)
                           }}
-                          placeholder="My Project"
+                          placeholder={t('settings.placeholder.projectName')}
                           className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
                         />
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                        <Label htmlFor="description" className="text-xs font-medium text-foreground whitespace-nowrap">Description</Label>
+                        <Label htmlFor="description" className="text-xs font-medium text-foreground whitespace-nowrap">{t('settings.label.description')}</Label>
                         <Input
                           id="description"
                           value={description}
                           onChange={(event) => {
                             setDescription(event.target.value)
                           }}
-                          placeholder="Short description..."
+                          placeholder={t('settings.placeholder.description')}
                           className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
                         />
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
                         <div className="flex flex-col gap-0.5 min-w-0 pr-4">
-                          <Label htmlFor="slug" className="text-xs font-medium text-foreground">Project Slug</Label>
+                          <Label htmlFor="slug" className="text-xs font-medium text-foreground">{t('settings.label.slug')}</Label>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            Retained for compatibility links
+                            {t('settings.desc.slug')}
                           </p>
                         </div>
                         <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-none bg-transparent px-0 text-sm shadow-none opacity-50 cursor-not-allowed text-right" />
@@ -778,40 +780,40 @@ export function ProjectSettingsPage({
                 <div className="min-w-0 space-y-6">
                   <section>
                     <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
-                      Collaboration Security
+                      {t('settings.section.collabSecurity')}
                     </h3>
                     <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
                       <div className="border-b border-border/40 px-4 py-3">
-                        <p className="text-xs font-medium text-foreground">Encrypted shared collaboration</p>
+                        <p className="text-xs font-medium text-foreground">{t('settings.label.collabTitle')}</p>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Shared-branch collaboration is encrypted end to end. Git remains fully manual.
+                          {t('settings.desc.collabTitle')}
                         </p>
                       </div>
                       <div className="px-4 py-3 text-[11px] text-muted-foreground">
-                        {collabSessionResult.status === 'loading' ? 'Checking collaboration room security…' : null}
+                        {collabSessionResult.status === 'loading' ? t('settings.collab.loading') : null}
                         {collabSessionResult.status === 'error' ? (
-                          <span className="text-destructive">{collabSessionResult.error ?? 'Failed to load collaboration security status.'}</span>
+                          <span className="text-destructive">{collabSessionResult.error ?? t('settings.collab.error')}</span>
                         ) : null}
                         {collabBootstrap?.status === 'room_not_initialized' ? (
                           <span>
-                            Encrypted collaboration will initialize automatically the next time someone opens the shared branch.
+                            {t('settings.collab.notInitialized')}
                           </span>
                         ) : null}
                         {collabBootstrap?.status === 'missing_for_device' ? (
                           <span>
                             {activeRecoveryKit
-                              ? 'This device is waiting for an already-authorized device or a saved recovery code to restore room access.'
-                              : 'This device is waiting for an already-authorized device to share the room key.'}
+                              ? t('settings.collab.missingForDeviceRecover')
+                              : t('settings.collab.missingForDevice')}
                           </span>
                         ) : null}
                         {collabBootstrap?.status === 'device_revoked' ? (
                           <span className="text-destructive">
-                            This device has been revoked from encrypted collaboration. Switch to the shared branch from another authorized device to approve a new one.
+                            {t('settings.collab.deviceRevoked')}
                           </span>
                         ) : null}
                         {collabBootstrap?.status === 'ready' ? (
                           <span>
-                            This device is authorized for encrypted collaboration. {pendingRequestCount > 0 ? `${pendingRequestCount} device${pendingRequestCount === 1 ? '' : 's'} waiting for approval.` : 'No devices are waiting for approval right now.'}
+                            {pendingRequestCount > 0 ? t('settings.collab.readyDevices').replace('{count}', String(pendingRequestCount)) : t('settings.collab.readyNoDevices')}
                           </span>
                         ) : null}
                       </div>
@@ -828,9 +830,9 @@ export function ProjectSettingsPage({
                       {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">Trusted-device recovery</Label>
+                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.trustedDeviceRecovery')}</Label>
                             <p className="truncate text-[11px] text-muted-foreground">
-                              Authorize pending devices from a currently trusted device.
+                              {t('settings.collab.trustedDeviceRecoveryDesc')}
                             </p>
                           </div>
                           <Button
@@ -844,16 +846,16 @@ export function ProjectSettingsPage({
                             {collabAction === 'share' ? (
                               <div className="loader mr-2" />
                             ) : null}
-                            Share keys
+                            {t('settings.collab.shareKeys')}
                           </Button>
                         </div>
                       ) : null}
                       {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">Recovery code</Label>
+                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoveryCode')}</Label>
                             <p className="truncate text-[11px] text-muted-foreground">
-                              Save an offline code to restore access without a trusted device.
+                              {t('settings.collab.recoveryCodeDesc')}
                             </p>
                           </div>
                           <Button
@@ -867,16 +869,16 @@ export function ProjectSettingsPage({
                             {collabAction === 'generate-recovery' ? (
                               <div className="loader mr-2" />
                             ) : null}
-                            {activeRecoveryKit ? 'Regenerate code' : 'Generate code'}
+                            {activeRecoveryKit ? t('settings.collab.regenerateCode') : t('settings.collab.generateCode')}
                           </Button>
                         </div>
                       ) : null}
                       {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">Rotate room key</Label>
+                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.rotateRoomKey')}</Label>
                             <p className="truncate text-[11px] text-muted-foreground">
-                              Issue a new room key for trusted devices and retire the old one.
+                              {t('settings.collab.rotateRoomKeyDesc')}
                             </p>
                           </div>
                           <Button
@@ -890,16 +892,16 @@ export function ProjectSettingsPage({
                             {collabAction === 'rotate' ? (
                               <div className="loader mr-2" />
                             ) : null}
-                            Rotate keys
+                            {t('settings.collab.rotateKeys')}
                           </Button>
                         </div>
                       ) : null}
                       {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
                         <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">Room recovery</Label>
+                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.roomRecovery')}</Label>
                             <p className="truncate text-[11px] text-muted-foreground">
-                              Start fresh if no authorized devices are available to approve access.
+                              {t('settings.collab.roomRecoveryDesc')}
                             </p>
                           </div>
                           <Button
@@ -910,16 +912,16 @@ export function ProjectSettingsPage({
                               setShowCollabResetDialog(true)
                             }}
                           >
-                            Reset room
+                            {t('settings.collab.resetRoom')}
                           </Button>
                         </div>
                       ) : null}
                       {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
                         <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">Recover with code</Label>
+                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
                             <p className="truncate text-[11px] text-muted-foreground">
-                              Authorize this device using an offline recovery code.
+                              {t('settings.collab.recoverWithCodeDesc')}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -942,7 +944,7 @@ export function ProjectSettingsPage({
                               {collabAction === 'recover' ? (
                                 <div className="loader mr-2" />
                               ) : null}
-                              Recover
+                              {t('settings.collab.recover')}
                             </Button>
                           </div>
                         </div>
@@ -960,12 +962,12 @@ export function ProjectSettingsPage({
                               <div className="flex min-w-0 flex-col gap-0.5">
                                 <p className="truncate text-xs font-medium text-foreground">
                                   {device.deviceLabel}
-                                  {device.deviceId === currentDeviceId ? ' · This device' : ''}
+                                  {device.deviceId === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
                                 </p>
                                 <p className="truncate text-[11px] text-muted-foreground">
                                   {device.platform} · {device.fingerprint.slice(0, 12)}
-                                  {device.hasPendingRequest ? ' · waiting for key' : ''}
-                                  {device.revokedAt ? ' · revoked' : ''}
+                                  {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
+                                  {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
                                 </p>
                               </div>
                               {canManageCollabSecurity ? (
@@ -984,7 +986,7 @@ export function ProjectSettingsPage({
                                   {collabAction === `revoke:${device.deviceId}` ? (
                                     <div className="loader mr-2" />
                                   ) : null}
-                                  {device.revokedAt ? 'Revoked' : 'Revoke'}
+                                  {device.revokedAt ? t('settings.collab.actionRevoked') : t('settings.collab.revoke')}
                                 </Button>
                               ) : null}
                             </div>
@@ -999,14 +1001,14 @@ export function ProjectSettingsPage({
                   <section>
                     <h3 className="flex items-center gap-1.5 px-1 text-xs font-medium text-destructive mb-1.5">
                       <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
-                      Danger Zone
+                      {t('settings.section.dangerZone')}
                     </h3>
                     <div className="flex flex-col overflow-hidden rounded-[14px] bg-destructive/15 dark:bg-destructive/20">
                       <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
                         <div className="flex min-w-0 flex-col gap-0.5">
-                          <Label className="text-xs font-medium text-foreground">Archive Project</Label>
+                          <Label className="text-xs font-medium text-foreground">{t('settings.label.archiveProject')}</Label>
                           <p className="truncate text-[11px] text-muted-foreground">
-                            Archive this project. It can be restored later.
+                            {t('settings.desc.archiveProject')}
                           </p>
                         </div>
                         <Button
@@ -1018,14 +1020,14 @@ export function ProjectSettingsPage({
                             setArchiveError(null)
                           }}
                         >
-                          {project.status === 'archived' ? 'Archived' : 'Archive'}
+                          {project.status === 'archived' ? t('settings.action.archived') : t('settings.action.archive')}
                         </Button>
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-destructive/20 px-4 py-2">
                         <div className="flex min-w-0 flex-col gap-0.5">
-                          <Label className="text-xs font-medium text-foreground">Delete Project</Label>
+                          <Label className="text-xs font-medium text-foreground">{t('settings.label.deleteProject')}</Label>
                             <p className="truncate text-[11px] text-muted-foreground">
-                              Permanently delete this project and all its data. Cannot be undone.
+                              {t('settings.desc.deleteProject')}
                             </p>
                         </div>
                         <Button
@@ -1038,7 +1040,7 @@ export function ProjectSettingsPage({
                           }}
                         >
                           <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
-                          Delete
+                          {t('settings.action.delete')}
                         </Button>
                       </div>
                     </div>
@@ -1060,7 +1062,7 @@ export function ProjectSettingsPage({
                     ) : (
                       <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
                     )}
-                    {isSaving ? 'Saving...' : 'Save Changes'}
+                    {isSaving ? t('settings.action.saving') : t('settings.action.save')}
                   </Button>
                 </div>
               </section>
@@ -1073,14 +1075,14 @@ export function ProjectSettingsPage({
       <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archive Project</AlertDialogTitle>
+            <AlertDialogTitle>{t('settings.dialog.archive.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will archive <span className="font-semibold">{project.name}</span>. You can restore it later.
+              {t('settings.dialog.archive.desc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {archiveError ? <p className="text-sm text-destructive">{archiveError}</p> : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isArchiving}>{t('settings.action.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
@@ -1089,7 +1091,7 @@ export function ProjectSettingsPage({
               disabled={isArchiving}
               className="bg-orange-500 text-white hover:bg-orange-600"
             >
-              {isArchiving ? 'Archiving...' : 'Archive Project'}
+              {isArchiving ? t('settings.dialog.archive.archiving') : t('settings.dialog.archive.action')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1112,18 +1114,17 @@ export function ProjectSettingsPage({
       <AlertDialog open={showCollabResetDialog} onOpenChange={setShowCollabResetDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset encrypted collaboration room</AlertDialogTitle>
+            <AlertDialogTitle>{t('settings.dialog.reset.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This clears the current encrypted shared collaboration state for <span className="font-semibold">{project.name}</span>.
-              Use this only when no currently-authorized device can approve access or recover the room.
+              {t('settings.dialog.reset.desc1')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <p className="text-sm text-muted-foreground">
-            Local files on this device stay intact, but the shared encrypted room history and keys will be replaced.
+            {t('settings.dialog.reset.desc2')}
           </p>
           {collabError ? <p className="text-sm text-destructive">{collabError}</p> : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={collabAction === 'reset'}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={collabAction === 'reset'}>{t('settings.action.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
@@ -1132,7 +1133,7 @@ export function ProjectSettingsPage({
               disabled={collabAction === 'reset'}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {collabAction === 'reset' ? 'Resetting…' : 'Reset room'}
+              {collabAction === 'reset' ? t('settings.dialog.reset.resetting') : t('settings.dialog.reset.action')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1149,21 +1150,21 @@ export function ProjectSettingsPage({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Save this recovery code</AlertDialogTitle>
+            <AlertDialogTitle>{t('settings.dialog.recovery.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This code can restore encrypted collaboration access for a new device when no trusted device is available.
+              {t('settings.dialog.recovery.desc1')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="rounded-xl bg-muted px-4 py-3">
             <p className="font-mono text-sm tracking-[0.18em] text-foreground">
-              {generatedRecoveryCode ?? 'No recovery code generated.'}
+              {generatedRecoveryCode ?? t('settings.dialog.recovery.noCode')}
             </p>
           </div>
           <p className="text-sm text-muted-foreground">
-            Keep it somewhere safe. We only show the newly generated code here.
+            {t('settings.dialog.recovery.desc2')}
           </p>
           <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogCancel>{t('settings.action.close')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
@@ -1172,7 +1173,7 @@ export function ProjectSettingsPage({
                 }
               }}
             >
-              Copy code
+              {t('settings.action.copyCode')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

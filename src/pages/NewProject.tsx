@@ -5,6 +5,7 @@ import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
+import { useTranslation } from "@/lib/i18n"
 
 function resolveMode(search: string): CreateProjectDialogMode {
   const params = new URLSearchParams(search)
@@ -21,6 +22,7 @@ export default function NewProject() {
   const navigate = useViewTransitionNavigate()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const { importPickedLocalFolder } = useLocalProjectImport()
+  const { t } = useTranslation()
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -56,7 +58,7 @@ export default function NewProject() {
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
       <div className="loader mr-2" />
-      Opening project setup…
+      {t("newProject.openingSetup")}
     </div>
   )
 }

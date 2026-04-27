@@ -1,12 +1,14 @@
 import {
   comparePersonalContextUnifiedSettingsSidebar,
   comparePersonalDeviceSidebarSurfaces,
+  getLocalizedSurfaceLabel,
   listSettingsSurfaces,
 } from "@/lib/settings/settingsRegistry"
 import type {
   SettingsPlacement,
   SettingsSurfaceDefinition,
 } from "@/lib/settings/settingsSurfaceTypes"
+import { getTranslation, getStoredLanguage } from "@/lib/i18n"
 
 export interface SettingsNavigationItem {
   label: string
@@ -29,7 +31,7 @@ function toNavigationItems(surfaces: SettingsSurfaceDefinition[]): SettingsNavig
 
     return [
       {
-        label: surface.label,
+        label: getLocalizedSurfaceLabel(surface.id),
         route,
         surface,
       },
@@ -55,7 +57,7 @@ function buildSection(
     return null
   }
 
-  return { id: "settings", label: "Settings", items }
+  return { id: "settings", label: getTranslation(getStoredLanguage(), "common.settings"), items }
 }
 
 export function resolveSettingsNavigationSections(

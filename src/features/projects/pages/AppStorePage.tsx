@@ -13,6 +13,7 @@ import {
   resolveAppStoreCategory,
 } from "@/features/projects/lib/appStoreCatalog"
 import { useProjectHeader } from "@/hooks/useProjectHeader"
+import { useTranslation } from "@/lib/i18n"
 import { useSearchParams } from "@/lib/router"
 import { cn } from "@/lib/utils"
 
@@ -20,13 +21,14 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { CpuChargeIcon as __ChipHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon } from '@hugeicons/core-free-icons'
 
 export function AppStorePage() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const activeCategory = resolveAppStoreCategory(searchParams.get("category"))
   const query = searchParams.get("q") ?? ""
 
   const headerCenter = useMemo(
-    () => <ProjectShellTitleBarCenterFromLabel label="DevApps Store" />,
-    [],
+    () => <ProjectShellTitleBarCenterFromLabel label={t('appStore.page.title')} />,
+    [t],
   )
 
   useProjectHeader(null, headerCenter)
@@ -60,11 +62,11 @@ export function AppStorePage() {
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-8 px-6 pt-5 pb-8">
       <section>
-        <SettingsSectionTitle>{activeCategory.label}</SettingsSectionTitle>
+        <SettingsSectionTitle>{(t as any)(`devApp.category.${activeCategory.id}`) ?? activeCategory.label}</SettingsSectionTitle>
         <SettingsSectionDescription>
           {query.trim()
-            ? `Results for “${query}” in ${activeCategory.label.toLowerCase()}.`
-            : activeCategory.description}
+            ? t('appStore.page.resultsFor').replace('{query}', query).replace('{category}', ((t as any)(`devApp.category.${activeCategory.id}`) ?? activeCategory.label).toLowerCase())
+            : (t as any)(`appStore.${activeCategory.id}.desc`) || activeCategory.description}
         </SettingsSectionDescription>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_2fr]">
@@ -73,20 +75,20 @@ export function AppStorePage() {
             <div className="relative z-10 flex h-full min-h-[16rem] flex-col justify-between gap-8">
               <div className="space-y-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/65">
-                  Opening soon
+                  {t("appStore.page.openingSoon")}
                 </p>
                 <div className="space-y-2">
                   <h1 className="max-w-[14rem] text-[28px] font-medium leading-[1.05] tracking-[-0.03em]">
-                    {activeCategory.heroTitle}
+                    {t(`appStore.${activeCategory.id}.heroTitle` as any) || activeCategory.heroTitle}
                   </h1>
                   <p className="max-w-[15rem] text-sm leading-6 text-white/72">
-                    {activeCategory.heroDescription}
+                    {t(`appStore.${activeCategory.id}.heroDesc` as any) || activeCategory.heroDescription}
                   </p>
                 </div>
               </div>
 
               <div className="inline-flex w-fit items-center rounded-full border border-white/15 bg-white/8 px-3 py-1.5 text-xs text-white/80 backdrop-blur-sm">
-                Storefront preview
+                {t("appStore.page.storefrontPreview")}
               </div>
             </div>
           </div>
@@ -109,11 +111,10 @@ export function AppStorePage() {
                 </p>
                 <div className="space-y-2">
                   <h2 className="text-[34px] font-medium leading-[0.98] tracking-[-0.04em]">
-                    Build your Cozea workspace like a real product stack.
+                    {t('appStore.page.heroTitle')}
                   </h2>
                   <p className="text-sm leading-6 text-white/80">
-                    The store will surface high-signal tools for previews, agents, runtimes, and
-                    team workflows in one curated place.
+                    {t('appStore.page.heroDesc')}
                   </p>
                 </div>
               </div>
@@ -126,11 +127,11 @@ export function AppStorePage() {
         <>
           <section className="space-y-3">
             <div className="grid gap-4 lg:grid-cols-3">
-              {visibleFeatureCards.map((card) => {
+              {visibleFeatureCards.map((card, i) => {
                 const Icon = card.icon
                 return (
                   <div
-                    key={card.title}
+                    key={t(`appStore.discover.card${i + 1}Title` as any) || card.title}
                     className="relative overflow-hidden rounded-[24px] bg-muted/70 p-5"
                   >
                     <div
@@ -145,14 +146,14 @@ export function AppStorePage() {
                       </div>
                       <div className="space-y-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          {card.eyebrow}
+                          {t(`appStore.discover.card${i + 1}Eyebrow` as any) || card.eyebrow}
                         </p>
                         <div className="space-y-1">
                           <h3 className="text-lg font-medium tracking-[-0.02em] text-foreground">
-                            {card.title}
+                            {t(`appStore.discover.card${i + 1}Title` as any) || card.title}
                           </h3>
                           <p className="text-sm leading-6 text-muted-foreground">
-                            {card.description}
+                            {t(`appStore.discover.card${i + 1}Desc` as any) || card.description}
                           </p>
                         </div>
                       </div>
@@ -167,14 +168,14 @@ export function AppStorePage() {
             <div className="flex items-end justify-between gap-4 px-1">
               <div className="space-y-1">
                 <h2 className="text-xl font-medium tracking-[-0.03em] text-foreground">
-                  Built-in DevApps
+                  {t('appStore.page.builtIn')}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Registry-backed apps already available across the launcher and store.
+                  {t('appStore.page.builtInDesc')}
                 </p>
               </div>
               <span className="rounded-full bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
-                Available now
+                {t('appStore.page.availableNow')}
               </span>
             </div>
 
@@ -196,11 +197,13 @@ export function AppStorePage() {
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{app.name}</p>
-                          <p className="text-[11px] text-muted-foreground">{app.store.categoryLabel}</p>
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {(t as any)(`devApp.name.${app.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`) ?? app.name}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">{(t as any)(`devApp.category.${app.store.categoryLabel}`) ?? app.store.categoryLabel}</p>
                         </div>
                         <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
-                          {app.store.badgeLabel ?? "Built in"}
+                          {app.store.badgeLabel === "Built in" ? t('appStore.page.badgeBuiltIn') : app.store.badgeLabel}
                         </span>
                       </div>
                       <p className="text-sm leading-6 text-muted-foreground">{app.description}</p>
@@ -216,15 +219,14 @@ export function AppStorePage() {
           <div className="grid gap-6 p-7 lg:grid-cols-[1.3fr_0.7fr] lg:items-center">
             <div className="space-y-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                No matches yet
+                {t('appStore.page.noMatchesEyebrow')}
               </p>
               <div className="space-y-2">
                 <h2 className="text-[30px] font-medium leading-[1.02] tracking-[-0.04em] text-foreground">
-                  Nothing in the store matches “{query}” yet.
+                  {t('appStore.page.noMatchesTitle').replace('{query}', query)}
                 </h2>
                 <p className="max-w-[38rem] text-sm leading-6 text-muted-foreground">
-                  We are still shaping this storefront. Try another search term or switch to a
-                  broader category while the first set of Cozea store collections comes together.
+                  {t('appStore.page.noMatchesDesc')}
                 </p>
               </div>
             </div>
@@ -234,18 +236,18 @@ export function AppStorePage() {
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
                   <HugeiconsIcon icon={__BoltHugeIcon} className="h-5 w-5" />
                 </div>
-                <p className="text-sm font-medium text-foreground">Curated collections</p>
+                <p className="text-sm font-medium text-foreground">{t('appStore.page.curatedColls')}</p>
                 <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  Editorial shelves, onboarding kits, and installable bundles are coming next.
+                  {t('appStore.page.curatedCollsDesc')}
                 </p>
               </div>
               <div className="rounded-[20px] bg-background/80 p-4">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
                   <HugeiconsIcon icon={__ChipHugeIcon} className="h-5 w-5" />
                 </div>
-                <p className="text-sm font-medium text-foreground">Developer-first tooling</p>
+                <p className="text-sm font-medium text-foreground">{t('appStore.page.devTools')}</p>
                 <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                  The store will focus on real project work: agents, previews, runtimes, and release flows.
+                  {t('appStore.page.devToolsDesc')}
                 </p>
               </div>
             </div>
@@ -257,16 +259,14 @@ export function AppStorePage() {
         <div className="grid gap-6 p-7 lg:grid-cols-[1.3fr_0.7fr] lg:items-center">
           <div className="space-y-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Store roadmap
+              {t('appStore.page.roadmapEyebrow')}
             </p>
             <div className="space-y-2">
               <h2 className="text-[30px] font-medium leading-[1.02] tracking-[-0.04em] text-foreground">
-                The storefront is taking shape.
+                {t('appStore.page.roadmapTitle')}
               </h2>
               <p className="max-w-[38rem] text-sm leading-6 text-muted-foreground">
-                This page will soon host installable tools, runtime bundles, preview surfaces,
-                workflow add-ons, and shared team utilities. For now, we are showing the structure
-                it will grow into so the store feels like part of the product from day one.
+                {t('appStore.page.roadmapDesc')}
               </p>
             </div>
           </div>
@@ -276,18 +276,18 @@ export function AppStorePage() {
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
                 <HugeiconsIcon icon={__BoltHugeIcon} className="h-5 w-5" />
               </div>
-              <p className="text-sm font-medium text-foreground">Install flows</p>
+              <p className="text-sm font-medium text-foreground">{t('appStore.page.installFlows')}</p>
               <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                Lightweight setup, versioning, and workspace-scoped installs.
+                {t('appStore.page.installFlowsDesc')}
               </p>
             </div>
             <div className="rounded-[20px] bg-background/80 p-4">
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-foreground">
                 <HugeiconsIcon icon={__ChipHugeIcon} className="h-5 w-5" />
               </div>
-              <p className="text-sm font-medium text-foreground">Curated bundles</p>
+              <p className="text-sm font-medium text-foreground">{t('appStore.page.curatedBundles')}</p>
               <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                Opinionated packs for agents, previews, and local tooling.
+                {t('appStore.page.curatedBundlesDesc')}
               </p>
             </div>
           </div>

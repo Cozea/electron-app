@@ -42,6 +42,7 @@ import { buildExpandedImagePreview } from "@/features/projects/components/assist
 import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
 import { ProviderOptionControls } from "@/features/projects/components/assistant/chat/ProviderOptionControls"
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
+import { ModelPickerContent } from "@/features/projects/components/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
 import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
 import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
@@ -125,6 +126,7 @@ type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerS
 
 const DOCKED_COMPOSER_SCROLL_GAP_PX = 16
 const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128
+const MODEL_PICKER_PANEL_TRANSITION_MS = 200
 
 function includesNormalized(value: string, query: string): boolean {
   return value.toLowerCase().includes(query.toLowerCase())
@@ -337,11 +339,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [isDragOverSurface, setIsDragOverSurface] = useState(false)
   const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
   const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false)
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
+  const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false)
+  const [isModelPickerVisible, setIsModelPickerVisible] = useState(false)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
   const dragDepthRef = useRef(0)
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
+  const modelPickerAnimationFrameRef = useRef<number | null>(null)
+  const modelPickerCloseTimerRef = useRef<number | null>(null)
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
 
   const {
@@ -617,6 +624,43 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
     ? dockedComposerMeasuredInsetPx || DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX
     : 0
+  useEffect(() => {
+    if (modelPickerAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(modelPickerAnimationFrameRef.current)
+      modelPickerAnimationFrameRef.current = null
+    }
+    if (modelPickerCloseTimerRef.current !== null) {
+      window.clearTimeout(modelPickerCloseTimerRef.current)
+      modelPickerCloseTimerRef.current = null
+    }
+
+    if (isModelPickerOpen) {
+      setShouldRenderModelPicker(true)
+      modelPickerAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        modelPickerAnimationFrameRef.current = null
+        setIsModelPickerVisible(true)
+      })
+      return
+    }
+
+    setIsModelPickerVisible(false)
+    modelPickerCloseTimerRef.current = window.setTimeout(() => {
+      modelPickerCloseTimerRef.current = null
+      setShouldRenderModelPicker(false)
+    }, MODEL_PICKER_PANEL_TRANSITION_MS)
+  }, [isModelPickerOpen])
+
+  useEffect(() => {
+    return () => {
+      if (modelPickerAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(modelPickerAnimationFrameRef.current)
+      }
+      if (modelPickerCloseTimerRef.current !== null) {
+        window.clearTimeout(modelPickerCloseTimerRef.current)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!activePendingUserInput) {
       return
@@ -988,6 +1032,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     event.currentTarget.value = ""
   }
 
+  const handleComposerShellBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget as Node | null
+    if (next && event.currentTarget.contains(next)) {
+      return
+    }
+    setIsModelPickerOpen(false)
+  }, [])
   const composerForm = (
     <form
       onSubmit={(event) => {
@@ -1005,6 +1056,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
+        onBlurCapture={handleComposerShellBlurCapture}
       >
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
@@ -1124,6 +1176,33 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             </div>
           </div>
         ) : null}
+
+        <div
+          className={cn(
+            "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-200 ease-out",
+            isModelPickerVisible
+              ? "max-h-72 translate-y-0 border-border/30 opacity-100"
+              : "pointer-events-none max-h-0 -translate-y-1 border-transparent opacity-0",
+          )}
+        >
+          {shouldRenderModelPicker ? (
+            <div className="h-72 p-1.5">
+              <ModelPickerContent
+                provider={props.selectedProvider}
+                model={props.selectedModelSelection.model}
+                lockedProvider={null}
+                providers={props.providers}
+                modelOptionsByProvider={props.modelOptionsByProvider}
+                terminalOpen={false}
+                onRequestClose={() => setIsModelPickerOpen(false)}
+                onProviderModelChange={(provider, model) => {
+                  void props.onProviderModelChange(provider, model)
+                  setIsModelPickerOpen(false)
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
 
         {!isComposerApprovalState &&
         !activePendingUserInput &&
@@ -1280,6 +1359,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 disabled={!props.isRuntimeReady || props.isRunning}
                 triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
                 onProviderModelChange={props.onProviderModelChange}
+                open={isModelPickerOpen}
+                onOpenChange={setIsModelPickerOpen}
               />
             </div>
 

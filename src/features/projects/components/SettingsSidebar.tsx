@@ -24,6 +24,7 @@ import {
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon } from '@hugeicons/core-free-icons'
+import { useTranslation } from '@/lib/i18n'
 
 interface SettingsSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -65,9 +66,11 @@ function SettingsSidebarNavRow({
 export function SettingsSidebar({ user, className, ...props }: SettingsSidebarProps) {
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
+  const { t, language } = useTranslation()
   const navSections = React.useMemo(
     () => resolveSettingsNavigationSections("sidebar"),
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [language],
   )
   const sectionRoutes = navSections.flatMap((section) =>
     section.items.map((item) => toProjectsPath(item.route)),
@@ -104,7 +107,7 @@ export function SettingsSidebar({ user, className, ...props }: SettingsSidebarPr
             onClick={() => navigate("/projects")}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-            <span className="truncate">Back to projects</span>
+            <span className="truncate">{t('common.back')}</span>
           </button>
         </div>
 
@@ -141,7 +144,7 @@ export function SettingsSidebar({ user, className, ...props }: SettingsSidebarPr
             onClick={() => navigate(parentSectionRoute)}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-            <span className="truncate">Back</span>
+            <span className="truncate">{t('common.back')}</span>
           </button>
         ) : (
           <div>

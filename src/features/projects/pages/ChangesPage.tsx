@@ -23,6 +23,7 @@ import { useOptionalProjectRouteContext } from '@/features/projects/contexts/Pro
 import { projectOpenDesktopClient } from '@/features/projects/lib/projectOpenDesktopClient'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDiffWorkerProvider'
+import { useTranslation } from '@/lib/i18n'
 
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff, type FileDiffMetadata } from "@pierre/diffs/react";
@@ -141,6 +142,7 @@ function ChangeComments(props: {
   const addComment = useMutation(api.activity.addComment)
   const [draft, setDraft] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const { t } = useTranslation()
 
   const handleSubmit = async () => {
     const next = draft.trim()
@@ -162,7 +164,7 @@ function ChangeComments(props: {
     <div className="mt-4 pt-4 border-t border-border/70">
       {count > 0 && (
         <div className="mb-4 flex items-center gap-2 text-[15px] font-bold text-foreground px-2">
-          <span>Comments ({count})</span>
+          <span>{t('changes.comments.count').replace('{count}', String(count))}</span>
         </div>
       )}
 
@@ -218,11 +220,11 @@ function ChangeComments(props: {
               <Textarea
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Post a reply"
+                placeholder={t('changes.comments.postPlaceholder')}
                 className="min-h-[40px] resize-y border-transparent bg-transparent px-0 py-2 shadow-none focus-visible:ring-0 text-[14px] text-foreground placeholder:text-muted-foreground/60"
               />
               <div className="flex justify-between items-center pt-2">
-                <div className="text-[12px] text-muted-foreground/60">Markdown supported</div>
+                <div className="text-[12px] text-muted-foreground/60">{t('changes.comments.markdownSupported')}</div>
                 <Button
                   type="button"
                   size="sm"
@@ -230,7 +232,7 @@ function ChangeComments(props: {
                   onClick={() => void handleSubmit()}
                   disabled={isSubmitting || draft.trim().length === 0}
                 >
-                  {isSubmitting ? 'Posting…' : 'Reply'}
+                  {isSubmitting ? t('changes.comments.btnPosting') : t('changes.comments.btnReply')}
                 </Button>
               </div>
             </div>
@@ -270,13 +272,14 @@ function ChangeGroupCard(props: {
   const [showComments, setShowComments] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
   const [diffStyle, setDiffStyle] = useState<"split" | "unified">("split")
+  const { t } = useTranslation()
 
   const totalComments = group.items.reduce((acc, item) => acc + (commentCounts[String(item.id)] ?? 0), 0);
 
   useEffect(() => {
     if (!gitCwd || !group.groupId) {
       setPatch(null)
-      setPatchError('This change group has no local checkpoint available yet.')
+      setPatchError(t('changes.error.noLocalCheckpoint'))
       return
     }
 
@@ -294,7 +297,7 @@ function ChangeGroupCard(props: {
         if (cancelled) return
         if (!result.success) {
           setPatch(null)
-          setPatchError(result.error ?? 'Failed to load patch.')
+          setPatchError(result.error ?? t('changes.error.failedToLoadPatch'))
           return
         }
         setPatch(result.diff ?? '')
@@ -302,7 +305,7 @@ function ChangeGroupCard(props: {
       .catch((error) => {
         if (cancelled) return
         setPatch(null)
-        setPatchError(error instanceof Error ? error.message : 'Failed to load patch.')
+        setPatchError(error instanceof Error ? error.message : t('changes.error.failedToLoadPatch'))
       })
 
     return () => {
@@ -357,7 +360,7 @@ function ChangeGroupCard(props: {
 
         <div className="mb-3">
           <p className="text-[15px] text-foreground leading-snug">
-            Updated {group.items.length} file{group.items.length !== 1 ? 's' : ''}.
+            {t('changes.info.updatedFiles').replace('{count}', String(group.items.length)).replace('{plural}', group.items.length !== 1 ? 's' : '')}
           </p>
         </div>
 
@@ -405,7 +408,7 @@ function ChangeGroupCard(props: {
               </div>
             ) : patch ? (
                <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                 Select a file from the sidebar to view its diff.
+                 {t('changes.info.selectFile')}
                </div>
             ) : null}
           </div>
@@ -438,7 +441,7 @@ function ChangeGroupCard(props: {
             <button 
               className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
               onClick={() => setShowSidebar((prev) => !prev)}
-              title="Toggle File Tree"
+              title={t('changes.action.toggleTree')}
             >
               <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4.5" />
             </button>
@@ -446,7 +449,7 @@ function ChangeGroupCard(props: {
             <button 
               className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
               onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
-              title={diffStyle === "split" ? "Switch to Stacked View" : "Switch to Split View"}
+              title={diffStyle === "split" ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
             >
               <HugeiconsIcon icon={diffStyle === "split" ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4.5" />
             </button>
@@ -468,6 +471,7 @@ function ChangeGroupCard(props: {
 }
 
 export function ChangesPage(_props: ChangesPageProps) {
+  const { t } = useTranslation()
   const { project, convexUserId } = useAccessibleProject()
   const routeContext = useOptionalProjectRouteContext()
   const gitCwd = routeContext?.gitCwd ?? null
@@ -505,15 +509,15 @@ export function ChangesPage(_props: ChangesPageProps) {
         <div className="min-h-0 flex-1 overflow-auto">
           {!project ? (
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
-              Project unavailable.
+              {t('changes.empty.projectUnavailable')}
             </div>
           ) : activity === undefined ? null : groups.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <HugeiconsIcon icon={__ClockHugeIcon} className="size-8 text-muted-foreground/35" />
               <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">No changes yet</p>
+                <p className="text-sm font-medium text-foreground">{t('changes.empty.title')}</p>
                 <p className="text-xs text-muted-foreground">
-                  New edits will appear here as inline Git-backed diffs.
+                  {t('changes.empty.desc')}
                 </p>
               </div>
             </div>
