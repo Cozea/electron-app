@@ -196,7 +196,7 @@ interface CozeaChatSurfaceProps {
     requestId: string,
     decision: ProviderApprovalDecision,
   ) => void | Promise<void>
-  onUserInputDraftChange: (requestId: string, questionId: string, value: string) => void
+  onUserInputDraftChange: (requestId: string, questionId: string, value: string, cursor?: number) => void
   onSubmitUserInput: (requestId: string) => void | Promise<void>
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void | Promise<void>
   onDismissThreadError?: () => void
@@ -831,6 +831,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         String(activePendingUserInput.requestId),
         activePendingProgress.activeQuestion.id,
         nextValue,
+        nextCursor
       )
       return
     }
