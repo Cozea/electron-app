@@ -1090,10 +1090,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       }}
       className="relative z-30 mx-auto flex h-full max-h-full min-h-0 w-full min-w-0 max-w-3xl flex-col"
     >
-      {props.composerStatus ? (
-        <div className="shrink-0">{props.composerStatus}</div>
-      ) : null}
-
       <div
         className={cn(
           "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
@@ -1101,6 +1097,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
         onBlurCapture={handleComposerShellBlurCapture}
       >
+        {props.composerStatus ? (
+          <div className="shrink-0">{props.composerStatus}</div>
+        ) : null}
         {threadRuntimeBannerState ? (
           <ThreadRuntimeBanner
             state={threadRuntimeBannerState}
