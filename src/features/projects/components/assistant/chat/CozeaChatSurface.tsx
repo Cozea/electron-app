@@ -1190,7 +1190,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <ModelPickerContent
                 provider={props.selectedProvider}
                 model={props.selectedModelSelection.model}
-                lockedProvider={null}
+                lockedProvider={props.selectedProvider}
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
                 terminalOpen={false}
@@ -1352,7 +1352,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <ProviderModelPicker
                 provider={props.selectedProvider}
                 model={props.selectedModelSelection.model}
-                lockedProvider={null}
+                lockedProvider={props.selectedProvider}
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
                 compact
