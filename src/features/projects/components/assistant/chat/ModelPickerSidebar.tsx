@@ -27,7 +27,7 @@ function describeUnavailableProvider(label: string, live: ServerProvider | undef
   return msg ? `${label} — ${kind}. ${msg}` : `${label} — ${kind}.`;
 }
 
-const SELECTED_BUTTON_CLASS = "bg-background text-foreground shadow-sm";
+const SELECTED_BUTTON_CLASS = "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]";
 const SELECTED_INDICATOR_CLASS =
   "pointer-events-none absolute right-0 top-1/2 z-10 h-5 w-0.5 -translate-y-1/2 rounded-l-full bg-primary";
 const BADGE_BASE_CLASS =
@@ -39,7 +39,7 @@ const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_CLASS = "max-w-64 text-balance font-normal leading-snug";
 const PICKER_ITEM_CLASS = "relative flex w-full justify-center";
 const PICKER_BUTTON_CLASS =
-  "relative isolate flex h-10 w-full cursor-pointer items-center justify-center rounded transition-colors hover:bg-muted";
+  "relative isolate flex h-10 w-full cursor-pointer items-center justify-center rounded transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]";
 
 export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   selectedProvider: ProviderKind | "favorites";
