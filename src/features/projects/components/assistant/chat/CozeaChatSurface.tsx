@@ -1101,6 +1101,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
         onBlurCapture={handleComposerShellBlurCapture}
       >
+        {threadRuntimeBannerState ? (
+          <ThreadRuntimeBanner
+            state={threadRuntimeBannerState}
+            detail={threadRuntimeDetail}
+            isForceStopAvailable={props.isForceStopAvailable}
+          />
+        ) : null}
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">
             <ComposerPendingApprovalPanel
@@ -1567,17 +1574,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
-            {threadRuntimeBannerState ? (
-              <div className="px-3 pt-3 sm:px-5 sm:pt-4">
-                <div className="mx-auto w-full max-w-3xl">
-                  <ThreadRuntimeBanner
-                    state={threadRuntimeBannerState}
-                    detail={threadRuntimeDetail}
-                    isForceStopAvailable={props.isForceStopAvailable}
-                  />
-                </div>
-              </div>
-            ) : null}
             <MessagesTimeline
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}
