@@ -78,11 +78,13 @@ export function getProviderSnapshot(
 export function getProviderModelOptions(
   config: ServerConfig | null,
   provider: ProviderKind,
-): ReadonlyArray<{ slug: string; name: string }> {
+): ReadonlyArray<{ slug: string; name: string; shortName?: string; subProvider?: string }> {
   return (
     getProviderSnapshot(config, provider)?.models.map((model) => ({
       slug: model.slug,
       name: model.name,
+      ...(model.shortName ? { shortName: model.shortName } : {}),
+      ...(model.subProvider ? { subProvider: model.subProvider } : {}),
     })) ?? []
   )
 }
