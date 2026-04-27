@@ -133,8 +133,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               {questionIndex + 1}/{prompt.questions.length}
             </span>
           ) : null}
-          <span className="text-[11px] font-semibold tracking-widest text-muted-foreground/50 uppercase">
-            {activeQuestion.header}
+          <span className="text-[11px] font-semibold text-muted-foreground/50">
+            {activeQuestion.header.charAt(0).toUpperCase() + activeQuestion.header.slice(1).toLowerCase()}
           </span>
         </div>
       </div>
