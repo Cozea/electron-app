@@ -516,6 +516,12 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    const readModel = yield* orchestrationEngine.getReadModel();
+    const effectiveCwd = resolveThreadWorkspaceCwd({
+      thread,
+      projects: readModel.projects,
+    });
+
     const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
     if (!message || message.role !== "user") {
       yield* appendProviderFailureActivity({
@@ -552,10 +558,10 @@ const make = Effect.gen(function* () {
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
     }).pipe(Effect.forkScoped);
 
-    if (thread.worktreePath && canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
+    if (effectiveCwd && canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
       yield* maybeGenerateThreadTitleForFirstTurn({
         threadId: event.payload.threadId,
-        cwd: thread.worktreePath,
+        cwd: effectiveCwd,
         messageText: message.text,
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
