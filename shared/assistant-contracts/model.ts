@@ -194,7 +194,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
   claudeAgent: "claude-sonnet-4-6",
   /** Cursor Agent CLI expects a bracketed token (e.g. `default[]`), not bare `auto`. */
   cursor: "default[]",
-  opencode: "opencode-zen/nemotron-3-super-free",
+  opencode: "opencode-zen/minimax-m2.5-free",
 };
 
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
@@ -204,7 +204,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   codex: "gpt-5.4-mini",
   claudeAgent: "claude-haiku-4-5",
   cursor: "composer-2",
-  opencode: "opencode-zen/nemotron-3-super-free",
+  opencode: "opencode-zen/minimax-m2.5-free",
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
