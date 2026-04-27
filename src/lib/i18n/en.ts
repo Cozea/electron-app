@@ -248,6 +248,8 @@ const en = {
   "devApp.name.mobileSimulator": "Mobile Simulator",
   "devApp.name.codex": "Codex",
   "devApp.name.claude": "Claude",
+  "devApp.name.cursor": "Cursor",
+  "devApp.name.opencode": "OpenCode",
 
   // ── Workbench Chrome & Layout ─────────────────────────────────────────
   "workbench.layout.restore": "Restore Tile",

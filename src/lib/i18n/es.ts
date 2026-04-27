@@ -258,6 +258,8 @@ const es: Record<TranslationKey, string> = {
   "devApp.name.mobileSimulator": "Simulador Móvil",
   "devApp.name.codex": "Codex",
   "devApp.name.claude": "Claude",
+  "devApp.name.cursor": "Cursor",
+  "devApp.name.opencode": "OpenCode",
 
   // ── Workbench Chrome & Layout ─────────────────────────────────────────
   "workbench.layout.restore": "Restaurar panel",
