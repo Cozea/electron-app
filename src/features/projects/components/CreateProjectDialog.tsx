@@ -39,6 +39,7 @@ import {
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Folder01Icon } from '@hugeicons/core-free-icons'
@@ -56,19 +57,10 @@ interface DialogCopy {
   submitLabel: string
 }
 
-const DIALOG_COPY: Record<CreateProjectDialogMode, DialogCopy> = {
-  empty: {
-    title: "Empty project",
-    description:
-      "Create a blank local project and jump straight into the workbench.",
-    submitLabel: "Create project",
-  },
-  local: {
-    title: "Import local folder",
-    description:
-      "Attach an existing local folder and start working in Cozea. Git stays exactly as it is on your machine.",
-    submitLabel: "Import folder",
-  },
+interface DialogCopy {
+  title: string
+  description: string
+  submitLabel: string
 }
 
 function formatLocationPathPreview(pathValue: string, maxParents = 2): string {
@@ -111,6 +103,7 @@ export function CreateProjectDialog({
   initialLocalFolderPath = "",
   onOpenChange,
 }: CreateProjectDialogProps) {
+  const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
@@ -130,16 +123,20 @@ export function CreateProjectDialog({
 
   const copy = useMemo(() => {
     if (mode !== "local" || !initialLocalFolderPath.trim()) {
-      return DIALOG_COPY[mode]
+      return {
+        title: mode === "empty" ? t("createProject.emptyTitle") : t("createProject.localTitle"),
+        description: mode === "empty" ? t("createProject.emptyDesc") : t("createProject.localDescFallback"),
+        submitLabel: mode === "empty" ? t("createProject.createBtn") : t("createProject.importBtn"),
+      } satisfies DialogCopy
     }
 
     const folderName = deriveNameFromPath(initialLocalFolderPath.trim()) || "this folder"
     return {
-      title: "Import local folder",
-      description: `Import ${folderName} into Cozea and keep any git setup on disk exactly as it already is.`,
-      submitLabel: "Import folder",
+      title: t("createProject.localTitle"),
+      description: t("createProject.localDescFormat").replace("{folderName}", folderName),
+      submitLabel: t("createProject.importBtn"),
     } satisfies DialogCopy
-  }, [initialLocalFolderPath, mode])
+  }, [initialLocalFolderPath, mode, t])
   const locationPathPreview = useMemo(
     () => formatLocationPathPreview(parentDirectory, 2),
     [parentDirectory],
@@ -465,7 +462,7 @@ export function CreateProjectDialog({
               <SettingsGroup>
                 {mode === "empty" ? (
                   <SettingsRow isFirst>
-                    <SettingsRowLabel title="Name" htmlFor="create-project-name" />
+                    <SettingsRowLabel title={t('createProject.name')} htmlFor="create-project-name" />
                     <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
                       <Input
                         id="create-project-name"
@@ -475,7 +472,7 @@ export function CreateProjectDialog({
                           setName(event.target.value)
                           setError(null)
                         }}
-                        placeholder="My project"
+                        placeholder={t('createProject.namePlaceholder')}
                         disabled={isSubmitting}
                         autoFocus
                         className={cn(settingsInlineInputClass, "w-auto min-w-[72px] text-left text-[13px] font-normal")}
@@ -488,7 +485,7 @@ export function CreateProjectDialog({
                 {mode === "empty" ? (
                   <SettingsRow>
                     <SettingsRowLabel
-                      title="Path"
+                      title={t('createProject.path')}
                       htmlFor="create-project-location"
                     />
                     <SettingsRowControl>
@@ -505,11 +502,11 @@ export function CreateProjectDialog({
                           setError(null)
                         }}
                         disabled={isSubmitting}
-                        title={parentDirectory || "Choose a parent folder"}
+                        title={parentDirectory || t('createProject.chooseParentFolder')}
                       >
                         <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
                         <span className="truncate text-right">
-                          {locationPathPreview || "Choose a parent folder"}
+                          {locationPathPreview || t('createProject.chooseParentFolder')}
                         </span>
                       </Button>
                     </SettingsRowControl>
@@ -519,8 +516,8 @@ export function CreateProjectDialog({
                 {mode === "empty" ? (
                   <SettingsRow>
                     <SettingsRowLabel
-                      title="GitHub"
-                      description="Create a remote repo"
+                      title={t('createProject.github')}
+                      description={t('createProject.createRemoteRepo')}
                       htmlFor="create-project-github"
                     />
                     <SettingsRowControl>
@@ -536,7 +533,7 @@ export function CreateProjectDialog({
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="left">
-                            Install and authenticate the GitHub CLI to enable
+                            {t('createProject.installGhCli')}
                           </TooltipContent>
                         </Tooltip>
                       ) : (
@@ -554,8 +551,8 @@ export function CreateProjectDialog({
                 {mode === "empty" && createGitHubRepo ? (
                   <SettingsRow>
                     <SettingsRowLabel
-                      title="Private repo"
-                      description="Only you and collaborators can see it"
+                      title={t('createProject.privateRepo')}
+                      description={t('createProject.privateRepoDesc')}
                       htmlFor="create-project-visibility"
                     />
                     <SettingsRowControl>
@@ -581,7 +578,7 @@ export function CreateProjectDialog({
                         onClick={closeDialog}
                         disabled={isSubmitting}
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </Button>
                       <Button
                         type="button"
@@ -605,9 +602,9 @@ export function CreateProjectDialog({
           {mode === "local" && localGitState?.isLoading ? (
             <Alert className="rounded-2xl bg-secondary/35">
               <div className="loader" />
-              <AlertTitle>Checking the folder</AlertTitle>
+              <AlertTitle>{t('createProject.checkingFolder')}</AlertTitle>
               <AlertDescription>
-                Preparing the local import and reading any existing git details on disk.
+                {t('createProject.checkingFolderDesc')}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -626,7 +623,7 @@ export function CreateProjectDialog({
                 onClick={closeDialog}
                 disabled={isSubmitting}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 type="button"

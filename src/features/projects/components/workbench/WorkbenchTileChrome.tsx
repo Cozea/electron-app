@@ -17,6 +17,7 @@ import {
 } from "@/features/projects/components/assistant/Icons"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -166,6 +167,7 @@ export function WorkbenchTileChrome({
   className,
   contentClassName,
 }: WorkbenchTileChromeProps) {
+  const { t } = useTranslation()
   const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
   const [isHovered, setIsHovered] = useState(false)
   const [splitOverlayActive, setSplitOverlayActive] = useState(false)
@@ -364,25 +366,25 @@ export function WorkbenchTileChrome({
                 const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
                   {
                     id: isMaximized ? "restore" : "maximize",
-                    label: isMaximized ? "Restore Tile" : "Maximize Tile",
+                    label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
                   },
                   { type: "separator", id: "sep1" as any },
                   {
                     id: "splitRight",
-                    label: "Split Right",
+                    label: t('workbench.layout.splitRight'),
                   },
                   {
                     id: "splitLeft",
-                    label: "Split Left",
+                    label: t('workbench.layout.splitLeft'),
                   },
                   { type: "separator", id: "sep2" as any },
                   {
                     id: "splitDown",
-                    label: "Split Down",
+                    label: t('workbench.layout.splitDown'),
                   },
                   {
                     id: "splitUp",
-                    label: "Split Up",
+                    label: t('workbench.layout.splitUp'),
                   },
                 ]
 
@@ -412,7 +414,7 @@ export function WorkbenchTileChrome({
                     break
                 }
               }}
-              aria-label="Layout options"
+              aria-label={t('workbench.layout.optionsLabel')}
             >
               <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
             </Button>
@@ -428,7 +430,7 @@ export function WorkbenchTileChrome({
                   : "hover:bg-accent",
               )}
               onClick={() => panelApi.close()}
-              aria-label={`Close ${title}`}
+              aria-label={t('workbench.layout.closeLabel').replace('{title}', title)}
             >
               <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
             </Button>

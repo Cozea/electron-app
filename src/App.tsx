@@ -3,6 +3,7 @@ import { Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { LanguageProvider } from './lib/i18n'
 import { CreateProjectDialogHost } from './features/projects/components/CreateProjectDialogHost'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
@@ -299,13 +300,15 @@ function AppContent() {
 
 export function AppRoot() {
   return (
-    <ThemeProvider>
-      <TooltipProvider>
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </TooltipProvider>
-    </ThemeProvider>
+    <LanguageProvider>
+      <ThemeProvider>
+        <TooltipProvider>
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
+        </TooltipProvider>
+      </ThemeProvider>
+    </LanguageProvider>
   )
 }
 

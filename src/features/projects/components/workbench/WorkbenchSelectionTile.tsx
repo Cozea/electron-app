@@ -16,6 +16,7 @@ import {
   computeWorkbenchSelectionLauncherLayout,
   type WorkbenchSelectionLauncherLayout,
 } from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
+import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon as __SearchHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
@@ -64,14 +65,14 @@ function WelcomeHero({
   projectName?: string | null
   projectPath?: string | null
 }) {
+  const { t } = useTranslation()
   const normalizedProjectName = projectName?.trim() || "this project"
 
   return (
     <div className="mb-8 flex w-full max-w-4xl flex-col items-center">
       <div className="mb-8 flex flex-col items-center gap-1">
         <span className="text-center text-2xl text-muted-foreground md:text-3xl">
-          Let&apos;s work on
-
+          {t('workbench.selection.letsWorkOn')}
         </span>
         <span className="inline-flex items-center gap-3 text-center text-2xl font-bold tracking-tight text-foreground md:text-4xl">
           <NativeProjectFolderIcon
@@ -105,6 +106,7 @@ function SelectionFilterBar({
   contentWidth?: number
   flush?: boolean
 }) {
+  const { t } = useTranslation()
   const shortcut = isMac ? "⌘P" : "Ctrl+P"
 
   return (
@@ -134,7 +136,7 @@ function SelectionFilterBar({
                 )}
               >
                 {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3.5" aria-hidden /> : null}
-                {cat}
+                {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
               </button>
               {index < array.length - 1 ? (
                 <span aria-hidden className="mx-0.5 my-2 w-px shrink-0 bg-border/70 sm:mx-1" />
@@ -149,7 +151,7 @@ function SelectionFilterBar({
             "ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
           )}
         >
-          <span className="sr-only">Search tools</span>
+          <span className="sr-only">{t('workbench.selection.searchTools')}</span>
           <span className="flex w-full shrink-0 items-center gap-2">
             <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
             <input
@@ -157,7 +159,7 @@ function SelectionFilterBar({
               type="search"
               value={searchQuery}
               onChange={(event) => onSearchQueryChange(event.target.value)}
-              placeholder="Search..."
+              placeholder={t('workbench.selection.searchPlaceholder')}
               className={cn(
                 "min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground",
                 "outline-none",
@@ -260,6 +262,10 @@ function SelectionLauncherButton({
   option: DevAppManifest
   onChoose: WorkbenchSelectionTileProps["onChoose"]
 }) {
+  const { t } = useTranslation()
+  const appNameKey = `devApp.name.${option.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`
+  const localizedName = (t as any)(appNameKey) ?? option.name
+
   return (
     <button
       type="button"
@@ -287,7 +293,7 @@ function SelectionLauncherButton({
           LAUNCHER_CONFIG.labelClassName,
         )}
       >
-        {option.name}
+        {localizedName}
       </span>
     </button>
   )
@@ -300,8 +306,12 @@ function SelectionListButton({
   option: DevAppManifest
   onChoose: WorkbenchSelectionTileProps["onChoose"]
 }) {
+  const { t } = useTranslation()
   const iconSize = 42
   const iconRadius = 14
+
+  const appNameKey = `devApp.name.${option.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`
+  const localizedName = (t as any)(appNameKey) ?? option.name
 
   return (
     <button
@@ -324,7 +334,7 @@ function SelectionListButton({
         <DevAppIcon app={option} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-foreground">{option.name}</div>
+        <div className="truncate text-sm font-medium text-foreground">{localizedName}</div>
         <div className="truncate text-xs text-muted-foreground">{option.description}</div>
       </div>
     </button>
@@ -338,6 +348,7 @@ export function WorkbenchSelectionTile({
   projectPath,
   onChoose,
 }: WorkbenchSelectionTileProps) {
+  const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
   const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
   const { config } = useAssistantServerConfig(true)
@@ -534,7 +545,7 @@ export function WorkbenchSelectionTile({
                   ))
                 ) : (
                   <div className="px-3 py-4 text-xs text-muted-foreground">
-                    No results for "{searchQuery.trim()}".
+                    {t('workbench.selection.noResults')} "{searchQuery.trim()}".
                   </div>
                 )}
               </div>
@@ -585,7 +596,7 @@ export function WorkbenchSelectionTile({
                       centerSingletonSelectionLayout ? "w-full flex-none" : "min-h-0 flex-1",
                     )}
                   >
-                    No results for "{searchQuery.trim()}".
+                    {t('workbench.selection.noResults')} "{searchQuery.trim()}".
                   </div>
                 )}
 

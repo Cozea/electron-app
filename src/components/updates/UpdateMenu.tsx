@@ -6,6 +6,7 @@ import { useAutoUpdater } from '@/hooks/useAutoUpdater'
 import { useAutoUpdateStore } from '@/stores/useAutoUpdateStore'
 import { cn } from '@/lib/utils'
 import logoLightMode from '@/assets/logos/logo_light_mode.png'
+import { useTranslation } from '@/lib/i18n'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDownZeroOneIcon as __ArrowDownToLineHugeIcon, ArrowDownZeroOneIcon as __DownloadHugeIcon, Cancel01Icon as __XHugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
@@ -27,6 +28,7 @@ function parseChangelogItems(releaseNotes?: string): string[] {
 
 export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) {
   useAutoUpdater({ enabled: !disableAutoUpdaterHook })
+  const { t } = useTranslation()
 
   const status = useAutoUpdateStore((s) => s.status)
   const version = useAutoUpdateStore((s) => s.version)
@@ -80,7 +82,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
         type="button"
         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
         onClick={() => setDismissedKey(dismissKey)}
-        aria-label="Dismiss update card"
+        aria-label={t('update.dismissLabel')}
       >
         <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
       </button>
@@ -93,12 +95,12 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
 
       <div className="space-y-3 px-4 py-4">
         <div className="space-y-1">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Cozea update</div>
-          <div className="text-2xl font-semibold leading-tight">Version {effectiveVersion}</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{t('update.title')}</div>
+          <div className="text-2xl font-semibold leading-tight">{t('update.version')} {effectiveVersion}</div>
         </div>
 
         <div className="space-y-1.5">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Changelog</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">{t('update.changelog')}</div>
           <div className="space-y-1 text-sm text-zinc-700">
             {changelogItems.length > 0 ? (
               changelogItems.map((item, index) => (
@@ -107,14 +109,14 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 </p>
               ))
             ) : (
-              <p className="leading-5 text-zinc-600">Performance and stability improvements.</p>
+              <p className="leading-5 text-zinc-600">{t('update.defaultChangelog')}</p>
             )}
           </div>
         </div>
 
         {status === 'downloading' && (
           <div className="space-y-1.5">
-            <div className="text-xs text-zinc-500">Downloading update... {percent}%</div>
+            <div className="text-xs text-zinc-500">{t('update.downloading')} {percent}%</div>
             <Progress value={percent} className="h-1.5 bg-zinc-200 [&_[data-slot=progress-indicator]]:bg-zinc-900" />
           </div>
         )}
@@ -128,7 +130,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 onClick={() => handleDownload('now')}
               >
                 <HugeiconsIcon icon={__DownloadHugeIcon} className="h-3.5 w-3.5" />
-                Download & restart
+                {t('update.downloadRestart')}
               </Button>
               <Button
                 size="sm"
@@ -137,7 +139,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 onClick={() => handleDownload('later')}
               >
                 <HugeiconsIcon icon={__ArrowDownToLineHugeIcon} className="h-3.5 w-3.5" />
-                Download only
+                {t('update.downloadOnly')}
               </Button>
             </>
           )}
@@ -148,7 +150,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
               disabled
               className="h-8 flex-1 bg-zinc-900 text-white hover:bg-zinc-900"
             >
-              Downloading...
+              {t('update.downloadingBtn')}
             </Button>
           )}
 
@@ -160,7 +162,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 onClick={handleRestart}
               >
                 <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
-                Download & restart
+                {t('update.downloadRestart')}
               </Button>
               <Button
                 size="sm"
@@ -168,7 +170,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
                 className="h-8 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
                 onClick={() => setDismissedKey(dismissKey)}
               >
-                Later
+                {t('common.later')}
               </Button>
             </>
           )}

@@ -145,6 +145,23 @@ function filterSlashItems<T extends { label: string; description: string }>(
   )
 }
 
+function includesNormalized(value: string, query: string): boolean {
+  return value.toLowerCase().includes(query.toLowerCase())
+}
+
+function filterSlashItems<T extends { label: string; description: string }>(
+  items: ReadonlyArray<T>,
+  query: string,
+): T[] {
+  const normalizedQuery = query.trim().replace(/^\/+/, "").toLowerCase()
+  if (!normalizedQuery) return [...items]
+  return items.filter(
+    (item) =>
+      includesNormalized(item.label, normalizedQuery) ||
+      includesNormalized(item.description, normalizedQuery),
+  )
+}
+
 interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
   runtimeErrorMessage: string | null
@@ -339,9 +356,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [isDragOverSurface, setIsDragOverSurface] = useState(false)
   const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
   const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false)
+<<<<<<< HEAD
+=======
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
   const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false)
   const [isModelPickerVisible, setIsModelPickerVisible] = useState(false)
+>>>>>>> main
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
   const dragDepthRef = useRef(0)
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1032,6 +1052,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     event.currentTarget.value = ""
   }
 
+<<<<<<< HEAD
+=======
   const handleComposerShellBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
     const next = event.relatedTarget as Node | null
     if (next && event.currentTarget.contains(next)) {
@@ -1039,6 +1061,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     setIsModelPickerOpen(false)
   }, [])
+
+>>>>>>> main
   const composerForm = (
     <form
       onSubmit={(event) => {
@@ -1056,7 +1080,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
+<<<<<<< HEAD
+=======
         onBlurCapture={handleComposerShellBlurCapture}
+>>>>>>> main
       >
         {activePendingApproval ? (
           <div className="border-b border-border/30 bg-background/10">

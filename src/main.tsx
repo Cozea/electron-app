@@ -11,6 +11,7 @@ import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
 import { ToastProvider } from './features/projects/components/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
+import { applyStoredLanguage } from './lib/i18n'
 
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
@@ -53,6 +54,7 @@ if (platform) {
 }
 
 applyThemeClass(getStoredThemePreference())
+applyStoredLanguage()
 
 const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
 createRoot(document.getElementById('root')!).render(

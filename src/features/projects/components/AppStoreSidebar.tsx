@@ -14,6 +14,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { useTranslation } from "@/lib/i18n"
 import { useSearchParams } from "@/lib/router"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
@@ -63,6 +64,7 @@ function AppStoreSidebarNavRow({
 }
 
 export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarProps) {
+  const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -116,7 +118,7 @@ export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarPr
           onClick={() => navigate("/projects")}
         >
           <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-          <span className="truncate">Back to projects</span>
+          <span className="truncate">{t('projects.backToProjects')}</span>
         </button>
 
         <div className="relative">
@@ -125,7 +127,7 @@ export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarPr
             type="search"
             value={query}
             onChange={handleQueryChange}
-            placeholder="Search"
+            placeholder={t('appStore.searchPlaceholder')}
             className="h-10 rounded-xl border-border/50 bg-muted pl-9 text-sm"
           />
         </div>
@@ -133,13 +135,13 @@ export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarPr
 
       <SidebarContent className="gap-0 px-2 py-1">
         <SidebarGroup className="px-0 py-0">
-          <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>Store</SidebarGroupLabel>
+          <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>{t('appStore.store')}</SidebarGroupLabel>
           <div className="space-y-1">
             {APP_STORE_CATEGORIES.map((category) => (
               <AppStoreSidebarNavRow
                 key={category.id}
                 icon={category.icon}
-                label={category.label}
+                label={(t as any)(`devApp.category.${category.id}`) ?? category.label}
                 isActive={activeCategory.id === category.id}
                 onClick={() => handleCategorySelect(category.id)}
               />

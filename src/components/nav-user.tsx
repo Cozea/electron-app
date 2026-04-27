@@ -10,6 +10,7 @@ import { useTheme } from "@/contexts/ThemeContext"
 import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Settings02Icon as __SettingsHugeIcon } from "@hugeicons/core-free-icons"
 
@@ -27,9 +28,9 @@ interface FormattedUser {
 }
 
 // Helper to format user data
-function formatUserData(user: RawUser | FormattedUser | null | undefined): FormattedUser {
+function formatUserData(user: RawUser | FormattedUser | null | undefined, fallbackLabel: string): FormattedUser {
   if (!user) {
-    return { name: "This computer", email: "" }
+    return { name: fallbackLabel, email: "" }
   }
 
   // Check if already formatted (has 'name' property)
@@ -41,7 +42,7 @@ function formatUserData(user: RawUser | FormattedUser | null | undefined): Forma
   const rawUser = user as RawUser
   const name = rawUser.firstName
     ? `${rawUser.firstName}${rawUser.lastName ? ` ${rawUser.lastName}` : ""}`
-    : rawUser.email?.split("@")[0] || "User"
+    : rawUser.email?.split("@")[0] || ""
 
   return {
     name,
@@ -56,11 +57,11 @@ function isLocalDeviceEmail(email: string): boolean {
 function formatLocalDeviceLabel(label: string): string {
   const trimmed = label.trim()
   if (!trimmed) {
-    return "This computer"
+    return ""
   }
 
   // Hostnames can include local-domain suffixes we do not want in the sidebar.
-  return trimmed.replace(/(\.localdomain|\.local)$/i, "") || "This computer"
+  return trimmed.replace(/(\\.localdomain|\\.local)$/i, "") || ""
 }
 
 export function NavUser({
@@ -69,15 +70,18 @@ export function NavUser({
   user: RawUser | FormattedUser | null | undefined
 }) {
   const { theme, setTheme } = useTheme()
-  const userData = formatUserData(user)
+  const { t } = useTranslation()
+  const userData = formatUserData(user, t("nav.thisComputer"))
   const navigate = useViewTransitionNavigate()
   const { activeWorkspace: currentWorkspace } = useResolvedScope({ ignoreLocation: true })
   const isLocalDeviceProfile = isLocalDeviceEmail(userData.email)
+  const menuTitleFallback = userData.name || t("common.user")
+  const formattedDeviceName = formatLocalDeviceLabel(menuTitleFallback)
   const menuTitle = isLocalDeviceProfile
-    ? `This ${formatLocalDeviceLabel(userData.name)}`
+    ? formattedDeviceName ? t("nav.thisDevice").replace("{device}", formattedDeviceName) : t("nav.thisComputer")
     : userData.name
   const menuSummarySublabel = isLocalDeviceProfile
-    ? "Local computer"
+    ? t("nav.localComputer")
     : currentWorkspace?.workspaceName || currentWorkspace?.organizationName || userData.email
 
   const handleMenuClick = React.useCallback(
@@ -97,7 +101,7 @@ export function NavUser({
       if (menuTitle || menuSummarySublabel) {
         items.push({
           id: "summary",
-          label: menuTitle || "User",
+          label: menuTitle,
           sublabel: menuSummarySublabel || undefined,
           enabled: false,
         })
@@ -106,15 +110,15 @@ export function NavUser({
 
       items.push({
         id: "account-settings",
-        label: "User settings",
+        label: t("nav.userSettings"),
       })
       items.push({
         id: "theme-group",
-        label: "Theme",
+        label: t("nav.theme"),
         submenu: [
-          { id: "theme-light", label: "Light", type: "radio", checked: theme === "light" },
-          { id: "theme-dark", label: "Dark", type: "radio", checked: theme === "dark" },
-          { id: "theme-system", label: "System", type: "radio", checked: theme === "system" },
+          { id: "theme-light", label: t("nav.themeLight"), type: "radio", checked: theme === "light" },
+          { id: "theme-dark", label: t("nav.themeDark"), type: "radio", checked: theme === "dark" },
+          { id: "theme-system", label: t("nav.themeSystem"), type: "radio", checked: theme === "system" },
         ],
       })
       items.push({ id: "separator-bottom", label: "", type: "separator" })
@@ -146,6 +150,7 @@ export function NavUser({
       menuTitle,
       navigate,
       setTheme,
+      t,
       theme,
     ],
   )
@@ -159,8 +164,8 @@ export function NavUser({
           type="button"
           className="[&_svg]:text-sidebar-foreground"
           onClick={handleMenuClick}
-          aria-label="Open user menu"
-          title="Open user menu"
+          aria-label={t("nav.openUserMenu")}
+          title={t("nav.openUserMenu")}
         >
           <HugeiconsIcon
             icon={__SettingsHugeIcon}
