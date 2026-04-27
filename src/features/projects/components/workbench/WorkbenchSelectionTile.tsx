@@ -30,7 +30,7 @@ const WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH = 680
 const LAUNCHER_CONFIG = {
   tileWidth: 96,
   iconSize: 58,
-  iconRadius: 185.4,
+  iconRadius: 58 * 0.22265625, // macOS standard: width * 0.22265625
   iconGlyphSize: 24,
   cellWidth: 96,
   cellHeight: 102,
@@ -308,7 +308,7 @@ function SelectionListButton({
 }) {
   const { t } = useTranslation()
   const iconSize = 42
-  const iconRadius = 185.4
+  const iconRadius = 42 * 0.22265625 // macOS standard: width * 0.22265625
 
   const appNameKey = `devApp.name.${option.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`
   const localizedName = (t as any)(appNameKey) ?? option.name
