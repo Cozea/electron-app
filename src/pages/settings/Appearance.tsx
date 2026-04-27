@@ -41,7 +41,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
     {
       value: "light",
       labelKey: "settings.appearance.themeLight",
-      swatch: "#0b0b0f",
+      swatch: "#ffffff",
     },
     {
       value: "dark",

@@ -1251,24 +1251,7 @@ body {
     background-clip: content-box;
   }
 
-  :root[data-platform="darwin"] .app-scrollbar {
-    scrollbar-width: auto;
-    scrollbar-color: auto;
-  }
 
-  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar {
-    width: auto;
-    height: auto;
-  }
-
-  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-track,
-  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-thumb,
-  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-thumb:hover,
-  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-thumb:active {
-    background: initial;
-    border: none;
-    background-clip: border-box;
-  }
 }
 
   /* Custom Scrollbars removed to allow native OS scrollbars (with elasticity) to show. */
