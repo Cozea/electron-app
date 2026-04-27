@@ -126,7 +126,7 @@ type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerS
 
 const DOCKED_COMPOSER_SCROLL_GAP_PX = 16
 const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128
-const MODEL_PICKER_PANEL_TRANSITION_MS = 200
+const MODEL_PICKER_PANEL_TRANSITION_MS = 150
 
 function includesNormalized(value: string, query: string): boolean {
   return value.toLowerCase().includes(query.toLowerCase())
@@ -1179,7 +1179,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
         <div
           className={cn(
-            "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-200 ease-out",
+            "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-150 ease-out",
             isModelPickerVisible
               ? "max-h-72 translate-y-0 border-border/30 opacity-100"
               : "pointer-events-none max-h-0 -translate-y-1 border-transparent opacity-0",
