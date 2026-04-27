@@ -333,6 +333,13 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
           </MarkdownCodeBlock>
         );
       },
+      table({ node: _node, ...props }) {
+        return (
+          <div className="w-full overflow-x-auto overflow-y-hidden overscroll-x-contain">
+            <table {...props} />
+          </div>
+        );
+      },
     }),
     [cwd, diffThemeName, isStreaming],
   );

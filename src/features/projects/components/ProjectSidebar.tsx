@@ -219,6 +219,15 @@ export function ProjectSidebar({
   }, [projectItems]);
 
   React.useEffect(() => {
+    if (currentProjectId) {
+      setExpandedProjectIds((current) => {
+        if (current.includes(currentProjectId)) return current;
+        return [...current, currentProjectId];
+      });
+    }
+  }, [currentProjectId]);
+
+  React.useEffect(() => {
     writePersistedProjectSidebarState({
       expandedProjectIds,
       projectOrderIds,

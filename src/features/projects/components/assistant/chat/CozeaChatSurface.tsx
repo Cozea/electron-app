@@ -59,6 +59,7 @@ import {
 import { type Thread } from "@/stores/types"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, ImageAdd01Icon as __ImageAdd01IconHugeIcon } from '@hugeicons/core-free-icons'
@@ -326,6 +327,7 @@ function SkillGlyph({ className }: { className?: string }) {
 }
 
 export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
+  const { t } = useTranslation()
   const resolvedTheme = resolveTimelineTheme()
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
@@ -341,6 +343,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const dragDepthRef = useRef(0)
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
+  const dockHoverContainerRef = useRef<HTMLDivElement | null>(null)
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
 
@@ -533,6 +536,38 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.thread?.session?.lastError ?? props.thread?.error ?? props.runtimeErrorMessage ?? null
 
   const dockComposerOnHover = Boolean(props.dockComposerOnHover)
+
+  // ARM Mac (Apple Silicon) Electron fix: pointerleave/mouseleave events can
+  // be missed, causing the composer to stay visible. This effect validates the
+  // pointer is actually inside the container whenever it moves, and resets the
+  // hover state if the pointer has left without a leave event firing.
+  useEffect(() => {
+    if (!dockComposerOnHover || !composerDockHover) {
+      return
+    }
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const container = dockHoverContainerRef.current
+      if (!container) return
+
+      const rect = container.getBoundingClientRect()
+      const isInside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+
+      if (!isInside) {
+        setComposerDockHover(false)
+      }
+    }
+
+    document.addEventListener("pointermove", handlePointerMove, { passive: true })
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove)
+    }
+  }, [dockComposerOnHover, composerDockHover])
+
   const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
     const next = event.relatedTarget as Node | null
     if (next && event.currentTarget.contains(next)) {
@@ -1194,26 +1229,26 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             onPaste={props.onComposerPaste}
             placeholder={
               isComposerApprovalState
-                ? (activePendingApproval?.detail ?? "Resolve this approval request to continue")
+                ? (activePendingApproval?.detail ?? (t as any)("assistant.chat.placeholder.resolveApproval"))
                 : activePendingProgress
-                  ? "Type your own answer, or leave this blank to use the selected option"
+                  ? (t as any)("assistant.chat.placeholder.customAnswer")
                   : showPlanFollowUpPrompt
-                    ? "Add feedback to refine the plan"
+                    ? (t as any)("assistant.chat.placeholder.planFeedback")
                     : props.isInterrupting
                       ? props.isForceStopAvailable
-                        ? "The run is still stopping. Force stop if it does not settle."
-                        : "Stopping the current run..."
+                        ? (t as any)("assistant.chat.placeholder.forceStop")
+                        : (t as any)("assistant.chat.placeholder.stopping")
                     : props.runtimeErrorMessage
-                      ? "Local chat runtime unavailable. Waiting for recovery..."
+                      ? (t as any)("assistant.chat.placeholder.runtimeUnavailable")
                       : phase === "error"
-                        ? "The last run hit an error. Fix the issue or send a follow-up."
+                        ? (t as any)("assistant.chat.placeholder.error")
                         : phase === "interrupted"
-                          ? "The last run was interrupted. Send a message to continue."
+                          ? (t as any)("assistant.chat.placeholder.interrupted")
                           : phase === "stopped"
-                            ? "The agent session stopped. Send a message to start a new run."
+                            ? (t as any)("assistant.chat.placeholder.stopped")
                       : phase === "disconnected"
-                        ? "Ask for follow-up changes"
-                        : "Ask anything, @tag files/folders, or use / to show available commands"
+                        ? (t as any)("assistant.chat.placeholder.disconnected")
+                        : (t as any)("assistant.chat.placeholder.default")
             }
             className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
             disabled={composerDisabled}
@@ -1233,9 +1268,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : (
           <div
             data-chat-composer-footer="true"
-            className="mb-2 shrink-0 flex flex-wrap items-center justify-between gap-2 px-2 sm:flex-nowrap"
+            className="mb-2 shrink-0 flex flex-nowrap items-center justify-between gap-2 px-2"
           >
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
               <Button
                 type="button"
                 variant="ghost"
@@ -1253,7 +1288,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   viewBox="0 0 24 24"
                   fill="none"
                   aria-hidden="true"
-                  className="mr-1 shrink-0"
+                  className="shrink-0"
                 >
                   <path
                     d="M21.44 11.05l-8.49 8.49a6 6 0 11-8.49-8.49l8.49-8.49a4 4 0 115.66 5.66l-8.5 8.49a2 2 0 11-2.82-2.83l7.78-7.78"
@@ -1263,7 +1298,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                     strokeLinejoin="round"
                   />
                 </svg>
-                Attach
                 {props.composerImages.length > 0 ? (
                   <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] leading-none text-primary">
                     {props.composerImages.length}
@@ -1412,18 +1446,19 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         </div>
       )}
       <div
+        ref={dockComposerOnHover ? dockHoverContainerRef : undefined}
         className={cn(
           "relative flex min-h-0 flex-1 flex-col",
           dockComposerOnHover && "overflow-hidden",
         )}
-        onMouseEnter={
+        onPointerEnter={
           dockComposerOnHover
             ? () => {
                 setComposerDockHover(true)
               }
             : undefined
         }
-        onMouseLeave={
+        onPointerLeave={
           dockComposerOnHover
             ? () => {
                 setComposerDockHover(false)
