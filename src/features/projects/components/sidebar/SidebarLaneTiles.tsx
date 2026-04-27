@@ -359,12 +359,15 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           key={tile.id}
           type="button"
           className={cn(
-            "w-full",
+            "relative w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
             resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
+          <div className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+            <AgentStatusPill threadId={tile.threadId} />
+          </div>
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
             <ProviderGlyph
               provider={tile.provider}
@@ -377,7 +380,6 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
               {tile.title}
             </span>
           </div>
-          <AgentStatusPill threadId={tile.threadId} />
         </button>
       ))}
       {surfaces.map((tile) => (
