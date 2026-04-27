@@ -915,6 +915,7 @@ export function useWorkbenchAssistantTileController(
     requestId: string,
     questionId: string,
     value: string,
+    cursor?: number,
   ) => {
     setUserInputDrafts((current) => ({
       ...current,
@@ -923,6 +924,9 @@ export function useWorkbenchAssistantTileController(
         [questionId]: value,
       },
     }))
+    if (cursor !== undefined) {
+      setComposerCursor(cursor)
+    }
   }
 
   const handleSubmitUserInput = async (requestId: string) => {
