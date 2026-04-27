@@ -1,5 +1,5 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import {
   getDevAppForAssistantProvider,
@@ -20,7 +20,7 @@ import {
   isLatestTurnSettled,
 } from "@/features/projects/components/assistant/chat/session-logic"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
-import { cn } from "@/lib/utils"
+import { cn, formatRelativeTimeLabel } from "@/lib/utils"
 import {
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_NESTED_ROW_CLASS,
@@ -314,6 +314,42 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   )
 }
 
+function AgentTimeLabel(props: { threadId?: string | null }) {
+  const threadSelector = useMemo(
+    () => createAssistantThreadSelectorById(props.threadId),
+    [props.threadId],
+  )
+  const thread = useStore(threadSelector)
+
+  // Use a simple tick to refresh relative time every minute
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const interval = window.setInterval(() => setTick((c) => c + 1), 60000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  if (!thread) return null
+
+  const latestUserMessageAt = (() => {
+    const userMessages = thread.messages.filter(m => m.role === "user")
+    return userMessages.length > 0 ? userMessages[userMessages.length - 1].createdAt : null
+  })()
+
+  const timestamp = latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt
+  if (!timestamp) return null
+
+  return (
+    <span
+      className={cn(
+        "text-[10px] ml-auto shrink-0",
+        "text-muted-foreground/40 group-hover:text-foreground/72 dark:group-hover:text-foreground/82 transition-colors"
+      )}
+    >
+      {formatRelativeTimeLabel(timestamp)}
+    </span>
+  )
+}
+
 interface SidebarLaneTilesProps {
   activeLaneSummary: WorkbenchLaneSidebarSummary | null
   activeSelectionLevel: SidebarActiveSelectionLevel
@@ -379,6 +415,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
             <span className="min-w-0 flex-1 truncate" title={shouldShowAgentTitle(tile.title) ? tile.title : undefined}>
               {tile.title}
             </span>
+            <AgentTimeLabel threadId={tile.threadId} />
           </div>
         </button>
       ))}
