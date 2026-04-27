@@ -48,7 +48,7 @@ import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/ch
 import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
 import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/projects/components/assistant/chat/ComposerPromptEditor"
-import { detectComposerTrigger, replaceTextRange } from "@/features/projects/components/assistant/composer-logic"
+import { detectComposerTrigger, replaceTextRange, collapseExpandedComposerCursor, expandCollapsedComposerCursor } from "@/features/projects/components/assistant/composer-logic"
 import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/projects/components/assistant/vscode-icons"
 import type { ContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
@@ -433,9 +433,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasComposerHeader =
     isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt
   const composerValue = activePendingProgress?.customAnswer ?? props.composer
+  const composerExpandedCursor = useMemo(
+    () => expandCollapsedComposerCursor(composerValue, props.composerCursor),
+    [composerValue, props.composerCursor]
+  )
   const composerTrigger = useMemo(
-    () => detectComposerTrigger(composerValue, props.composerCursor),
-    [composerValue, props.composerCursor],
+    () => detectComposerTrigger(composerValue, composerExpandedCursor),
+    [composerValue, composerExpandedCursor],
   )
   const composerPathTrigger = composerTrigger?.kind === "path" ? composerTrigger : null
   const composerSlashTrigger = composerTrigger?.kind === "slash-command" ? composerTrigger : null
@@ -934,13 +938,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       replacementRangeEnd,
       replacement,
     )
-    props.onComposerChange(next.text, next.cursor)
+    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
+    props.onComposerChange(next.text, collapsedCursor)
     setComposerHighlightedItemId(null)
   }
 
   const clearComposerTriggerRange = (rangeStart: number, rangeEnd: number) => {
     const next = replaceTextRange(composerValue, rangeStart, rangeEnd, "")
-    props.onComposerChange(next.text, next.cursor)
+    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
+    props.onComposerChange(next.text, collapsedCursor)
     setComposerHighlightedItemId(null)
   }
 
@@ -962,7 +968,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           composerSlashTrigger.rangeEnd,
           "/model ",
         )
-        props.onComposerChange(next.text, next.cursor)
+        const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
+        props.onComposerChange(next.text, collapsedCursor)
         setComposerHighlightedItemId(null)
         return
       }
@@ -988,7 +995,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       replacementRangeEnd,
       replacement,
     )
-    props.onComposerChange(next.text, next.cursor)
+    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
+    props.onComposerChange(next.text, collapsedCursor)
     setComposerHighlightedItemId(null)
   }
 
