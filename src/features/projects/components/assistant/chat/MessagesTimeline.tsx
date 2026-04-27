@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant-contracts";
+import { useTranslation } from "@/lib/i18n";
 import {
   memo,
   useCallback,
@@ -181,6 +182,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   workspaceRoot,
 }: MessagesTimelineProps) {
+  const { t } = useTranslation();
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const legendListRef = useRef<LegendListRef | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
@@ -577,7 +579,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               )}
               <div
                 className={cn(
-                  "space-y-0.5 overflow-y-auto overscroll-contain flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+                  "space-y-0.5 overflow-y-auto flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
                   !isExpanded && hasOverflow
                     ? "max-h-[160px] [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]"
                     : "max-h-none"
@@ -840,9 +842,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
               <EmptyAssistantIcon className="h-7 w-7" />
             </EmptyMedia>
-            <EmptyTitle className="text-base font-medium">Ready to assist</EmptyTitle>
+            <EmptyTitle className="text-base font-medium">{t("assistant.chat.readyToAssist")}</EmptyTitle>
             <EmptyDescription>
-              Send a message to start the conversation and begin building.
+              {t("assistant.chat.readyToAssistDesc")}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -911,14 +913,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         }}
         onStartReachedThreshold={0.2}
         onViewableItemsChanged={onLegendListViewableItemsChanged}
-        className="h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
+        className="app-scrollbar h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
         contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
         contentContainerStyle={{
           paddingBottom: bottomPaddingPx,
           paddingTop: 16,
           transition: "padding-bottom 200ms ease-out",
         }}
-        showsVerticalScrollIndicator
+        showsVerticalScrollIndicator={false}
       />
     </div>
   );

@@ -262,9 +262,8 @@ function SelectionLauncherButton({
   option: DevAppManifest
   onChoose: WorkbenchSelectionTileProps["onChoose"]
 }) {
-  const { t } = useTranslation()
-  const appNameKey = `devApp.name.${option.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`
-  const localizedName = (t as any)(appNameKey) ?? option.name
+
+  const localizedName = option.name
 
   return (
     <button
@@ -306,12 +305,11 @@ function SelectionListButton({
   option: DevAppManifest
   onChoose: WorkbenchSelectionTileProps["onChoose"]
 }) {
-  const { t } = useTranslation()
+
   const iconSize = 42
   const iconRadius = 42 * 0.22265625 // macOS standard: width * 0.22265625
 
-  const appNameKey = `devApp.name.${option.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`
-  const localizedName = (t as any)(appNameKey) ?? option.name
+  const localizedName = option.name
 
   return (
     <button
