@@ -52,7 +52,7 @@ export const SIDEBAR_PILL_NESTED_ROW_CLASS = cn(
 )
 
 /** Indented block inside a nested row (icon + primary label) — pill stays full width */
-export const SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS = "flex min-w-0 flex-1 items-center gap-2 ps-3"
+export const SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS = "flex min-w-0 flex-1 items-center gap-2 ps-6"
 
 export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   id: string
