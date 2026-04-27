@@ -540,7 +540,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const workspaceRoot = props.projectPath ?? undefined
   const threadRuntimeBannerState = props.isInterrupting
     ? "interrupting"
-    : phase === "error" || phase === "interrupted" || phase === "stopped" || phase === "connecting"
+    : phase === "error" || phase === "interrupted" || phase === "connecting"
       ? phase
       : null
   const threadRuntimeDetail =
