@@ -93,12 +93,7 @@ export const ProjectSidebarTreeItem = React.memo(
       [activeLaneWorkbench],
     )
 
-    /** Matches `SidebarLaneTiles`: no assistant/surface rows — row click should open the workbench instead of toggling. */
-    const rowClickOpensProject = React.useMemo(() => {
-      if (!activeLaneSummary) return false
-      return activeLaneSummary.agents.length === 0 && activeLaneSummary.surfaces.length === 0
-    }, [activeLaneSummary])
-    const isLanesOpen = context.isCurrentProject && selection.isExpanded
+    const isLanesOpen = selection.isExpanded
     const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
       font: SIDEBAR_PROJECT_LABEL_FONT,
     })
@@ -107,18 +102,15 @@ export const ProjectSidebarTreeItem = React.memo(
       return getOverflowTitle(project.name, reservedWidth)
     }, [getOverflowTitle, project.name])
 
-    const handleProjectRowClick = React.useCallback(() => {
-      void actions.openProject(project, localPath)
-      if (!rowClickOpensProject) {
-        if (context.isCurrentProject) {
-          actions.toggleExpanded(project.id)
-          return
-        }
-        if (!selection.isExpanded) {
-          actions.toggleExpanded(project.id)
-        }
-      }
-    }, [actions, context.isCurrentProject, localPath, project, rowClickOpensProject, selection.isExpanded])
+    const handleProjectOpenClick = React.useCallback((e: React.MouseEvent) => {
+      e.stopPropagation();
+      void actions.openProject(project, localPath);
+    }, [actions, project, localPath]);
+
+    const handleProjectToggleClick = React.useCallback((e: React.MouseEvent) => {
+      e.stopPropagation();
+      actions.toggleExpanded(project.id);
+    }, [actions, project.id]);
 
     const handleProjectMenuClick = React.useCallback(
       async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -241,29 +233,29 @@ export const ProjectSidebarTreeItem = React.memo(
               SIDEBAR_PILL_ACTIVE_CLASS,
           )}
         >
-          <button
-            type="button"
-            aria-expanded={rowClickOpensProject ? undefined : isLanesOpen}
-            aria-label={
-              rowClickOpensProject
-                ? `Open ${project.name}`
-                : isLanesOpen
-                  ? `${project.name}, lanes expanded. Press to collapse.`
-                  : `${project.name}, lanes collapsed. Press to expand.`
-            }
-            className={cn(
-              "group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            )}
-            onClick={handleProjectRowClick}
-          >
-            <NativeProjectFolderIcon
-              folderPath={localPath}
-              isOpen={rowClickOpensProject ? false : isLanesOpen}
-            />
-            <span className="min-w-0 flex-1 truncate font-normal" title={projectNameTitle}>
-              {project.name}
-            </span>
-          </button>
+          <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
+            <button
+              type="button"
+              className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-[2px] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={handleProjectToggleClick}
+              aria-label={isLanesOpen ? "Collapse" : "Expand"}
+            >
+              <NativeProjectFolderIcon
+                folderPath={localPath}
+                isOpen={isLanesOpen}
+              />
+            </button>
+            <button
+              type="button"
+              className="group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
+              onClick={handleProjectOpenClick}
+              aria-label={`Open ${project.name}`}
+            >
+              <span className="min-w-0 flex-1 truncate font-normal" title={projectNameTitle}>
+                {project.name}
+              </span>
+            </button>
+          </div>
           <Button
             type="button"
             variant="ghost"

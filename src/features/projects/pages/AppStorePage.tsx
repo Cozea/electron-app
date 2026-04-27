@@ -199,7 +199,7 @@ export function AppStorePage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-foreground">
-                            {(t as any)(`devApp.name.${app.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`) ?? app.name}
+                            {app.name}
                           </p>
                           <p className="text-[11px] text-muted-foreground">{(t as any)(`devApp.category.${app.store.categoryLabel}`) ?? app.store.categoryLabel}</p>
                         </div>
