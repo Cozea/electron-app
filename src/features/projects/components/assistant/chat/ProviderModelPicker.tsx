@@ -41,7 +41,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
   
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
   const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
-  const triggerSubtitle = selectedModel?.subProvider;
   const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
 
   const { containerRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLSpanElement>({
@@ -76,24 +75,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
           <TooltipTrigger asChild>
             <span
               ref={containerRef}
-              className={cn(
-                "min-w-0 flex-1 overflow-hidden",
-                triggerSubtitle
-                  ? "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1"
-                  : "truncate",
-              )}
+              className="min-w-0 flex-1 truncate"
             >
-              {triggerSubtitle ? (
-                <>
-                  <span className="min-w-0 truncate">{triggerSubtitle}</span>
-                  <span aria-hidden="true" className="shrink-0 opacity-60">
-                    ·
-                  </span>
-                  <span className="min-w-0 truncate">{triggerTitle}</span>
-                </>
-              ) : (
-                triggerTitle
-              )}
+              {triggerTitle}
             </span>
           </TooltipTrigger>
           {overflowTitle && <TooltipContent side="top">{overflowTitle}</TooltipContent>}
