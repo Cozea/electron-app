@@ -1089,11 +1089,11 @@ const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
             } as React.CSSProperties
           }
         >
-          <div className="preview-loading-spinner-square bg-muted-foreground" />
-          <div className="preview-loading-spinner-square bg-muted-foreground" />
-          <div className="preview-loading-spinner-square bg-muted-foreground" />
-          <div className="preview-loading-spinner-square bg-muted-foreground" />
-          <div className="preview-loading-spinner-square bg-muted-foreground" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
         </div>
         <span>{elapsedLabel ? `Working for ${elapsedLabel}` : "Working..."}</span>
       </div>
