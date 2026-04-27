@@ -1416,10 +1416,7 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
     };
   }
   if (isRunningWorkEntry(workEntry) && !isCommandLikeWorkEntry(workEntry)) {
-    return {
-      label: "Running",
-      className: "border-border/60 bg-background/80 text-muted-foreground",
-    };
+    return null;
   }
   return null;
 }
@@ -1432,8 +1429,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const { workEntry, workspaceRoot, resolvedTheme } = props;
   const iconConfig = workToneIcon(workEntry.tone, workEntry.status);
   const EntryIcon = workEntryIcon(workEntry);
-  const showRunningCommandSpinner =
-    isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry);
+  const showRunningCommandSpinner = isRunningWorkEntry(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
   const preview =
