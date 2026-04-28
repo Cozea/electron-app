@@ -569,9 +569,6 @@ export function ChangesPage(_props: ChangesPageProps) {
             <div className="flex h-full min-h-0 w-full overflow-hidden">
               <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 flex flex-col shrink-0">
                  <div className="p-4 pb-0 shrink-0">
-                   <h2 className="mb-4 text-sm font-semibold text-foreground">
-                     {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
-                   </h2>
                    <div className="mb-3 flex items-center">
                      <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-border/40 bg-muted/60 transition-colors focus-within:border-border/60 focus-within:bg-background">
                        <HugeiconsIcon
@@ -607,6 +604,11 @@ export function ChangesPage(_props: ChangesPageProps) {
                        {t('changes.empty.noMatchingFiles')}
                      </div>
                    )}
+                 </div>
+                 <div className="px-4 pb-4 pt-2 shrink-0">
+                   <h2 className="text-[13px] font-medium text-foreground">
+                     {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
+                   </h2>
                  </div>
               </div>
               <div className="flex-1 overflow-y-auto bg-background flex flex-col">
