@@ -281,8 +281,7 @@ function ChangeComments(props: {
                 placeholder={t('changes.comments.postPlaceholder')}
                 className="min-h-[40px] resize-y border-transparent bg-transparent px-0 py-2 shadow-none focus-visible:ring-0 text-[14px] text-foreground placeholder:text-muted-foreground/60"
               />
-              <div className="flex justify-between items-center pt-2">
-                <div className="text-[12px] text-muted-foreground/60">{t('changes.comments.markdownSupported')}</div>
+              <div className="flex justify-end items-center pt-2">
                 <Button
                   type="button"
                   size="sm"
