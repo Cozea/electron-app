@@ -396,6 +396,7 @@ function ChangeGroupCard(props: {
                         top: 0 !important;
                         z-index: 10 !important;
                         background-color: var(--card) !important;
+                        border-bottom: 1px solid var(--border) !important;
                       }
                       [data-diff],
                       [data-file] {
