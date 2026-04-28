@@ -761,7 +761,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   return (
                     <div className="mt-2 rounded-lg bg-secondary p-2.5">
                       <div className="group mb-2 flex items-center justify-between gap-2 pr-2 pl-1.5 pt-1">
-                        <div className="flex items-center gap-2 text-[11px] font-normal uppercase tracking-[0.08em] text-muted-foreground/60">
+                        <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground/60">
                           <span>Changed files</span>
                           <span className="inline-flex size-[18px] items-center justify-center rounded-full bg-border/40 text-[10px] font-medium normal-case tracking-normal tabular-nums text-foreground/70">
                             {changedFileCountLabel}
