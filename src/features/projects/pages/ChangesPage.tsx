@@ -560,7 +560,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                    {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
                  </h2>
                  <div className="mb-3 flex shrink-0 items-center gap-1.5 px-1">
-                   <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-muted/60 transition-colors focus-within:border-ring/50 focus-within:bg-background">
+                   <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-sidebar transition-colors focus-within:border-ring/50 focus-within:bg-background">
                      <HugeiconsIcon
                        icon={__SearchHugeIcon}
                        className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground/70"
@@ -574,7 +574,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                    </label>
                    <button
                      type="button"
-                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-sidebar hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                      aria-label={t('changes.action.filterFiles')}
                    >
                      <HugeiconsIcon icon={__FilterHugeIcon} className="size-4" />
