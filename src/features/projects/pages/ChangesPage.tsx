@@ -399,6 +399,11 @@ function ChangeGroupCard(props: {
                         background-color: var(--card) !important;
                         border-bottom: 1px solid var(--border) !important;
                       }
+                      [data-additions-count],
+                      [data-deletions-count] {
+                        font-family: ui-sans-serif, system-ui, sans-serif !important;
+                        font-variant-numeric: tabular-nums;
+                      }
                       [data-diff],
                       [data-file] {
                         --diffs-bg: transparent !important;
