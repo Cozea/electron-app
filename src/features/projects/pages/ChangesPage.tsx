@@ -391,7 +391,7 @@ function ChangeGroupCard(props: {
   }, [group.items, selectedFilePath]);
 
   return (
-    <article className="flex p-4 sm:p-6 hover:bg-muted/5 transition-colors">
+    <article className="flex py-2 px-4 sm:px-6 hover:bg-muted/5 transition-colors">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all relative">
           <div className="flex-1 overflow-y-auto bg-card relative">
