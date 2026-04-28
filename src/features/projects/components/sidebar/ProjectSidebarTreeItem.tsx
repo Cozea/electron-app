@@ -93,11 +93,6 @@ export const ProjectSidebarTreeItem = React.memo(
       [activeLaneWorkbench],
     )
 
-    /** Matches `SidebarLaneTiles`: no assistant/surface rows — row click should open the workbench instead of toggling. */
-    const rowClickOpensProject = React.useMemo(() => {
-      if (!activeLaneSummary) return false
-      return activeLaneSummary.agents.length === 0 && activeLaneSummary.surfaces.length === 0
-    }, [activeLaneSummary])
     const isLanesOpen = selection.isExpanded
     const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
       font: SIDEBAR_PROJECT_LABEL_FONT,

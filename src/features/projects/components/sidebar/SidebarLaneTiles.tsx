@@ -1,5 +1,5 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import {
   getDevAppForAssistantProvider,
@@ -20,7 +20,7 @@ import {
   isLatestTurnSettled,
 } from "@/features/projects/components/assistant/chat/session-logic"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
-import { cn } from "@/lib/utils"
+import { cn, formatRelativeTimeLabel } from "@/lib/utils"
 import {
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_NESTED_ROW_CLASS,
@@ -37,7 +37,7 @@ import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
-const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[5px]"
+const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
 const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 
 function SurfaceTileGlyph(props: {
@@ -314,6 +314,42 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   )
 }
 
+function AgentTimeLabel(props: { threadId?: string | null }) {
+  const threadSelector = useMemo(
+    () => createAssistantThreadSelectorById(props.threadId),
+    [props.threadId],
+  )
+  const thread = useStore(threadSelector)
+
+  // Use a simple tick to refresh relative time every minute
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const interval = window.setInterval(() => setTick((c) => c + 1), 60000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  if (!thread) return null
+
+  const latestUserMessageAt = (() => {
+    const userMessages = thread.messages.filter(m => m.role === "user")
+    return userMessages.length > 0 ? userMessages[userMessages.length - 1].createdAt : null
+  })()
+
+  const timestamp = latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt
+  if (!timestamp) return null
+
+  return (
+    <span
+      className={cn(
+        "text-[10px] ml-auto shrink-0",
+        "text-muted-foreground/40 group-hover:text-foreground/72 dark:group-hover:text-foreground/82 transition-colors"
+      )}
+    >
+      {formatRelativeTimeLabel(timestamp)}
+    </span>
+  )
+}
+
 interface SidebarLaneTilesProps {
   activeLaneSummary: WorkbenchLaneSidebarSummary | null
   activeSelectionLevel: SidebarActiveSelectionLevel
@@ -359,12 +395,15 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           key={tile.id}
           type="button"
           className={cn(
-            "w-full",
+            "relative w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
             resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         >
+          <div className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+            <AgentStatusPill threadId={tile.threadId} />
+          </div>
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
             <ProviderGlyph
               provider={tile.provider}
@@ -376,8 +415,8 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
             <span className="min-w-0 flex-1 truncate" title={shouldShowAgentTitle(tile.title) ? tile.title : undefined}>
               {tile.title}
             </span>
+            <AgentTimeLabel threadId={tile.threadId} />
           </div>
-          <AgentStatusPill threadId={tile.threadId} />
         </button>
       ))}
       {surfaces.map((tile) => (

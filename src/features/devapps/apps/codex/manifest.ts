@@ -10,6 +10,7 @@ export const codexDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Codex",
+    className: "scale-[1.25] bg-white dark:bg-white",
   },
   launcher: {
     enabled: true,

@@ -253,7 +253,6 @@ const es: Record<TranslationKey, string> = {
   "devApp.category.Development": "Desarrollo",
   "devApp.category.Assistant": "Asistente",
 
-
   // ── Workbench Chrome & Layout ─────────────────────────────────────────
   "workbench.layout.restore": "Restaurar panel",
   "workbench.layout.maximize": "Maximizar panel",

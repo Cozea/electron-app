@@ -10,7 +10,7 @@ import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
 import { buildModelPickerSearchText, scoreModelPickerSearch } from "./modelPickerSearch";
-import { Combobox, ComboboxEmpty, ComboboxInput, ComboboxList } from "@/components/ui/combobox";
+import { Combobox, ComboboxEmpty, ComboboxInput, ComboboxListVirtualized } from "@/components/ui/combobox";
 import { type ModelEsque, PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Schema } from "effect";
@@ -313,8 +313,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (cancelled) {
         return;
       }
-      const viewport = listRegion.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
-      if (!viewport || viewport.scrollHeight <= viewport.clientHeight) {
+      const viewport = listRegion;
+      if (viewport.scrollHeight <= viewport.clientHeight) {
         return;
       }
       const originalScrollTop = viewport.scrollTop;
@@ -345,7 +345,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          "relative flex h-screen max-h-96 w-screen max-w-[400px] overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg/5",
+          "relative flex w-full h-full overflow-hidden text-popover-foreground",
           isLocked ? "flex-col" : "flex-row",
         )}
       >
@@ -364,7 +364,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           />
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Combobox
             open
             disabled={false}
@@ -384,11 +384,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 showTrigger={false}
                 showClear={false}
                 startAddon={<HugeiconsIcon icon={__SearchIconHugeIcon} className="size-4 opacity-50" />}
-                className="w-full bg-transparent border-0 outline-none focus:ring-0 px-2 py-2.5 text-sm"
+                className="w-full px-2 py-2.5 text-sm"
+                inputClassName="bg-transparent border-0 outline-none focus-visible:ring-0 shadow-none !pl-10"
               />
             </div>
-            <div ref={listRegionRef} className="relative min-h-0 flex-1 h-full w-full">
-              <ComboboxList className="h-full">
+            <div
+              ref={listRegionRef}
+              className="relative min-h-0 flex-1 w-full overflow-y-auto overscroll-contain"
+            >
+              <ComboboxListVirtualized className="min-h-full">
                 {filteredModels.length === 0 ? (
                   <ComboboxEmpty className="py-6">No matching models found.</ComboboxEmpty>
                 ) : (
@@ -410,7 +414,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     );
                   })
                 )}
-              </ComboboxList>
+              </ComboboxListVirtualized>
             </div>
           </Combobox>
         </div>

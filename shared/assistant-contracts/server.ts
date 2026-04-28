@@ -60,12 +60,16 @@ export interface ServerProviderAuth {
 export const ServerProviderModel = Schema.Struct({
   slug: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
+  shortName: Schema.optional(TrimmedNonEmptyString),
+  subProvider: Schema.optional(TrimmedNonEmptyString),
   isCustom: Schema.Boolean,
   capabilities: Schema.NullOr(ModelCapabilities),
 });
 export interface ServerProviderModel {
   slug: string;
   name: string;
+  shortName?: string;
+  subProvider?: string;
   isCustom: boolean;
   capabilities: ModelCapabilities | null;
 }

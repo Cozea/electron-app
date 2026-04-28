@@ -10,6 +10,7 @@ export const devServerDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Dev Server",
+    className: "scale-[1.25] bg-white dark:bg-white",
   },
   launcher: {
     enabled: true,

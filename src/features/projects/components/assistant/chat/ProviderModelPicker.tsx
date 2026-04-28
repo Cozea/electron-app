@@ -1,19 +1,18 @@
 import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
-import { memo, useState } from "react";
+import { memo } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Popover, PopoverPopup, PopoverTrigger } from "@/features/projects/components/assistant/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { ModelPickerContent } from "./ModelPickerContent";
 import {
   type ModelEsque,
   PROVIDER_ICON_BY_PROVIDER,
   getTriggerDisplayModelLabel,
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
+import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 interface ProviderModelPickerProps {
   provider: ProviderKind;
@@ -33,9 +32,7 @@ interface ProviderModelPickerProps {
 }
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: ProviderModelPickerProps) {
-  const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const activeProvider = props.lockedProvider ?? props.provider;
-  const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
   const selectedProviderOptions = props.modelOptionsByProvider[activeProvider];
   
   const selectedModel =
@@ -44,101 +41,49 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
   
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
   const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
-  const triggerSubtitle = selectedModel?.subProvider;
   const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
 
-  const setIsMenuOpen = (open: boolean) => {
-    props.onOpenChange?.(open);
-    if (props.open === undefined) {
-      setUncontrolledIsMenuOpen(open);
-    }
-  };
-
-  const handleProviderModelChange = (provider: ProviderKind, model: string) => {
-    if (props.disabled) return;
-    props.onProviderModelChange(provider, model);
-    setIsMenuOpen(false);
-  };
+  const { containerRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLSpanElement>({
+    font: "14px Inter",
+  });
+  const overflowTitle = getOverflowTitle(triggerLabel, 0);
 
   return (
-    <Popover
-      open={isMenuOpen}
-      onOpenChange={(open: boolean) => {
-        if (props.disabled) {
-          setIsMenuOpen(false);
-          return;
-        }
-        setIsMenuOpen(open);
-      }}
+    <Button
+      size="sm"
+      variant={props.triggerVariant ?? "ghost"}
+      data-chat-provider-model-picker="true"
+      className={cn(
+        "min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
+        props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
+        props.triggerClassName,
+      )}
+      disabled={props.disabled}
+      onClick={() => props.onOpenChange?.(!props.open)}
     >
-      <PopoverTrigger
-        render={
-          <Button
-            size="sm"
-            variant={props.triggerVariant ?? "ghost"}
-            data-chat-provider-model-picker="true"
-            className={cn(
-              "min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
-              props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
-              props.triggerClassName,
-            )}
-            disabled={props.disabled}
-          />
-        }
+      <span
+        className={cn(
+          "flex min-w-0 w-full box-border items-center gap-2 overflow-hidden",
+          props.compact ? "max-w-36 sm:pl-1" : undefined,
+        )}
       >
-          <span
-            className={cn(
-              "flex min-w-0 w-full box-border items-center gap-2 overflow-hidden",
-              props.compact ? "max-w-36 sm:pl-1" : undefined,
-            )}
-          >
-            <ProviderIcon
-              aria-hidden="true"
-              className={cn("size-4 shrink-0", props.activeProviderIconClassName)}
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 overflow-hidden",
-                    triggerSubtitle
-                      ? "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1"
-                      : "truncate",
-                  )}
-                >
-                  {triggerSubtitle ? (
-                    <>
-                      <span className="min-w-0 truncate">{triggerSubtitle}</span>
-                      <span aria-hidden="true" className="shrink-0 opacity-60">
-                        ·
-                      </span>
-                      <span className="min-w-0 truncate">{triggerTitle}</span>
-                    </>
-                  ) : (
-                    triggerTitle
-                  )}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top">{triggerLabel}</TooltipContent>
-            </Tooltip>
-            <HugeiconsIcon icon={__ChevronDownIconHugeIcon} aria-hidden="true" className="size-3 shrink-0 opacity-60" />
-          </span>
-      </PopoverTrigger>
-      <PopoverPopup
-        align="start"
-        className="border-0 bg-transparent p-0 shadow-none before:hidden [--viewport-inline-padding:0] *:data-[slot=popover-viewport]:p-0"
-      >
-        <ModelPickerContent
-          provider={props.provider}
-          model={props.model}
-          lockedProvider={props.lockedProvider}
-          {...(props.providers && { providers: props.providers })}
-          modelOptionsByProvider={props.modelOptionsByProvider}
-          terminalOpen={props.terminalOpen ?? false}
-          onRequestClose={() => setIsMenuOpen(false)}
-          onProviderModelChange={handleProviderModelChange}
+        <ProviderIcon
+          aria-hidden="true"
+          className={cn("size-4 shrink-0", props.activeProviderIconClassName)}
         />
-      </PopoverPopup>
-    </Popover>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              ref={containerRef}
+              className="min-w-0 flex-1 truncate"
+            >
+              {triggerTitle}
+            </span>
+          </TooltipTrigger>
+          {overflowTitle && <TooltipContent side="top">{overflowTitle}</TooltipContent>}
+        </Tooltip>
+        <HugeiconsIcon icon={__ChevronDownIconHugeIcon} aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+      </span>
+    </Button>
   );
 });

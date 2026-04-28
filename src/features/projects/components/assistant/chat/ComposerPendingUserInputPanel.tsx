@@ -133,8 +133,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               {questionIndex + 1}/{prompt.questions.length}
             </span>
           ) : null}
-          <span className="text-[11px] font-semibold tracking-widest text-muted-foreground/50 uppercase">
-            {activeQuestion.header}
+          <span className="text-[11px] font-semibold text-muted-foreground/50">
+            {activeQuestion.header.charAt(0).toUpperCase() + activeQuestion.header.slice(1).toLowerCase()}
           </span>
         </div>
       </div>
@@ -152,33 +152,33 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               className={cn(
                 "group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all duration-150",
                 isSelected
-                  ? "border-blue-500/40 bg-blue-500/8 text-foreground"
-                  : "border-transparent bg-muted/20 text-foreground/80 hover:bg-muted/40 hover:border-border/40",
+                  ? "border-transparent bg-accent text-accent-foreground"
+                  : "border-transparent bg-transparent text-foreground/80 hover:bg-accent/50 hover:text-accent-foreground",
                 isResponding && "opacity-50 cursor-not-allowed",
               )}
             >
               {shortcutKey !== null ? (
                 <kbd
                   className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-medium tabular-nums transition-colors duration-150",
+                    "flex size-5 shrink-0 items-center justify-center rounded-[5px] border text-[10px] font-medium tabular-nums transition-colors duration-150",
                     isSelected
-                      ? "bg-blue-500/20 text-blue-400"
-                      : "bg-muted/40 text-muted-foreground/50 group-hover:bg-muted/60 group-hover:text-muted-foreground/70",
+                      ? "border-border/80 bg-background text-foreground shadow-sm"
+                      : "border-border/60 bg-background/50 text-muted-foreground/50 group-hover:border-border/80 group-hover:bg-background group-hover:text-muted-foreground/80",
                   )}
                 >
                   {shortcutKey}
                 </kbd>
               ) : null}
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-medium">{option.label}</span>
+                <span className="block text-sm font-medium">{option.label}</span>
                 {option.description && option.description !== option.label ? (
-                  <span className="ml-2 text-xs text-muted-foreground/50">
+                  <span className="block mt-0.5 text-xs text-muted-foreground/60 line-clamp-2">
                     {option.description}
                   </span>
                 ) : null}
               </div>
               {isSelected ? (
-                <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 shrink-0 text-blue-400" />
+                <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 shrink-0 text-foreground" />
               ) : null}
             </button>
           );

@@ -10,6 +10,7 @@ export const cursorDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Cursor",
+    className: "scale-[1.25] bg-white dark:bg-white",
   },
   launcher: {
     enabled: true,

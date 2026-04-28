@@ -760,45 +760,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
                     <div className="mt-2 rounded-lg bg-secondary p-2.5">
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                          <span>Changed files ({changedFileCountLabel})</span>
-                          {hasNonZeroStat(summaryStat) && (
-                            <>
-                              <span className="mx-1">•</span>
-                              <DiffStatLabel
-                                additions={summaryStat.additions}
-                                deletions={summaryStat.deletions}
-                              />
-                            </>
-                          )}
-                        </p>
-                        <div className="flex items-center gap-1.5">
-                          <Button
+                      <div className="group mb-2 flex items-center justify-between gap-2 pr-2 pl-1.5 pt-1">
+                        <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground/60">
+                          <span>Changed files</span>
+                          <span className="inline-flex size-[18px] items-center justify-center rounded-full bg-border/40 text-[10px] font-medium normal-case tracking-normal tabular-nums text-foreground/70">
+                            {changedFileCountLabel}
+                          </span>
+                          <button
                             type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            className="group rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+                            className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                             onClick={() => onToggleAllDirectories(turnSummary.turnId)}
                             title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                             aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           >
-                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-                            onClick={() =>
-                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                            }
-                            title="View diff"
-                            aria-label="View diff"
-                          >
-                            <EyeIcon className="size-3.5" />
-                          </Button>
+                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5" />
+                          </button>
                         </div>
+                        {hasNonZeroStat(summaryStat) && (
+                          <div className="font-mono text-[10px] tabular-nums">
+                            <DiffStatLabel
+                              additions={summaryStat.additions}
+                              deletions={summaryStat.deletions}
+                            />
+                          </div>
+                        )}
                       </div>
                       <ChangedFilesTree
                         key={`changed-files-tree:${turnSummary.turnId}`}
@@ -1076,11 +1061,25 @@ const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
   return (
     <div className="py-0.5 pl-1.5">
       <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-        <span className="inline-flex items-center gap-[3px]">
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-        </span>
+        <div
+          className="preview-loading-spinner"
+          style={
+            {
+              "--square": "3.5px",
+              "--offset": "4.5px",
+              margin: "0",
+              width: "calc(3 * var(--offset) + var(--square))",
+              height: "calc(2 * var(--offset) + var(--square))",
+              opacity: 0.7,
+            } as React.CSSProperties
+          }
+        >
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+        </div>
         <span>{elapsedLabel ? `Working for ${elapsedLabel}` : "Working..."}</span>
       </div>
     </div>
@@ -1402,10 +1401,7 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
     };
   }
   if (isRunningWorkEntry(workEntry) && !isCommandLikeWorkEntry(workEntry)) {
-    return {
-      label: "Running",
-      className: "border-border/60 bg-background/80 text-muted-foreground",
-    };
+    return null;
   }
   return null;
 }
@@ -1418,8 +1414,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const { workEntry, workspaceRoot, resolvedTheme } = props;
   const iconConfig = workToneIcon(workEntry.tone, workEntry.status);
   const EntryIcon = workEntryIcon(workEntry);
-  const showRunningCommandSpinner =
-    isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry);
+  const showRunningCommandSpinner = isRunningWorkEntry(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
   const preview =

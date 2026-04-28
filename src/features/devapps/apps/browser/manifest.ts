@@ -10,6 +10,7 @@ export const browserDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Browser",
+    className: "scale-[1.25] bg-white dark:bg-white",
   },
   launcher: {
     enabled: true,

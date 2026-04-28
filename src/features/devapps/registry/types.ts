@@ -21,6 +21,7 @@ export type DevAppWorkbenchTileTarget =
 export interface DevAppIconDefinition {
   src: string
   alt?: string
+  className?: string
 }
 
 export interface DevAppLauncherMetadata {
