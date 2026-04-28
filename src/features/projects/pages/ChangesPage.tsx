@@ -611,22 +611,22 @@ export function ChangesPage(_props: ChangesPageProps) {
               </div>
               <div className="flex-1 overflow-y-auto bg-background flex flex-col">
                 {/* Search within code header */}
-                <div className="flex items-center gap-3 px-6 py-4 border-b border-border/70 shrink-0">
-                  <button className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
-                    <HugeiconsIcon icon={__SidebarHugeIcon} className="size-5" />
+                <div className="flex items-center gap-2 px-6 py-3 border-b border-border/70 shrink-0">
+                  <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
+                    <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4.5" />
                   </button>
-                  <label className="relative flex h-10 min-w-0 flex-1 items-center rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors focus-within:border-ring/50 focus-within:ring-1 focus-within:ring-ring/50">
+                  <label className="relative flex h-9 min-w-0 flex-1 items-center rounded-lg border border-transparent bg-muted/60 transition-colors focus-within:border-border/50 focus-within:bg-background">
                     <HugeiconsIcon
                       icon={__SearchHugeIcon}
-                      className="pointer-events-none absolute left-3.5 size-4 text-muted-foreground/70"
+                      className="pointer-events-none absolute left-3 size-4 text-muted-foreground/70"
                     />
                     <input
                       placeholder="Search within code"
-                      className="h-full min-w-0 flex-1 bg-transparent pl-10 pr-4 text-[14px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                      className="h-full min-w-0 flex-1 bg-transparent pl-9 pr-4 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
                     />
                   </label>
-                  <button className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
-                    <HugeiconsIcon icon={__SettingsHugeIcon} className="size-5" />
+                  <button className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
+                    <HugeiconsIcon icon={__SettingsHugeIcon} className="size-4.5" />
                   </button>
                 </div>
                 
