@@ -1,16 +1,31 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useEffect } from "react";
 import type { ActivityFeedItem } from "../../pages/ChangesPage";
 import { FileTree, useFileTree } from "@pierre/trees/react";
+import { prepareFileTreeInput, type GitStatusEntry } from "@pierre/trees";
 import { cn } from "@/lib/utils";
 
 export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   files: ReadonlyArray<ActivityFeedItem>;
   allDirectoriesExpanded: boolean;
   onOpenFile: (filePath: string) => void;
+  selectedFilePath?: string | null;
 }) {
-  const { files, allDirectoriesExpanded, onOpenFile } = props;
+  const { files, allDirectoriesExpanded, onOpenFile, selectedFilePath } = props;
 
-  const paths = useMemo(() => files.map(f => f.filePath), [files]);
+  const preparedInput = useMemo(() => {
+    return prepareFileTreeInput(files.map(f => f.filePath), {
+      flattenEmptyDirectories: true,
+    });
+  }, [files]);
+
+  const gitStatus = useMemo(() => {
+    return files.map(f => ({
+      path: f.filePath,
+      status: f.changeType === 'create' ? 'added' :
+              f.changeType === 'delete' ? 'deleted' :
+              f.changeType === 'rename' ? 'renamed' : 'modified'
+    })) as GitStatusEntry[];
+  }, [files]);
 
   const statsMap = useMemo(() => {
     const map = new Map<string, { additions: number, deletions: number }>();
@@ -31,9 +46,11 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   }, [files]);
 
   const { model } = useFileTree({
-    paths,
-    flattenEmptyDirectories: true,
+    preparedInput,
     initialExpansion: allDirectoriesExpanded ? 'open' : 'closed',
+    initialSelectedPaths: selectedFilePath ? [selectedFilePath] : undefined,
+    gitStatus,
+    icons: { set: 'standard' },
     renderRowDecoration: ({ item }) => {
       const stat = statsMap.get(item.path);
       if (!stat || (stat.additions === 0 && stat.deletions === 0)) return null;
@@ -41,15 +58,16 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     },
     onSelectionChange: (selectedPaths) => {
       if (selectedPaths.length > 0) {
-        const path = selectedPaths[0];
-        onOpenFile(path);
-        // We defer deselection slightly to allow the click to register
-        setTimeout(() => {
-          model.getItem(path)?.deselect();
-        }, 50);
+        onOpenFile(selectedPaths[0]);
       }
     }
   });
+
+  useEffect(() => {
+    if (selectedFilePath) {
+      model.getItem(selectedFilePath)?.select();
+    }
+  }, [model, selectedFilePath]);
 
   return (
     <div className="w-full">

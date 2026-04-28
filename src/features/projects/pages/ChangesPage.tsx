@@ -257,6 +257,7 @@ function ChangeGroupCard(props: {
   previousCheckpointGroupId: string | null
   commentCounts: Record<string, number>
   viewerUserId: Id<'users'> | null
+  selectedFilePath: string | null
 }) {
   const {
     group,
@@ -264,13 +265,12 @@ function ChangeGroupCard(props: {
     previousCheckpointGroupId,
     commentCounts,
     viewerUserId,
+    selectedFilePath,
   } = props
   
   const [patch, setPatch] = useState<string | null>(null)
   const [patchError, setPatchError] = useState<string | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [showComments, setShowComments] = useState(false)
-  const [showSidebar, setShowSidebar] = useState(true)
   const [diffStyle, setDiffStyle] = useState<"split" | "unified">("split")
   const { t } = useTranslation()
 
@@ -313,13 +313,6 @@ function ChangeGroupCard(props: {
     }
   }, [gitCwd, group.groupId, previousCheckpointGroupId])
 
-  // Automatically select the first file when opening
-  useEffect(() => {
-    if (group.items.length > 0 && !selectedFilePath) {
-      setSelectedFilePath(group.items[0].filePath);
-    }
-  }, [group.items, selectedFilePath]);
-
   const parsedFiles = useMemo(() => {
     if (!patch) return [];
     try {
@@ -359,21 +352,12 @@ function ChangeGroupCard(props: {
         </div>
 
         <div className="mb-3">
-          <p className="text-[15px] text-foreground leading-snug">
-            {t('changes.info.updatedFiles').replace('{count}', String(group.items.length)).replace('{plural}', group.items.length !== 1 ? 's' : '')}
+          <p className="text-[15px] text-foreground font-mono leading-snug truncate" title={selectedFilePath ?? undefined}>
+            {selectedFilePath}
           </p>
         </div>
 
         <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all">
-          {showSidebar && (
-            <div className="w-[30%] min-w-[200px] max-w-[260px] border-r border-border/70 bg-muted/10 overflow-y-auto p-2">
-               <ChangedFilesTree 
-                 files={group.items}
-                 allDirectoriesExpanded={true}
-                 onOpenFile={(filePath) => setSelectedFilePath(filePath)}
-               />
-            </div>
-          )}
           <div className="flex-1 overflow-y-auto bg-card">
             {patchError ? (
               <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -440,14 +424,6 @@ function ChangeGroupCard(props: {
           <div className="flex items-center gap-3">
             <button 
               className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
-              onClick={() => setShowSidebar((prev) => !prev)}
-              title={t('changes.action.toggleTree')}
-            >
-              <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4.5" />
-            </button>
-            <div className="h-4 w-px bg-border/70" />
-            <button 
-              className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
               onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
               title={diffStyle === "split" ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
             >
@@ -482,6 +458,34 @@ export function ChangesPage(_props: ChangesPageProps) {
   ) as ActivityFeedItem[] | undefined
 
   const groups = useMemo(() => groupActivityItems(activity ?? []), [activity]);
+
+  const uniqueFiles = useMemo(() => {
+    if (!activity) return [];
+    const map = new Map<string, ActivityFeedItem>();
+    for (const item of activity) {
+      if (!map.has(item.filePath)) {
+        map.set(item.filePath, { ...item });
+      } else {
+        const existing = map.get(item.filePath)!;
+        existing.additions = (existing.additions || 0) + (item.additions || 0);
+        existing.deletions = (existing.deletions || 0) + (item.deletions || 0);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.filePath.localeCompare(b.filePath));
+  }, [activity]);
+
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (uniqueFiles.length > 0 && !selectedFilePath) {
+      setSelectedFilePath(uniqueFiles[0].filePath);
+    }
+  }, [uniqueFiles, selectedFilePath]);
+
+  const filteredGroups = useMemo(() => {
+    if (!selectedFilePath) return groups;
+    return groups.filter(g => g.items.some(i => i.filePath === selectedFilePath));
+  }, [groups, selectedFilePath]);
 
   const changeIds = useMemo(
     () => activity?.map((item) => item.id as Id<'fileChanges'>) ?? [],
@@ -522,19 +526,37 @@ export function ChangesPage(_props: ChangesPageProps) {
               </div>
             </div>
           ) : (
-            <div className="flex w-full flex-col">
-              {groups.map((group) => {
-                return (
-                  <ChangeGroupCard
-                    key={group.groupId}
-                    group={group}
-                    gitCwd={gitCwd}
-                    previousCheckpointGroupId={previousCheckpointGroupIds.get(group.groupId) ?? null}
-                    commentCounts={commentCounts ?? {}}
-                    viewerUserId={convexUserId}
-                  />
-                )
-              })}
+            <div className="flex h-full min-h-0 w-full overflow-hidden">
+              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 bg-muted/10 overflow-y-auto p-4 shrink-0 flex flex-col">
+                 <h2 className="mb-4 text-sm font-semibold text-foreground shrink-0">
+                   {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
+                 </h2>
+                 <div className="flex-1 min-h-0 overflow-y-auto">
+                   <ChangedFilesTree 
+                     files={uniqueFiles}
+                     allDirectoriesExpanded={true}
+                     onOpenFile={(filePath) => setSelectedFilePath(filePath)}
+                     selectedFilePath={selectedFilePath}
+                   />
+                 </div>
+              </div>
+              <div className="flex-1 overflow-y-auto bg-background">
+                <div className="flex w-full flex-col">
+                  {filteredGroups.map((group) => {
+                    return (
+                      <ChangeGroupCard
+                        key={group.groupId}
+                        group={group}
+                        gitCwd={gitCwd}
+                        previousCheckpointGroupId={previousCheckpointGroupIds.get(group.groupId) ?? null}
+                        commentCounts={commentCounts ?? {}}
+                        viewerUserId={convexUserId}
+                        selectedFilePath={selectedFilePath}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </div>
