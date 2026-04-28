@@ -390,8 +390,8 @@ function ChangeGroupCard(props: {
                         position: sticky !important;
                         top: 0 !important;
                         z-index: 10 !important;
+                        background-color: var(--card) !important;
                       }
-                      [data-diffs-header],
                       [data-diff],
                       [data-file] {
                         --diffs-bg: transparent !important;
