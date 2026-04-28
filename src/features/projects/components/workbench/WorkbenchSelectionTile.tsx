@@ -311,6 +311,8 @@ function SelectionListButton({
 
   const localizedName = option.name
 
+  const localizedName = option.name
+
   return (
     <button
       type="button"
