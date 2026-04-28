@@ -219,7 +219,10 @@ function ChangeComments(props: {
     <div className="mt-4 pt-4 border-t border-border/70">
       {count > 0 && (
         <div className="mb-4 flex items-center gap-2 text-[15px] font-bold text-foreground px-2">
-          <span>{t('changes.comments.count').replace('{count}', String(count))}</span>
+          <span>{t('changes.comments.count').split('(')[0].trim()}</span>
+          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-muted/60 px-1.5 text-[13px] font-medium text-foreground">
+            {count}
+          </span>
         </div>
       )}
 
