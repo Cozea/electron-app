@@ -45,7 +45,7 @@ export function DevAppIcon({ app, className }: DevAppIconProps) {
         src={app.icon.src}
         alt={app.icon.alt ?? app.name}
         decoding="async"
-        className={cn("h-full w-full rounded-[inherit] object-contain", className)}
+        className={cn("h-full w-full rounded-[inherit] object-contain", app.icon.className, className)}
         onError={() => setHasError(true)}
       />
     </span>

@@ -10,6 +10,7 @@ export const terminalDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Terminal",
+    className: "scale-[1.25] bg-white dark:bg-white",
   },
   launcher: {
     enabled: true,

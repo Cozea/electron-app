@@ -29,8 +29,8 @@ const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminal
 const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
 const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
-const WORKBENCH_PILL_APP_ICON_CLASS = "size-5 shrink-0 overflow-hidden rounded-[5px]"
-const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-md"
+const WORKBENCH_PILL_APP_ICON_CLASS = "size-5 shrink-0 overflow-hidden rounded-[4.5px]"
+const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-[5.3px]"
 
 interface WorkbenchTileChromeProps {
   title: string

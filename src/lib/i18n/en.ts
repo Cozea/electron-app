@@ -243,7 +243,6 @@ const en = {
   "devApp.category.Development": "Development",
   "devApp.category.Assistant": "Assistant",
 
-
   // ── Workbench Chrome & Layout ─────────────────────────────────────────
   "workbench.layout.restore": "Restore Tile",
   "workbench.layout.maximize": "Maximize Tile",

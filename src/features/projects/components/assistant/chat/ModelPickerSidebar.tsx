@@ -27,9 +27,9 @@ function describeUnavailableProvider(label: string, live: ServerProvider | undef
   return msg ? `${label} — ${kind}. ${msg}` : `${label} — ${kind}.`;
 }
 
-const SELECTED_BUTTON_CLASS = "bg-background text-foreground shadow-sm";
+const SELECTED_BUTTON_CLASS = "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]";
 const SELECTED_INDICATOR_CLASS =
-  "pointer-events-none absolute -right-1 top-1/2 z-10 h-5 w-0.5 -translate-y-1/2 rounded-l-full bg-primary";
+  "pointer-events-none absolute right-0 top-1/2 z-10 h-5 w-0.5 -translate-y-1/2 rounded-l-full bg-primary";
 const BADGE_BASE_CLASS =
   "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
 const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-amber-600 dark:text-amber-300 `;
@@ -37,6 +37,9 @@ const SOON_BADGE_CLASS = `${BADGE_BASE_CLASS} text-muted-foreground `;
 
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_CLASS = "max-w-64 text-balance font-normal leading-snug";
+const PICKER_ITEM_CLASS = "relative flex w-full justify-center";
+const PICKER_BUTTON_CLASS =
+  "relative isolate flex h-10 w-full cursor-pointer items-center justify-center rounded transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]";
 
 export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   selectedProvider: ProviderKind | "favorites";
@@ -48,32 +51,32 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   };
 
   return (
-    <div className="flex flex-col w-12 border-r border-border/40 bg-muted/30 p-1 overflow-y-auto gap-1">
+    <div className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/40 bg-muted/30 px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Favorites section */}
-      <div className="pb-1 mb-1 border-b border-border/40">
-        <div className="relative w-full">
-          {props.selectedProvider === "favorites" && <div className={SELECTED_INDICATOR_CLASS} />}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className={cn(
-                  "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded transition-colors hover:bg-muted",
-                  props.selectedProvider === "favorites" && SELECTED_BUTTON_CLASS,
-                )}
-                onClick={() => handleProviderClick("favorites")}
-                type="button"
-                data-model-picker-provider="favorites"
-                aria-label="Favorites"
-              >
-                <HugeiconsIcon icon={__StarIconHugeIcon} className="size-5 fill-current shrink-0" aria-hidden />
-              </button>
+      <div className={PICKER_ITEM_CLASS}>
+        {props.selectedProvider === "favorites" && <div className={SELECTED_INDICATOR_CLASS} />}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className={cn(
+                PICKER_BUTTON_CLASS,
+                props.selectedProvider === "favorites" && SELECTED_BUTTON_CLASS,
+              )}
+              onClick={() => handleProviderClick("favorites")}
+              type="button"
+              data-model-picker-provider="favorites"
+              aria-label="Favorites"
+            >
+              <HugeiconsIcon icon={__StarIconHugeIcon} className="size-5 fill-current shrink-0" aria-hidden />
+            </button>
             </TooltipTrigger>
             <TooltipContent side={PICKER_TOOLTIP_SIDE} align="center" className={PICKER_TOOLTIP_CLASS}>
               Favorites
             </TooltipContent>
           </Tooltip>
         </div>
-      </div>
+
+      <div className="my-0.5 h-px w-full bg-border/40" />
 
       {/* Provider buttons */}
       {AVAILABLE_PROVIDER_OPTIONS.map((option) => {
@@ -96,7 +99,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
           <button
             data-model-picker-provider={option.value}
             className={cn(
-              "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded transition-colors hover:bg-muted",
+              PICKER_BUTTON_CLASS,
               isSelected && SELECTED_BUTTON_CLASS,
               isDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent",
             )}
@@ -125,13 +128,13 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
         );
 
         const trigger = isDisabled ? (
-          <span className="relative block w-full">{button}</span>
+          <span className="relative block h-10 w-full">{button}</span>
         ) : (
           button
         );
 
         return (
-          <div key={option.value} className="relative w-full">
+          <div key={option.value} className={PICKER_ITEM_CLASS}>
             {isSelected && <div className={SELECTED_INDICATOR_CLASS} />}
             <Tooltip>
               <TooltipTrigger asChild>{trigger}</TooltipTrigger>
@@ -146,10 +149,10 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
       {/* Gemini button (coming soon) */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="relative block w-full">
+          <span className="relative block h-10 w-full">
             <button
               className={cn(
-                "relative isolate flex w-full aspect-square items-center justify-center rounded opacity-50 cursor-not-allowed transition-colors hover:bg-transparent",
+                "relative isolate flex h-10 w-full items-center justify-center rounded opacity-50 cursor-not-allowed transition-colors hover:bg-transparent",
               )}
               disabled
               type="button"
@@ -170,10 +173,10 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
       {/* Github Copilot button (coming soon) */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="relative block w-full">
+          <span className="relative block h-10 w-full">
             <button
               className={cn(
-                "relative isolate flex w-full aspect-square items-center justify-center rounded opacity-50 cursor-not-allowed transition-colors hover:bg-transparent",
+                "relative isolate flex h-10 w-full items-center justify-center rounded opacity-50 cursor-not-allowed transition-colors hover:bg-transparent",
               )}
               disabled
               type="button"

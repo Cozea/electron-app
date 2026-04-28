@@ -68,7 +68,7 @@ export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
   return (
     <div
       className={cn(
-        "rounded-2xl border px-3 py-2.5 sm:px-4",
+        "border-b px-4 py-3 sm:px-5 sm:py-3.5",
         presentation.className,
       )}
       role="status"

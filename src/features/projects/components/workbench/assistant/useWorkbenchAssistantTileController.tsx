@@ -915,6 +915,7 @@ export function useWorkbenchAssistantTileController(
     requestId: string,
     questionId: string,
     value: string,
+    cursor?: number,
   ) => {
     setUserInputDrafts((current) => ({
       ...current,
@@ -923,6 +924,9 @@ export function useWorkbenchAssistantTileController(
         [questionId]: value,
       },
     }))
+    if (cursor !== undefined) {
+      setComposerCursor(cursor)
+    }
   }
 
   const handleSubmitUserInput = async (requestId: string) => {
@@ -1163,24 +1167,16 @@ export function useWorkbenchAssistantTileController(
   }
 
   const composerStatus = (() => {
-    if (runtimeErrorMessage) {
-      return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
-          {runtimeErrorMessage}
-        </div>
-      )
-    }
-
     if (bindingError) {
       return (
-        <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
+        <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
           <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1">{bindingError}</span>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="h-7 shrink-0 px-2 text-destructive"
+            className="h-7 shrink-0 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={() => setBindingRevision((current) => current + 1)}
           >
             Retry
@@ -1191,40 +1187,18 @@ export function useWorkbenchAssistantTileController(
 
     if (sendError || requestError) {
       return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
-          {sendError ?? requestError}
-        </div>
-      )
-    }
-
-    if (thread?.session?.status === "error" && thread.session.lastError) {
-      return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-normal text-destructive">
-          {thread.session.lastError}
-        </div>
-      )
-    }
-
-    if (thread?.session?.status === "interrupted") {
-      return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
-          The last run was interrupted. Send another message to continue.
-        </div>
-      )
-    }
-
-    if (thread?.session?.status === "stopped") {
-      return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
-          The agent session stopped. Send a message to start a new run.
+        <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2 min-w-0 flex-1">{sendError ?? requestError}</span>
         </div>
       )
     }
 
     if (configError && !config) {
       return (
-        <div className="line-clamp-2 min-w-0 rounded-2xl border border-border/60 bg-secondary/50 px-3 py-2 text-xs leading-normal text-muted-foreground">
-          {configError}
+        <div className="flex min-w-0 items-center gap-2 border-b border-border/60 bg-secondary/50 px-4 py-3 text-xs leading-normal text-muted-foreground">
+          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2 min-w-0 flex-1">{configError}</span>
         </div>
       )
     }
