@@ -11,6 +11,7 @@ import {
   PanelLeftIcon as __SidebarHugeIcon,
   Search01Icon as __SearchHugeIcon,
   FilterMailIcon as __FilterHugeIcon,
+  Settings02Icon as __SettingsHugeIcon,
 } from '@hugeicons/core-free-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
@@ -608,8 +609,28 @@ export function ChangesPage(_props: ChangesPageProps) {
                    )}
                  </div>
               </div>
-              <div className="flex-1 overflow-y-auto bg-background">
-                <div className="flex w-full flex-col">
+              <div className="flex-1 overflow-y-auto bg-background flex flex-col">
+                {/* Search within code header */}
+                <div className="flex items-center gap-3 px-6 py-4 border-b border-border/70 shrink-0">
+                  <button className="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60 text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
+                    <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4" />
+                  </button>
+                  <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-border/50 bg-background transition-colors focus-within:border-ring/50 focus-within:ring-1 focus-within:ring-ring/50">
+                    <HugeiconsIcon
+                      icon={__SearchHugeIcon}
+                      className="pointer-events-none absolute left-2.5 size-4 text-muted-foreground/70"
+                    />
+                    <input
+                      placeholder="Search within code"
+                      className="h-full min-w-0 flex-1 bg-transparent pl-8 pr-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                    />
+                  </label>
+                  <button className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
+                    <HugeiconsIcon icon={__SettingsHugeIcon} className="size-5" />
+                  </button>
+                </div>
+                
+                <div className="flex w-full flex-col overflow-y-auto">
                   {filteredGroups.map((group) => {
                     return (
                       <ChangeGroupCard
