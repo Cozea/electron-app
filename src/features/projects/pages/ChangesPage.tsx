@@ -485,29 +485,29 @@ function ChangeGroupCard(props: {
                </div>
             ) : null}
           </div>
-        </div>
 
-        {/* Action Buttons (Twitter style) */}
-        <div className="flex w-fit ml-auto items-center gap-4 text-muted-foreground mb-1 mt-1 border border-border/60 rounded-full px-3 py-1.5 bg-background">
-          <div className="flex items-center gap-6">
-            <button 
-              className="flex items-center gap-1.5 text-[14px] hover:text-foreground transition-colors group"
-              onClick={() => setShowComments((prev) => !prev)}
-            >
-              <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-4.5" />
-              {totalComments > 0 && <span className="font-medium">{totalComments}</span>}
-            </button>
-          </div>
+          {/* Action Buttons (Twitter style) */}
+          <div className="absolute bottom-4 right-4 z-20 flex w-fit items-center gap-4 text-muted-foreground border border-border/60 rounded-full px-3 py-1.5 bg-background shadow-sm">
+            <div className="flex items-center gap-6">
+              <button 
+                className="flex items-center gap-1.5 text-[14px] hover:text-foreground transition-colors group"
+                onClick={() => setShowComments((prev) => !prev)}
+              >
+                <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-4.5" />
+                {totalComments > 0 && <span className="font-medium">{totalComments}</span>}
+              </button>
+            </div>
 
-          {/* View Toggles */}
-          <div className="flex items-center gap-3">
-            <button 
-              className="flex items-center justify-center size-6 rounded-full hover:bg-muted/80 transition-colors hover:text-foreground"
-              onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
-              title={diffStyle === "split" ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
-            >
-              <HugeiconsIcon icon={diffStyle === "split" ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4" />
-            </button>
+            {/* View Toggles */}
+            <div className="flex items-center gap-3">
+              <button 
+                className="flex items-center justify-center size-6 rounded-full hover:bg-muted/80 transition-colors hover:text-foreground"
+                onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
+                title={diffStyle === "split" ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
+              >
+                <HugeiconsIcon icon={diffStyle === "split" ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4" />
+              </button>
+            </div>
           </div>
         </div>
 
