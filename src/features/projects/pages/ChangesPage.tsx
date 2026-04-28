@@ -234,22 +234,22 @@ function ChangeComments(props: {
               {/* Left column (Avatar + Thread line) */}
               <div className="flex flex-col items-center shrink-0">
                 <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-sm z-10"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs z-10 mt-1"
                   style={{ backgroundColor: comment.userColor || '#666' }}
                 >
                   {comment.userName.charAt(0).toUpperCase()}
                 </span>
                 {showLine && (
-                  <div className="w-[2px] bg-border/60 grow my-1.5" />
+                  <div className="w-[2px] bg-border/60 grow my-1" />
                 )}
               </div>
               
               {/* Right column (Content) */}
-              <div className="flex min-w-0 flex-1 flex-col pb-5">
-                <div className="flex items-center gap-1.5 text-[14px] leading-none mb-1 mt-1">
-                  <span className="font-bold text-foreground truncate hover:underline cursor-pointer">{comment.userName}</span>
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-muted-foreground hover:underline cursor-pointer">{formatRelativeTime(comment.createdAt)}</span>
+              <div className="flex min-w-0 flex-1 flex-col pb-4">
+                <div className="flex items-center gap-1.5 text-[14px] leading-none mb-1 mt-1.5">
+                  <span className="font-semibold text-foreground text-sm truncate hover:underline cursor-pointer">{comment.userName}</span>
+                  <span className="text-muted-foreground text-sm">·</span>
+                  <span className="text-muted-foreground text-sm hover:underline cursor-pointer">{formatRelativeTime(comment.createdAt)}</span>
                 </div>
                 <div className="text-[14px] text-foreground mt-0.5 leading-relaxed">
                   <CommentRichText content={comment.content} />
@@ -264,9 +264,9 @@ function ChangeComments(props: {
             {/* Left column */}
             <div className="flex flex-col items-center shrink-0">
               <span
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm text-sm z-10"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm text-xs z-10 mt-1"
               >
-                <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-4.5" />
+                <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-3.5" />
               </span>
             </div>
             
