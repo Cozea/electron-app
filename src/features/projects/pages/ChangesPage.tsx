@@ -573,7 +573,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                      {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
                    </h2>
                    <div className="mb-3 flex items-center">
-                     <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-sidebar transition-colors focus-within:border-ring/50 focus-within:bg-background">
+                     <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-border/40 bg-sidebar transition-colors focus-within:border-border/60 focus-within:bg-background">
                        <HugeiconsIcon
                          icon={__SearchHugeIcon}
                          className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground/70"
