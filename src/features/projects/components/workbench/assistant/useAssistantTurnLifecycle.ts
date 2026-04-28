@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { MessageId, ThreadId } from "@cozea/assistant-contracts"
 
 import { newCommandId } from "@/features/projects/components/assistant/lib/utils"
-import { refreshAssistantRuntimeSnapshot } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import type { Thread } from "@/stores/types"
 
@@ -188,7 +187,6 @@ export function useAssistantTurnLifecycle({
         threadId: thread.id,
         createdAt: new Date().toISOString(),
       })
-      await refreshAssistantRuntimeSnapshot()
     } catch (error) {
       setIsInterrupting(false)
       onError(toErrorMessage(error))
@@ -225,7 +223,6 @@ export function useAssistantTurnLifecycle({
         threadId: thread.id,
         createdAt: new Date().toISOString(),
       })
-      await refreshAssistantRuntimeSnapshot()
     } catch (error) {
       setIsInterrupting(false)
       onError(toErrorMessage(error))

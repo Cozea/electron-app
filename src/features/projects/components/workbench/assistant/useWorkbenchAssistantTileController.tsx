@@ -45,7 +45,6 @@ import {
   newThreadId,
 } from "@/features/projects/components/assistant/lib/utils"
 import {
-  refreshAssistantRuntimeSnapshot,
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
@@ -68,8 +67,17 @@ import {
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
 import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
 import {
+  resolvePlanFollowUpSubmission,
+} from "@/features/projects/components/assistant/proposedPlan"
+import {
+  findLatestProposedPlan,
+  hasActionableProposedPlan,
+} from "@/features/projects/components/assistant/chat/timelineDerivations"
+import {
   type DiffDialogState,
   basenameFromPath,
+  cloneComposerImageForRetry,
+  deriveTitleSeed,
   getLiveAssistantTile,
   getProviderModelOptions,
   getProviderSnapshot,
@@ -77,8 +85,8 @@ import {
   resolveInteractionMode,
   resolvePreferredModelSelection,
   resolveRuntimeMode,
+  revokeUserMessagePreviewUrls,
   toErrorMessage,
-  truncateTitle,
   withWorkspaceBindingLock,
   withModelSelectionModel,
 } from "./workbenchAssistantShared"
@@ -333,6 +341,20 @@ export function useWorkbenchAssistantTileController(
     isRunning,
     onError: setSendError,
   })
+
+  // Plan follow-up state — detect when the agent has proposed a plan and we're
+  // in plan mode, so that handleSend can intercept and route to the plan
+  // follow-up submission flow instead of a normal turn.
+  const activeProposedPlan = useMemo(
+    () => findLatestProposedPlan(thread?.proposedPlans ?? [], thread?.latestTurn?.turnId ?? null),
+    [thread?.latestTurn?.turnId, thread?.proposedPlans],
+  )
+  const latestTurnSettled = !isRunning && !isTurnStartPending && !isInterrupting
+  const showPlanFollowUpPrompt =
+    pendingUserInputs.length === 0 &&
+    selectedInteractionMode === "plan" &&
+    latestTurnSettled &&
+    hasActionableProposedPlan(activeProposedPlan)
   const hasBoundThread = Boolean(input.tile.threadId && thread)
   const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
   const chatTitle =
@@ -419,6 +441,37 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
+    // --- Fix 6: Bootstrap pattern ---
+    // For fresh tiles (no threadId), only resolve/create the project.
+    // Thread creation is deferred to the first send to avoid empty thread
+    // accumulation when users open tiles and close them without typing.
+    const isResumingExistingThread = Boolean(input.tile.threadId)
+
+    // Fast path: for fresh tiles, if the project already exists in the store,
+    // bind it synchronously without any async work. This makes the composer
+    // interactive immediately instead of waiting for lock + network calls.
+    if (!isResumingExistingThread) {
+      const currentAssistantState = useStore.getState()
+      const existingProject =
+        (input.tile.assistantProjectId
+          ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
+          : null) ??
+        selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
+        null
+
+      if (existingProject) {
+        if (input.tile.assistantProjectId !== existingProject.id) {
+          updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+            assistantProjectId: existingProject.id,
+          }, input.projectPath)
+        }
+        setBindingError(null)
+        setIsBinding(false)
+        return
+      }
+      // Project doesn't exist yet — fall through to async binding to create it
+    }
+
     let cancelled = false
     bindingInFlightRef.current = true
     setIsBinding(true)
@@ -430,8 +483,6 @@ export function useWorkbenchAssistantTileController(
           const liveTile = () =>
             getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.projectPath) ?? input.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
-
-          await refreshAssistantRuntimeSnapshot()
 
           const currentTile = liveTile()
           const currentAssistantState = useStore.getState()
@@ -461,7 +512,6 @@ export function useWorkbenchAssistantTileController(
               defaultModelSelection,
               createdAt: new Date().toISOString(),
             })
-            await refreshAssistantRuntimeSnapshot()
             const nextAssistantState = useStore.getState()
             nextProject =
               selectAssistantProjectById(nextAssistantState, projectId) ??
@@ -473,66 +523,76 @@ export function useWorkbenchAssistantTileController(
             throw new Error("Unable to create an assistant project for this workspace.")
           }
 
-          const resolvedTile = liveTile()
-          let nextThread =
-            (resolvedTile.threadId
-              ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
-              : null) ?? null
+          if (isResumingExistingThread) {
+            // Resuming an existing thread: create if needed (same as before)
+            const resolvedTile = liveTile()
+            let nextThread =
+              (resolvedTile.threadId
+                ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
+                : null) ?? null
 
-          if (!nextThread || nextThread.projectId !== nextProject.id) {
-            const threadId = newThreadId()
-            const threadDraft = getAssistantComposerDraft(resolvedTile.id)
-            const modelSelection = normalizeDraftModelSelection(
-              threadDraft?.modelSelection ??
-                resolvePreferredModelSelection({
-                  config: liveConfig,
-                  tile: resolvedTile,
-                  projectModelSelection: nextProject.defaultModelSelection,
-                }),
-            )
-            await api.orchestration.dispatchCommand({
-              type: "thread.create",
-              commandId: newCommandId(),
-              threadId,
-              projectId: nextProject.id,
-              title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
-              modelSelection,
-              runtimeMode: threadDraft?.runtimeMode ?? resolveRuntimeMode(resolvedTile),
-              interactionMode:
-                threadDraft?.interactionMode ?? resolveInteractionMode(resolvedTile),
-              branch: null,
-              worktreePath: null,
-              createdAt: new Date().toISOString(),
-            })
-            await refreshAssistantRuntimeSnapshot()
-            nextThread =
-              selectAssistantThreadById(useStore.getState(), threadId) ?? null
-          }
+            if (!nextThread || nextThread.projectId !== nextProject.id) {
+              const threadId = newThreadId()
+              const threadDraft = getAssistantComposerDraft(resolvedTile.id)
+              const modelSelection = normalizeDraftModelSelection(
+                threadDraft?.modelSelection ??
+                  resolvePreferredModelSelection({
+                    config: liveConfig,
+                    tile: resolvedTile,
+                    projectModelSelection: nextProject.defaultModelSelection,
+                  }),
+              )
+              await api.orchestration.dispatchCommand({
+                type: "thread.create",
+                commandId: newCommandId(),
+                threadId,
+                projectId: nextProject.id,
+                title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
+                modelSelection,
+                runtimeMode: threadDraft?.runtimeMode ?? resolveRuntimeMode(resolvedTile),
+                interactionMode:
+                  threadDraft?.interactionMode ?? resolveInteractionMode(resolvedTile),
+                branch: null,
+                worktreePath: null,
+                createdAt: new Date().toISOString(),
+              })
+              nextThread =
+                selectAssistantThreadById(useStore.getState(), threadId) ?? null
+            }
 
-          const latestTile = liveTile()
-          const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
+            const latestTile = liveTile()
+            const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
 
-          if (latestTile.assistantProjectId !== nextProject.id) {
-            patch.assistantProjectId = nextProject.id
-          }
-          if (nextThread && latestTile.threadId !== nextThread.id) {
-            patch.threadId = nextThread.id
-          }
-          if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
-            patch.provider = nextThread.modelSelection.provider
-          }
-          if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
-            patch.model = nextThread.modelSelection.model
-          }
-          if (latestTile.runtimeMode !== resolveRuntimeMode(latestTile)) {
-            patch.runtimeMode = resolveRuntimeMode(latestTile)
-          }
-          if (latestTile.interactionMode !== resolveInteractionMode(latestTile)) {
-            patch.interactionMode = resolveInteractionMode(latestTile)
-          }
+            if (latestTile.assistantProjectId !== nextProject.id) {
+              patch.assistantProjectId = nextProject.id
+            }
+            if (nextThread && latestTile.threadId !== nextThread.id) {
+              patch.threadId = nextThread.id
+            }
+            if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
+              patch.provider = nextThread.modelSelection.provider
+            }
+            if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
+              patch.model = nextThread.modelSelection.model
+            }
+            if (latestTile.runtimeMode !== resolveRuntimeMode(latestTile)) {
+              patch.runtimeMode = resolveRuntimeMode(latestTile)
+            }
+            if (latestTile.interactionMode !== resolveInteractionMode(latestTile)) {
+              patch.interactionMode = resolveInteractionMode(latestTile)
+            }
 
-          if (!cancelled && Object.keys(patch).length > 0) {
-            updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
+            if (!cancelled && Object.keys(patch).length > 0) {
+              updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
+            }
+          } else {
+            // --- Fix 6: Fresh tile --- just bind the project, no thread yet
+            const latestTile = liveTile()
+            if (!cancelled && latestTile.assistantProjectId !== nextProject.id) {
+              updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+                assistantProjectId: nextProject.id,
+              }, input.projectPath)
+            }
           }
 
           if (!cancelled) {
@@ -578,7 +638,6 @@ export function useWorkbenchAssistantTileController(
     setRequestError(null)
     try {
       await mutate()
-      await refreshAssistantRuntimeSnapshot()
     } catch (error) {
       setRequestError(toErrorMessage(error))
     } finally {
@@ -767,6 +826,142 @@ export function useWorkbenchAssistantTileController(
     })
   }
 
+  // --- Fix 5: Pre-turn metadata synchronization ---
+  // Flush any pending model/runtime/interaction mode changes to the server
+  // immediately before dispatching thread.turn.start, eliminating race
+  // conditions if the user changes model and instantly sends.
+  const persistThreadSettingsForNextTurn = async (threadForSync: NonNullable<typeof thread>) => {
+    const api = ensureNativeApi()
+
+    // Model selection drift
+    if (
+      selectedModelSelection.model !== threadForSync.modelSelection.model ||
+      selectedModelSelection.provider !== threadForSync.modelSelection.provider ||
+      JSON.stringify(selectedModelSelection.options ?? null) !==
+        JSON.stringify(threadForSync.modelSelection.options ?? null)
+    ) {
+      await api.orchestration.dispatchCommand({
+        type: "thread.meta.update",
+        commandId: newCommandId(),
+        threadId: threadForSync.id,
+        modelSelection: selectedDispatchModelSelection,
+      })
+    }
+
+    // Runtime mode drift
+    if (selectedRuntimeMode !== threadForSync.runtimeMode) {
+      await api.orchestration.dispatchCommand({
+        type: "thread.runtime-mode.set",
+        commandId: newCommandId(),
+        threadId: threadForSync.id,
+        runtimeMode: selectedRuntimeMode,
+        createdAt: new Date().toISOString(),
+      })
+    }
+
+    // Interaction mode drift
+    if (selectedInteractionMode !== threadForSync.interactionMode) {
+      await api.orchestration.dispatchCommand({
+        type: "thread.interaction-mode.set",
+        commandId: newCommandId(),
+        threadId: threadForSync.id,
+        interactionMode: selectedInteractionMode,
+        createdAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  // --- Fix 1: Plan follow-up submission flow ---
+  const handlePlanFollowUpSend = async () => {
+    if (!thread || !activeProposedPlan) {
+      return
+    }
+    const draftText = composer.trim()
+    const followUp = resolvePlanFollowUpSubmission({
+      draftText,
+      planMarkdown: activeProposedPlan.planMarkdown,
+    })
+
+    const messageId = newMessageId()
+    const messageCreatedAt = new Date().toISOString()
+    const optimisticMessage: ChatMessage = {
+      id: messageId,
+      role: "user",
+      text: followUp.text,
+      createdAt: messageCreatedAt,
+      streaming: false,
+    }
+
+    sendInFlightRef.current = true
+    setIsSending(true)
+    setSendError(null)
+    setComposer("")
+    setComposerCursor(0)
+    setOptimisticUserMessages((current) => [...current, optimisticMessage])
+
+    try {
+      const api = ensureNativeApi()
+
+      // Sync settings before turn
+      await persistThreadSettingsForNextTurn(thread)
+
+      // Update interaction mode on the tile to match follow-up
+      if (followUp.interactionMode !== selectedInteractionMode) {
+        upsertComposerDraft(draftTargetKey, {
+          interactionMode: followUp.interactionMode,
+        })
+        updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+          interactionMode: followUp.interactionMode,
+        }, input.projectPath)
+
+        await api.orchestration.dispatchCommand({
+          type: "thread.interaction-mode.set",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          interactionMode: followUp.interactionMode,
+          createdAt: messageCreatedAt,
+        })
+      }
+
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId: thread.id,
+        message: {
+          messageId,
+          role: "user",
+          text: followUp.text,
+          attachments: [],
+        },
+        modelSelection: selectedDispatchModelSelection,
+        titleSeed: thread.title,
+        runtimeMode: selectedRuntimeMode,
+        interactionMode: followUp.interactionMode,
+        ...(followUp.interactionMode === "default" && activeProposedPlan
+          ? {
+              sourceProposedPlan: {
+                threadId: thread.id,
+                planId: activeProposedPlan.id,
+              },
+            }
+          : {}),
+        createdAt: messageCreatedAt,
+      })
+      notePendingTurnStart(messageId, thread.id)
+    } catch (error) {
+      clearPendingTurnStart()
+      setOptimisticUserMessages((current) =>
+        current.filter((message) => message.id !== messageId),
+      )
+      setComposer(draftText)
+      setComposerCursor(draftText.length)
+      setSendError(toErrorMessage(error))
+    } finally {
+      sendInFlightRef.current = false
+      setIsSending(false)
+    }
+  }
+
   const handleSend = async () => {
     if (sendInFlightRef.current) {
       return
@@ -777,7 +972,94 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    if (!thread) {
+    // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
+    let resolvedThread = thread
+    if (!resolvedThread) {
+      if (!input.projectPath) {
+        return
+      }
+      try {
+        const threadTitle = input.tile.agentLabel?.trim() || input.tile.title.trim() || "AI Agent"
+        const threadId = newThreadId()
+        const threadDraft = getAssistantComposerDraft(input.tile.id)
+        const api = ensureNativeApi()
+
+        // Resolve the project
+        const currentAssistantState = useStore.getState()
+        const currentProject =
+          (input.tile.assistantProjectId
+            ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
+            : null) ??
+          selectAssistantProjectByCwd(currentAssistantState, input.projectPath) ??
+          null
+
+        if (!currentProject) {
+          setSendError("No assistant project found. Please retry.")
+          return
+        }
+
+        const resolvedModelSelection = selectedDispatchModelSelection
+        const resolvedRuntimeMode = threadDraft?.runtimeMode ?? selectedRuntimeMode
+        const resolvedInteractionMode = threadDraft?.interactionMode ?? selectedInteractionMode
+        const createdAt = new Date().toISOString()
+
+        await api.orchestration.dispatchCommand({
+          type: "thread.create",
+          commandId: newCommandId(),
+          threadId,
+          projectId: currentProject.id,
+          title: threadTitle,
+          modelSelection: resolvedModelSelection,
+          runtimeMode: resolvedRuntimeMode,
+          interactionMode: resolvedInteractionMode,
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        })
+
+        updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+          threadId,
+          assistantProjectId: currentProject.id,
+        }, input.projectPath)
+
+        // Build a minimal thread-like object from the data we just sent.
+        // We can't read from the store yet because the domain event hasn't
+        // been projected — the store update is async via WebSocket push.
+        resolvedThread = {
+          id: threadId,
+          projectId: currentProject.id,
+          title: threadTitle,
+          modelSelection: resolvedModelSelection,
+          runtimeMode: resolvedRuntimeMode,
+          interactionMode: resolvedInteractionMode,
+          messages: [],
+          activities: [],
+          proposedPlans: [],
+          turnDiffSummaries: [],
+          checkpoints: [],
+          session: null,
+          latestTurn: null,
+          branch: null,
+          worktreePath: null,
+          createdAt,
+          updatedAt: createdAt,
+          deletedAt: null,
+        } as any
+      } catch (error) {
+        setSendError(toErrorMessage(error))
+        return
+      }
+    }
+
+    // At this point, resolvedThread is guaranteed to be non-null.
+    // Either it was the existing thread, or we just constructed it above.
+    if (!resolvedThread) {
+      return
+    }
+
+    // --- Fix 1: Intercept plan follow-up ---
+    if (showPlanFollowUpPrompt && activeProposedPlan) {
+      await handlePlanFollowUpSend()
       return
     }
 
@@ -787,8 +1069,13 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    const isFirstUserMessage = !thread.messages.some((message) => message.role === "user")
-    const nextThreadTitle = truncateTitle(nextPrompt)
+    const isFirstUserMessage = !resolvedThread.messages.some((message) => message.role === "user")
+    // --- Fix 4: Smart auto-titling ---
+    const nextThreadTitle = deriveTitleSeed({
+      prompt: nextPrompt,
+      images: composerImages,
+      terminalContexts: [],
+    })
     const messageId = newMessageId()
     const messageCreatedAt = new Date().toISOString()
     const optimisticMessage: ChatMessage = {
@@ -830,10 +1117,13 @@ export function useWorkbenchAssistantTileController(
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
           commandId: newCommandId(),
-          threadId: thread.id,
+          threadId: resolvedThread.id,
           title: nextThreadTitle,
         })
       }
+
+      // --- Fix 5: Flush settings before turn start ---
+      await persistThreadSettingsForNextTurn(resolvedThread)
 
       const SKILL_TOKEN_REGEX = /(^|\\s)\\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\\s|$)/g
       const extractedSkillNames = Array.from(nextPrompt.matchAll(SKILL_TOKEN_REGEX)).map((m) => m[2])
@@ -856,7 +1146,7 @@ export function useWorkbenchAssistantTileController(
       await api.orchestration.dispatchCommand({
         type: "thread.turn.start",
         commandId: newCommandId(),
-        threadId: thread.id,
+        threadId: resolvedThread.id,
         message: {
           messageId,
           role: "user",
@@ -870,16 +1160,21 @@ export function useWorkbenchAssistantTileController(
         skills,
         createdAt: messageCreatedAt,
       })
-      notePendingTurnStart(messageId, thread.id)
-      await refreshAssistantRuntimeSnapshot()
+      notePendingTurnStart(messageId, resolvedThread.id)
     } catch (error) {
+      // --- Fix 3: Properly handle blob URLs on failed sends ---
       clearPendingTurnStart()
-      setOptimisticUserMessages((current) =>
-        current.filter((message) => message.id !== messageId),
-      )
+      setOptimisticUserMessages((current) => {
+        const removed = current.filter((message) => message.id === messageId)
+        for (const message of removed) {
+          revokeUserMessagePreviewUrls(message)
+        }
+        return current.filter((message) => message.id !== messageId)
+      })
       setComposer(nextPrompt)
       setComposerCursor(nextPrompt.length)
-      setComposerImages(composerImagesSnapshot)
+      // Deep-clone images with fresh blob URLs so the originals are safely revoked
+      setComposerImages(composerImagesSnapshot.map(cloneComposerImageForRetry))
       setSendError(toErrorMessage(error))
     } finally {
       sendInFlightRef.current = false
@@ -1158,7 +1453,6 @@ export function useWorkbenchAssistantTileController(
         turnCount,
         createdAt: new Date().toISOString(),
       })
-      await refreshAssistantRuntimeSnapshot()
     } catch (error) {
       setSendError(toErrorMessage(error))
     } finally {
@@ -1234,6 +1528,8 @@ export function useWorkbenchAssistantTileController(
       composer,
       composerCursor,
       composerImages,
+      terminalContexts: [],
+      onRemoveTerminalContext: () => {},
       isSending: isSending || isTurnStartPending,
       pendingTurnStartStartedAtIso,
       isInterrupting,

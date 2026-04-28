@@ -12,6 +12,8 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
 } from "@cozea/assistant-contracts"
+
+import { formatTerminalContextLabel } from "@/features/projects/components/assistant/lib/terminalContext"
 import {
   createModelSelection,
   resolveModelSlugForProvider,
@@ -310,4 +312,57 @@ export function findAssistantThreadById(
   }
 
   return threads.find((thread) => thread.id === threadId) ?? null
+}
+
+export function revokeUserMessagePreviewUrls(message: { role: string; attachments?: readonly any[] }): void {
+  if (message.role !== "user" || !message.attachments) {
+    return
+  }
+  for (const attachment of message.attachments) {
+    if (attachment.type !== "image") {
+      continue
+    }
+    if (attachment.previewUrl && typeof URL !== "undefined" && attachment.previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(attachment.previewUrl)
+    }
+  }
+}
+
+export function cloneComposerImageForRetry(image: {
+  id: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  previewUrl: string
+  file?: File
+}): {
+  id: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  previewUrl: string
+  file?: File
+} {
+  return {
+    ...image,
+    previewUrl: image.file ? URL.createObjectURL(image.file) : image.previewUrl,
+  }
+}
+
+export function deriveTitleSeed(input: {
+  prompt: string
+  images: ReadonlyArray<{ name: string }>
+  terminalContexts: ReadonlyArray<{ terminalLabel: string; lineStart: number; lineEnd: number }>
+}): string {
+  const trimmed = input.prompt.trim()
+  if (trimmed) {
+    return truncateTitle(trimmed)
+  }
+  if (input.images.length > 0 && input.images[0]) {
+    return truncateTitle(`Image: ${input.images[0].name}`)
+  }
+  if (input.terminalContexts.length > 0 && input.terminalContexts[0]) {
+    return truncateTitle(formatTerminalContextLabel(input.terminalContexts[0]))
+  }
+  return "New thread"
 }

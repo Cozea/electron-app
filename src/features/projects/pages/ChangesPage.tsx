@@ -9,6 +9,8 @@ import {
   LayoutTwoColumnIcon as __SplitViewHugeIcon,
   LayoutTwoRowIcon as __StackedViewHugeIcon,
   PanelLeftIcon as __SidebarHugeIcon,
+  Search01Icon as __SearchHugeIcon,
+  FilterIcon as __FilterHugeIcon,
 } from '@hugeicons/core-free-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
@@ -121,6 +123,17 @@ function resolvePreviousCheckpointGroupIds(groups: ChangeGroup[]): Map<string, s
     previousByGroup.set(groups[index].groupId, groups[index + 1]?.groupId ?? null)
   }
   return previousByGroup
+}
+
+function matchesFileFilter(filePath: string, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return true
+
+  const normalizedPath = filePath.toLowerCase()
+  return normalizedQuery
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((token) => normalizedPath.includes(token))
 }
 
 function ChangeComments(props: {
@@ -475,10 +488,25 @@ export function ChangesPage(_props: ChangesPageProps) {
   }, [activity]);
 
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [fileFilterQuery, setFileFilterQuery] = useState("");
+
+  const visibleFiles = useMemo(
+    () => uniqueFiles.filter((file) => matchesFileFilter(file.filePath, fileFilterQuery)),
+    [fileFilterQuery, uniqueFiles],
+  );
 
   useEffect(() => {
-    if (uniqueFiles.length > 0 && !selectedFilePath) {
-      setSelectedFilePath(uniqueFiles[0].filePath);
+    const firstFilePath = uniqueFiles[0]?.filePath ?? null;
+    if (!firstFilePath) {
+      if (selectedFilePath !== null) {
+        setSelectedFilePath(null);
+      }
+      return;
+    }
+
+    const selectedFileStillExists = uniqueFiles.some((file) => file.filePath === selectedFilePath);
+    if (!selectedFileStillExists) {
+      setSelectedFilePath(firstFilePath);
     }
   }, [uniqueFiles, selectedFilePath]);
 
@@ -527,17 +555,44 @@ export function ChangesPage(_props: ChangesPageProps) {
             </div>
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
-              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 bg-muted/10 overflow-y-auto p-4 shrink-0 flex flex-col">
+              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 overflow-y-auto p-4 shrink-0 flex flex-col">
                  <h2 className="mb-4 text-sm font-semibold text-foreground shrink-0">
                    {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
                  </h2>
+                 <div className="mb-3 flex shrink-0 items-center gap-1.5 px-1">
+                   <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-muted/60 transition-colors focus-within:border-ring/50 focus-within:bg-background">
+                     <HugeiconsIcon
+                       icon={__SearchHugeIcon}
+                       className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground/70"
+                     />
+                     <input
+                       value={fileFilterQuery}
+                       onChange={(event) => setFileFilterQuery(event.target.value)}
+                       placeholder={t('changes.placeholder.filterFiles')}
+                       className="h-full min-w-0 flex-1 bg-transparent pl-7 pr-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                     />
+                   </label>
+                   <button
+                     type="button"
+                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                     aria-label={t('changes.action.filterFiles')}
+                   >
+                     <HugeiconsIcon icon={__FilterHugeIcon} className="size-4" />
+                   </button>
+                 </div>
                  <div className="flex-1 min-h-0 overflow-y-auto">
-                   <ChangedFilesTree 
-                     files={uniqueFiles}
-                     allDirectoriesExpanded={true}
-                     onOpenFile={(filePath) => setSelectedFilePath(filePath)}
-                     selectedFilePath={selectedFilePath}
-                   />
+                   {visibleFiles.length > 0 ? (
+                     <ChangedFilesTree
+                       files={visibleFiles}
+                       allDirectoriesExpanded={true}
+                       onOpenFile={(filePath) => setSelectedFilePath(filePath)}
+                       selectedFilePath={selectedFilePath}
+                     />
+                   ) : (
+                     <div className="px-2 py-3 text-xs text-muted-foreground">
+                       {t('changes.empty.noMatchingFiles')}
+                     </div>
+                   )}
                  </div>
               </div>
               <div className="flex-1 overflow-y-auto bg-background">
