@@ -495,16 +495,6 @@ function ChangeGroupCard(props: {
               <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-5" />
               {totalComments > 0 && <span className="font-medium">{totalComments}</span>}
             </button>
-            
-            <div className="flex items-center gap-1 text-[15px] group text-emerald-500 font-medium">
-              <HugeiconsIcon icon={__PlusHugeIcon} className="size-4 stroke-[2.5px]" />
-              <span>{group.totalAdditions}</span>
-            </div>
-
-            <div className="flex items-center gap-1 text-[15px] group text-rose-500 font-medium">
-              <HugeiconsIcon icon={__MinusHugeIcon} className="size-4 stroke-[2.5px]" />
-              <span>{group.totalDeletions}</span>
-            </div>
           </div>
 
           {/* View Toggles */}
