@@ -488,7 +488,7 @@ function ChangeGroupCard(props: {
         </div>
 
         {/* Action Buttons (Twitter style) */}
-        <div className="flex items-center justify-between text-muted-foreground mb-1 mt-1 border border-border/60 rounded-full px-3 py-1.5 shadow-sm bg-background">
+        <div className="flex items-center justify-end gap-4 text-muted-foreground mb-1 mt-1 border border-border/60 rounded-full px-3 py-1.5 shadow-sm bg-background">
           <div className="flex items-center gap-6">
             <button 
               className="flex items-center gap-1.5 text-[14px] hover:text-foreground transition-colors group"
