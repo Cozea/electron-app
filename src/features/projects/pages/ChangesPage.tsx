@@ -555,32 +555,34 @@ export function ChangesPage(_props: ChangesPageProps) {
             </div>
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
-              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 overflow-y-auto p-4 shrink-0 flex flex-col">
-                 <h2 className="mb-4 text-sm font-semibold text-foreground shrink-0">
-                   {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
-                 </h2>
-                 <div className="mb-3 flex shrink-0 items-center px-1">
-                   <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-sidebar transition-colors focus-within:border-ring/50 focus-within:bg-background">
-                     <HugeiconsIcon
-                       icon={__SearchHugeIcon}
-                       className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground/70"
-                     />
-                     <input
-                       value={fileFilterQuery}
-                       onChange={(event) => setFileFilterQuery(event.target.value)}
-                       placeholder={t('changes.placeholder.filterFiles')}
-                       className="h-full min-w-0 flex-1 bg-transparent pl-7 pr-8 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
-                     />
-                     <button
-                       type="button"
-                       className="absolute right-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                       aria-label={t('changes.action.filterFiles')}
-                     >
-                       <HugeiconsIcon icon={__FilterHugeIcon} className="size-3.5" />
-                     </button>
-                   </label>
+              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 flex flex-col shrink-0">
+                 <div className="p-4 pb-0 shrink-0">
+                   <h2 className="mb-4 text-sm font-semibold text-foreground">
+                     {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
+                   </h2>
+                   <div className="mb-3 flex items-center">
+                     <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-sidebar transition-colors focus-within:border-ring/50 focus-within:bg-background">
+                       <HugeiconsIcon
+                         icon={__SearchHugeIcon}
+                         className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground/70"
+                       />
+                       <input
+                         value={fileFilterQuery}
+                         onChange={(event) => setFileFilterQuery(event.target.value)}
+                         placeholder={t('changes.placeholder.filterFiles')}
+                         className="h-full min-w-0 flex-1 bg-transparent pl-7 pr-8 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                       />
+                       <button
+                         type="button"
+                         className="absolute right-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                         aria-label={t('changes.action.filterFiles')}
+                       >
+                         <HugeiconsIcon icon={__FilterHugeIcon} className="size-3.5" />
+                       </button>
+                     </label>
+                   </div>
                  </div>
-                 <div className="flex-1 min-h-0 overflow-y-auto">
+                 <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-4">
                    {visibleFiles.length > 0 ? (
                      <ChangedFilesTree
                        files={visibleFiles}
@@ -589,7 +591,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                        selectedFilePath={selectedFilePath}
                      />
                    ) : (
-                     <div className="px-2 py-3 text-xs text-muted-foreground">
+                     <div className="px-4 py-3 text-xs text-muted-foreground">
                        {t('changes.empty.noMatchingFiles')}
                      </div>
                    )}
