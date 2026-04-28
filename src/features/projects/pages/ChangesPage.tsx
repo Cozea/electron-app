@@ -559,7 +559,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                  <h2 className="mb-4 text-sm font-semibold text-foreground shrink-0">
                    {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
                  </h2>
-                 <div className="mb-3 flex shrink-0 items-center gap-1.5 px-1">
+                 <div className="mb-3 flex shrink-0 items-center px-1">
                    <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-transparent bg-sidebar transition-colors focus-within:border-ring/50 focus-within:bg-background">
                      <HugeiconsIcon
                        icon={__SearchHugeIcon}
@@ -569,16 +569,16 @@ export function ChangesPage(_props: ChangesPageProps) {
                        value={fileFilterQuery}
                        onChange={(event) => setFileFilterQuery(event.target.value)}
                        placeholder={t('changes.placeholder.filterFiles')}
-                       className="h-full min-w-0 flex-1 bg-transparent pl-7 pr-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                       className="h-full min-w-0 flex-1 bg-transparent pl-7 pr-8 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
                      />
+                     <button
+                       type="button"
+                       className="absolute right-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       aria-label={t('changes.action.filterFiles')}
+                     >
+                       <HugeiconsIcon icon={__FilterHugeIcon} className="size-3.5" />
+                     </button>
                    </label>
-                   <button
-                     type="button"
-                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-sidebar hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                     aria-label={t('changes.action.filterFiles')}
-                   >
-                     <HugeiconsIcon icon={__FilterHugeIcon} className="size-4" />
-                   </button>
                  </div>
                  <div className="flex-1 min-h-0 overflow-y-auto">
                    {visibleFiles.length > 0 ? (
