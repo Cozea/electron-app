@@ -372,17 +372,26 @@ function ChangeGroupCard(props: {
               <div className="flex flex-col min-h-full">
                 <FileDiff
                   fileDiff={selectedFileDiff}
-                  renderHeaderPrefix={() => (
-                    <div className="flex items-center gap-2 mr-3 pr-3 border-r border-border/60">
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs"
-                        style={{ backgroundColor: group.userColor || '#666' }}
-                      >
-                        {group.userName.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="font-semibold text-foreground text-sm">{group.userName}</span>
-                      <span className="text-muted-foreground text-sm">·</span>
-                      <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
+                  renderCustomHeader={() => (
+                    <div className="flex items-center p-2.5 px-4 w-full">
+                      <div className="flex items-center gap-2 mr-3 pr-3 border-r border-border/60 shrink-0">
+                        <span
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs"
+                          style={{ backgroundColor: group.userColor || '#666' }}
+                        >
+                          {group.userName.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="font-semibold text-foreground text-sm truncate max-w-[120px]">{group.userName}</span>
+                        <span className="text-muted-foreground text-sm">·</span>
+                        <span className="text-muted-foreground text-sm shrink-0">{formatRelativeTime(group.timestamp)}</span>
+                      </div>
+                      <span className="font-mono text-[13px] text-foreground truncate">{selectedFilePath}</span>
+                      {selectedItem && (selectedItem.additions || selectedItem.deletions) ? (
+                        <div className="ml-auto pl-3 flex items-center gap-2 font-mono text-[11px] tabular-nums shrink-0">
+                          {selectedItem.additions ? <span className="text-emerald-500">+{selectedItem.additions}</span> : null}
+                          {selectedItem.deletions ? <span className="text-rose-500">-{selectedItem.deletions}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
                   )}
                   options={{
