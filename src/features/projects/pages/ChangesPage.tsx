@@ -615,7 +615,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                   <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
                     <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4.5" />
                   </button>
-                  <label className="relative flex h-9 min-w-0 flex-1 items-center rounded-lg border border-transparent bg-muted/60 transition-colors focus-within:border-border/50 focus-within:bg-background">
+                  <label className="relative flex h-9 min-w-0 flex-1 items-center rounded-lg border border-border/40 bg-muted/60 transition-colors focus-within:border-border/60 focus-within:bg-background">
                     <HugeiconsIcon
                       icon={__SearchHugeIcon}
                       className="pointer-events-none absolute left-3 size-4 text-muted-foreground/70"
