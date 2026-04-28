@@ -652,11 +652,6 @@ export function ChangesPage(_props: ChangesPageProps) {
                      </div>
                    )}
                  </div>
-                 <div className="px-4 pb-4 pt-2 shrink-0">
-                   <h2 className="text-[13px] font-medium text-foreground">
-                     {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
-                   </h2>
-                 </div>
               </div>
               <div className="flex-1 overflow-y-auto bg-background flex flex-col">
                 {/* Search within code header */}
