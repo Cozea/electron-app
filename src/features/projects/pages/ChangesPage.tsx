@@ -370,8 +370,8 @@ function ChangeGroupCard(props: {
           </p>
         </div>
 
-        <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all">
-          <div className="flex-1 overflow-y-auto bg-card">
+        <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all relative">
+          <div className="flex-1 overflow-y-auto bg-card relative">
             {patchError ? (
               <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                 {patchError}
@@ -386,6 +386,11 @@ function ChangeGroupCard(props: {
                     overflow: "wrap",
                     themeType: "dark", 
                     unsafeCSS: `
+                      [data-diffs-header] {
+                        position: sticky !important;
+                        top: 0 !important;
+                        z-index: 10 !important;
+                      }
                       [data-diffs-header],
                       [data-diff],
                       [data-file] {
