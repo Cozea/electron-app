@@ -86,11 +86,21 @@ function DiffStatBlocks({ additions, deletions }: { additions: number, deletions
   let delBlocks = 0;
   
   if (total > 0) {
-    addBlocks = Math.round((additions / total) * 5);
-    delBlocks = Math.round((deletions / total) * 5);
-    if (addBlocks + delBlocks > 5) {
-      if (addBlocks > delBlocks) addBlocks--;
-      else delBlocks--;
+    if (total <= 5) {
+      addBlocks = additions;
+      delBlocks = deletions;
+    } else {
+      addBlocks = Math.round((additions / total) * 5);
+      delBlocks = 5 - addBlocks;
+      
+      // Ensure at least 1 block is shown if there are additions/deletions
+      if (additions > 0 && addBlocks === 0) {
+        addBlocks = 1;
+        delBlocks = 4;
+      } else if (deletions > 0 && delBlocks === 0) {
+        delBlocks = 1;
+        addBlocks = 4;
+      }
     }
   }
   
@@ -417,11 +427,16 @@ function ChangeGroupCard(props: {
                       <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
                     </div>
                   )}
-                  renderHeaderMetadata={() => (
-                    selectedItem && (selectedItem.additions || selectedItem.deletions) ? (
-                      <DiffStatBlocks additions={selectedItem.additions ?? 0} deletions={selectedItem.deletions ?? 0} />
-                    ) : null
-                  )}
+                  renderHeaderMetadata={(fileDiff) => {
+                    let additions = 0;
+                    let deletions = 0;
+                    for (const hunk of fileDiff.hunks) {
+                      additions += hunk.additionLines;
+                      deletions += hunk.deletionLines;
+                    }
+                    if (additions === 0 && deletions === 0) return null;
+                    return <DiffStatBlocks additions={additions} deletions={deletions} />;
+                  }}
                   options={{
                     diffStyle: diffStyle,
                     lineDiffType: "none",
@@ -437,14 +452,7 @@ function ChangeGroupCard(props: {
                       }
                       [data-additions-count],
                       [data-deletions-count] {
-                        font-family: ui-sans-serif, system-ui, sans-serif !important;
-                        font-variant-numeric: tabular-nums;
-                      }
-                      [data-additions-count] {
-                        color: #059669 !important;
-                      }
-                      [data-deletions-count] {
-                        color: #e11d48 !important;
+                        display: none !important;
                       }
                       [data-diff],
                       [data-file] {
