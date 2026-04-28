@@ -555,7 +555,7 @@ export function ChangesPage(_props: ChangesPageProps) {
             </div>
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
-              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 overflow-y-auto p-4 shrink-0 flex flex-col">
+              <div className="w-[30%] min-w-[240px] max-w-[360px] border-r border-border/70 overflow-y-auto p-4 shrink-0 flex flex-col">
                  <h2 className="mb-4 text-sm font-semibold text-foreground shrink-0">
                    {t('changes.info.updatedFiles').replace('{count}', String(uniqueFiles.length)).replace('{plural}', uniqueFiles.length !== 1 ? 's' : '')}
                  </h2>
