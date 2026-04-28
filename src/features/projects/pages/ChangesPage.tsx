@@ -452,7 +452,14 @@ function ChangeGroupCard(props: {
                       }
                       [data-additions-count],
                       [data-deletions-count] {
-                        display: none !important;
+                        font-family: ui-sans-serif, system-ui, sans-serif !important;
+                        font-variant-numeric: tabular-nums;
+                      }
+                      [data-additions-count] {
+                        color: #059669 !important;
+                      }
+                      [data-deletions-count] {
+                        color: #e11d48 !important;
                       }
                       [data-diff],
                       [data-file] {
