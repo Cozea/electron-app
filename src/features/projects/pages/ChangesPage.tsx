@@ -348,32 +348,43 @@ function ChangeGroupCard(props: {
 
   return (
     <article className="flex border-b border-border/70 p-4 sm:p-6 last:border-0 hover:bg-muted/5 transition-colors">
-      <div className="mr-3 sm:mr-4 shrink-0">
-        <span
-          className="flex h-12 w-12 items-center justify-center rounded-full text-white font-bold shadow-sm text-base"
-          style={{ backgroundColor: group.userColor || '#666' }}
-        >
-          {group.userName.charAt(0).toUpperCase()}
-        </span>
-      </div>
-
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-1.5 text-[15px] mb-3">
-          <span className="font-bold text-foreground hover:underline cursor-pointer">{group.userName}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground hover:underline cursor-pointer">{formatRelativeTime(group.timestamp)}</span>
-        </div>
-
         <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all relative">
           <div className="flex-1 overflow-y-auto bg-card relative">
             {patchError ? (
-              <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                {patchError}
+              <div className="flex flex-col min-h-full">
+                <div className="flex items-center gap-2 p-2 px-3 border-b border-border/70 bg-card sticky top-0 z-10">
+                  <span
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs"
+                    style={{ backgroundColor: group.userColor || '#666' }}
+                  >
+                    {group.userName.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="font-semibold text-foreground text-sm">{group.userName}</span>
+                  <span className="text-muted-foreground text-sm">·</span>
+                  <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
+                </div>
+                <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  {patchError}
+                </div>
               </div>
             ) : selectedFileDiff ? (
               <div className="flex flex-col min-h-full">
                 <FileDiff
                   fileDiff={selectedFileDiff}
+                  renderHeaderPrefix={() => (
+                    <div className="flex items-center gap-2 mr-3 pr-3 border-r border-border/60">
+                      <span
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs"
+                        style={{ backgroundColor: group.userColor || '#666' }}
+                      >
+                        {group.userName.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="font-semibold text-foreground text-sm">{group.userName}</span>
+                      <span className="text-muted-foreground text-sm">·</span>
+                      <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
+                    </div>
+                  )}
                   options={{
                     diffStyle: diffStyle,
                     lineDiffType: "none",
