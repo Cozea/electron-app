@@ -487,10 +487,10 @@ function ChangeGroupCard(props: {
           </div>
 
           {/* Action Buttons (Twitter style) */}
-          <div className="absolute bottom-4 right-4 z-20 flex w-fit items-center gap-4 text-background/70 border border-transparent rounded-full px-3 py-1.5 bg-foreground shadow-sm">
+          <div className="absolute bottom-4 right-4 z-20 flex w-fit items-center gap-4 text-secondary-foreground/80 border border-border/50 rounded-full px-3 py-1.5 bg-secondary/90 backdrop-blur shadow-sm">
             <div className="flex items-center gap-6">
               <button 
-                className="flex items-center gap-1.5 text-[14px] hover:text-background transition-colors group"
+                className="flex items-center gap-1.5 text-[14px] hover:text-secondary-foreground transition-colors group"
                 onClick={() => setShowComments((prev) => !prev)}
               >
                 <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-4.5" />
@@ -501,7 +501,7 @@ function ChangeGroupCard(props: {
             {/* View Toggles */}
             <div className="flex items-center gap-3">
               <button 
-                className="flex items-center justify-center size-6 rounded-full hover:bg-background/20 transition-colors hover:text-background"
+                className="flex items-center justify-center size-6 rounded-full hover:bg-muted-foreground/20 transition-colors hover:text-secondary-foreground"
                 onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
                 title={diffStyle === "split" ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
               >
