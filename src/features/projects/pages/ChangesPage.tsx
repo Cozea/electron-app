@@ -405,10 +405,10 @@ function ChangeGroupCard(props: {
                         font-variant-numeric: tabular-nums;
                       }
                       [data-additions-count] {
-                        color: #10b981 !important;
+                        color: #059669 !important;
                       }
                       [data-deletions-count] {
-                        color: #f43f5e !important;
+                        color: #e11d48 !important;
                       }
                       [data-diff],
                       [data-file] {
