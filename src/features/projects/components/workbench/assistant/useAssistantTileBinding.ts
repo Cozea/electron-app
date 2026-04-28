@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ServerConfig } from "@cozea/assistant-contracts"
 
 import {
@@ -81,6 +81,13 @@ export function useAssistantTileBinding({
       return
     }
 
+    // --- Fix 6: Skip thread creation for fresh tiles (no threadId) ---
+    // If the tile has no threadId, this is a fresh tile. We resolve/create the
+    // project only and defer thread creation to the first send. This prevents
+    // empty thread accumulation when users open tiles and close them without
+    // typing.
+    const isResumingExistingThread = Boolean(tile.threadId)
+
     let cancelled = false
     bindingInFlightRef.current = true
     setIsBinding(true)
@@ -104,8 +111,11 @@ export function useAssistantTileBinding({
             selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
             null
 
+          let nextProjectId: string
+
           if (!nextProject) {
             const assistantProjectId = newProjectId()
+            nextProjectId = assistantProjectId
             const defaultModelSelection = resolvePreferredModelSelection({
               config: liveConfig,
               tile: currentTile,
@@ -120,73 +130,89 @@ export function useAssistantTileBinding({
               defaultModelSelection,
               createdAt: new Date().toISOString(),
             })
-            await refreshAssistantRuntimeSnapshot()
-            const nextAssistantState = useStore.getState()
-            nextProject =
-              selectAssistantProjectById(nextAssistantState, assistantProjectId) ??
-              selectAssistantProjectByCwd(nextAssistantState, workspaceRoot) ??
-              null
+          } else {
+            nextProjectId = nextProject.id
           }
 
-          if (!nextProject) {
-            throw new Error("Unable to create an assistant project for this workspace.")
-          }
+          // Only create a thread if we're resuming an existing one that's not
+          // yet in the store. For fresh tiles (no threadId), skip thread
+          // creation — it will happen on first send.
+          if (isResumingExistingThread) {
+            const resolvedTile = liveTile()
+            let nextThread =
+              (resolvedTile.threadId
+                ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
+                : null) ?? null
 
-          const resolvedTile = liveTile()
-          let nextThread =
-            (resolvedTile.threadId
-              ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
-              : null) ?? null
+            let nextThreadId: string | null = resolvedTile.threadId ?? null
 
-          if (!nextThread || nextThread.projectId !== nextProject.id) {
-            const threadId = newThreadId()
-            const modelSelection = resolvePreferredModelSelection({
-              config: liveConfig,
-              tile: resolvedTile,
-              projectModelSelection: nextProject.defaultModelSelection,
-            })
-            await api.orchestration.dispatchCommand({
-              type: "thread.create",
-              commandId: newCommandId(),
-              threadId,
-              projectId: nextProject.id,
-              title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
-              modelSelection,
-              runtimeMode: resolveRuntimeMode(resolvedTile),
-              interactionMode: resolveInteractionMode(resolvedTile),
-              branch: null,
-              worktreePath: null,
-              createdAt: new Date().toISOString(),
-            })
-            await refreshAssistantRuntimeSnapshot()
-            nextThread =
-              selectAssistantThreadById(useStore.getState(), threadId) ?? null
-          }
+            // If the tile has a threadId but the store doesn't have it yet, we assume the read model is lagging
+            // behind the creation event. We only create a new thread if the tile explicitly has no threadId,
+            // or if the existing thread belongs to a different project.
+            let needsThreadCreation = !nextThreadId;
+            
+            if (nextThread && nextThread.projectId !== nextProjectId) {
+              needsThreadCreation = true;
+            }
 
-          const latestTile = liveTile()
-          const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
+            if (needsThreadCreation) {
+              const threadId = newThreadId()
+              nextThreadId = threadId
+              const modelSelection = resolvePreferredModelSelection({
+                config: liveConfig,
+                tile: resolvedTile,
+                projectModelSelection: nextProject?.defaultModelSelection ?? null,
+              })
+              await api.orchestration.dispatchCommand({
+                type: "thread.create",
+                commandId: newCommandId(),
+                threadId,
+                projectId: nextProjectId as any,
+                title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
+                modelSelection,
+                runtimeMode: resolveRuntimeMode(resolvedTile),
+                interactionMode: resolveInteractionMode(resolvedTile),
+                branch: null,
+                worktreePath: null,
+                createdAt: new Date().toISOString(),
+              })
+              nextThread =
+                selectAssistantThreadById(useStore.getState(), threadId) ?? null
+            }
 
-          if (latestTile.assistantProjectId !== nextProject.id) {
-            patch.assistantProjectId = nextProject.id
-          }
-          if (nextThread && latestTile.threadId !== nextThread.id) {
-            patch.threadId = nextThread.id
-          }
-          if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
-            patch.provider = nextThread.modelSelection.provider
-          }
-          if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
-            patch.model = nextThread.modelSelection.model
-          }
-          if (latestTile.runtimeMode !== resolveRuntimeMode(latestTile)) {
-            patch.runtimeMode = resolveRuntimeMode(latestTile)
-          }
-          if (latestTile.interactionMode !== resolveInteractionMode(latestTile)) {
-            patch.interactionMode = resolveInteractionMode(latestTile)
-          }
+            const latestTile = liveTile()
+            const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
 
-          if (!cancelled && Object.keys(patch).length > 0) {
-            updateAssistantTile(projectId, laneId, tile.id, patch, projectPath)
+            if (latestTile.assistantProjectId !== nextProjectId) {
+              patch.assistantProjectId = nextProjectId
+            }
+            if (nextThreadId && latestTile.threadId !== nextThreadId) {
+              patch.threadId = nextThreadId
+            }
+            if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
+              patch.provider = nextThread.modelSelection.provider
+            }
+            if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
+              patch.model = nextThread.modelSelection.model
+            }
+            if (latestTile.runtimeMode !== resolveRuntimeMode(latestTile)) {
+              patch.runtimeMode = resolveRuntimeMode(latestTile)
+            }
+            if (latestTile.interactionMode !== resolveInteractionMode(latestTile)) {
+              patch.interactionMode = resolveInteractionMode(latestTile)
+            }
+
+            if (!cancelled && Object.keys(patch).length > 0) {
+              updateAssistantTile(projectId, laneId, tile.id, patch, projectPath)
+            }
+          } else {
+            // Fresh tile: just bind the project, no thread yet
+            const latestTile = liveTile()
+            if (!cancelled && latestTile.assistantProjectId !== nextProjectId) {
+              updateAssistantTile(projectId, laneId, tile.id, {
+                assistantProjectId: nextProjectId,
+              }, projectPath)
+            }
           }
 
           if (!cancelled) {
@@ -222,9 +248,55 @@ export function useAssistantTileBinding({
     updateAssistantTile,
   ])
 
+  // --- Fix 6: On-demand thread creation for fresh tiles ---
+  // Called from handleSend when a user sends their first message on a fresh tile.
+  const createThreadOnDemand = useCallback(async (input: {
+    workspaceRoot: string
+    modelSelection: ReturnType<typeof resolvePreferredModelSelection>
+    runtimeMode: ReturnType<typeof resolveRuntimeMode>
+    interactionMode: ReturnType<typeof resolveInteractionMode>
+    title: string
+  }) => {
+    const api = ensureNativeApi()
+    const currentAssistantState = useStore.getState()
+    const currentProject =
+      (tile.assistantProjectId
+        ? selectAssistantProjectById(currentAssistantState, tile.assistantProjectId)
+        : null) ??
+      selectAssistantProjectByCwd(currentAssistantState, input.workspaceRoot) ??
+      null
+
+    if (!currentProject) {
+      throw new Error("No assistant project found for this workspace.")
+    }
+
+    const threadId = newThreadId()
+    await api.orchestration.dispatchCommand({
+      type: "thread.create",
+      commandId: newCommandId(),
+      threadId,
+      projectId: currentProject.id as any,
+      title: input.title,
+      modelSelection: input.modelSelection,
+      runtimeMode: input.runtimeMode,
+      interactionMode: input.interactionMode,
+      branch: null,
+      worktreePath: null,
+      createdAt: new Date().toISOString(),
+    })
+
+    updateAssistantTile(projectId, laneId, tile.id, {
+      threadId,
+      assistantProjectId: currentProject.id,
+    }, projectPath)
+
+    return threadId
+  }, [laneId, projectId, projectPath, tile, updateAssistantTile])
+
   return {
     bindingError,
     isBinding,
     setBindingRevision,
+    createThreadOnDemand,
   }
 }

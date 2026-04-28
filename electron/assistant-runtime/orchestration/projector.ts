@@ -24,6 +24,7 @@ import {
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
+  ThreadTurnInterruptRequestedPayload,
 } from "./Schemas.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
@@ -471,6 +472,49 @@ export function projectEvent(
                         : null,
                   }
                 : thread.latestTurn,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+
+    case "thread.turn-interrupt-requested":
+      return Effect.gen(function* () {
+        const payload = yield* decodeForEvent(
+          ThreadTurnInterruptRequestedPayload,
+          event.payload,
+          event.type,
+          "payload",
+        );
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
+
+        const interruptedTurn =
+          payload.turnId !== undefined
+            ? thread.latestTurn?.turnId === payload.turnId
+              ? thread.latestTurn
+              : null
+            : thread.latestTurn?.state === "running"
+              ? thread.latestTurn
+              : null;
+        if (!interruptedTurn) {
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              updatedAt: event.occurredAt,
+            }),
+          };
+        }
+
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            latestTurn: {
+              ...interruptedTurn,
+              state: "interrupted",
+              completedAt: interruptedTurn.completedAt ?? payload.createdAt,
+            },
             updatedAt: event.occurredAt,
           }),
         };

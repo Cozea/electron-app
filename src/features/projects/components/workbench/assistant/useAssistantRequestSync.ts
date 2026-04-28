@@ -1,7 +1,5 @@
 import { useCallback, useRef, useState } from "react"
 
-import { refreshAssistantRuntimeSnapshot } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
-
 import { toErrorMessage } from "./workbenchAssistantShared"
 
 interface RunAssistantRequestSyncOptions {
@@ -29,7 +27,6 @@ export function useAssistantRequestSync() {
       setRequestError(null)
       try {
         await mutate()
-        await refreshAssistantRuntimeSnapshot()
       } catch (error) {
         setRequestError(toErrorMessage(error))
       } finally {

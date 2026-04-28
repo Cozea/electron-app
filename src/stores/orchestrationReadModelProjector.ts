@@ -287,6 +287,19 @@ export function projectOrchestrationReadModelEvent(
       };
     }
 
+    case "thread.turn-start-requested": {
+      const payload = event.payload;
+      return {
+        ...nextBase,
+        threads: updateOrchestrationThread(nextBase.threads, payload.threadId, {
+          ...(payload.modelSelection !== undefined ? { modelSelection: payload.modelSelection } : {}),
+          runtimeMode: payload.runtimeMode,
+          interactionMode: payload.interactionMode,
+          updatedAt: event.occurredAt,
+        }),
+      };
+    }
+
     case "thread.message-sent": {
       const payload = event.payload;
       const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
@@ -401,6 +414,43 @@ export function projectOrchestrationReadModelEvent(
                       : null,
                 }
               : thread.latestTurn,
+          updatedAt: event.occurredAt,
+        }),
+      };
+    }
+
+    case "thread.turn-interrupt-requested": {
+      const payload = event.payload;
+      const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+      if (!thread) {
+        return nextBase;
+      }
+
+      const interruptedTurn =
+        payload.turnId !== undefined
+          ? thread.latestTurn?.turnId === payload.turnId
+            ? thread.latestTurn
+            : null
+          : thread.latestTurn?.state === "running"
+            ? thread.latestTurn
+            : null;
+      if (!interruptedTurn) {
+        return {
+          ...nextBase,
+          threads: updateOrchestrationThread(nextBase.threads, payload.threadId, {
+            updatedAt: event.occurredAt,
+          }),
+        };
+      }
+
+      return {
+        ...nextBase,
+        threads: updateOrchestrationThread(nextBase.threads, payload.threadId, {
+          latestTurn: {
+            ...interruptedTurn,
+            state: "interrupted",
+            completedAt: interruptedTurn.completedAt ?? payload.createdAt,
+          },
           updatedAt: event.occurredAt,
         }),
       };
