@@ -760,45 +760,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
                     <div className="mt-2 rounded-lg bg-secondary p-2.5">
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                          <span>Changed files ({changedFileCountLabel})</span>
-                          {hasNonZeroStat(summaryStat) && (
-                            <>
-                              <span className="mx-1">•</span>
-                              <DiffStatLabel
-                                additions={summaryStat.additions}
-                                deletions={summaryStat.deletions}
-                              />
-                            </>
-                          )}
-                        </p>
-                        <div className="flex items-center gap-1.5">
-                          <Button
+                      <div className="group mb-2 flex items-center justify-between gap-2 pr-2 pl-1.5 pt-1">
+                        <div className="flex items-center gap-2 text-[11px] font-normal uppercase tracking-[0.08em] text-muted-foreground/60">
+                          <span>Changed files</span>
+                          <span className="inline-flex size-[18px] items-center justify-center rounded-full bg-border/40 text-[10px] font-medium normal-case tracking-normal tabular-nums text-foreground/70">
+                            {changedFileCountLabel}
+                          </span>
+                          <button
                             type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            className="group rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+                            className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                             onClick={() => onToggleAllDirectories(turnSummary.turnId)}
                             title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                             aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           >
-                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            className="rounded-full border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-                            onClick={() =>
-                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                            }
-                            title="View diff"
-                            aria-label="View diff"
-                          >
-                            <EyeIcon className="size-3.5" />
-                          </Button>
+                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5" />
+                          </button>
                         </div>
+                        {hasNonZeroStat(summaryStat) && (
+                          <div className="font-mono text-[10px] tabular-nums">
+                            <DiffStatLabel
+                              additions={summaryStat.additions}
+                              deletions={summaryStat.deletions}
+                            />
+                          </div>
+                        )}
                       </div>
                       <ChangedFilesTree
                         key={`changed-files-tree:${turnSummary.turnId}`}
