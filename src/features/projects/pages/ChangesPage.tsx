@@ -80,6 +80,37 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString()
 }
 
+function DiffStatBlocks({ additions, deletions }: { additions: number, deletions: number }) {
+  const total = additions + deletions;
+  let addBlocks = 0;
+  let delBlocks = 0;
+  
+  if (total > 0) {
+    addBlocks = Math.round((additions / total) * 5);
+    delBlocks = Math.round((deletions / total) * 5);
+    if (addBlocks + delBlocks > 5) {
+      if (addBlocks > delBlocks) addBlocks--;
+      else delBlocks--;
+    }
+  }
+  
+  const neutralBlocks = Math.max(0, 5 - addBlocks - delBlocks);
+
+  return (
+    <div className="flex items-center gap-[2px] ml-2" title={`${additions} additions & ${deletions} deletions`}>
+      {Array.from({ length: addBlocks }).map((_, i) => (
+        <div key={`add-${i}`} className="h-2.5 w-2.5 rounded-[1.5px] bg-[#059669]" />
+      ))}
+      {Array.from({ length: delBlocks }).map((_, i) => (
+        <div key={`del-${i}`} className="h-2.5 w-2.5 rounded-[1.5px] bg-[#e11d48]" />
+      ))}
+      {Array.from({ length: neutralBlocks }).map((_, i) => (
+        <div key={`neutral-${i}`} className="h-2.5 w-2.5 rounded-[1.5px] bg-muted-foreground/20" />
+      ))}
+    </div>
+  );
+}
+
 interface ChangeGroup {
   groupId: string;
   items: ActivityFeedItem[];
@@ -385,6 +416,11 @@ function ChangeGroupCard(props: {
                       <span className="text-muted-foreground text-sm">·</span>
                       <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
                     </div>
+                  )}
+                  renderHeaderMetadata={() => (
+                    selectedItem && (selectedItem.additions || selectedItem.deletions) ? (
+                      <DiffStatBlocks additions={selectedItem.additions ?? 0} deletions={selectedItem.deletions ?? 0} />
+                    ) : null
                   )}
                   options={{
                     diffStyle: diffStyle,
