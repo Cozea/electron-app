@@ -404,6 +404,12 @@ function ChangeGroupCard(props: {
                         font-family: ui-sans-serif, system-ui, sans-serif !important;
                         font-variant-numeric: tabular-nums;
                       }
+                      [data-additions-count] {
+                        color: #10b981 !important;
+                      }
+                      [data-deletions-count] {
+                        color: #f43f5e !important;
+                      }
                       [data-diff],
                       [data-file] {
                         --diffs-bg: transparent !important;
