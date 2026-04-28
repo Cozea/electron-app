@@ -488,13 +488,13 @@ function ChangeGroupCard(props: {
         </div>
 
         {/* Action Buttons (Twitter style) */}
-        <div className="flex items-center justify-between text-muted-foreground mb-1 ml-1 pr-2">
+        <div className="flex items-center justify-between text-muted-foreground mb-1 mt-1 border border-border/60 rounded-full px-3 py-1.5 shadow-sm bg-background">
           <div className="flex items-center gap-6">
             <button 
-              className="flex items-center gap-1.5 text-[15px] hover:text-blue-500 transition-colors group"
+              className="flex items-center gap-1.5 text-[14px] hover:text-foreground transition-colors group"
               onClick={() => setShowComments((prev) => !prev)}
             >
-              <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-5" />
+              <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-4.5" />
               {totalComments > 0 && <span className="font-medium">{totalComments}</span>}
             </button>
           </div>
@@ -502,11 +502,11 @@ function ChangeGroupCard(props: {
           {/* View Toggles */}
           <div className="flex items-center gap-3">
             <button 
-              className="flex items-center justify-center size-7 rounded hover:bg-muted/50 transition-colors"
+              className="flex items-center justify-center size-6 rounded-full hover:bg-muted/80 transition-colors hover:text-foreground"
               onClick={() => setDiffStyle((prev) => prev === "split" ? "unified" : "split")}
               title={diffStyle === "split" ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
             >
-              <HugeiconsIcon icon={diffStyle === "split" ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4.5" />
+              <HugeiconsIcon icon={diffStyle === "split" ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4" />
             </button>
           </div>
         </div>
