@@ -10,7 +10,7 @@ import {
   LayoutTwoRowIcon as __StackedViewHugeIcon,
   PanelLeftIcon as __SidebarHugeIcon,
   Search01Icon as __SearchHugeIcon,
-  FilterIcon as __FilterHugeIcon,
+  FilterMailIcon as __FilterHugeIcon,
 } from '@hugeicons/core-free-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
