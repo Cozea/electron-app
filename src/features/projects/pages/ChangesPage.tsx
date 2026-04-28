@@ -358,16 +358,10 @@ function ChangeGroupCard(props: {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-1.5 text-[15px] mb-1">
+        <div className="flex items-center gap-1.5 text-[15px] mb-3">
           <span className="font-bold text-foreground hover:underline cursor-pointer">{group.userName}</span>
           <span className="text-muted-foreground">·</span>
           <span className="text-muted-foreground hover:underline cursor-pointer">{formatRelativeTime(group.timestamp)}</span>
-        </div>
-
-        <div className="mb-3">
-          <p className="text-[15px] text-foreground font-mono leading-snug truncate" title={selectedFilePath ?? undefined}>
-            {selectedFilePath}
-          </p>
         </div>
 
         <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all relative">
