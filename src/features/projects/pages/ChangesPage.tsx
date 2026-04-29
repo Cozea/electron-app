@@ -765,6 +765,88 @@ function useCheckpointPatch(input: {
   return state
 }
 
+function highlightTextNodes(root: Node, query: string) {
+  if (root.nodeType === Node.ELEMENT_NODE || root.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+    const container = root as Element | DocumentFragment;
+    
+    const marks = Array.from(container.querySelectorAll('mark.search-highlight'));
+    for (const mark of marks) {
+      const parent = mark.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+        parent.normalize();
+      }
+    }
+
+    const elements = container.querySelectorAll('*');
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      if (el.hasAttribute('data-diffs-header')) continue;
+      if (el.shadowRoot) {
+        highlightTextNodes(el.shadowRoot, query);
+      }
+    }
+    
+    if ('shadowRoot' in container && (container as Element).shadowRoot) {
+      highlightTextNodes((container as Element).shadowRoot!, query);
+    }
+  }
+
+  if (!query) return;
+
+  const lowerQuery = query.toLowerCase();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const nodesToProcess: Text[] = [];
+  
+  let node;
+  while ((node = walker.nextNode())) {
+    nodesToProcess.push(node as Text);
+  }
+
+  for (const textNode of nodesToProcess) {
+    let text = textNode.nodeValue;
+    if (!text || !text.toLowerCase().includes(lowerQuery)) continue;
+    
+    const parentNode = textNode.parentNode;
+    if (parentNode) {
+      const nodeName = parentNode.nodeName.toLowerCase();
+      if (nodeName === 'style' || nodeName === 'script') continue;
+      if (parentNode instanceof Element && parentNode.closest('[data-diffs-header]')) continue;
+    }
+    
+    const fragment = document.createDocumentFragment();
+    let lowerText = text.toLowerCase();
+    
+    while (true) {
+      const index = lowerText.indexOf(lowerQuery);
+      if (index === -1) {
+        if (text) fragment.appendChild(document.createTextNode(text));
+        break;
+      }
+      
+      const matchText = text.substring(index, index + query.length);
+      const beforeText = text.substring(0, index);
+      
+      if (beforeText) fragment.appendChild(document.createTextNode(beforeText));
+      
+      const mark = document.createElement('mark');
+      mark.className = 'search-highlight';
+      mark.style.backgroundColor = 'rgba(234, 179, 8, 0.4)';
+      mark.style.borderRadius = '2px';
+      mark.style.color = 'inherit';
+      mark.style.padding = '0 1px';
+      mark.style.margin = '0 -1px';
+      mark.textContent = matchText;
+      fragment.appendChild(mark);
+      
+      text = text.substring(index + query.length);
+      lowerText = lowerText.substring(index + query.length);
+    }
+    
+    textNode.parentNode?.replaceChild(fragment, textNode);
+  }
+}
+
 const ChangeGroupRow = memo(function ChangeGroupRow(props: {
   group: ChangeGroup
   gitCwd: string | null
@@ -772,6 +854,7 @@ const ChangeGroupRow = memo(function ChangeGroupRow(props: {
   commentCounts: Record<string, number>
   viewerUserId: Id<'users'> | null
   selectedFilePath: string | null
+  codeSearchQuery: string
 }) {
   const {
     group,
@@ -780,6 +863,7 @@ const ChangeGroupRow = memo(function ChangeGroupRow(props: {
     commentCounts,
     viewerUserId,
     selectedFilePath,
+    codeSearchQuery,
   } = props
   
   const [showComments, setShowComments] = useState(false)
@@ -802,9 +886,21 @@ const ChangeGroupRow = memo(function ChangeGroupRow(props: {
   }, [parsedFiles, selectedFilePath]);
 
   const visibleFileDiffs = useMemo(() => {
-    if (!selectedFilePath) return parsedFiles;
-    return selectedFileDiff ? [selectedFileDiff] : [];
-  }, [parsedFiles, selectedFileDiff, selectedFilePath]);
+    let diffs = parsedFiles;
+    if (selectedFilePath) {
+      diffs = selectedFileDiff ? [selectedFileDiff] : [];
+    }
+    if (codeSearchQuery) {
+      const query = codeSearchQuery.toLowerCase();
+      diffs = diffs.filter(diff => 
+        diff.additionLines.some(line => line.toLowerCase().includes(query)) ||
+        diff.deletionLines.some(line => line.toLowerCase().includes(query)) ||
+        diff.name.toLowerCase().includes(query) ||
+        (diff.prevName && diff.prevName.toLowerCase().includes(query))
+      );
+    }
+    return diffs;
+  }, [parsedFiles, selectedFileDiff, selectedFilePath, codeSearchQuery]);
 
   const hasLoadedPatch = patch !== null;
   const hasVisibleDiffFiles = visibleFileDiffs.length > 0;
@@ -844,7 +940,8 @@ const ChangeGroupRow = memo(function ChangeGroupRow(props: {
     overflow: "wrap" as const,
     themeType: "dark" as const,
     unsafeCSS: CHANGE_GROUP_DIFF_UNSAFE_CSS,
-  }), [diffStyle]);
+    onPostRender: (node: HTMLElement) => highlightTextNodes(node, codeSearchQuery),
+  }), [diffStyle, codeSearchQuery]);
 
   const bodyDiffOptions = useMemo(() => ({
     diffStyle,
@@ -852,9 +949,11 @@ const ChangeGroupRow = memo(function ChangeGroupRow(props: {
     overflow: "wrap" as const,
     themeType: "dark" as const,
     unsafeCSS: CHANGE_GROUP_DIFF_UNSAFE_CSS,
-  }), [diffStyle]);
+    onPostRender: (node: HTMLElement) => highlightTextNodes(node, codeSearchQuery),
+  }), [diffStyle, codeSearchQuery]);
 
   if (!patchError && !primaryFileDiff) {
+    if (hasLoadedPatch && codeSearchQuery) return null;
     return (
       <article
         aria-hidden="true"
@@ -951,6 +1050,7 @@ const ChangeGroupsList = memo(function ChangeGroupsList(props: {
   commentCounts: Record<string, number>
   viewerUserId: Id<'users'> | null
   selectedFilePath: string | null
+  codeSearchQuery: string
 }) {
   const {
     groups,
@@ -959,6 +1059,7 @@ const ChangeGroupsList = memo(function ChangeGroupsList(props: {
     commentCounts,
     viewerUserId,
     selectedFilePath,
+    codeSearchQuery,
   } = props
   const scrollParentRef = useRef<HTMLDivElement | null>(null)
   const rowVirtualizer = useVirtualizer({
@@ -998,6 +1099,7 @@ const ChangeGroupsList = memo(function ChangeGroupsList(props: {
                 commentCounts={commentCounts}
                 viewerUserId={viewerUserId}
                 selectedFilePath={selectedFilePath}
+                codeSearchQuery={codeSearchQuery}
               />
             </div>
           )
@@ -1032,6 +1134,8 @@ export function ChangesPage(_props: ChangesPageProps) {
 
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [fileFilterQuery, setFileFilterQuery] = useState("");
+  const [codeSearchQuery, setCodeSearchQuery] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const visibleFiles = useMemo(() => {
     if (!fileFilterQuery.trim()) return uniqueFiles;
@@ -1081,7 +1185,15 @@ export function ChangesPage(_props: ChangesPageProps) {
             </div>
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
-              <div className="w-[30%] min-w-[200px] max-w-[300px] border-r border-border/70 flex flex-col shrink-0">
+              <div
+                className="flex flex-col shrink-0 overflow-hidden border-r border-border/70 will-change-transform"
+                style={{
+                  width: 260,
+                  transform: sidebarCollapsed ? 'translateX(-100%)' : 'translateX(0)',
+                  marginRight: sidebarCollapsed ? -260 : 0,
+                  transition: 'transform 150ms ease-out, margin-right 150ms ease-out',
+                }}
+              >
                  <div className="p-4 pb-0 shrink-0">
                    <div className="mb-3 flex items-center">
                      <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-border/40 bg-muted/60 transition-colors focus-within:border-border/60 focus-within:bg-background">
@@ -1124,8 +1236,11 @@ export function ChangesPage(_props: ChangesPageProps) {
               </div>
               <div className="flex min-w-0 flex-1 flex-col bg-background">
                 {/* Search within code header */}
-                <div className="flex items-center gap-2 px-6 py-3 border-b border-border/70 shrink-0">
-                  <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
+                <div className="sticky top-0 z-10 flex items-center gap-2 px-6 py-3 border-b border-border/70 shrink-0 backdrop-blur-md" style={{ backgroundColor: 'color-mix(in srgb, var(--background) 60%, transparent)' }}>
+                  <button
+                    onClick={() => setSidebarCollapsed(prev => !prev)}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                  >
                     <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4.5" />
                   </button>
                   <label className="relative flex h-9 min-w-0 flex-1 items-center rounded-lg border border-border/40 bg-muted/60 transition-colors focus-within:border-border/60 focus-within:bg-background">
@@ -1134,6 +1249,8 @@ export function ChangesPage(_props: ChangesPageProps) {
                       className="pointer-events-none absolute left-3 size-4 text-muted-foreground/70"
                     />
                     <input
+                      value={codeSearchQuery}
+                      onChange={(e) => setCodeSearchQuery(e.target.value)}
                       placeholder="Search within code"
                       className="h-full min-w-0 flex-1 bg-transparent pl-9 pr-4 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
                     />
@@ -1151,6 +1268,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                     commentCounts={commentCounts ?? EMPTY_COMMENT_COUNTS}
                     viewerUserId={convexUserId}
                     selectedFilePath={selectedFilePath}
+                    codeSearchQuery={codeSearchQuery}
                   />
                 ) : hasActivityLoaded ? (
                   <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
