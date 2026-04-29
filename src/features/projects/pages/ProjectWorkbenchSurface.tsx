@@ -46,6 +46,7 @@ import {
   useWorkspaceRuntimeStore,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
 import { useTranslation } from "@/lib/i18n";
+import { ChangesPageShell } from "@/features/projects/components/changes/ChangesPageShell";
 
 const LazyChangesPage = lazy(() =>
   import("@/features/projects/pages/ChangesPage").then((module) => ({
@@ -438,7 +439,7 @@ export function ProjectWorkbenchSurface() {
                   className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
                 >
                   <div className="min-h-0 flex-1 overflow-hidden">
-                    <Suspense fallback={<WorkbenchOverlayLoading />}>
+                    <Suspense fallback={<ChangesPageShell />}>
                       <LazyChangesPage presentation="embedded" />
                     </Suspense>
                   </div>
