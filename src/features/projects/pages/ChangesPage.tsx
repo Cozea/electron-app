@@ -1,11 +1,7 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowLeft02Icon as __ArrowLeftHugeIcon,
   BubbleChatIcon as __MessageSquareHugeIcon,
   Clock01Icon as __ClockHugeIcon,
-  TransactionHistoryIcon as __ChangesHugeIcon,
-  PlusSignIcon as __PlusHugeIcon,
-  MinusSignIcon as __MinusHugeIcon,
   LayoutTwoColumnIcon as __SplitViewHugeIcon,
   LayoutTwoRowIcon as __StackedViewHugeIcon,
   PanelLeftIcon as __SidebarHugeIcon,
@@ -13,7 +9,8 @@ import {
   FilterMailIcon as __FilterHugeIcon,
   Settings02Icon as __SettingsHugeIcon,
 } from '@hugeicons/core-free-icons'
-import { useEffect, useMemo, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 
 import { api } from '../../../../convex/_generated/api'
@@ -29,8 +26,201 @@ import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDi
 import { useTranslation } from '@/lib/i18n'
 
 import { parsePatchFiles } from "@pierre/diffs";
-import { FileDiff, type FileDiffMetadata } from "@pierre/diffs/react";
+import { FileDiff, type FileDiffMetadata, Virtualizer } from "@pierre/diffs/react";
 import { ChangedFilesTree } from '../components/changes/ChangedFilesTree'
+
+const EMPTY_COMMENT_COUNTS: Record<string, number> = {}
+const CHECKPOINT_PATCH_CACHE_MAX_ENTRIES = 48
+
+const CHANGE_GROUP_DIFF_UNSAFE_CSS = `
+[data-diffs-header] {
+  background-color: var(--card) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+[data-additions-count],
+[data-deletions-count] {
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-variant-numeric: tabular-nums;
+}
+[data-additions-count] {
+  color: #059669 !important;
+}
+[data-deletions-count] {
+  color: #e11d48 !important;
+}
+[data-diff],
+[data-file] {
+  --diffs-bg: transparent !important;
+  --diffs-light-bg: transparent !important;
+  --diffs-dark-bg: transparent !important;
+  background-color: transparent !important;
+}
+[data-file-info] {
+  background-color: color-mix(in srgb, var(--card) 94%, var(--foreground)) !important;
+  border-block-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+`
+
+interface CheckpointPatchCacheEntry {
+  patch: string
+  parsedFiles: FileDiffMetadata[]
+}
+
+const checkpointPatchCache = new Map<string, CheckpointPatchCacheEntry>()
+const checkpointPatchRequests = new Map<string, Promise<CheckpointPatchCacheEntry>>()
+
+function readCheckpointPatchCache(key: string): CheckpointPatchCacheEntry | null {
+  const cached = checkpointPatchCache.get(key)
+  if (!cached) return null
+
+  checkpointPatchCache.delete(key)
+  checkpointPatchCache.set(key, cached)
+  return cached
+}
+
+function writeCheckpointPatchCache(key: string, entry: CheckpointPatchCacheEntry): void {
+  checkpointPatchCache.set(key, entry)
+
+  while (checkpointPatchCache.size > CHECKPOINT_PATCH_CACHE_MAX_ENTRIES) {
+    const oldestKey = checkpointPatchCache.keys().next().value
+    if (!oldestKey) break
+    checkpointPatchCache.delete(oldestKey)
+  }
+}
+
+function buildCheckpointPatchCacheKey(input: {
+  gitCwd: string
+  groupId: string
+  previousCheckpointGroupId: string | null
+  selectedFilePath: string | null
+}): string {
+  return [
+    input.gitCwd,
+    input.previousCheckpointGroupId ?? 'head',
+    input.groupId,
+    input.selectedFilePath ?? '*',
+  ].join('\0')
+}
+
+function parseCheckpointPatch(
+  patch: string,
+  groupId: string,
+  selectedFilePath: string | null,
+): FileDiffMetadata[] {
+  const normalizedPatch = patch.trim()
+  if (!normalizedPatch) return []
+
+  const cacheScope = selectedFilePath ? selectedFilePath : 'all'
+  const parsedPatches = parsePatchFiles(normalizedPatch, `changes:${groupId}:${cacheScope}`)
+  return parsedPatches.flatMap((parsedPatch) => parsedPatch.files)
+}
+
+function filterCheckpointPatchEntryForFile(
+  entry: CheckpointPatchCacheEntry,
+  selectedFilePath: string,
+): CheckpointPatchCacheEntry {
+  return {
+    patch: entry.patch,
+    parsedFiles: entry.parsedFiles.filter(
+      (fileDiff) => resolveFileDiffPath(fileDiff) === selectedFilePath,
+    ),
+  }
+}
+
+function readCheckpointPatchEntryForInput(input: {
+  gitCwd: string
+  groupId: string
+  previousCheckpointGroupId: string | null
+  selectedFilePath: string | null
+}): CheckpointPatchCacheEntry | null {
+  const cacheKey = buildCheckpointPatchCacheKey(input)
+  const cached = readCheckpointPatchCache(cacheKey)
+  if (cached) return cached
+
+  if (!input.selectedFilePath) return null
+
+  const fullPatchCacheKey = buildCheckpointPatchCacheKey({
+    ...input,
+    selectedFilePath: null,
+  })
+  const fullPatchCached = readCheckpointPatchCache(fullPatchCacheKey)
+  if (!fullPatchCached) return null
+
+  const entry = filterCheckpointPatchEntryForFile(fullPatchCached, input.selectedFilePath)
+  writeCheckpointPatchCache(cacheKey, entry)
+  return entry
+}
+
+async function loadCheckpointPatch(input: {
+  gitCwd: string
+  groupId: string
+  previousCheckpointGroupId: string | null
+  selectedFilePath: string | null
+}): Promise<CheckpointPatchCacheEntry> {
+  const cacheKey = buildCheckpointPatchCacheKey(input)
+  const cached = readCheckpointPatchCache(cacheKey)
+  if (cached) return cached
+
+  const inFlight = checkpointPatchRequests.get(cacheKey)
+  if (inFlight) return inFlight
+
+  if (input.selectedFilePath) {
+    const fullPatchCacheKey = buildCheckpointPatchCacheKey({
+      ...input,
+      selectedFilePath: null,
+    })
+    const fullPatchCached = readCheckpointPatchCache(fullPatchCacheKey)
+    if (fullPatchCached) {
+      const entry = filterCheckpointPatchEntryForFile(fullPatchCached, input.selectedFilePath)
+      writeCheckpointPatchCache(cacheKey, entry)
+      return entry
+    }
+
+    const fullPatchInFlight = checkpointPatchRequests.get(fullPatchCacheKey)
+    if (fullPatchInFlight) {
+      const request = fullPatchInFlight
+        .then((entry) => {
+          const filteredEntry = filterCheckpointPatchEntryForFile(entry, input.selectedFilePath!)
+          writeCheckpointPatchCache(cacheKey, filteredEntry)
+          return filteredEntry
+        })
+        .finally(() => {
+          checkpointPatchRequests.delete(cacheKey)
+        })
+
+      checkpointPatchRequests.set(cacheKey, request)
+      return request
+    }
+  }
+
+  const request = projectOpenDesktopClient.sync
+    .gitDiffCheckpoints({
+      projectPath: input.gitCwd,
+      fromCheckpointId: input.previousCheckpointGroupId ?? undefined,
+      toCheckpointId: input.groupId,
+      filePath: input.selectedFilePath ?? undefined,
+    })
+    .then((result) => {
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to load patch.')
+      }
+
+      const patch = result.diff ?? ''
+      const entry: CheckpointPatchCacheEntry = {
+        patch,
+        parsedFiles: parseCheckpointPatch(patch, input.groupId, input.selectedFilePath),
+      }
+      writeCheckpointPatchCache(cacheKey, entry)
+      return entry
+    })
+    .finally(() => {
+      checkpointPatchRequests.delete(cacheKey)
+    })
+
+  checkpointPatchRequests.set(cacheKey, request)
+  return request
+}
 
 export interface ActivityFeedItem {
   id: Id<'fileChanges'>
@@ -127,15 +317,62 @@ interface ChangeGroup {
   timestamp: number;
   userName: string;
   userColor: string;
-  totalAdditions: number;
-  totalDeletions: number;
 }
 
-function groupActivityItems(items: readonly ActivityFeedItem[]): ChangeGroup[] {
+interface ChangesPageData {
+  groups: ChangeGroup[]
+  uniqueFiles: ActivityFeedItem[]
+  filePathSet: ReadonlySet<string>
+  groupsByFilePath: ReadonlyMap<string, ChangeGroup[]>
+  changeIds: Id<'fileChanges'>[]
+  changeIdsByFilePath: ReadonlyMap<string, Id<'fileChanges'>[]>
+  previousCheckpointGroupIds: ReadonlyMap<string, string | null>
+}
+
+const EMPTY_CHANGE_GROUPS: ChangeGroup[] = []
+const EMPTY_CHANGE_IDS: Id<'fileChanges'>[] = []
+const EMPTY_CHANGES_PAGE_DATA: ChangesPageData = {
+  groups: EMPTY_CHANGE_GROUPS,
+  uniqueFiles: [],
+  filePathSet: new Set<string>(),
+  groupsByFilePath: new Map<string, ChangeGroup[]>(),
+  changeIds: EMPTY_CHANGE_IDS,
+  changeIdsByFilePath: new Map<string, Id<'fileChanges'>[]>(),
+  previousCheckpointGroupIds: new Map<string, string | null>(),
+}
+
+function appendMapValue<T>(map: Map<string, T[]>, key: string, value: T): void {
+  const values = map.get(key)
+  if (values) {
+    values.push(value)
+    return
+  }
+
+  map.set(key, [value])
+}
+
+function deriveChangesPageData(items: readonly ActivityFeedItem[] | undefined): ChangesPageData {
+  if (!items || items.length === 0) return EMPTY_CHANGES_PAGE_DATA
+
   const groupsMap = new Map<string, ChangeGroup>();
   const orderedGroups: ChangeGroup[] = [];
+  const uniqueFilesByPath = new Map<string, ActivityFeedItem>();
+  const changeIds: Id<'fileChanges'>[] = [];
+  const changeIdsByFilePath = new Map<string, Id<'fileChanges'>[]>();
 
   for (const item of items) {
+    const changeId = item.id as Id<'fileChanges'>;
+    changeIds.push(changeId);
+    appendMapValue(changeIdsByFilePath, item.filePath, changeId);
+
+    const existingFile = uniqueFilesByPath.get(item.filePath);
+    if (existingFile) {
+      existingFile.additions = (existingFile.additions ?? 0) + (item.additions ?? 0);
+      existingFile.deletions = (existingFile.deletions ?? 0) + (item.deletions ?? 0);
+    } else {
+      uniqueFilesByPath.set(item.filePath, { ...item });
+    }
+
     if (!item.checkpointGroupId) continue;
     let group = groupsMap.get(item.checkpointGroupId);
     if (!group) {
@@ -145,26 +382,41 @@ function groupActivityItems(items: readonly ActivityFeedItem[]): ChangeGroup[] {
         timestamp: item.timestamp,
         userName: item.userName,
         userColor: item.userColor,
-        totalAdditions: 0,
-        totalDeletions: 0,
       };
       groupsMap.set(item.checkpointGroupId, group);
       orderedGroups.push(group);
     }
     group.items.push(item);
-    group.totalAdditions += (item.additions ?? 0);
-    group.totalDeletions += (item.deletions ?? 0);
   }
 
-  return orderedGroups;
-}
+  const previousCheckpointGroupIds = new Map<string, string | null>()
+  const groupsByFilePath = new Map<string, ChangeGroup[]>()
 
-function resolvePreviousCheckpointGroupIds(groups: ChangeGroup[]): Map<string, string | null> {
-  const previousByGroup = new Map<string, string | null>()
-  for (let index = 0; index < groups.length; index += 1) {
-    previousByGroup.set(groups[index].groupId, groups[index + 1]?.groupId ?? null)
+  for (let index = 0; index < orderedGroups.length; index += 1) {
+    const group = orderedGroups[index]
+    previousCheckpointGroupIds.set(group.groupId, orderedGroups[index + 1]?.groupId ?? null)
+
+    const seenFilePaths = new Set<string>()
+    for (const item of group.items) {
+      if (seenFilePaths.has(item.filePath)) continue
+      seenFilePaths.add(item.filePath)
+      appendMapValue(groupsByFilePath, item.filePath, group)
+    }
   }
-  return previousByGroup
+
+  const uniqueFiles = Array.from(uniqueFilesByPath.values()).sort((a, b) =>
+    a.filePath.localeCompare(b.filePath),
+  )
+
+  return {
+    groups: orderedGroups,
+    uniqueFiles,
+    filePathSet: new Set(uniqueFilesByPath.keys()),
+    groupsByFilePath,
+    changeIds,
+    changeIdsByFilePath,
+    previousCheckpointGroupIds,
+  }
 }
 
 function matchesFileFilter(filePath: string, query: string): boolean {
@@ -234,10 +486,9 @@ function ChangeComments(props: {
           
           return (
             <div key={String(comment.id)} className="flex gap-3">
-              {/* Left column (Avatar + Thread line) */}
               <div className="flex flex-col items-center shrink-0">
                 <span
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs z-10 mt-1"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold text-xs z-10 mt-1"
                   style={{ backgroundColor: comment.userColor || '#666' }}
                 >
                   {comment.userName.charAt(0).toUpperCase()}
@@ -247,7 +498,6 @@ function ChangeComments(props: {
                 )}
               </div>
               
-              {/* Right column (Content) */}
               <div className="flex min-w-0 flex-1 flex-col pb-4">
                 <div className="flex items-center gap-1.5 text-[14px] leading-none mb-1 mt-1.5">
                   <span className="font-semibold text-foreground text-sm truncate hover:underline cursor-pointer">{comment.userName}</span>
@@ -264,16 +514,14 @@ function ChangeComments(props: {
 
         {expanded && viewerUserId ? (
           <div className="flex gap-3 pt-1">
-            {/* Left column */}
             <div className="flex flex-col items-center shrink-0">
               <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm text-xs z-10 mt-1"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs z-10 mt-1"
               >
                 <HugeiconsIcon icon={__MessageSquareHugeIcon} className="size-3.5" />
               </span>
             </div>
             
-            {/* Right column */}
             <div className="flex min-w-0 flex-1 flex-col">
               <Textarea
                 value={draft}
@@ -308,7 +556,216 @@ function resolveFileDiffPath(fileDiff: FileDiffMetadata): string {
   return raw;
 }
 
-function ChangeGroupCard(props: {
+function getFileDiffRenderKey(fileDiff: FileDiffMetadata): string {
+  return `${fileDiff.prevName ?? ""}->${fileDiff.name}`;
+}
+
+function hasFileDiffBody(fileDiff: FileDiffMetadata): boolean {
+  return fileDiff.hunks.length > 0;
+}
+
+function getFileDiffLineStats(fileDiff: FileDiffMetadata): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const hunk of fileDiff.hunks) {
+    additions += hunk.additionLines;
+    deletions += hunk.deletionLines;
+  }
+  return { additions, deletions };
+}
+
+function ChangeGroupIdentityHeader({ group }: { group: ChangeGroup }) {
+  return (
+    <div className="flex min-h-10 items-center gap-2 border-b border-border/70 bg-card px-3 py-2">
+      <ChangeGroupHeaderPrefix group={group} />
+    </div>
+  )
+}
+
+function ChangeGroupHeaderPrefix({ group }: { group: ChangeGroup }) {
+  return (
+    <div className="flex min-w-0 shrink-0 items-center gap-2 border-r border-border/60 pr-3">
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+        style={{ backgroundColor: group.userColor || '#666' }}
+      >
+        {group.userName.charAt(0).toUpperCase()}
+      </span>
+      <span className="truncate text-sm font-semibold text-foreground">{group.userName}</span>
+      <span className="text-sm text-muted-foreground">·</span>
+      <span className="shrink-0 text-sm text-muted-foreground">{formatRelativeTime(group.timestamp)}</span>
+    </div>
+  )
+}
+
+interface CheckpointPatchState {
+  cacheKey: string | null
+  patch: string | null
+  parsedFiles: FileDiffMetadata[]
+  patchError: string | null
+}
+
+function createCheckpointPatchState(input: {
+  gitCwd: string | null
+  groupId: string
+  previousCheckpointGroupId: string | null
+  selectedFilePath: string | null
+  noLocalCheckpointMessage: string
+}): CheckpointPatchState {
+  const { gitCwd, groupId, previousCheckpointGroupId, selectedFilePath } = input
+  if (!gitCwd || !groupId) {
+    return {
+      cacheKey: null,
+      patch: null,
+      parsedFiles: [],
+      patchError: input.noLocalCheckpointMessage,
+    }
+  }
+
+  const cacheInput = {
+    gitCwd,
+    groupId,
+    previousCheckpointGroupId,
+    selectedFilePath,
+  }
+  const cacheKey = buildCheckpointPatchCacheKey(cacheInput)
+  const cached = readCheckpointPatchEntryForInput(cacheInput)
+  if (cached) {
+    return {
+      cacheKey,
+      patch: cached.patch,
+      parsedFiles: cached.parsedFiles,
+      patchError: null,
+    }
+  }
+
+  return {
+    cacheKey,
+    patch: null,
+    parsedFiles: [],
+    patchError: null,
+  }
+}
+
+function useCheckpointPatch(input: {
+  gitCwd: string | null
+  groupId: string
+  previousCheckpointGroupId: string | null
+  selectedFilePath: string | null
+  failedToLoadPatchMessage: string
+  noLocalCheckpointMessage: string
+}): CheckpointPatchState {
+  const {
+    gitCwd,
+    groupId,
+    previousCheckpointGroupId,
+    selectedFilePath,
+    failedToLoadPatchMessage,
+    noLocalCheckpointMessage,
+  } = input
+  const [state, setState] = useState<CheckpointPatchState>(() =>
+    createCheckpointPatchState({
+      gitCwd,
+      groupId,
+      previousCheckpointGroupId,
+      selectedFilePath,
+      noLocalCheckpointMessage,
+    }),
+  )
+
+  useLayoutEffect(() => {
+    if (!gitCwd || !groupId) {
+      setState({
+        cacheKey: null,
+        patch: null,
+        parsedFiles: [],
+        patchError: noLocalCheckpointMessage,
+      })
+      return
+    }
+
+    let cancelled = false
+    const cacheKey = buildCheckpointPatchCacheKey({
+      gitCwd,
+      groupId,
+      previousCheckpointGroupId,
+      selectedFilePath,
+    })
+    const cached = readCheckpointPatchEntryForInput({
+      gitCwd,
+      groupId,
+      previousCheckpointGroupId,
+      selectedFilePath,
+    })
+    if (cached) {
+      setState({
+        cacheKey,
+        patch: cached.patch,
+        parsedFiles: cached.parsedFiles,
+        patchError: null,
+      })
+      return
+    }
+
+    setState((current) => {
+      if (
+        current.cacheKey === cacheKey &&
+        current.patch === null &&
+        current.parsedFiles.length === 0 &&
+        current.patchError === null
+      ) {
+        return current
+      }
+
+      return {
+        cacheKey,
+        patch: null,
+        parsedFiles: [],
+        patchError: null,
+      }
+    })
+
+    void loadCheckpointPatch({
+      gitCwd,
+      groupId,
+      previousCheckpointGroupId,
+      selectedFilePath,
+    })
+      .then((entry) => {
+        if (cancelled) return
+        setState({
+          cacheKey,
+          patch: entry.patch,
+          parsedFiles: entry.parsedFiles,
+          patchError: null,
+        })
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setState({
+          cacheKey,
+          patch: null,
+          parsedFiles: [],
+          patchError: error instanceof Error ? error.message : failedToLoadPatchMessage,
+        })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    failedToLoadPatchMessage,
+    gitCwd,
+    groupId,
+    noLocalCheckpointMessage,
+    previousCheckpointGroupId,
+    selectedFilePath,
+  ])
+
+  return state
+}
+
+const ChangeGroupRow = memo(function ChangeGroupRow(props: {
   group: ChangeGroup
   gitCwd: string | null
   previousCheckpointGroupId: string | null
@@ -325,169 +782,133 @@ function ChangeGroupCard(props: {
     selectedFilePath,
   } = props
   
-  const [patch, setPatch] = useState<string | null>(null)
-  const [patchError, setPatchError] = useState<string | null>(null)
   const [showComments, setShowComments] = useState(false)
   const [diffStyle, setDiffStyle] = useState<"split" | "unified">("split")
   const { t } = useTranslation()
+  const { patch, parsedFiles, patchError } = useCheckpointPatch({
+    gitCwd,
+    groupId: group.groupId,
+    previousCheckpointGroupId,
+    selectedFilePath,
+    failedToLoadPatchMessage: t('changes.error.failedToLoadPatch'),
+    noLocalCheckpointMessage: t('changes.error.noLocalCheckpoint'),
+  })
 
   const totalComments = group.items.reduce((acc, item) => acc + (commentCounts[String(item.id)] ?? 0), 0);
-
-  useEffect(() => {
-    if (!gitCwd || !group.groupId) {
-      setPatch(null)
-      setPatchError(t('changes.error.noLocalCheckpoint'))
-      return
-    }
-
-    let cancelled = false
-    setPatchError(null)
-
-    // Omit filePath to get the full patch for the checkpoint
-    void projectOpenDesktopClient.sync
-      .gitDiffCheckpoints({
-        projectPath: gitCwd,
-        fromCheckpointId: previousCheckpointGroupId ?? undefined,
-        toCheckpointId: group.groupId,
-      })
-      .then((result) => {
-        if (cancelled) return
-        if (!result.success) {
-          setPatch(null)
-          setPatchError(result.error ?? t('changes.error.failedToLoadPatch'))
-          return
-        }
-        setPatch(result.diff ?? '')
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setPatch(null)
-        setPatchError(error instanceof Error ? error.message : t('changes.error.failedToLoadPatch'))
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [gitCwd, group.groupId, previousCheckpointGroupId])
-
-  const parsedFiles = useMemo(() => {
-    if (!patch) return [];
-    try {
-      const parsedPatches = parsePatchFiles(patch.trim(), `cache-${group.groupId}`);
-      return parsedPatches.flatMap((parsedPatch) => parsedPatch.files);
-    } catch {
-      return [];
-    }
-  }, [patch, group.groupId]);
 
   const selectedFileDiff = useMemo(() => {
     if (!selectedFilePath || parsedFiles.length === 0) return null;
     return parsedFiles.find((f) => resolveFileDiffPath(f) === selectedFilePath) ?? null;
   }, [parsedFiles, selectedFilePath]);
 
+  const visibleFileDiffs = useMemo(() => {
+    if (!selectedFilePath) return parsedFiles;
+    return selectedFileDiff ? [selectedFileDiff] : [];
+  }, [parsedFiles, selectedFileDiff, selectedFilePath]);
+
+  const hasLoadedPatch = patch !== null;
+  const hasVisibleDiffFiles = visibleFileDiffs.length > 0;
+  const hasVisibleDiffBody = visibleFileDiffs.some(hasFileDiffBody);
+  const isBodylessLoadedDiff = hasLoadedPatch && (!hasVisibleDiffFiles || !hasVisibleDiffBody);
+  const showRowActions = !isBodylessLoadedDiff;
+  const primaryFileDiff = visibleFileDiffs[0] ?? null;
+
   const selectedItem = useMemo(() => {
     if (!selectedFilePath) return null;
     return group.items.find(item => item.filePath === selectedFilePath) ?? null;
   }, [group.items, selectedFilePath]);
 
-  return (
-    <article className="flex py-2 px-4 sm:px-6 hover:bg-muted/5 transition-colors">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex rounded-2xl border border-border/70 overflow-hidden h-[450px] mb-3 transition-all relative">
-          <div className="flex-1 overflow-y-auto bg-card relative">
-            {patchError ? (
-              <div className="flex flex-col min-h-full">
-                <div className="flex items-center gap-2 p-2 px-3 border-b border-border/70 bg-card sticky top-0 z-10">
-                  <span
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs"
-                    style={{ backgroundColor: group.userColor || '#666' }}
-                  >
-                    {group.userName.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="font-semibold text-foreground text-sm">{group.userName}</span>
-                  <span className="text-muted-foreground text-sm">·</span>
-                  <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
-                </div>
-                <div className="m-4 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  {patchError}
-                </div>
-              </div>
-            ) : selectedFileDiff ? (
-              <div className="flex flex-col min-h-full">
-                <FileDiff
-                  fileDiff={selectedFileDiff}
-                  renderHeaderPrefix={() => (
-                    <div className="flex items-center gap-2 mr-3 pr-3 border-r border-border/60">
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white font-bold shadow-sm text-xs"
-                        style={{ backgroundColor: group.userColor || '#666' }}
-                      >
-                        {group.userName.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="font-semibold text-foreground text-sm">{group.userName}</span>
-                      <span className="text-muted-foreground text-sm">·</span>
-                      <span className="text-muted-foreground text-sm">{formatRelativeTime(group.timestamp)}</span>
-                    </div>
-                  )}
-                  renderHeaderMetadata={(fileDiff) => {
-                    let additions = 0;
-                    let deletions = 0;
-                    for (const hunk of fileDiff.hunks) {
-                      additions += hunk.additionLines;
-                      deletions += hunk.deletionLines;
-                    }
-                    if (additions === 0 && deletions === 0) return null;
-                    return <DiffStatBlocks additions={additions} deletions={deletions} />;
-                  }}
-                  options={{
-                    diffStyle: diffStyle,
-                    lineDiffType: "none",
-                    overflow: "wrap",
-                    themeType: "dark", 
-                    unsafeCSS: `
-                      [data-diffs-header] {
-                        position: sticky !important;
-                        top: 0 !important;
-                        z-index: 10 !important;
-                        background-color: var(--card) !important;
-                        border-bottom: 1px solid var(--border) !important;
-                      }
-                      [data-additions-count],
-                      [data-deletions-count] {
-                        font-family: ui-sans-serif, system-ui, sans-serif !important;
-                        font-variant-numeric: tabular-nums;
-                      }
-                      [data-additions-count] {
-                        color: #059669 !important;
-                      }
-                      [data-deletions-count] {
-                        color: #e11d48 !important;
-                      }
-                      [data-diff],
-                      [data-file] {
-                        --diffs-bg: transparent !important;
-                        --diffs-light-bg: transparent !important;
-                        --diffs-dark-bg: transparent !important;
-                        background-color: transparent !important;
-                      }
-                      [data-file-info] {
-                        background-color: color-mix(in srgb, var(--card) 94%, var(--foreground)) !important;
-                        border-block-color: var(--border) !important;
-                        color: var(--foreground) !important;
-                      }
-                    `
-                  }}
-                />
-              </div>
-            ) : patch ? (
-               <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                 {t('changes.info.selectFile')}
-               </div>
-            ) : null}
-          </div>
+  const renderHeaderPrefix = useCallback(() => (
+    <ChangeGroupHeaderPrefix group={group} />
+  ), [group]);
 
-          {/* Action Buttons (Twitter style) */}
-          <div className="absolute bottom-4 right-4 z-20 flex w-fit items-center gap-4 text-secondary-foreground/80 border border-border/50 rounded-full px-3 py-1.5 bg-secondary/90 backdrop-blur shadow-sm">
+  const renderHeaderMetadata = useCallback((fileDiff: FileDiffMetadata) => {
+    const { additions, deletions } = getFileDiffLineStats(fileDiff);
+    if (additions === 0 && deletions === 0) return null;
+    return <DiffStatBlocks additions={additions} deletions={deletions} />;
+  }, []);
+
+  const headerDiffOptions = useMemo(() => ({
+    collapsed: true,
+    diffStyle,
+    lineDiffType: "none" as const,
+    overflow: "wrap" as const,
+    themeType: "dark" as const,
+    unsafeCSS: CHANGE_GROUP_DIFF_UNSAFE_CSS,
+  }), [diffStyle]);
+
+  const firstBodyDiffOptions = useMemo(() => ({
+    disableFileHeader: true,
+    diffStyle,
+    lineDiffType: "none" as const,
+    overflow: "wrap" as const,
+    themeType: "dark" as const,
+    unsafeCSS: CHANGE_GROUP_DIFF_UNSAFE_CSS,
+  }), [diffStyle]);
+
+  const bodyDiffOptions = useMemo(() => ({
+    diffStyle,
+    lineDiffType: "none" as const,
+    overflow: "wrap" as const,
+    themeType: "dark" as const,
+    unsafeCSS: CHANGE_GROUP_DIFF_UNSAFE_CSS,
+  }), [diffStyle]);
+
+  if (!patchError && !primaryFileDiff) {
+    return (
+      <article
+        aria-hidden="true"
+        className={hasLoadedPatch ? "h-px border-b border-border/70" : "h-[450px] border-b border-border/70"}
+      />
+    );
+  }
+
+  return (
+    <article className="relative flex min-w-0 flex-col border-b border-border/70 transition-colors hover:bg-muted/5">
+      <div className={`relative flex flex-col overflow-hidden ${isBodylessLoadedDiff ? "h-auto min-h-0" : "h-[450px]"}`}>
+        {primaryFileDiff ? (
+          <FileDiff
+            fileDiff={primaryFileDiff}
+            renderHeaderPrefix={renderHeaderPrefix}
+            renderHeaderMetadata={renderHeaderMetadata}
+            options={headerDiffOptions}
+          />
+        ) : (
+          <ChangeGroupIdentityHeader group={group} />
+        )}
+
+        {patchError ? (
+          <div className="relative min-h-0 flex-1 overflow-y-auto bg-card">
+            <div className="flex flex-col min-h-full">
+              <div className="m-3 border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                {patchError}
+              </div>
+            </div>
+          </div>
+        ) : visibleFileDiffs.length > 0 ? (
+          <Virtualizer
+            className="relative min-h-0 flex-1 overflow-y-auto bg-card"
+            contentClassName="flex flex-col min-h-full"
+            config={{
+              overscrollSize: 600,
+              intersectionObserverMargin: 1200,
+            }}
+          >
+            {visibleFileDiffs.map((fileDiff, index) => (
+              <FileDiff
+                key={`${getFileDiffRenderKey(fileDiff)}:${index}`}
+                fileDiff={fileDiff}
+                renderHeaderMetadata={renderHeaderMetadata}
+                options={index === 0 ? firstBodyDiffOptions : bodyDiffOptions}
+              />
+            ))}
+          </Virtualizer>
+        ) : (
+          <div className="relative min-h-0 flex-1 overflow-y-auto bg-card" />
+        )}
+
+        {showRowActions ? (
+          <div className="absolute bottom-2 right-2 z-20 flex w-fit items-center gap-4 rounded-md border border-border/50 bg-secondary px-3 py-1.5 text-secondary-foreground/80">
             <div className="flex items-center gap-6">
               <button 
                 className="flex items-center gap-1.5 text-[14px] hover:text-secondary-foreground transition-colors group"
@@ -498,7 +919,6 @@ function ChangeGroupCard(props: {
               </button>
             </div>
 
-            {/* View Toggles */}
             <div className="flex items-center gap-3">
               <button 
                 className="flex items-center justify-center size-6 rounded-full hover:bg-muted-foreground/20 transition-colors hover:text-secondary-foreground"
@@ -509,21 +929,83 @@ function ChangeGroupCard(props: {
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Selected File Comments Thread */}
-        {showComments && selectedItem ? (
-          <ChangeComments
-            changeId={selectedItem.id}
-            viewerUserId={viewerUserId}
-            count={commentCounts[String(selectedItem.id)] ?? 0}
-            expanded={true}
-          />
         ) : null}
       </div>
+
+      {showComments && selectedItem ? (
+        <ChangeComments
+          changeId={selectedItem.id}
+          viewerUserId={viewerUserId}
+          count={commentCounts[String(selectedItem.id)] ?? 0}
+          expanded={true}
+        />
+      ) : null}
     </article>
   )
-}
+})
+
+const ChangeGroupsList = memo(function ChangeGroupsList(props: {
+  groups: ChangeGroup[]
+  gitCwd: string | null
+  previousCheckpointGroupIds: ReadonlyMap<string, string | null>
+  commentCounts: Record<string, number>
+  viewerUserId: Id<'users'> | null
+  selectedFilePath: string | null
+}) {
+  const {
+    groups,
+    gitCwd,
+    previousCheckpointGroupIds,
+    commentCounts,
+    viewerUserId,
+    selectedFilePath,
+  } = props
+  const scrollParentRef = useRef<HTMLDivElement | null>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: groups.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => 450,
+    overscan: 10,
+    getItemKey: (index) => groups[index]?.groupId ?? index,
+  })
+
+  return (
+    <div ref={scrollParentRef} className="flex-1 min-h-0 w-full overflow-y-auto">
+      <div
+        className="relative w-full"
+        style={{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+        }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+          const group = groups[virtualItem.index]
+          if (!group) return null
+
+          return (
+            <div
+              key={virtualItem.key}
+              ref={rowVirtualizer.measureElement}
+              data-index={virtualItem.index}
+              className="absolute left-0 top-0 w-full"
+              style={{
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+            >
+              <ChangeGroupRow
+                group={group}
+                gitCwd={gitCwd}
+                previousCheckpointGroupId={previousCheckpointGroupIds.get(group.groupId) ?? null}
+                commentCounts={commentCounts}
+                viewerUserId={viewerUserId}
+                selectedFilePath={selectedFilePath}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+})
 
 export function ChangesPage(_props: ChangesPageProps) {
   const { t } = useTranslation()
@@ -536,65 +1018,53 @@ export function ChangesPage(_props: ChangesPageProps) {
     project?._id ? { projectId: project._id, limit: 200 } : 'skip',
   ) as ActivityFeedItem[] | undefined
 
-  const groups = useMemo(() => groupActivityItems(activity ?? []), [activity]);
-
-  const uniqueFiles = useMemo(() => {
-    if (!activity) return [];
-    const map = new Map<string, ActivityFeedItem>();
-    for (const item of activity) {
-      if (!map.has(item.filePath)) {
-        map.set(item.filePath, { ...item });
-      } else {
-        const existing = map.get(item.filePath)!;
-        existing.additions = (existing.additions || 0) + (item.additions || 0);
-        existing.deletions = (existing.deletions || 0) + (item.deletions || 0);
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.filePath.localeCompare(b.filePath));
-  }, [activity]);
+  const hasActivityLoaded = activity !== undefined;
+  const changesPageData = useMemo(() => deriveChangesPageData(activity), [activity]);
+  const {
+    groups,
+    uniqueFiles,
+    filePathSet,
+    groupsByFilePath,
+    changeIds,
+    changeIdsByFilePath,
+    previousCheckpointGroupIds,
+  } = changesPageData;
 
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [fileFilterQuery, setFileFilterQuery] = useState("");
 
-  const visibleFiles = useMemo(
-    () => uniqueFiles.filter((file) => matchesFileFilter(file.filePath, fileFilterQuery)),
-    [fileFilterQuery, uniqueFiles],
-  );
+  const visibleFiles = useMemo(() => {
+    if (!fileFilterQuery.trim()) return uniqueFiles;
+    return uniqueFiles.filter((file) => matchesFileFilter(file.filePath, fileFilterQuery));
+  }, [fileFilterQuery, uniqueFiles]);
 
   useEffect(() => {
-    const firstFilePath = uniqueFiles[0]?.filePath ?? null;
-    if (!firstFilePath) {
-      if (selectedFilePath !== null) {
-        setSelectedFilePath(null);
-      }
-      return;
-    }
+    if (!selectedFilePath) return;
 
-    const selectedFileStillExists = uniqueFiles.some((file) => file.filePath === selectedFilePath);
-    if (!selectedFileStillExists) {
-      setSelectedFilePath(firstFilePath);
+    if (!filePathSet.has(selectedFilePath)) {
+      setSelectedFilePath(null);
     }
-  }, [uniqueFiles, selectedFilePath]);
+  }, [filePathSet, selectedFilePath]);
+
+  const handleFileFilterChange = useCallback((filePath: string | null) => {
+    setSelectedFilePath(filePath);
+  }, []);
 
   const filteredGroups = useMemo(() => {
     if (!selectedFilePath) return groups;
-    return groups.filter(g => g.items.some(i => i.filePath === selectedFilePath));
-  }, [groups, selectedFilePath]);
+    return groupsByFilePath.get(selectedFilePath) ?? EMPTY_CHANGE_GROUPS;
+  }, [groups, groupsByFilePath, selectedFilePath]);
 
-  const changeIds = useMemo(
-    () => activity?.map((item) => item.id as Id<'fileChanges'>) ?? [],
-    [activity],
-  )
+  const commentChangeIds = selectedFilePath
+    ? (changeIdsByFilePath.get(selectedFilePath) ?? EMPTY_CHANGE_IDS)
+    : changeIds;
   
   const commentCounts = useQuery(
     api.activity.getCommentCountsForChanges,
-    project?._id && changeIds.length > 0 ? { projectId: project._id, changeIds } : 'skip',
+    project?._id && commentChangeIds.length > 0
+      ? { projectId: project._id, changeIds: commentChangeIds }
+      : 'skip',
   ) as Record<string, number> | undefined
-
-  const previousCheckpointGroupIds = useMemo(
-    () => resolvePreviousCheckpointGroupIds(groups),
-    [groups],
-  )
 
   useEffect(() => {
     if (!project?.slug) return
@@ -608,16 +1078,6 @@ export function ChangesPage(_props: ChangesPageProps) {
           {!project ? (
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
               {t('changes.empty.projectUnavailable')}
-            </div>
-          ) : activity === undefined ? null : groups.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <HugeiconsIcon icon={__ClockHugeIcon} className="size-8 text-muted-foreground/35" />
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">{t('changes.empty.title')}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t('changes.empty.desc')}
-                </p>
-              </div>
             </div>
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
@@ -650,17 +1110,19 @@ export function ChangesPage(_props: ChangesPageProps) {
                      <ChangedFilesTree
                        files={visibleFiles}
                        allDirectoriesExpanded={true}
-                       onOpenFile={(filePath) => setSelectedFilePath(filePath)}
+                       onFileFilterChange={handleFileFilterChange}
                        selectedFilePath={selectedFilePath}
                      />
                    ) : (
-                     <div className="px-4 py-3 text-xs text-muted-foreground">
-                       {t('changes.empty.noMatchingFiles')}
-                     </div>
+                     hasActivityLoaded ? (
+                       <div className="px-4 py-3 text-xs text-muted-foreground">
+                         {t('changes.empty.noMatchingFiles')}
+                       </div>
+                     ) : null
                    )}
                  </div>
               </div>
-              <div className="flex-1 overflow-y-auto bg-background flex flex-col">
+              <div className="flex min-w-0 flex-1 flex-col bg-background">
                 {/* Search within code header */}
                 <div className="flex items-center gap-2 px-6 py-3 border-b border-border/70 shrink-0">
                   <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-transparent text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
@@ -681,21 +1143,28 @@ export function ChangesPage(_props: ChangesPageProps) {
                   </button>
                 </div>
                 
-                <div className="flex w-full flex-col overflow-y-auto">
-                  {filteredGroups.map((group) => {
-                    return (
-                      <ChangeGroupCard
-                        key={group.groupId}
-                        group={group}
-                        gitCwd={gitCwd}
-                        previousCheckpointGroupId={previousCheckpointGroupIds.get(group.groupId) ?? null}
-                        commentCounts={commentCounts ?? {}}
-                        viewerUserId={convexUserId}
-                        selectedFilePath={selectedFilePath}
-                      />
-                    )
-                  })}
-                </div>
+                {filteredGroups.length > 0 ? (
+                  <ChangeGroupsList
+                    groups={filteredGroups}
+                    gitCwd={gitCwd}
+                    previousCheckpointGroupIds={previousCheckpointGroupIds}
+                    commentCounts={commentCounts ?? EMPTY_COMMENT_COUNTS}
+                    viewerUserId={convexUserId}
+                    selectedFilePath={selectedFilePath}
+                  />
+                ) : hasActivityLoaded ? (
+                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+                    <HugeiconsIcon icon={__ClockHugeIcon} className="size-8 text-muted-foreground/35" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">{t('changes.empty.title')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('changes.empty.desc')}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="min-h-0 flex-1" />
+                )}
               </div>
             </div>
           )}
