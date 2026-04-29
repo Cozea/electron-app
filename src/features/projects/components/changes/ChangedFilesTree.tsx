@@ -105,9 +105,13 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     gitStatus,
     icons: { set: "standard" },
     onSelectionChange: (selectedPaths) => {
+      console.log('[ChangedFilesTree] onSelectionChange fired');
+      console.log('[ChangedFilesTree] selectedPaths:', selectedPaths);
+      console.log('[ChangedFilesTree] filePathSet:', [...filePathSetRef.current]);
       let selectedPath: string | undefined;
       for (let index = selectedPaths.length - 1; index >= 0; index -= 1) {
         const path = selectedPaths[index];
+        console.log('[ChangedFilesTree] checking path:', JSON.stringify(path), 'in set:', filePathSetRef.current.has(path));
         if (filePathSetRef.current.has(path)) {
           selectedPath = path;
           break;
