@@ -17,6 +17,10 @@ commands:
             echo 'export BUN_INSTALL="$HOME/.bun"' >> "$BASH_ENV"
             echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> "$BASH_ENV"
             source "$BASH_ENV"
+            if ! command -v bunx >/dev/null 2>&1; then
+              printf '#!/usr/bin/env bash\nexec bun x "$@"\n' > "$BUN_INSTALL/bin/bunx"
+              chmod +x "$BUN_INSTALL/bin/bunx"
+            fi
             bun --version
 
   install_dependencies_unix:
