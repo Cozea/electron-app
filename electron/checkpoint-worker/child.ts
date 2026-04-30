@@ -4,6 +4,9 @@ import {
   deleteCheckpointRefs,
   diffCheckpoints,
   getHeadDiffStats,
+  listChanges,
+  readChanges,
+  readChangesPatch,
   readCheckpointFilePair,
 } from '../gitCheckpoints'
 import type {
@@ -13,6 +16,9 @@ import type {
   CheckpointWorkerDiffParams,
   CheckpointWorkerFilePairParams,
   CheckpointWorkerHeadStatsParams,
+  CheckpointWorkerListChangesParams,
+  CheckpointWorkerReadChangesParams,
+  CheckpointWorkerReadChangesPatchParams,
   CheckpointWorkerRequest,
   CheckpointWorkerResponse,
 } from './protocol'
@@ -32,7 +38,10 @@ function isCheckpointWorkerRequest(message: unknown): message is CheckpointWorke
       message.method === 'readCheckpointFilePair' ||
       message.method === 'deleteCheckpointRefs' ||
       message.method === 'deleteAllCheckpointRefs' ||
-      message.method === 'getHeadDiffStats'
+      message.method === 'getHeadDiffStats' ||
+      message.method === 'listChanges' ||
+      message.method === 'readChangesPatch' ||
+      message.method === 'readChanges'
     ) &&
     isRecord(message.params)
   )
@@ -102,6 +111,33 @@ async function handleRequest(request: CheckpointWorkerRequest): Promise<Checkpoi
       case 'getHeadDiffStats': {
         const params = request.params as CheckpointWorkerHeadStatsParams
         const result = await getHeadDiffStats(params.cwd, params.authorName)
+        return {
+          type: 'response',
+          id: request.id,
+          ok: true,
+          result,
+        }
+      }
+      case 'listChanges': {
+        const result = await listChanges(request.params as CheckpointWorkerListChangesParams)
+        return {
+          type: 'response',
+          id: request.id,
+          ok: true,
+          result,
+        }
+      }
+      case 'readChangesPatch': {
+        const result = await readChangesPatch(request.params as CheckpointWorkerReadChangesPatchParams)
+        return {
+          type: 'response',
+          id: request.id,
+          ok: true,
+          result,
+        }
+      }
+      case 'readChanges': {
+        const result = await readChanges(request.params as CheckpointWorkerReadChangesParams)
         return {
           type: 'response',
           id: request.id,

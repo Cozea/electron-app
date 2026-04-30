@@ -239,7 +239,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator">,
+      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "changes">,
       options?: CreateTileOptions,
       projectPath?: string | null,
     ) => string
@@ -601,8 +601,7 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
     const tileType = (tile as { type?: string } | null)?.type
     if (
       !tile ||
-      tileType === "tasks" ||
-      tileType === "changes"
+      tileType === "tasks"
     ) {
       removedObsoleteTile = true
       continue

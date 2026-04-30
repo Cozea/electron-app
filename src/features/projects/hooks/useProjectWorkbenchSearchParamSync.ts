@@ -74,7 +74,7 @@ interface UseProjectWorkbenchSearchParamSyncProps {
   replaceSearchParams: (nextParams: URLSearchParams) => void
   refreshLaneState: () => Promise<unknown>
   openWorkbenchTarget: (
-    target: Extract<WorkbenchTileType, "terminal" | "assistantChat">,
+    target: Extract<WorkbenchTileType, "changes" | "terminal" | "assistantChat">,
   ) => void
   focusWorkbenchTile: (tileId: string) => void
 }
@@ -136,14 +136,7 @@ export function useProjectWorkbenchSearchParamSync(
     const intent = deriveWorkbenchSearchParamIntent(searchParams, activeLaneId)
     if (!intent.requestedOpenTarget) return
 
-    if (intent.requestedOpenTarget === "changes") {
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.delete("lane")
-      nextParams.delete("openTile")
-      nextParams.set("changes", "1")
-      replaceSearchParams(nextParams)
-      return
-    }
+
 
     openWorkbenchTarget(intent.requestedOpenTarget)
 
@@ -152,6 +145,16 @@ export function useProjectWorkbenchSearchParamSync(
     nextParams.delete("openTile")
     replaceSearchParams(nextParams)
   }, [activeLaneId, openWorkbenchTarget, projectId, replaceSearchParams, searchParams])
+
+  useEffect(() => {
+    if (!projectId) return
+    if (searchParams.get("changes") === "1") {
+      openWorkbenchTarget("changes")
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete("changes")
+      replaceSearchParams(nextParams)
+    }
+  }, [openWorkbenchTarget, projectId, replaceSearchParams, searchParams])
 
   useEffect(() => {
     if (!projectId) return
