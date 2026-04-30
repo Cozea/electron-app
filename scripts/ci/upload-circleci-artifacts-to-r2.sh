@@ -52,7 +52,8 @@ while IFS= read -r file_path; do
   bunx wrangler r2 object put "${bucket}/${object_key}" \
     --file "${file_path}" \
     --content-type "${content_type}" \
-    --cache-control "${cache_control}"
+    --cache-control "${cache_control}" \
+    --remote
 done < <(find "${root}" -path '*/dist/*' -type f \( \
   -name '*.yml' -o \
   -name '*.yaml' -o \
