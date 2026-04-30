@@ -184,4 +184,83 @@ describe("orchestration projector parity", () => {
       assistantMessageId: "assistant-message-1",
     })
   })
+
+  it("settles running latest turns when a turn interrupt is requested", async () => {
+    const createdAt = "2026-01-01T00:00:00.000Z"
+    const startedAt = "2026-01-01T00:00:04.000Z"
+    const interruptedAt = "2026-01-01T00:00:06.000Z"
+    const events = [
+      makeEvent({
+        sequence: 1,
+        type: "thread.created",
+        aggregateKind: "thread",
+        aggregateId: "thread-1",
+        occurredAt: createdAt,
+        commandId: "cmd-thread-create",
+        payload: {
+          threadId: "thread-1",
+          projectId: "project-1",
+          title: "Thread",
+          modelSelection: {
+            provider: "codex",
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+          updatedAt: createdAt,
+        },
+      }),
+      makeEvent({
+        sequence: 2,
+        type: "thread.session-set",
+        aggregateKind: "thread",
+        aggregateId: "thread-1",
+        occurredAt: startedAt,
+        commandId: "cmd-session-running",
+        payload: {
+          threadId: "thread-1",
+          session: {
+            threadId: "thread-1",
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: "turn-1",
+            lastError: null,
+            updatedAt: startedAt,
+          },
+        },
+      }),
+      makeEvent({
+        sequence: 3,
+        type: "thread.turn-interrupt-requested",
+        aggregateKind: "thread",
+        aggregateId: "thread-1",
+        occurredAt: interruptedAt,
+        commandId: "cmd-turn-interrupt",
+        payload: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          createdAt: interruptedAt,
+        },
+      }),
+    ]
+
+    let electronModel = createEmptyReadModel(createdAt)
+    let rendererModel = createEmptyOrchestrationReadModel(createdAt)
+
+    for (const event of events) {
+      electronModel = await Effect.runPromise(projectEvent(electronModel, event))
+      rendererModel = projectOrchestrationReadModelEvent(rendererModel, event)
+    }
+
+    expect(rendererModel).toEqual(electronModel)
+    expect(rendererModel.threads[0]?.latestTurn).toMatchObject({
+      turnId: "turn-1",
+      state: "interrupted",
+      completedAt: interruptedAt,
+    })
+  })
 })

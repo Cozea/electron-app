@@ -8,12 +8,11 @@ import {
 } from "@cozea/assistant-contracts"
 
 import { newCommandId, newMessageId } from "@/features/projects/components/assistant/lib/utils"
-import { refreshAssistantRuntimeSnapshot } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import type { ChatMessage, Thread } from "@/stores/types"
 import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/stores/useProjectWorkbenchStore"
 
-import { toErrorMessage, truncateTitle } from "./workbenchAssistantShared"
+import { toErrorMessage, deriveTitleSeed, revokeUserMessagePreviewUrls, cloneComposerImageForRetry } from "./workbenchAssistantShared"
 
 export interface ComposerImageDraft {
   id: string
@@ -138,7 +137,11 @@ export function useAssistantTurnSend({
     }
 
     const isFirstUserMessage = !thread.messages.some((message) => message.role === "user")
-    const nextThreadTitle = truncateTitle(nextPrompt)
+    const nextThreadTitle = deriveTitleSeed({
+      prompt: nextPrompt,
+      images: composerImages,
+      terminalContexts: [],
+    })
     const messageId = newMessageId()
     const messageCreatedAt = new Date().toISOString()
     const optimisticMessage: ChatMessage = {
@@ -213,11 +216,13 @@ export function useAssistantTurnSend({
         createdAt: messageCreatedAt,
       })
       notePendingTurnStart(messageId, thread.id)
-      await refreshAssistantRuntimeSnapshot()
     } catch (error) {
       clearPendingTurnStart()
       removeOptimisticUserMessage(messageId)
-      onComposerRestore(nextPrompt, composerImages)
+      // Revoke blob URLs from the removed optimistic message before restoring
+      revokeUserMessagePreviewUrls(optimisticMessage)
+      // Deep-clone images with fresh blob URLs for retry
+      onComposerRestore(nextPrompt, composerImages.map(cloneComposerImageForRetry) as ComposerImageDraft[])
       onError(toErrorMessage(error))
     } finally {
       sendInFlightRef.current = false

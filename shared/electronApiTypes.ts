@@ -819,6 +819,44 @@ export interface GitCheckpointHeadStatsResult {
   error?: string
 }
 
+export type GitChangesScope = 'current' | 'branch'
+
+export type GitChangeFileStatus = 'added' | 'modified' | 'deleted' | 'renamed'
+
+export interface GitChangeFileSummary {
+  path: string
+  oldPath?: string
+  status: GitChangeFileStatus
+}
+
+export interface GitChangesListResult {
+  success: boolean
+  scope: GitChangesScope
+  files: GitChangeFileSummary[]
+  baseRef?: string
+  headRef?: string
+  error?: string
+}
+
+export interface GitChangesPatchResult {
+  success: boolean
+  scope: GitChangesScope
+  diff?: string
+  baseRef?: string
+  headRef?: string
+  error?: string
+}
+
+export interface GitChangesResult {
+  success: boolean
+  scope: GitChangesScope
+  files: GitChangeFileSummary[]
+  diff?: string
+  baseRef?: string
+  headRef?: string
+  error?: string
+}
+
 export interface SyncOp {
   opId: string
   idempotencyKey: string
@@ -1752,6 +1790,22 @@ export interface ElectronAPI {
       projectPath: string
       authorName?: string
     }) => Promise<GitCheckpointHeadStatsResult>
+    gitListChanges: (options: {
+      projectPath: string
+      scope: GitChangesScope
+      authorName?: string
+    }) => Promise<GitChangesListResult>
+    gitReadChangesPatch: (options: {
+      projectPath: string
+      scope: GitChangesScope
+      filePath?: string
+      authorName?: string
+    }) => Promise<GitChangesPatchResult>
+    gitReadChanges: (options: {
+      projectPath: string
+      scope: GitChangesScope
+      authorName?: string
+    }) => Promise<GitChangesResult>
     subscribeGitDirtyState: (options: {
       projectPath: string
       authorName?: string

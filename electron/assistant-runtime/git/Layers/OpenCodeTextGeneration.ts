@@ -24,7 +24,6 @@ import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
-  toJsonSchemaObject,
 } from "../Utils.ts";
 import {
   createOpenCodeSdkClient,
@@ -34,6 +33,100 @@ import {
   startOpenCodeServerProcess,
   toOpenCodeFileParts,
 } from "../../provider/opencodeRuntime.ts";
+
+/** Extract a human-readable error message from an OpenCode prompt response error. */
+function getOpenCodePromptErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const message =
+    "data" in error &&
+    error.data &&
+    typeof error.data === "object" &&
+    "message" in error.data &&
+    typeof error.data.message === "string"
+      ? error.data.message.trim()
+      : "";
+  if (message.length > 0) {
+    return message;
+  }
+
+  if ("name" in error && typeof error.name === "string") {
+    const name = error.name.trim();
+    return name.length > 0 ? name : null;
+  }
+
+  return null;
+}
+
+/** Extract concatenated text content from OpenCode response parts. */
+function getOpenCodeTextResponse(parts: ReadonlyArray<unknown> | undefined): string {
+  return (parts ?? [])
+    .flatMap((part) => {
+      if (!part || typeof part !== "object") {
+        return [];
+      }
+      if (!("type" in part) || part.type !== "text") {
+        return [];
+      }
+      if (!("text" in part) || typeof part.text !== "string") {
+        return [];
+      }
+      return [part.text];
+    })
+    .join("")
+    .trim();
+}
+
+/** Extract the outermost JSON object from raw text, handling embedded braces. */
+function extractJsonObject(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+
+  const start = trimmed.indexOf("{");
+  if (start < 0) {
+    return trimmed;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+  for (let index = start; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return trimmed.slice(start, index + 1);
+      }
+    }
+  }
+
+  return trimmed.slice(start);
+}
 
 const OPENCODE_TEXT_GENERATION_IDLE_TTL_MS = 30_000;
 
@@ -236,26 +329,29 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
             throw new Error("OpenCode session.create returned no session payload.");
           }
 
+          const selectedAgent = getModelSelectionStringOptionValue(input.modelSelection, "agent");
+          const selectedVariant = getModelSelectionStringOptionValue(input.modelSelection, "variant");
+
           const result = await client.session.prompt({
             sessionID: session.data.id,
             model: parsedModel,
-            ...(getModelSelectionStringOptionValue(input.modelSelection, "agent")
-              ? { agent: getModelSelectionStringOptionValue(input.modelSelection, "agent") }
-              : {}),
-            ...(getModelSelectionStringOptionValue(input.modelSelection, "variant")
-              ? { variant: getModelSelectionStringOptionValue(input.modelSelection, "variant") }
-              : {}),
-            format: {
-              type: "json_schema",
-              schema: toJsonSchemaObject(input.outputSchemaJson) as Record<string, unknown>,
-            },
+            ...(selectedAgent ? { agent: selectedAgent } : {}),
+            ...(selectedVariant ? { variant: selectedVariant } : {}),
             parts: [{ type: "text", text: input.prompt }, ...fileParts],
           });
-          const structured = result.data?.info?.structured;
-          if (structured === undefined) {
-            throw new Error("OpenCode returned no structured output.");
+
+          // Check for provider-level errors in the response.
+          const errorMessage = getOpenCodePromptErrorMessage(result.data?.info?.error);
+          if (errorMessage) {
+            throw new Error(errorMessage);
           }
-          return structured;
+
+          // Extract raw text from response parts (same approach as T3).
+          const rawText = getOpenCodeTextResponse(result.data?.parts);
+          if (rawText.length === 0) {
+            throw new Error("OpenCode returned empty output.");
+          }
+          return rawText;
         },
         catch: (cause) =>
           new TextGenerationError({
@@ -266,7 +362,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
           }),
       });
 
-    const structuredOutput =
+    const rawOutput =
       settings.serverUrl.length > 0
         ? yield* runAgainstServer({ url: settings.serverUrl })
         : yield* Effect.acquireUseRelease(
@@ -278,7 +374,9 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
             releaseSharedServer,
           );
 
-    return yield* Schema.decodeUnknownEffect(input.outputSchemaJson)(structuredOutput).pipe(
+    return yield* Schema.decodeEffect(Schema.fromJsonString(input.outputSchemaJson))(
+      extractJsonObject(rawOutput),
+    ).pipe(
       Effect.catchTag("SchemaError", (cause) =>
         Effect.fail(
           new TextGenerationError({

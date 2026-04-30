@@ -775,6 +775,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath: string
       authorName?: string
     }) => ipcRenderer.invoke('sync:gitGetHeadDiffStats', options),
+    gitListChanges: (options: {
+      projectPath: string
+      scope: 'current' | 'branch'
+      authorName?: string
+    }) => ipcRenderer.invoke('sync:gitListChanges', options),
+    gitReadChangesPatch: (options: {
+      projectPath: string
+      scope: 'current' | 'branch'
+      filePath?: string
+      authorName?: string
+    }) => ipcRenderer.invoke('sync:gitReadChangesPatch', options),
+    gitReadChanges: (options: {
+      projectPath: string
+      scope: 'current' | 'branch'
+      authorName?: string
+    }) => ipcRenderer.invoke('sync:gitReadChanges', options),
     subscribeGitDirtyState: (options: {
       projectPath: string
       authorName?: string

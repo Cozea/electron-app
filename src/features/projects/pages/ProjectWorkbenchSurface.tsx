@@ -47,12 +47,6 @@ import {
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
 import { useTranslation } from "@/lib/i18n";
 
-const LazyChangesPage = lazy(() =>
-  import("@/features/projects/pages/ChangesPage").then((module) => ({
-    default: module.ChangesPage,
-  })),
-);
-
 const LazyProjectSettingsPage = lazy(() =>
   import("@/features/projects/pages/ProjectSettingsPage").then((module) => ({
     default: module.ProjectSettingsPage,
@@ -101,7 +95,6 @@ export function ProjectWorkbenchSurface() {
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
     locationState?.taskOverlay ? [locationState.taskOverlay] : [],
   );
-  const [isChangesOpen, setIsChangesOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false);
   const collabBranch = projectRouteContext?.collabBranch ?? "main";
@@ -272,10 +265,10 @@ export function ProjectWorkbenchSurface() {
 
   const openWorkbenchTarget = useCallback(
     (
-      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
+      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal" | "changes">,
     ) => {
       if (!projectId) return;
-      if (target === "devServer" || target === "mobileSimulator") {
+      if (target === "devServer" || target === "mobileSimulator" || target === "changes") {
         workbenchActions.openSingletonTile(projectId, activeLaneId, target, undefined, activeWorkbenchPath);
         return;
       }
@@ -292,7 +285,7 @@ export function ProjectWorkbenchSurface() {
     [activeLaneId, activeWorkbenchPath, projectId, workbenchActions],
   );
 
-  const { closeChangesOverlay } = useProjectWorkbenchSearchParamSync({
+  useProjectWorkbenchSearchParamSync({
     projectId,
     activeLaneId,
     collabBranch,
@@ -332,7 +325,6 @@ export function ProjectWorkbenchSurface() {
   }, [activeLaneId, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
 
   useEffect(() => {
-    setIsChangesOpen(searchParams.get("changes") === "1");
     setIsSettingsOpen(searchParams.get("settings") === "1");
   }, [searchParams]);
 
@@ -350,18 +342,16 @@ export function ProjectWorkbenchSurface() {
   useEffect(() => {
     if (!projectId) {
       setTaskCards([]);
-      setIsChangesOpen(false);
       return;
     }
     setTaskCards((current) => current.filter((task) => task.projectId === projectId));
   }, [projectId]);
 
   useEffect(() => {
-    if (!isChangesOpen && !isSettingsOpen) return;
+    if (!isSettingsOpen) return;
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (isChangesOpen) setIsChangesOpen(false);
       if (isSettingsOpen) setIsSettingsOpen(false);
     };
 
@@ -369,7 +359,7 @@ export function ProjectWorkbenchSurface() {
     return () => {
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [isChangesOpen, isSettingsOpen]);
+  }, [isSettingsOpen]);
 
   const resolvedDockviewThemeClass =
     theme === "dark" || (theme === "system" && document.documentElement.classList.contains("dark"))
@@ -421,30 +411,7 @@ export function ProjectWorkbenchSurface() {
               </div>
             </div>
 
-            {isChangesOpen ? (
-              <>
-                <button
-                  type="button"
-                  aria-label={t('workbench.surface.closeChanges')}
-                  data-workbench-browser-overlay="true"
-                  data-workbench-browser-overlay-reason="Changes overlay"
-                  className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
-                  onClick={closeChangesOverlay}
-                />
 
-                <aside
-                  data-workbench-browser-overlay="true"
-                  data-workbench-browser-overlay-reason="Changes overlay"
-                  className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
-                >
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <Suspense fallback={<WorkbenchOverlayLoading />}>
-                      <LazyChangesPage presentation="embedded" />
-                    </Suspense>
-                  </div>
-                </aside>
-              </>
-            ) : null}
 
             {isSettingsOpen ? (
               <>
