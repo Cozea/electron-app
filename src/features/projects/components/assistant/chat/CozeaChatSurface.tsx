@@ -15,6 +15,7 @@ import {
   type ServerProviderSlashCommand,
   type TurnId,
 } from "@cozea/assistant-contracts"
+import type { TerminalContextDraft } from "@/features/projects/components/assistant/lib/terminalContext"
 import {
   type ClipboardEventHandler,
   memo,
@@ -166,6 +167,8 @@ interface CozeaChatSurfaceProps {
   composer: string
   composerCursor: number
   composerImages: ReadonlyArray<ComposerImageDraft>
+  terminalContexts: ReadonlyArray<TerminalContextDraft>
+  onRemoveTerminalContext: (contextId: string) => void
   isSending: boolean
   pendingTurnStartStartedAtIso?: string | null
   isInterrupting: boolean
@@ -521,10 +524,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   )
   const visibleComposerMenuItems = composerMenuItems.slice(0, composerPathTrigger ? 3 : 6)
   const hiddenComposerMenuItemCount = Math.max(0, composerMenuItems.length - visibleComposerMenuItems.length)
-  const hasThread = Boolean(props.thread)
   const composerDisabled =
     !props.isRuntimeReady ||
-    !hasThread ||
     props.isBinding ||
     isComposerApprovalState ||
     activePendingIsResponding ||
@@ -1316,8 +1317,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             value={composerValue}
             cursor={props.composerCursor}
             skills={props.providerSnapshot?.skills ?? []}
-            terminalContexts={[]}
-            onRemoveTerminalContext={() => {}}
+            terminalContexts={props.terminalContexts}
+            onRemoveTerminalContext={props.onRemoveTerminalContext}
             onChange={handleComposerChange}
             onCommandKeyDown={handleComposerCommandKey}
             onPaste={props.onComposerPaste}

@@ -97,6 +97,7 @@ describe("ProviderCommandReactor", () => {
     readonly baseDir?: string;
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
+    readonly startReactor?: boolean;
   }) {
     const now = new Date().toISOString();
     const baseDir = input?.baseDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "t3code-reactor-"));
@@ -235,8 +236,18 @@ describe("ProviderCommandReactor", () => {
 
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
-    scope = await Effect.runPromise(Scope.make("sequential"));
-    await Effect.runPromise(reactor.start.pipe(Scope.provide(scope)));
+    let reactorStarted = false;
+    const startReactor = async () => {
+      if (reactorStarted) {
+        return;
+      }
+      scope = await Effect.runPromise(Scope.make("sequential"));
+      await Effect.runPromise(reactor.start.pipe(Scope.provide(scope)));
+      reactorStarted = true;
+    };
+    if (input?.startReactor !== false) {
+      await startReactor();
+    }
     const drain = () => Effect.runPromise(reactor.drain);
 
     await Effect.runPromise(
@@ -279,8 +290,112 @@ describe("ProviderCommandReactor", () => {
       generateThreadTitle,
       stateDir,
       drain,
+      startReactor,
     };
   }
+
+  it("marks pending provider requests stale when startup has no live provider session", async () => {
+    const harness = await createHarness({ startReactor: false });
+    const requestedAt = "2026-03-01T12:00:00.000Z";
+    const turnId = asTurnId("turn-stale");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-stale-session-running"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: requestedAt,
+        },
+        createdAt: requestedAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.makeUnsafe("cmd-stale-approval-requested"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        activity: {
+          id: EventId.makeUnsafe("activity-approval-requested"),
+          tone: "approval",
+          kind: "approval.requested",
+          summary: "Command approval requested",
+          payload: {
+            requestId: asApprovalRequestId("approval-stale"),
+            requestKind: "command",
+            detail: "bun test",
+          },
+          turnId,
+          createdAt: requestedAt,
+        },
+        createdAt: requestedAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.makeUnsafe("cmd-stale-user-input-requested"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        activity: {
+          id: EventId.makeUnsafe("activity-user-input-requested"),
+          tone: "info",
+          kind: "user-input.requested",
+          summary: "User input requested",
+          payload: {
+            requestId: asApprovalRequestId("input-stale"),
+            questions: [
+              {
+                id: "scope",
+                header: "Scope",
+                question: "Which scope?",
+                options: [{ label: "Small", description: "Small scope" }],
+              },
+            ],
+          },
+          turnId,
+          createdAt: requestedAt,
+        },
+        createdAt: requestedAt,
+      }),
+    );
+
+    await harness.startReactor();
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
+    expect(thread?.session?.status).toBe("interrupted");
+    expect(thread?.session?.activeTurnId).toBeNull();
+    expect(thread?.latestTurn).toMatchObject({
+      turnId: "turn-stale",
+      state: "interrupted",
+    });
+
+    const failureActivities = thread?.activities.filter(
+      (activity) =>
+        activity.kind === "provider.approval.respond.failed" ||
+        activity.kind === "provider.user-input.respond.failed",
+    );
+    expect(failureActivities).toHaveLength(2);
+    expect(failureActivities?.map((activity) => activity.payload)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: "approval-stale",
+          detail: expect.stringContaining("Stale pending approval request"),
+        }),
+        expect.objectContaining({
+          requestId: "input-stale",
+          detail: expect.stringContaining("Stale pending user-input request"),
+        }),
+      ]),
+    );
+    expect(harness.interruptTurn).not.toHaveBeenCalled();
+  });
 
   it("reacts to thread.turn.start by ensuring session and sending provider turn", async () => {
     const harness = await createHarness();

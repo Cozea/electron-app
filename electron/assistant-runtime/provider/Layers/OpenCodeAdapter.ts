@@ -915,6 +915,14 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
             sessions.delete(input.threadId);
           }
 
+          // Try to resume an existing OpenCode session if we have a resumeCursor
+          // (the OpenCode session ID from a previous app run). The server stores
+          // session state including full conversation history.
+          const resumeSessionId =
+            typeof input.resumeCursor === "string" && input.resumeCursor.length > 0
+              ? input.resumeCursor
+              : undefined;
+
           const started = yield* Effect.tryPromise({
             try: async () => {
               const server = await connectToOpenCodeServer({ binaryPath, serverUrl });
@@ -923,6 +931,21 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
                 directory,
                 ...(server.external && serverPassword ? { serverPassword } : {}),
               });
+
+              // If we have a previous session ID, try to reuse it
+              if (resumeSessionId) {
+                try {
+                  const existing = await client.session.get({
+                    sessionID: resumeSessionId,
+                  });
+                  if (existing.data) {
+                    return { server, client, openCodeSession: existing.data, resumed: true };
+                  }
+                } catch {
+                  // Session no longer exists server-side, fall through to create
+                }
+              }
+
               const openCodeSession = await client.session.create({
                 title: `T3 Code ${input.threadId}`,
                 permission: buildOpenCodePermissionRules(input.runtimeMode),
@@ -930,7 +953,7 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
               if (!openCodeSession.data) {
                 throw new Error("OpenCode session.create returned no session payload.");
               }
-              return { server, client, openCodeSession: openCodeSession.data };
+              return { server, client, openCodeSession: openCodeSession.data, resumed: false };
             },
             catch: (cause) =>
               new ProviderAdapterProcessError({
@@ -948,13 +971,15 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
           if (raceWinner) {
             // Another call won the race – clean up the session we just created
             // (including the remote SDK session) and return the existing one.
-            yield* Effect.tryPromise({
-              try: () =>
-                started.client.session
-                  .abort({ sessionID: started.openCodeSession.id })
-                  .catch(() => undefined),
-              catch: () => undefined,
-            }).pipe(Effect.ignore);
+            if (!started.resumed) {
+              yield* Effect.tryPromise({
+                try: () =>
+                  started.client.session
+                    .abort({ sessionID: started.openCodeSession.id })
+                    .catch(() => undefined),
+                catch: () => undefined,
+              }).pipe(Effect.ignore);
+            }
             started.server.close();
             return raceWinner.session;
           }
@@ -967,6 +992,7 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
             cwd: directory,
             ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
             threadId: input.threadId,
+            resumeCursor: started.openCodeSession.id,
             createdAt,
             updatedAt: createdAt,
           };
@@ -997,7 +1023,9 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
             ...buildEventBase({ threadId: input.threadId }),
             type: "session.started",
             payload: {
-              message: "OpenCode session started",
+              message: started.resumed
+                ? "OpenCode session resumed"
+                : "OpenCode session started",
             },
           });
           yield* emit({
@@ -1131,6 +1159,7 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
         return {
           threadId: input.threadId,
           turnId,
+          resumeCursor: context.openCodeSessionId,
         };
       });
 

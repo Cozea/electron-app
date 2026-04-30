@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveActiveWorkStartedAt,
+  derivePendingApprovals,
+  derivePendingUserInputs,
   derivePhase,
   deriveWorkLogEntries,
   hasToolActivityForTurn,
@@ -65,6 +67,69 @@ function makeActivity(overrides: {
     ...(overrides.sequence !== undefined ? { sequence: overrides.sequence } : {}),
   };
 }
+
+describe("pending request derivation", () => {
+  it("clears pending approvals after stale provider response failures", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "approval-requested",
+        kind: "approval.requested",
+        tone: "approval",
+        payload: {
+          requestId: "approval-1",
+          requestKind: "command",
+          detail: "bun test",
+        },
+      }),
+      makeActivity({
+        id: "approval-failed",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "provider.approval.respond.failed",
+        tone: "error",
+        payload: {
+          requestId: "approval-1",
+          detail: "No active provider session is bound to this thread.",
+        },
+      }),
+    ];
+
+    expect(derivePendingApprovals(activities)).toEqual([]);
+  });
+
+  it("clears pending user-input requests after startup stale markers", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "user-input-requested",
+        kind: "user-input.requested",
+        tone: "info",
+        payload: {
+          requestId: "input-1",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope?",
+              options: [{ label: "Small", description: "Small scope" }],
+            },
+          ],
+        },
+      }),
+      makeActivity({
+        id: "user-input-failed",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "provider.user-input.respond.failed",
+        tone: "error",
+        payload: {
+          requestId: "input-1",
+          detail:
+            "Stale pending user-input request: input-1. Provider callback state does not survive app restarts.",
+        },
+      }),
+    ];
+
+    expect(derivePendingUserInputs(activities)).toEqual([]);
+  });
+});
 
 describe("deriveWorkLogEntries", () => {
   it("omits tool started entries and keeps completed entries", () => {

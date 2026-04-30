@@ -39,8 +39,10 @@ interface WorkbenchTileChromeProps {
   chromeVariant?: "bar" | "pill"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
+  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator" | "changes"
   assistantProvider?: string | null
+  titleContent?: ReactNode
+  titlePillClassName?: string
   controls?: ReactNode
   actions?: ReactNode
   children: ReactNode
@@ -161,6 +163,8 @@ export function WorkbenchTileChrome({
   hideWindowActions = false,
   tileType,
   assistantProvider,
+  titleContent,
+  titlePillClassName,
   controls,
   actions,
   children,
@@ -315,15 +319,20 @@ export function WorkbenchTileChrome({
             className={cn(
               "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5",
               chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
+              titlePillClassName,
             )}
           >
-            <WorkbenchTileGlyph
-              tileType={tileType}
-              assistantProvider={assistantProvider}
-              appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
-              fallbackClassName={tileFallbackIconClassName}
-            />
-            <span className="truncate text-xs text-foreground">{title}</span>
+            {titleContent ?? (
+              <>
+                <WorkbenchTileGlyph
+                  tileType={tileType}
+                  assistantProvider={assistantProvider}
+                  appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
+                  fallbackClassName={tileFallbackIconClassName}
+                />
+                <span className="truncate text-xs text-foreground">{title}</span>
+              </>
+            )}
           </div>
         ) : null}
 

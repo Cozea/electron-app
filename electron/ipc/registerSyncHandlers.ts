@@ -4,14 +4,6 @@ import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit } from '../gitRuntime'
-import {
-  captureCheckpoint,
-  deleteAllCheckpointRefs,
-  deleteCheckpointRefs,
-  diffCheckpoints,
-  getHeadDiffStats,
-  readCheckpointFilePair,
-} from '../gitCheckpoints'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { markInternalFsChange } from '../projectWatcher'
 import {
@@ -23,6 +15,7 @@ import {
 } from '../services/syncJournalStore'
 import { GitDirtyStateService } from '../services/GitDirtyStateService'
 import { GitSyncService } from '../services/gitSyncService'
+import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
 function sha256Hex(content: Buffer | Uint8Array): string {
@@ -32,6 +25,7 @@ function sha256Hex(content: Buffer | Uint8Array): string {
 export function registerSyncHandlers(ipcMain: IpcMain): void {
   const gitSyncService = GitSyncService.getInstance()
   const gitDirtyStateService = GitDirtyStateService.getInstance()
+  const checkpointWorkerClient = CheckpointWorkerClient.getInstance()
 
   ipcMain.handle(
     'sync:hashFile',
@@ -478,12 +472,12 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         authorEmail?: string
       }
     ) =>
-      captureCheckpoint(
-        options.projectPath,
-        options.checkpointId,
-        options.authorName,
-        options.authorEmail,
-      )
+      checkpointWorkerClient.captureCheckpoint({
+        cwd: options.projectPath,
+        checkpointId: options.checkpointId,
+        authorName: options.authorName,
+        authorEmail: options.authorEmail,
+      })
   )
 
   ipcMain.handle(
@@ -497,7 +491,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         filePath?: string
       }
     ) =>
-      diffCheckpoints({
+      checkpointWorkerClient.diffCheckpoints({
         cwd: options.projectPath,
         fromCheckpointId: options.fromCheckpointId,
         toCheckpointId: options.toCheckpointId,
@@ -516,7 +510,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         filePath: string
       }
     ) =>
-      readCheckpointFilePair({
+      checkpointWorkerClient.readCheckpointFilePair({
         cwd: options.projectPath,
         fromCheckpointId: options.fromCheckpointId,
         toCheckpointId: options.toCheckpointId,
@@ -533,7 +527,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         checkpointIds: string[]
       }
     ) =>
-      deleteCheckpointRefs({
+      checkpointWorkerClient.deleteCheckpointRefs({
         cwd: options.projectPath,
         checkpointIds: options.checkpointIds,
       })
@@ -546,7 +540,10 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
       options: {
         projectPath: string
       }
-    ) => deleteAllCheckpointRefs(options.projectPath)
+    ) =>
+      checkpointWorkerClient.deleteAllCheckpointRefs({
+        cwd: options.projectPath,
+      })
   )
 
   ipcMain.handle(
@@ -557,7 +554,64 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         projectPath: string
         authorName?: string
       }
-    ) => getHeadDiffStats(options.projectPath, options.authorName)
+    ) =>
+      checkpointWorkerClient.getHeadDiffStats({
+        cwd: options.projectPath,
+        authorName: options.authorName,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitListChanges',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        scope: 'current' | 'branch'
+        authorName?: string
+      }
+    ) =>
+      checkpointWorkerClient.listChanges({
+        cwd: options.projectPath,
+        scope: options.scope,
+        authorName: options.authorName,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitReadChangesPatch',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        scope: 'current' | 'branch'
+        filePath?: string
+        authorName?: string
+      }
+    ) =>
+      checkpointWorkerClient.readChangesPatch({
+        cwd: options.projectPath,
+        scope: options.scope,
+        filePath: options.filePath,
+        authorName: options.authorName,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitReadChanges',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        scope: 'current' | 'branch'
+        authorName?: string
+      }
+    ) =>
+      checkpointWorkerClient.readChanges({
+        cwd: options.projectPath,
+        scope: options.scope,
+        authorName: options.authorName,
+      })
   )
 
   ipcMain.handle(

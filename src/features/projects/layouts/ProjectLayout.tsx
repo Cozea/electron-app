@@ -36,6 +36,7 @@ import {
 import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
+import { formatActorDisplayName } from "@/lib/userDisplay";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/projects/components/SettingsSidebar").then((module) => ({
@@ -386,6 +387,9 @@ export function ProjectLayout({
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
   const presenceActiveRoute = isWorkbenchView ? (currentPreviewPage?.route ?? null) : null;
+  const displayUserName = user
+    ? formatActorDisplayName(user.firstName || user.email, "User")
+    : null;
 
   // Real-time presence tracking
   const { otherUsers: presenceUsers } = useProjectPresence({
@@ -393,7 +397,7 @@ export function ProjectLayout({
     userId: runtimeEffectsReady && shouldEnableProjectRuntime ? convexUserId : null,
     userName:
       runtimeEffectsReady && shouldEnableProjectRuntime
-        ? user?.firstName || user?.email || null
+        ? displayUserName
         : null,
     userEmail: runtimeEffectsReady && shouldEnableProjectRuntime ? user?.email || null : null,
     userAvatarUrl: shouldEnableProjectRuntime ? user?.profileImageUrl || null : null,
@@ -539,7 +543,7 @@ export function ProjectLayout({
       <ProjectSyncProvider
         projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
         userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-        userName={user?.firstName || user?.email || "User"}
+        userName={displayUserName ?? "User"}
         laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
         projectSlug={projectSlug}
         localPath={runtimeProjectPath}

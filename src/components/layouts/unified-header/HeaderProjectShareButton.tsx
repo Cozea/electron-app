@@ -9,6 +9,7 @@ import { buildProjectJoinUrl } from "@shared/projectShare";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useQueryCache } from "@/stores/useQueryCache";
 import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys";
+import { isLocalDeviceEmail } from "@/lib/userDisplay";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,10 +51,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon as __PlusHugeIcon, AddTeamIcon as __AddTeamHugeIcon, MoreVerticalIcon as __MoreVerticalHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __CopyHugeIcon, Link01Icon as __Link2HugeIcon, Refresh01Icon as __RefreshCwHugeIcon, SentIcon as __SendHugeIcon, Shield01Icon as __ShieldOffHugeIcon } from '@hugeicons/core-free-icons'
 
 import { useTranslation } from "@/lib/i18n"
-
-function isLocalDeviceEmail(email: string | null | undefined): boolean {
-  return typeof email === "string" && email.trim().toLowerCase().endsWith("@local.cozea.app");
-}
 
 export function HeaderProjectShareButton({
   projectId,
