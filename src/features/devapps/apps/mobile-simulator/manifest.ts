@@ -10,7 +10,7 @@ export const mobileSimulatorDevAppManifest = {
   icon: {
     src: iconSrc,
     alt: "Mobile Simulator",
-    className: "scale-[1.25] bg-white dark:bg-white",
+    className: "scale-[1.25]",
   },
   launcher: {
     enabled: true,
