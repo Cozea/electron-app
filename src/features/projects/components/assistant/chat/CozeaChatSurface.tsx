@@ -59,6 +59,7 @@ import {
   type PendingUserInputDraftAnswer,
 } from "@/features/projects/components/assistant/pendingUserInput"
 import { type Thread } from "@/stores/types"
+import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "@/lib/i18n"
@@ -339,7 +340,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [pendingQuestionIndexByRequestId, setPendingQuestionIndexByRequestId] = useState<
     Record<string, number>
   >({})
-  const [composerDockHover, setComposerDockHover] = useState(false)
   const [composerDockFocused, setComposerDockFocused] = useState(false)
   const [isDragOverSurface, setIsDragOverSurface] = useState(false)
   const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
@@ -348,10 +348,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false)
   const [isModelPickerVisible, setIsModelPickerVisible] = useState(false)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
+  const dockComposerOnHover = Boolean(props.dockComposerOnHover)
+  const composerDockHoverState = useElementPointerHover<HTMLDivElement>({
+    enabled: dockComposerOnHover,
+  })
+  const composerDockHover = composerDockHoverState.isHovered
   const dragDepthRef = useRef(0)
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
-  const dockHoverContainerRef = useRef<HTMLDivElement | null>(null)
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
   const modelPickerAnimationFrameRef = useRef<number | null>(null)
   const modelPickerCloseTimerRef = useRef<number | null>(null)
@@ -546,39 +550,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       : null
   const threadRuntimeDetail =
     props.thread?.session?.lastError ?? props.thread?.error ?? props.runtimeErrorMessage ?? null
-
-  const dockComposerOnHover = Boolean(props.dockComposerOnHover)
-
-  // ARM Mac (Apple Silicon) Electron fix: pointerleave/mouseleave events can
-  // be missed, causing the composer to stay visible. This effect validates the
-  // pointer is actually inside the container whenever it moves, and resets the
-  // hover state if the pointer has left without a leave event firing.
-  useEffect(() => {
-    if (!dockComposerOnHover || !composerDockHover) {
-      return
-    }
-
-    const handlePointerMove = (e: PointerEvent) => {
-      const container = dockHoverContainerRef.current
-      if (!container) return
-
-      const rect = container.getBoundingClientRect()
-      const isInside =
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-
-      if (!isInside) {
-        setComposerDockHover(false)
-      }
-    }
-
-    document.addEventListener("pointermove", handlePointerMove, { passive: true })
-    return () => {
-      document.removeEventListener("pointermove", handlePointerMove)
-    }
-  }, [dockComposerOnHover, composerDockHover])
 
   const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
     const next = event.relatedTarget as Node | null
@@ -1543,23 +1514,24 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         </div>
       )}
       <div
-        ref={dockComposerOnHover ? dockHoverContainerRef : undefined}
+        ref={dockComposerOnHover ? composerDockHoverState.ref : undefined}
         className={cn(
           "relative flex min-h-0 flex-1 flex-col",
           dockComposerOnHover && "overflow-hidden",
         )}
         onPointerEnter={
           dockComposerOnHover
-            ? () => {
-                setComposerDockHover(true)
-              }
+            ? composerDockHoverState.onPointerEnter
             : undefined
         }
         onPointerLeave={
           dockComposerOnHover
-            ? () => {
-                setComposerDockHover(false)
-              }
+            ? composerDockHoverState.onPointerLeave
+            : undefined
+        }
+        onPointerMove={
+          dockComposerOnHover
+            ? composerDockHoverState.onPointerMove
             : undefined
         }
       >

@@ -16,6 +16,7 @@ import {
   OpenCodeIcon,
 } from "@/features/projects/components/assistant/Icons"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -173,11 +174,12 @@ export function WorkbenchTileChrome({
 }: WorkbenchTileChromeProps) {
   const { t } = useTranslation()
   const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
-  const [isHovered, setIsHovered] = useState(false)
   const [splitOverlayActive, setSplitOverlayActive] = useState(false)
   const [splitDirection, setSplitDirection] = useState<"top" | "bottom" | "left" | "right" | null>(null)
   
   const runtime = useWorkbenchDockRuntime()
+  const tileHover = useElementPointerHover<HTMLDivElement>()
+  const isHovered = tileHover.isHovered
   const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
 
   const tileFallbackIconClassName = cn(
@@ -302,8 +304,10 @@ export function WorkbenchTileChrome({
   return (
     <div 
       className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface relative", className)}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      ref={tileHover.ref}
+      onPointerEnter={tileHover.onPointerEnter}
+      onPointerLeave={tileHover.onPointerLeave}
+      onPointerMove={tileHover.onPointerMove}
     >
       <div
         className={cn(
