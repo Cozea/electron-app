@@ -11,11 +11,12 @@ import type {
   WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
 import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/projects/lib/changesTileSizing"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" {
+): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" | "changes" {
   switch (type) {
     case "browser":
     case "selection":
@@ -23,6 +24,7 @@ export function getDockComponentName(
     case "devServer":
     case "mobileSimulator":
     case "assistantChat":
+    case "changes":
       return type
     default:
       return "assistantChat"
@@ -38,7 +40,7 @@ export function getPanelParams(
 }
 
 export function isObsoleteWorkbenchTile(tile: WorkbenchTile | undefined | null): boolean {
-  return !tile || tile.type === "changes" || tile.type === "tasks"
+  return !tile || tile.type === "tasks"
 }
 
 export function isSelectionTile(
@@ -58,6 +60,10 @@ export function buildAddPanelOptions(
     title: tile.title,
     component: getDockComponentName(tile.type),
     params: getPanelParams(projectId, laneId, tile.id),
+  }
+
+  if (tile.type === "changes") {
+    base.minimumWidth = CHANGES_TILE_MIN_WIDTH_COLLAPSED
   }
 
   if (api.totalPanels === 0) {

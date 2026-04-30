@@ -79,6 +79,24 @@ export class CheckpointWorkerClient {
     return this.request('getHeadDiffStats', params)
   }
 
+  public async listChanges(
+    params: CheckpointWorkerParams<'listChanges'>,
+  ): Promise<CheckpointWorkerResult<'listChanges'>> {
+    return this.request('listChanges', params)
+  }
+
+  public async readChangesPatch(
+    params: CheckpointWorkerParams<'readChangesPatch'>,
+  ): Promise<CheckpointWorkerResult<'readChangesPatch'>> {
+    return this.request('readChangesPatch', params)
+  }
+
+  public async readChanges(
+    params: CheckpointWorkerParams<'readChanges'>,
+  ): Promise<CheckpointWorkerResult<'readChanges'>> {
+    return this.request('readChanges', params)
+  }
+
   public async request<TMethod extends CheckpointWorkerMethod>(
     method: TMethod,
     params: CheckpointWorkerParams<TMethod>,

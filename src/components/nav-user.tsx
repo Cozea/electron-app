@@ -11,6 +11,7 @@ import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
+import { formatLocalDeviceLabel, isLocalDeviceEmail } from "@/lib/userDisplay"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Settings02Icon as __SettingsHugeIcon } from "@hugeicons/core-free-icons"
 
@@ -48,20 +49,6 @@ function formatUserData(user: RawUser | FormattedUser | null | undefined, fallba
     name,
     email: rawUser.email || "",
   }
-}
-
-function isLocalDeviceEmail(email: string): boolean {
-  return email.trim().toLowerCase().endsWith("@local.cozea.app")
-}
-
-function formatLocalDeviceLabel(label: string): string {
-  const trimmed = label.trim()
-  if (!trimmed) {
-    return ""
-  }
-
-  // Hostnames can include local-domain suffixes we do not want in the sidebar.
-  return trimmed.replace(/(\\.localdomain|\\.local)$/i, "") || ""
 }
 
 export function NavUser({

@@ -7,11 +7,15 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { ActivityFeedItem } from "../../pages/ChangesPage";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { prepareFileTreeInput, type GitStatusEntry } from "@pierre/trees";
 
-function toGitStatusEntry(file: ActivityFeedItem): GitStatusEntry {
+export interface ChangedFilesTreeFile {
+  filePath: string;
+  changeType: "create" | "modify" | "delete" | "rename";
+}
+
+function toGitStatusEntry(file: ChangedFilesTreeFile): GitStatusEntry {
   return {
     path: file.filePath,
     status:
@@ -61,57 +65,57 @@ function getClickedTreeItemPath(event: MouseEvent): string | null {
   return null;
 }
 
+interface ChangedFilesTreeInput {
+  filePaths: string[];
+  filePathSet: Set<string>;
+  preparedInput: ReturnType<typeof prepareFileTreeInput>;
+  gitStatus: GitStatusEntry[];
+  initialExpandedPaths: string[];
+}
+
 export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
-  files: ReadonlyArray<ActivityFeedItem>;
+  files: ReadonlyArray<ChangedFilesTreeFile>;
   allDirectoriesExpanded: boolean;
   onFileFilterChange: (filePath: string | null) => void;
   selectedFilePath?: string | null;
 }) {
   const { files, allDirectoriesExpanded, onFileFilterChange, selectedFilePath } = props;
 
-  const filePaths = useMemo(() => files.map((file) => file.filePath), [files]);
-  const filePathSet = useMemo(() => new Set(filePaths), [filePaths]);
-  const preparedInput = useMemo(() => {
-    return prepareFileTreeInput(filePaths, {
-      flattenEmptyDirectories: true,
-    });
-  }, [filePaths]);
-
-  const gitStatus = useMemo(() => {
-    return files.map(toGitStatusEntry);
-  }, [files]);
-
-  const initialExpandedPaths = useMemo(
-    () => (allDirectoriesExpanded ? collectAncestorDirectoryPaths(filePaths) : []),
-    [allDirectoriesExpanded, filePaths],
-  );
-  const filePathSetRef = useRef(filePathSet);
+  const treeInput = useMemo<ChangedFilesTreeInput>(() => {
+    const filePaths = files.map((file) => file.filePath);
+    return {
+      filePaths,
+      filePathSet: new Set(filePaths),
+      preparedInput: prepareFileTreeInput(filePaths, {
+        flattenEmptyDirectories: true,
+      }),
+      gitStatus: files.map(toGitStatusEntry),
+      initialExpandedPaths: allDirectoriesExpanded ? collectAncestorDirectoryPaths(filePaths) : [],
+    };
+  }, [allDirectoriesExpanded, files]);
+  const filePathSetRef = useRef(treeInput.filePathSet);
   const onFileFilterChangeRef = useRef(onFileFilterChange);
   const syncSelectionRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    filePathSetRef.current = filePathSet;
-  }, [filePathSet]);
+    filePathSetRef.current = treeInput.filePathSet;
+  }, [treeInput]);
 
   useEffect(() => {
     onFileFilterChangeRef.current = onFileFilterChange;
   }, [onFileFilterChange]);
 
   const { model } = useFileTree({
-    preparedInput,
+    preparedInput: treeInput.preparedInput,
     initialExpansion: allDirectoriesExpanded ? "open" : "closed",
-    initialExpandedPaths,
+    initialExpandedPaths: treeInput.initialExpandedPaths,
     initialSelectedPaths: selectedFilePath ? [selectedFilePath] : undefined,
-    gitStatus,
+    gitStatus: treeInput.gitStatus,
     icons: { set: "standard" },
     onSelectionChange: (selectedPaths) => {
-      console.log('[ChangedFilesTree] onSelectionChange fired');
-      console.log('[ChangedFilesTree] selectedPaths:', selectedPaths);
-      console.log('[ChangedFilesTree] filePathSet:', [...filePathSetRef.current]);
       let selectedPath: string | undefined;
       for (let index = selectedPaths.length - 1; index >= 0; index -= 1) {
         const path = selectedPaths[index];
-        console.log('[ChangedFilesTree] checking path:', JSON.stringify(path), 'in set:', filePathSetRef.current.has(path));
         if (filePathSetRef.current.has(path)) {
           selectedPath = path;
           break;
@@ -135,7 +139,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   const syncModelSelectionToFilter = useCallback(() => {
     const selectedPaths = model.getSelectedPaths();
 
-    if (!selectedFilePath || !filePathSet.has(selectedFilePath)) {
+    if (!selectedFilePath || !treeInput.filePathSet.has(selectedFilePath)) {
       for (const selectedPath of selectedPaths) {
         model.getItem(selectedPath)?.deselect();
       }
@@ -152,7 +156,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     if (selectedItem && !selectedItem.isSelected()) {
       selectedItem.select();
     }
-  }, [filePathSet, model, selectedFilePath]);
+  }, [model, selectedFilePath, treeInput]);
 
   useEffect(() => {
     syncSelectionRef.current = syncModelSelectionToFilter;
@@ -180,12 +184,15 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   );
 
   useEffect(() => {
-    model.resetPaths(filePaths, { preparedInput, initialExpandedPaths });
-  }, [filePaths, initialExpandedPaths, model, preparedInput]);
+    model.resetPaths(treeInput.filePaths, {
+      preparedInput: treeInput.preparedInput,
+      initialExpandedPaths: treeInput.initialExpandedPaths,
+    });
+  }, [model, treeInput]);
 
   useEffect(() => {
-    model.setGitStatus(gitStatus);
-  }, [gitStatus, model]);
+    model.setGitStatus(treeInput.gitStatus);
+  }, [model, treeInput]);
 
   useEffect(() => {
     syncModelSelectionToFilter();

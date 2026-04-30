@@ -61,6 +61,44 @@ export interface GitCheckpointHeadStatsResult {
   error?: string
 }
 
+export type GitChangesScope = 'current' | 'branch'
+
+export type GitChangeFileStatus = 'added' | 'modified' | 'deleted' | 'renamed'
+
+export interface GitChangeFileSummary {
+  path: string
+  oldPath?: string
+  status: GitChangeFileStatus
+}
+
+export interface GitChangesListResult {
+  success: boolean
+  scope: GitChangesScope
+  files: GitChangeFileSummary[]
+  baseRef?: string
+  headRef?: string
+  error?: string
+}
+
+export interface GitChangesPatchResult {
+  success: boolean
+  scope: GitChangesScope
+  diff?: string
+  baseRef?: string
+  headRef?: string
+  error?: string
+}
+
+export interface GitChangesResult {
+  success: boolean
+  scope: GitChangesScope
+  files: GitChangeFileSummary[]
+  diff?: string
+  baseRef?: string
+  headRef?: string
+  error?: string
+}
+
 async function executeGit(options: GitExecuteOptions): Promise<GitExecuteResult> {
   return await new Promise((resolve) => {
     const proc = spawn('git', options.args, {
@@ -258,6 +296,133 @@ function parseShortstat(stdout: string): GitCheckpointHeadStatsResult {
     changedFiles: changedFilesMatch ? Number.parseInt(changedFilesMatch[1], 10) : 0,
     additions: additionsMatch ? Number.parseInt(additionsMatch[1], 10) : 0,
     deletions: deletionsMatch ? Number.parseInt(deletionsMatch[1], 10) : 0,
+  }
+}
+
+function normalizeGitChangeStatus(rawStatus: string): GitChangeFileStatus {
+  const status = rawStatus.trim().charAt(0).toUpperCase()
+  switch (status) {
+    case 'A':
+      return 'added'
+    case 'D':
+      return 'deleted'
+    case 'R':
+      return 'renamed'
+    default:
+      return 'modified'
+  }
+}
+
+function parseNameStatus(stdout: string): GitChangeFileSummary[] {
+  const tokens = stdout.split('\0').filter((token) => token.length > 0)
+  const files: GitChangeFileSummary[] = []
+
+  for (let index = 0; index < tokens.length;) {
+    const rawStatus = tokens[index]
+    index += 1
+    if (!rawStatus) continue
+
+    const status = normalizeGitChangeStatus(rawStatus)
+    if (status === 'renamed') {
+      const oldPath = tokens[index]
+      const nextPath = tokens[index + 1]
+      index += 2
+      if (nextPath) {
+        files.push({
+          path: nextPath,
+          oldPath,
+          status,
+        })
+      }
+      continue
+    }
+
+    const filePath = tokens[index]
+    index += 1
+    if (filePath) {
+      files.push({
+        path: filePath,
+        status,
+      })
+    }
+  }
+
+  return files.sort((left, right) => left.path.localeCompare(right.path))
+}
+
+async function resolveRefCommit(cwd: string, ref: string): Promise<string | null> {
+  const result = await executeGit({
+    cwd,
+    args: ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+    allowNonZeroExit: true,
+  })
+  if (result.code !== 0) return null
+
+  const commit = result.stdout.trim()
+  return commit.length > 0 ? commit : null
+}
+
+async function resolveMergeBase(cwd: string, leftRef: string, rightRef: string): Promise<string | null> {
+  const result = await executeGit({
+    cwd,
+    args: ['merge-base', leftRef, rightRef],
+    allowNonZeroExit: true,
+  })
+  if (result.code !== 0) return null
+
+  const mergeBase = result.stdout.trim()
+  return mergeBase.length > 0 ? mergeBase : null
+}
+
+async function resolveBranchBase(cwd: string): Promise<{ baseCommit: string; baseRef: string; headCommit: string }> {
+  const headCommit = await resolveHeadCommit(cwd)
+  if (!headCommit) {
+    throw new Error('Cannot compute branch changes without a HEAD commit.')
+  }
+
+  const candidates = ['@{upstream}', 'origin/main', 'origin/master', 'main', 'master']
+  for (const candidate of candidates) {
+    const candidateCommit = await resolveRefCommit(cwd, candidate)
+    if (!candidateCommit) continue
+
+    const mergeBase = await resolveMergeBase(cwd, 'HEAD', candidate)
+    if (mergeBase) {
+      return {
+        baseCommit: mergeBase,
+        baseRef: candidate,
+        headCommit,
+      }
+    }
+  }
+
+  throw new Error('Could not find a base branch for this repository.')
+}
+
+async function resolveChangesDiffEndpoints(input: {
+  cwd: string
+  scope: GitChangesScope
+  authorName?: string
+}): Promise<{ fromCommit: string; toCommit: string; baseRef?: string; headRef?: string }> {
+  if (input.scope === 'current') {
+    const syntheticCommit = await createSyntheticCommit({
+      cwd: input.cwd,
+      authorName: input.authorName ?? 'Cozea',
+    })
+    const headCommit = await resolveHeadCommit(input.cwd)
+    return {
+      fromCommit: headCommit ?? EMPTY_TREE_SHA,
+      toCommit: syntheticCommit,
+      baseRef: headCommit ? 'HEAD' : 'empty tree',
+      headRef: 'working tree',
+    }
+  }
+
+  const branchBase = await resolveBranchBase(input.cwd)
+  return {
+    fromCommit: branchBase.baseCommit,
+    toCommit: branchBase.headCommit,
+    baseRef: branchBase.baseRef,
+    headRef: 'HEAD',
   }
 }
 
@@ -467,6 +632,116 @@ export async function getHeadDiffStats(
       deletions: 0,
       changedFiles: 0,
       error: error instanceof Error ? error.message : 'Failed to compute head diff stats.',
+    }
+  }
+}
+
+export async function listChanges(args: {
+  cwd: string
+  scope: GitChangesScope
+  authorName?: string
+}): Promise<GitChangesListResult> {
+  try {
+    const endpoints = await resolveChangesDiffEndpoints(args)
+    const result = await assertGitSuccess(
+      {
+        cwd: args.cwd,
+        args: ['diff', '--name-status', '-z', endpoints.fromCommit, endpoints.toCommit],
+      },
+      'Failed to list git changes.',
+    )
+
+    return {
+      success: true,
+      scope: args.scope,
+      files: parseNameStatus(result.stdout),
+      baseRef: endpoints.baseRef,
+      headRef: endpoints.headRef,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      scope: args.scope,
+      files: [],
+      error: error instanceof Error ? error.message : 'Failed to list git changes.',
+    }
+  }
+}
+
+export async function readChangesPatch(args: {
+  cwd: string
+  scope: GitChangesScope
+  filePath?: string
+  authorName?: string
+}): Promise<GitChangesPatchResult> {
+  try {
+    const endpoints = await resolveChangesDiffEndpoints(args)
+    const diffArgs = ['diff', '--patch', '--minimal', '--no-color', endpoints.fromCommit, endpoints.toCommit]
+    if (args.filePath?.trim()) {
+      diffArgs.push('--', args.filePath.trim())
+    }
+    const result = await assertGitSuccess(
+      {
+        cwd: args.cwd,
+        args: diffArgs,
+      },
+      'Failed to read git changes patch.',
+    )
+
+    return {
+      success: true,
+      scope: args.scope,
+      diff: result.stdout,
+      baseRef: endpoints.baseRef,
+      headRef: endpoints.headRef,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      scope: args.scope,
+      error: error instanceof Error ? error.message : 'Failed to read git changes patch.',
+    }
+  }
+}
+
+export async function readChanges(args: {
+  cwd: string
+  scope: GitChangesScope
+  authorName?: string
+}): Promise<GitChangesResult> {
+  try {
+    const endpoints = await resolveChangesDiffEndpoints(args)
+    const [nameStatusResult, patchResult] = await Promise.all([
+      assertGitSuccess(
+        {
+          cwd: args.cwd,
+          args: ['diff', '--name-status', '-z', endpoints.fromCommit, endpoints.toCommit],
+        },
+        'Failed to list git changes.',
+      ),
+      assertGitSuccess(
+        {
+          cwd: args.cwd,
+          args: ['diff', '--patch', '--minimal', '--no-color', endpoints.fromCommit, endpoints.toCommit],
+        },
+        'Failed to read git changes patch.',
+      ),
+    ])
+
+    return {
+      success: true,
+      scope: args.scope,
+      files: parseNameStatus(nameStatusResult.stdout),
+      diff: patchResult.stdout,
+      baseRef: endpoints.baseRef,
+      headRef: endpoints.headRef,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      scope: args.scope,
+      files: [],
+      error: error instanceof Error ? error.message : 'Failed to read git changes.',
     }
   }
 }

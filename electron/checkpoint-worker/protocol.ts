@@ -4,6 +4,10 @@ import type {
   GitCheckpointDiffResult,
   GitCheckpointFilePairResult,
   GitCheckpointHeadStatsResult,
+  GitChangesResult,
+  GitChangesListResult,
+  GitChangesPatchResult,
+  GitChangesScope,
 } from '../gitCheckpoints'
 
 export interface CheckpointWorkerCaptureParams {
@@ -41,6 +45,25 @@ export interface CheckpointWorkerHeadStatsParams {
   authorName?: string
 }
 
+export interface CheckpointWorkerListChangesParams {
+  cwd: string
+  scope: GitChangesScope
+  authorName?: string
+}
+
+export interface CheckpointWorkerReadChangesPatchParams {
+  cwd: string
+  scope: GitChangesScope
+  filePath?: string
+  authorName?: string
+}
+
+export interface CheckpointWorkerReadChangesParams {
+  cwd: string
+  scope: GitChangesScope
+  authorName?: string
+}
+
 export interface CheckpointWorkerMethodMap {
   captureCheckpoint: {
     params: CheckpointWorkerCaptureParams
@@ -65,6 +88,18 @@ export interface CheckpointWorkerMethodMap {
   getHeadDiffStats: {
     params: CheckpointWorkerHeadStatsParams
     result: GitCheckpointHeadStatsResult
+  }
+  listChanges: {
+    params: CheckpointWorkerListChangesParams
+    result: GitChangesListResult
+  }
+  readChangesPatch: {
+    params: CheckpointWorkerReadChangesPatchParams
+    result: GitChangesPatchResult
+  }
+  readChanges: {
+    params: CheckpointWorkerReadChangesParams
+    result: GitChangesResult
   }
 }
 
@@ -95,6 +130,9 @@ export interface CheckpointWorkerSuccessResponse {
     | GitCheckpointDiffResult
     | GitCheckpointFilePairResult
     | GitCheckpointHeadStatsResult
+    | GitChangesResult
+    | GitChangesListResult
+    | GitChangesPatchResult
 }
 
 export interface CheckpointWorkerErrorResponse {

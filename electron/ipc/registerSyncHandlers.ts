@@ -562,6 +562,59 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
   )
 
   ipcMain.handle(
+    'sync:gitListChanges',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        scope: 'current' | 'branch'
+        authorName?: string
+      }
+    ) =>
+      checkpointWorkerClient.listChanges({
+        cwd: options.projectPath,
+        scope: options.scope,
+        authorName: options.authorName,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitReadChangesPatch',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        scope: 'current' | 'branch'
+        filePath?: string
+        authorName?: string
+      }
+    ) =>
+      checkpointWorkerClient.readChangesPatch({
+        cwd: options.projectPath,
+        scope: options.scope,
+        filePath: options.filePath,
+        authorName: options.authorName,
+      })
+  )
+
+  ipcMain.handle(
+    'sync:gitReadChanges',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        scope: 'current' | 'branch'
+        authorName?: string
+      }
+    ) =>
+      checkpointWorkerClient.readChanges({
+        cwd: options.projectPath,
+        scope: options.scope,
+        authorName: options.authorName,
+      })
+  )
+
+  ipcMain.handle(
     'sync:mergePreview',
     async (
       _event,

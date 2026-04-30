@@ -63,6 +63,15 @@ export const projectOpenDesktopClient = {
     gitGetHeadDiffStats: (
       options: Parameters<typeof window.electronAPI.sync.gitGetHeadDiffStats>[0],
     ) => window.electronAPI.sync.gitGetHeadDiffStats(options),
+    gitListChanges: (
+      options: Parameters<typeof window.electronAPI.sync.gitListChanges>[0],
+    ) => window.electronAPI.sync.gitListChanges(options),
+    gitReadChangesPatch: (
+      options: Parameters<typeof window.electronAPI.sync.gitReadChangesPatch>[0],
+    ) => window.electronAPI.sync.gitReadChangesPatch(options),
+    gitReadChanges: (
+      options: Parameters<typeof window.electronAPI.sync.gitReadChanges>[0],
+    ) => window.electronAPI.sync.gitReadChanges(options),
     gitRestoreMain: (options: Parameters<typeof window.electronAPI.sync.gitRestoreMain>[0]) =>
       window.electronAPI.sync.gitRestoreMain(options),
     gitReplayLocalCommits: (
