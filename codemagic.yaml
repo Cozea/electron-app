@@ -209,8 +209,10 @@ workflows:
           $env:Path = "$env:USERPROFILE\.bun\bin;$env:Path"
           bun --version
           Assert-LastExitCode "bun --version"
-          bun x npm config set python "$pythonPath"
-          Assert-LastExitCode "bun x npm config set python"
+          if (Get-Command npm -ErrorAction SilentlyContinue) {
+            npm config set python "$pythonPath"
+            Assert-LastExitCode "npm config set python"
+          }
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
 
