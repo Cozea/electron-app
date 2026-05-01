@@ -74,7 +74,7 @@ The macOS updater metadata is generated from the combined x64/arm64 macOS build,
 
 The Codemagic workflow lives at `codemagic.yaml` and provides a CircleCI replacement when CircleCI credits are unavailable.
 
-Codemagic runs two main-branch workflows:
+Codemagic runs two workflows on `main` pushes and `v*` tag creations:
 
 1. `release-macos-r2`
    Builds signed separate macOS x64 and arm64 DMG/ZIP artifacts in one workflow, notarizes/staples the DMGs, verifies app signatures, and uploads macOS artifacts to Cloudflare R2.
@@ -161,7 +161,7 @@ Add the repository in Codemagic and enable `codemagic.yaml` builds. Create a Cod
 - `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH` when runtime metadata signing is enabled
 - `COZEA_RUNTIME_SIGNING_PUBLIC_KEY` when runtime metadata verification material needs to be regenerated
 
-Codemagic workflows are triggered by pushes to `main`. If webhooks are not installed automatically, update the repository webhook from the Codemagic app settings.
+Codemagic workflows are triggered by pushes to `main` and tags matching `v*`. If webhooks are not installed automatically, update the repository webhook from the Codemagic app settings and make sure tag creation events are enabled.
 
 ## Operating Rules
 
