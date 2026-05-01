@@ -11,6 +11,10 @@ cert_path="${tmp_dir}/cozea-signing-cert.p12"
 cert_pem_path="${tmp_dir}/cozea-signing-cert.pem"
 developer_id_ca_path="${tmp_dir}/DeveloperIDG2CA.cer"
 
+shell_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
 case "${CSC_LINK}" in
   http://*|https://*)
     curl -fsSL "${CSC_LINK}" -o "${cert_path}"
@@ -67,9 +71,9 @@ fi
 
 identity_common="${identity_full#Developer ID Application: }"
 {
-  echo "export COZEA_CODESIGN_IDENTITY=${identity_full@Q}"
-  echo "export CSC_NAME=${identity_common@Q}"
-  echo "export COZEA_CI_KEYCHAIN=${keychain_path@Q}"
+  echo "export COZEA_CODESIGN_IDENTITY=$(shell_quote "${identity_full}")"
+  echo "export CSC_NAME=$(shell_quote "${identity_common}")"
+  echo "export COZEA_CI_KEYCHAIN=$(shell_quote "${keychain_path}")"
 } >> "${BASH_ENV:-/dev/null}"
 
 echo "Imported macOS signing identity: ${identity_full}"
