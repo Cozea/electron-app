@@ -173,6 +173,8 @@ workflows:
           }
           & $cmdPath /c ver
           Assert-LastExitCode "cmd.exe /c ver"
+          $preflightDir = Join-Path $env:TEMP "cozea-codemagic-preflight"
+          New-Item -ItemType Directory -Force $preflightDir | Out-Null
 
           $required = @(
             "VITE_CONVEX_URL",
@@ -230,7 +232,18 @@ workflows:
           }
           $env:PYTHON = $pythonPath
           Write-Host "Using Python for node-gyp: $pythonPath"
-          & $pythonPath -c 'import shutil, subprocess; cmd = shutil.which("cmd") or shutil.which("cmd.exe"); print(f"Python sees cmd.exe: {cmd}"); subprocess.check_call(["cmd", "/c", "ver"])'
+          $pythonPreflightPath = Join-Path $preflightDir "check-cmd.py"
+          @'
+          import shutil
+          import subprocess
+
+          cmd = shutil.which("cmd") or shutil.which("cmd.exe")
+          print(f"Python sees cmd.exe: {cmd}")
+          if not cmd:
+              raise SystemExit("Python could not resolve cmd.exe from PATH")
+          subprocess.check_call([cmd, "/c", "ver"])
+          '@ | Set-Content -Path $pythonPreflightPath -Encoding UTF8
+          & $pythonPath $pythonPreflightPath
           Assert-LastExitCode "python cmd.exe preflight"
 
           iex "& {$(irm https://bun.com/install.ps1)} -Version 1.3.13"
@@ -240,7 +253,18 @@ workflows:
           [Environment]::SetEnvironmentVariable("PATH", $env:Path, "Process")
           bun --version
           Assert-LastExitCode "bun --version"
-          bun -e 'const cp = require("node:child_process"); console.log("Bun/Node ComSpec:", process.env.ComSpec); cp.execFileSync(process.env.ComSpec, ["/c", "ver"], { stdio: "inherit" }); cp.execFileSync("cmd.exe", ["/c", "ver"], { stdio: "inherit" });'
+          $bunPreflightPath = Join-Path $preflightDir "check-cmd.js"
+          @'
+          const cp = require("node:child_process")
+
+          console.log("Bun/Node ComSpec:", process.env.ComSpec)
+          if (!process.env.ComSpec) {
+            throw new Error("ComSpec is not set")
+          }
+          cp.execFileSync(process.env.ComSpec, ["/c", "ver"], { stdio: "inherit" })
+          cp.execFileSync("cmd.exe", ["/c", "ver"], { stdio: "inherit" })
+          '@ | Set-Content -Path $bunPreflightPath -Encoding UTF8
+          bun $bunPreflightPath
           Assert-LastExitCode "bun cmd.exe preflight"
           if (Get-Command npm -ErrorAction SilentlyContinue) {
             npm config set python "$pythonPath"
@@ -249,8 +273,15 @@ workflows:
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
 
-          $electronVersion = (bun -e 'console.log(require("electron/package.json").version)').Trim()
+          $electronVersionPath = Join-Path $preflightDir "resolve-electron-version.js"
+          @'
+          console.log(require("electron/package.json").version)
+          '@ | Set-Content -Path $electronVersionPath -Encoding UTF8
+          $electronVersion = (bun $electronVersionPath).Trim()
           Assert-LastExitCode "resolve Electron version"
+          if (-not $electronVersion) {
+            throw "Electron version could not be resolved from electron/package.json."
+          }
           Write-Host "Prebuilding node-pty for Electron $electronVersion"
           bunx electron-rebuild --version "$electronVersion" --arch x64 --only node-pty --module-dir .
           Assert-LastExitCode "node-pty native rebuild preflight"
