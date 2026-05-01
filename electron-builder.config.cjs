@@ -60,7 +60,7 @@ module.exports = {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
-    x64ArchFiles: "**/node_modules/@anthropic-ai/claude-agent-sdk/vendor/**/*",
+    x64ArchFiles: "**/node_modules/@{anthropic-ai/claude-agent-sdk/vendor,cozea/pty}/**/*",
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
   },
