@@ -74,6 +74,10 @@ identity_common="${identity_full#Developer ID Application: }"
   echo "export COZEA_CODESIGN_IDENTITY=$(shell_quote "${identity_full}")"
   echo "export CSC_NAME=$(shell_quote "${identity_common}")"
   echo "export COZEA_CI_KEYCHAIN=$(shell_quote "${keychain_path}")"
+  # The legacy P12 has already been imported above. Prevent electron-builder from
+  # trying to import CSC_LINK again with its non-legacy path.
+  echo "unset CSC_LINK"
+  echo "unset CSC_KEY_PASSWORD"
 } >> "${BASH_ENV:-/dev/null}"
 
 echo "Imported macOS signing identity: ${identity_full}"
