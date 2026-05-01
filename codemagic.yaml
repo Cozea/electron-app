@@ -264,7 +264,7 @@ workflows:
           cp.execFileSync(process.env.ComSpec, ["/c", "ver"], { stdio: "inherit" })
           const whereOut = cp.execFileSync(process.env.ComSpec, ["/c", "where cmd.exe"], { encoding: "utf8" }).trim()
           const cmdOnPath = whereOut.split(/\r?\n/)[0].trim()
-          if (!cmdOnPath) throw new Error("cmd.exe not found on PATH via where")
+          if (!cmdOnPath) throw new Error("where cmd.exe exited 0 but produced no output")
           console.log("cmd.exe resolved on PATH:", cmdOnPath)
           cp.execFileSync(cmdOnPath, ["/c", "ver"], { stdio: "inherit" })
           '@ | Set-Content -Path $bunPreflightPath -Encoding UTF8
