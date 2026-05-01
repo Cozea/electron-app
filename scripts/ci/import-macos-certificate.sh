@@ -8,6 +8,7 @@ fi
 
 tmp_dir="$(mktemp -d)"
 cert_path="${tmp_dir}/cozea-signing-cert.p12"
+cert_pem_path="${tmp_dir}/cozea-signing-cert.pem"
 
 case "${CSC_LINK}" in
   http://*|https://*)
@@ -29,6 +30,13 @@ case "${CSC_LINK}" in
     ;;
 esac
 
+if openssl pkcs12 -in "${cert_path}" -nokeys -passin "pass:${CSC_KEY_PASSWORD}" -out "${cert_pem_path}" >/dev/null 2>&1; then
+  echo "Decoded macOS signing certificate:"
+  openssl x509 -in "${cert_pem_path}" -noout -subject -issuer -fingerprint -sha1
+else
+  echo "Unable to inspect certificate payload from CSC_LINK." >&2
+fi
+
 keychain_path="${HOME}/Library/Keychains/cozea-ci-signing.keychain-db"
 keychain_password="$(openssl rand -hex 16)"
 
@@ -41,10 +49,14 @@ security list-keychains -d user -s "${keychain_path}" ${existing_keychains}
 security default-keychain -d user -s "${keychain_path}"
 
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
+if [[ -s "${cert_pem_path}" ]]; then
+  security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security
+fi
 security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
 
 identity_full="$(security find-identity -v -p codesigning "${keychain_path}" | awk -F\" '/Developer ID Application:/{print $2; exit}')"
 if [[ -z "${identity_full}" ]]; then
+  security find-identity -v -p codesigning "${keychain_path}" || true
   echo "No Developer ID Application identity found in imported signing certificate." >&2
   exit 1
 fi
