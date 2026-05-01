@@ -274,7 +274,7 @@ workflows:
 
           $electronPkgJson = Join-Path $PWD "node_modules\electron\package.json"
           if (-not (Test-Path $electronPkgJson)) {
-            throw "electron/package.json not found at $electronPkgJson — was bun install run?"
+            throw "electron/package.json not found at $electronPkgJson - was bun install run?"
           }
           $electronVersion = (Get-Content $electronPkgJson -Raw | ConvertFrom-Json).version
           if (-not $electronVersion) {
