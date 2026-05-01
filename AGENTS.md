@@ -44,7 +44,7 @@ bun run build
 
 Tagged releases are built by GitHub Actions and published as GitHub Releases in the **distribution repo**.
 Main-branch cloud releases can also be built by CircleCI and uploaded to Cloudflare R2 for Electron auto-updates.
-Codemagic can run the same main-branch Cloudflare R2 release path when CircleCI credits are unavailable.
+Codemagic can run the same main-branch and tag-based Cloudflare R2 release path when CircleCI credits are unavailable.
 The fast agent-facing summary lives here; the fuller operator guide is in `docs/release-process.md`.
 
 ### Source vs Distribution Repos
@@ -116,6 +116,7 @@ CircleCI expects a context named `cozea-release` with:
 - Optional runtime metadata signing: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`
 
 Codemagic expects an environment variable group named `cozea-release` with the same values as the CircleCI context.
+Codemagic workflows now trigger on pushes to `main` and tags matching `v*`.
 
 ### Local Release (Fallback)
 
