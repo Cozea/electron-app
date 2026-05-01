@@ -272,12 +272,11 @@ workflows:
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
 
-          $electronVersionPath = Join-Path $preflightDir "resolve-electron-version.js"
-          @'
-          console.log(require("electron/package.json").version)
-          '@ | Set-Content -Path $electronVersionPath -Encoding UTF8
-          $electronVersion = (bun $electronVersionPath).Trim()
-          Assert-LastExitCode "resolve Electron version"
+          $electronPkgJson = Join-Path $PWD "node_modules\electron\package.json"
+          if (-not (Test-Path $electronPkgJson)) {
+            throw "electron/package.json not found at $electronPkgJson — was bun install run?"
+          }
+          $electronVersion = (Get-Content $electronPkgJson -Raw | ConvertFrom-Json).version
           if (-not $electronVersion) {
             throw "Electron version could not be resolved from electron/package.json."
           }
