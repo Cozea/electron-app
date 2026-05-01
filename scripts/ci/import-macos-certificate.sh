@@ -51,7 +51,7 @@ security default-keychain -d user -s "${keychain_path}"
 
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
-  security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security
+  security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
 fi
 security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
 
