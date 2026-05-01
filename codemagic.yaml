@@ -22,16 +22,20 @@ definitions:
     main_push: &main_push
       events:
         - push
+        - tag
       branch_patterns:
         - pattern: main
           include: true
           source: true
+      tag_patterns:
+        - pattern: v*
+          include: true
       cancel_previous_builds: true
 
 workflows:
   release-macos-r2:
     name: Release macOS to Cloudflare R2
-    instance_type: mac_mini_m2
+    instance_type: mac_mini_m4
     max_build_duration: 120
     environment: *release_env
     triggering: *main_push
