@@ -66,7 +66,7 @@ security import "${developer_id_ca_path}" -k "${keychain_path}" -T /usr/bin/code
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
   security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
-  security verify-cert -c "${cert_pem_path}" -p codesigning || true
+  security verify-cert -c "${cert_pem_path}" -c "${developer_id_ca_path}" -p codesigning || true
 fi
 security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
 
@@ -81,7 +81,6 @@ identity_common="${identity_full#Developer ID Application: }"
 {
   echo "export COZEA_CODESIGN_IDENTITY=$(shell_quote "${identity_full}")"
   echo "export CSC_NAME=$(shell_quote "${identity_common}")"
-  echo "export CSC_KEYCHAIN=$(shell_quote "${keychain_path}")"
   echo "export COZEA_CI_KEYCHAIN=$(shell_quote "${keychain_path}")"
   # The legacy P12 has already been imported above. Prevent electron-builder from
   # trying to import CSC_LINK again with its non-legacy path.
