@@ -30,7 +30,8 @@ case "${CSC_LINK}" in
     ;;
 esac
 
-if openssl pkcs12 -in "${cert_path}" -nokeys -passin "pass:${CSC_KEY_PASSWORD}" -out "${cert_pem_path}" >/dev/null 2>&1; then
+if openssl pkcs12 -in "${cert_path}" -nokeys -passin "pass:${CSC_KEY_PASSWORD}" -out "${cert_pem_path}" >/dev/null 2>&1 ||
+  openssl pkcs12 -legacy -in "${cert_path}" -nokeys -passin "pass:${CSC_KEY_PASSWORD}" -out "${cert_pem_path}" >/dev/null 2>&1; then
   echo "Decoded macOS signing certificate:"
   openssl x509 -in "${cert_pem_path}" -noout -subject -issuer -fingerprint -sha1
 else
