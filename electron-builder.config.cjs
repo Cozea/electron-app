@@ -2,6 +2,30 @@ const releaseLane = process.env.COZEA_RELEASE_LANE ?? "stable"
 const updaterChannel = process.env.COZEA_UPDATER_CHANNEL ?? "latest"
 const githubReleaseType =
   process.env.COZEA_GITHUB_RELEASE_TYPE ?? (releaseLane === "stable" ? "release" : "prerelease")
+const updateProvider = process.env.COZEA_UPDATE_PROVIDER ?? "github"
+const updateBaseUrl = process.env.COZEA_UPDATE_BASE_URL ?? ""
+
+function resolvePublishConfig() {
+  if (updateProvider === "generic") {
+    if (!updateBaseUrl) {
+      throw new Error("COZEA_UPDATE_BASE_URL is required when COZEA_UPDATE_PROVIDER=generic")
+    }
+
+    return {
+      provider: "generic",
+      url: `${updateBaseUrl.replace(/\/+$/, "")}/${updaterChannel}`,
+      channel: updaterChannel,
+    }
+  }
+
+  return {
+    provider: "github",
+    owner: "Cozea",
+    repo: "cozea-prod",
+    channel: updaterChannel,
+    releaseType: githubReleaseType,
+  }
+}
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
@@ -36,6 +60,7 @@ module.exports = {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
+    ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
   },
   dmg: {
@@ -51,11 +76,5 @@ module.exports = {
     icon: "build/icon.png",
     target: ["dir"],
   },
-  publish: {
-    provider: "github",
-    owner: "Cozea",
-    repo: "cozea-prod",
-    channel: updaterChannel,
-    releaseType: githubReleaseType,
-  },
+  publish: resolvePublishConfig(),
 }
