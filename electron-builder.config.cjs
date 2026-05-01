@@ -60,7 +60,8 @@ module.exports = {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
-    x64ArchFiles: "**/node_modules/@{anthropic-ai/claude-agent-sdk/vendor,cozea/pty}/**/*",
+    x64ArchFiles:
+      "**/node_modules/{@anthropic-ai/claude-agent-sdk/vendor,@cozea/pty,@esbuild/darwin-*,node-pty/prebuilds/darwin-*,@msgpackr-extract/msgpackr-extract-darwin-*,@img/sharp-darwin-*,@img/sharp-libvips-darwin-*,@rollup/rollup-darwin-*,lightningcss-darwin-*,@tailwindcss/oxide-darwin-*,@oxfmt/binding-darwin-*,@oxlint/binding-darwin-*}/**/*",
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
   },
