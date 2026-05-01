@@ -4,6 +4,29 @@ const githubReleaseType =
   process.env.COZEA_GITHUB_RELEASE_TYPE ?? (releaseLane === "stable" ? "release" : "prerelease")
 const updateProvider = process.env.COZEA_UPDATE_PROVIDER ?? "github"
 const updateBaseUrl = process.env.COZEA_UPDATE_BASE_URL ?? ""
+const macUniversalX64ArchFilePackages = [
+  "@anthropic-ai/claude-agent-sdk/vendor",
+  "@cozea/pty",
+  "@esbuild/darwin-*",
+  "@img/sharp-darwin-*",
+  "@img/sharp-libvips-darwin-*",
+  "@msgpackr-extract/msgpackr-extract-darwin-*",
+  "@oxfmt/binding-darwin-*",
+  "@oxlint/binding-darwin-*",
+  "@railway/cli",
+  "@rollup/rollup-darwin-*",
+  "@tailwindcss/oxide-darwin-*",
+  "@vscode/ripgrep",
+  "7zip-bin/mac/x64",
+  "better-sqlite3/build/Release",
+  "esbuild",
+  "lightningcss-darwin-*",
+  "msgpackr-extract/build/Release",
+  "node-pty/build/Release",
+  "node-pty/prebuilds/darwin-*",
+  "playwright/node_modules/fsevents",
+]
+const macUniversalX64ArchFiles = `**/node_modules/{${macUniversalX64ArchFilePackages.join(",")}}/**/*`
 
 function resolvePublishConfig() {
   if (updateProvider === "generic") {
@@ -60,8 +83,7 @@ module.exports = {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
-    x64ArchFiles:
-      "**/node_modules/{@anthropic-ai/claude-agent-sdk/vendor,@cozea/pty,@vscode/ripgrep,@esbuild/darwin-*,node-pty/prebuilds/darwin-*,@msgpackr-extract/msgpackr-extract-darwin-*,@img/sharp-darwin-*,@img/sharp-libvips-darwin-*,@rollup/rollup-darwin-*,lightningcss-darwin-*,@tailwindcss/oxide-darwin-*,@oxfmt/binding-darwin-*,@oxlint/binding-darwin-*}/**/*",
+    x64ArchFiles: macUniversalX64ArchFiles,
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
   },
