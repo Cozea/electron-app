@@ -10,6 +10,7 @@ tmp_dir="$(mktemp -d)"
 cert_path="${tmp_dir}/cozea-signing-cert.p12"
 cert_pem_path="${tmp_dir}/cozea-signing-cert.pem"
 developer_id_ca_path="${tmp_dir}/DeveloperIDG2CA.cer"
+apple_root_ca_path="${tmp_dir}/AppleIncRootCertificate.cer"
 
 shell_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
@@ -62,6 +63,8 @@ security list-keychains -d user -s \
 security default-keychain -d user -s "${keychain_path}"
 
 curl -fsSL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "${developer_id_ca_path}"
+curl -fsSL "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -o "${apple_root_ca_path}"
+sudo -n security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${apple_root_ca_path}"
 security import "${developer_id_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
