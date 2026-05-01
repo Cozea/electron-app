@@ -64,10 +64,8 @@ security default-keychain -d user -s "${keychain_path}"
 
 curl -fsSL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "${developer_id_ca_path}"
 curl -fsSL "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -o "${apple_root_ca_path}"
-security add-trusted-cert -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}" || true
-security add-trusted-cert -d -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}" || true
+security import "${apple_root_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
 security import "${developer_id_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
-security add-trusted-cert -r trustAsRoot -k "${keychain_path}" "${developer_id_ca_path}" || true
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
   security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
