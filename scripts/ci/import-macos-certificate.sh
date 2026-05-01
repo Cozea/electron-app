@@ -10,7 +10,6 @@ tmp_dir="$(mktemp -d)"
 cert_path="${tmp_dir}/cozea-signing-cert.p12"
 cert_pem_path="${tmp_dir}/cozea-signing-cert.pem"
 developer_id_ca_path="${tmp_dir}/DeveloperIDG2CA.cer"
-apple_root_ca_path="${tmp_dir}/AppleIncRootCertificate.cer"
 
 shell_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
@@ -63,14 +62,11 @@ security list-keychains -d user -s \
 security default-keychain -d user -s "${keychain_path}"
 
 curl -fsSL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "${developer_id_ca_path}"
-curl -fsSL "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -o "${apple_root_ca_path}"
-security import "${apple_root_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
-security add-trusted-cert -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}" || true
 security import "${developer_id_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
   security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
-  security verify-cert -c "${cert_pem_path}" -p codesigning -k "${keychain_path}" || true
+  security verify-cert -c "${cert_pem_path}" -p codesigning || true
 fi
 security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
 
