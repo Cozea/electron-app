@@ -1520,6 +1520,8 @@ app.on('before-quit', () => {
 })
 
 app.on('activate', () => {
+  if (!app.isReady()) return
+
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
