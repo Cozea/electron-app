@@ -90,7 +90,9 @@ git push origin v0.0.8
 `electron-builder` is configured to publish to `cozea-prod` (see `electron-builder.config.cjs`). The release assets typically include:
 
 - `Cozea-X.Y.Z-arm64.dmg` (primary macOS installer)
+- `Cozea-X.Y.Z.dmg` or `Cozea-X.Y.Z-x64.dmg` (Intel macOS installer, depending on Electron Builder artifact naming)
 - `Cozea-X.Y.Z-arm64-mac.zip` (alternate download)
+- `Cozea-X.Y.Z-mac.zip` or `Cozea-X.Y.Z-x64-mac.zip` (Intel alternate download, depending on Electron Builder artifact naming)
 - `latest-mac.yml` and blockmaps (auto-updater metadata)
 
 ### Required CI Configuration
