@@ -96,7 +96,7 @@ jobs:
             source "$BASH_ENV"
             bun run lint
 
-  build_macos_universal:
+  build_macos_separate:
     macos:
       xcode: 16.4.0
     resource_class: m4pro.medium
@@ -130,11 +130,11 @@ jobs:
             source "$BASH_ENV"
             bash scripts/ci/import-macos-certificate.sh
       - run:
-          name: Build signed universal macOS release
+          name: Build signed separate macOS releases
           command: |
             set -euo pipefail
             source "$BASH_ENV"
-            bun run dist -- --mac --universal --publish never
+            bun run dist -- --mac --x64 --arm64 --publish never
       - run:
           name: Notarize and staple DMG
           command: |
@@ -153,15 +153,15 @@ jobs:
           name: Collect macOS artifacts
           command: |
             set -euo pipefail
-            mkdir -p ci-artifacts/macos-universal
-            cp -R dist ci-artifacts/macos-universal/dist
+            mkdir -p ci-artifacts/macos
+            cp -R dist ci-artifacts/macos/dist
       - persist_to_workspace:
           root: .
           paths:
-            - ci-artifacts/macos-universal
+            - ci-artifacts/macos
       - store_artifacts:
           path: dist
-          destination: macos-universal
+          destination: macos
 
   build_windows_x64:
     machine:
@@ -244,7 +244,7 @@ workflows:
           filters:
             branches:
               only: main
-      - build_macos_universal:
+      - build_macos_separate:
           context:
             - cozea-release
           requires:
@@ -264,7 +264,7 @@ workflows:
           context:
             - cozea-release
           requires:
-            - build_macos_universal
+            - build_macos_separate
             - build_windows_x64
           filters:
             branches:

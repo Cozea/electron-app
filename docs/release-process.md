@@ -47,8 +47,8 @@ The CircleCI workflow lives at `.circleci/config.yml` and runs in four stages:
 
 1. `verify`
    Installs dependencies, prepares runtime metadata, typechecks, and lints.
-2. `build_macos_universal`
-   Builds a signed universal macOS DMG/ZIP, notarizes/staples the DMG, verifies the app signature, and persists artifacts.
+2. `build_macos_separate`
+   Builds signed separate macOS x64 and arm64 DMG/ZIP artifacts in one Electron Builder invocation, notarizes/staples the DMGs, verifies app signatures, and persists artifacts.
 3. `build_windows_x64`
    Builds the Windows x64 NSIS installer and persists artifacts.
 4. `upload_cloudflare_r2`
@@ -66,6 +66,8 @@ The app then checks:
 https://updates.cozea.app/latest/latest-mac.yml
 https://updates.cozea.app/latest/latest.yml
 ```
+
+The macOS updater metadata is generated from the combined x64/arm64 macOS build, but the installers remain separate. Do not split macOS x64 and arm64 into independent CircleCI jobs unless the upload path also prevents `latest-mac.yml` from being overwritten.
 
 ## Supported Triggers
 
