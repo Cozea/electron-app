@@ -156,7 +156,11 @@ workflows:
             "$windowsRoot\System32\WindowsPowerShell\v1.0"
           ) | Where-Object { Test-Path $_ }
           $env:Path = ($windowsSystemPaths + @($env:Path)) -join ";"
-          $env:ComSpec = "$windowsRoot\System32\cmd.exe"
+          $cmdPath = "$windowsRoot\System32\cmd.exe"
+          if (-not (Test-Path $cmdPath)) {
+            throw "cmd.exe was not found at expected Windows system path: $cmdPath"
+          }
+          $env:ComSpec = $cmdPath
           if (-not (Get-Command cmd.exe -ErrorAction SilentlyContinue)) {
             throw "cmd.exe is not available on PATH after restoring Windows system paths."
           }
