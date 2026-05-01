@@ -180,7 +180,7 @@ workflows:
 
             foreach ($candidate in $candidates) {
               try {
-                & $candidate --version
+                & $candidate --version | Out-Null
                 if ($LASTEXITCODE -eq 0) {
                   return $candidate
                 }
