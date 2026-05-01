@@ -51,14 +51,23 @@ security create-keychain -p "${keychain_password}" "${keychain_path}"
 security set-keychain-settings -lut 21600 "${keychain_path}"
 security unlock-keychain -p "${keychain_password}" "${keychain_path}"
 
-existing_keychains="$(security list-keychains -d user | sed 's/[ \"]//g' | tr '\n' ' ')"
-security list-keychains -d user -s "${keychain_path}" ${existing_keychains}
+existing_keychains=()
+while IFS= read -r listed_keychain; do
+  existing_keychains+=("$(printf '%s' "${listed_keychain}" | sed 's/^[[:space:]]*"\(.*\)"[[:space:]]*$/\1/')")
+done < <(security list-keychains -d user)
+security list-keychains -d user -s \
+  "${keychain_path}" \
+  "${existing_keychains[@]}" \
+  "/Library/Keychains/System.keychain" \
+  "/System/Library/Keychains/SystemRootCertificates.keychain"
 security default-keychain -d user -s "${keychain_path}"
 
 curl -fsSL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "${developer_id_ca_path}"
 curl -fsSL "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -o "${apple_root_ca_path}"
-security add-trusted-cert -d -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}"
+security add-trusted-cert -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}" || true
+security add-trusted-cert -d -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}" || true
 security import "${developer_id_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
+security add-trusted-cert -r trustAsRoot -k "${keychain_path}" "${developer_id_ca_path}" || true
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
   security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
