@@ -155,7 +155,14 @@ workflows:
             "$windowsRoot\System32\Wbem",
             "$windowsRoot\System32\WindowsPowerShell\v1.0"
           ) | Where-Object { Test-Path $_ }
-          $env:Path = ($windowsSystemPaths + @($env:Path)) -join ";"
+          $processPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+          if (-not $processPath) {
+            $processPath = $env:Path
+          }
+          $env:Path = ($windowsSystemPaths + @($processPath)) -join ";"
+          $env:PATH = $env:Path
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, "Process")
+          [Environment]::SetEnvironmentVariable("PATH", $env:Path, "Process")
           $cmdPath = "$windowsRoot\System32\cmd.exe"
           if (-not (Test-Path $cmdPath)) {
             throw "cmd.exe was not found at expected Windows system path: $cmdPath"
@@ -164,6 +171,8 @@ workflows:
           if (-not (Get-Command cmd.exe -ErrorAction SilentlyContinue)) {
             throw "cmd.exe is not available on PATH after restoring Windows system paths."
           }
+          & $cmdPath /c ver
+          Assert-LastExitCode "cmd.exe /c ver"
 
           $required = @(
             "VITE_CONVEX_URL",
@@ -221,17 +230,30 @@ workflows:
           }
           $env:PYTHON = $pythonPath
           Write-Host "Using Python for node-gyp: $pythonPath"
+          & $pythonPath -c 'import shutil, subprocess; cmd = shutil.which("cmd") or shutil.which("cmd.exe"); print(f"Python sees cmd.exe: {cmd}"); subprocess.check_call(["cmd", "/c", "ver"])'
+          Assert-LastExitCode "python cmd.exe preflight"
 
           iex "& {$(irm https://bun.com/install.ps1)} -Version 1.3.13"
           $env:Path = "$env:USERPROFILE\.bun\bin;$env:Path"
+          $env:PATH = $env:Path
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, "Process")
+          [Environment]::SetEnvironmentVariable("PATH", $env:Path, "Process")
           bun --version
           Assert-LastExitCode "bun --version"
+          bun -e 'const cp = require("node:child_process"); console.log("Bun/Node ComSpec:", process.env.ComSpec); cp.execFileSync(process.env.ComSpec, ["/c", "ver"], { stdio: "inherit" }); cp.execFileSync("cmd.exe", ["/c", "ver"], { stdio: "inherit" });'
+          Assert-LastExitCode "bun cmd.exe preflight"
           if (Get-Command npm -ErrorAction SilentlyContinue) {
             npm config set python "$pythonPath"
             Assert-LastExitCode "npm config set python"
           }
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
+
+          $electronVersion = (bun -e 'console.log(require("electron/package.json").version)').Trim()
+          Assert-LastExitCode "resolve Electron version"
+          Write-Host "Prebuilding node-pty for Electron $electronVersion"
+          bunx electron-rebuild --version "$electronVersion" --arch x64 --only node-pty --module-dir .
+          Assert-LastExitCode "node-pty native rebuild preflight"
 
           bun run prepare:runtime-metadata
           Assert-LastExitCode "bun run prepare:runtime-metadata"
