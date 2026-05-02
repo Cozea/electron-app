@@ -1,5 +1,19 @@
+diff --git a/binding.gyp b/binding.gyp
+index 5f63978b07ab50aaf7523219a2170ec737a6b5db..b3309a07ef99dea7967d7bdd04b9fc3500acacae 100644
+--- a/binding.gyp
++++ b/binding.gyp
+@@ -5,9 +5,6 @@
+     ],
+     'conditions': [
+       ['OS=="win"', {
+-        'msvs_configuration_attributes': {
+-          'SpectreMitigation': 'Spectre'
+-        },
+         'msvs_settings': {
+             'VCCLCompilerTool': {
+               'AdditionalOptions': [
 diff --git a/deps/winpty/src/winpty.gyp b/deps/winpty/src/winpty.gyp
-index 1ac5758bedd8cf54f32280dea4e4aeb5afdee30d..59f67d1ee83f727cbc11c7e693b11e81a78a5dbb 100644
+index 1ac5758bedd8cf54f32280dea4e4aeb5afdee30d..d4e81dfec34661a3fb29c6bd9762a264e2a71fab 100644
 --- a/deps/winpty/src/winpty.gyp
 +++ b/deps/winpty/src/winpty.gyp
 @@ -10,7 +10,7 @@
@@ -20,3 +34,23 @@ index 1ac5758bedd8cf54f32280dea4e4aeb5afdee30d..59f67d1ee83f727cbc11c7e693b11e81
          ]
      },
      'targets' : [
+@@ -40,9 +40,6 @@
+                 '-lshell32',
+                 '-luser32',
+             ],
+-            'msvs_configuration_attributes': {
+-                'SpectreMitigation': 'Spectre'
+-            },
+             'msvs_settings': {
+                 # Specify this setting here to override a setting from somewhere
+                 # else, such as node's common.gypi.
+@@ -142,9 +139,6 @@
+                 '-ladvapi32',
+                 '-luser32',
+             ],
+-            'msvs_configuration_attributes': {
+-                'SpectreMitigation': 'Spectre'
+-            },
+             'msvs_settings': {
+                 # Specify this setting here to override a setting from somewhere
+                 # else, such as node's common.gypi.

@@ -83,7 +83,7 @@ Codemagic runs two workflows on `main` pushes and `v*` tag creations:
 
 Both workflows import the same `cozea-release` environment variable group and upload directly into the configured R2 channel. There is no cross-workflow artifact handoff in Codemagic, so each platform workflow uploads its own artifacts.
 
-The Windows workflow installs dependencies with `bun ci`. Windows-specific native dependency compatibility fixes should be committed as Bun patches under `patches/` and registered in `patchedDependencies`. For example, `patches/node-pty@1.1.0.patch` removes `node-pty`'s nested `cmd /c` wrappers from `winpty.gyp` so Codemagic's Windows runner can rebuild the module through `node-gyp` without relying on fragile shell path resolution. Do not reintroduce ad-hoc `node_modules` edits inside `codemagic.yaml`; update the Bun patch instead with `bun patch node-pty` and `bun patch --commit node_modules/node-pty`.
+The Windows workflow installs dependencies with `bun ci`. Windows-specific native dependency compatibility fixes should be committed as Bun patches under `patches/` and registered in `patchedDependencies`. For example, `patches/node-pty@1.1.0.patch` removes `node-pty`'s nested `cmd /c` wrappers from `winpty.gyp` and disables its Spectre-specific MSBuild project setting so Codemagic's Windows runner can rebuild the module through `node-gyp` without relying on fragile shell path resolution or unavailable Spectre-mitigated VC libraries. Do not reintroduce ad-hoc `node_modules` edits inside `codemagic.yaml`; update the Bun patch instead with `bun patch node-pty` and `bun patch --commit node_modules/node-pty`.
 
 ## Supported Triggers
 
