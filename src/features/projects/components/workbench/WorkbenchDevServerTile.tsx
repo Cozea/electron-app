@@ -151,6 +151,7 @@ function WorkbenchRuntimePreviewTile({
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview")
   const [previewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop")
   const [terminalId, setTerminalId] = useState<string | null>(null)
+  const [terminalBindingRefreshKey, setTerminalBindingRefreshKey] = useState(0)
   const [terminalError, setTerminalError] = useState<string | null>(null)
   const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
     { id: "system", name: "System Default" },
@@ -206,7 +207,6 @@ function WorkbenchRuntimePreviewTile({
   const showEmbeddedPreview =
     viewMode === "preview" && (isMobileSimulatorSurface || previewDestination === "cozea")
   const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
-  const [suppressPreviewUrl, setSuppressPreviewUrl] = useState(false)
   const {
     hostRef,
     state: previewState,
@@ -215,7 +215,7 @@ function WorkbenchRuntimePreviewTile({
     placeholderScreenshot,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
-    url: showWebEmbeddedPreview && !suppressPreviewUrl ? displayUrl : "",
+    url: showWebEmbeddedPreview ? displayUrl : "",
     sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
@@ -236,6 +236,18 @@ function WorkbenchRuntimePreviewTile({
     },
   })
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
+  const lastPreviewRecoveryKeyRef = useRef<string | null>(null)
+  const recoverEmbeddedPreview = useCallback(
+    (url: string) => {
+      if (!url) return
+      void window.electronAPI.workbenchBrowser
+        .navigate({ tileId: tile.id, url })
+        .catch((error) => {
+          console.warn("[WorkbenchDevServerTile] Failed to recover preview", error)
+        })
+    },
+    [tile.id],
+  )
 
   useEffect(() => {
     if (!projectPath || !workbenchSession?.sessionKey) {
@@ -249,80 +261,85 @@ function WorkbenchRuntimePreviewTile({
     void (async () => {
       setTerminalError(null)
 
-      let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
-        sessionKey: workbenchSession.sessionKey,
-        projectId,
-        laneId,
-        tileId: tile.id,
-      })
-
-      let snapshot =
-        nextTerminalId
-          ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
-          : null
-
-      if (!snapshot || !nextTerminalId) {
-        const result = await window.electronAPI.terminal.create({
-          projectPath,
-          cwd: projectPath,
-          gitCwd: projectPath,
-          sessionKey: workbenchSession.sessionKey,
-          laneId,
-          terminalKind: "dev-server",
-          activityTracking: "off",
-        })
-
-        if (cancelled) return
-
-        if (!result.success || !result.terminalId) {
-          setTerminalError(result.error ?? "Failed to prepare the dev server terminal")
-          return
-        }
-
-        nextTerminalId = result.terminalId
-        await window.electronAPI.workbenchSession.bindTerminal({
+      try {
+        let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
           sessionKey: workbenchSession.sessionKey,
           projectId,
           laneId,
           tileId: tile.id,
-          terminalId: result.terminalId,
         })
-        snapshot = await window.electronAPI.terminal.getSnapshot({
-          terminalId: result.terminalId,
+
+        let snapshot =
+          nextTerminalId
+            ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
+            : null
+
+        if (!snapshot || snapshot.running === false || !nextTerminalId) {
+          const result = await window.electronAPI.terminal.create({
+            projectPath,
+            cwd: projectPath,
+            gitCwd: projectPath,
+            sessionKey: workbenchSession.sessionKey,
+            laneId,
+            terminalKind: "dev-server",
+            activityTracking: "off",
+          })
+
+          if (cancelled) return
+
+          if (!result.success || !result.terminalId) {
+            setTerminalError(result.error ?? "Failed to prepare the dev server terminal")
+            return
+          }
+
+          nextTerminalId = result.terminalId
+          await window.electronAPI.workbenchSession.bindTerminal({
+            sessionKey: workbenchSession.sessionKey,
+            projectId,
+            laneId,
+            tileId: tile.id,
+            terminalId: result.terminalId,
+          })
+          snapshot = await window.electronAPI.terminal.getSnapshot({
+            terminalId: result.terminalId,
+          })
+        }
+
+        if (!nextTerminalId || cancelled) {
+          return
+        }
+
+        const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
+        if (cancelled) return
+
+        registerTerminal({
+          id: nextTerminalId,
+          profileId: info?.profileId ?? "default",
+          profileName: info?.profileName ?? "Shell",
+          title: tile.title,
+          projectPath,
+          kind: "dev-server",
+          surface: "panel",
+          status: snapshot?.running === false ? "exited" : "running",
+          exitCode: snapshot?.exitCode ?? null,
+          hasOutput: Boolean(snapshot?.stdout?.length),
+          uiAttached: true,
         })
+        updateTerminalDisplay(nextTerminalId, {
+          title: tile.title,
+          label: storedDevCommand ?? "Dev server",
+          command: storedDevCommand ?? undefined,
+          kind: "dev-server",
+          surface: "panel",
+          projectPath,
+        })
+        setTerminalUiAttached(nextTerminalId, true)
+        terminalIdRef.current = nextTerminalId
+        setTerminalId(nextTerminalId)
+      } catch (error) {
+        if (cancelled) return
+        setTerminalError(error instanceof Error ? error.message : "Failed to prepare the dev server terminal")
       }
-
-      if (!nextTerminalId || cancelled) {
-        return
-      }
-
-      const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
-      if (cancelled) return
-
-      registerTerminal({
-        id: nextTerminalId,
-        profileId: info?.profileId ?? "default",
-        profileName: info?.profileName ?? "Shell",
-        title: tile.title,
-        projectPath,
-        kind: "dev-server",
-        surface: "panel",
-        status: snapshot?.running === false ? "exited" : "running",
-        exitCode: snapshot?.exitCode ?? null,
-        hasOutput: Boolean(snapshot?.stdout?.length),
-        uiAttached: true,
-      })
-      updateTerminalDisplay(nextTerminalId, {
-        title: tile.title,
-        label: storedDevCommand ?? "Dev server",
-        command: storedDevCommand ?? undefined,
-        kind: "dev-server",
-        surface: "panel",
-        projectPath,
-      })
-      setTerminalUiAttached(nextTerminalId, true)
-      terminalIdRef.current = nextTerminalId
-      setTerminalId(nextTerminalId)
     })()
 
     return () => {
@@ -339,11 +356,30 @@ function WorkbenchRuntimePreviewTile({
     registerTerminal,
     setTerminalUiAttached,
     storedDevCommand,
+    terminalBindingRefreshKey,
     tile.id,
     tile.title,
     updateTerminalDisplay,
     workbenchSession?.sessionKey,
   ])
+
+  useEffect(() => {
+    if (!terminalId || !workbenchSession?.sessionKey) {
+      return
+    }
+
+    return window.electronAPI.terminal.onExit((event) => {
+      if (event.terminalId !== terminalIdRef.current) {
+        return
+      }
+
+      const exitedTerminalId = event.terminalId
+      terminalIdRef.current = null
+      setTerminalId(null)
+      setTerminalUiAttached(exitedTerminalId, false)
+      setTerminalBindingRefreshKey((current) => current + 1)
+    })
+  }, [setTerminalUiAttached, terminalId, workbenchSession?.sessionKey])
 
   useEffect(() => {
     if (!terminalId) {
@@ -355,9 +391,9 @@ function WorkbenchRuntimePreviewTile({
   /**
    * When the dev server transitions back into `ready` (e.g. after stop -> start),
    * the embedded browser view often keeps an `ERR_CONNECTION_REFUSED` snapshot
-   * or stays blank because the URL hasn't actually changed. Briefly suspend the
-   * preview URL so the browser view re-initializes and re-syncs bounds, the
-   * same effect as navigating to the terminal tab and back.
+   * or stays blank because the URL hasn't actually changed. Explicitly navigate
+   * the BrowserView back to the active preview URL so any stale load error is
+   * cleared without requiring an app restart.
    */
   const previousDevServerStatusRef = useRef<DevServerStatus>(devServer.status)
   useEffect(() => {
@@ -367,15 +403,48 @@ function WorkbenchRuntimePreviewTile({
       return
     }
     if (!showWebEmbeddedPreview) return
-    if (!previewUrl) return
-    setSuppressPreviewUrl(true)
-    const restoreFrame = window.requestAnimationFrame(() => {
-      setSuppressPreviewUrl(false)
-    })
-    return () => {
-      window.cancelAnimationFrame(restoreFrame)
+    const targetUrl = displayUrl || previewUrl
+    if (!targetUrl) return
+    recoverEmbeddedPreview(targetUrl)
+  }, [devServer.status, displayUrl, previewUrl, recoverEmbeddedPreview, showWebEmbeddedPreview])
+
+  useEffect(() => {
+    if (!showWebEmbeddedPreview || !panelActivity.visible || devServer.status !== "ready") {
+      lastPreviewRecoveryKeyRef.current = null
+      return
     }
-  }, [devServer.status, previewUrl, showWebEmbeddedPreview, tile.id])
+
+    const loadError = previewState.loadError
+    if (!loadError) {
+      lastPreviewRecoveryKeyRef.current = null
+      return
+    }
+
+    const targetUrl = displayUrl || previewUrl
+    if (!targetUrl) return
+
+    const recoveryKey = `${targetUrl}::${loadError}`
+    if (lastPreviewRecoveryKeyRef.current === recoveryKey) {
+      return
+    }
+    lastPreviewRecoveryKeyRef.current = recoveryKey
+
+    const retryTimer = window.setTimeout(() => {
+      recoverEmbeddedPreview(targetUrl)
+    }, 500)
+
+    return () => {
+      window.clearTimeout(retryTimer)
+    }
+  }, [
+    devServer.status,
+    displayUrl,
+    panelActivity.visible,
+    previewState.loadError,
+    previewUrl,
+    recoverEmbeddedPreview,
+    showWebEmbeddedPreview,
+  ])
 
   useEffect(() => {
     if (!terminalId) {
@@ -665,8 +734,9 @@ function WorkbenchRuntimePreviewTile({
                 void nativePreview.refreshSimulators()
                 return
               }
-              if (!previewUrl) return
-              void window.electronAPI.workbenchBrowser.reload({ tileId: tile.id })
+              const targetUrl = displayUrl || previewUrl
+              if (!targetUrl) return
+              recoverEmbeddedPreview(targetUrl)
             }}
             aria-label={
               isMobileSimulatorSurface

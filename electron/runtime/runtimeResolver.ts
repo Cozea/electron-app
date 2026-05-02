@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -39,9 +38,11 @@ export function getRuntimeTarget(): RuntimeTarget {
 }
 
 export function getRuntimeCacheRoot(): string {
-  if (app && typeof app.isReady === 'function' && app.isReady()) {
-    return path.join(app.getPath('userData'), 'runtimes')
+  const userDataDir = process.env.COZEA_USER_DATA_DIR?.trim()
+  if (userDataDir) {
+    return path.join(userDataDir, 'runtimes')
   }
+
   return path.join(os.homedir(), '.cozea', 'runtimes')
 }
 
