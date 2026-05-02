@@ -272,6 +272,38 @@ workflows:
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
 
+          function Patch-NodePtyWinptyGyp([string]$cmdPath) {
+            $gypPath = Join-Path $PWD "node_modules\node-pty\deps\winpty\src\winpty.gyp"
+            if (-not (Test-Path $gypPath)) {
+              Write-Host "node-pty winpty.gyp not found; skipping cmd path patch."
+              return
+            }
+
+            $cmdForGyp = $cmdPath -replace "\\", "/"
+            $gypSource = Get-Content $gypPath -Raw
+            $cmdPattern = [regex]"\bcmd /c\b"
+            $cmdMatches = $cmdPattern.Matches($gypSource)
+            if ($cmdMatches.Count -eq 0) {
+              Write-Host "node-pty winpty.gyp did not contain the expected bare cmd /c pattern. Nearby cmd references:"
+              Select-String -Path $gypPath -Pattern "cmd" -Context 2,2 | ForEach-Object {
+                Write-Host $_.ToString()
+              }
+              throw "node-pty winpty.gyp patch did not find the expected bare cmd /c pattern."
+            }
+
+            $patchedSource = $cmdPattern.Replace(
+              $gypSource,
+              [System.Text.RegularExpressions.MatchEvaluator]{
+                param($match)
+                "$cmdForGyp /c"
+              }
+            )
+            [System.IO.File]::WriteAllText($gypPath, $patchedSource, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Patched $($cmdMatches.Count) node-pty winpty.gyp cmd invocation(s) to use $cmdForGyp."
+          }
+
+          Patch-NodePtyWinptyGyp $cmdPath
+
           $electronPkgJson = Join-Path $PWD "node_modules\electron\package.json"
           if (-not (Test-Path $electronPkgJson)) {
             throw "electron/package.json not found at $electronPkgJson - was bun install run?"
