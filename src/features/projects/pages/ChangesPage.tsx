@@ -40,6 +40,9 @@ import { FileDiff, type FileDiffMetadata, Virtualizer } from "@pierre/diffs/reac
 import { ChangedFilesTree, type ChangedFilesTreeFile } from '../components/changes/ChangedFilesTree'
 
 const CHECKPOINT_PATCH_CACHE_MAX_ENTRIES = 48
+const CHECKPOINT_REF_UNAVAILABLE_RETRY_LIMIT = 6
+const CHECKPOINT_REF_UNAVAILABLE_RETRY_DELAY_MS = 350
+const GIT_CHANGES_LOAD_TIMEOUT_MS = 25_000
 type ChangesScope = 'current' | 'lastTurn' | 'branch' | 'history'
 type ChangesDiffStyle = 'split' | 'unified'
 
@@ -88,6 +91,10 @@ function buildCheckpointPatchCacheKey(input: {
     input.previousCheckpointGroupId ?? 'head',
     input.groupId,
   ].join('\0')
+}
+
+function isCheckpointRefUnavailableError(message: string | null | undefined): boolean {
+  return Boolean(message?.trim().match(/^Checkpoint ref '.+' is unavailable\.$/))
 }
 
 function parseCheckpointPatch(
@@ -291,6 +298,7 @@ interface GitChangesSnapshot {
   files: GitChangeFileSummary[]
   patch: string
   loaded: boolean
+  refreshing: boolean
   error: string | null
   baseRef?: string
   headRef?: string
@@ -303,6 +311,7 @@ const EMPTY_GIT_CHANGES_SNAPSHOT: GitChangesSnapshot = {
   files: [],
   patch: '',
   loaded: false,
+  refreshing: false,
   error: null,
 }
 
@@ -312,6 +321,56 @@ function buildGitChangesSnapshotCacheKey(input: {
   refreshKey: number
 }): string {
   return [input.gitCwd, input.scope, input.refreshKey].join('\0')
+}
+
+function isGitChangesSnapshotForIdentity(
+  snapshot: GitChangesSnapshot | null | undefined,
+  gitCwd: string,
+  scope: GitChangesScope,
+): snapshot is GitChangesSnapshot {
+  return Boolean(snapshot?.cacheKey.startsWith(`${gitCwd}\0${scope}\0`))
+}
+
+function formatGitChangesLoadError(error: unknown, fallback: string): string {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : fallback
+
+  if (message.toLowerCase().includes('timed out')) {
+    return 'Git changes took too long to compute. Try again after the dev server finishes writing files.'
+  }
+
+  return message || fallback
+}
+
+function getUsableGitChangesResultCacheKey(input: {
+  existing: GitChangesSnapshot | undefined
+  requestCacheKey: string
+  gitCwd: string
+  scope: GitChangesScope
+}): string | null {
+  const { existing, requestCacheKey, gitCwd, scope } = input
+  if (!existing) return null
+  if (existing.cacheKey === requestCacheKey) return requestCacheKey
+  if (isGitChangesSnapshotForIdentity(existing, gitCwd, scope) && !existing.loaded) {
+    return existing.cacheKey
+  }
+  return null
+}
+
+function withTimeout<T>(request: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error(timeoutMessage))
+    }, timeoutMs)
+
+    request
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeout))
+  })
 }
 
 function useActiveGitChanges(
@@ -347,49 +406,107 @@ function useActiveGitChanges(
       ...current,
       [scope]: {
         cacheKey,
-        files: current[scope]?.files ?? [],
-        patch: current[scope]?.patch ?? '',
-        loaded: false,
+        files: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
+          ? (current[scope]?.files ?? [])
+          : [],
+        patch: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
+          ? (current[scope]?.patch ?? '')
+          : '',
+        loaded: Boolean(
+          isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope) && current[scope]?.loaded,
+        ),
+        refreshing: true,
         error: null,
-        baseRef: current[scope]?.baseRef,
-        headRef: current[scope]?.headRef,
+        baseRef: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
+          ? current[scope]?.baseRef
+          : undefined,
+        headRef: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
+          ? current[scope]?.headRef
+          : undefined,
       },
     }))
 
-    void projectOpenDesktopClient.sync
-      .gitReadChanges({
+    void withTimeout(
+      projectOpenDesktopClient.sync.gitReadChanges({
         projectPath: gitCwd,
         scope,
-      })
+      }),
+      GIT_CHANGES_LOAD_TIMEOUT_MS,
+      'Git changes timed out.',
+    )
       .then((result) => {
         if (!mountedRef.current) return
 
-        setCache((current) => ({
-          ...current,
-          [scope]: {
-            cacheKey,
-            files: result.success ? result.files : [],
-            patch: result.success ? (result.diff ?? '') : '',
-            loaded: true,
-            error: result.success ? null : (result.error ?? 'Failed to load git changes.'),
-            baseRef: result.baseRef,
-            headRef: result.headRef,
-          },
-        }))
+        setCache((current) => {
+          const existing = current[scope]
+          const resultCacheKey = getUsableGitChangesResultCacheKey({
+            existing,
+            requestCacheKey: cacheKey,
+            gitCwd,
+            scope,
+          })
+          if (!existing || !resultCacheKey) {
+            return current
+          }
+
+          if (!result.success) {
+            const hasPreviousDiff = existing.loaded
+            return {
+              ...current,
+              [scope]: {
+                ...existing,
+                loaded: hasPreviousDiff,
+                refreshing: false,
+                error: hasPreviousDiff
+                  ? null
+                  : formatGitChangesLoadError(result.error, 'Failed to load git changes.'),
+              },
+            }
+          }
+
+          return {
+            ...current,
+            [scope]: {
+              cacheKey: resultCacheKey,
+              files: result.files,
+              patch: result.diff ?? '',
+              loaded: true,
+              refreshing: false,
+              error: null,
+              baseRef: result.baseRef,
+              headRef: result.headRef,
+            },
+          }
+        })
       })
       .catch((requestError) => {
         if (!mountedRef.current) return
 
-        setCache((current) => ({
-          ...current,
-          [scope]: {
-            cacheKey,
-            files: [],
-            patch: '',
-            loaded: true,
-            error: requestError instanceof Error ? requestError.message : 'Failed to load git changes.',
-          },
-        }))
+        setCache((current) => {
+          const existing = current[scope]
+          const resultCacheKey = getUsableGitChangesResultCacheKey({
+            existing,
+            requestCacheKey: cacheKey,
+            gitCwd,
+            scope,
+          })
+          if (!existing || !resultCacheKey) {
+            return current
+          }
+
+          const hasPreviousDiff = existing.loaded
+          return {
+            ...current,
+            [scope]: {
+              ...existing,
+              loaded: hasPreviousDiff,
+              refreshing: false,
+              error: hasPreviousDiff
+                ? null
+                : formatGitChangesLoadError(requestError, 'Failed to load git changes.'),
+            },
+          }
+        })
       })
       .finally(() => {
         requestedKeysRef.current.delete(cacheKey)
@@ -402,6 +519,8 @@ function useActiveGitChanges(
   const active =
     activeSnapshot && activeSnapshot.cacheKey === activeCacheKey
       ? activeSnapshot
+      : gitCwd && scope && isGitChangesSnapshotForIdentity(activeSnapshot, gitCwd, scope) && activeSnapshot.loaded
+        ? { ...activeSnapshot, refreshing: true }
       : EMPTY_GIT_CHANGES_SNAPSHOT
 
   return { active, cache }
@@ -693,6 +812,7 @@ function useCheckpointPatch(input: {
     }
 
     let cancelled = false
+    let retryTimer: number | null = null
     const cacheKey = buildCheckpointPatchCacheKey({
       gitCwd,
       groupId,
@@ -727,32 +847,52 @@ function useCheckpointPatch(input: {
       }
     })
 
-    void loadCheckpointPatch({
-      gitCwd,
-      groupId,
-      previousCheckpointGroupId,
-    })
-      .then((entry) => {
-        if (cancelled) return
-        setState({
-          cacheKey,
-          patch: entry.patch,
-          parsedFiles: entry.parsedFiles,
-          patchError: null,
-        })
+    const loadPatch = (attempt: number) => {
+      void loadCheckpointPatch({
+        gitCwd,
+        groupId,
+        previousCheckpointGroupId,
       })
-      .catch((error) => {
-        if (cancelled) return
-        setState({
-          cacheKey,
-          patch: null,
-          parsedFiles: [],
-          patchError: error instanceof Error ? error.message : failedToLoadPatchMessage,
+        .then((entry) => {
+          if (cancelled) return
+          setState({
+            cacheKey,
+            patch: entry.patch,
+            parsedFiles: entry.parsedFiles,
+            patchError: null,
+          })
         })
-      })
+        .catch((error) => {
+          if (cancelled) return
+
+          const message = error instanceof Error ? error.message : failedToLoadPatchMessage
+          if (
+            isCheckpointRefUnavailableError(message) &&
+            attempt < CHECKPOINT_REF_UNAVAILABLE_RETRY_LIMIT
+          ) {
+            retryTimer = window.setTimeout(
+              () => loadPatch(attempt + 1),
+              CHECKPOINT_REF_UNAVAILABLE_RETRY_DELAY_MS * (attempt + 1),
+            )
+            return
+          }
+
+          setState({
+            cacheKey,
+            patch: null,
+            parsedFiles: [],
+            patchError: isCheckpointRefUnavailableError(message) ? null : message,
+          })
+        })
+    }
+
+    loadPatch(0)
 
     return () => {
       cancelled = true
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer)
+      }
     }
   }, [
     failedToLoadPatchMessage,
@@ -952,7 +1092,11 @@ const FileDiffsView = memo(function FileDiffsView(props: {
   }
 
   if (!loaded) {
-    return <div className="min-h-0 flex-1" aria-hidden="true" />
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        Preparing diff...
+      </div>
+    )
   }
 
   if (visibleFileDiffs.length === 0) {
@@ -1017,6 +1161,10 @@ const HistoryChangeGroupDiffs = memo(function HistoryChangeGroupDiffs(props: {
   const renderHeaderPrefix = useCallback(() => <ChangeGroupHeaderPrefix group={group} />, [group])
 
   if (patchError) {
+    if (isCheckpointRefUnavailableError(patchError)) {
+      return null
+    }
+
     return (
       <div className="min-w-0 bg-card">
         <div className="flex min-h-10 items-center gap-2 px-3 py-2">
@@ -1229,6 +1377,7 @@ export function ChangesPage(_props: ChangesPageProps) {
   const [diffStyle, setDiffStyle] = useState<ChangesDiffStyle>('unified');
   const [changesScope, setChangesScope] = useState<ChangesScope>('current');
   const [gitRefreshKey, setGitRefreshKey] = useState(0);
+  const gitRefreshTimerRef = useRef<number | null>(null);
   const debouncedCodeSearchQuery = useDebouncedValue(codeSearchQuery, 120);
   const activeGitScope: GitChangesScope | null =
     changesScope === 'current' || changesScope === 'branch' ? changesScope : null;
@@ -1238,6 +1387,26 @@ export function ChangesPage(_props: ChangesPageProps) {
     gitRefreshKey,
   );
 
+  const scheduleGitChangesRefresh = useCallback(() => {
+    if (gitRefreshTimerRef.current !== null) {
+      window.clearTimeout(gitRefreshTimerRef.current);
+    }
+
+    gitRefreshTimerRef.current = window.setTimeout(() => {
+      gitRefreshTimerRef.current = null;
+      setGitRefreshKey((key) => key + 1);
+    }, 120);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (gitRefreshTimerRef.current !== null) {
+        window.clearTimeout(gitRefreshTimerRef.current);
+        gitRefreshTimerRef.current = null;
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!gitCwd) return;
 
@@ -1246,14 +1415,14 @@ export function ChangesPage(_props: ChangesPageProps) {
       .subscribeGitDirtyState({ projectPath: gitCwd })
       .then(() => {
         if (!disposed) {
-          setGitRefreshKey((key) => key + 1);
+          scheduleGitChangesRefresh();
         }
       })
       .catch(() => undefined);
 
     const unsubscribeChange = window.electronAPI.sync.onGitDirtyStateChange((snapshot) => {
       if (snapshot.projectPath === gitCwd) {
-        setGitRefreshKey((key) => key + 1);
+        scheduleGitChangesRefresh();
       }
     });
 
@@ -1262,7 +1431,7 @@ export function ChangesPage(_props: ChangesPageProps) {
       unsubscribeChange();
       void window.electronAPI.sync.unsubscribeGitDirtyState({ projectPath: gitCwd }).catch(() => undefined);
     };
-  }, [gitCwd]);
+  }, [gitCwd, scheduleGitChangesRefresh]);
 
   const currentFiles = useMemo(
     () => (gitChangesCache.current?.files ?? []).map(gitFileToTreeFile),
@@ -1483,13 +1652,15 @@ export function ChangesPage(_props: ChangesPageProps) {
                        onFileFilterChange={handleFileFilterChange}
                        selectedFilePath={selectedFilePath}
                      />
-                   ) : (
-                     activeFilesLoaded ? (
-                       <div className="px-4 py-3 text-xs text-muted-foreground">
-                         {t('changes.empty.noMatchingFiles')}
-                       </div>
-                     ) : null
-                   )}
+	                   ) : activeFilesLoaded ? (
+	                     <div className="px-4 py-3 text-xs text-muted-foreground">
+	                       {t('changes.empty.noMatchingFiles')}
+	                     </div>
+	                   ) : (
+	                     <div className="px-4 py-3 text-xs text-muted-foreground">
+	                       Loading files...
+	                     </div>
+	                   )}
                  </div>
               </div>
               <div className="flex min-w-0 flex-1 flex-col bg-background">

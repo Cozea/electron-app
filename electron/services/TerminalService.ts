@@ -488,11 +488,19 @@ export class TerminalService {
   registerIpcHandlers(): void {
     ipcMain.handle('terminal:create', async (event, options: TerminalCreateOptions) => {
       this.registerOutputTarget(event.sender)
-      const result = await this.createTerminal(options)
-      return {
-        success: result.success,
-        terminalId: result.terminalId,
-        error: result.error,
+      try {
+        const result = await this.createTerminal(options)
+        return {
+          success: result.success,
+          terminalId: result.terminalId,
+          error: result.error,
+        }
+      } catch (error) {
+        return {
+          success: false,
+          terminalId: undefined,
+          error: error instanceof Error ? error.message : 'Failed to create terminal.',
+        }
       }
     })
 

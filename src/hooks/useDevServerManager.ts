@@ -118,9 +118,14 @@ export function useDevServerManager({
 
   const lifecycleRef = useRef(initialDevServerLifecycle())
   const activeRunIdRef = useRef<string | null>(initialSnapshot?.runId ?? null)
+  const statusRef = useRef<DevServerStatus>(initialSnapshot?.running ? 'ready' : 'idle')
   const cleanupRef = useRef<(() => void) | null>(null)
   const restartSchedulerRef = useRef(createDevServerRestartScheduler(RESTART_DELAY_MS))
   const lastOutputTimelineAtRef = useRef(0)
+
+  useEffect(() => {
+    statusRef.current = state.status
+  }, [state.status])
 
   const transitionLifecycle = useCallback((event: Parameters<typeof transitionDevServerLifecycle>[1]) => {
     const result = transitionDevServerLifecycle(lifecycleRef.current, event)
@@ -159,6 +164,7 @@ export function useDevServerManager({
     }
 
     activeRunIdRef.current = initialSnapshot.runId ?? activeRunIdRef.current
+    statusRef.current = 'ready'
     setState((prev) => {
       const nextUrl = `http://localhost:${initialSnapshot.port}`
       if (
@@ -186,6 +192,7 @@ export function useDevServerManager({
   const start = useCallback(async () => {
     if (!projectPath) return
     if (!terminalId) {
+      statusRef.current = 'error'
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -194,11 +201,12 @@ export function useDevServerManager({
       }))
       return
     }
-    if (state.status === 'starting' || state.status === 'ready') return
+    if (statusRef.current === 'starting' || statusRef.current === 'ready') return
 
     restartSchedulerRef.current.cancel()
     const requestedRunId = crypto?.randomUUID ? crypto.randomUUID() : `devsrv_${Date.now()}`
     activeRunIdRef.current = requestedRunId
+    statusRef.current = 'starting'
     transitionLifecycle({ type: 'start_requested', runId: requestedRunId })
     appendTimeline({
       runId: requestedRunId,
@@ -290,6 +298,7 @@ export function useDevServerManager({
           message: `Preview validated by the main process for ${url}`,
         })
         transitionLifecycle({ type: 'ready', runId: resolvedRunId })
+        statusRef.current = 'ready'
         setState((prev) => ({
           ...prev,
           status: 'ready',
@@ -308,6 +317,7 @@ export function useDevServerManager({
       if (runId) {
         transitionLifecycle({ type: 'error', runId, reason: errorMessage })
       }
+      statusRef.current = 'error'
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -329,7 +339,6 @@ export function useDevServerManager({
     previewMode,
     projectPath,
     sessionKey,
-    state.status,
     storedDevCommand,
     storedDevPort,
     terminalId,
@@ -350,6 +359,7 @@ export function useDevServerManager({
         if (result.error) {
           console.warn('[DevServer] Stop reported an error:', result.error)
         }
+        statusRef.current = 'error'
         setState((prev) => ({
           ...prev,
           status: 'error',
@@ -368,6 +378,7 @@ export function useDevServerManager({
         transitionLifecycle({ type: 'stopped', runId: currentRunId })
       }
       activeRunIdRef.current = null
+      statusRef.current = 'stopped'
       setState((prev) => ({
         ...prev,
         status: 'stopped',
@@ -383,6 +394,7 @@ export function useDevServerManager({
         message: 'Dev server stopped',
       })
     } catch (err) {
+      statusRef.current = 'error'
       console.error('[DevServer] Failed to stop:', err)
     }
   }, [appendTimeline, projectPath, transitionLifecycle])
@@ -448,6 +460,7 @@ export function useDevServerManager({
         }
       }
       activeRunIdRef.current = null
+      statusRef.current = (code === 0 || code === null) ? 'stopped' : 'error'
 
       setState((prev) => ({
         ...prev,
@@ -472,6 +485,7 @@ export function useDevServerManager({
       if (runId) {
         transitionLifecycle({ type: 'error', runId, reason: error })
       }
+      statusRef.current = 'error'
       setState((prev) => ({
         ...prev,
         status: 'error',
