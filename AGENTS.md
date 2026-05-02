@@ -117,6 +117,7 @@ CircleCI expects a context named `cozea-release` with:
 
 Codemagic expects an environment variable group named `cozea-release` with the same values as the CircleCI context.
 Codemagic workflows now trigger on pushes to `main` and tags matching `v*`.
+The Codemagic Windows workflow uses `bun ci`; Windows native-module fixes should be committed as Bun patches under `patches/` and registered in `patchedDependencies`, not applied by editing `node_modules` inside the workflow.
 
 ### Local Release (Fallback)
 
