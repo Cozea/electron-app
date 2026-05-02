@@ -42,7 +42,7 @@ import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { CommandLineIcon as __SquareTerminalHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, ReloadIcon as __ReloadHugeIcon, StopIcon as __SquareHugeIcon, LockIcon as __LockHugeIcon, ComputerVideoIcon as __ComputerVideoHugeIcon } from '@hugeicons/core-free-icons'
+import { CommandLineIcon as __SquareTerminalHugeIcon, PlayIcon as __PlayHugeIcon, Refresh01Icon as __RefreshCcwHugeIcon, StopIcon as __SquareHugeIcon, LockIcon as __LockHugeIcon, ComputerVideoIcon as __ComputerVideoHugeIcon } from '@hugeicons/core-free-icons'
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   switch (status) {
@@ -747,19 +747,6 @@ function WorkbenchRuntimePreviewTile({
             }
           >
             <HugeiconsIcon icon={__RefreshCcwHugeIcon} className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            disabled={!terminalId || devServer.status === "starting"}
-            onClick={() => {
-              void devServer.restart()
-            }}
-            aria-label="Restart dev server"
-          >
-            <HugeiconsIcon icon={__ReloadHugeIcon} className="h-3.5 w-3.5" />
           </Button>
           <Button
             type="button"
