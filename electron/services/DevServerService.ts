@@ -48,9 +48,6 @@ interface ManagedDevServerRun {
 const MAX_BOOTSTRAP_OUTPUT_LENGTH = 48_000
 const BOOTSTRAP_TIMEOUT_MS = 15 * 60 * 1000
 const BOOTSTRAP_SETTLE_DELAY_MS = 1200
-const STOP_PORT_RELEASE_TIMEOUT_MS = 5_000
-const STOP_PORT_RETRY_TIMEOUT_MS = 2_500
-const STOP_FORCE_KILL_TIMEOUT_MS = 5_000
 
 function appendBootstrapOutput(current: string, chunk: string): string {
   const next = current + chunk
@@ -318,33 +315,15 @@ export class DevServerService {
     try {
       await this.terminalService.sendInput(entry.terminalId, '\u0003')
       if (entry.activePort !== null) {
-        const released = await this.waitForPortState(entry.activePort, false, STOP_PORT_RELEASE_TIMEOUT_MS)
+        const released = await this.waitForPortState(entry.activePort, false, 5000)
         if (!released) {
           await this.terminalService.sendInput(entry.terminalId, '\u0003')
-          const releasedAfterRetry = await this.waitForPortState(entry.activePort, false, STOP_PORT_RETRY_TIMEOUT_MS)
+          const releasedAfterRetry = await this.waitForPortState(entry.activePort, false, 2500)
           if (!releasedAfterRetry) {
-            entry.onOutput(
-              '[DevServer] Dev server did not stop after Ctrl+C. Terminating the dev-server terminal.\n',
-              'stdout',
-            )
-            const killed = this.terminalService.killTerminal(entry.terminalId)
-            if (!killed) {
-              entry.stopping = false
-              return {
-                success: false,
-                error: 'Dev server terminal was not available to stop.',
-              }
-            }
-            const releasedAfterKill = await this.waitForPortState(
-              entry.activePort,
-              false,
-              STOP_FORCE_KILL_TIMEOUT_MS,
-            )
-            if (!releasedAfterKill) {
-              entry.onOutput(
-                '[DevServer] Previous port still appears reachable after terminal termination. The next start may choose a new port.\n',
-                'stderr',
-              )
+            entry.stopping = false
+            return {
+              success: false,
+              error: 'Dev server did not stop after sending Ctrl+C to the terminal.',
             }
           }
         }

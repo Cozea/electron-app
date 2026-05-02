@@ -62,6 +62,11 @@ const LazyWorkbenchDockviewCanvas = lazy(() =>
     default: module.WorkbenchDockviewCanvas,
   })),
 );
+const LazyChangesSidebar = lazy(() =>
+  import("@/features/projects/components/changes/ChangesSidebar").then((module) => ({
+    default: module.ChangesSidebar,
+  })),
+);
 
 function WorkbenchOverlayLoading() {
   const { t } = useTranslation();
@@ -265,10 +270,10 @@ export function ProjectWorkbenchSurface() {
 
   const openWorkbenchTarget = useCallback(
     (
-      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal" | "changes">,
+      target: Extract<WorkbenchTileType, "assistantChat" | "browser" | "devServer" | "mobileSimulator" | "terminal">,
     ) => {
       if (!projectId) return;
-      if (target === "devServer" || target === "mobileSimulator" || target === "changes") {
+      if (target === "devServer" || target === "mobileSimulator") {
         workbenchActions.openSingletonTile(projectId, activeLaneId, target, undefined, activeWorkbenchPath);
         return;
       }
@@ -411,7 +416,9 @@ export function ProjectWorkbenchSurface() {
               </div>
             </div>
 
-
+            <Suspense fallback={null}>
+              <LazyChangesSidebar projectPath={activeWorkbenchPath} />
+            </Suspense>
 
             {isSettingsOpen ? (
               <>

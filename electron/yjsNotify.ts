@@ -2,7 +2,7 @@ import path from "node:path"
 
 import { BrowserWindow, webContents } from "electron"
 
-import { GitDirtyStateService } from "./services/GitDirtyStateService"
+import { GitChangesBroadcaster } from "./services/GitChangesBroadcaster"
 import { markProjectAnalysisStaleForFile } from "./services/ProjectAnalysisService"
 import {
   applyProjectFileDeleteToIndex,
@@ -135,7 +135,7 @@ export function notifyFileChanged(
   forEachInterestedWindowForPath(filePath, (window) => {
     window.webContents.send("yjs:external-file-change", payload)
   })
-  GitDirtyStateService.getInstance().invalidateFilePath(filePath)
+  GitChangesBroadcaster.getInstance().invalidateFilePath(filePath)
 }
 
 export function notifyFileMetaChanged(payload: ExternalFileMetaChangePayload): void {
@@ -144,7 +144,7 @@ export function notifyFileMetaChanged(payload: ExternalFileMetaChangePayload): v
   forEachInterestedWindowForPath(payload.filePath, (window) => {
     window.webContents.send("yjs:external-file-meta-change", payload)
   })
-  GitDirtyStateService.getInstance().invalidateFilePath(payload.filePath)
+  GitChangesBroadcaster.getInstance().invalidateFilePath(payload.filePath)
 }
 
 export function notifyFileDeleted(
@@ -160,5 +160,5 @@ export function notifyFileDeleted(
   forEachInterestedWindowForPath(filePath, (window) => {
     window.webContents.send("yjs:external-file-delete", payload)
   })
-  GitDirtyStateService.getInstance().invalidateFilePath(filePath)
+  GitChangesBroadcaster.getInstance().invalidateFilePath(filePath)
 }

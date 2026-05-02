@@ -72,6 +72,7 @@
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
   --app-copy-font-size: 13px;
   --app-copy-line-height: 20px;
+  --diffs-font-family: "JetBrains Mono Variable", "SF Mono", Monaco, Consolas, "Ubuntu Mono", "Liberation Mono", "Courier New", monospace;
 }
 
 body {
@@ -887,7 +888,7 @@ body {
 @theme inline {
   --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-heading: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -1163,6 +1164,11 @@ body {
   /* Electron: transparent body so macOS vibrancy / Win Mica can show through sidebar gaps */
   html[class*="platform-"] body {
     background-color: transparent;
+  }
+  /* Undo the monospace font override for diff header numbers */
+  [data-diffs-header] [data-additions-count],
+  [data-diffs-header] [data-deletions-count] {
+    font-family: inherit !important;
   }
 }
 

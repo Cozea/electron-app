@@ -79,7 +79,6 @@ export type WorkbenchTileType =
   | "mobileSimulator"
   | "selection"
   | "tasks"
-  | "changes"
   | "assistantChat"
 
 export type WorkbenchSelectionTileMode =
@@ -132,10 +131,6 @@ export interface WorkbenchTasksTile extends WorkbenchBaseTile {
   type: "tasks"
 }
 
-export interface WorkbenchChangesTile extends WorkbenchBaseTile {
-  type: "changes"
-}
-
 export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   type: "assistantChat"
   assistantProjectId?: string | null
@@ -155,7 +150,6 @@ export type WorkbenchTile =
   | WorkbenchMobileSimulatorTile
   | WorkbenchSelectionTile
   | WorkbenchTasksTile
-  | WorkbenchChangesTile
   | WorkbenchAssistantChatTile
 
 export interface WorkbenchProjectState {
@@ -179,7 +173,7 @@ export interface WorkbenchSidebarAssistantTileSummary {
 
 export interface WorkbenchSidebarSurfaceTileSummary {
   id: string
-  type: Exclude<WorkbenchTileType, "assistantChat" | "selection" | "tasks" | "changes">
+  type: Exclude<WorkbenchTileType, "assistantChat" | "selection" | "tasks">
   title: string
   favicon?: string | null
 }
@@ -239,7 +233,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "changes">,
+      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator">,
       options?: CreateTileOptions,
       projectPath?: string | null,
     ) => string
@@ -297,7 +291,6 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   mobileSimulator: "Mobile Simulator",
   selection: "Add DevApp",
   tasks: "Tasks",
-  changes: "Changes",
   assistantChat: "AI Agent",
 }
 
@@ -522,7 +515,6 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         previewTargetId: options.selectionPreviewTargetId ?? null,
       }
     case "tasks":
-    case "changes":
       return { id, type, title, createdAt }
     case "assistantChat":
       return {
@@ -601,7 +593,8 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
     const tileType = (tile as { type?: string } | null)?.type
     if (
       !tile ||
-      tileType === "tasks"
+      tileType === "tasks" ||
+      tileType === "changes"
     ) {
       removedObsoleteTile = true
       continue
@@ -840,7 +833,7 @@ export function buildWorkbenchLaneSidebarSummary(
 
   for (const tileId of workbench.order) {
     const tile = workbench.tiles[tileId]
-    if (!tile || tile.type === "selection" || tile.type === "tasks" || tile.type === "changes") {
+    if (!tile || tile.type === "selection" || tile.type === "tasks") {
       continue
     }
 
@@ -884,7 +877,7 @@ export function selectVisibleActiveWorkbenchTileId(
     if (!workbench?.activeTileId) return null
 
     const activeTile = workbench.tiles[workbench.activeTileId]
-    if (!activeTile || activeTile.type === "selection" || activeTile.type === "tasks" || activeTile.type === "changes") {
+    if (!activeTile || activeTile.type === "selection" || activeTile.type === "tasks") {
       return null
     }
 
@@ -1198,7 +1191,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     })),
     {
       name: "cozea:project-workbench",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => workbenchStorage),
       migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
       partialize: (state) => ({

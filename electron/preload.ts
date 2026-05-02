@@ -791,6 +791,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       scope: 'current' | 'branch'
       authorName?: string
     }) => ipcRenderer.invoke('sync:gitReadChanges', options),
+    subscribeGitChanges: (options: {
+      projectPath: string
+      scope: 'current' | 'branch'
+    }) => ipcRenderer.invoke('sync:subscribeGitChanges', options),
+    unsubscribeGitChanges: (options: {
+      projectPath: string
+      scope: 'current' | 'branch'
+    }) => ipcRenderer.invoke('sync:unsubscribeGitChanges', options),
+    onGitChangesUpdated: (
+      callback: (snapshot: import('../shared/electronApiTypes').GitChangesSnapshot) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: import('../shared/electronApiTypes').GitChangesSnapshot,
+      ) => callback(snapshot)
+      ipcRenderer.on('sync:gitChangesUpdated', handler)
+      return () => ipcRenderer.removeListener('sync:gitChangesUpdated', handler)
+    },
     subscribeGitDirtyState: (options: {
       projectPath: string
       authorName?: string

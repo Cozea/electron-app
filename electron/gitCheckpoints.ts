@@ -7,33 +7,14 @@ import path from 'node:path'
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const CHECKPOINT_REF_PREFIX = 'refs/cozea/checkpoints'
 const DEFAULT_AUTHOR_EMAIL = 'cozea@users.noreply.github.com'
-const DEFAULT_GIT_TIMEOUT_MS = 20_000
-const WORKSPACE_CHANGES_PATHSPECS = [
-  '.',
-  ':(exclude,glob)**/node_modules/**',
-  ':(exclude,glob)**/.next/**',
-  ':(exclude,glob)**/.nuxt/**',
-  ':(exclude,glob)**/.svelte-kit/**',
-  ':(exclude,glob)**/.turbo/**',
-  ':(exclude,glob)**/.vercel/**',
-  ':(exclude,glob)**/.vite/**',
-  ':(exclude,glob)**/.cache/**',
-  ':(exclude,glob)**/.parcel-cache/**',
-  ':(exclude,glob)**/dist/**',
-  ':(exclude,glob)**/build/**',
-  ':(exclude,glob)**/out/**',
-  ':(exclude,glob)**/coverage/**',
-  ':(exclude,glob)**/.expo/**',
-  ':(exclude,glob)**/.gradle/**',
-  ':(exclude,glob)**/target/**',
-]
+const GIT_EXECUTE_TIMEOUT_MS = 30_000
+const MAX_UNTRACKED_DIFF_FILES = 50
 
 interface GitExecuteOptions {
   cwd: string
   args: string[]
   env?: NodeJS.ProcessEnv
   allowNonZeroExit?: boolean
-  timeoutMs?: number
 }
 
 interface GitExecuteResult {
@@ -46,7 +27,6 @@ interface SyntheticCommitInput {
   cwd: string
   authorName: string
   authorEmail?: string
-  pathspecs?: string[]
 }
 
 export interface GitCheckpointCaptureResult {
@@ -123,55 +103,41 @@ export interface GitChangesResult {
 
 async function executeGit(options: GitExecuteOptions): Promise<GitExecuteResult> {
   return await new Promise((resolve) => {
-    let settled = false
-    let timedOut = false
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
     const proc = spawn('git', options.args, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
     })
-    const timeoutMs = options.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS
 
     let stdout = ''
     let stderr = ''
-    const finish = (result: GitExecuteResult) => {
+    let settled = false
+
+    const timeoutId = setTimeout(() => {
       if (settled) return
       settled = true
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId)
-      }
-      resolve(result)
-    }
-    timeoutId = setTimeout(() => {
-      timedOut = true
-      proc.kill('SIGTERM')
-      setTimeout(() => {
-        if (!settled) {
-          proc.kill('SIGKILL')
-        }
-      }, 1_000)
-    }, timeoutMs)
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    proc.on('close', (code) => {
-      finish({
-        stdout,
-        stderr: timedOut
-          ? `Git command timed out after ${timeoutMs}ms: git ${options.args.join(' ')}`
-          : stderr,
-        code: timedOut ? 124 : (code ?? 1),
+      try { proc.kill() } catch {}
+      resolve({
+        stdout: '',
+        stderr: `git ${options.args[0]} timed out after ${GIT_EXECUTE_TIMEOUT_MS / 1000}s`,
+        code: 1,
       })
+    }, GIT_EXECUTE_TIMEOUT_MS)
+
+    proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
+    proc.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
+
+    proc.on('close', (code: number | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutId)
+      resolve({ stdout, stderr, code: code ?? 1 })
     })
 
-    proc.on('error', (error) => {
-      finish({ stdout: '', stderr: error.message, code: 1 })
+    proc.on('error', (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutId)
+      resolve({ stdout: '', stderr: error.message, code: 1 })
     })
   })
 }
@@ -258,7 +224,7 @@ async function createSyntheticCommit(input: SyntheticCommitInput): Promise<strin
     await assertGitSuccess(
       {
         cwd: input.cwd,
-        args: ['add', '-A', '--', ...(input.pathspecs ?? ['.'])],
+        args: ['add', '-A', '--', '.'],
         env: commitEnv,
       },
       'Failed to stage workspace into temporary git index.',
@@ -451,18 +417,11 @@ async function resolveChangesDiffEndpoints(input: {
   cwd: string
   scope: GitChangesScope
   authorName?: string
-}): Promise<{
-  fromCommit: string
-  toCommit: string
-  baseRef?: string
-  headRef?: string
-  pathspecs?: string[]
-}> {
+}): Promise<{ fromCommit: string; toCommit: string; baseRef?: string; headRef?: string }> {
   if (input.scope === 'current') {
     const syntheticCommit = await createSyntheticCommit({
       cwd: input.cwd,
       authorName: input.authorName ?? 'Cozea',
-      pathspecs: WORKSPACE_CHANGES_PATHSPECS,
     })
     const headCommit = await resolveHeadCommit(input.cwd)
     return {
@@ -470,7 +429,6 @@ async function resolveChangesDiffEndpoints(input: {
       toCommit: syntheticCommit,
       baseRef: headCommit ? 'HEAD' : 'empty tree',
       headRef: 'working tree',
-      pathspecs: WORKSPACE_CHANGES_PATHSPECS,
     }
   }
 
@@ -494,7 +452,6 @@ export async function captureCheckpoint(
       cwd,
       authorName,
       authorEmail,
-      pathspecs: WORKSPACE_CHANGES_PATHSPECS,
     })
     const ref = checkpointRefForId(checkpointId)
     await assertGitSuccess(
@@ -664,6 +621,104 @@ export async function deleteAllCheckpointRefs(cwd: string): Promise<GitCheckpoin
   }
 }
 
+function parsePorcelainStatus(stdout: string): {
+  files: GitChangeFileSummary[]
+  untrackedPaths: string[]
+} {
+  const tokens = stdout.split('\0')
+  const files: GitChangeFileSummary[] = []
+  const untrackedPaths: string[] = []
+
+  let i = 0
+  while (i < tokens.length) {
+    const token = tokens[i]
+    i++
+    // Status entries: XY<space>path — at least 4 chars with space at index 2
+    if (!token || token.length < 4 || token[2] !== ' ') continue
+
+    const x = token[0]
+    const y = token[1]
+    const filePath = token.slice(3)
+    if (!filePath) continue
+
+    if (x === '?' && y === '?') {
+      untrackedPaths.push(filePath)
+      files.push({ path: filePath, status: 'added' })
+      continue
+    }
+
+    if (x === '!' && y === '!') continue
+
+    // Rename/copy: next token is the new path
+    if (x === 'R' || x === 'C') {
+      const newPath = tokens[i]
+      i++
+      if (newPath) {
+        files.push({ path: newPath, oldPath: filePath, status: 'renamed' })
+      }
+      continue
+    }
+
+    const effectiveChar = x !== ' ' ? x : y
+    if (effectiveChar === 'A') {
+      files.push({ path: filePath, status: 'added' })
+    } else if (effectiveChar === 'D') {
+      files.push({ path: filePath, status: 'deleted' })
+    } else {
+      files.push({ path: filePath, status: 'modified' })
+    }
+  }
+
+  return { files, untrackedPaths }
+}
+
+async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
+  files: GitChangeFileSummary[]
+  diff: string
+  baseRef: string
+  headRef: string
+}> {
+  const headCommit = await resolveHeadCommit(cwd)
+
+  const [statusResult, trackedDiffResult] = await Promise.all([
+    executeGit({
+      cwd,
+      args: ['status', '--porcelain=1', '-z', '--untracked-files=all'],
+      allowNonZeroExit: true,
+    }),
+    headCommit
+      ? executeGit({
+          cwd,
+          args: ['diff', 'HEAD', '--patch', '--minimal', '--no-color'],
+          allowNonZeroExit: true,
+        })
+      : Promise.resolve<GitExecuteResult>({ stdout: '', stderr: '', code: 0 }),
+  ])
+
+  const { files, untrackedPaths } = parsePorcelainStatus(statusResult.stdout)
+
+  const untrackedDiffs = await Promise.all(
+    untrackedPaths.slice(0, MAX_UNTRACKED_DIFF_FILES).map(async (filePath) => {
+      const absPath = path.join(cwd, filePath)
+      const result = await executeGit({
+        cwd,
+        args: ['diff', '--no-index', '--patch', '--minimal', '--no-color', '--', '/dev/null', absPath],
+        allowNonZeroExit: true,
+      })
+      return result.stdout
+    }),
+  )
+
+  const diff = [trackedDiffResult.stdout, ...untrackedDiffs].filter(Boolean).join('')
+
+  return {
+    files: files.sort((a, b) => a.path.localeCompare(b.path)),
+    diff,
+    baseRef: headCommit ? 'HEAD' : 'empty tree',
+    headRef: 'working tree',
+  }
+}
+
 export async function getHeadDiffStats(
   cwd: string,
   authorName = 'Cozea',
@@ -672,14 +727,13 @@ export async function getHeadDiffStats(
     const syntheticCommit = await createSyntheticCommit({
       cwd,
       authorName,
-      pathspecs: WORKSPACE_CHANGES_PATHSPECS,
     })
     const headCommit = await resolveHeadCommit(cwd)
     const diffTarget = headCommit ?? EMPTY_TREE_SHA
     const result = await assertGitSuccess(
       {
         cwd,
-        args: ['diff', '--shortstat', diffTarget, syntheticCommit, '--', ...WORKSPACE_CHANGES_PATHSPECS],
+        args: ['diff', '--shortstat', diffTarget, syntheticCommit],
       },
       'Failed to compute head diff stats.',
     )
@@ -701,12 +755,22 @@ export async function listChanges(args: {
   authorName?: string
 }): Promise<GitChangesListResult> {
   try {
+    if (args.scope === 'current') {
+      const result = await readCurrentWorkingTreeChanges(args.cwd)
+      return {
+        success: true,
+        scope: args.scope,
+        files: result.files,
+        baseRef: result.baseRef,
+        headRef: result.headRef,
+      }
+    }
+
     const endpoints = await resolveChangesDiffEndpoints(args)
-    const pathspecArgs = endpoints.pathspecs?.length ? ['--', ...endpoints.pathspecs] : []
     const result = await assertGitSuccess(
       {
         cwd: args.cwd,
-        args: ['diff', '--name-status', '-z', endpoints.fromCommit, endpoints.toCommit, ...pathspecArgs],
+        args: ['diff', '--name-status', '-z', endpoints.fromCommit, endpoints.toCommit],
       },
       'Failed to list git changes.',
     )
@@ -735,12 +799,49 @@ export async function readChangesPatch(args: {
   authorName?: string
 }): Promise<GitChangesPatchResult> {
   try {
+    if (args.scope === 'current') {
+      const filePath = args.filePath?.trim()
+      const headCommit = await resolveHeadCommit(args.cwd)
+
+      if (filePath) {
+        // Check if the file is untracked
+        const statusResult = await executeGit({
+          cwd: args.cwd,
+          args: ['status', '--porcelain=1', '-z', '--', filePath],
+          allowNonZeroExit: true,
+        })
+        const isUntracked = statusResult.stdout.trimStart().startsWith('??')
+
+        if (isUntracked) {
+          const absPath = path.join(args.cwd, filePath)
+          const result = await executeGit({
+            cwd: args.cwd,
+            args: ['diff', '--no-index', '--patch', '--minimal', '--no-color', '--', '/dev/null', absPath],
+            allowNonZeroExit: true,
+          })
+          return { success: true, scope: args.scope, diff: result.stdout, baseRef: 'HEAD', headRef: 'working tree' }
+        }
+
+        if (headCommit) {
+          const result = await executeGit({
+            cwd: args.cwd,
+            args: ['diff', 'HEAD', '--patch', '--minimal', '--no-color', '--', filePath],
+            allowNonZeroExit: true,
+          })
+          return { success: true, scope: args.scope, diff: result.stdout, baseRef: 'HEAD', headRef: 'working tree' }
+        }
+
+        return { success: true, scope: args.scope, diff: '', baseRef: 'empty tree', headRef: 'working tree' }
+      }
+
+      const result = await readCurrentWorkingTreeChanges(args.cwd)
+      return { success: true, scope: args.scope, diff: result.diff, baseRef: result.baseRef, headRef: result.headRef }
+    }
+
     const endpoints = await resolveChangesDiffEndpoints(args)
     const diffArgs = ['diff', '--patch', '--minimal', '--no-color', endpoints.fromCommit, endpoints.toCommit]
     if (args.filePath?.trim()) {
       diffArgs.push('--', args.filePath.trim())
-    } else if (endpoints.pathspecs?.length) {
-      diffArgs.push('--', ...endpoints.pathspecs)
     }
     const result = await assertGitSuccess(
       {
@@ -772,20 +873,31 @@ export async function readChanges(args: {
   authorName?: string
 }): Promise<GitChangesResult> {
   try {
+    if (args.scope === 'current') {
+      const result = await readCurrentWorkingTreeChanges(args.cwd)
+      return {
+        success: true,
+        scope: args.scope,
+        files: result.files,
+        diff: result.diff,
+        baseRef: result.baseRef,
+        headRef: result.headRef,
+      }
+    }
+
     const endpoints = await resolveChangesDiffEndpoints(args)
-    const pathspecArgs = endpoints.pathspecs?.length ? ['--', ...endpoints.pathspecs] : []
     const [nameStatusResult, patchResult] = await Promise.all([
       assertGitSuccess(
         {
           cwd: args.cwd,
-          args: ['diff', '--name-status', '-z', endpoints.fromCommit, endpoints.toCommit, ...pathspecArgs],
+          args: ['diff', '--name-status', '-z', endpoints.fromCommit, endpoints.toCommit],
         },
         'Failed to list git changes.',
       ),
       assertGitSuccess(
         {
           cwd: args.cwd,
-          args: ['diff', '--patch', '--minimal', '--no-color', endpoints.fromCommit, endpoints.toCommit, ...pathspecArgs],
+          args: ['diff', '--patch', '--minimal', '--no-color', endpoints.fromCommit, endpoints.toCommit],
         },
         'Failed to read git changes patch.',
       ),

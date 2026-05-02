@@ -965,6 +965,20 @@ export interface GitDirtyStateSnapshot {
   error?: string
 }
 
+export interface GitChangesSnapshot {
+  projectPath: string
+  scope: GitChangesScope
+  cacheKey: string
+  files: GitChangeFileSummary[]
+  patch: string
+  loaded: boolean
+  error: string | null
+  baseRef?: string
+  headRef?: string
+  additions: number
+  deletions: number
+}
+
 export interface TerminalCreateOptions {
   projectPath: string
   profileId?: string
@@ -1806,6 +1820,15 @@ export interface ElectronAPI {
       scope: GitChangesScope
       authorName?: string
     }) => Promise<GitChangesResult>
+    subscribeGitChanges: (options: {
+      projectPath: string
+      scope: GitChangesScope
+    }) => Promise<GitChangesSnapshot>
+    unsubscribeGitChanges: (options: {
+      projectPath: string
+      scope: GitChangesScope
+    }) => Promise<{ success: boolean }>
+    onGitChangesUpdated: (callback: (snapshot: GitChangesSnapshot) => void) => () => void
     subscribeGitDirtyState: (options: {
       projectPath: string
       authorName?: string

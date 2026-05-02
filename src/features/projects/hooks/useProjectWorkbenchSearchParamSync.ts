@@ -6,6 +6,7 @@ import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
+import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
 
 function normalizeOpenTargetParam(
   value: string | null,
@@ -74,7 +75,7 @@ interface UseProjectWorkbenchSearchParamSyncProps {
   replaceSearchParams: (nextParams: URLSearchParams) => void
   refreshLaneState: () => Promise<unknown>
   openWorkbenchTarget: (
-    target: Extract<WorkbenchTileType, "changes" | "terminal" | "assistantChat">,
+    target: Extract<WorkbenchTileType, "terminal" | "assistantChat">,
   ) => void
   focusWorkbenchTile: (tileId: string) => void
 }
@@ -96,6 +97,7 @@ export function useProjectWorkbenchSearchParamSync(
 
   const closeChangesOverlay = useCallback(() => {
     replaceSearchParams(buildClosedChangesSearchParams(searchParams))
+    useChangesSidebarStore.getState().actions.close()
   }, [replaceSearchParams, searchParams])
 
   useEffect(() => {
@@ -136,9 +138,11 @@ export function useProjectWorkbenchSearchParamSync(
     const intent = deriveWorkbenchSearchParamIntent(searchParams, activeLaneId)
     if (!intent.requestedOpenTarget) return
 
-
-
-    openWorkbenchTarget(intent.requestedOpenTarget)
+    if (intent.requestedOpenTarget === "changes") {
+      useChangesSidebarStore.getState().actions.open()
+    } else {
+      openWorkbenchTarget(intent.requestedOpenTarget)
+    }
 
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete("lane")
@@ -149,12 +153,12 @@ export function useProjectWorkbenchSearchParamSync(
   useEffect(() => {
     if (!projectId) return
     if (searchParams.get("changes") === "1") {
-      openWorkbenchTarget("changes")
+      useChangesSidebarStore.getState().actions.open()
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete("changes")
       replaceSearchParams(nextParams)
     }
-  }, [openWorkbenchTarget, projectId, replaceSearchParams, searchParams])
+  }, [projectId, replaceSearchParams, searchParams])
 
   useEffect(() => {
     if (!projectId) return

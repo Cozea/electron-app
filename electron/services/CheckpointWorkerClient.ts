@@ -12,10 +12,7 @@ import type {
 interface PendingCheckpointWorkerRequest {
   resolve: (result: unknown) => void
   reject: (error: Error) => void
-  timeout: ReturnType<typeof setTimeout>
 }
-
-const CHECKPOINT_WORKER_REQUEST_TIMEOUT_MS = 30_000
 
 function isCheckpointWorkerResponse(message: unknown): message is CheckpointWorkerResponse {
   if (typeof message !== 'object' || message === null) {
@@ -116,16 +113,9 @@ export class CheckpointWorkerClient {
     } as CheckpointWorkerRequest
 
     return await new Promise<CheckpointWorkerResult<TMethod>>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const timeoutError = new Error(`Checkpoint worker timed out while running '${method}'.`)
-        this.rejectPendingRequest(requestId, timeoutError)
-        this.restartChildProcess(timeoutError)
-      }, CHECKPOINT_WORKER_REQUEST_TIMEOUT_MS)
-
       this.pending.set(requestId, {
         resolve: (result) => resolve(result as CheckpointWorkerResult<TMethod>),
         reject,
-        timeout,
       })
 
       child.send(message, (error) => {
@@ -133,8 +123,8 @@ export class CheckpointWorkerClient {
           return
         }
 
-        this.rejectPendingRequest(
-          requestId,
+        this.pending.delete(requestId)
+        reject(
           error instanceof Error
             ? error
             : new Error('Failed to send request to checkpoint worker.'),
@@ -146,7 +136,6 @@ export class CheckpointWorkerClient {
   public dispose(): void {
     const child = this.childProcess
     this.childProcess = null
-    this.rejectAllPendingRequests(new Error('Checkpoint worker was disposed.'))
     if (!child) {
       return
     }
@@ -180,7 +169,10 @@ export class CheckpointWorkerClient {
         `Checkpoint worker exited${code !== null ? ` with code ${code}` : ''}${signal ? ` (${signal})` : ''}.`,
       )
       this.childProcess = null
-      this.rejectAllPendingRequests(error)
+      for (const [requestId, pending] of this.pending.entries()) {
+        this.pending.delete(requestId)
+        pending.reject(error)
+      }
     })
 
     child.stderr?.on('data', (chunk: Buffer | string) => {
@@ -211,7 +203,6 @@ export class CheckpointWorkerClient {
       return
     }
     this.pending.delete(message.id)
-    clearTimeout(pending.timeout)
 
     if (message.ok) {
       pending.resolve(message.result)
@@ -219,35 +210,5 @@ export class CheckpointWorkerClient {
     }
 
     pending.reject(new Error(message.error))
-  }
-
-  private rejectPendingRequest(requestId: number, error: Error): void {
-    const pending = this.pending.get(requestId)
-    if (!pending) return
-
-    this.pending.delete(requestId)
-    clearTimeout(pending.timeout)
-    pending.reject(error)
-  }
-
-  private rejectAllPendingRequests(error: Error): void {
-    for (const [requestId, pending] of this.pending.entries()) {
-      this.pending.delete(requestId)
-      clearTimeout(pending.timeout)
-      pending.reject(error)
-    }
-  }
-
-  private restartChildProcess(error: Error): void {
-    const child = this.childProcess
-    this.childProcess = null
-    this.rejectAllPendingRequests(error)
-    if (!child) return
-
-    try {
-      child.kill()
-    } catch {
-      // Ignore repeated shutdown failures.
-    }
   }
 }

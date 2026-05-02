@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useConvex } from "convex/react";
 
 import { api } from "../../../../convex/_generated/api";
@@ -10,9 +10,10 @@ import { buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 import { getProjectChangesActivityCacheKey } from "@/features/projects/lib/changesQueryCache";
 import { useQueryCache } from "@/stores/useQueryCache";
+import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useGitDirtySnapshot } from "@/hooks/useGitDirtySnapshot";
+import { useGitChangesStore } from "@/stores/useGitChangesStore";
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();
@@ -20,7 +21,17 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   const convex = useConvex();
   const routeContext = useOptionalProjectRouteContext();
   const gitCwd = routeContext?.gitCwd ?? null;
-  const diffStats = useGitDirtySnapshot(gitCwd);
+  const projectState = useGitChangesStore((state) => gitCwd ? state.projects[gitCwd] : undefined)
+  const diffStats = projectState?.current?.snapshot ?? null;
+  const watchGitStatus = useGitChangesStore((state) => state.actions.watchGitStatus);
+
+  useEffect(() => {
+    if (!gitCwd) return;
+    return watchGitStatus(gitCwd, 'current');
+  }, [gitCwd, watchGitStatus]);
+
+  const isSidebarOpen = useChangesSidebarStore((state) => state.isOpen);
+  const sidebarActions = useChangesSidebarStore((state) => state.actions);
 
   const prewarmChanges = useCallback(() => {
     if (!projectId) return;
@@ -54,10 +65,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   if (!hasDisplayableDiff) return null;
 
   const workbenchPath = buildProjectPath(String(projectId), "workbench");
-  const currentParams = new URLSearchParams(location.search);
   const isOnWorkbench = location.pathname === workbenchPath;
-  const isChangesOpen =
-    currentParams.get("changes") === "1" || currentParams.get("openTile") === "changes";
 
   return (
     <Tooltip>
@@ -65,8 +73,8 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
         <Button
           type="button"
           variant="ghost"
-          className="h-6 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
-          aria-label="Open changes"
+          className={`h-6 gap-1 shrink-0 rounded-md border border-border/60 px-3 shadow-none hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
+          aria-label={isSidebarOpen ? "Close changes" : "Open changes"}
           onMouseEnter={prewarmChanges}
           onFocus={prewarmChanges}
           onPointerDown={prewarmChanges}
@@ -74,23 +82,13 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             event.preventDefault();
             event.stopPropagation();
 
-            const nextParams = new URLSearchParams(location.search);
-
-            if (isOnWorkbench && isChangesOpen) {
-              nextParams.delete("changes");
-              nextParams.delete("openTile");
-              nextParams.delete("userId");
-            } else {
-              nextParams.set("changes", "1");
-              nextParams.delete("openTile");
+            if (!isOnWorkbench) {
+              sidebarActions.open();
+              navigate(workbenchPath);
+              return;
             }
 
-            const nextSearch = nextParams.toString();
-
-            navigate({
-              pathname: workbenchPath,
-              search: nextSearch ? `?${nextSearch}` : "",
-            });
+            sidebarActions.toggle();
           }}
         >
           <span className="inline-flex items-center gap-1 text-[9px] tabular-nums">
@@ -99,7 +97,9 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
           </span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">Open changes</TooltipContent>
+      <TooltipContent side="bottom">
+        {isSidebarOpen ? "Close changes" : "Open changes"}
+      </TooltipContent>
     </Tooltip>
   );
 }

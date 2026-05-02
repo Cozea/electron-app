@@ -1,41 +1,39 @@
 "use client"
 
-import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
+import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible"
 
 import { cn } from "@/lib/utils"
 
-function Collapsible({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
+function Collapsible({ ...props }: CollapsiblePrimitive.Root.Props) {
   return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />
 }
 
-function CollapsibleTrigger({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleTrigger>) {
+function CollapsibleTrigger({ className, ...props }: CollapsiblePrimitive.Trigger.Props) {
   return (
-    <CollapsiblePrimitive.CollapsibleTrigger
+    <CollapsiblePrimitive.Trigger
+      className={cn("cursor-pointer", className)}
       data-slot="collapsible-trigger"
       {...props}
     />
   )
 }
 
-function CollapsibleContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
+function CollapsiblePanel({ className, ...props }: CollapsiblePrimitive.Panel.Props) {
   return (
-    <CollapsiblePrimitive.CollapsibleContent
-      data-slot="collapsible-content"
+    <CollapsiblePrimitive.Panel
       className={cn(
-        // tw-animate-css: uses Radix --radix-collapsible-content-height (see collapsible-down/up keyframes).
-        "overflow-hidden duration-150 ease-out data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none",
+        "h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 data-ending-style:h-0 data-starting-style:h-0 data-open:data-ending-style:[height:var(--collapsible-panel-height)]",
         className,
       )}
+      data-slot="collapsible-panel"
       {...props}
     />
   )
 }
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent }
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsiblePanel,
+  CollapsiblePanel as CollapsibleContent,
+}
