@@ -280,6 +280,7 @@ workflows:
             }
 
             $cmdForGyp = $cmdPath -replace "\\", "/"
+            $quotedCmdForGyp = '"' + $cmdForGyp + '"'
             $gypSource = Get-Content $gypPath -Raw
             $cmdPattern = [regex]"\bcmd /c\b"
             $cmdMatches = $cmdPattern.Matches($gypSource)
@@ -295,11 +296,11 @@ workflows:
               $gypSource,
               [System.Text.RegularExpressions.MatchEvaluator]{
                 param($match)
-                "$cmdForGyp /c"
+                "$quotedCmdForGyp /c"
               }
             )
             [System.IO.File]::WriteAllText($gypPath, $patchedSource, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched $($cmdMatches.Count) node-pty winpty.gyp cmd invocation(s) to use $cmdForGyp."
+            Write-Host "Patched $($cmdMatches.Count) node-pty winpty.gyp cmd invocation(s) to use $quotedCmdForGyp."
           }
 
           Patch-NodePtyWinptyGyp $cmdPath
