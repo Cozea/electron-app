@@ -1,5 +1,6 @@
 import { fork, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
+import { app } from 'electron'
 
 import type { WorkbenchRuntimeEventMessage, WorkbenchRuntimeMethod, WorkbenchRuntimeRequest, WorkbenchRuntimeResponse } from '../workbench-runtime/protocol'
 
@@ -86,6 +87,7 @@ export class WorkbenchRuntimeClient {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: {
         ...process.env,
+        COZEA_USER_DATA_DIR: app.getPath('userData'),
       },
     })
 
