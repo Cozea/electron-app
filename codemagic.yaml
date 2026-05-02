@@ -272,6 +272,27 @@ workflows:
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
 
+          function Patch-NodePtyWinptyGyp([string]$cmdPath) {
+            $gypPath = Join-Path $PWD "node_modules\node-pty\deps\winpty\src\winpty.gyp"
+            if (-not (Test-Path $gypPath)) {
+              Write-Host "node-pty winpty.gyp not found; skipping cmd path patch."
+              return
+            }
+
+            $cmdForGyp = $cmdPath -replace "\\", "/"
+            $gypSource = Get-Content $gypPath -Raw
+            $patchedSource = $gypSource -replace "\bcmd /c\b", "$cmdForGyp /c"
+            if ($patchedSource -eq $gypSource) {
+              Write-Host "node-pty winpty.gyp did not contain bare cmd invocations; no patch needed."
+              return
+            }
+
+            [System.IO.File]::WriteAllText($gypPath, $patchedSource, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Patched node-pty winpty.gyp to use $cmdForGyp."
+          }
+
+          Patch-NodePtyWinptyGyp $cmdPath
+
           $electronPkgJson = Join-Path $PWD "node_modules\electron\package.json"
           if (-not (Test-Path $electronPkgJson)) {
             throw "electron/package.json not found at $electronPkgJson - was bun install run?"
