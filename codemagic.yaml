@@ -272,38 +272,47 @@ workflows:
           bun install --frozen-lockfile
           Assert-LastExitCode "bun install --frozen-lockfile"
 
-          function Patch-NodePtyWinptyGyp([string]$cmdPath) {
+          function Patch-NodePtyWinptyGyp {
             $gypPath = Join-Path $PWD "node_modules\node-pty\deps\winpty\src\winpty.gyp"
             if (-not (Test-Path $gypPath)) {
               Write-Host "node-pty winpty.gyp not found; skipping cmd path patch."
               return
             }
 
-            $cmdForGyp = $cmdPath -replace "\\", "/"
-            $quotedCmdForGyp = '"' + $cmdForGyp + '"'
             $gypSource = Get-Content $gypPath -Raw
-            $cmdPattern = [regex]"\bcmd /c\b"
-            $cmdMatches = $cmdPattern.Matches($gypSource)
-            if ($cmdMatches.Count -eq 0) {
-              Write-Host "node-pty winpty.gyp did not contain the expected bare cmd /c pattern. Nearby cmd references:"
+            $patchedSource = $gypSource
+            $patchCount = 0
+            $replacements = @(
+              @{
+                From = 'cmd /c "cd shared && GetCommitHash.bat"'
+                To = 'cd shared && GetCommitHash.bat'
+              },
+              @{
+                From = 'cmd /c "cd shared && UpdateGenVersion.bat <(WINPTY_COMMIT_HASH)"'
+                To = 'cd shared && UpdateGenVersion.bat <(WINPTY_COMMIT_HASH)'
+              }
+            )
+
+            foreach ($replacement in $replacements) {
+              if ($patchedSource.Contains($replacement.From)) {
+                $patchedSource = $patchedSource.Replace($replacement.From, $replacement.To)
+                $patchCount += 1
+              }
+            }
+
+            if ($patchCount -ne $replacements.Count) {
+              Write-Host "node-pty winpty.gyp did not contain every expected nested cmd wrapper. Nearby cmd references:"
               Select-String -Path $gypPath -Pattern "cmd" -Context 2,2 | ForEach-Object {
                 Write-Host $_.ToString()
               }
-              throw "node-pty winpty.gyp patch did not find the expected bare cmd /c pattern."
+              throw "node-pty winpty.gyp patch expected $($replacements.Count) replacements but applied $patchCount."
             }
 
-            $patchedSource = $cmdPattern.Replace(
-              $gypSource,
-              [System.Text.RegularExpressions.MatchEvaluator]{
-                param($match)
-                "$quotedCmdForGyp /c"
-              }
-            )
             [System.IO.File]::WriteAllText($gypPath, $patchedSource, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched $($cmdMatches.Count) node-pty winpty.gyp cmd invocation(s) to use $quotedCmdForGyp."
+            Write-Host "Patched $patchCount node-pty winpty.gyp nested cmd wrapper(s)."
           }
 
-          Patch-NodePtyWinptyGyp $cmdPath
+          Patch-NodePtyWinptyGyp
 
           $electronPkgJson = Join-Path $PWD "node_modules\electron\package.json"
           if (-not (Test-Path $electronPkgJson)) {
