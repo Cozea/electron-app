@@ -265,54 +265,8 @@ workflows:
           '@ | Set-Content -Path $bunPreflightPath -Encoding UTF8
           bun $bunPreflightPath
           Assert-LastExitCode "bun cmd.exe preflight"
-          if (Get-Command npm -ErrorAction SilentlyContinue) {
-            npm config set python "$pythonPath"
-            Assert-LastExitCode "npm config set python"
-          }
-          bun install --frozen-lockfile
-          Assert-LastExitCode "bun install --frozen-lockfile"
-
-          function Patch-NodePtyWinptyGyp {
-            $gypPath = Join-Path $PWD "node_modules\node-pty\deps\winpty\src\winpty.gyp"
-            if (-not (Test-Path $gypPath)) {
-              Write-Host "node-pty winpty.gyp not found; skipping cmd path patch."
-              return
-            }
-
-            $gypSource = Get-Content $gypPath -Raw
-            $patchedSource = $gypSource
-            $patchCount = 0
-            $replacements = @(
-              @{
-                From = 'cmd /c "cd shared && GetCommitHash.bat"'
-                To = 'cd shared && GetCommitHash.bat'
-              },
-              @{
-                From = 'cmd /c "cd shared && UpdateGenVersion.bat <(WINPTY_COMMIT_HASH)"'
-                To = 'cd shared && UpdateGenVersion.bat <(WINPTY_COMMIT_HASH)'
-              }
-            )
-
-            foreach ($replacement in $replacements) {
-              if ($patchedSource.Contains($replacement.From)) {
-                $patchedSource = $patchedSource.Replace($replacement.From, $replacement.To)
-                $patchCount += 1
-              }
-            }
-
-            if ($patchCount -ne $replacements.Count) {
-              Write-Host "node-pty winpty.gyp did not contain every expected nested cmd wrapper. Nearby cmd references:"
-              Select-String -Path $gypPath -Pattern "cmd" -Context 2,2 | ForEach-Object {
-                Write-Host $_.ToString()
-              }
-              throw "node-pty winpty.gyp patch expected $($replacements.Count) replacements but applied $patchCount."
-            }
-
-            [System.IO.File]::WriteAllText($gypPath, $patchedSource, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched $patchCount node-pty winpty.gyp nested cmd wrapper(s)."
-          }
-
-          Patch-NodePtyWinptyGyp
+          bun ci
+          Assert-LastExitCode "bun ci"
 
           $electronPkgJson = Join-Path $PWD "node_modules\electron\package.json"
           if (-not (Test-Path $electronPkgJson)) {
