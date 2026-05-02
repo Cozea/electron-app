@@ -281,14 +281,25 @@ workflows:
 
             $cmdForGyp = $cmdPath -replace "\\", "/"
             $gypSource = Get-Content $gypPath -Raw
-            $patchedSource = $gypSource -replace "\bcmd /c\b", "$cmdForGyp /c"
-            if ($patchedSource -eq $gypSource) {
-              Write-Host "node-pty winpty.gyp did not contain bare cmd invocations; no patch needed."
-              return
+            $cmdPattern = [regex]"\bcmd /c\b"
+            $cmdMatches = $cmdPattern.Matches($gypSource)
+            if ($cmdMatches.Count -eq 0) {
+              Write-Host "node-pty winpty.gyp did not contain the expected bare cmd /c pattern. Nearby cmd references:"
+              Select-String -Path $gypPath -Pattern "cmd" -Context 2,2 | ForEach-Object {
+                Write-Host $_.ToString()
+              }
+              throw "node-pty winpty.gyp patch did not find the expected bare cmd /c pattern."
             }
 
+            $patchedSource = $cmdPattern.Replace(
+              $gypSource,
+              [System.Text.RegularExpressions.MatchEvaluator]{
+                param($match)
+                "$cmdForGyp /c"
+              }
+            )
             [System.IO.File]::WriteAllText($gypPath, $patchedSource, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched node-pty winpty.gyp to use $cmdForGyp."
+            Write-Host "Patched $($cmdMatches.Count) node-pty winpty.gyp cmd invocation(s) to use $cmdForGyp."
           }
 
           Patch-NodePtyWinptyGyp $cmdPath
