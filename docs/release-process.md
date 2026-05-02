@@ -4,7 +4,6 @@ This app supports two desktop release paths:
 
 - GitHub Actions tag releases that publish to GitHub Releases in `Cozea/cozea-prod`.
 - CircleCI main-branch releases that build on hosted macOS/Windows runners and upload update assets to Cloudflare R2.
-- Codemagic main-branch releases that build on hosted macOS/Windows runners and upload update assets to Cloudflare R2.
 
 ## Release Model
 
@@ -48,8 +47,8 @@ The CircleCI workflow lives at `.circleci/config.yml` and runs in four stages:
 
 1. `verify`
    Installs dependencies, prepares runtime metadata, typechecks, and lints.
-2. `build_macos_separate`
-   Builds signed separate macOS x64 and arm64 DMG/ZIP artifacts in one Electron Builder invocation, notarizes/staples the DMGs, verifies app signatures, and persists artifacts.
+2. `build_macos_universal`
+   Builds a signed universal macOS DMG/ZIP, notarizes/staples the DMG, verifies the app signature, and persists artifacts.
 3. `build_windows_x64`
    Builds the Windows x64 NSIS installer and persists artifacts.
 4. `upload_cloudflare_r2`
@@ -67,23 +66,6 @@ The app then checks:
 https://updates.cozea.app/latest/latest-mac.yml
 https://updates.cozea.app/latest/latest.yml
 ```
-
-The macOS updater metadata is generated from the combined x64/arm64 macOS build, but the installers remain separate. Do not split macOS x64 and arm64 into independent CircleCI jobs unless the upload path also prevents `latest-mac.yml` from being overwritten.
-
-### Codemagic + Cloudflare R2
-
-The Codemagic workflow lives at `codemagic.yaml` and provides a CircleCI replacement when CircleCI credits are unavailable.
-
-Codemagic runs two workflows on `main` pushes and `v*` tag creations:
-
-1. `release-macos-r2`
-   Builds signed separate macOS x64 and arm64 DMG/ZIP artifacts in one workflow, notarizes/staples the DMGs, verifies app signatures, and uploads macOS artifacts to Cloudflare R2.
-2. `release-windows-r2`
-   Builds the Windows x64 NSIS installer and uploads Windows artifacts to Cloudflare R2.
-
-Both workflows import the same `cozea-release` environment variable group and upload directly into the configured R2 channel. There is no cross-workflow artifact handoff in Codemagic, so each platform workflow uploads its own artifacts.
-
-The Windows workflow installs dependencies with `bun ci`. Windows-specific native dependency compatibility fixes should be committed as Bun patches under `patches/` and registered in `patchedDependencies`. For example, `patches/node-pty@1.1.0.patch` removes `node-pty`'s nested `cmd /c` wrappers from `winpty.gyp` and disables its Spectre-specific MSBuild project setting so Codemagic's Windows runner can rebuild the module through `node-gyp` without relying on fragile shell path resolution or unavailable Spectre-mitigated VC libraries. Do not reintroduce ad-hoc `node_modules` edits inside `codemagic.yaml`; update the Bun patch instead with `bun patch node-pty` and `bun patch --commit node_modules/node-pty`.
 
 ## Supported Triggers
 
@@ -144,26 +126,6 @@ Create a CircleCI context named `cozea-release` with these environment variables
 `CSC_LINK` may be a URL, `file://` path, local path on the runner, or base64/base64-prefixed P12 payload. For CircleCI, prefer a masked base64 secret.
 
 The Cloudflare API token must be able to upload objects into the configured R2 bucket.
-
-## Codemagic Configuration
-
-Add the repository in Codemagic and enable `codemagic.yaml` builds. Create a Codemagic environment variable group named `cozea-release` with the same values used by CircleCI:
-
-- `VITE_CONVEX_URL`
-- `VITE_AI_API_URL`
-- `COZEA_UPDATE_BASE_URL`
-- `COZEA_UPDATE_BUCKET`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-- `CSC_LINK`
-- `CSC_KEY_PASSWORD`
-- `APPLE_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
-- `APPLE_TEAM_ID`
-- `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH` when runtime metadata signing is enabled
-- `COZEA_RUNTIME_SIGNING_PUBLIC_KEY` when runtime metadata verification material needs to be regenerated
-
-Codemagic workflows are triggered by pushes to `main` and tags matching `v*`. If webhooks are not installed automatically, update the repository webhook from the Codemagic app settings and make sure tag creation events are enabled.
 
 ## Operating Rules
 

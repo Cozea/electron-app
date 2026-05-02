@@ -691,7 +691,7 @@ function TaskListRow({
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b border-border/50 py-3 last:border-b-0">
       <div className="flex items-start gap-2">
-        <CollapsibleTrigger asChild>
+        <CollapsibleTrigger render={
           <button
             type="button"
             className="group flex min-w-0 flex-1 items-start gap-3 text-left"
@@ -731,7 +731,7 @@ function TaskListRow({
               </div>
             </div>
           </button>
-        </CollapsibleTrigger>
+        } />
 
         <Button
           variant="ghost"

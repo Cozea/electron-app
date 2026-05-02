@@ -3,7 +3,6 @@ import {
   memo,
   startTransition,
   Suspense,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -26,7 +25,6 @@ import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/projects/lib/changesTileSizing"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
@@ -48,7 +46,6 @@ type HydratableWorkbenchTileType =
   | "devServer"
   | "mobileSimulator"
   | "assistantChat"
-  | "changes"
 
 let backgroundHydrationSequence = 0
 let backgroundHydrationResetHandle: number | null = null
@@ -133,12 +130,6 @@ const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
 const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
 
-const LazyChangesPage = lazy(() =>
-  import("@/features/projects/pages/ChangesPage").then((module) => ({
-    default: module.ChangesPage,
-  })),
-);
-
 function preloadWorkbenchTileComponent(tileType: HydratableWorkbenchTileType): void {
   switch (tileType) {
     case "assistantChat":
@@ -158,9 +149,6 @@ function preloadWorkbenchTileComponent(tileType: HydratableWorkbenchTileType): v
       return
     case "terminal":
       void loadWorkbenchTerminalTile()
-      return
-    case "changes":
-      void import("@/features/projects/pages/ChangesPage")
       return
   }
 }
@@ -659,7 +647,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   if (!tile || tile.type !== "mobileSimulator") {
     return (
       <WorkbenchTileChrome
-        title="Mobile Simulator"
+        title="iOS Simulator"
         panelApi={props.api}
         containerApi={props.containerApi}
       >
@@ -738,76 +726,6 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
   )
 })
 
-const ChangesPanel = memo(function ChangesPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
-  const runtime = useWorkbenchDockRuntime()
-  const tile = useWorkbenchTile(
-    props.params.projectId,
-    props.params.laneId,
-    runtime.projectPath,
-    props.params.tileId,
-  )
-
-  const [controlsNode, setControlsNode] = useState<React.ReactNode>(null)
-  const [titleContent, setTitleContent] = useState<React.ReactNode>(null)
-
-  useSyncPanelTitle(props.api, tile?.title)
-
-  const handleChangesMinimumWidthChange = useCallback(
-    (minimumWidth: number) => {
-      props.api.setConstraints({ minimumWidth })
-      if (props.api.width > 0 && props.api.width < minimumWidth) {
-        props.api.setSize({ width: minimumWidth })
-      }
-    },
-    [props.api],
-  )
-
-  useEffect(() => {
-    handleChangesMinimumWidthChange(CHANGES_TILE_MIN_WIDTH_COLLAPSED)
-  }, [handleChangesMinimumWidthChange])
-
-  if (!tile || tile.type !== "changes") {
-    return (
-      <WorkbenchTileChrome
-        title="Changes"
-        panelApi={props.api}
-        containerApi={props.containerApi}
-      >
-        <MissingTilePlaceholder />
-      </WorkbenchTileChrome>
-    )
-  }
-
-  return (
-    <WorkbenchTileChrome
-      title={tile.title}
-      panelApi={props.api}
-      containerApi={props.containerApi}
-      tileType="changes"
-      titleContent={titleContent}
-      titlePillClassName="max-w-none gap-2 bg-transparent px-1.5"
-      controls={controlsNode}
-    >
-      <TileUiHydrationBoundary
-        panelApi={props.api}
-        tileType="changes"
-        title={tile.title}
-        visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
-      >
-        <div className="flex h-full w-full flex-col bg-background">
-          <LazyChangesPage
-            presentation="embedded"
-            projectPath={runtime.projectPath}
-            setChromeControlsNode={setControlsNode}
-            setChromeTitleContent={setTitleContent}
-            setDockviewMinimumWidth={handleChangesMinimumWidthChange}
-          />
-        </div>
-      </TileUiHydrationBoundary>
-    </WorkbenchTileChrome>
-  )
-})
-
 export const WORKBENCH_DOCK_COMPONENTS = {
   selection: SelectionPanel,
   browser: BrowserPanel,
@@ -815,5 +733,4 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   devServer: DevServerPanel,
   mobileSimulator: MobileSimulatorPanel,
   assistantChat: AssistantChatPanel,
-  changes: ChangesPanel,
 }

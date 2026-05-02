@@ -478,7 +478,7 @@ export class WorkbenchBrowserService {
     const { initialUrl, storageScope = 'workspace', workspaceId } = options
     const existing = this.records.get(tileId)
     if (existing) {
-      if (initialUrl && (initialUrl !== existing.state.url || existing.state.loadError)) {
+      if (initialUrl && initialUrl !== existing.state.url) {
         return this.loadUrlIntoRecord(tileId, existing, initialUrl)
       }
       return this.emitState(tileId) ?? existing.state
@@ -572,26 +572,11 @@ export class WorkbenchBrowserService {
   reload(tileId: string, hard = false): WorkbenchBrowserViewState | null {
     const record = this.records.get(tileId)
     if (!record) return null
-
-    record.state = {
-      ...record.state,
-      loadError: null,
+    if (hard) {
+      record.view.webContents.reloadIgnoringCache()
+    } else {
+      record.view.webContents.reload()
     }
-
-    try {
-      if (hard) {
-        record.view.webContents.reloadIgnoringCache()
-      } else {
-        record.view.webContents.reload()
-      }
-    } catch (error) {
-      record.state = {
-        ...record.state,
-        isLoading: false,
-        loadError: error instanceof Error ? error.message : 'Failed to reload page.',
-      }
-    }
-
     return this.emitState(tileId)
   }
 

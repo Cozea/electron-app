@@ -1,18 +1,19 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Clock01Icon as __ClockHugeIcon,
-  LayoutTwoColumnIcon as __SplitViewHugeIcon,
-  LayoutTwoRowIcon as __StackedViewHugeIcon,
-  PanelLeftIcon as __SidebarHugeIcon,
-  Search01Icon as __SearchHugeIcon,
+  CheckmarkCircle01Icon as __CleanHugeIcon,
+  BubbleChatIcon as __ChatHugeIcon,
+  GitBranchIcon as __BranchHugeIcon,
+  HierarchyFilesIcon as __SidebarHugeIcon,
+  SearchList02Icon as __SearchHugeIcon,
   FilterMailIcon as __FilterHugeIcon,
   MoreVerticalIcon as __MoreVerticalHugeIcon,
   ArrowDown01Icon as __ChevronDownHugeIcon,
 } from '@hugeicons/core-free-icons'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { useQuery } from 'convex/react'
-import type { ContextMenuItem } from '@cozea/assistant-contracts'
 import type { GitChangeFileSummary, GitChangesScope } from '@shared/electronApiTypes'
+import type { ContextMenuItem } from '@cozea/assistant-contracts'
 
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -23,34 +24,39 @@ import { projectOpenDesktopClient } from '@/features/projects/lib/projectOpenDes
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDiffWorkerProvider'
 import { useTranslation } from '@/lib/i18n'
+import { useGitChangesStore } from '@/stores/useGitChangesStore'
+import { useChangesSidebarStore } from '@/stores/useChangesSidebarStore'
 import { formatActorDisplayName } from '@/lib/userDisplay'
-import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
 import { useTheme } from '@/contexts/ThemeContext'
+import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
 import {
   buildPatchCacheKey,
   resolveDiffThemeName,
 } from '@/features/projects/components/assistant/lib/diffRendering'
 import {
   CHANGES_TILE_MIN_WIDTH_COLLAPSED,
-  CHANGES_TILE_MIN_WIDTH_EXPANDED,
 } from '@/features/projects/lib/changesTileSizing'
 
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff, type FileDiffMetadata, Virtualizer } from "@pierre/diffs/react";
-import { ChangedFilesTree, type ChangedFilesTreeFile } from '../components/changes/ChangedFilesTree'
+import type { ChangedFilesTreeFile } from '../components/changes/ChangedFilesTree'
 
 const CHECKPOINT_PATCH_CACHE_MAX_ENTRIES = 48
-const CHECKPOINT_REF_UNAVAILABLE_RETRY_LIMIT = 6
-const CHECKPOINT_REF_UNAVAILABLE_RETRY_DELAY_MS = 350
-const GIT_CHANGES_LOAD_TIMEOUT_MS = 25_000
-type ChangesScope = 'current' | 'lastTurn' | 'branch' | 'history'
-type ChangesDiffStyle = 'split' | 'unified'
+import { ChangesHeaderControls } from '../components/changes/ChangesHeaderControls'
+import { ChangesTreeView } from '../components/changes/ChangesTreeView'
+import type { ChangesDiffStyle, ChangesScope } from '../components/changes/ChangesTypes'
+
+type ChangesScopeMenuAction = ChangesScope | `changes-scope:separator-${number}`
 
 const CHANGE_GROUP_DIFF_UNSAFE_CSS = `
 [data-diffs-header] {
   position: sticky !important;
   top: 0;
   z-index: 4;
+}
+
+[data-diffs-header] [data-change-icon] {
+  display: none !important;
 }
 `
 
@@ -91,10 +97,6 @@ function buildCheckpointPatchCacheKey(input: {
     input.previousCheckpointGroupId ?? 'head',
     input.groupId,
   ].join('\0')
-}
-
-function isCheckpointRefUnavailableError(message: string | null | undefined): boolean {
-  return Boolean(message?.trim().match(/^Checkpoint ref '.+' is unavailable\.$/))
 }
 
 function parseCheckpointPatch(
@@ -222,22 +224,24 @@ function ScopeCountBadge({ count }: { count: number | null }) {
   )
 }
 
-function formatScopeCountSublabel(count: number | null): string | undefined {
-  if (count === null) return undefined
-  return `${count} ${count === 1 ? 'file' : 'files'}`
-}
-
-function buildChangesScopeMenuItems(
-  options: readonly ScopeOption[],
-  scope: ChangesScope,
-): ContextMenuItem<ChangesScope>[] {
-  return options.map((option) => ({
-    id: option.value,
-    label: option.label,
-    sublabel: formatScopeCountSublabel(option.count),
-    type: 'radio',
-    checked: option.value === scope,
-  }))
+function ChangesEmptyState({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ComponentProps<typeof HugeiconsIcon>['icon']
+  title: string
+  subtitle: string
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+      <HugeiconsIcon icon={icon} className="size-8 text-muted-foreground/35" />
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  )
 }
 
 function ChangesScopeMenu(props: {
@@ -246,284 +250,62 @@ function ChangesScopeMenu(props: {
   onScopeChange: (scope: ChangesScope) => void
 }) {
   const { scope, options, onScopeChange } = props
-  const [menuOpen, setMenuOpen] = useState(false)
   const selectedOption = options.find((option) => option.value === scope) ?? options[0]
 
   const handleOpenMenu = useCallback(
-    async (event: ReactMouseEvent<HTMLButtonElement>) => {
+    async (event: MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
 
-      if (options.length === 0) return
-
       const rect = event.currentTarget.getBoundingClientRect()
-      const position = {
-        x: Math.round(rect.left),
-        y: Math.round(rect.bottom),
-      }
-      const items = buildChangesScopeMenuItems(options, scope)
-
-      setMenuOpen(true)
-      try {
-        const selectedScope = await showDesktopContextMenu(items, position)
-        if (selectedScope && selectedScope !== scope) {
-          onScopeChange(selectedScope)
+      const items = options.flatMap((option, index): ContextMenuItem<ChangesScopeMenuAction>[] => {
+        const item: ContextMenuItem<ChangesScopeMenuAction> = {
+          id: option.value,
+          type: 'radio',
+          label: option.label,
+          checked: option.value === scope,
         }
-      } finally {
-        setMenuOpen(false)
+
+        if (index === options.length - 1) {
+          return [item]
+        }
+
+        return [
+          item,
+          {
+            id: `changes-scope:separator-${index}`,
+            type: 'separator',
+          },
+        ]
+      })
+
+      const action = await showDesktopContextMenu<ChangesScopeMenuAction>(
+        items,
+        {
+          x: Math.round(rect.left),
+          y: Math.round(rect.bottom + 4),
+        },
+      )
+
+      if (action === 'current' || action === 'lastTurn' || action === 'branch' || action === 'history') {
+        onScopeChange(action)
       }
     },
     [onScopeChange, options, scope],
   )
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        className="flex h-7 max-w-[14rem] items-center gap-2 rounded-md px-1.5 text-foreground transition-colors hover:bg-muted/70"
-        onClick={handleOpenMenu}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-      >
-        <span className="truncate text-[13px] font-medium">{selectedOption?.label ?? 'Current'}</span>
-        <ScopeCountBadge count={selectedOption?.count ?? null} />
-        <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
-      </button>
-    </div>
+    <button
+      type="button"
+      aria-haspopup="menu"
+      className="flex h-7 max-w-[14rem] items-center gap-1.5 rounded-md px-1.5 text-foreground outline-none transition-colors hover:bg-muted/70"
+      onClick={handleOpenMenu}
+    >
+      <span className="truncate text-[13px] font-medium">{selectedOption?.label ?? 'Current'}</span>
+      <ScopeCountBadge count={selectedOption?.count ?? null} />
+      <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground" />
+    </button>
   )
-}
-
-interface GitChangesSnapshot {
-  cacheKey: string
-  files: GitChangeFileSummary[]
-  patch: string
-  loaded: boolean
-  refreshing: boolean
-  error: string | null
-  baseRef?: string
-  headRef?: string
-}
-
-type GitChangesSnapshotCache = Partial<Record<GitChangesScope, GitChangesSnapshot>>
-
-const EMPTY_GIT_CHANGES_SNAPSHOT: GitChangesSnapshot = {
-  cacheKey: '',
-  files: [],
-  patch: '',
-  loaded: false,
-  refreshing: false,
-  error: null,
-}
-
-function buildGitChangesSnapshotCacheKey(input: {
-  gitCwd: string
-  scope: GitChangesScope
-  refreshKey: number
-}): string {
-  return [input.gitCwd, input.scope, input.refreshKey].join('\0')
-}
-
-function isGitChangesSnapshotForIdentity(
-  snapshot: GitChangesSnapshot | null | undefined,
-  gitCwd: string,
-  scope: GitChangesScope,
-): snapshot is GitChangesSnapshot {
-  return Boolean(snapshot?.cacheKey.startsWith(`${gitCwd}\0${scope}\0`))
-}
-
-function formatGitChangesLoadError(error: unknown, fallback: string): string {
-  const message = error instanceof Error
-    ? error.message
-    : typeof error === 'string'
-      ? error
-      : fallback
-
-  if (message.toLowerCase().includes('timed out')) {
-    return 'Git changes took too long to compute. Try again after the dev server finishes writing files.'
-  }
-
-  return message || fallback
-}
-
-function getUsableGitChangesResultCacheKey(input: {
-  existing: GitChangesSnapshot | undefined
-  requestCacheKey: string
-  gitCwd: string
-  scope: GitChangesScope
-}): string | null {
-  const { existing, requestCacheKey, gitCwd, scope } = input
-  if (!existing) return null
-  if (existing.cacheKey === requestCacheKey) return requestCacheKey
-  if (isGitChangesSnapshotForIdentity(existing, gitCwd, scope) && !existing.loaded) {
-    return existing.cacheKey
-  }
-  return null
-}
-
-function withTimeout<T>(request: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      reject(new Error(timeoutMessage))
-    }, timeoutMs)
-
-    request
-      .then(resolve)
-      .catch(reject)
-      .finally(() => window.clearTimeout(timeout))
-  })
-}
-
-function useActiveGitChanges(
-  gitCwd: string | null,
-  scope: GitChangesScope | null,
-  refreshKey: number,
-): { active: GitChangesSnapshot; cache: GitChangesSnapshotCache } {
-  const [cache, setCache] = useState<GitChangesSnapshotCache>({})
-  const cacheRef = useRef(cache)
-  const mountedRef = useRef(true)
-  const requestedKeysRef = useRef(new Set<string>())
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    cacheRef.current = cache
-  }, [cache])
-
-  useEffect(() => {
-    if (!gitCwd || !scope) return
-
-    const cacheKey = buildGitChangesSnapshotCacheKey({ gitCwd, scope, refreshKey })
-    const cached = cacheRef.current[scope]
-    if (cached?.cacheKey === cacheKey && cached.loaded) return
-    if (requestedKeysRef.current.has(cacheKey)) return
-
-    requestedKeysRef.current.add(cacheKey)
-    setCache((current) => ({
-      ...current,
-      [scope]: {
-        cacheKey,
-        files: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
-          ? (current[scope]?.files ?? [])
-          : [],
-        patch: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
-          ? (current[scope]?.patch ?? '')
-          : '',
-        loaded: Boolean(
-          isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope) && current[scope]?.loaded,
-        ),
-        refreshing: true,
-        error: null,
-        baseRef: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
-          ? current[scope]?.baseRef
-          : undefined,
-        headRef: isGitChangesSnapshotForIdentity(current[scope], gitCwd, scope)
-          ? current[scope]?.headRef
-          : undefined,
-      },
-    }))
-
-    void withTimeout(
-      projectOpenDesktopClient.sync.gitReadChanges({
-        projectPath: gitCwd,
-        scope,
-      }),
-      GIT_CHANGES_LOAD_TIMEOUT_MS,
-      'Git changes timed out.',
-    )
-      .then((result) => {
-        if (!mountedRef.current) return
-
-        setCache((current) => {
-          const existing = current[scope]
-          const resultCacheKey = getUsableGitChangesResultCacheKey({
-            existing,
-            requestCacheKey: cacheKey,
-            gitCwd,
-            scope,
-          })
-          if (!existing || !resultCacheKey) {
-            return current
-          }
-
-          if (!result.success) {
-            const hasPreviousDiff = existing.loaded
-            return {
-              ...current,
-              [scope]: {
-                ...existing,
-                loaded: hasPreviousDiff,
-                refreshing: false,
-                error: hasPreviousDiff
-                  ? null
-                  : formatGitChangesLoadError(result.error, 'Failed to load git changes.'),
-              },
-            }
-          }
-
-          return {
-            ...current,
-            [scope]: {
-              cacheKey: resultCacheKey,
-              files: result.files,
-              patch: result.diff ?? '',
-              loaded: true,
-              refreshing: false,
-              error: null,
-              baseRef: result.baseRef,
-              headRef: result.headRef,
-            },
-          }
-        })
-      })
-      .catch((requestError) => {
-        if (!mountedRef.current) return
-
-        setCache((current) => {
-          const existing = current[scope]
-          const resultCacheKey = getUsableGitChangesResultCacheKey({
-            existing,
-            requestCacheKey: cacheKey,
-            gitCwd,
-            scope,
-          })
-          if (!existing || !resultCacheKey) {
-            return current
-          }
-
-          const hasPreviousDiff = existing.loaded
-          return {
-            ...current,
-            [scope]: {
-              ...existing,
-              loaded: hasPreviousDiff,
-              refreshing: false,
-              error: hasPreviousDiff
-                ? null
-                : formatGitChangesLoadError(requestError, 'Failed to load git changes.'),
-            },
-          }
-        })
-      })
-      .finally(() => {
-        requestedKeysRef.current.delete(cacheKey)
-      })
-  }, [gitCwd, refreshKey, scope])
-
-  const activeCacheKey =
-    gitCwd && scope ? buildGitChangesSnapshotCacheKey({ gitCwd, scope, refreshKey }) : null
-  const activeSnapshot = scope ? cache[scope] : null
-  const active =
-    activeSnapshot && activeSnapshot.cacheKey === activeCacheKey
-      ? activeSnapshot
-      : gitCwd && scope && isGitChangesSnapshotForIdentity(activeSnapshot, gitCwd, scope) && activeSnapshot.loaded
-        ? { ...activeSnapshot, refreshing: true }
-      : EMPTY_GIT_CHANGES_SNAPSHOT
-
-  return { active, cache }
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -812,7 +594,6 @@ function useCheckpointPatch(input: {
     }
 
     let cancelled = false
-    let retryTimer: number | null = null
     const cacheKey = buildCheckpointPatchCacheKey({
       gitCwd,
       groupId,
@@ -847,52 +628,32 @@ function useCheckpointPatch(input: {
       }
     })
 
-    const loadPatch = (attempt: number) => {
-      void loadCheckpointPatch({
-        gitCwd,
-        groupId,
-        previousCheckpointGroupId,
+    void loadCheckpointPatch({
+      gitCwd,
+      groupId,
+      previousCheckpointGroupId,
+    })
+      .then((entry) => {
+        if (cancelled) return
+        setState({
+          cacheKey,
+          patch: entry.patch,
+          parsedFiles: entry.parsedFiles,
+          patchError: null,
+        })
       })
-        .then((entry) => {
-          if (cancelled) return
-          setState({
-            cacheKey,
-            patch: entry.patch,
-            parsedFiles: entry.parsedFiles,
-            patchError: null,
-          })
+      .catch((error) => {
+        if (cancelled) return
+        setState({
+          cacheKey,
+          patch: null,
+          parsedFiles: [],
+          patchError: error instanceof Error ? error.message : failedToLoadPatchMessage,
         })
-        .catch((error) => {
-          if (cancelled) return
-
-          const message = error instanceof Error ? error.message : failedToLoadPatchMessage
-          if (
-            isCheckpointRefUnavailableError(message) &&
-            attempt < CHECKPOINT_REF_UNAVAILABLE_RETRY_LIMIT
-          ) {
-            retryTimer = window.setTimeout(
-              () => loadPatch(attempt + 1),
-              CHECKPOINT_REF_UNAVAILABLE_RETRY_DELAY_MS * (attempt + 1),
-            )
-            return
-          }
-
-          setState({
-            cacheKey,
-            patch: null,
-            parsedFiles: [],
-            patchError: isCheckpointRefUnavailableError(message) ? null : message,
-          })
-        })
-    }
-
-    loadPatch(0)
+      })
 
     return () => {
       cancelled = true
-      if (retryTimer !== null) {
-        window.clearTimeout(retryTimer)
-      }
     }
   }, [
     failedToLoadPatchMessage,
@@ -1053,7 +814,7 @@ function ChangesFileDiffList({ children }: { children: React.ReactNode }) {
   return (
     <Virtualizer
       className="min-h-0 flex-1 overflow-y-auto bg-card"
-      contentClassName="flex min-h-full flex-col"
+      contentClassName="flex min-h-full flex-col -space-y-2"
       config={{
         overscrollSize: 600,
         intersectionObserverMargin: 1200,
@@ -1071,8 +832,9 @@ const FileDiffsView = memo(function FileDiffsView(props: {
   selectedFilePath: string | null
   diffStyle: ChangesDiffStyle
   codeSearchQuery: string
+  emptyStateNode?: ReactNode
 }) {
-  const { parsedFiles, loaded, patchError, selectedFilePath, diffStyle, codeSearchQuery } = props
+  const { parsedFiles, loaded, patchError, selectedFilePath, diffStyle, codeSearchQuery, emptyStateNode } = props
 
   const searchableFileDiffs = useMemo(() => toSearchableFileDiffs(parsedFiles), [parsedFiles])
   const visibleFileDiffs = useMemo(() => {
@@ -1092,19 +854,18 @@ const FileDiffsView = memo(function FileDiffsView(props: {
   }
 
   if (!loaded) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        Preparing diff...
-      </div>
-    )
+    return null
   }
 
   if (visibleFileDiffs.length === 0) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        {codeSearchQuery ? 'No matching diff lines.' : 'No changes in this scope.'}
-      </div>
-    )
+    if (codeSearchQuery) {
+      return (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          No matching diff lines.
+        </div>
+      )
+    }
+    return <>{emptyStateNode ?? <div className="min-h-0 flex-1" />}</>
   }
 
   return (
@@ -1161,10 +922,6 @@ const HistoryChangeGroupDiffs = memo(function HistoryChangeGroupDiffs(props: {
   const renderHeaderPrefix = useCallback(() => <ChangeGroupHeaderPrefix group={group} />, [group])
 
   if (patchError) {
-    if (isCheckpointRefUnavailableError(patchError)) {
-      return null
-    }
-
     return (
       <div className="min-w-0 bg-card">
         <div className="flex min-h-10 items-center gap-2 px-3 py-2">
@@ -1240,8 +997,9 @@ const ParsedPatchDiffView = memo(function ParsedPatchDiffView(props: {
   selectedFilePath: string | null
   diffStyle: ChangesDiffStyle
   codeSearchQuery: string
+  emptyStateNode?: ReactNode
 }) {
-  const { patch, loaded, patchError, cacheScope, selectedFilePath, diffStyle, codeSearchQuery } = props
+  const { patch, loaded, patchError, cacheScope, selectedFilePath, diffStyle, codeSearchQuery, emptyStateNode } = props
   const parsedFiles = useMemo(() => {
     if (!loaded || patch === null || !patch.trim()) return []
     const normalizedPatch = patch.trim()
@@ -1259,6 +1017,7 @@ const ParsedPatchDiffView = memo(function ParsedPatchDiffView(props: {
       selectedFilePath={selectedFilePath}
       diffStyle={diffStyle}
       codeSearchQuery={codeSearchQuery}
+      emptyStateNode={emptyStateNode}
     />
   )
 })
@@ -1270,6 +1029,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
   codeSearchQuery: string
   latestGroup: ChangeGroup | null
   previousCheckpointGroupId: string | null
+  emptyStateNode?: ReactNode
 }) {
   const {
     gitCwd,
@@ -1278,6 +1038,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
     codeSearchQuery,
     latestGroup,
     previousCheckpointGroupId,
+    emptyStateNode,
   } = props
   const [patch, setPatch] = useState<string | null>(null)
   const [patchError, setPatchError] = useState<string | null>(null)
@@ -1335,6 +1096,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
       selectedFilePath={selectedFilePath}
       diffStyle={diffStyle}
       codeSearchQuery={codeSearchQuery}
+      emptyStateNode={emptyStateNode}
     />
   )
 })
@@ -1373,73 +1135,33 @@ export function ChangesPage(_props: ChangesPageProps) {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [fileFilterQuery, setFileFilterQuery] = useState("");
   const [codeSearchQuery, setCodeSearchQuery] = useState("");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const viewMode = useChangesSidebarStore((state) => state.viewMode);
+  const setViewMode = useChangesSidebarStore((state) => state.actions.setViewMode);
   const [diffStyle, setDiffStyle] = useState<ChangesDiffStyle>('unified');
   const [changesScope, setChangesScope] = useState<ChangesScope>('current');
-  const [gitRefreshKey, setGitRefreshKey] = useState(0);
-  const gitRefreshTimerRef = useRef<number | null>(null);
   const debouncedCodeSearchQuery = useDebouncedValue(codeSearchQuery, 120);
   const activeGitScope: GitChangesScope | null =
     changesScope === 'current' || changesScope === 'branch' ? changesScope : null;
-  const { active: activeGitChanges, cache: gitChangesCache } = useActiveGitChanges(
-    gitCwd,
-    activeGitScope,
-    gitRefreshKey,
-  );
 
-  const scheduleGitChangesRefresh = useCallback(() => {
-    if (gitRefreshTimerRef.current !== null) {
-      window.clearTimeout(gitRefreshTimerRef.current);
-    }
+  const projectState = useGitChangesStore((state) => gitCwd ? state.projects[gitCwd] : undefined)
+  const currentSnapshot = projectState?.current?.snapshot
+  const branchSnapshot = projectState?.branch?.snapshot
+  const activeGitChanges = activeGitScope === 'current' ? currentSnapshot : activeGitScope === 'branch' ? branchSnapshot : null
 
-    gitRefreshTimerRef.current = window.setTimeout(() => {
-      gitRefreshTimerRef.current = null;
-      setGitRefreshKey((key) => key + 1);
-    }, 120);
-  }, []);
+  const watchGitStatus = useGitChangesStore((state) => state.actions.watchGitStatus)
 
   useEffect(() => {
-    return () => {
-      if (gitRefreshTimerRef.current !== null) {
-        window.clearTimeout(gitRefreshTimerRef.current);
-        gitRefreshTimerRef.current = null;
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!gitCwd) return;
-
-    let disposed = false;
-    void window.electronAPI.sync
-      .subscribeGitDirtyState({ projectPath: gitCwd })
-      .then(() => {
-        if (!disposed) {
-          scheduleGitChangesRefresh();
-        }
-      })
-      .catch(() => undefined);
-
-    const unsubscribeChange = window.electronAPI.sync.onGitDirtyStateChange((snapshot) => {
-      if (snapshot.projectPath === gitCwd) {
-        scheduleGitChangesRefresh();
-      }
-    });
-
-    return () => {
-      disposed = true;
-      unsubscribeChange();
-      void window.electronAPI.sync.unsubscribeGitDirtyState({ projectPath: gitCwd }).catch(() => undefined);
-    };
-  }, [gitCwd, scheduleGitChangesRefresh]);
+    if (!gitCwd || !activeGitScope) return
+    return watchGitStatus(gitCwd, activeGitScope)
+  }, [gitCwd, activeGitScope, watchGitStatus])
 
   const currentFiles = useMemo(
-    () => (gitChangesCache.current?.files ?? []).map(gitFileToTreeFile),
-    [gitChangesCache.current],
+    () => (currentSnapshot?.files ?? []).map(gitFileToTreeFile),
+    [currentSnapshot],
   );
   const branchFiles = useMemo(
-    () => (gitChangesCache.branch?.files ?? []).map(gitFileToTreeFile),
-    [gitChangesCache.branch],
+    () => (branchSnapshot?.files ?? []).map(gitFileToTreeFile),
+    [branchSnapshot],
   );
 
   const activeFiles: readonly ChangedFilesTreeFile[] = useMemo(() => {
@@ -1459,14 +1181,14 @@ export function ChangesPage(_props: ChangesPageProps) {
 
   const activeFilesLoaded =
     changesScope === 'current'
-      ? activeGitChanges.loaded || !gitCwd
+      ? activeGitChanges?.loaded || !gitCwd
       : changesScope === 'branch'
-        ? activeGitChanges.loaded || !gitCwd
+        ? activeGitChanges?.loaded || !gitCwd
         : hasActivityLoaded;
   const activeGitChangesError = !gitCwd
     ? 'Project path is unavailable.'
-    : activeGitChanges.error;
-  const activeGitChangesLoaded = !gitCwd || activeGitChanges.loaded;
+    : activeGitChanges?.error ?? null;
+  const activeGitChangesLoaded = !gitCwd || (activeGitChanges?.loaded ?? false);
 
   const visibleFiles = useMemo(() => {
     if (!fileFilterQuery.trim()) return activeFiles;
@@ -1486,17 +1208,13 @@ export function ChangesPage(_props: ChangesPageProps) {
     }
   }, [activeFilePathSet, selectedFilePath]);
 
-  const handleFileFilterChange = useCallback((filePath: string | null) => {
-    setSelectedFilePath(filePath);
-  }, []);
-
   const { setChromeControlsNode, setChromeTitleContent, setDockviewMinimumWidth } = _props;
 
   const scopeOptions = useMemo<ScopeOption[]>(() => [
     {
       value: 'current',
       label: 'Current',
-      count: gitChangesCache.current?.loaded ? gitChangesCache.current.files.length : null,
+      count: currentSnapshot?.loaded ? currentSnapshot.files.length : null,
     },
     {
       value: 'lastTurn',
@@ -1506,7 +1224,7 @@ export function ChangesPage(_props: ChangesPageProps) {
     {
       value: 'branch',
       label: 'Branch',
-      count: gitChangesCache.branch?.loaded ? gitChangesCache.branch.files.length : null,
+      count: branchSnapshot?.loaded ? branchSnapshot.files.length : null,
     },
     {
       value: 'history',
@@ -1514,20 +1232,16 @@ export function ChangesPage(_props: ChangesPageProps) {
       count: hasActivityLoaded ? historyFiles.length : null,
     },
   ], [
-    gitChangesCache.branch,
-    gitChangesCache.current,
+    branchSnapshot,
+    currentSnapshot,
     hasActivityLoaded,
     historyFiles.length,
     lastTurnFiles.length,
   ]);
 
   useLayoutEffect(() => {
-    setDockviewMinimumWidth?.(
-      sidebarCollapsed
-        ? CHANGES_TILE_MIN_WIDTH_COLLAPSED
-        : CHANGES_TILE_MIN_WIDTH_EXPANDED,
-    );
-  }, [setDockviewMinimumWidth, sidebarCollapsed]);
+    setDockviewMinimumWidth?.(CHANGES_TILE_MIN_WIDTH_COLLAPSED);
+  }, [setDockviewMinimumWidth]);
 
   useLayoutEffect(() => {
     if (!setChromeTitleContent) return;
@@ -1551,46 +1265,21 @@ export function ChangesPage(_props: ChangesPageProps) {
     if (!setChromeControlsNode) return;
 
     setChromeControlsNode(
-      <div className="flex h-full w-full items-center gap-2 px-1">
-        <div className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-border/40 bg-muted/60 transition-colors focus-within:border-border/60 focus-within:bg-background">
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed(prev => !prev)}
-            className="flex h-full w-7 shrink-0 items-center justify-center rounded-l-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-            aria-label={sidebarCollapsed ? "Expand files sidebar" : "Collapse files sidebar"}
-          >
-            <HugeiconsIcon icon={__SidebarHugeIcon} className="size-4" />
-          </button>
-          <HugeiconsIcon
-            icon={__SearchHugeIcon}
-            className="pointer-events-none ml-1 size-3.5 shrink-0 text-muted-foreground/70"
-          />
-          <input
-            value={codeSearchQuery}
-            onChange={(e) => setCodeSearchQuery(e.target.value)}
-            placeholder="Search within code"
-            className="h-full min-w-0 flex-1 bg-transparent px-2 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/70"
-          />
-          <button
-            type="button"
-            onClick={() => setDiffStyle((prev) => prev === 'split' ? 'unified' : 'split')}
-            className="flex h-full w-7 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-            title={diffStyle === 'split' ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
-            aria-label={diffStyle === 'split' ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
-          >
-            <HugeiconsIcon icon={diffStyle === 'split' ? __StackedViewHugeIcon : __SplitViewHugeIcon} className="size-4" />
-          </button>
-          <button
-            type="button"
-            className="flex h-full w-7 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-            aria-label="Settings"
-          >
-            <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="size-4" />
-          </button>
-        </div>
-      </div>
+      <ChangesHeaderControls
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        searchQuery={viewMode === 'tree' ? fileFilterQuery : codeSearchQuery}
+        setSearchQuery={viewMode === 'tree' ? setFileFilterQuery : setCodeSearchQuery}
+        diffStyle={diffStyle}
+        setDiffStyle={setDiffStyle}
+        onRefresh={() => {
+          if (gitCwd && activeGitScope) {
+            window.electronAPI.sync.subscribeGitChanges({ projectPath: gitCwd, scope: activeGitScope }).catch(() => {})
+          }
+        }}
+      />
     );
-  }, [setChromeControlsNode, sidebarCollapsed, codeSearchQuery, diffStyle, t]);
+  }, [setChromeControlsNode, codeSearchQuery, diffStyle, viewMode, activeGitScope, gitCwd]);
 
   const filteredGroups = useMemo(() => {
     if (!selectedFilePath) return groups;
@@ -1612,58 +1301,20 @@ export function ChangesPage(_props: ChangesPageProps) {
             </div>
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
-              <div
-                className="flex flex-col shrink-0 overflow-hidden border-r border-border/70 will-change-transform"
-                style={{
-                  width: 260,
-                  transform: sidebarCollapsed ? 'translateX(-100%)' : 'translateX(0)',
-                  marginRight: sidebarCollapsed ? -260 : 0,
-                  transition: 'transform 150ms ease-out, margin-right 150ms ease-out',
-                }}
-              >
-                 <div className="p-4 pb-0 shrink-0">
-                   <div className="mb-3 flex items-center">
-                     <label className="relative flex h-8 min-w-0 flex-1 items-center rounded-md border border-border/40 bg-muted/60 transition-colors focus-within:border-border/60 focus-within:bg-background">
-                       <HugeiconsIcon
-                         icon={__SearchHugeIcon}
-                         className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground/70"
-                       />
-                       <input
-                         value={fileFilterQuery}
-                         onChange={(event) => setFileFilterQuery(event.target.value)}
-                         placeholder={t('changes.placeholder.filterFiles')}
-                         className="h-full min-w-0 flex-1 bg-transparent pl-7 pr-8 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
-                       />
-                       <button
-                         type="button"
-                         className="absolute right-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                         aria-label={t('changes.action.filterFiles')}
-                       >
-                         <HugeiconsIcon icon={__FilterHugeIcon} className="size-3.5" />
-                       </button>
-                     </label>
-                   </div>
-                 </div>
-                 <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-4">
-                   {visibleFiles.length > 0 ? (
-                     <ChangedFilesTree
-                       files={visibleFiles}
-                       allDirectoriesExpanded={true}
-                       onFileFilterChange={handleFileFilterChange}
-                       selectedFilePath={selectedFilePath}
-                     />
-	                   ) : activeFilesLoaded ? (
-	                     <div className="px-4 py-3 text-xs text-muted-foreground">
-	                       {t('changes.empty.noMatchingFiles')}
-	                     </div>
-	                   ) : (
-	                     <div className="px-4 py-3 text-xs text-muted-foreground">
-	                       Loading files...
-	                     </div>
-	                   )}
-                 </div>
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col bg-background">
+              {viewMode === 'tree' ? (
+                <div className="flex w-full min-w-0 flex-1 flex-col bg-background">
+                  <ChangesTreeView
+                    visibleFiles={visibleFiles}
+                    activeFilesLoaded={activeFilesLoaded}
+                    selectedFilePath={selectedFilePath}
+                    onFileFilterChange={(path) => {
+                      setSelectedFilePath(path)
+                      if (path) setViewMode('diff')
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="flex min-w-0 flex-1 flex-col bg-background">
 	                {changesScope === 'history' ? (
 	                  filteredGroups.length > 0 ? (
 	                    <HistoryChangesView
@@ -1697,19 +1348,42 @@ export function ChangesPage(_props: ChangesPageProps) {
                     previousCheckpointGroupId={
                       latestGroup ? (previousCheckpointGroupIds.get(latestGroup.groupId) ?? null) : null
                     }
+                    emptyStateNode={
+                      <ChangesEmptyState
+                        icon={__ChatHugeIcon}
+                        title="No changes last turn"
+                        subtitle="The last agent response made no file edits."
+                      />
+                    }
                   />
                 ) : (
                   <ParsedPatchDiffView
-                    patch={activeGitChanges.patch}
+                    patch={activeGitChanges?.patch ?? null}
                     loaded={activeGitChangesLoaded}
                     patchError={activeGitChangesError}
                     cacheScope={`changes:${changesScope}`}
                     selectedFilePath={selectedFilePath}
                     diffStyle={diffStyle}
                     codeSearchQuery={debouncedCodeSearchQuery}
+                    emptyStateNode={
+                      changesScope === 'branch' ? (
+                        <ChangesEmptyState
+                          icon={__BranchHugeIcon}
+                          title="No branch changes"
+                          subtitle="This branch has no changes from its base."
+                        />
+                      ) : (
+                        <ChangesEmptyState
+                          icon={__CleanHugeIcon}
+                          title="Working tree clean"
+                          subtitle="All changes have been committed."
+                        />
+                      )
+                    }
                   />
                 )}
               </div>
+              )}
             </div>
           )}
         </div>

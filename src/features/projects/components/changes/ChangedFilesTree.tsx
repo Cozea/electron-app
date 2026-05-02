@@ -172,15 +172,11 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
         return;
       }
 
-      if (
-        clickedPath &&
-        clickedPath === selectedFilePath &&
-        filePathSetRef.current.has(clickedPath)
-      ) {
-        onFileFilterChangeRef.current(null);
+      if (clickedPath && filePathSetRef.current.has(clickedPath)) {
+        onFileFilterChangeRef.current(clickedPath);
       }
     },
-    [selectedFilePath, syncModelSelectionToFilter],
+    [syncModelSelectionToFilter],
   );
 
   useEffect(() => {

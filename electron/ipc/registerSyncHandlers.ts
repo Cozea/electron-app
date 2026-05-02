@@ -13,7 +13,7 @@ import {
   normalizeSyncPath,
   type SyncOpRecord,
 } from '../services/syncJournalStore'
-import { GitDirtyStateService } from '../services/GitDirtyStateService'
+import { GitChangesBroadcaster } from '../services/GitChangesBroadcaster'
 import { GitSyncService } from '../services/gitSyncService'
 import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
@@ -24,7 +24,7 @@ function sha256Hex(content: Buffer | Uint8Array): string {
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
   const gitSyncService = GitSyncService.getInstance()
-  const gitDirtyStateService = GitDirtyStateService.getInstance()
+  const gitDirtyStateService = GitChangesBroadcaster.getInstance()
   const checkpointWorkerClient = CheckpointWorkerClient.getInstance()
 
   ipcMain.handle(

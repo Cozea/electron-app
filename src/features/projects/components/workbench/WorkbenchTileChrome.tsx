@@ -40,7 +40,7 @@ interface WorkbenchTileChromeProps {
   chromeVariant?: "bar" | "pill"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator" | "changes"
+  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
   assistantProvider?: string | null
   titleContent?: ReactNode
   titlePillClassName?: string

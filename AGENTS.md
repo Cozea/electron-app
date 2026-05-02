@@ -4,14 +4,17 @@ This file provides instructions for AI coding agents working on this project.
 
 ## Project Overview
 
-This is an Electron desktop application with a React frontend and Convex backend. It features AI-powered project creation through a conversational wizard that generates structured project plans.
+This is an Electron desktop application with a React frontend and Convex backend. It provides a collaborative AI-assisted development environment — a multi-pane workbench (file editor, AI chat, terminal, browser preview) with real-time collaborative editing powered by Yjs.
 
 **Tech Stack:**
-- **Frontend**: React, TypeScript, Vite, TailwindCSS, shadcn/ui
-- **Desktop**: Electron
-- **Backend**: Convex (real-time database), Fastify (API gateway)
+- **Frontend**: React 19, TypeScript, Vite, TailwindCSS v4, shadcn/ui, Radix UI
+- **Routing**: TanStack Router
+- **Desktop**: Electron 40 + electron-vite
+- **Backend**: Convex (real-time serverless database)
+- **AI Runtime**: Local WebSocket server (`electron/assistant-runtime/`) built with Effect-TS; providers: Claude Agent SDK, OpenAI Codex, opencode, Cursor
 - **Auth**: WorkOS (SSO, organizations)
-- **AI**: AI SDK (Vercel), multi-provider (Anthropic, OpenAI, Google)
+- **Collab**: Yjs CRDTs with E2E encryption
+- **Package manager**: Bun (always use `bun` instead of npm/yarn/pnpm)
 
 > **Note**: Use web search to find current versions and documentation. Do not hardcode specific version numbers.
 
@@ -44,7 +47,6 @@ bun run build
 
 Tagged releases are built by GitHub Actions and published as GitHub Releases in the **distribution repo**.
 Main-branch cloud releases can also be built by CircleCI and uploaded to Cloudflare R2 for Electron auto-updates.
-Codemagic can run the same main-branch and tag-based Cloudflare R2 release path when CircleCI credits are unavailable.
 The fast agent-facing summary lives here; the fuller operator guide is in `docs/release-process.md`.
 
 ### Source vs Distribution Repos
@@ -69,7 +71,6 @@ The fast agent-facing summary lives here; the fuller operator guide is in `docs/
 
 Workflow file: `.github/workflows/release.yml`
 CircleCI workflow file: `.circleci/config.yml`
-Codemagic workflow file: `codemagic.yaml`
 
 ### How To Cut a Release (Example)
 
@@ -92,9 +93,7 @@ git push origin v0.0.8
 `electron-builder` is configured to publish to `cozea-prod` (see `electron-builder.config.cjs`). The release assets typically include:
 
 - `Cozea-X.Y.Z-arm64.dmg` (primary macOS installer)
-- `Cozea-X.Y.Z.dmg` or `Cozea-X.Y.Z-x64.dmg` (Intel macOS installer, depending on Electron Builder artifact naming)
 - `Cozea-X.Y.Z-arm64-mac.zip` (alternate download)
-- `Cozea-X.Y.Z-mac.zip` or `Cozea-X.Y.Z-x64-mac.zip` (Intel alternate download, depending on Electron Builder artifact naming)
 - `latest-mac.yml` and blockmaps (auto-updater metadata)
 
 ### Required CI Configuration
@@ -114,10 +113,6 @@ CircleCI expects a context named `cozea-release` with:
 - Apple notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD`
 - Optional runtime metadata signing: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`
-
-Codemagic expects an environment variable group named `cozea-release` with the same values as the CircleCI context.
-Codemagic workflows now trigger on pushes to `main` and tags matching `v*`.
-The Codemagic Windows workflow uses `bun ci`; Windows native-module fixes should be committed as Bun patches under `patches/` and registered in `patchedDependencies`, not applied by editing `node_modules` inside the workflow.
 
 ### Local Release (Fallback)
 
@@ -148,24 +143,76 @@ GH_TOKEN="$(gh auth token)" bun run release
 ## Project Structure
 
 ```
-├── src/                    # React frontend
-│   ├── components/         # UI components
-│   │   ├── wizard/         # Project creation wizard
-│   │   ├── assistant/      # AI chat components
-│   │   ├── ai-elements/    # Reusable AI UI primitives
-│   │   └── ui/             # shadcn components
-│   ├── pages/              # Route pages
-│   ├── contexts/           # React contexts
-│   ├── hooks/              # Custom hooks
-│   └── agents/             # Agent runtime utilities
-├── electron/               # Electron main process
-├── convex/                 # Convex backend functions
-│   ├── schema.ts           # Database schema
-│   └── lib/                # Shared utilities
-├── server/                 # Fastify API gateway
-│   └── src/routes/ai.ts    # AI chat endpoints
-└── shared/                 # Shared types
+├── src/                        # React frontend
+│   ├── features/
+│   │   ├── projects/           # Core project feature
+│   │   │   ├── components/     # Project UI (creation dialog, workbench tiles, assistant chat)
+│   │   │   ├── pages/          # Workbench, Tasks, Team, Conflicts pages
+│   │   │   ├── contexts/       # Sync + Yjs context providers
+│   │   │   ├── hooks/          # Session lifecycle, git state, project access
+│   │   │   └── workspaces/     # Workspace runtime store and hosting
+│   │   └── devapps/            # Dev app registry and launchers
+│   ├── components/
+│   │   └── ui/                 # shadcn components
+│   ├── pages/                  # Top-level pages (Login, NewProject)
+│   ├── stores/                 # Zustand stores
+│   └── router/                 # TanStack Router route definitions
+├── electron/                   # Electron main process
+│   ├── assistant-runtime/      # Local WebSocket AI runtime (Effect-TS)
+│   │   ├── orchestration/      # Turn orchestration, session state
+│   │   ├── provider/           # Provider integrations (Claude, Codex, opencode, Cursor)
+│   │   ├── terminal/           # Terminal management
+│   │   └── git/                # Git operations for the runtime
+│   ├── ipc/                    # IPC handler registration (sync, project, session, runtime)
+│   ├── workbench-runtime/      # Terminal + dev server child process
+│   ├── runtime/                # Runtime manifest, installer, resolver
+│   └── services/               # Electron services (sync journal, encryption, etc.)
+├── convex/                     # Convex backend functions
+│   ├── schema.ts               # Database schema
+│   └── lib/                    # Shared utilities
+├── server/                     # Fastify API gateway
+│   └── src/routes/             # AI model catalog, provider helpers, collab gateway
+├── packages/                   # Internal packages (effect-acp, effect-sql, pty)
+└── shared/                     # Shared types (collab protocol, assistant contracts)
 ```
+
+## How Project Creation Works
+
+Project creation is a simple form — there is no conversational wizard or AI involvement at this stage.
+
+**Entry**: `/projects/new?mode=empty` or `mode=local`
+**Component**: `src/pages/NewProject.tsx` → `src/features/projects/components/CreateProjectDialog.tsx`
+
+### Fresh project (`mode=empty`)
+1. User fills in: project name, local folder location, optional GitHub repo toggle
+2. On submit:
+   - IPC creates the folder on disk, runs `git init`, writes `.gitignore`
+   - If GitHub repo requested: runs `gh repo create` via IPC
+   - Convex `projects.create()` mutation creates the DB record (`status: "draft"`, `syncStatus: "local_only"`)
+   - `updateStatus()` mutation moves it to `"active"`
+   - Local path written to `project-path-registry.json` (app data dir) and to `projectMembers.localPath` in Convex
+3. Navigates to `/projects/p/{projectId}/workbench`
+
+### Import existing folder (`mode=local`)
+Same flow but skips folder creation. Inspects existing git state (remote URL, branch, provider) and stores it in `sourceControl` / `repoSource` on the project record with `creationPath: "repo"`.
+
+## How the AI / Workbench Works
+
+The AI chat runs **after** project creation, inside the workbench.
+
+- A local WebSocket server starts at `ws://127.0.0.1:3773` via `electron/assistant-runtime/boot.ts` (Effect-TS)
+- The workbench chat tile (`WorkbenchAssistantChatTile`) connects to this runtime
+- Four provider kinds are supported: `claudeAgent`, `codex`, `opencode`, `cursor`
+- The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
+- Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
+
+## How Collaborative Editing Works
+
+- **Yjs CRDTs** keep files in sync across collaborators in real time
+- Updates are **E2E encrypted** before leaving the device (per-project room keys)
+- Encrypted updates are stored in Convex (`yjsUpdates` table) and snapshotted periodically
+- A SQLite-backed **sync journal** in the main process queues file write ops with idempotency keys
+- Per-file locks (`projectFileLocks`) and tombstones (`fileTombstones`) handle concurrent edit and delete-vs-edit conflicts
 
 ## Code Style
 
@@ -237,7 +284,7 @@ export const create = mutation({
 
 ```shell
 # ✅ Good
-git commit -m "feat: add plan generation to wizard conversation"
+git commit -m "feat: add GitHub repo toggle to project creation dialog"
 
 # ❌ Bad
 git commit -m "Updated stuff"
@@ -249,151 +296,18 @@ git commit -m "Updated stuff"
 - Run `bun run typecheck` before committing
 - Use existing UI components from `src/components/ui/`
 - Follow the established patterns in similar files
+- Use `bun` for all package management and script execution
 
 ### ⚠️ Ask First
 - Adding new dependencies
 - Modifying database schema (`convex/schema.ts`)
 - Changes to authentication flow
 - Modifying Electron main process
+- Changes to the assistant runtime (`electron/assistant-runtime/`)
 
 ### 🚫 Never
 - Commit API keys, secrets, or `.env` files
 - Modify `node_modules/` or generated files (`convex/_generated/`)
 - Remove existing tests without explicit approval
 - Push directly to main branch
-
----
-
-## Agent-Specific Instructions
-
-### Project Wizard Agent (`feature: project-wizard`)
-
-The wizard conversation agent helps users create new projects through natural conversation.
-
-#### Core Responsibilities
-
-1. **Understand the user's project idea** by asking 2-3 clarifying questions
-2. **Use web search** to research current best practices, frameworks, and technologies
-3. **Generate 3 plan tiers** (Prototype, Beta, MVP) with increasing scope
-4. **Output structured plan data** via the `data-plan-options` message part type
-
-#### Web Search Requirements
-
-The wizard agent MUST use web search to:
-- Research current best practices and popular frameworks for the project type
-- Find up-to-date documentation and recommended approaches
-- Validate technology recommendations before suggesting them
-- Discover modern tools and libraries relevant to the user's needs
-
-**Do NOT hardcode specific version numbers** - always use web search to find current versions.
-
-#### Plan Generation Format
-
-When ready to present plans, emit a `data-plan-options` part with this structure:
-
-```typescript
-interface PlanOption {
-  tier: 'prototype' | 'beta' | 'mvp'
-  name: string                    // Project name
-  description: string             // 1-2 sentence summary
-  features: string[]              // 3-6 key features included
-  estimatedScope?: string         // e.g., "~2 days", "~1 week"
-  config: {
-    name?: string
-    description?: string
-    audience?: string
-    template?: string             // saas-dashboard, landing-page, blank
-    stack?: {
-      backend: string             // supabase, convex, firebase
-      hosting: string             // vercel, netlify
-      aiProvider: string          // anthropic, openai, google
-    }
-    sourceControl?: {
-      provider: string            // github, gitlab
-      visibility: string          // private, public
-      mergeStrategy: string       // squash, merge
-    }
-    visuals?: {
-      uiLibrary: string           // shadcn, chakra, mui
-      primaryColor: string        // hex color
-      secondaryColor: string
-      accentColor: string
-    }
-    generatedPlan?: {
-      pages: Array<{
-        id: string
-        name: string
-        route: string
-        type: string
-        purpose?: string
-      }>
-      entities: Array<{
-        id: string
-        name: string
-        fields?: string[]
-      }>
-    }
-  }
-}
-```
-
-#### Conversation Guidelines
-
-- **Be conversational** but efficient - ask 2-3 clarifying questions max
-- **Use web search** before making technology recommendations
-- **Infer reasonable defaults** based on the project type
-- **Always generate all 3 tiers** when presenting plans
-- **Prototype**: Minimal viable features, fastest to build
-- **Beta**: Core functionality complete, some polish
-- **MVP**: Production-ready, all requested features
-
-#### Technology Selection Process
-
-1. Ask user about their preferences and constraints
-2. **Search the web** for current best practices for their project type
-3. **Research popular frameworks** and their current status (actively maintained, community size)
-4. Present recommendations based on research, not outdated assumptions
-
-#### Example Flow
-
-```
-User: "I want to build a task management app for small teams"
-
-Agent: "A task management app - great choice! A few quick questions:
-1. Should team members have different roles (admin vs member)?
-2. Do you need real-time collaboration (seeing others' updates live)?
-3. Any integrations in mind (Slack, calendar, etc.)?"
-
-User: "Yes to roles, real-time would be nice, and Slack integration"
-
-Agent: [Generates 3 plan options as data-plan-options part]
-```
-
----
-
-### Project Builder Agent (`feature: project-builder`)
-
-The builder agent executes approved project plans by generating code and files.
-
-#### Core Responsibilities
-
-1. **Execute the approved plan** step by step
-2. **Use web search** to find current documentation and implementation patterns
-3. **Generate clean, maintainable code** following modern best practices
-4. **Report progress** as tasks are completed
-
-#### Web Search Requirements
-
-The builder agent MUST use web search to:
-- Find current API documentation for libraries being used
-- Research implementation patterns and examples
-- Verify compatibility between dependencies
-- Find solutions for common issues and edge cases
-
-#### Guidelines
-
-- Always search for current documentation before implementing
-- Follow the technology choices from the approved plan
-- Generate code with proper error handling and types
-- Use established patterns from the existing codebase
-- ALWAYS use `bun` instead of `npm`, `yarn`, or `pnpm` for project generation and package management (e.g. `bun create vite`, `bun install`, `bun add`).
+- Use `convex dev` — always use `bunx convex deploy`

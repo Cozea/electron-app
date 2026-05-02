@@ -148,7 +148,7 @@ export function TaskFocusOverlay({
           </div>
 
           <div className="flex items-center gap-1">
-            <CollapsibleTrigger asChild>
+            <CollapsibleTrigger render={
               <Button variant="ghost" size="icon-sm" className="group shrink-0">
                 <HugeiconsIcon icon={__ChevronDownHugeIcon}
                   className={cn(
@@ -157,7 +157,7 @@ export function TaskFocusOverlay({
                   )}
                 />
               </Button>
-            </CollapsibleTrigger>
+            } />
             <Button
               variant="ghost"
               size="icon-sm"

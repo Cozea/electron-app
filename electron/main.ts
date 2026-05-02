@@ -17,7 +17,7 @@ import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { AgentToolService } from './services/AgentToolService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
-import { GitDirtyStateService } from './services/GitDirtyStateService'
+import { GitChangesBroadcaster } from './services/GitChangesBroadcaster'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
@@ -1413,7 +1413,7 @@ TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
-GitDirtyStateService.getInstance().registerIpcHandlers(ipcMain)
+GitChangesBroadcaster.getInstance().registerIpcHandlers(ipcMain)
 
 registerCoreHandlers(ipcMain, {
   
@@ -1520,8 +1520,6 @@ app.on('before-quit', () => {
 })
 
 app.on('activate', () => {
-  if (!app.isReady()) return
-
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
