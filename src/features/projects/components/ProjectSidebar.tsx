@@ -32,8 +32,6 @@ import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { buildProjectPath } from "../lib/projectRoutes";
 import { buildWorkbenchHref } from "../lib/lastWorkbenchRoute";
-import { prepareLocalProjectForOpen } from "../lib/projectOpenLocal";
-import { buildProjectLocalPathLookupOptions } from "@/features/projects/lib/projectLocalRootHints";
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
 import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
 import {
@@ -55,7 +53,6 @@ import {
   type PersistedProjectSidebarState,
   writePersistedProjectSidebarState,
 } from "@/features/projects/components/sidebar/projectSidebarState";
-import { formatProjectCloudAccessError } from "../lib/projectCloudAccessPresentation";
 import {
   formatProjectDeleteError,
   formatProjectRenameError,
@@ -65,7 +62,6 @@ import {
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
-import { primeLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
 
@@ -113,7 +109,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentProjectPath = projectRouteContext?.localPath ?? projectSyncContext?.projectPath ?? null;
+  const currentProjectPath = projectRouteContext?.localPath ?? projectSyncContext?.workspaceId ?? null;
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
@@ -138,7 +134,6 @@ export function ProjectSidebar({
   const archiveProject = useMutation(api.projects.archive);
   const restoreProject = useMutation(api.projects.restore);
   const deleteProject = useMutation(api.projects.deleteProject);
-  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath);
   const {
     relinkProjectWorkspace,
     closeProjectWorkspace,
@@ -247,7 +242,7 @@ export function ProjectSidebar({
     activeLane: currentActiveLane,
   } = useProjectLaneState({
     projectId: currentProjectId,
-    projectPath: currentProjectPath,
+    workspaceId: currentProjectPath,
     collabBranch: currentCollabBranch,
   });
   const displayedCurrentLaneState = projectRouteContext?.laneState ?? currentLaneState;
@@ -258,11 +253,11 @@ export function ProjectSidebar({
         selectVisibleActiveWorkbenchTileId(
           currentProjectId,
           displayedCurrentActiveLane?.id ?? null,
-          displayedCurrentActiveLane?.projectPath ?? currentProjectPath,
+          displayedCurrentActiveLane?.workspaceId ?? currentProjectPath,
         ),
       [
         displayedCurrentActiveLane?.id,
-        displayedCurrentActiveLane?.projectPath,
+        displayedCurrentActiveLane?.workspaceId,
         currentProjectId,
         currentProjectPath,
       ],
@@ -305,21 +300,21 @@ export function ProjectSidebar({
       options?: {
         openTile?: "assistantChat" | "terminal";
         focusTileId?: string;
-        projectPath?: string | null;
+        workspaceId?: string | null;
       },
     ) => {
       const workbenchStore = useProjectWorkbenchStore.getState();
-      const workbenchProjectPath =
-        options?.projectPath ??
+      const workbenchWorkspaceId =
+        options?.workspaceId ??
         (project.id === currentProjectId
-          ? (displayedCurrentActiveLane?.projectPath ?? currentProjectPath)
+          ? (displayedCurrentActiveLane?.workspaceId ?? currentProjectPath)
           : null);
-      workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchProjectPath);
+      workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchWorkspaceId);
 
       const ensuredWorkbench = selectProjectWorkbench(
         project.id,
         laneId,
-        workbenchProjectPath,
+        workbenchWorkspaceId,
       )(useProjectWorkbenchStore.getState());
 
       let nextOptions = options;
@@ -346,15 +341,15 @@ export function ProjectSidebar({
           projectId: project.id,
           projectSlug: project.slug,
           projectName: project.name,
-          localPath: workbenchProjectPath,
+          preferredWorkspaceId: workbenchWorkspaceId,
         }),
       });
     },
-    [displayedCurrentActiveLane?.projectPath, currentProjectId, currentProjectPath, navigate],
+    [displayedCurrentActiveLane?.workspaceId, currentProjectId, currentProjectPath, navigate],
   );
 
   const handleSyncCurrentProject = React.useCallback(async () => {
-    if (!projectSyncContext?.projectPath) {
+    if (!projectSyncContext?.workspaceId) {
       return;
     }
 
@@ -413,67 +408,31 @@ export function ProjectSidebar({
   const showInSidebarSidebarTrigger = isMobile ? openMobile : state === "expanded";
 
   const handleOpenProject = React.useCallback(
-    async (project: SidebarProjectItem, localPath: string | null) => {
-      try {
-        const localOpenResult = await prepareLocalProjectForOpen({
-          project,
-          localPath,
-          userId: convexUserId,
-          updateMemberLocalPath: convexUserId ? updateMemberLocalPath : undefined,
-        });
-
-        primeLocalProjectPath(project.id, localOpenResult.localPath, project.slug);
-        navigate(buildProjectPath(project.id, "workbench"), {
-          state: buildProjectRouteNavigationState({
-            projectId: project.id,
-            projectSlug: project.slug,
-            projectName: project.name,
-            localPath: localOpenResult.localPath,
-          }, {
-            projectTemplate: project.template ?? undefined,
-          }),
-        });
-      } catch (error) {
-        const presentation = formatProjectCloudAccessError(error, "Failed to prepare project");
-        const response = await window.electronAPI.dialog.showMessageBox({
-          type: presentation.isAccessError ? "warning" : "error",
-          buttons: presentation.actionHref
-            ? ["OK", presentation.actionLabel ?? "Open Settings"]
-            : ["OK"],
-          defaultId: 0,
-          cancelId: 0,
-          title: presentation.summary,
-          message: presentation.summary,
-          detail: presentation.detail ?? "",
-          noLink: true,
-        });
-
-        if (presentation.actionHref && response.response === 1) {
-          navigate(presentation.actionHref);
-        }
-      }
+    async (project: SidebarProjectItem) => {
+      navigate(buildProjectPath(project.id, "workbench"), {
+        state: buildProjectRouteNavigationState({
+          projectId: project.id,
+          projectSlug: project.slug,
+          projectName: project.name,
+        }, {
+          projectTemplate: project.template ?? undefined,
+        }),
+      });
     },
-    [convexUserId, navigate, updateMemberLocalPath],
+    [navigate],
   );
 
   const handleOpenProjectFolder = React.useCallback(
-    async (project: SidebarProjectItem, localPath: string | null) => {
+    async (project: SidebarProjectItem) => {
       try {
-        const resolvedLocalPath = await window.electronAPI.project.getLocalPath(
-          buildProjectLocalPathLookupOptions({
-            project,
-            localPathHint: localPath,
-          }),
-        );
+        const workspace = await window.electronAPI.workspace!.getActiveForProject(project.id);
 
-        if (!resolvedLocalPath) {
+        if (!workspace) {
           throw new Error("Project folder is not available on this device.");
         }
 
-        primeLocalProjectPath(project.id, resolvedLocalPath, project.slug);
-
         const result = await window.electronAPI.project.openFolder({
-          projectPath: resolvedLocalPath,
+          workspaceId: workspace.workspaceId,
         });
 
         if (!result.success) {

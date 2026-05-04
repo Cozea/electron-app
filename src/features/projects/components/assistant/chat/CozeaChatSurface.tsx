@@ -151,7 +151,7 @@ function filterSlashItems<T extends { label: string; description: string }>(
 interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
   runtimeErrorMessage: string | null
-  projectPath: string | null
+  workspaceId: string | null
   thread: Thread | null
   providerSnapshot: ServerProvider | null
   isRunning: boolean
@@ -541,8 +541,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isComposerApprovalState ||
     activePendingUserInput !== null
   const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`
-  const markdownCwd = props.thread?.worktreePath ?? props.projectPath ?? undefined
-  const workspaceRoot = props.projectPath ?? undefined
+  const markdownCwd = props.thread?.worktreePath ?? props.workspaceId ?? undefined
+  const workspaceRoot = props.workspaceId ?? undefined
   const threadRuntimeBannerState = props.isInterrupting
     ? "interrupting"
     : phase === "error" || phase === "interrupted" || phase === "connecting"
@@ -701,16 +701,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   }, [props.pendingUserInputs])
 
   useEffect(() => {
-    if (!composerPathTrigger || !props.projectPath) {
+    if (!composerPathTrigger || !props.workspaceId) {
       setComposerPathMenuItems([])
       setIsComposerMenuLoading(false)
       return
     }
-    const projectPath = props.projectPath
+    const workspaceId = props.workspaceId
 
     const normalizedQuery = composerPathTrigger.query.trim()
     const effectiveQuery = normalizedQuery.length > 0 ? normalizedQuery : "."
-    const cacheKey = `${projectPath}::${effectiveQuery.toLowerCase()}`
+    const cacheKey = `${workspaceId}::${effectiveQuery.toLowerCase()}`
     const cached = composerQueryCacheRef.current.get(cacheKey)
     if (cached) {
       setComposerPathMenuItems(cached)
@@ -725,7 +725,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         try {
           const api = ensureNativeApi()
           const result = await api.projects.searchEntries({
-            cwd: projectPath,
+            cwd: workspaceId,
             query: effectiveQuery,
             limit: 80,
           })
@@ -752,7 +752,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [composerPathTrigger, props.projectPath])
+  }, [composerPathTrigger, props.workspaceId])
 
   useEffect(() => {
     if (!composerMenuOpen) {
@@ -1535,7 +1535,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             : undefined
         }
       >
-        {!props.projectPath ? (
+        {!props.workspaceId ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">
               This agent tile needs a local project path before it can start a thread.

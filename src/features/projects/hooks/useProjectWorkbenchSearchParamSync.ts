@@ -70,7 +70,7 @@ interface UseProjectWorkbenchSearchParamSyncProps {
   projectId: string | null
   activeLaneId: string
   collabBranch: string
-  projectPath: string | null
+  workspaceId: string | null
   searchParams: URLSearchParams
   replaceSearchParams: (nextParams: URLSearchParams) => void
   refreshLaneState: () => Promise<unknown>
@@ -87,7 +87,7 @@ export function useProjectWorkbenchSearchParamSync(
     projectId,
     activeLaneId,
     collabBranch,
-    projectPath,
+    workspaceId,
     searchParams,
     replaceSearchParams,
     refreshLaneState,
@@ -117,7 +117,7 @@ export function useProjectWorkbenchSearchParamSync(
           projectId,
           laneId: laneIdToActivate,
           collabBranch,
-          projectPath,
+          workspaceId,
         })
 
         if (!isCancelled) {
@@ -131,7 +131,7 @@ export function useProjectWorkbenchSearchParamSync(
     return () => {
       isCancelled = true
     }
-  }, [activeLaneId, collabBranch, projectId, projectPath, refreshLaneState, searchParams])
+  }, [activeLaneId, collabBranch, projectId, workspaceId, refreshLaneState, searchParams])
 
   useEffect(() => {
     if (!projectId) return
@@ -169,7 +169,7 @@ export function useProjectWorkbenchSearchParamSync(
       selectProjectWorkbench(
         projectId,
         activeLaneId,
-        projectPath,
+        workspaceId,
       )(useProjectWorkbenchStore.getState())
 
     if (!liveWorkbench) {
@@ -184,7 +184,7 @@ export function useProjectWorkbenchSearchParamSync(
     nextParams.delete("lane")
     nextParams.delete("focusTile")
     replaceSearchParams(nextParams)
-  }, [activeLaneId, focusWorkbenchTile, projectId, projectPath, replaceSearchParams, searchParams])
+  }, [activeLaneId, focusWorkbenchTile, projectId, workspaceId, replaceSearchParams, searchParams])
 
   useEffect(() => {
     if (!projectId) return

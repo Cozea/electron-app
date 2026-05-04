@@ -14,7 +14,7 @@ import {
 interface UseIosNativePreviewOptions {
   scopeKey: string
   enabled: boolean
-  projectPath: string | null
+  workspaceId: string | null
   serverStatus: ServerStatus
   keepAliveOnUnmount?: boolean
 }
@@ -24,11 +24,11 @@ function isPreviewSessionWanted(serverStatus: ServerStatus): boolean {
 }
 
 function buildLocator(
-  projectPath: string,
+  workspaceId: string,
   device: NativePreviewIosSimulatorDevice
 ): NativePreviewSessionLocator {
   return {
-    projectPath,
+    workspaceId,
     deviceId: device.udid,
     platform: 'ios',
   }
@@ -37,7 +37,7 @@ function buildLocator(
 export function useIosNativePreview({
   scopeKey,
   enabled,
-  projectPath,
+  workspaceId,
   serverStatus,
   keepAliveOnUnmount = false,
 }: UseIosNativePreviewOptions) {
@@ -59,7 +59,7 @@ export function useIosNativePreview({
   }, [iosSimulators, selectedIosSimulatorId])
 
   const desiredLocator = useMemo(() => {
-    if (!enabled || !projectPath || !selectedSimulator || selectedSimulator.state !== 'Booted') {
+    if (!enabled || !workspaceId || !selectedSimulator || selectedSimulator.state !== 'Booted') {
       return null
     }
 
@@ -67,8 +67,8 @@ export function useIosNativePreview({
       return null
     }
 
-    return buildLocator(projectPath, selectedSimulator)
-  }, [enabled, projectPath, selectedSimulator, serverStatus])
+    return buildLocator(workspaceId, selectedSimulator)
+  }, [enabled, workspaceId, selectedSimulator, serverStatus])
 
   const activeLocatorRef = useRef<NativePreviewSessionLocator | null>(null)
 
@@ -108,7 +108,7 @@ export function useIosNativePreview({
   }, [actions, enabled, keepAliveOnUnmount, scopeKey])
 
   useEffect(() => {
-    if (!enabled || !projectPath || !selectedSimulator) {
+    if (!enabled || !workspaceId || !selectedSimulator) {
       actions.setSessionState(scopeKey, null)
       actions.setSessionError(scopeKey, null)
       return
@@ -116,7 +116,7 @@ export function useIosNativePreview({
 
     let cancelled = false
     void (async () => {
-      const state = await window.electronAPI.nativePreview.getSessionState(buildLocator(projectPath, selectedSimulator))
+      const state = await window.electronAPI.nativePreview.getSessionState(buildLocator(workspaceId, selectedSimulator))
       if (cancelled) {
         return
       }
@@ -126,7 +126,7 @@ export function useIosNativePreview({
     return () => {
       cancelled = true
     }
-  }, [actions, enabled, projectPath, scopeKey, selectedSimulator])
+  }, [actions, enabled, workspaceId, scopeKey, selectedSimulator])
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.nativePreview.onStateChanged((event) => {
@@ -136,7 +136,7 @@ export function useIosNativePreview({
       }
 
       if (
-        event.state?.projectPath === activeLocator.projectPath &&
+        event.state?.workspaceId === activeLocator.workspaceId &&
         event.state?.deviceId === activeLocator.deviceId &&
         event.state?.platform === activeLocator.platform
       ) {
@@ -152,7 +152,7 @@ export function useIosNativePreview({
       if (
         event.state === null &&
         activeLocator &&
-        event.sessionKey === `${activeLocator.platform}:${activeLocator.deviceId}:${activeLocator.projectPath}`
+        event.sessionKey === `${activeLocator.platform}:${activeLocator.deviceId}:${activeLocator.workspaceId}`
       ) {
         actions.setSessionState(scopeKey, null)
       }
@@ -166,10 +166,10 @@ export function useIosNativePreview({
 
     const previousLocator = activeLocatorRef.current
     const previousKey = previousLocator
-      ? `${previousLocator.platform}:${previousLocator.deviceId}:${previousLocator.projectPath}`
+      ? `${previousLocator.platform}:${previousLocator.deviceId}:${previousLocator.workspaceId}`
       : null
     const desiredKey = desiredLocator
-      ? `${desiredLocator.platform}:${desiredLocator.deviceId}:${desiredLocator.projectPath}`
+      ? `${desiredLocator.platform}:${desiredLocator.deviceId}:${desiredLocator.workspaceId}`
       : null
 
     if (previousLocator && previousKey !== desiredKey) {

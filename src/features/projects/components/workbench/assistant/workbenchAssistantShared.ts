@@ -119,12 +119,12 @@ export function getLiveAssistantTile(
   projectId: string,
   laneId: string,
   tileId: string,
-  projectPath: string | null,
+  workspaceId: string | null,
 ): WorkbenchAssistantChatTileRecord | null {
   const workbench = selectProjectWorkbench(
     projectId,
     laneId,
-    projectPath,
+    workspaceId,
   )(useProjectWorkbenchStore.getState())
   const tile = workbench?.tiles[tileId]
   return tile?.type === "assistantChat" ? tile : null
@@ -290,14 +290,14 @@ export function resolveInteractionMode(
 export function findAssistantProjectForTile(
   projects: readonly Project[],
   tile: WorkbenchAssistantChatTileRecord,
-  projectPath: string | null,
+  workspaceId: string | null,
 ): Project | null {
   if (tile.assistantProjectId) {
     return projects.find((project) => project.id === tile.assistantProjectId) ?? null
   }
 
-  if (projectPath) {
-    return projects.find((project) => project.cwd === projectPath) ?? null
+  if (workspaceId) {
+    return projects.find((project) => project.cwd === workspaceId) ?? null
   }
 
   return null

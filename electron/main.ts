@@ -27,12 +27,15 @@ import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
-import { registerSyncHandlers } from './ipc/registerSyncHandlers'
+import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
+import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
+import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
+import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
 import { startAssistantRuntime } from './assistant-runtime/boot'
 import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
 import { waitForHttpReady } from './backendReadiness'
@@ -407,7 +410,7 @@ let gpuDiagnostics: GpuAccelerationDiagnostics = {
 
 function readGpuFeatureStatus(): Record<string, string> {
   try {
-    const rawStatus = app.getGPUFeatureStatus() as Record<string, unknown>
+    const rawStatus = app.getGPUFeatureStatus() as unknown as Record<string, unknown>
     return Object.fromEntries(
       Object.entries(rawStatus).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
     )
@@ -507,7 +510,7 @@ function setAssistantRuntimeStatus(
 }
 
 function formatAssistantRuntimeExitMessage(exit: unknown): string {
-  if (Exit.isFailure(exit)) {
+  if (Exit.isExit(exit) && Exit.isFailure(exit)) {
     return Cause.pretty(exit.cause).trim()
   }
   return 'Local chat runtime stopped.'
@@ -1415,6 +1418,10 @@ CollabEncryptionService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
 GitChangesBroadcaster.getInstance().registerIpcHandlers(ipcMain)
 
+// Override terminal handlers to support workspaceId (UUID) → resolve to
+// real filesystem path before delegating to TerminalService.
+registerTerminalWorkspaceHandlers(ipcMain, TerminalService.getInstance())
+
 registerCoreHandlers(ipcMain, {
   
   
@@ -1471,7 +1478,7 @@ registerProjectHandlers(ipcMain, {
 
 registerRuntimeHandlers(ipcMain)
 
-registerSyncHandlers(ipcMain)
+registerWorkspaceSyncHandlers(ipcMain)
 
 registerYjsHandlers(ipcMain)
 
@@ -1515,7 +1522,7 @@ app.on('before-quit', () => {
   logAssistantBridge('app-before-quit')
   workbenchBrowserService.dispose()
   PreviewSnapshotService.getInstance().dispose()
-  
+  void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
 })
 
@@ -1533,6 +1540,16 @@ app.whenReady().then(() => {
   refreshGpuDiagnostics()
   loadSyncState()
   logBootTiming('sync-state-loaded')
+
+  // Register workspace IPC handlers synchronously so they're available as soon
+  // as the renderer loads. Internally each handler awaits catalog readiness.
+  registerWorkspaceHandlers(ipcMain)
+
+  scheduleBootWork('workspace-catalog-initialized', async () => {
+    await initWorkspaceCatalogRuntime(app.getPath('userData'))
+    logBootTiming('workspace-catalog-initialized')
+  }, 0)
+
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
   createWindow()

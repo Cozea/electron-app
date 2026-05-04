@@ -10,7 +10,7 @@ import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronAp
 
 interface UseWorkbenchBranchControlInput {
   projectId: string | null
-  projectPath: string | null
+  workspaceId: string | null
   collabBranch: string
   laneState: ProjectLaneState | null
   activeLane: ProjectLaneDescriptor | null
@@ -21,12 +21,12 @@ interface GitToolbarSnapshot {
   isRepo: boolean
   branches: NativeGitBranch[]
   currentGitBranch: string | null
-  gitStatus: Awaited<ReturnType<typeof window.electronAPI.sync.gitStatus>> | null
+  gitStatus: Awaited<ReturnType<typeof window.electronAPI.workspaceSync.gitStatus>> | null
   loadError: string | null
 }
 
 function getStatusSummary(
-  status: Awaited<ReturnType<typeof window.electronAPI.sync.gitStatus>> | null,
+  status: Awaited<ReturnType<typeof window.electronAPI.workspaceSync.gitStatus>> | null,
 ): string | null {
   if (!status || !status.success) return null
 
@@ -166,7 +166,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const [lastError, setLastError] = useState<string | null>(null)
   const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(null)
 
-  const branchCwd = input.projectPath
+  const branchCwd = input.workspaceId
   const displayedBranch = input.activeLane?.branch ?? currentGitBranch ?? input.collabBranch
 
   const loadGitToolbarSnapshot = useCallback(async (): Promise<GitToolbarSnapshot | null> => {
@@ -183,7 +183,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
     try {
       const [branchResult, statusResult] = await Promise.all([
         loadGitBranchesCompat(branchCwd),
-        window.electronAPI.sync.gitStatus({ projectPath: branchCwd }),
+        window.electronAPI.workspaceSync.gitStatus({ workspaceId: branchCwd }),
       ])
 
       const nextIsRepo = Boolean(branchResult.isRepo || statusResult.isRepo)
@@ -248,8 +248,8 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
           throw new Error(checkoutResult.error || "Failed to switch branches")
         }
 
-        const statusResult = await window.electronAPI.sync
-          .gitStatus({ projectPath: branchCwd })
+        const statusResult = await window.electronAPI.workspaceSync
+          .gitStatus({ workspaceId: branchCwd })
           .catch(() => null)
         const nextBranch =
           statusResult?.currentBranch ??
@@ -260,7 +260,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
           projectId: input.projectId,
           branch: nextBranch,
           collabBranch: input.collabBranch,
-          projectPath: branchCwd,
+          workspaceId: branchCwd,
         })
 
         await refreshGitState()

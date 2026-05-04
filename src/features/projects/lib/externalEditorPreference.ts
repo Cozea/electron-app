@@ -27,9 +27,9 @@ function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[A-Za-z]:\//.test(path)
 }
 
-function normalizeProjectPath(projectPath: string | null): string | null {
-  if (!projectPath) return null
-  return projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
+function normalizeWorkspaceId(workspaceId: string | null): string | null {
+  if (!workspaceId) return null
+  return workspaceId.replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
 export function readStoredExternalEditorPreference(): ExternalEditorId | null {
@@ -57,21 +57,21 @@ export function resolvePreferredExternalEditorId(
 
 export async function resolveAbsoluteProjectFilePath(
   filePath: string,
-  projectPath: string | null
+  workspaceId: string | null
 ): Promise<string> {
   const normalizedFilePath = filePath.replace(/\\/g, '/')
-  const normalizedProjectPath = normalizeProjectPath(projectPath)
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId)
   const resolvedRelativePath =
-    normalizedProjectPath != null
-      ? await resolveProjectSourcePath(normalizedFilePath, normalizedProjectPath)
+    normalizedWorkspaceId != null
+      ? await resolveProjectSourcePath(normalizedFilePath, normalizedWorkspaceId)
       : null
 
-  if (resolvedRelativePath && normalizedProjectPath) {
-    return `${normalizedProjectPath}/${resolvedRelativePath.replace(/^\/+/, '')}`
+  if (resolvedRelativePath && normalizedWorkspaceId) {
+    return `${normalizedWorkspaceId}/${resolvedRelativePath.replace(/^\/+/, '')}`
   }
 
-  if (normalizedProjectPath && !isAbsolutePath(normalizedFilePath) && !normalizedFilePath.startsWith(normalizedProjectPath)) {
-    return `${normalizedProjectPath}/${normalizedFilePath.replace(/^\/+/, '')}`
+  if (normalizedWorkspaceId && !isAbsolutePath(normalizedFilePath) && !normalizedFilePath.startsWith(normalizedWorkspaceId)) {
+    return `${normalizedWorkspaceId}/${normalizedFilePath.replace(/^\/+/, '')}`
   }
 
   return normalizedFilePath
@@ -83,7 +83,7 @@ export async function openProjectFileInExternalEditor(options: {
   line?: number
   column?: number
   preferredEditorId?: ExternalEditorId | null
-  projectPath: string | null
+  workspaceId: string | null
 }): Promise<{ success: boolean; editorId: ExternalEditorId | null; error?: string }> {
   const availableEditors =
     options.availableEditors ?? (await window.electronAPI.editor.listAvailableEditors())
@@ -100,7 +100,7 @@ export async function openProjectFileInExternalEditor(options: {
     }
   }
 
-  const absoluteFilePath = await resolveAbsoluteProjectFilePath(options.filePath, options.projectPath)
+  const absoluteFilePath = await resolveAbsoluteProjectFilePath(options.filePath, options.workspaceId)
   const result = await window.electronAPI.editor.openInEditor({
     editorId,
     filePath: absoluteFilePath,

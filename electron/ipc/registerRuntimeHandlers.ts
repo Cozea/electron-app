@@ -1,10 +1,25 @@
 import type { IpcMain } from 'electron'
+import * as Effect from 'effect/Effect'
+import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog.ts'
+import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime.ts'
 import type { DevCommandSuggestion, ProjectRuntimeProfile, RuntimeHealth, RuntimeKind } from '../runtime/runtimeTypes'
 import { loadCapabilityCatalog } from '../runtime/capabilityCatalog'
 import { resolveCommandIntent } from '../runtime/commandResolver'
 import { collectProjectEvidence } from '../runtime/projectEvidence'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimeTarget, resolveCommandWithRuntime, resolveRuntimeHealth } from '../runtime/runtimeResolver'
+
+async function getWorkspaceRoot(workspaceId: string): Promise<string | null> {
+  try {
+    const rt = await waitForWorkspaceCatalogRuntime()
+    const workspace = await rt.runPromise(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
+    )
+    return workspace?.projectRootPath ?? null
+  } catch {
+    return null
+  }
+}
 
 const TRACKED_RUNTIMES: RuntimeKind[] = [
   'node',
@@ -55,19 +70,21 @@ function buildSuggestions(projectPath: string): ProjectRuntimeProfile {
 }
 
 export function registerRuntimeHandlers(ipcMain: IpcMain): void {
-  ipcMain.handle('runtime:getProjectCapabilities', async (_event, options: { projectPath: string }) => {
-    return buildSuggestions(options.projectPath)
+  ipcMain.handle('runtime:getProjectCapabilities', async (_event, options: { workspaceId: string }) => {
+    const projectPath = await getWorkspaceRoot(options.workspaceId)
+    return buildSuggestions(projectPath ?? options.workspaceId)
   })
 
-  ipcMain.handle('runtime:detectProjectRuntime', async (_event, options: { projectPath: string }) => {
-    return buildSuggestions(options.projectPath)
+  ipcMain.handle('runtime:detectProjectRuntime', async (_event, options: { workspaceId: string }) => {
+    const projectPath = await getWorkspaceRoot(options.workspaceId)
+    return buildSuggestions(projectPath ?? options.workspaceId)
   })
 
-  ipcMain.handle('runtime:resolveCommand', async (_event, options: { projectPath: string; command: string }) => {
+  ipcMain.handle('runtime:resolveCommand', async (_event, options: { workspaceId: string; command: string }) => {
     return resolveCommandWithRuntime(options.command)
   })
 
-  ipcMain.handle('runtime:ensureCommandRuntime', async (_event, options: { projectPath: string; command: string }) => {
+  ipcMain.handle('runtime:ensureCommandRuntime', async (_event, options: { workspaceId: string; command: string }) => {
     const intent = resolveCommandIntent(options.command)
     if (intent.classification !== 'supported' || intent.runtime === 'unknown') {
       return {
@@ -79,7 +96,7 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
     return ensureRuntimeInstalled(intent.runtime)
   })
 
-  ipcMain.handle('runtime:ensureForCommand', async (_event, options: { projectPath: string; command: string }) => {
+  ipcMain.handle('runtime:ensureForCommand', async (_event, options: { workspaceId: string; command: string }) => {
     const intent = resolveCommandIntent(options.command)
     if (intent.classification !== 'supported' || intent.runtime === 'unknown') {
       return {

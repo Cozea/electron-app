@@ -126,7 +126,7 @@ function resolveImportPathFromFiles(
  * Uses stored metadata if available, otherwise detects at runtime.
  */
 export async function scanForRoutes(
-  projectPath: string,
+  workspaceId: string,
   storedFrameworkInfo?: {
     framework?: string
     devCommand?: string
@@ -135,7 +135,7 @@ export async function scanForRoutes(
 ): Promise<ScanResult> {
   // Get framework info (from stored or detection)
   const frameworkInfo = await getFrameworkInfo(
-    projectPath,
+    workspaceId,
     storedFrameworkInfo?.framework as Framework | undefined,
     storedFrameworkInfo?.devCommand,
     storedFrameworkInfo?.devPort,
@@ -146,39 +146,39 @@ export async function scanForRoutes(
 
   switch (frameworkInfo.framework) {
     case 'nextjs':
-      routes = await scanNextjsRoutes(projectPath)
+      routes = await scanNextjsRoutes(workspaceId)
       break
     case 'remix':
-      routes = await scanRemixRoutes(projectPath)
+      routes = await scanRemixRoutes(workspaceId)
       break
     case 'sveltekit':
-      routes = await scanSvelteKitRoutes(projectPath)
+      routes = await scanSvelteKitRoutes(workspaceId)
       break
     case 'nuxt':
-      routes = await scanNuxtRoutes(projectPath)
+      routes = await scanNuxtRoutes(workspaceId)
       break
     case 'astro':
-      routes = await scanAstroRoutes(projectPath)
+      routes = await scanAstroRoutes(workspaceId)
       break
     case 'gatsby':
-      routes = await scanGatsbyRoutes(projectPath)
+      routes = await scanGatsbyRoutes(workspaceId)
       break
     case 'solid-start':
-      routes = await scanSolidStartRoutes(projectPath)
+      routes = await scanSolidStartRoutes(workspaceId)
       break
     case 'qwik':
-      routes = await scanQwikRoutes(projectPath)
+      routes = await scanQwikRoutes(workspaceId)
       break
     case 'vite-react':
     case 'cra':
-      routes = await scanReactRoutes(projectPath)
+      routes = await scanReactRoutes(workspaceId)
       break
     case 'vite-vue':
-      routes = await scanVueRoutes(projectPath)
+      routes = await scanVueRoutes(workspaceId)
       break
     default:
       // Try generic file-based scan
-      routes = await scanGenericRoutes(projectPath)
+      routes = await scanGenericRoutes(workspaceId)
   }
 
   return {
@@ -192,11 +192,11 @@ export async function scanForRoutes(
 /**
  * Next.js App Router / Pages Router
  */
-async function scanNextjsRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanNextjsRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     // App Router: app/**/page.tsx
@@ -276,11 +276,11 @@ async function scanNextjsRoutes(projectPath: string): Promise<ScannedRoute[]> {
 /**
  * Remix: app/routes/ (recursive .tsx files)
  */
-async function scanRemixRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanRemixRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -324,11 +324,11 @@ async function scanRemixRoutes(projectPath: string): Promise<ScannedRoute[]> {
 /**
  * SvelteKit: src/routes/ (recursive +page.svelte files)
  */
-async function scanSvelteKitRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanSvelteKitRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -368,11 +368,11 @@ async function scanSvelteKitRoutes(projectPath: string): Promise<ScannedRoute[]>
 /**
  * Nuxt: pages/ (recursive .vue files)
  */
-async function scanNuxtRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanNuxtRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -410,11 +410,11 @@ async function scanNuxtRoutes(projectPath: string): Promise<ScannedRoute[]> {
 /**
  * Astro: src/pages/ (recursive .astro files)
  */
-async function scanAstroRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanAstroRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -454,11 +454,11 @@ async function scanAstroRoutes(projectPath: string): Promise<ScannedRoute[]> {
 /**
  * Gatsby: src/pages/ (recursive .tsx files)
  */
-async function scanGatsbyRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanGatsbyRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -498,11 +498,11 @@ async function scanGatsbyRoutes(projectPath: string): Promise<ScannedRoute[]> {
 /**
  * SolidStart: src/routes/ (recursive .tsx files)
  */
-async function scanSolidStartRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanSolidStartRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -543,11 +543,11 @@ async function scanSolidStartRoutes(projectPath: string): Promise<ScannedRoute[]
 /**
  * Qwik City: src/routes/ (recursive index.tsx files)
  */
-async function scanQwikRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanQwikRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     const routeFiles = result.files.filter(file => {
@@ -590,11 +590,11 @@ async function scanQwikRoutes(projectPath: string): Promise<ScannedRoute[]> {
  * We attempt to parse App.tsx for actual route definitions first, falling back
  * to file-based conventions if parsing fails.
  */
-async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanReactRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     let hasExplicitRootRoute = false
@@ -607,14 +607,14 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
 
     if (appFile) {
       const parsedRoutes = await parseReactRouterRoutes(
-        projectPath,
+        workspaceId,
         appFile.path,
         result.files.map((file) => file.path.replace(/\\/g, '/'))
       )
       if (parsedRoutes.length > 0) {
         return sortRoutes(parsedRoutes)
       }
-      hasExplicitRootRoute = await detectExplicitRootRouteInReactApp(projectPath, appFile.path)
+      hasExplicitRootRoute = await detectExplicitRootRouteInReactApp(workspaceId, appFile.path)
     }
 
     // Fallback: Check for src/pages directory (common convention)
@@ -666,7 +666,7 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
  * Extracts routes from <Route path="..." element={...} /> patterns
  */
 async function parseReactRouterRoutes(
-  projectPath: string,
+  workspaceId: string,
   appFilePath: string,
   availableFiles: string[]
 ): Promise<ScannedRoute[]> {
@@ -674,7 +674,7 @@ async function parseReactRouterRoutes(
 
   try {
     const content = await projectAnalysisDesktopClient.readFile({
-      projectPath,
+      workspaceId: workspaceId,
       filePath: appFilePath,
     })
 
@@ -788,12 +788,12 @@ async function parseReactRouterRoutes(
 }
 
 async function detectExplicitRootRouteInReactApp(
-  projectPath: string,
+  workspaceId: string,
   appFilePath: string
 ): Promise<boolean> {
   try {
     const content = await projectAnalysisDesktopClient.readFile({
-      projectPath,
+      workspaceId: workspaceId,
       filePath: appFilePath,
     })
 
@@ -814,11 +814,11 @@ async function detectExplicitRootRouteInReactApp(
 /**
  * Vue (Vite) - Look for pages or views folder
  */
-async function scanVueRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanVueRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
   try {
-    const result = await projectAnalysisDesktopClient.listFiles({ projectPath })
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId: workspaceId })
     if (!result.success || !result.files) return routes
 
     // Check for src/pages or src/views directory
@@ -858,12 +858,12 @@ async function scanVueRoutes(projectPath: string): Promise<ScannedRoute[]> {
 /**
  * Generic fallback - look for common patterns
  */
-async function scanGenericRoutes(projectPath: string): Promise<ScannedRoute[]> {
+async function scanGenericRoutes(workspaceId: string): Promise<ScannedRoute[]> {
   // Try Next.js first, then other common patterns
-  const nextRoutes = await scanNextjsRoutes(projectPath)
+  const nextRoutes = await scanNextjsRoutes(workspaceId)
   if (nextRoutes.length > 0) return nextRoutes
 
-  const reactRoutes = await scanReactRoutes(projectPath)
+  const reactRoutes = await scanReactRoutes(workspaceId)
   if (reactRoutes.length > 0) return reactRoutes
 
   return []

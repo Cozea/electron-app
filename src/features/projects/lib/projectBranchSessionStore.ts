@@ -8,7 +8,7 @@ interface StoredProjectBranchSession {
   projectId: string
   activeBranch: string | null
   collabBranch: string
-  projectPath: string | null
+  workspaceId: string | null
   updatedAt: number
 }
 
@@ -27,8 +27,8 @@ function normalizeBranch(value: string | null | undefined, fallback = "main"): s
   return trimmed || fallback
 }
 
-function normalizeProjectPath(projectPath: string | null | undefined): string | null {
-  const trimmed = projectPath?.trim()
+function normalizeProjectPath(workspaceId: string | null | undefined): string | null {
+  const trimmed = workspaceId?.trim()
   return trimmed ? trimmed : null
 }
 
@@ -41,14 +41,14 @@ function buildInitialState(): StoredProjectBranchSessionState {
 
 function buildSessionStorageKey(
   projectId: string,
-  projectPath: string | null | undefined,
+  workspaceId: string | null | undefined,
 ): string {
   const normalizedProjectId = normalizeProjectId(projectId)
   if (!normalizedProjectId) {
     throw new Error("projectId is required")
   }
 
-  const normalizedProjectPath = normalizeProjectPath(projectPath)
+  const normalizedProjectPath = normalizeProjectPath(workspaceId)
   return `${normalizedProjectId}::${normalizedProjectPath ?? "unbound"}`
 }
 
@@ -103,11 +103,11 @@ function readState(): StoredProjectBranchSessionState {
       }
 
       nextState.sessions[
-        buildSessionStorageKey(normalizedProjectId, session.projectPath)
+        buildSessionStorageKey(normalizedProjectId, session.workspaceId)
       ] = {
         ...session,
         projectId: normalizedProjectId,
-        projectPath: normalizeProjectPath(session.projectPath),
+        workspaceId: normalizeProjectPath(session.workspaceId),
       }
     }
 
@@ -177,7 +177,7 @@ export function readProjectBranchSession(projectId: string | null | undefined): 
 
 export function readScopedProjectBranchSession(
   projectId: string | null | undefined,
-  projectPath: string | null | undefined,
+  workspaceId: string | null | undefined,
 ): StoredProjectBranchSession | null {
   const normalizedProjectId = normalizeProjectId(projectId)
   if (!normalizedProjectId) {
@@ -186,7 +186,7 @@ export function readScopedProjectBranchSession(
 
   return (
     readState().sessions[
-      buildSessionStorageKey(normalizedProjectId, projectPath)
+      buildSessionStorageKey(normalizedProjectId, workspaceId)
     ] ?? null
   )
 }
@@ -195,7 +195,7 @@ export function rememberProjectBranchSession(args: {
   projectId: string
   branch: string
   collabBranch: string
-  projectPath: string | null
+  workspaceId: string | null
 }): StoredProjectBranchSession {
   const normalizedProjectId = normalizeProjectId(args.projectId)
   if (!normalizedProjectId) {
@@ -206,13 +206,13 @@ export function rememberProjectBranchSession(args: {
     projectId: normalizedProjectId,
     activeBranch: normalizeBranch(args.branch, args.collabBranch),
     collabBranch: normalizeBranch(args.collabBranch),
-    projectPath: normalizeProjectPath(args.projectPath),
+    workspaceId: normalizeProjectPath(args.workspaceId),
     updatedAt: Date.now(),
   }
 
   const state = readState()
   state.sessions[
-    buildSessionStorageKey(normalizedProjectId, nextSession.projectPath)
+    buildSessionStorageKey(normalizedProjectId, nextSession.workspaceId)
   ] = nextSession
   writeState(state)
   return nextSession
@@ -220,7 +220,7 @@ export function rememberProjectBranchSession(args: {
 
 export function clearProjectBranchSession(
   projectId: string | null | undefined,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ): void {
   const normalizedProjectId = normalizeProjectId(projectId)
   if (!normalizedProjectId) {
@@ -228,7 +228,7 @@ export function clearProjectBranchSession(
   }
 
   const state = readState()
-  const normalizedProjectPath = normalizeProjectPath(projectPath)
+  const normalizedProjectPath = normalizeProjectPath(workspaceId)
 
   if (normalizedProjectPath) {
     const scopedKey = buildSessionStorageKey(normalizedProjectId, normalizedProjectPath)
@@ -261,7 +261,7 @@ export function activateProjectBranchLane(args: {
   projectId: string
   laneId: string
   collabBranch: string
-  projectPath: string | null
+  workspaceId: string | null
 }): StoredProjectBranchSession | null {
   const branch = resolveBranchSessionLaneBranch(args.laneId, args.collabBranch)
   if (!branch) {
@@ -272,18 +272,18 @@ export function activateProjectBranchLane(args: {
     projectId: args.projectId,
     branch,
     collabBranch: args.collabBranch,
-    projectPath: args.projectPath,
+    workspaceId: args.workspaceId,
   })
 }
 
 export function buildProjectBranchLaneState(args: {
   projectId: string
-  projectPath: string | null
+  workspaceId: string | null
   collabBranch: string
   activeBranch: string | null
 }): ProjectLaneState | null {
   const normalizedProjectId = normalizeProjectId(args.projectId)
-  const normalizedProjectPath = normalizeProjectPath(args.projectPath)
+  const normalizedProjectPath = normalizeProjectPath(args.workspaceId)
   if (!normalizedProjectId || !normalizedProjectPath) {
     return null
   }
@@ -296,7 +296,7 @@ export function buildProjectBranchLaneState(args: {
     id: COLLAB_LANE_ID,
     name: "Shared",
     branch: normalizedCollabBranch,
-    projectPath: normalizedProjectPath,
+    workspaceId: normalizedProjectPath,
     isCollab: true,
     createdAt: now,
     updatedAt: now,
@@ -310,7 +310,7 @@ export function buildProjectBranchLaneState(args: {
       id: buildBranchSessionLaneId(normalizedActiveBranch, normalizedCollabBranch),
       name: normalizedActiveBranch,
       branch: normalizedActiveBranch,
-      projectPath: normalizedProjectPath,
+      workspaceId: normalizedProjectPath,
       isCollab: false,
       createdAt: now,
       updatedAt: now,

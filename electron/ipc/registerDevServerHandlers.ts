@@ -1,9 +1,21 @@
 import type { BrowserWindow, IpcMain } from 'electron'
+import * as Effect from 'effect/Effect'
+import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog.ts'
+import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime.ts'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
 import type { DevServerStartOptions as SharedDevServerStartOptions, DevServerStartResult } from '../../shared/electronApiTypes'
 import { DevServerService } from '../services/DevServerService'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
+
+async function getWorkspaceRoot(workspaceId: string): Promise<string> {
+  const rt = await waitForWorkspaceCatalogRuntime()
+  const workspace = await rt.runPromise(
+    Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
+  )
+  if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
+  return workspace.projectRootPath
+}
 
 interface RegisterDevServerHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -23,13 +35,13 @@ export function registerDevServerHandlers(
 ): void {
   const service = DevServerService.getInstance()
   const outputBatcher = createIpcOutputBatcher<{
-    projectPath: string
+    workspaceId: string
     output: string
     stream: 'stdout' | 'stderr'
     runId?: string
   }>({
     channel: 'devServer:output',
-    keyOf: (payload) => `${payload.projectPath}:${payload.stream}:${payload.runId ?? ''}`,
+    keyOf: (payload) => `${payload.workspaceId}:${payload.stream}:${payload.runId ?? ''}`,
     merge: (current, next) => ({
       ...current,
       output: current.output + next.output,
@@ -42,7 +54,7 @@ export function registerDevServerHandlers(
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         command,
         bootstrapCommand,
         port,
@@ -118,7 +130,7 @@ export function registerDevServerHandlers(
         : createRunId()
 
       return await service.start({
-        projectPath,
+        workspaceId,
         command: finalCommand,
         bootstrapCommand: finalBootstrapCommand,
         preferredPort: port,
@@ -133,7 +145,7 @@ export function registerDevServerHandlers(
           }
 
           outputBatcher.enqueue(mainWindow.webContents, {
-            projectPath,
+            workspaceId,
             output,
             stream,
             runId: resolvedRunId,
@@ -147,7 +159,7 @@ export function registerDevServerHandlers(
 
           outputBatcher.flush(mainWindow.webContents)
           mainWindow.webContents.send('devServer:exit', {
-            projectPath,
+            workspaceId,
             code,
             runId: resolvedRunId,
           })
@@ -160,9 +172,9 @@ export function registerDevServerHandlers(
     'devServer:stop',
     async (
       _event,
-      { projectPath }: { projectPath: string }
+      { workspaceId }: { workspaceId: string }
     ): Promise<{ success: boolean; error?: string }> => {
-      return await service.stop(projectPath)
+      return await service.stop(workspaceId)
     }
   )
 
@@ -176,8 +188,8 @@ export function registerDevServerHandlers(
 
   ipcMain.handle(
     'devServer:isRunning',
-    (_event, { projectPath }: { projectPath: string }): boolean => {
-      return service.isRunning(projectPath)
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<boolean> => {
+      return service.isRunning(workspaceId)
     }
   )
 }

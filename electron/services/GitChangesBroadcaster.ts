@@ -2,16 +2,24 @@ import path from 'node:path'
 
 import type { IpcMain, WebContents } from 'electron'
 
-import type { GitChangesSnapshot, GitChangesScope } from '../../shared/electronApiTypes'
+import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '../../shared/electronApiTypes'
 import { CheckpointWorkerClient } from './CheckpointWorkerClient'
 
-const GIT_CHANGES_UPDATED_CHANNEL = 'sync:gitChangesUpdated'
+const GIT_CHANGES_UPDATED_CHANNEL = 'workspaceSync:gitChangesUpdated'
+const GIT_DIRTY_STATE_CHANGED_CHANNEL = 'workspaceSync:gitDirtyStateChanged'
 const INVALIDATION_DEBOUNCE_MS = 250
 const FALLBACK_REFRESH_MS = 10_000
 
 interface GitChangesSubscription {
   sender: WebContents
   scope: GitChangesScope
+  workspaceId: string
+}
+
+interface GitDirtyStateSubscription {
+  sender: WebContents
+  workspaceId: string
+  authorName?: string
 }
 
 function normalizeProjectPath(projectPath: string): string {
@@ -44,6 +52,11 @@ export class GitChangesBroadcaster {
   private readonly destroyedListenerSenders = new Set<number>()
   private fallbackRefreshTimer: NodeJS.Timeout | null = null
 
+  // Dirty state subscriptions (keyed by projectPath)
+  private readonly dirtyStateSubsByPath = new Map<string, Map<number, GitDirtyStateSubscription>>()
+  // Reverse mapping: projectPath → workspaceId (set on first subscribe; one workspace per path)
+  private readonly workspaceIdByPath = new Map<string, string>()
+
   static getInstance(): GitChangesBroadcaster {
     if (!GitChangesBroadcaster.instance) {
       GitChangesBroadcaster.instance = new GitChangesBroadcaster()
@@ -70,9 +83,12 @@ export class GitChangesBroadcaster {
 
   async subscribe(
     sender: WebContents,
-    options: { projectPath: string; scope: GitChangesScope },
+    options: { projectPath: string; scope: GitChangesScope; workspaceId?: string },
   ): Promise<GitChangesSnapshot> {
     const projectPath = normalizeProjectPath(options.projectPath)
+    if (options.workspaceId) {
+      this.workspaceIdByPath.set(projectPath, options.workspaceId)
+    }
     const key = buildCacheKey(projectPath, options.scope)
     let subscribers = this.subscriptionsByKey.get(key)
     if (!subscribers) {
@@ -83,6 +99,7 @@ export class GitChangesBroadcaster {
     subscribers.set(sender.id, {
       sender,
       scope: options.scope,
+      workspaceId: options.workspaceId ?? projectPath,
     })
 
     if (!this.destroyedListenerSenders.has(sender.id)) {
@@ -215,12 +232,12 @@ export class GitChangesBroadcaster {
     }
 
     for (const [senderId, subscription] of Array.from(subscribers.entries())) {
-      const { sender } = subscription
+      const { sender, workspaceId } = subscription
       if (sender.isDestroyed()) {
         subscribers.delete(senderId)
         continue
       }
-      sender.send(GIT_CHANGES_UPDATED_CHANNEL, snapshot)
+      sender.send(GIT_CHANGES_UPDATED_CHANNEL, { ...snapshot, workspaceId })
     }
 
     if (subscribers.size === 0) {
@@ -230,12 +247,72 @@ export class GitChangesBroadcaster {
     }
   }
 
+  // ── Dirty state subscriptions ────────────────────────────────────────────────
+
+  async subscribeGitDirtyState(
+    sender: WebContents,
+    options: { projectPath: string; workspaceId?: string; authorName?: string },
+  ): Promise<GitDirtyStateSnapshot> {
+    const projectPath = normalizeProjectPath(options.projectPath)
+    const workspaceId = options.workspaceId ?? this.workspaceIdByPath.get(projectPath) ?? projectPath
+
+    if (!this.dirtyStateSubsByPath.has(projectPath)) {
+      this.dirtyStateSubsByPath.set(projectPath, new Map())
+    }
+    this.dirtyStateSubsByPath.get(projectPath)!.set(sender.id, {
+      sender,
+      workspaceId,
+      authorName: options.authorName,
+    })
+
+    // Reuse the current-scope changes snapshot for dirty state
+    const snapshot = await this.refreshKey(projectPath, 'current')
+    return this.buildDirtyStateSnapshot(workspaceId, snapshot)
+  }
+
+  unsubscribeGitDirtyState(sender: WebContents, projectPath: string): void {
+    const normalizedPath = normalizeProjectPath(projectPath)
+    const subs = this.dirtyStateSubsByPath.get(normalizedPath)
+    if (!subs) return
+    subs.delete(sender.id)
+    if (subs.size === 0) {
+      this.dirtyStateSubsByPath.delete(normalizedPath)
+    }
+  }
+
+  private buildDirtyStateSnapshot(workspaceId: string, changesSnapshot: GitChangesSnapshot): GitDirtyStateSnapshot {
+    return {
+      workspaceId,
+      additions: changesSnapshot.additions,
+      deletions: changesSnapshot.deletions,
+      changedFiles: changesSnapshot.files.length,
+      computedAt: Date.now(),
+      error: changesSnapshot.error ?? undefined,
+    }
+  }
+
+  private publishDirtyStateForPath(projectPath: string, changesSnapshot: GitChangesSnapshot): void {
+    const subs = this.dirtyStateSubsByPath.get(projectPath)
+    if (!subs || subs.size === 0) return
+
+    for (const [senderId, sub] of Array.from(subs.entries())) {
+      if (sub.sender.isDestroyed()) {
+        subs.delete(senderId)
+        continue
+      }
+      sub.sender.send(GIT_DIRTY_STATE_CHANGED_CHANNEL, this.buildDirtyStateSnapshot(sub.workspaceId, changesSnapshot))
+    }
+  }
+
   private async refreshKey(projectPath: string, scope: GitChangesScope): Promise<GitChangesSnapshot> {
     const key = buildCacheKey(projectPath, scope)
     const inflight = this.inflightRefreshes.get(key)
     if (inflight) {
       return await inflight
     }
+
+    // Use the stored workspaceId if available; fall back to projectPath
+    const workspaceId = this.workspaceIdByPath.get(projectPath) ?? projectPath
 
     const refreshPromise = (async () => {
       try {
@@ -249,11 +326,11 @@ export class GitChangesBroadcaster {
             ? CheckpointWorkerClient.getInstance().getHeadDiffStats({ cwd: projectPath, authorName: 'Cozea' })
             : Promise.resolve({ success: true as const, additions: 0, deletions: 0, changedFiles: 0, error: undefined })
         ])
-        
+
         const cacheKey = `${key}:${Date.now()}` // Uniqueish cacheKey
 
         const snapshot: GitChangesSnapshot = {
-          projectPath,
+          workspaceId,
           scope,
           cacheKey,
           files: result.success ? result.files : [],
@@ -265,18 +342,24 @@ export class GitChangesBroadcaster {
           additions: statsResult.success ? statsResult.additions : 0,
           deletions: statsResult.success ? statsResult.deletions : 0,
         }
-        
+
         const existing = this.snapshotsByKey.get(key)
         if (existing && existing.patch === snapshot.patch && existing.error === snapshot.error && existing.additions === snapshot.additions && existing.deletions === snapshot.deletions) {
            // No actual changes, keep previous cacheKey so React doesn't re-render
            snapshot.cacheKey = existing.cacheKey
         }
-        
+
         this.snapshotsByKey.set(key, snapshot)
+
+        // Also publish dirty state if there are dirty-state subscribers for this path
+        if (scope === 'current') {
+          this.publishDirtyStateForPath(projectPath, snapshot)
+        }
+
         return snapshot
       } catch (error) {
         const snapshot: GitChangesSnapshot = {
-          projectPath,
+          workspaceId,
           scope,
           cacheKey: `${key}:${Date.now()}`,
           files: [],
@@ -291,6 +374,11 @@ export class GitChangesBroadcaster {
            snapshot.cacheKey = existing.cacheKey
         }
         this.snapshotsByKey.set(key, snapshot)
+
+        if (scope === 'current') {
+          this.publishDirtyStateForPath(projectPath, snapshot)
+        }
+
         return snapshot
       } finally {
         this.inflightRefreshes.delete(key)

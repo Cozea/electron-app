@@ -9,7 +9,7 @@ import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } f
 interface WorkbenchAssistantChatTileProps {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   tile: WorkbenchAssistantChatTileRecord
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
@@ -21,7 +21,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
     useWorkbenchAssistantTileController({
       projectId: props.projectId,
       laneId: props.laneId,
-      projectPath: props.projectPath,
+      workspaceId: props.workspaceId,
       tile: props.tile,
     })
 

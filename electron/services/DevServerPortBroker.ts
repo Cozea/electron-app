@@ -6,7 +6,7 @@ interface PersistedDevServerPortRecord {
   sessionKey: string
   preferredPort: number
   lastAllocatedPort: number
-  projectPath: string
+  workspaceId: string
   updatedAt: number
 }
 
@@ -17,13 +17,13 @@ interface PersistedDevServerPortRegistry {
 
 interface ActivePortLease {
   sessionKey: string
-  projectPath: string
+  workspaceId: string
   port: number
 }
 
 interface AcquirePortOptions {
   sessionKey: string
-  projectPath: string
+  workspaceId: string
   preferredPort: number
   isPortReachable: (port: number) => Promise<boolean>
 }
@@ -37,9 +37,9 @@ interface AcquirePortResult {
 const REGISTRY_FILE_NAME = 'dev-server-port-registry.json'
 const MAX_PORT_SCAN_ATTEMPTS = 50
 
-function normalizeSessionKey(input: string | null | undefined, projectPath: string): string {
+function normalizeSessionKey(input: string | null | undefined, workspaceId: string): string {
   const trimmed = input?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : projectPath.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : workspaceId.trim()
 }
 
 function normalizePort(port: number): number {
@@ -111,7 +111,7 @@ export class DevServerPortBroker {
 
   private upsertRecord(input: {
     sessionKey: string
-    projectPath: string
+    workspaceId: string
     preferredPort: number
     allocatedPort: number
   }): void {
@@ -119,24 +119,24 @@ export class DevServerPortBroker {
       sessionKey: input.sessionKey,
       preferredPort: normalizePort(input.preferredPort),
       lastAllocatedPort: normalizePort(input.allocatedPort),
-      projectPath: input.projectPath,
+      workspaceId: input.workspaceId,
       updatedAt: Date.now(),
     }
     this.persist()
   }
 
   async acquirePort(options: AcquirePortOptions): Promise<AcquirePortResult> {
-    const sessionKey = normalizeSessionKey(options.sessionKey, options.projectPath)
+    const sessionKey = normalizeSessionKey(options.sessionKey, options.workspaceId)
     const persistedRecord = this.registry.sessions[sessionKey]
     const preferredPort = normalizePort(
       persistedRecord?.preferredPort ?? options.preferredPort,
     )
 
     const activeLease = this.activeLeases.get(sessionKey)
-    if (activeLease && activeLease.projectPath === options.projectPath) {
+    if (activeLease && activeLease.workspaceId === options.workspaceId) {
       this.upsertRecord({
         sessionKey,
-        projectPath: options.projectPath,
+        workspaceId: options.workspaceId,
         preferredPort,
         allocatedPort: activeLease.port,
       })
@@ -157,12 +157,12 @@ export class DevServerPortBroker {
       if (!leasedByDifferentSession && !portReachable) {
         this.activeLeases.set(sessionKey, {
           sessionKey,
-          projectPath: options.projectPath,
+          workspaceId: options.workspaceId,
           port: candidatePort,
         })
         this.upsertRecord({
           sessionKey,
-          projectPath: options.projectPath,
+          workspaceId: options.workspaceId,
           preferredPort: candidatePort,
           allocatedPort: candidatePort,
         })
@@ -179,9 +179,9 @@ export class DevServerPortBroker {
     throw new Error(`Unable to allocate a dev server port starting from ${preferredPort}.`)
   }
 
-  releasePort(sessionKey: string | null | undefined, projectPath?: string | null): void {
-    const normalizedSessionKey = projectPath
-      ? normalizeSessionKey(sessionKey, projectPath)
+  releasePort(sessionKey: string | null | undefined, workspaceId?: string | null): void {
+    const normalizedSessionKey = workspaceId
+      ? normalizeSessionKey(sessionKey, workspaceId)
       : sessionKey?.trim() || null
 
     if (normalizedSessionKey) {

@@ -20,7 +20,7 @@ import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
  */
 export function useBinaryFileSync(
   projectId: Id<'projects'> | null,
-  projectPath: string | null,
+  workspaceId: string | null,
   userId: Id<'users'> | null
 ): { pendingUploads: number } {
   const convex = useConvex()
@@ -28,12 +28,12 @@ export function useBinaryFileSync(
 
   // Initialize BinaryFileSync
   useEffect(() => {
-    if (!projectId || !projectPath || !userId) {
+    if (!projectId || !workspaceId || !userId) {
       binarySyncRef.current = null
       return
     }
 
-    binarySyncRef.current = new BinaryFileSync(projectId, projectPath, convex, userId)
+    binarySyncRef.current = new BinaryFileSync(projectId, workspaceId, convex, userId)
 
     // Process any queued uploads from previous sessions
     void binarySyncRef.current.processQueue()
@@ -42,11 +42,11 @@ export function useBinaryFileSync(
       binarySyncRef.current?.destroy()
       binarySyncRef.current = null
     }
-  }, [convex, projectId, projectPath, userId])
+  }, [convex, projectId, workspaceId, userId])
 
   // Handle local binary file changes
   useEffect(() => {
-    if (!projectPath || !binarySyncRef.current) return
+    if (!workspaceId || !binarySyncRef.current) return
 
     const handleExternalFileChange = (data: {
       filePath: string
@@ -55,10 +55,10 @@ export function useBinaryFileSync(
       sizeBytes: number
       isDirectory?: boolean
     }) => {
-      if (!data.filePath.startsWith(projectPath)) return
+      if (!data.filePath.startsWith(workspaceId)) return
       if (data.isDirectory) return
       const relativePath = data.filePath
-        .slice(projectPath.length)
+        .slice(workspaceId.length)
         .replace(/^[/\\]+/, '')
         .replace(/\\/g, '/')
 
@@ -86,7 +86,7 @@ export function useBinaryFileSync(
     return () => {
       unsubscribe()
     }
-  }, [projectPath])
+  }, [workspaceId])
 
   // Handle reconnection - process queued uploads
   useEffect(() => {

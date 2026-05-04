@@ -29,7 +29,7 @@ import {
 interface UseAssistantTileBindingInput {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   tile: WorkbenchAssistantChatTileRecord
   config: ServerConfig | null
   isRuntimeReady: boolean
@@ -39,14 +39,14 @@ interface UseAssistantTileBindingInput {
     laneId: string,
     tileId: string,
     patch: Partial<WorkbenchAssistantChatTileRecord>,
-    projectPath?: string | null,
+    workspaceId?: string | null,
   ) => void
 }
 
 export function useAssistantTileBinding({
   projectId,
   laneId,
-  projectPath,
+  workspaceId,
   tile,
   config,
   isRuntimeReady,
@@ -68,10 +68,10 @@ export function useAssistantTileBinding({
   }, [isRuntimeReady])
 
   useEffect(() => {
-    if (!isRuntimeReady || !projectPath) {
+    if (!isRuntimeReady || !workspaceId) {
       return
     }
-    const workspaceRoot = projectPath
+    const workspaceRoot = workspaceId
     if (bindingInFlightRef.current) {
       return
     }
@@ -97,7 +97,7 @@ export function useAssistantTileBinding({
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>
-            getLiveAssistantTile(projectId, laneId, tile.id, projectPath) ?? tile
+            getLiveAssistantTile(projectId, laneId, tile.id, workspaceId) ?? tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
 
           await refreshAssistantRuntimeSnapshot()
@@ -203,7 +203,7 @@ export function useAssistantTileBinding({
             }
 
             if (!cancelled && Object.keys(patch).length > 0) {
-              updateAssistantTile(projectId, laneId, tile.id, patch, projectPath)
+              updateAssistantTile(projectId, laneId, tile.id, patch, workspaceId)
             }
           } else {
             // Fresh tile: just bind the project, no thread yet
@@ -211,7 +211,7 @@ export function useAssistantTileBinding({
             if (!cancelled && latestTile.assistantProjectId !== nextProjectId) {
               updateAssistantTile(projectId, laneId, tile.id, {
                 assistantProjectId: nextProjectId,
-              }, projectPath)
+              }, workspaceId)
             }
           }
 
@@ -243,7 +243,7 @@ export function useAssistantTileBinding({
     isRuntimeReady,
     laneId,
     projectId,
-    projectPath,
+    workspaceId,
     tile,
     updateAssistantTile,
   ])
@@ -288,10 +288,10 @@ export function useAssistantTileBinding({
     updateAssistantTile(projectId, laneId, tile.id, {
       threadId,
       assistantProjectId: currentProject.id,
-    }, projectPath)
+    }, workspaceId)
 
     return threadId
-  }, [laneId, projectId, projectPath, tile, updateAssistantTile])
+  }, [laneId, projectId, workspaceId, tile, updateAssistantTile])
 
   return {
     bindingError,

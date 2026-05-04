@@ -175,11 +175,11 @@ function isPathInsideApprovedRoots(candidatePath: string, approvedRoots: readonl
 }
 
 function buildPackageManagerSearchRoots(
-  projectPath: string,
+  workspaceId: string,
   approvedRoots: readonly string[],
 ): string[] {
   const roots: string[] = []
-  const initialRoot = trimTrailingSeparators(projectPath.trim())
+  const initialRoot = trimTrailingSeparators(workspaceId.trim())
   let current: string | null = initialRoot
 
   if (initialRoot) {
@@ -252,7 +252,7 @@ async function readPackageManagerFromAbsolutePackageJson(
   }
 }
 
-async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
+async function detectPackageManagerFromRoot(workspaceId: string): Promise<PackageManager> {
   let approvedRoots: string[] = []
 
   try {
@@ -261,7 +261,7 @@ async function detectPackageManagerFromRoot(projectPath: string): Promise<Packag
     approvedRoots = []
   }
 
-  for (const candidateRoot of buildPackageManagerSearchRoots(projectPath, approvedRoots)) {
+  for (const candidateRoot of buildPackageManagerSearchRoots(workspaceId, approvedRoots)) {
     const packageManagerFromPackageJson =
       await readPackageManagerFromAbsolutePackageJson(candidateRoot)
     if (packageManagerFromPackageJson) {
@@ -476,10 +476,10 @@ function extractNpmScriptName(command: string | null | undefined): string | null
   return null
 }
 
-async function readPackageJson(projectPath: string): Promise<PackageJson | null> {
+async function readPackageJson(workspaceId: string): Promise<PackageJson | null> {
   try {
     const result = await projectAnalysisDesktopClient.readFile({
-      projectPath,
+      workspaceId,
       filePath: 'package.json',
     })
 
@@ -573,9 +573,9 @@ function resolvePreferredScriptName(
 /**
  * Detect framework from package.json dependencies
  */
-export async function detectFramework(projectPath: string): Promise<FrameworkInfo> {
+export async function detectFramework(workspaceId: string): Promise<FrameworkInfo> {
   try {
-    const pkg = await readPackageJson(projectPath)
+    const pkg = await readPackageJson(workspaceId)
     if (!pkg) {
       return { framework: 'unknown', ...FRAMEWORK_CONFIGS.unknown }
     }
@@ -655,7 +655,7 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
       }
     }
 
-    const packageManager = await detectPackageManagerFromRoot(projectPath)
+    const packageManager = await detectPackageManagerFromRoot(workspaceId)
     const resolvedScriptName = resolveExistingDevScriptName(scripts, config.devCommand)
     const devCommand = resolvedScriptName
       ? buildPackageManagerScriptCommand(packageManager, resolvedScriptName)
@@ -679,7 +679,7 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
  * Get framework info from stored metadata or detect at runtime
  */
 export async function getFrameworkInfo(
-  projectPath: string,
+  workspaceId: string,
   storedFramework?: Framework | null,
   storedDevCommand?: string | null,
   storedDevPort?: number | null,
@@ -687,7 +687,7 @@ export async function getFrameworkInfo(
   // If we have stored metadata, use it
   if (storedFramework && storedFramework !== 'unknown') {
     const config = FRAMEWORK_CONFIGS[storedFramework]
-    const packageManager = await detectPackageManagerFromRoot(projectPath)
+    const packageManager = await detectPackageManagerFromRoot(workspaceId)
     return {
       framework: storedFramework,
       ...config,
@@ -699,16 +699,16 @@ export async function getFrameworkInfo(
   }
 
   // Otherwise detect at runtime
-  return detectFramework(projectPath)
+  return detectFramework(workspaceId)
 }
 
 export async function getProjectPreviewExperience(
-  projectPath: string,
+  workspaceId: string,
   _storedFramework?: Framework | null,
   _storedDevCommand?: string | null,
   _storedDevPort?: number | null,
 ): Promise<ProjectPreviewExperience> {
-  const pkg = await readPackageJson(projectPath)
+  const pkg = await readPackageJson(workspaceId)
 
   const scripts = pkg?.scripts ?? {}
   const deps = { ...pkg?.dependencies, ...pkg?.devDependencies }
@@ -723,15 +723,15 @@ export async function getProjectPreviewExperience(
 /**
  * Get just the dev server config for preview/runtime launch flows.
  */
-function getPersistedDevCommand(projectPath: string): string | null {
+function getPersistedDevCommand(workspaceId: string): string | null {
   if (typeof localStorage === 'undefined') return null
-  const key = `dev-command:${encodeURIComponent(projectPath)}`
+  const key = `dev-command:${encodeURIComponent(workspaceId)}`
   const raw = localStorage.getItem(key)
   return raw?.trim() || null
 }
 
 export async function getDevServerConfig(
-  projectPath: string,
+  workspaceId: string,
   storedDevCommand?: string | null,
   storedDevPort?: number | null,
   context?: DevServerLaunchContext,
@@ -746,7 +746,7 @@ export async function getDevServerConfig(
   let requiresUserSelection = false
 
   try {
-    const profile = await projectAnalysisDesktopClient.getProjectCapabilities({ projectPath })
+    const profile = await projectAnalysisDesktopClient.getProjectCapabilities({ workspaceId })
     suggestions = profile?.devServer?.suggestions ?? []
     requiresUserSelection = Boolean(profile?.devServer?.requiresUserSelection)
   } catch {
@@ -760,10 +760,10 @@ export async function getDevServerConfig(
     return Number.isFinite(parsed) ? parsed : fallbackPort
   }
 
-  const packageJson = await readPackageJson(projectPath)
+  const packageJson = await readPackageJson(workspaceId)
   const scripts = packageJson?.scripts ?? {}
-  const info = await detectFramework(projectPath)
-  const packageManager = await detectPackageManagerFromRoot(projectPath)
+  const info = await detectFramework(workspaceId)
+  const packageManager = await detectPackageManagerFromRoot(workspaceId)
 
   if (storedDevCommand && commandExistsInScripts(storedDevCommand, scripts)) {
     return {
@@ -775,7 +775,7 @@ export async function getDevServerConfig(
     }
   }
 
-  const persistedCommand = getPersistedDevCommand(projectPath)
+  const persistedCommand = getPersistedDevCommand(workspaceId)
   if (persistedCommand && commandExistsInScripts(persistedCommand, scripts)) {
     return {
       command: persistedCommand,
@@ -828,8 +828,8 @@ export async function getDevServerConfig(
 /**
  * Detect which package manager is used in the project
  */
-export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
-  return detectPackageManagerFromRoot(projectPath)
+export async function detectPackageManager(workspaceId: string): Promise<PackageManager> {
+  return detectPackageManagerFromRoot(workspaceId)
 }
 
 function isWindowsClient(): boolean {
@@ -880,11 +880,11 @@ export function getLegacyPeerDepsInstallCommand(pm: PackageManager): string | nu
  * Check if dependencies are installed (node_modules exists and has content)
  */
 export async function checkDependenciesInstalled(
-  projectPath: string,
+  workspaceId: string,
   packageManager?: PackageManager
 ): Promise<boolean> {
   try {
-    const rootEntries = await projectAnalysisDesktopClient.readDir(projectPath)
+    const rootEntries = await projectAnalysisDesktopClient.readDir(workspaceId)
     const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )
@@ -911,9 +911,9 @@ export async function checkDependenciesInstalled(
 /**
  * Check if package.json exists
  */
-export async function hasPackageJson(projectPath: string): Promise<boolean> {
+export async function hasPackageJson(workspaceId: string): Promise<boolean> {
   try {
-    const result = await projectAnalysisDesktopClient.readFile({ projectPath, filePath: 'package.json' })
+    const result = await projectAnalysisDesktopClient.readFile({ workspaceId, filePath: 'package.json' })
     return result.success && !!result.content
   } catch {
     return false

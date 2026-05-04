@@ -136,7 +136,9 @@ export class IntegrationService {
         ipcMain.handle('integrations:runTool', async (_event, options: {
             toolName: string
             args: string[]
-            workingDir: string
+            workspaceId: string
+            laneId: string
+            cwd?: { kind: 'projectRoot' } | { kind: 'relative'; path: string }
             encryptedCredentials: string
             keyId: string
             timeout?: number

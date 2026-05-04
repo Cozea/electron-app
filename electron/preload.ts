@@ -169,7 +169,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     runTool: (options: {
       toolName: string
       args: string[]
-      workingDir: string
+      workspaceId: string
+      laneId: string
+      cwd?: { kind: 'projectRoot' } | { kind: 'relative'; path: string }
       encryptedCredentials: string
       keyId: string
       timeout?: number
@@ -203,7 +205,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     run: (request: {
       name: string
       input: Record<string, unknown>
-      projectPath?: string
+      workspaceId?: string
       runId?: string
       toolCallId?: string
     }) =>
@@ -260,7 +262,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openProjectsDirectory: () => ipcRenderer.invoke('storage:openProjectsDirectory'),
     clearCache: () => ipcRenderer.invoke('storage:clearCache'),
     clearLogs: () => ipcRenderer.invoke('storage:clearLogs'),
-    deleteProject: (options: { projectPath: string }) => ipcRenderer.invoke('storage:deleteProject', options),
+    deleteProject: (options: { workspaceId: string }) => ipcRenderer.invoke('storage:deleteProject', options),
     clearAll: () => ipcRenderer.invoke('storage:clearAll'),
   },
   window: {
@@ -348,9 +350,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   workbenchSession: {
-    ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) =>
+    ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:ensureSession', options),
-    activateSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) =>
+    activateSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:activateSession', options),
     backgroundSession: (options: {
       sessionKey?: string | null
@@ -358,7 +360,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId: string
       mode?: 'backgroundWarm' | 'backgroundFrozen'
     }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
-    closeSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }) =>
+    closeSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:closeSession', options),
     getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),
@@ -373,7 +375,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId: string
       tileId: string
       terminalId: string
-      projectPath?: string | null
+      workspaceId?: string | null
     }) => ipcRenderer.invoke('workbenchSession:bindTerminal', options),
     releaseTerminal: (options: {
       sessionKey?: string | null
@@ -390,7 +392,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId: string
       tileId: string
       browserTileId: string
-      projectPath?: string | null
+      workspaceId?: string | null
     }) => ipcRenderer.invoke('workbenchSession:bindBrowser', options),
     releaseBrowser: (options: {
       sessionKey?: string | null
@@ -480,30 +482,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   project: {
-    createFolder: (options: { slug: string; initGit?: boolean; projectId?: string; baseDirectory?: string }) =>
-      ipcRenderer.invoke('project:createFolder', options),
-    cloneRepository: (options: {
-      slug: string
-      repoUrl: string
-      provider: string
-      branch?: string
-      accessToken?: string
-      projectId?: string
-      baseDirectory?: string
-    }) =>
-      ipcRenderer.invoke('project:cloneRepository', options),
-    getLocalPath: (options: string | { slug: string; projectId?: string; localPathHint?: string | null; attachedPathHint?: string | null }) =>
-      ipcRenderer.invoke('project:getLocalPath', options),
-    rememberLocalPath: (options: { projectId: string; projectPath: string }) =>
-      ipcRenderer.invoke('project:rememberLocalPath', options),
-    clearLocalPath: (options: { projectId: string }) =>
-      ipcRenderer.invoke('project:clearLocalPath', options),
-    listGitBranches: (options: { projectPath: string }) =>
+    listGitBranches: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('project:listGitBranches', options),
-    checkoutGitBranch: (options: { projectPath: string; branch: string }) =>
+    checkoutGitBranch: (options: { workspaceId: string; branch: string }) =>
       ipcRenderer.invoke('project:checkoutGitBranch', options),
     createGitWorktree: (options: {
-      projectPath: string
+      workspaceId: string
       branch: string
       newBranch?: string
       path?: string | null
@@ -513,48 +497,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
       collabBranch: string
       sourceBranch: string
     }) => ipcRenderer.invoke('project:mergeLaneIntoCollab', options),
-    openFolder: (options: { projectPath: string }) =>
+    openFolder: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('project:openFolder', options),
     exists: (options: string | { slug: string; projectId?: string }) =>
       ipcRenderer.invoke('project:exists', options),
-    pathExists: (projectPath: string) => ipcRenderer.invoke('project:pathExists', { projectPath }),
+    pathExists: (workspaceId: string) => ipcRenderer.invoke('project:pathExists', { workspaceId }),
     writeFile: (options: {
-      projectPath: string
+      workspaceId: string
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
       origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
     }) => ipcRenderer.invoke('project:writeFile', options),
-    readFile: (options: { projectPath: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
-    readFileBase64: (options: { projectPath: string; filePath: string }) =>
+    readFile: (options: { workspaceId: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
+    readFileBase64: (options: { workspaceId: string; filePath: string }) =>
       ipcRenderer.invoke('project:readFileBase64', options),
-    listFiles: (options: { projectPath: string }) => ipcRenderer.invoke('project:listFiles', options),
+    listFiles: (options: { workspaceId: string }) => ipcRenderer.invoke('project:listFiles', options),
     getContextOptions: (options: {
-      projectPath: string
+      workspaceId: string
       frameworkInfo?: import('../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
     }) => ipcRenderer.invoke('project:getContextOptions', options),
     renameFile: (options: {
-      projectPath: string
+      workspaceId: string
       oldPath: string
       newPath: string
       origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
     }) =>
       ipcRenderer.invoke('project:renameFile', options),
     deletePath: (options: {
-      projectPath: string
+      workspaceId: string
       targetPath: string
       origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
     }) =>
       ipcRenderer.invoke('project:deletePath', options),
-    copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) =>
+    copyPath: (options: { workspaceId: string; sourcePath: string; destinationPath: string }) =>
       ipcRenderer.invoke('project:copyPath', options),
     copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) =>
       ipcRenderer.invoke('project:copyDirectorySnapshot', options),
-    preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) =>
+    preflightImportSource: (options: { workspaceId: string; mode?: 'relocation' | 'raw' }) =>
       ipcRenderer.invoke('project:preflightImportSource', options),
-    watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
-    watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
-    getPathNativeIcon: (options: { projectPath: string }) =>
+    watchStart: (options: { workspaceId: string }) => ipcRenderer.invoke('project:watchStart', options),
+    watchStop: (options: { workspaceId: string }) => ipcRenderer.invoke('project:watchStop', options),
+    getPathNativeIcon: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('project:getPathNativeIcon', options),
     checkGhCliStatus: () =>
       ipcRenderer.invoke('project:checkGhCliStatus'),
@@ -562,15 +546,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:createGitHubRepo', options),
   },
   runtime: {
-    getProjectCapabilities: (options: { projectPath: string }) =>
+    getProjectCapabilities: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('runtime:getProjectCapabilities', options),
-    resolveCommand: (options: { projectPath: string; command: string }) =>
+    resolveCommand: (options: { workspaceId: string; command: string }) =>
       ipcRenderer.invoke('runtime:resolveCommand', options),
-    ensureCommandRuntime: (options: { projectPath: string; command: string }) =>
+    ensureCommandRuntime: (options: { workspaceId: string; command: string }) =>
       ipcRenderer.invoke('runtime:ensureCommandRuntime', options),
-    detectProjectRuntime: (options: { projectPath: string }) =>
+    detectProjectRuntime: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('runtime:detectProjectRuntime', options),
-    ensureForCommand: (options: { projectPath: string; command: string }) =>
+    ensureForCommand: (options: { workspaceId: string; command: string }) =>
       ipcRenderer.invoke('runtime:ensureForCommand', options),
     ensureRuntime: (options: {
       runtime: RuntimeKind
@@ -579,17 +563,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       forceReinstall?: boolean
     }) =>
       ipcRenderer.invoke('runtime:ensureRuntime', options),
-    getRuntimeStatus: (options?: { projectPath?: string }) =>
+    getRuntimeStatus: (options?: { workspaceId?: string }) =>
       ipcRenderer.invoke('runtime:getRuntimeStatus', options ?? {}),
   },
   fs: {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),
     readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
   },
-  sync: {
-    hashFile: (options: { filePath: string }) => ipcRenderer.invoke('sync:hashFile', options),
+  workspaceSync: {
+    hashFile: (options: { filePath: string }) => ipcRenderer.invoke('workspaceSync:hashFile', options),
     writeFiles: (options: {
-      projectPath: string
+      workspaceId: string
       files: SyncWriteFile[]
       opMeta?: {
         projectId: string
@@ -598,9 +582,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         source?: 'editor' | 'agent' | 'watcher' | 'remote'
       }
     }) =>
-      ipcRenderer.invoke('sync:writeFiles', options),
+      ipcRenderer.invoke('workspaceSync:writeFiles', options),
     deleteFiles: (options: {
-      projectPath: string
+      workspaceId: string
       paths: string[]
       opMeta?: {
         projectId: string
@@ -609,17 +593,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         source?: 'editor' | 'agent' | 'watcher' | 'remote'
       }
     }) =>
-      ipcRenderer.invoke('sync:deleteFiles', options),
+      ipcRenderer.invoke('workspaceSync:deleteFiles', options),
     getGitRuntimeHealth: (options?: { force?: boolean }) =>
-      ipcRenderer.invoke('sync:getGitRuntimeHealth', options ?? {}),
+      ipcRenderer.invoke('workspaceSync:getGitRuntimeHealth', options ?? {}),
     gitEnsureRepo: (options: {
-      projectPath: string
+      workspaceId: string
       branch?: string
       repoUrl?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitEnsureRepo', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitEnsureRepo', options),
     gitCloneIfMissing: (options: {
-      projectPath: string
+      workspaceId: string
       repoUrl: string
       branch?: string
       extraHeader?: string
@@ -628,9 +612,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitCloneIfMissing', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitCloneIfMissing', options),
     gitFetchMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -640,15 +624,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitFetchMain', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitFetchMain', options),
     gitStatus: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitStatus', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitStatus', options),
     gitPullMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -660,9 +644,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitPullMain', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitPullMain', options),
     gitReplayLocalCommits: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -672,15 +656,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitReplayLocalCommits', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitReplayLocalCommits', options),
     gitClassifyRepoHealth: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitClassifyRepoHealth', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitClassifyRepoHealth', options),
     gitSalvageReclone: (options: {
-      projectPath: string
+      workspaceId: string
       repoUrl: string
       branch?: string
       extraHeader?: string
@@ -689,18 +673,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitSalvageReclone', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitSalvageReclone', options),
     gitReadConflictFile: (options: {
-      projectPath: string
+      workspaceId: string
       filePath: string
-    }) => ipcRenderer.invoke('sync:gitReadConflictFile', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitReadConflictFile', options),
     gitResolveConflictFile: (options: {
-      projectPath: string
+      workspaceId: string
       filePath: string
       resolvedContent: string
-    }) => ipcRenderer.invoke('sync:gitResolveConflictFile', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitResolveConflictFile', options),
     gitRestoreMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -710,20 +694,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitRestoreMain', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitRestoreMain', options),
     gitAdoptWorkspace: (options: {
-      projectPath: string
+      workspaceId: string
       branch?: string
       repoUrl?: string
       debug?: boolean
-    }) => ipcRenderer.invoke('sync:gitAdoptWorkspace', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitAdoptWorkspace', options),
     gitCommitAll: (options: {
-      projectPath: string
+      workspaceId: string
       message: string
       addAll?: boolean
-    }) => ipcRenderer.invoke('sync:gitCommitAll', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitCommitAll', options),
     gitPushMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -732,9 +716,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
-    }) => ipcRenderer.invoke('sync:gitPushMain', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitPushMain', options),
     gitCommitAndPush: (options: {
-      projectPath: string
+      workspaceId: string
       message: string
       remote?: string
       branch?: string
@@ -745,60 +729,60 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
-    }) => ipcRenderer.invoke('sync:gitCommitAndPush', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitCommitAndPush', options),
     gitCaptureCheckpoint: (options: {
-      projectPath: string
+      workspaceId: string
       checkpointId: string
       authorName: string
       authorEmail?: string
-    }) => ipcRenderer.invoke('sync:gitCaptureCheckpoint', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitCaptureCheckpoint', options),
     gitDiffCheckpoints: (options: {
-      projectPath: string
+      workspaceId: string
       fromCheckpointId?: string | null
       toCheckpointId: string
       filePath?: string
-    }) => ipcRenderer.invoke('sync:gitDiffCheckpoints', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitDiffCheckpoints', options),
     gitReadCheckpointFilePair: (options: {
-      projectPath: string
+      workspaceId: string
       fromCheckpointId?: string | null
       toCheckpointId: string
       filePath: string
-    }) => ipcRenderer.invoke('sync:gitReadCheckpointFilePair', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitReadCheckpointFilePair', options),
     gitDeleteCheckpointRefs: (options: {
-      projectPath: string
+      workspaceId: string
       checkpointIds: string[]
-    }) => ipcRenderer.invoke('sync:gitDeleteCheckpointRefs', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitDeleteCheckpointRefs', options),
     gitDeleteAllCheckpointRefs: (options: {
-      projectPath: string
-    }) => ipcRenderer.invoke('sync:gitDeleteAllCheckpointRefs', options),
+      workspaceId: string
+    }) => ipcRenderer.invoke('workspaceSync:gitDeleteAllCheckpointRefs', options),
     gitGetHeadDiffStats: (options: {
-      projectPath: string
+      workspaceId: string
       authorName?: string
-    }) => ipcRenderer.invoke('sync:gitGetHeadDiffStats', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitGetHeadDiffStats', options),
     gitListChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: 'current' | 'branch'
       authorName?: string
-    }) => ipcRenderer.invoke('sync:gitListChanges', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitListChanges', options),
     gitReadChangesPatch: (options: {
-      projectPath: string
+      workspaceId: string
       scope: 'current' | 'branch'
       filePath?: string
       authorName?: string
-    }) => ipcRenderer.invoke('sync:gitReadChangesPatch', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitReadChangesPatch', options),
     gitReadChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: 'current' | 'branch'
       authorName?: string
-    }) => ipcRenderer.invoke('sync:gitReadChanges', options),
+    }) => ipcRenderer.invoke('workspaceSync:gitReadChanges', options),
     subscribeGitChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: 'current' | 'branch'
-    }) => ipcRenderer.invoke('sync:subscribeGitChanges', options),
+    }) => ipcRenderer.invoke('workspaceSync:subscribeGitChanges', options),
     unsubscribeGitChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: 'current' | 'branch'
-    }) => ipcRenderer.invoke('sync:unsubscribeGitChanges', options),
+    }) => ipcRenderer.invoke('workspaceSync:unsubscribeGitChanges', options),
     onGitChangesUpdated: (
       callback: (snapshot: import('../shared/electronApiTypes').GitChangesSnapshot) => void,
     ) => {
@@ -806,16 +790,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         _event: Electron.IpcRendererEvent,
         snapshot: import('../shared/electronApiTypes').GitChangesSnapshot,
       ) => callback(snapshot)
-      ipcRenderer.on('sync:gitChangesUpdated', handler)
-      return () => ipcRenderer.removeListener('sync:gitChangesUpdated', handler)
+      ipcRenderer.on('workspaceSync:gitChangesUpdated', handler)
+      return () => ipcRenderer.removeListener('workspaceSync:gitChangesUpdated', handler)
     },
     subscribeGitDirtyState: (options: {
-      projectPath: string
+      workspaceId: string
       authorName?: string
-    }) => ipcRenderer.invoke('sync:subscribeGitDirtyState', options),
+    }) => ipcRenderer.invoke('workspaceSync:subscribeGitDirtyState', options),
     unsubscribeGitDirtyState: (options: {
-      projectPath: string
-    }) => ipcRenderer.invoke('sync:unsubscribeGitDirtyState', options),
+      workspaceId: string
+    }) => ipcRenderer.invoke('workspaceSync:unsubscribeGitDirtyState', options),
     onGitDirtyStateChange: (
       callback: (snapshot: import('../shared/electronApiTypes').GitDirtyStateSnapshot) => void,
     ) => {
@@ -823,8 +807,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         _event: Electron.IpcRendererEvent,
         snapshot: import('../shared/electronApiTypes').GitDirtyStateSnapshot,
       ) => callback(snapshot)
-      ipcRenderer.on('sync:gitDirtyStateChanged', handler)
-      return () => ipcRenderer.removeListener('sync:gitDirtyStateChanged', handler)
+      ipcRenderer.on('workspaceSync:gitDirtyStateChanged', handler)
+      return () => ipcRenderer.removeListener('workspaceSync:gitDirtyStateChanged', handler)
     },
     mergePreview: (options: {
       baseContent: string
@@ -832,20 +816,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       cloudContent: string
       strategy?: 'zdiff3' | 'diff3'
       labels?: { local?: string; base?: string; cloud?: string }
-    }) => ipcRenderer.invoke('sync:mergePreview', options),
+    }) => ipcRenderer.invoke('workspaceSync:mergePreview', options),
     mergeTreePreview: (options: {
       baseFiles: Array<{ path: string; content: string }>
       localFiles: Array<{ path: string; content: string }>
       cloudFiles: Array<{ path: string; content: string }>
       maxPreviewFiles?: number
       maxPreviewBytes?: number
-    }) => ipcRenderer.invoke('sync:mergeTreePreview', options),
+    }) => ipcRenderer.invoke('workspaceSync:mergeTreePreview', options),
     enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
-      ipcRenderer.invoke('sync:enqueueOps', options),
+      ipcRenderer.invoke('workspaceSync:enqueueOps', options),
     ackOps: (options: { projectId: string; opIds: string[] }) =>
-      ipcRenderer.invoke('sync:ackOps', options),
+      ipcRenderer.invoke('workspaceSync:ackOps', options),
     getJournalState: (options: { projectId: string }) =>
-      ipcRenderer.invoke('sync:getJournalState', options),
+      ipcRenderer.invoke('workspaceSync:getJournalState', options),
   },
   yjs: {
     setInterestRoots: (options: { roots: string[] }) =>
@@ -900,7 +884,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   devServer: {
     start: (options: {
-      projectPath: string
+      workspaceId: string
       command: string
       bootstrapCommand?: string | null
       port: number
@@ -912,24 +896,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       runId?: string
     }) =>
       ipcRenderer.invoke('devServer:start', options),
-    stop: (options: { projectPath: string }) =>
+    stop: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('devServer:stop', options),
-    resize: (options: { projectPath: string; cols: number; rows: number }) =>
+    resize: (options: { workspaceId: string; cols: number; rows: number }) =>
       ipcRenderer.invoke('devServer:resize', options),
-    isRunning: (options: { projectPath: string }) =>
+    isRunning: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('devServer:isRunning', options),
-    onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)
+    onOutput: (callback: (data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:output', handler)
       return () => ipcRenderer.removeListener('devServer:output', handler)
     },
-    onExit: (callback: (data: { projectPath: string; code: number | null; runId?: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; code: number | null; runId?: string }) => callback(data)
+    onExit: (callback: (data: { workspaceId: string; code: number | null; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; code: number | null; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:exit', handler)
       return () => ipcRenderer.removeListener('devServer:exit', handler)
     },
-    onError: (callback: (data: { projectPath: string; error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; error: string }) => callback(data)
+    onError: (callback: (data: { workspaceId: string; error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; error: string }) => callback(data)
       ipcRenderer.on('devServer:error', handler)
       return () => ipcRenderer.removeListener('devServer:error', handler)
     },
@@ -949,7 +933,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('terminal:kill', options),
     getProfiles: () =>
       ipcRenderer.invoke('terminal:getProfiles'),
-    list: (options: { projectPath: string }) =>
+    list: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('terminal:list', options),
     getInfo: (options: { terminalId: string }) =>
       ipcRenderer.invoke('terminal:getInfo', options),
@@ -1012,13 +996,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('updates:status', handler)
     },
   },
+  workspace: {
+    resolveProject: (req: unknown) => ipcRenderer.invoke('workspace:resolveProject', req),
+    listForProject: (projectId: string) => ipcRenderer.invoke('workspace:listForProject', projectId),
+    getActiveForProject: (projectId: string) => ipcRenderer.invoke('workspace:getActiveForProject', projectId),
+    setActiveForProject: (req: unknown) => ipcRenderer.invoke('workspace:setActiveForProject', req),
+    bindExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:bindExistingFolder', req),
+    createForProject: (req: unknown) => ipcRenderer.invoke('workspace:createForProject', req),
+    cloneForProject: (req: unknown) => ipcRenderer.invoke('workspace:cloneForProject', req),
+    verify: (workspaceId: string) => ipcRenderer.invoke('workspace:verify', workspaceId),
+    forget: (workspaceId: string) => ipcRenderer.invoke('workspace:forget', workspaceId),
+    listCandidates: (req: unknown) => ipcRenderer.invoke('workspace:listCandidates', req),
+    openInFinder: (folderPath: string) => ipcRenderer.invoke('workspace:openInFinder', folderPath),
+  },
 } satisfies ElectronAPI)
 
 contextBridge.exposeInMainWorld('desktopBridge', {
   getWsUrl: () => assistantWsUrl,
   getAssistantRuntimeStatus: () =>
     ipcRenderer.invoke(ASSISTANT_RUNTIME_STATUS_HANDLE) as Promise<AssistantRuntimeBridgeStatus>,
-  pickFolder: () => ipcRenderer.invoke('dialog:selectDirectory'),
+  pickFolder: async () => {
+    const res = await ipcRenderer.invoke('dialog:selectDirectory')
+    return res.success ? res.path : null
+  },
   confirm: async (message: string) => {
     const result = await ipcRenderer.invoke('dialog:showMessageBox', {
       type: 'question',

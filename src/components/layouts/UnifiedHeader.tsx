@@ -116,7 +116,7 @@ export function UnifiedHeader({
         const parts: ReactNode[] = [];
         if (editorProjectPath) {
           parts.push(
-            <WorkbenchHeaderEditorControl key="open-in-editor" projectPath={editorProjectPath} />,
+            <WorkbenchHeaderEditorControl key="open-in-editor" workspaceId={editorProjectPath} />,
           );
         }
         if (projectInviteContext.projectId) {

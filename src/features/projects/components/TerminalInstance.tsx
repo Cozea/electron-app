@@ -45,7 +45,7 @@ interface TerminalInstanceProps {
   resolveTerminal?: (size: TerminalAttachSize) => Promise<TerminalAttachResolution>
   onTerminalResolved?: (resolution: TerminalAttachResolution) => void
   onTerminalError?: (message: string) => void
-  projectPath?: string | null
+  workspaceId?: string | null
   className?: string
   onFocus?: () => void
   shouldAutoFocus?: boolean
@@ -118,7 +118,7 @@ export function TerminalInstance({
   resolveTerminal,
   onTerminalResolved,
   onTerminalError,
-  projectPath,
+  workspaceId,
   className,
   onFocus,
   shouldAutoFocus = true,
@@ -142,7 +142,7 @@ export function TerminalInstance({
   const shouldAutoFocusRef = useRef(shouldAutoFocus)
   const onTerminalResolvedRef = useRef(onTerminalResolved)
   const onTerminalErrorRef = useRef(onTerminalError)
-  const projectPathRef = useRef(projectPath ?? '')
+  const workspaceIdRef = useRef(workspaceId ?? '')
   const resolveTerminalRef = useRef(resolveTerminal)
   const [initRetry, setInitRetry] = useState(0)
   const [gpuDiagnostics, setGpuDiagnostics] = useState<GpuAccelerationDiagnostics | null>(null)
@@ -154,7 +154,7 @@ export function TerminalInstance({
   shouldAutoFocusRef.current = shouldAutoFocus
   onTerminalResolvedRef.current = onTerminalResolved
   onTerminalErrorRef.current = onTerminalError
-  projectPathRef.current = projectPath ?? ''
+  workspaceIdRef.current = workspaceId ?? ''
   resolveTerminalRef.current = resolveTerminal
 
   // Keep the terminal output path imperative; React state only tracks metadata.
@@ -406,7 +406,7 @@ export function TerminalInstance({
                 return
               }
 
-              const target = resolvePathLinkTarget(match.text, projectPathRef.current)
+              const target = resolvePathLinkTarget(match.text, workspaceIdRef.current)
               const [filePath, lineStr] = target.split(':')
               const line = lineStr ? parseInt(lineStr, 10) : undefined
 

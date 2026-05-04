@@ -32,7 +32,7 @@ function appendDevServerOutput(current: string, chunk: string): string {
 }
 
 interface UseDevServerManagerOptions {
-  projectPath: string | null
+  workspaceId: string | null
   sessionKey?: string | null
   framework?: string | null
   terminalId?: string | null
@@ -87,7 +87,7 @@ interface DevServerTimelineEvent {
 const MAX_TIMELINE_EVENTS = 80
 
 export function useDevServerManager({
-  projectPath,
+  workspaceId,
   sessionKey = null,
   framework = null,
   terminalId = null,
@@ -184,7 +184,7 @@ export function useDevServerManager({
 
   // Start the dev server
   const start = useCallback(async () => {
-    if (!projectPath) return
+    if (!workspaceId) return
     if (!terminalId) {
       setState((prev) => ({
         ...prev,
@@ -219,7 +219,7 @@ export function useDevServerManager({
 
     try {
       // Get dev server config (command and port)
-      const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort, {
+      const config = await getDevServerConfig(workspaceId, storedDevCommand, storedDevPort, {
         previewMode,
         nativePlatform,
       })
@@ -229,10 +229,10 @@ export function useDevServerManager({
 
       let command = config.command
       let bootstrapCommand: string | null = null
-      const packageJsonExists = await hasPackageJson(projectPath)
+      const packageJsonExists = await hasPackageJson(workspaceId)
       if (packageJsonExists) {
-        const packageManager = await detectPackageManager(projectPath)
-        const dependenciesInstalled = await checkDependenciesInstalled(projectPath, packageManager)
+        const packageManager = await detectPackageManager(workspaceId)
+        const dependenciesInstalled = await checkDependenciesInstalled(workspaceId, packageManager)
         if (!dependenciesInstalled) {
           bootstrapCommand = getInstallCommand(packageManager)
         }
@@ -246,7 +246,7 @@ export function useDevServerManager({
 
       // Start the dev server
       const result = await window.electronAPI.devServer.start({
-        projectPath,
+        workspaceId,
         command,
         bootstrapCommand,
         port: config.port,
@@ -327,7 +327,7 @@ export function useDevServerManager({
     onError,
     onReady,
     previewMode,
-    projectPath,
+    workspaceId,
     sessionKey,
     state.status,
     storedDevCommand,
@@ -339,13 +339,13 @@ export function useDevServerManager({
 
   // Stop the dev server
   const stop = useCallback(async () => {
-    if (!projectPath) return
+    if (!workspaceId) return
 
     const currentRunId = activeRunIdRef.current
 
     try {
       restartSchedulerRef.current.cancel()
-      const result = await window.electronAPI.devServer.stop({ projectPath })
+      const result = await window.electronAPI.devServer.stop({ workspaceId })
       if (!result.success) {
         if (result.error) {
           console.warn('[DevServer] Stop reported an error:', result.error)
@@ -385,7 +385,7 @@ export function useDevServerManager({
     } catch (err) {
       console.error('[DevServer] Failed to stop:', err)
     }
-  }, [appendTimeline, projectPath, transitionLifecycle])
+  }, [appendTimeline, workspaceId, transitionLifecycle])
 
   // Restart the dev server
   const restart = useCallback(async () => {
@@ -397,10 +397,10 @@ export function useDevServerManager({
 
   // Listen for dev server output
   useEffect(() => {
-    if (!projectPath) return
+    if (!workspaceId) return
 
-    const unsubOutput = window.electronAPI.devServer.onOutput(({ projectPath: path, output, runId }) => {
-      if (path !== projectPath) return
+    const unsubOutput = window.electronAPI.devServer.onOutput(({ workspaceId: path, output, runId }) => {
+      if (path !== workspaceId) return
       if (isStaleRunEvent(runId)) return
 
       const resolvedRunId = runId ?? activeRunIdRef.current
@@ -430,8 +430,8 @@ export function useDevServerManager({
       onOutput?.(output)
     })
 
-    const unsubExit = window.electronAPI.devServer.onExit(({ projectPath: path, code, runId }) => {
-      if (path !== projectPath) return
+    const unsubExit = window.electronAPI.devServer.onExit(({ workspaceId: path, code, runId }) => {
+      if (path !== workspaceId) return
       if (isStaleRunEvent(runId)) return
 
       console.log('[DevServer] Exited with code:', code)
@@ -464,8 +464,8 @@ export function useDevServerManager({
       })
     })
 
-    const unsubError = window.electronAPI.devServer.onError(({ projectPath: path, error }) => {
-      if (path !== projectPath) return
+    const unsubError = window.electronAPI.devServer.onError(({ workspaceId: path, error }) => {
+      if (path !== workspaceId) return
 
       console.error('[DevServer] Error:', error)
       const runId = activeRunIdRef.current
@@ -495,26 +495,26 @@ export function useDevServerManager({
     return () => {
       cleanupRef.current?.()
     }
-  }, [appendTimeline, isStaleRunEvent, onError, onOutput, projectPath, transitionLifecycle])
+  }, [appendTimeline, isStaleRunEvent, onError, onOutput, workspaceId, transitionLifecycle])
 
   // Auto-start if enabled
   useEffect(() => {
-    if (autoStart && projectPath && state.status === 'idle') {
+    if (autoStart && workspaceId && state.status === 'idle') {
       start()
     }
-  }, [autoStart, projectPath, state.status, start])
+  }, [autoStart, workspaceId, state.status, start])
 
   // Cleanup on unmount
   useEffect(() => {
     const scheduler = restartSchedulerRef.current
     return () => {
       scheduler.cancel()
-      if (!keepAliveOnUnmount && activeRunIdRef.current && projectPath) {
+      if (!keepAliveOnUnmount && activeRunIdRef.current && workspaceId) {
         console.log('[DevServer] Cleaning up on unmount')
-        window.electronAPI.devServer.stop({ projectPath }).catch(console.error)
+        window.electronAPI.devServer.stop({ workspaceId }).catch(console.error)
       }
     }
-  }, [keepAliveOnUnmount, projectPath])
+  }, [keepAliveOnUnmount, workspaceId])
 
   const setLatestDomSnapshot = useCallback((snapshot: string | null) => {
     setState((prev) => ({ ...prev, latestDomSnapshot: snapshot }))

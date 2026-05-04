@@ -20,7 +20,6 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { useOptionalProjectRouteContext } from '@/features/projects/contexts/ProjectRouteContext'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
-import { projectOpenDesktopClient } from '@/features/projects/lib/projectOpenDesktopClient'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDiffWorkerProvider'
 import { useTranslation } from '@/lib/i18n'
@@ -125,9 +124,9 @@ async function loadCheckpointPatch(input: {
   const inFlight = checkpointPatchRequests.get(cacheKey)
   if (inFlight) return inFlight
 
-  const request = projectOpenDesktopClient.sync
+  const request = window.electronAPI.workspaceSync
     .gitDiffCheckpoints({
-      projectPath: input.gitCwd,
+      workspaceId: input.gitCwd,
       fromCheckpointId: input.previousCheckpointGroupId ?? undefined,
       toCheckpointId: input.groupId,
     })
@@ -321,7 +320,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 
 interface ChangesPageProps {
   presentation?: 'modal' | 'embedded'
-  projectPath?: string | null
+  workspaceId?: string | null
   onRequestClose?: (() => void) | null
   setChromeControlsNode?: (node: React.ReactNode) => void
   setChromeTitleContent?: (node: React.ReactNode) => void
@@ -1054,8 +1053,8 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
 
     let cancelled = false
     const request = latestGroup?.groupId
-      ? projectOpenDesktopClient.sync.gitDiffCheckpoints({
-          projectPath: gitCwd,
+      ? window.electronAPI.workspaceSync.gitDiffCheckpoints({
+          workspaceId: gitCwd,
           fromCheckpointId: previousCheckpointGroupId ?? undefined,
           toCheckpointId: latestGroup.groupId,
         })
@@ -1066,7 +1065,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
         })
 
     void request
-      .then((result) => {
+    .then((result: { success: boolean; diff?: string; error?: string }) => {
         if (cancelled) return
         if (!result.success) {
           setPatch('')
@@ -1107,8 +1106,8 @@ export function ChangesPage(_props: ChangesPageProps) {
   const routeContext = useOptionalProjectRouteContext()
   const syncContext = useOptionalProjectSyncContext()
   const gitCwd =
-    _props.projectPath ??
-    routeContext?.activeLane?.projectPath ??
+    _props.workspaceId ??
+    routeContext?.activeLane?.workspaceId ??
     routeContext?.gitCwd ??
     syncContext?.gitCwd ??
     null
@@ -1274,7 +1273,7 @@ export function ChangesPage(_props: ChangesPageProps) {
         setDiffStyle={setDiffStyle}
         onRefresh={() => {
           if (gitCwd && activeGitScope) {
-            window.electronAPI.sync.subscribeGitChanges({ projectPath: gitCwd, scope: activeGitScope }).catch(() => {})
+            window.electronAPI.workspaceSync.subscribeGitChanges({ workspaceId: gitCwd, scope: activeGitScope }).catch(() => {})
           }
         }}
       />

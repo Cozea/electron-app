@@ -369,10 +369,10 @@ export class ProjectFilesPersistence {
         loggedActivity &&
         checkpointGroupId &&
         this.gitProjectPath &&
-        window.electronAPI?.sync?.gitCaptureCheckpoint
+        window.electronAPI?.workspaceSync?.gitCaptureCheckpoint
       ) {
-        const captureResult = await window.electronAPI.sync.gitCaptureCheckpoint({
-          projectPath: this.gitProjectPath,
+        const captureResult = await window.electronAPI.workspaceSync.gitCaptureCheckpoint({
+          workspaceId: this.gitProjectPath,
           checkpointId: checkpointGroupId,
           authorName: this.userName,
         })

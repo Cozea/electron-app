@@ -26,7 +26,7 @@ export interface NativePreviewIosSimulatorDevice {
 }
 
 export interface NativePreviewSessionLocator {
-  projectPath: string
+  workspaceId: string
   deviceId: string
   platform: NativePreviewPlatform
 }
@@ -104,14 +104,14 @@ export interface NativePreviewCaptureScreenshotResult extends NativePreviewActio
 }
 
 export interface NativePreviewResolveLaunchConfigRequest {
-  projectPath: string
+  workspaceId: string
   platform: NativePreviewPlatform
   preferredPort?: number | null
   resetCache?: boolean
 }
 
 export interface NativePreviewLaunchConfig {
-  projectPath: string
+  workspaceId: string
   platform: NativePreviewPlatform
   kind: NativePreviewLaunchKind
   port: number
@@ -133,5 +133,5 @@ export interface NativePreviewListIosSimulatorsResult extends NativePreviewActio
 }
 
 export function buildNativePreviewSessionKey(locator: NativePreviewSessionLocator): string {
-  return `${locator.platform}:${locator.deviceId}:${locator.projectPath}`
+  return `${locator.platform}:${locator.deviceId}:${locator.workspaceId}`
 }

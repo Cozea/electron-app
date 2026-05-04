@@ -10,6 +10,10 @@ import * as integrationKeys from './integrationKeys'
 import * as integrationCrypto from './integrationCrypto'
 import { createRuntimeEnv } from './runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from './runtime/runtimeResolver'
+import * as Effect from 'effect/Effect'
+import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog.ts'
+import { waitForWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime.ts'
+import { resolvePathWithinDirectory } from './pathUtils'
 
 // ============================================
 // Types
@@ -497,7 +501,9 @@ export async function executeIntegrationTool(
 export async function runIntegrationTool(params: {
   toolName: string
   args: string[]
-  workingDir: string
+  workspaceId: string
+  laneId: string
+  cwd?: { kind: 'projectRoot' } | { kind: 'relative'; path: string }
   encryptedCredentials: string
   keyId: string
   timeout?: number
@@ -508,11 +514,30 @@ export async function runIntegrationTool(params: {
     return { success: false, error: decryptResult.error || 'Failed to decrypt credentials' }
   }
 
+  // Resolve working directory
+  let workingDir = ''
+  try {
+    const rt = await waitForWorkspaceCatalogRuntime()
+    const workspace = await rt.runPromise(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(params.workspaceId))
+    )
+    if (!workspace) {
+      return { success: false, error: 'Workspace not found' }
+    }
+
+    workingDir = workspace.projectRootPath
+    if (params.cwd?.kind === 'relative' && params.cwd.path) {
+      workingDir = resolvePathWithinDirectory(workspace.projectRootPath, params.cwd.path)
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to resolve workspace path' }
+  }
+
   // Execute the tool
   return executeIntegrationTool({
     toolName: params.toolName,
     args: params.args,
-    workingDir: params.workingDir,
+    workingDir,
     credentials: decryptResult.credentials,
     timeout: params.timeout,
   })

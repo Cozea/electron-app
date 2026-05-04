@@ -2,7 +2,7 @@ import type { GitBranch as NativeGitBranch } from "@cozea/assistant-contracts"
 
 import { readNativeApi } from "@/lib/nativeApi"
 
-export async function loadGitBranchesCompat(projectPath: string): Promise<{
+export async function loadGitBranchesCompat(workspaceId: string): Promise<{
   isRepo: boolean
   hasOriginRemote: boolean
   branches: NativeGitBranch[]
@@ -11,7 +11,7 @@ export async function loadGitBranchesCompat(projectPath: string): Promise<{
   const listGitBranches = window.electronAPI.project.listGitBranches
   if (typeof listGitBranches === "function") {
     try {
-      return await listGitBranches({ projectPath })
+      return await listGitBranches({ workspaceId })
     } catch (error) {
       if (
         !(error instanceof Error) ||
@@ -30,7 +30,7 @@ export async function loadGitBranchesCompat(projectPath: string): Promise<{
   const api = readNativeApi()
   if (api?.git?.listBranches) {
     try {
-      const result = await api.git.listBranches({ cwd: projectPath })
+      const result = await api.git.listBranches({ cwd: workspaceId })
       return {
         isRepo: result.isRepo,
         hasOriginRemote: result.hasOriginRemote,
@@ -54,7 +54,7 @@ export async function loadGitBranchesCompat(projectPath: string): Promise<{
   }
 }
 
-export async function checkoutGitBranchCompat(projectPath: string, branch: string): Promise<{
+export async function checkoutGitBranchCompat(workspaceId: string, branch: string): Promise<{
   success: boolean
   branch?: string
   error?: string
@@ -62,7 +62,7 @@ export async function checkoutGitBranchCompat(projectPath: string, branch: strin
   const checkoutGitBranch = window.electronAPI.project.checkoutGitBranch
   if (typeof checkoutGitBranch === "function") {
     try {
-      return await checkoutGitBranch({ projectPath, branch })
+      return await checkoutGitBranch({ workspaceId, branch })
     } catch (error) {
       if (
         !(error instanceof Error) ||
@@ -79,8 +79,8 @@ export async function checkoutGitBranchCompat(projectPath: string, branch: strin
   const api = readNativeApi()
   if (api?.git?.checkout) {
     try {
-      await api.git.checkout({ cwd: projectPath, branch })
-      const status = await api.git.status({ cwd: projectPath }).catch(() => null)
+      await api.git.checkout({ cwd: workspaceId, branch })
+      const status = await api.git.status({ cwd: workspaceId }).catch(() => null)
       return {
         success: true,
         branch: status?.branch ?? branch,
@@ -100,7 +100,7 @@ export async function checkoutGitBranchCompat(projectPath: string, branch: strin
 }
 
 export async function createGitWorktreeCompat(input: {
-  projectPath: string
+  workspaceId: string
   branch: string
   newBranch?: string
   path?: string | null
@@ -115,7 +115,7 @@ export async function createGitWorktreeCompat(input: {
   const createGitWorktree = window.electronAPI.project.createGitWorktree
   if (typeof createGitWorktree === "function") {
     try {
-      return await createGitWorktree(input)
+      return await createGitWorktree({ ...input, workspaceId: input.workspaceId })
     } catch (error) {
       if (
         !(error instanceof Error) ||
@@ -133,7 +133,7 @@ export async function createGitWorktreeCompat(input: {
   if (api?.git?.createWorktree) {
     try {
       const result = await api.git.createWorktree({
-        cwd: input.projectPath,
+        cwd: input.workspaceId,
         branch: input.branch,
         newBranch: input.newBranch,
         path: input.path ?? null,

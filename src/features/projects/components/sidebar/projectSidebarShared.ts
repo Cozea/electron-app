@@ -101,7 +101,7 @@ export interface SidebarProjectTreeItemActions {
     options?: {
       openTile?: "assistantChat" | "terminal"
       focusTileId?: string
-      projectPath?: string | null
+      workspaceId?: string | null
     },
   ) => Promise<void>
 }

@@ -8,6 +8,7 @@ const DEFINITIONS = {
   prioritizedScheduling: { key: 'VITE_FF_PRIORITIZED_SCHEDULING', defaultValue: true },
   jankDiagnostics: { key: 'VITE_FF_JANK_DIAGNOSTICS', defaultValue: true },
   contentVisibility: { key: 'VITE_FF_CONTENT_VISIBILITY', defaultValue: true },
+  localWorkspaceCatalog: { key: 'VITE_FF_LOCAL_WORKSPACE_CATALOG', defaultValue: true },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {
@@ -35,5 +36,9 @@ export const featureFlags = {
   contentVisibility: parseBoolean(
     import.meta.env[DEFINITIONS.contentVisibility.key],
     DEFINITIONS.contentVisibility.defaultValue
+  ),
+  localWorkspaceCatalog: parseBoolean(
+    import.meta.env[DEFINITIONS.localWorkspaceCatalog.key],
+    DEFINITIONS.localWorkspaceCatalog.defaultValue
   ),
 } as const
