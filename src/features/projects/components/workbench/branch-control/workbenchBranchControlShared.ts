@@ -63,7 +63,7 @@ export function buildWorkbenchBranchMenuItems(input: {
   snapshot: GitToolbarSnapshot
   activeLane: ProjectLaneDescriptor | null
   collabBranch: string
-  projectPath: string | null
+  workspaceId: string | null
   rememberedPersonalLanes: ProjectLaneDescriptor[]
   laneActionsLocked: boolean
   newLaneDisabled: boolean
@@ -73,7 +73,7 @@ export function buildWorkbenchBranchMenuItems(input: {
     snapshot,
     activeLane,
     collabBranch,
-    projectPath,
+    workspaceId,
     rememberedPersonalLanes,
     laneActionsLocked,
     newLaneDisabled,
@@ -109,7 +109,7 @@ export function buildWorkbenchBranchMenuItems(input: {
   if (!snapshot.isRepo) {
     items.push({
       id: "workbench-branch:no-repo",
-      label: projectPath ? "No git repository detected." : "Local project path is not ready yet.",
+      label: workspaceId ? "No git repository detected." : "Local project path is not ready yet.",
       enabled: false,
     })
     if (footerMessage) {
@@ -205,7 +205,7 @@ export function buildWorkbenchBranchMenuItems(input: {
       const isActive = nextBranchName === chromeLabel
       const isCollabTarget = nextBranchName === collabBranch
       const worktreeExtra =
-        branch.worktreePath && branch.worktreePath !== projectPath ? " (worktree)" : ""
+        branch.worktreePath && branch.worktreePath !== workspaceId ? " (worktree)" : ""
       const collabExtra = isCollabTarget ? " · collab" : ""
       items.push({
         id: WB_BRANCH_MENU.branch(i),
@@ -260,7 +260,7 @@ export function getStatusSummary(status: GitStatusResult | null): string | null 
 }
 
 export function toToolbarGitStatus(
-  status: Awaited<ReturnType<typeof window.electronAPI.sync.gitStatus>>,
+  status: Awaited<ReturnType<typeof window.electronAPI.workspaceSync.gitStatus>>,
 ): GitStatusResult | null {
   if (!status.success || !status.isRepo) {
     return null

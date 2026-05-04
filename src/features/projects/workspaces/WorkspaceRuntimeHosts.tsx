@@ -39,7 +39,7 @@ function WorkspaceRuntimeObserver({ workspaceId }: { workspaceId: string }) {
 function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
   const { config, workspaceId } = record
 
-  if (!config.projectId || !config.userId || !config.localPath) {
+  if (!config.projectId || !config.userId || !config.workspaceId) {
     return null
   }
 
@@ -49,8 +49,9 @@ function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
       userId={config.userId}
       userName={config.userName}
       laneId={config.laneId}
+      workspaceId={workspaceId}
+      workspaceRevision={config.workspaceRevision}
       projectSlug={config.projectSlug}
-      localPath={config.localPath}
       gitCwd={config.gitCwd}
       lastSyncAt={config.lastSyncAt ?? undefined}
       collaborationEnabled={config.collaborationEnabled}
@@ -85,7 +86,7 @@ export function WorkspaceRuntimeHosts() {
     const roots: string[] = []
 
     for (const record of hostedRuntimeRecords) {
-      const normalizedRoot = normalizeWorkspaceProjectPath(record.config.localPath)
+      const normalizedRoot = normalizeWorkspaceProjectPath(record.config.workspaceId)
       if (!normalizedRoot || seen.has(normalizedRoot)) {
         continue
       }

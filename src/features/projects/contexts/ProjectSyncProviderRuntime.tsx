@@ -30,24 +30,24 @@ interface ProjectSyncProviderRuntimeProps extends ProjectSyncProviderProps {
 function AgentFileSyncBridge({
   projectId,
   userId,
-  projectPath,
+  workspaceId,
   gitCwd,
   children,
 }: {
   projectId: Id<"projects"> | null
   userId: Id<"users"> | null
-  projectPath: string | null
+  workspaceId: string | null
   gitCwd: string | null
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
 
   useEffect(() => {
-    if (!projectPath || !yjsDoc) return
+    if (!workspaceId || !yjsDoc) return
 
     let cancelled = false
 
-    void window.electronAPI.project.watchStart({ projectPath }).then((res) => {
+    void window.electronAPI.project.watchStart({ workspaceId }).then((res) => {
       if (!res?.success && !cancelled) {
         console.warn("[ProjectWatcher] Failed to start watcher:", res?.error)
       }
@@ -55,13 +55,13 @@ function AgentFileSyncBridge({
 
     return () => {
       cancelled = true
-      void window.electronAPI.project.watchStop({ projectPath })
+      void window.electronAPI.project.watchStop({ workspaceId })
     }
-  }, [projectPath, yjsDoc])
+  }, [workspaceId, yjsDoc])
 
-  useAgentFileSync(yjsDoc, projectPath, projectId, userId)
-  useBinaryFileSync(projectId, projectPath, userId)
-  useYjsFileWriteback(yjsDoc, projectPath, gitCwd, projectId, userId)
+  useAgentFileSync(yjsDoc, workspaceId, projectId, userId)
+  useBinaryFileSync(projectId, workspaceId, userId)
+  useYjsFileWriteback(yjsDoc, workspaceId, gitCwd, projectId, userId)
 
   return <>{children}</>
 }
@@ -73,7 +73,7 @@ export function ProjectSyncProviderRuntime({
   userName,
   laneId: _laneId = null,
   projectSlug: _projectSlug,
-  localPath,
+  workspaceId,
   gitCwd = null,
   lastSyncAt: initialLastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
@@ -96,7 +96,7 @@ export function ProjectSyncProviderRuntime({
     setLastSyncAt(initialLastSyncAt ?? null)
   }, [initialLastSyncAt])
 
-  const canSync = Boolean(projectId && userId && localPath)
+  const canSync = Boolean(projectId && userId && workspaceId)
   const sharedCollaborationEnabled = canSync && collaborationEnabled
   const collaborationMode = sharedCollaborationEnabled ? "shared" : "local"
 
@@ -149,7 +149,7 @@ export function ProjectSyncProviderRuntime({
   )
 
   const triggerSync = useCallback(async () => {
-    if (!projectId || !localPath) {
+    if (!projectId || !workspaceId) {
       return
     }
 
@@ -200,7 +200,7 @@ export function ProjectSyncProviderRuntime({
         logs: [`Error: ${message}`],
       })
     }
-  }, [localPath, onFilesChanged, projectId, refreshActiveCollabSession, sharedCollaborationEnabled])
+  }, [workspaceId, onFilesChanged, projectId, refreshActiveCollabSession, sharedCollaborationEnabled])
 
   return (
     <ProjectSyncContext.Provider
@@ -210,7 +210,7 @@ export function ProjectSyncProviderRuntime({
               isSynced: true,
               cloudSyncBlocked: false,
               lastSyncAt,
-              projectPath: localPath,
+              workspaceId,
               gitCwd,
               collaborationEnabled: sharedCollaborationEnabled,
               collaborationMode,
@@ -226,7 +226,7 @@ export function ProjectSyncProviderRuntime({
         projectId={resolvedProjectId}
         userId={resolvedUserId}
         userName={resolvedUserName}
-        projectPath={localPath}
+        workspaceId={workspaceId}
         gitCwd={gitCwd}
         enabled={canSync}
         documentScopeId={documentScopeId}
@@ -238,7 +238,7 @@ export function ProjectSyncProviderRuntime({
         <AgentFileSyncBridge
           projectId={projectId}
           userId={userId}
-          projectPath={localPath}
+          workspaceId={workspaceId}
           gitCwd={gitCwd}
         >
           {children}

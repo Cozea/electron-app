@@ -27,35 +27,40 @@ export function useLocalProjectImport() {
   const updateProjectStatus = useMutation(api.projects.updateStatus)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
-  const persistProjectPath = useCallback(
-    async (projectId: Id<"projects">, projectPath: string) => {
+  const bindWorkspacePath = useCallback(
+    async (projectId: Id<"projects">, folderPath: string): Promise<string | null> => {
+      let workspaceId: string | null = null
       try {
-        const result = await window.electronAPI.project.rememberLocalPath({
+        const result = await window.electronAPI.workspace!.bindExistingFolder({
           projectId: String(projectId),
-          projectPath,
+          folderPath,
+          writeMarker: true,
+          setActive: true,
         })
-        if (!result.success) {
+        if (!result.success || !result.workspace) {
           console.warn(
-            "[LocalProjectImport] Failed to persist local project path in desktop registry.",
+            "[LocalProjectImport] Failed to bind local project path in desktop registry.",
             result.error,
           )
+        } else {
+          workspaceId = result.workspace.workspaceId
         }
-      } catch (persistError) {
+      } catch (bindError) {
         console.warn(
-          "[LocalProjectImport] Failed to persist local project path in desktop registry.",
-          persistError,
+          "[LocalProjectImport] Failed to bind local project path in desktop registry.",
+          bindError,
         )
       }
 
-      if (!convexUserId) {
-        return
+      if (!convexUserId || !workspaceId) {
+        return workspaceId
       }
 
       try {
         await updateMemberLocalPath({
           projectId,
           userId: convexUserId,
-          localPath: projectPath,
+          localPath: workspaceId,
         })
       } catch (persistError) {
         console.warn(
@@ -63,6 +68,8 @@ export function useLocalProjectImport() {
           persistError,
         )
       }
+      
+      return workspaceId
     },
     [convexUserId, updateMemberLocalPath],
   )
@@ -74,7 +81,7 @@ export function useLocalProjectImport() {
           projectId,
           projectSlug,
           projectName,
-          localPath: projectPath,
+          preferredWorkspaceId: projectPath,
         }),
       })
     },
@@ -144,11 +151,14 @@ export function useLocalProjectImport() {
         userId: convexUserId,
         status: "active",
       })
-      await persistProjectPath(result.projectId, localFolderPath)
+      const workspaceId = await bindWorkspacePath(result.projectId, localFolderPath)
+      if (!workspaceId) {
+        throw new Error("Failed to bind the local folder workspace.")
+      }
       navigateToProjectWorkbench(
         String(result.projectId),
         result.slug,
-        localFolderPath,
+        workspaceId,
         projectName,
       )
       return "imported"
@@ -162,7 +172,7 @@ export function useLocalProjectImport() {
     convexUserId,
     createProject,
     navigateToProjectWorkbench,
-    persistProjectPath,
+    bindWorkspacePath,
     showImportError,
     updateProjectStatus,
   ])

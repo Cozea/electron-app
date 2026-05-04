@@ -55,9 +55,9 @@ export function isBareProjectSourceReference(reference: string): boolean {
   return normalized.length > 0 && !normalized.includes('/')
 }
 
-export function toProjectRelativeSourcePath(reference: string, projectPath: string): string | null {
+export function toProjectRelativeSourcePath(reference: string, workspaceId: string): string | null {
   const normalizedReference = normalizeProjectSourceReference(reference)
-  const normalizedProjectPath = normalizeProjectSourceReference(projectPath)
+  const normalizedProjectPath = normalizeProjectSourceReference(workspaceId)
 
   if (!normalizedReference || !normalizedProjectPath) {
     return null
@@ -78,10 +78,10 @@ export function toProjectRelativeSourcePath(reference: string, projectPath: stri
   return normalizedReference.replace(/^\/+/, '')
 }
 
-export async function resolveProjectSourcePath(reference: string, projectPath: string): Promise<string | null> {
-  const directPath = toProjectRelativeSourcePath(reference, projectPath)
+export async function resolveProjectSourcePath(reference: string, workspaceId: string): Promise<string | null> {
+  const directPath = toProjectRelativeSourcePath(reference, workspaceId)
 
-  const listResult = await window.electronAPI.project.listFiles({ projectPath })
+  const listResult = await window.electronAPI.project.listFiles({ workspaceId })
   if (!listResult.success) {
     return null
   }

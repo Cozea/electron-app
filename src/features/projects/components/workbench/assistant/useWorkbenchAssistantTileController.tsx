@@ -97,7 +97,7 @@ import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-i
 interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   tile: WorkbenchAssistantChatTileRecord
 }
 
@@ -176,9 +176,9 @@ export function useWorkbenchAssistantTileController(
     () =>
       createAssistantProjectSelectorForTile({
         assistantProjectId: input.tile.assistantProjectId,
-        projectPath: input.projectPath,
+        workspaceId: input.workspaceId,
       }),
-    [input.projectPath, input.tile.assistantProjectId],
+    [input.workspaceId, input.tile.assistantProjectId],
   )
   const threadSelector = useMemo(
     () => createAssistantThreadSelectorById(input.tile.threadId),
@@ -411,8 +411,8 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
-  }, [input.laneId, input.projectId, input.projectPath, input.tile, thread, updateAssistantTile])
+    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
+  }, [input.laneId, input.projectId, input.workspaceId, input.tile, thread, updateAssistantTile])
 
   useEffect(() => {
     const timeline = timelineRef.current
@@ -428,10 +428,10 @@ export function useWorkbenchAssistantTileController(
   ])
 
   useEffect(() => {
-    if (!isRuntimeReady || !input.projectPath) {
+    if (!isRuntimeReady || !input.workspaceId) {
       return
     }
-    const workspaceRoot = input.projectPath
+    const workspaceRoot = input.workspaceId
     if (bindingInFlightRef.current) {
       return
     }
@@ -463,7 +463,7 @@ export function useWorkbenchAssistantTileController(
         if (input.tile.assistantProjectId !== existingProject.id) {
           updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
             assistantProjectId: existingProject.id,
-          }, input.projectPath)
+          }, input.workspaceId)
         }
         setBindingError(null)
         setIsBinding(false)
@@ -481,7 +481,7 @@ export function useWorkbenchAssistantTileController(
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>
-            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.projectPath) ?? input.tile
+            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ?? input.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
 
           const currentTile = liveTile()
@@ -583,7 +583,7 @@ export function useWorkbenchAssistantTileController(
             }
 
             if (!cancelled && Object.keys(patch).length > 0) {
-              updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
+              updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
             }
           } else {
             // --- Fix 6: Fresh tile --- just bind the project, no thread yet
@@ -591,7 +591,7 @@ export function useWorkbenchAssistantTileController(
             if (!cancelled && latestTile.assistantProjectId !== nextProject.id) {
               updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
                 assistantProjectId: nextProject.id,
-              }, input.projectPath)
+              }, input.workspaceId)
             }
           }
 
@@ -622,7 +622,7 @@ export function useWorkbenchAssistantTileController(
     hasBoundThread,
     input.laneId,
     input.projectId,
-    input.projectPath,
+    input.workspaceId,
     input.tile,
     isRuntimeReady,
     updateAssistantTile,
@@ -700,7 +700,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -732,7 +732,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -783,7 +783,7 @@ export function useWorkbenchAssistantTileController(
     })
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       runtimeMode: nextRuntimeMode,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -808,7 +808,7 @@ export function useWorkbenchAssistantTileController(
     })
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       interactionMode: nextInteractionMode,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -912,7 +912,7 @@ export function useWorkbenchAssistantTileController(
         })
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           interactionMode: followUp.interactionMode,
-        }, input.projectPath)
+        }, input.workspaceId)
 
         await api.orchestration.dispatchCommand({
           type: "thread.interaction-mode.set",
@@ -975,7 +975,7 @@ export function useWorkbenchAssistantTileController(
     // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
     let resolvedThread = thread
     if (!resolvedThread) {
-      if (!input.projectPath) {
+      if (!input.workspaceId) {
         return
       }
       try {
@@ -990,7 +990,7 @@ export function useWorkbenchAssistantTileController(
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
             : null) ??
-          selectAssistantProjectByCwd(currentAssistantState, input.projectPath) ??
+          selectAssistantProjectByCwd(currentAssistantState, input.workspaceId) ??
           null
 
         if (!currentProject) {
@@ -1020,7 +1020,7 @@ export function useWorkbenchAssistantTileController(
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           threadId,
           assistantProjectId: currentProject.id,
-        }, input.projectPath)
+        }, input.workspaceId)
 
         // Build a minimal thread-like object from the data we just sent.
         // We can't read from the store yet because the domain event hasn't
@@ -1112,7 +1112,7 @@ export function useWorkbenchAssistantTileController(
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           title: nextThreadTitle,
-        }, input.projectPath)
+        }, input.workspaceId)
 
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
@@ -1511,7 +1511,7 @@ export function useWorkbenchAssistantTileController(
       dockComposerOnHover: true,
       isRuntimeReady,
       runtimeErrorMessage,
-      projectPath: input.projectPath,
+      workspaceId: input.workspaceId,
       thread: visibleThread,
       providerSnapshot,
       isRunning,

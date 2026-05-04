@@ -30,18 +30,14 @@ export function buildLegacyWorkspaceIdentityKey(
 
 export function buildWorkspaceIdentityKey(
   projectId: string | null | undefined,
+  workspaceId: string | null | undefined,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceRevision: number = 1,
 ): string | null {
   const legacyKey = buildLegacyWorkspaceIdentityKey(projectId, laneId)
-  if (!legacyKey) {
+  if (!legacyKey || !workspaceId) {
     return null
   }
 
-  const normalizedProjectPath = normalizeWorkspaceProjectPath(projectPath)
-  if (!normalizedProjectPath) {
-    return `${legacyKey}::unbound`
-  }
-
-  return `${legacyKey}::${normalizedProjectPath}`
+  return `${legacyKey}::${workspaceId}::v${workspaceRevision}`
 }

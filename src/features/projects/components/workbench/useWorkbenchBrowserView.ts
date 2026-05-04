@@ -41,7 +41,6 @@ interface UseWorkbenchBrowserViewOptions {
   sessionKey?: string | null
   projectId: string
   laneId: string
-  projectPath?: string | null
   visible?: boolean
   overlaySelector?: string
   storageScope?: BrowserStorageScope

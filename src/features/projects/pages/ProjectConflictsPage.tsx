@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useLocation } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,11 +9,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { useLocalProjectPath } from '@/features/projects/hooks/useLocalProjectPath'
+import { useProjectWorkspaceResolution } from '@/features/projects/workspaces/useProjectWorkspaceResolution'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/CodeMirrorMergeViewer'
-import { resolveAttachedLocalProjectPathHint } from '@/features/projects/lib/projectLocalRootHints'
-import { resolveTrustedProjectRouteNavigationState } from '@/features/projects/lib/projectNavigationState'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowLeftRightIcon as __GitMergeHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, FolderOpenIcon as __FolderOpenHugeIcon, Refresh01Icon as __RefreshCwHugeIcon } from '@hugeicons/core-free-icons'
@@ -28,39 +25,13 @@ interface ConflictFileState {
 
 export function ProjectConflictsPage() {
   const navigate = useViewTransitionNavigate()
-  const location = useLocation()
   const { project, projectIdParam } = useAccessibleProject()
   const syncContext = useOptionalProjectSyncContext()
   const projectId = project?._id ? String(project._id) : projectIdParam
-  const trustedNavigationState = useMemo(
-    () =>
-      resolveTrustedProjectRouteNavigationState({
-        state: location.state,
-        routeProjectId: projectIdParam ?? null,
-        routeProjectSlug: null,
-        resolvedProjectId: project?._id ? String(project._id) : null,
-        resolvedProjectSlug: project?.slug ?? null,
-      }),
-    [location.state, project?._id, project?.slug, projectIdParam],
-  )
-  const navigationLocalPath = trustedNavigationState?.localPath ?? null
-  const { localPath: resolvedLocalPath } = useLocalProjectPath({
-    initialPath: navigationLocalPath,
-    preferInitialPath: Boolean(navigationLocalPath),
-    projectId,
-    projectSlug: project?.slug ?? null,
-    cloudPathHint:
-      project && 'localPath' in project && typeof project.localPath === 'string'
-        ? project.localPath
-        : null,
-    attachedPathHint: resolveAttachedLocalProjectPathHint(
-      project as {
-        importedFrom?: { provider: string; repoFullName: string; branch?: string | null } | null
 
-      } | null,
-    ),
-  })
-  const projectPath = syncContext?.projectPath ?? resolvedLocalPath
+  const { result: workspaceResolution } = useProjectWorkspaceResolution(projectId, project?.slug ?? null)
+  const resolvedWorkspaceId = workspaceResolution?.status === 'ready' ? workspaceResolution.workspace.workspaceId : null
+  const workspaceId = syncContext?.workspaceId ?? resolvedWorkspaceId
   const projectName = project?.name ?? project?.slug ?? 'Project'
 
   const [conflictedPaths, setConflictedPaths] = useState<string[]>([])
@@ -73,7 +44,7 @@ export function ProjectConflictsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const refreshStatus = useCallback(async (preferredPath?: string | null) => {
-    if (!projectPath) {
+    if (!workspaceId) {
       setConflictedPaths([])
       setSelectedPath(null)
       return []
@@ -82,7 +53,7 @@ export function ProjectConflictsPage() {
     setStatusLoading(true)
     setError(null)
     try {
-      const statusResult = await window.electronAPI.sync.gitStatus({ projectPath })
+      const statusResult = await window.electronAPI.workspaceSync.gitStatus({ workspaceId })
       if (!statusResult.success || !statusResult.isRepo) {
         throw new Error(statusResult.error || 'Failed to inspect git conflicts')
       }
@@ -109,14 +80,14 @@ export function ProjectConflictsPage() {
     } finally {
       setStatusLoading(false)
     }
-  }, [projectPath])
+  }, [workspaceId])
 
   useEffect(() => {
     void refreshStatus()
   }, [refreshStatus])
 
   useEffect(() => {
-    if (!projectPath || !selectedPath) {
+    if (!workspaceId || !selectedPath) {
       setConflictFile(null)
       return
     }
@@ -125,8 +96,8 @@ export function ProjectConflictsPage() {
     setFileLoading(true)
     setError(null)
 
-    void window.electronAPI.sync.gitReadConflictFile({
-      projectPath,
+    void window.electronAPI.workspaceSync.gitReadConflictFile({
+      workspaceId,
       filePath: selectedPath,
     }).then((result) => {
       if (cancelled) return
@@ -159,7 +130,7 @@ export function ProjectConflictsPage() {
     return () => {
       cancelled = true
     }
-  }, [projectPath, selectedPath])
+  }, [workspaceId, selectedPath])
 
   const remainingCount = conflictedPaths.length
   const selectedIndex = useMemo(
@@ -168,21 +139,21 @@ export function ProjectConflictsPage() {
   )
 
   const handleOpenFolder = useCallback(async () => {
-    if (!projectPath) return
-    const result = await window.electronAPI.project.openFolder({ projectPath })
+    if (!workspaceId) return
+    const result = await window.electronAPI.project.openFolder({ workspaceId })
     if (!result.success) {
       setError(result.error || 'Failed to open project folder')
     }
-  }, [projectPath])
+  }, [workspaceId])
 
   const handleResolve = useCallback(async () => {
-    if (!projectPath || !selectedPath) return
+    if (!workspaceId || !selectedPath) return
 
     setSaveLoading(true)
     setError(null)
     try {
-      const resolveResult = await window.electronAPI.sync.gitResolveConflictFile({
-        projectPath,
+      const resolveResult = await window.electronAPI.workspaceSync.gitResolveConflictFile({
+        workspaceId,
         filePath: selectedPath,
         resolvedContent,
       })
@@ -215,7 +186,7 @@ export function ProjectConflictsPage() {
     } finally {
       setSaveLoading(false)
     }
-  }, [navigate, projectId, projectPath, refreshStatus, resolvedContent, selectedIndex, selectedPath])
+  }, [navigate, projectId, workspaceId, refreshStatus, resolvedContent, selectedIndex, selectedPath])
 
   if (project === undefined) {
     return (
@@ -235,7 +206,7 @@ export function ProjectConflictsPage() {
     )
   }
 
-  if (!projectPath) {
+  if (!workspaceId) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <p className="text-sm text-muted-foreground">

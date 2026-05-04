@@ -7,14 +7,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
-import {
-  clearRememberedLocalProjectPath,
-  rememberLocalProjectPath,
-} from "@/features/projects/lib/projectOpenLocal"
-import {
-  primeLocalProjectPath,
-  suppressLocalProjectPath,
-} from "@/features/projects/hooks/useLocalProjectPath"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   clearProjectBranchSession,
@@ -35,8 +27,8 @@ interface NavigateOptions {
   replace?: boolean
 }
 
-function normalizeProjectPath(projectPath: string | null | undefined): string | null {
-  const trimmed = projectPath?.trim()
+function normalizeWorkspaceId(workspaceId: string | null | undefined): string | null {
+  const trimmed = workspaceId?.trim()
   return trimmed ? trimmed.replace(/\\/g, "/").replace(/\/+$/, "") : null
 }
 
@@ -50,29 +42,38 @@ export function useProjectWorkspaceActions() {
   const relinkProjectWorkspace = useCallback(
     async (
       project: ProjectWorkspaceActionProject,
-      currentProjectPath: string | null,
+      currentWorkspaceId: string | null,
       options?: NavigateOptions,
     ): Promise<string | null> => {
-      const nextProjectPath = await browseForDirectory(`Choose local folder for ${project.name}`)
-      if (!nextProjectPath) {
+      const nextWorkspaceId = await browseForDirectory(`Choose local folder for ${project.name}`)
+      if (!nextWorkspaceId) {
         return null
       }
 
-      cloneProjectPathState(project.id, currentProjectPath, nextProjectPath)
+      cloneProjectPathState(project.id, currentWorkspaceId, nextWorkspaceId)
       clonePersistedWorkbenchLayoutsForProjectPath({
         projectId: project.id,
-        fromProjectPath: currentProjectPath,
-        toProjectPath: nextProjectPath,
+        fromProjectPath: currentWorkspaceId,
+        toProjectPath: nextWorkspaceId,
       })
 
-      await rememberLocalProjectPath({
+      const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
         projectId: project.id,
-        projectPath: nextProjectPath,
-        userId: convexUserId,
-        updateMemberLocalPath: convexUserId ? updateMemberLocalPath : undefined,
+        folderPath: nextWorkspaceId,
+        writeMarker: true,
+        setActive: true,
       })
-
-      primeLocalProjectPath(project.id, nextProjectPath, project.slug)
+      if (!bindResult.success || !bindResult.workspace) {
+        console.warn("Failed to relink workspace folder", bindResult.error)
+      } else {
+        if (convexUserId) {
+          await updateMemberLocalPath({
+            projectId: project.id as Id<"projects">,
+            userId: convexUserId,
+            localPath: bindResult.workspace.workspaceId,
+          }).catch(e => console.warn("Failed to update member local path", e))
+        }
+      }
 
       navigate(buildProjectPath(project.id, "workbench"), {
         replace: options?.replace,
@@ -80,11 +81,11 @@ export function useProjectWorkspaceActions() {
           projectId: project.id,
           projectSlug: project.slug,
           projectName: project.name,
-          localPath: nextProjectPath,
+          preferredWorkspaceId: nextWorkspaceId,
         }),
       })
 
-      return nextProjectPath
+      return nextWorkspaceId
     },
     [cloneProjectPathState, convexUserId, navigate, updateMemberLocalPath],
   )
@@ -92,11 +93,11 @@ export function useProjectWorkspaceActions() {
   const closeProjectWorkspace = useCallback(
     async (
       project: ProjectWorkspaceActionProject,
-      projectPath: string | null,
+      workspaceId: string | null,
       options?: NavigateOptions,
     ): Promise<boolean> => {
-      const normalizedProjectPath = normalizeProjectPath(projectPath)
-      if (!normalizedProjectPath) {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId)
+      if (!normalizedWorkspaceId) {
         return false
       }
 
@@ -119,7 +120,7 @@ export function useProjectWorkspaceActions() {
       const matchingSessions = sessions.filter((session) => {
         return (
           session.projectId === project.id &&
-          normalizeProjectPath(session.projectPath) === normalizedProjectPath
+          normalizeWorkspaceId(session.workspaceId) === normalizedWorkspaceId
         )
       })
 
@@ -137,19 +138,16 @@ export function useProjectWorkspaceActions() {
       for (const runtimeRecord of runtimeRecords) {
         if (
           String(runtimeRecord.config.projectId ?? "") === project.id &&
-          normalizeProjectPath(runtimeRecord.config.localPath) === normalizedProjectPath
+          normalizeWorkspaceId(runtimeRecord.config.workspaceId) === normalizedWorkspaceId
         ) {
           closeRuntime(runtimeRecord.workspaceId)
         }
       }
 
-      await clearRememberedLocalProjectPath({
-        projectId: project.id,
-      })
+      await window.electronAPI.workspace!.forget(normalizedWorkspaceId)
 
-      clearProjectBranchSession(project.id, normalizedProjectPath)
-      clearCachedProjectLaneState(project.id, normalizedProjectPath)
-      suppressLocalProjectPath(project.id, normalizedProjectPath, project.slug)
+      clearProjectBranchSession(project.id, normalizedWorkspaceId)
+      clearCachedProjectLaneState(project.id, normalizedWorkspaceId)
 
       navigate(buildProjectPath(project.id, "workbench"), {
         replace: options?.replace ?? true,

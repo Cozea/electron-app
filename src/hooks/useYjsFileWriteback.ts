@@ -22,7 +22,7 @@ import { extractRemoteYjsOrigin, type RemoteYjsOrigin } from '@/lib/yjs/origins'
  */
 export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
-  projectPath: string | null,
+  workspaceId: string | null,
   gitCwd: string | null,
   projectId: Id<'projects'> | null,
   userId: Id<'users'> | null
@@ -31,7 +31,7 @@ export function useYjsFileWriteback(
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing
 
   useEffect(() => {
-    if (!yjsDoc || !projectPath || !projectId) return
+    if (!yjsDoc || !workspaceId || !projectId) return
 
     const syncCoordinator = new SyncCoordinator({
       projectId,
@@ -65,8 +65,8 @@ export function useYjsFileWriteback(
         if (!gitCwd) {
           return
         }
-        void window.electronAPI.sync.gitCaptureCheckpoint({
-          projectPath: gitCwd,
+        void window.electronAPI.workspaceSync.gitCaptureCheckpoint({
+          workspaceId: gitCwd,
           checkpointId: checkpointGroupId,
           authorName: 'Remote collaborator',
         }).catch((error) => {
@@ -83,7 +83,7 @@ export function useYjsFileWriteback(
       if (!normalizedPath) return
       try {
         const result = await window.electronAPI.project.writeFile({
-          projectPath,
+          workspaceId,
           filePath: normalizedPath,
           content,
           origin: 'remote',
@@ -122,8 +122,8 @@ export function useYjsFileWriteback(
       if (paths.length === 0) return
 
       try {
-        await window.electronAPI.sync.deleteFiles({
-          projectPath,
+        await window.electronAPI.workspaceSync.deleteFiles({
+          workspaceId,
           paths,
         })
         console.log(`[YjsWriteback] Deleted remote files: ${paths.join(', ')}`)
@@ -222,7 +222,7 @@ export function useYjsFileWriteback(
 
       try {
         const result = await window.electronAPI.project.renameFile({
-          projectPath,
+          workspaceId,
           oldPath: normalizedFrom,
           newPath: normalizedTo,
           origin: 'remote',
@@ -304,5 +304,5 @@ export function useYjsFileWriteback(
       // Unobserve renames map
       yjsDoc.renames.unobserve(renamesMapHandler)
     }
-  }, [gitCwd, projectId, projectPath, userId, yjsDoc])
+  }, [gitCwd, projectId, workspaceId, userId, yjsDoc])
 }

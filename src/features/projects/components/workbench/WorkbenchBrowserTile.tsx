@@ -38,7 +38,6 @@ interface WorkbenchBrowserTileProps {
   projectId: string
   laneId: string
   tile: WorkbenchBrowserTileRecord
-  projectPath: string | null
   workspaceId: string | null
   workbenchSession: WorkbenchSessionSnapshot | null
   panelApi: DockviewPanelApi
@@ -94,7 +93,6 @@ export function WorkbenchBrowserTile({
   projectId,
   laneId,
   tile,
-  projectPath,
   workspaceId,
   workbenchSession,
   panelApi,
@@ -122,26 +120,24 @@ export function WorkbenchBrowserTile({
     sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
-    projectPath,
-    visible: panelActivity.visible,
-    storageScope: tile.storageScope ?? "workspace",
     workspaceId: workspaceId ?? undefined,
+    visible: panelActivity.visible,
     persistModel: true,
     onUrlObserved: (nextUrl) => {
-      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { url: nextUrl }, projectPath)
+      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { url: nextUrl }, workspaceId)
     },
     onTitleObserved: (title) => {
-      workbenchActions.updateTileTitle(projectId, laneId, tile.id, title, projectPath)
+      workbenchActions.updateTileTitle(projectId, laneId, tile.id, title, workspaceId)
     },
     onFaviconObserved: (favicon) => {
-      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { favicon }, projectPath)
+      workbenchActions.updateBrowserTile(projectId, laneId, tile.id, { favicon }, workspaceId)
     },
     onNewPageRequest: (request) => {
       const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
         url: request.url,
         storageScope: tile.storageScope ?? "workspace",
-      }, projectPath)
-      workbenchActions.setActiveTile(projectId, laneId, nextTileId, projectPath)
+      }, workspaceId)
+      workbenchActions.setActiveTile(projectId, laneId, nextTileId, workspaceId)
     },
     onCommand: (command) => {
       if (command.type === "focus-url") {
@@ -182,7 +178,7 @@ export function WorkbenchBrowserTile({
     workbenchActions.updateBrowserTile(projectId, laneId, tile.id, {
       url: normalized,
       title: "Browser",
-    }, projectPath)
+    }, workspaceId)
   }
 
   const focusUrlInput = useCallback(() => {

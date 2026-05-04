@@ -288,7 +288,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
                   filePath: path,
                   line: Number.isFinite(line) ? line : undefined,
                   column: Number.isFinite(column) ? column : undefined,
-                  projectPath: cwd ?? null,
+                  workspaceId: cwd ?? null,
                   preferredEditorId: readStoredExternalEditorPreference(),
                 }).then((result) => {
                   if (!result.success) {

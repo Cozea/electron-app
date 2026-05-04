@@ -71,7 +71,7 @@ interface YjsProjectProviderProps {
   projectId: Id<"projects">
   userId: Id<"users">
   userName: string
-  projectPath: string | null
+  workspaceId: string | null
   gitCwd?: string | null
   enabled?: boolean
   documentScopeId?: string | null
@@ -85,7 +85,7 @@ export function YjsProjectProvider({
   projectId,
   userId,
   userName,
-  projectPath,
+  workspaceId,
   gitCwd = null,
   enabled = true,
   documentScopeId = null,
@@ -240,7 +240,7 @@ export function YjsProjectProvider({
     destroyPersistenceForInit,
     enabled,
     projectId,
-    projectPath,
+    workspaceId,
     gitCwd,
     scopeKey,
     userId,

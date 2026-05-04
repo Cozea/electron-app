@@ -402,11 +402,11 @@ function MissingTilePlaceholder() {
 function useWorkbenchTile(
   projectId: string,
   laneId: string,
-  projectPath: string | null,
+  workspaceId: string | null,
   tileId: string,
 ): WorkbenchTile | null {
   return useProjectWorkbenchStore((state) => {
-    const workbench = selectProjectWorkbench(projectId, laneId, projectPath)(state)
+    const workbench = selectProjectWorkbench(projectId, laneId, workspaceId)(state)
     return workbench?.tiles[tileId] ?? null
   })
 }
@@ -427,7 +427,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
   const storedTile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
-    runtime.projectPath,
+    runtime.workspaceId,
     props.params.tileId,
   )
   const tile =
@@ -438,7 +438,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
     const wb = selectProjectWorkbench(
       props.params.projectId,
       props.params.laneId,
-      runtime.projectPath,
+      runtime.workspaceId,
     )(state)
     if (!wb || wb.order.length !== 1) return false
     const sole = wb.tiles[wb.order[0]]
@@ -485,7 +485,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
           tile={selectionTile}
           singletonEmptyWorkbench={singletonEmptyWorkbench}
           projectName={runtime.projectName}
-          projectPath={runtime.projectPath}
+          workspaceId={runtime.workspaceId}
           onChoose={(request) => {
             runtime.onResolveSelectionTile(selectionTile.id, request)
           }}
@@ -500,7 +500,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
-    runtime.projectPath,
+    runtime.workspaceId,
     props.params.tileId,
   )
 
@@ -529,7 +529,6 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         projectId={props.params.projectId}
         laneId={props.params.laneId}
         tile={tile as WorkbenchBrowserTileRecord}
-        projectPath={runtime.projectPath}
         workspaceId={runtime.workspaceId}
         workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
@@ -544,7 +543,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
-    runtime.projectPath,
+    runtime.workspaceId,
     props.params.tileId,
   )
 
@@ -575,7 +574,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         projectId={props.params.projectId}
         laneId={props.params.laneId}
         tileId={props.params.tileId}
-        projectPath={runtime.projectPath}
+        workspaceId={runtime.workspaceId}
         workbenchSession={runtime.workbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
@@ -589,7 +588,7 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
-    runtime.projectPath,
+    runtime.workspaceId,
     props.params.tileId,
   )
 
@@ -618,7 +617,6 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
         projectId={props.params.projectId}
         laneId={props.params.laneId}
         tile={tile as WorkbenchDevServerTileRecord}
-        projectPath={runtime.projectPath}
         workspaceId={runtime.workspaceId}
         framework={runtime.framework}
         storedDevCommand={runtime.storedDevCommand}
@@ -638,7 +636,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
-    runtime.projectPath,
+    runtime.workspaceId,
     props.params.tileId,
   )
 
@@ -667,7 +665,6 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
         projectId={props.params.projectId}
         laneId={props.params.laneId}
         tile={tile as WorkbenchMobileSimulatorTileRecord}
-        projectPath={runtime.projectPath}
         workspaceId={runtime.workspaceId}
         framework={runtime.framework}
         storedDevCommand={runtime.storedDevCommand}
@@ -685,7 +682,7 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
-    runtime.projectPath,
+    runtime.workspaceId,
     props.params.tileId,
   )
 
@@ -716,7 +713,7 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
       <LazyWorkbenchAssistantChatTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
-        projectPath={runtime.projectPath}
+        workspaceId={runtime.workspaceId}
         tile={tile as WorkbenchAssistantChatTileRecord}
         panelApi={props.api}
         containerApi={props.containerApi}

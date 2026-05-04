@@ -109,7 +109,7 @@ export class SyncCoordinator {
   }
 
   async enqueueOps(ops: SyncOp[]): Promise<EnqueueOpsResult> {
-    const result = await window.electronAPI.sync.enqueueOps({
+    const result = await window.electronAPI.workspaceSync.enqueueOps({
       projectId: this.projectId,
       ops,
     })
@@ -117,7 +117,7 @@ export class SyncCoordinator {
     let journalState = result.journalState
     if (this.autoAck && result.acceptedOpIds.length > 0) {
       try {
-        const ackResult = await window.electronAPI.sync.ackOps({
+        const ackResult = await window.electronAPI.workspaceSync.ackOps({
           projectId: this.projectId,
           opIds: result.acceptedOpIds,
         })
@@ -139,7 +139,7 @@ export class SyncCoordinator {
   }
 
   async getJournalState(): Promise<SyncJournalState> {
-    const result = await window.electronAPI.sync.getJournalState({
+    const result = await window.electronAPI.workspaceSync.getJournalState({
       projectId: this.projectId,
     })
     return {
@@ -149,7 +149,7 @@ export class SyncCoordinator {
   }
 
   async ackOps(opIds: string[]): Promise<SyncJournalState> {
-    const result = await window.electronAPI.sync.ackOps({
+    const result = await window.electronAPI.workspaceSync.ackOps({
       projectId: this.projectId,
       opIds,
     })

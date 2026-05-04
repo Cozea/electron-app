@@ -13,7 +13,7 @@ import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
  */
 export function useAgentFileSync(
   yjsDoc: YjsProjectDoc | null,
-  projectPath: string | null,
+  workspaceId: string | null,
   projectId: Id<'projects'> | null,
   userId: Id<'users'> | null
 ): void {
@@ -34,7 +34,7 @@ export function useAgentFileSync(
   }, [projectId, userId])
 
   useEffect(() => {
-    if (!yjsDoc || !projectPath) return
+    if (!yjsDoc || !workspaceId) return
 
     const cleanups: Array<() => void> = []
 
@@ -124,11 +124,11 @@ export function useAgentFileSync(
     const cleanupChange = window.electronAPI.yjs?.onExternalFileChange?.(
       ({ filePath, content, origin }) => {
         // Check if this file belongs to our project
-        if (!filePath.startsWith(projectPath)) return
+        if (!filePath.startsWith(workspaceId)) return
 
         // Get relative path within project
         const relativePath = filePath
-          .slice(projectPath.length)
+          .slice(workspaceId.length)
           .replace(/^[/\\]+/, '')
         // Normalize path separators
         const normalizedPath = relativePath.replace(/\\/g, '/')
@@ -151,10 +151,10 @@ export function useAgentFileSync(
 
     const cleanupDelete = window.electronAPI.yjs?.onExternalFileDelete?.(
       ({ filePath, origin }) => {
-        if (!filePath.startsWith(projectPath)) return
+        if (!filePath.startsWith(workspaceId)) return
 
         const relativePath = filePath
-          .slice(projectPath.length)
+          .slice(workspaceId.length)
           .replace(/^[/\\]+/, '')
         const normalizedPath = relativePath.replace(/\\/g, '/')
 
@@ -173,5 +173,5 @@ export function useAgentFileSync(
     return () => {
       for (const cleanup of cleanups) cleanup()
     }
-  }, [yjsDoc, projectPath, userId])
+  }, [yjsDoc, workspaceId, userId])
 }

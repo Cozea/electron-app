@@ -3,28 +3,28 @@ import { useEffect, useState } from 'react'
 import type { GitDirtyStateSnapshot } from '../../shared/electronApiTypes'
 
 export function useGitDirtySnapshot(
-  projectPath: string | null,
+  workspaceId: string | null,
   authorName?: string | null,
 ): GitDirtyStateSnapshot | null {
   const [snapshot, setSnapshot] = useState<GitDirtyStateSnapshot | null>(null)
 
   useEffect(() => {
-    if (!projectPath) {
+    if (!workspaceId) {
       setSnapshot(null)
       return
     }
 
     let cancelled = false
-    const syncApi = window.electronAPI?.sync
+    const syncApi = window.electronAPI?.workspaceSync
     if (!syncApi?.subscribeGitDirtyState || !syncApi?.unsubscribeGitDirtyState || !syncApi?.onGitDirtyStateChange) {
       setSnapshot(null)
       return
     }
 
-    const subscribedProjectPath = projectPath
+    const subscribedProjectPath = workspaceId
     const unsubscribeChannel = syncApi.onGitDirtyStateChange((nextSnapshot) => {
       if (cancelled) return
-      if (nextSnapshot.projectPath !== subscribedProjectPath) {
+      if (nextSnapshot.workspaceId !== subscribedProjectPath) {
         return
       }
       setSnapshot(nextSnapshot)
@@ -32,7 +32,7 @@ export function useGitDirtySnapshot(
 
     void syncApi
       .subscribeGitDirtyState({
-        projectPath,
+        workspaceId,
         authorName: authorName ?? undefined,
       })
       .then((initialSnapshot) => {
@@ -47,9 +47,9 @@ export function useGitDirtySnapshot(
     return () => {
       cancelled = true
       unsubscribeChannel()
-      void syncApi.unsubscribeGitDirtyState({ projectPath }).catch(() => {})
+      void syncApi.unsubscribeGitDirtyState({ workspaceId }).catch(() => {})
     }
-  }, [authorName, projectPath])
+  }, [authorName, workspaceId])
 
   return snapshot
 }

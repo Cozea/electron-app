@@ -6,11 +6,10 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
-import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath"
+import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
-import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints"
 import {
 
   resolveProjectCollabBranch,
@@ -61,22 +60,12 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
-    const attachedPathHint = React.useMemo(
-      () => resolveAttachedLocalProjectPathHint(project),
-      [project],
-    )
-    const { localPath } = useLocalProjectPath({
-      initialPath: context.isCurrentProject ? context.currentProjectPath : null,
-      preferInitialPath: Boolean(context.isCurrentProject && context.currentProjectPath),
-      lookupOnMount: shouldLoadLanes,
-      projectId: project.id,
-      projectSlug: project.slug,
-      cloudPathHint: project.localPath,
-      attachedPathHint,
-    })
+    const { result: workspaceResolution } = useProjectWorkspaceResolution(project.id, project.slug)
+    const localPath = workspaceResolution?.status === "ready" ? workspaceResolution.workspace.workspaceId : null
+    
     const fetchedLaneState = useProjectLaneState({
       projectId: context.prefetchedLaneState ? null : shouldLoadLanes ? project.id : null,
-      projectPath: context.prefetchedLaneState ? null : shouldLoadLanes ? localPath : null,
+      workspaceId: context.prefetchedLaneState ? null : shouldLoadLanes ? localPath : null,
       collabBranch,
     })
     const activeLane = context.prefetchedActiveLane ?? fetchedLaneState.activeLane
@@ -85,7 +74,7 @@ export const ProjectSidebarTreeItem = React.memo(
       return selectProjectWorkbench(
         project.id,
         activeLane.id,
-        activeLane.projectPath ?? localPath,
+        activeLane.workspaceId ?? localPath,
       )(state)
     })
     const activeLaneSummary = React.useMemo(
@@ -241,7 +230,7 @@ export const ProjectSidebarTreeItem = React.memo(
               aria-label={isLanesOpen ? "Collapse" : "Expand"}
             >
               <NativeProjectFolderIcon
-                folderPath={localPath}
+                folderPath={workspaceResolution?.status === "ready" ? workspaceResolution.workspace.projectRootPath : null}
                 isOpen={isLanesOpen}
               />
             </button>
@@ -277,7 +266,7 @@ export const ProjectSidebarTreeItem = React.memo(
               if (!activeLane) return
               void actions.openLaneWorkbench(project, activeLane.id, {
                 ...options,
-                projectPath: activeLane.projectPath ?? localPath,
+                workspaceId: activeLane.workspaceId ?? localPath,
               })
             }}
           />

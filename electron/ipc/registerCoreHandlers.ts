@@ -16,8 +16,6 @@ interface ToolRunRequest {
 }
 
 interface RegisterCoreHandlersDeps {
-  runTool: (request: ToolRunRequest) => Promise<{ success: boolean; output?: unknown; error?: string }>
-  cancelToolRuns: (runId: string) => Promise<{ success: boolean; canceled?: number; error?: string }>
   getUpdateState: () => unknown
   isAutoUpdateEnabled: () => boolean
   checkForUpdates: () => Promise<void>
@@ -41,14 +39,6 @@ interface RegisterCoreHandlersDeps {
 }
 
 export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandlersDeps): void {
-  ipcMain.handle('tools:run', async (_event, request: ToolRunRequest) => {
-    return deps.runTool(request)
-  })
-
-  ipcMain.handle('tools:cancel', async (_event, request: { runId: string }) => {
-    return deps.cancelToolRuns(request.runId)
-  })
-
   ipcMain.handle('updates:getState', () => deps.getUpdateState())
 
   ipcMain.handle('updates:check', async () => {

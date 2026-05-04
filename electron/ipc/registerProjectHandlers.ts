@@ -5,10 +5,8 @@ import path from 'node:path'
 
 import type {
   AppSettings,
-  CloneRepositoryResult,
   CopyDirectorySnapshotResult,
   CreateGitHubRepoResult,
-  CreateProjectFolderResult,
   FileEntry,
   GhCliStatus,
   StorageActionResult,
@@ -25,12 +23,6 @@ import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
 import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
-import {
-  clearRegisteredProjectPath,
-  rememberProjectPath,
-  resolveCanonicalProjectPath,
-} from '../projectPathRegistry'
-import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
   checkoutProjectGitBranch,
@@ -44,6 +36,9 @@ import {
 import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
 import { getProjectContextOptionsFromAnalysis } from '../services/ProjectAnalysisService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
+import * as Effect from 'effect/Effect'
+import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog.ts'
+import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime.ts'
 
 interface RegisterProjectHandlersDeps {
   loadSettings: () => AppSettings
@@ -248,249 +243,23 @@ function normalizeProjectLookup(
   return { slug, projectId, localPathHint, attachedPathHint }
 }
 
+async function getWorkspaceRoot(workspaceId: string): Promise<string> {
+  try {
+    const rt = await waitForWorkspaceCatalogRuntime()
+    const workspace = await rt.runPromise(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
+    )
+    if (workspace?.projectRootPath) return workspace.projectRootPath
+  } catch {
+    // catalog not ready or workspaceId is a legacy path — fall through
+  }
+  throw new Error(`Workspace not found: ${workspaceId}`)
+}
+
 export function registerProjectHandlers(
   ipcMain: IpcMain,
   deps: RegisterProjectHandlersDeps
 ): void {
-  ipcMain.handle(
-    'project:createFolder',
-    async (
-      _event,
-      {
-        slug,
-        initGit = true,
-        projectId,
-        baseDirectory,
-      }: {
-        slug: string
-        initGit?: boolean
-        projectId?: string
-        baseDirectory?: string
-      }
-    ): Promise<CreateProjectFolderResult> => {
-      const settings = deps.loadSettings()
-      const projectsDir = baseDirectory?.trim() || settings.projectsDirectory
-
-      try {
-        if (!fs.existsSync(projectsDir)) {
-          fs.mkdirSync(projectsDir, { recursive: true })
-        }
-
-        const resolvedProjectPath = resolveAvailableProjectPath(projectsDir, slug)
-
-        fs.mkdirSync(resolvedProjectPath, { recursive: true })
-        console.log(`[Project] Created folder: ${resolvedProjectPath}`)
-
-        if (initGit) {
-          try {
-            const initResult = await runGitCommand(['init'], resolvedProjectPath)
-            if (!initResult.success) {
-              throw new Error(initResult.error)
-            }
-            console.log(`[Project] Initialized git repo: ${resolvedProjectPath}`)
-
-            const gitignoreContent = `# Dependencies
-node_modules/
-.pnpm-store/
-
-# Build outputs
-dist/
-build/
-.next/
-out/
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-
-# Cache
-.cache/
-.turbo/
-`
-            fs.writeFileSync(path.join(resolvedProjectPath, '.gitignore'), gitignoreContent)
-            console.log('[Project] Created .gitignore')
-          } catch (gitError) {
-            console.warn('[Project] Git init failed:', gitError)
-            return {
-              success: false,
-              error: gitError instanceof Error ? gitError.message : 'Git init failed',
-            }
-          }
-        }
-
-        if (typeof projectId === 'string' && projectId.trim().length > 0) {
-          rememberProjectPath(projectId, resolvedProjectPath)
-        }
-
-        return {
-          success: true,
-          localPath: resolvedProjectPath,
-        }
-      } catch (error) {
-        console.error('[Project] Failed to create folder:', error)
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to create project folder',
-        }
-      }
-    }
-  )
-
-  // Clone a repository into the project directory for repo imports.
-  ipcMain.handle(
-    'project:cloneRepository',
-    async (
-      _event,
-      {
-        slug,
-        repoUrl,
-        provider,
-        branch,
-        accessToken,
-        projectId,
-        baseDirectory,
-      }: {
-        slug: string
-        repoUrl: string
-        provider: string
-        branch?: string
-        accessToken?: string
-        projectId?: string
-        baseDirectory?: string
-      }
-    ): Promise<CloneRepositoryResult> => {
-      const settings = deps.loadSettings()
-      const projectsDir = baseDirectory?.trim() || settings.projectsDirectory
-      const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
-
-      if (!normalizedRepoUrl) {
-        return {
-          success: false,
-          error: 'Invalid repository URL. Use a full URL or owner/repo format.',
-        }
-      }
-
-      try {
-        if (!fs.existsSync(projectsDir)) {
-          fs.mkdirSync(projectsDir, { recursive: true })
-        }
-
-        const resolvedTargetPath = resolveAvailableProjectPath(projectsDir, slug)
-
-        const cloneArgs: string[] = []
-        const authHeader = buildGitAuthorizationHeader(provider, accessToken)
-
-        if (authHeader && /^https?:\/\//i.test(normalizedRepoUrl)) {
-          cloneArgs.push('-c', `http.extraheader=${authHeader}`)
-        }
-
-        cloneArgs.push('clone', '--single-branch', '--depth', '1')
-        if (branch && branch.trim()) {
-          cloneArgs.push('--branch', branch.trim())
-        }
-        cloneArgs.push(normalizedRepoUrl, resolvedTargetPath)
-
-        const cloneResult = await runGitCommand(cloneArgs, projectsDir)
-        if (!cloneResult.success) {
-          return {
-            success: false,
-            error: cloneResult.error,
-          }
-        }
-
-        if (typeof projectId === 'string' && projectId.trim().length > 0) {
-          rememberProjectPath(projectId, resolvedTargetPath)
-        }
-
-        return {
-          success: true,
-          localPath: resolvedTargetPath,
-          normalizedRepoUrl,
-        }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to clone repository',
-        }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'project:getLocalPath',
-    async (
-      _event,
-      value: string | { slug: string; projectId?: string; localPathHint?: string; attachedPathHint?: string },
-    ): Promise<string | null> => {
-      const { slug, projectId, localPathHint, attachedPathHint } = normalizeProjectLookup(value)
-      const settings = deps.loadSettings()
-      if (
-        !projectId &&
-        !localPathHint &&
-        !attachedPathHint &&
-        (!slug || typeof settings.projectsDirectory !== 'string')
-      ) {
-        console.warn('[ProjectPath] Invalid getLocalPath lookup payload', {
-          value,
-          normalizedSlug: slug,
-          projectId: projectId ?? null,
-          localPathHint: localPathHint ?? null,
-          attachedPathHint: attachedPathHint ?? null,
-          projectsDirectoryType: typeof settings.projectsDirectory,
-          projectsDirectory: settings.projectsDirectory,
-        })
-        return null
-      }
-
-      return resolveCanonicalProjectPath({
-        projectId,
-        slug,
-        projectsDirectory: settings.projectsDirectory,
-        localPathHint,
-        attachedPathHint,
-      })
-    },
-  )
-
-  ipcMain.handle(
-    'project:rememberLocalPath',
-    async (
-      _event,
-      {
-        projectId,
-        projectPath,
-      }: { projectId: string; projectPath: string }
-    ): Promise<{ success: boolean; localPath?: string; error?: string }> => {
-      try {
-        const localPath = rememberProjectPath(projectId, projectPath, { source: 'manual' })
-        return {
-          success: true,
-          localPath,
-        }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to remember project path',
-        }
-      }
-    },
-  )
-
   ipcMain.handle(
     'project:clearLocalPath',
     async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
@@ -501,14 +270,16 @@ npm-debug.log*
 
   ipcMain.handle(
     'project:listGitBranches',
-    async (_event, { projectPath }: { projectPath: string }) => {
+    async (_event, { workspaceId }: { workspaceId: string }) => {
+      const projectPath = await getWorkspaceRoot(workspaceId)
       return listProjectGitBranches(projectPath)
     },
   )
 
   ipcMain.handle(
     'project:checkoutGitBranch',
-    async (_event, { projectPath, branch }: { projectPath: string; branch: string }) => {
+    async (_event, { workspaceId, branch }: { workspaceId: string; branch: string }) => {
+      const projectPath = await getWorkspaceRoot(workspaceId)
       return checkoutProjectGitBranch({ cwd: projectPath, branch })
     },
   )
@@ -517,10 +288,11 @@ npm-debug.log*
     'project:createGitWorktree',
     async (
       _event,
-      options: { projectPath: string; branch: string; newBranch?: string; path?: string | null }
+      options: { workspaceId: string; branch: string; newBranch?: string; path?: string | null }
     ) => {
+      const projectPath = await getWorkspaceRoot(options.workspaceId)
       return createProjectGitWorktree({
-        cwd: options.projectPath,
+        cwd: projectPath,
         branch: options.branch,
         newBranch: options.newBranch,
         path: options.path,
@@ -600,8 +372,8 @@ npm-debug.log*
 
   ipcMain.handle(
     'project:openFolder',
-    async (_event, { projectPath }: { projectPath: string }): Promise<StorageActionResult> => {
-      if (!projectPath || typeof projectPath !== 'string') {
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<StorageActionResult> => {
+      if (!workspaceId || typeof workspaceId !== 'string') {
         return {
           success: false,
           error: 'Project path is required.',
@@ -609,6 +381,7 @@ npm-debug.log*
       }
 
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const resolvedPath = path.resolve(projectPath)
         const stats = await fs.promises.stat(resolvedPath)
         if (!stats.isDirectory()) {
@@ -649,9 +422,10 @@ npm-debug.log*
 
   ipcMain.handle(
     'project:pathExists',
-    (_event, { projectPath }: { projectPath: string }): boolean => {
-      if (!projectPath || typeof projectPath !== 'string') return false
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<boolean> => {
+      if (!workspaceId || typeof workspaceId !== 'string') return false
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         return fs.existsSync(projectPath)
       } catch {
         return false
@@ -664,13 +438,13 @@ npm-debug.log*
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         filePath,
         content,
         encoding = 'utf8',
         origin = 'agent',
       }: {
-        projectPath: string
+        workspaceId: string
         filePath: string
         content: string
         encoding?: 'utf8' | 'base64'
@@ -678,6 +452,7 @@ npm-debug.log*
       }
     ): Promise<WriteFileResult> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const fullPath = resolvePathWithinDirectory(projectPath, filePath)
         const dir = path.dirname(fullPath)
 
@@ -725,9 +500,10 @@ npm-debug.log*
     'project:readFile',
     async (
       _event,
-      { projectPath, filePath }: { projectPath: string; filePath: string }
+      { workspaceId, filePath }: { workspaceId: string; filePath: string }
     ): Promise<ReadFileResult> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const fullPath = resolvePathWithinDirectory(projectPath, filePath)
 
         if (!fs.existsSync(fullPath)) {
@@ -756,9 +532,10 @@ npm-debug.log*
     'project:readFileBase64',
     async (
       _event,
-      { projectPath, filePath }: { projectPath: string; filePath: string }
+      { workspaceId, filePath }: { workspaceId: string; filePath: string }
     ): Promise<ReadFileBase64Result> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const fullPath = resolvePathWithinDirectory(projectPath, filePath)
 
         if (!fs.existsSync(fullPath)) {
@@ -785,8 +562,9 @@ npm-debug.log*
 
   ipcMain.handle(
     'project:listFiles',
-    async (_event, { projectPath }: { projectPath: string }): Promise<ListFilesResult> => {
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<ListFilesResult> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         return await listProjectFilesFromIndex(projectPath)
       } catch (error) {
         console.error('[Project] Failed to list files:', error)
@@ -803,13 +581,14 @@ npm-debug.log*
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         frameworkInfo,
       }: {
-        projectPath: string
+        workspaceId: string
         frameworkInfo?: import('../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
       },
     ) => {
+      const projectPath = await getWorkspaceRoot(workspaceId)
       return await getProjectContextOptionsFromAnalysis({ projectPath, frameworkInfo })
     },
   )
@@ -819,18 +598,19 @@ npm-debug.log*
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         oldPath,
         newPath,
         origin,
       }: {
-        projectPath: string
+        workspaceId: string
         oldPath: string
         newPath: string
         origin?: 'agent' | 'remote' | 'sync'
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const fullOldPath = resolvePathWithinDirectory(projectPath, oldPath)
         const fullNewPath = resolvePathWithinDirectory(projectPath, newPath)
 
@@ -876,16 +656,17 @@ npm-debug.log*
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         targetPath,
         origin,
       }: {
-        projectPath: string
+        workspaceId: string
         targetPath: string
         origin?: 'agent' | 'remote' | 'sync'
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const fullPath = resolvePathWithinDirectory(projectPath, targetPath)
 
         if (!fs.existsSync(fullPath)) {
@@ -920,16 +701,17 @@ npm-debug.log*
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         sourcePath,
         destinationPath,
       }: {
-        projectPath: string
+        workspaceId: string
         sourcePath: string
         destinationPath: string
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         const fullSource = resolvePathWithinDirectory(projectPath, sourcePath)
         const fullDestination = resolvePathWithinDirectory(projectPath, destinationPath)
 
@@ -1041,14 +823,14 @@ npm-debug.log*
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
         mode = 'relocation',
       }: {
-        projectPath: string
+        workspaceId: string
         mode?: 'relocation' | 'raw'
       }
     ): Promise<ImportSourcePreflightResult> => {
-      if (!projectPath) {
+      if (!workspaceId) {
         return {
           success: false,
           error: 'Project path is required',
@@ -1056,6 +838,7 @@ npm-debug.log*
       }
 
       try {
+        const projectPath = await getWorkspaceRoot(workspaceId)
         return await preflightImportSource(projectPath, mode)
       } catch (error) {
         return {
@@ -1069,14 +852,16 @@ npm-debug.log*
   // Watch/unwatch a project folder for external filesystem edits.
   ipcMain.handle(
     'project:watchStart',
-    (_event, { projectPath }: { projectPath: string }): WatchProjectResult => {
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
+      const projectPath = await getWorkspaceRoot(workspaceId)
       return startProjectWatcher(projectPath)
     }
   )
 
   ipcMain.handle(
     'project:watchStop',
-    (_event, { projectPath }: { projectPath: string }): WatchProjectResult => {
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
+      const projectPath = await getWorkspaceRoot(workspaceId)
       return stopProjectWatcher(projectPath)
     }
   )
