@@ -21,9 +21,9 @@ import type {
 import { WorkbenchRuntimeClient } from './WorkbenchRuntimeClient'
 
 interface TerminalObserver {
-  onOutput?: (event: TerminalOutputEvent & { projectPath: string }) => void
-  onExit?: (event: TerminalExitEvent & { projectPath: string }) => void
-  onActivity?: (event: TerminalActivityEvent & { projectPath: string }) => void
+  onOutput?: (event: TerminalOutputEvent & { workspaceId: string }) => void
+  onExit?: (event: TerminalExitEvent & { workspaceId: string }) => void
+  onActivity?: (event: TerminalActivityEvent & { workspaceId: string }) => void
 }
 
 interface TerminalOutputBatch {
@@ -64,8 +64,8 @@ export class TerminalService {
   private readonly outputTargets = new Set<WebContents>()
   private readonly terminalSnapshots = new Map<string, TerminalSnapshot>()
   private readonly terminalInfos = new Map<string, TerminalInfo>()
-  private readonly projectTerminals = new Map<string, string[]>()
-  private readonly terminalProjectPaths = new Map<string, string>()
+  private readonly workspaceTerminals = new Map<string, string[]>()
+  private readonly terminalWorkspaceIds = new Map<string, string>()
   private readonly activeTerminalIds = new Set<string>()
   private readonly terminalOutputEvents = new Map<string, TerminalOutputEvent[]>()
   private readonly outputBatcher = createIpcOutputBatcher<TerminalOutputBatch>({
@@ -95,22 +95,22 @@ export class TerminalService {
     return TerminalService.instance
   }
 
-  private addProjectTerminal(projectPath: string, terminalId: string): void {
-    const ids = this.projectTerminals.get(projectPath) ?? []
+  private addWorkspaceTerminal(workspaceId: string, terminalId: string): void {
+    const ids = this.workspaceTerminals.get(workspaceId) ?? []
     if (!ids.includes(terminalId)) {
       ids.push(terminalId)
-      this.projectTerminals.set(projectPath, ids)
+      this.workspaceTerminals.set(workspaceId, ids)
     }
   }
 
-  private removeProjectTerminal(projectPath: string, terminalId: string): void {
-    const ids = this.projectTerminals.get(projectPath) || []
+  private removeWorkspaceTerminal(workspaceId: string, terminalId: string): void {
+    const ids = this.workspaceTerminals.get(workspaceId) || []
     const remaining = ids.filter((id) => id !== terminalId)
     if (remaining.length > 0) {
-      this.projectTerminals.set(projectPath, remaining)
-      return
+      this.workspaceTerminals.set(workspaceId, remaining)
+    } else {
+      this.workspaceTerminals.delete(workspaceId)
     }
-    this.projectTerminals.delete(projectPath)
   }
 
   private registerOutputTarget(sender: WebContents): void {
@@ -167,7 +167,7 @@ export class TerminalService {
     }
   }
 
-  private emitObserverOutput(terminalId: string, event: TerminalOutputEvent & { projectPath: string }): void {
+  private emitObserverOutput(terminalId: string, event: TerminalOutputEvent & { workspaceId: string }): void {
     const observers = this.terminalObservers.get(terminalId)
     if (!observers) return
     for (const observer of Array.from(observers)) {
@@ -175,7 +175,7 @@ export class TerminalService {
     }
   }
 
-  private emitObserverExit(terminalId: string, event: TerminalExitEvent & { projectPath: string }): void {
+  private emitObserverExit(terminalId: string, event: TerminalExitEvent & { workspaceId: string }): void {
     const observers = this.terminalObservers.get(terminalId)
     if (!observers) return
     for (const observer of Array.from(observers)) {
@@ -183,7 +183,7 @@ export class TerminalService {
     }
   }
 
-  private emitObserverActivity(terminalId: string, event: TerminalActivityEvent & { projectPath: string }): void {
+  private emitObserverActivity(terminalId: string, event: TerminalActivityEvent & { workspaceId: string }): void {
     const observers = this.terminalObservers.get(terminalId)
     if (!observers) return
     for (const observer of Array.from(observers)) {
@@ -191,8 +191,8 @@ export class TerminalService {
     }
   }
 
-  private getProjectPathForTerminal(terminalId: string): string {
-    return this.terminalProjectPaths.get(terminalId) ?? this.terminalSnapshots.get(terminalId)?.projectPath ?? ''
+  private getWorkspaceIdForTerminal(terminalId: string): string {
+    return this.terminalWorkspaceIds.get(terminalId) ?? this.terminalSnapshots.get(terminalId)?.workspaceId ?? ''
   }
 
   private normalizeSnapshot(snapshot: TerminalSnapshot): TerminalSnapshot {
@@ -206,19 +206,19 @@ export class TerminalService {
   private syncCacheFromSnapshot(snapshot: TerminalSnapshot, info?: TerminalInfo | null): void {
     const normalizedSnapshot = this.normalizeSnapshot(snapshot)
     this.terminalSnapshots.set(normalizedSnapshot.id, normalizedSnapshot)
-    this.terminalProjectPaths.set(normalizedSnapshot.id, normalizedSnapshot.projectPath)
+    this.terminalWorkspaceIds.set(normalizedSnapshot.id, normalizedSnapshot.workspaceId)
     if (info) {
       this.terminalInfos.set(normalizedSnapshot.id, info)
     }
 
     if (normalizedSnapshot.running) {
       this.activeTerminalIds.add(normalizedSnapshot.id)
-      this.addProjectTerminal(normalizedSnapshot.projectPath, normalizedSnapshot.id)
+      this.addWorkspaceTerminal(normalizedSnapshot.workspaceId, normalizedSnapshot.id)
       return
     }
 
     this.activeTerminalIds.delete(normalizedSnapshot.id)
-    this.removeProjectTerminal(normalizedSnapshot.projectPath, normalizedSnapshot.id)
+    this.removeWorkspaceTerminal(normalizedSnapshot.workspaceId, normalizedSnapshot.id)
   }
 
   private recordOutputEvent(event: TerminalOutputEvent): void {
@@ -244,11 +244,11 @@ export class TerminalService {
       })
     }
 
-    const projectPath = this.getProjectPathForTerminal(event.terminalId)
+    const workspaceId = this.getWorkspaceIdForTerminal(event.terminalId)
     this.broadcastOutput(event)
     this.emitObserverOutput(event.terminalId, {
       ...event,
-      projectPath,
+      workspaceId,
     })
   }
 
@@ -258,11 +258,11 @@ export class TerminalService {
       hasRunningSubprocess: event.hasRunningSubprocess,
       runId: event.runId,
     })
-    const projectPath = this.getProjectPathForTerminal(event.terminalId)
+    const workspaceId = this.getWorkspaceIdForTerminal(event.terminalId)
     this.broadcastActivity(event)
     this.emitObserverActivity(event.terminalId, {
       ...event,
-      projectPath,
+      workspaceId,
     })
   }
 
@@ -285,7 +285,7 @@ export class TerminalService {
       this.activeTerminalIds.delete(event.terminalId)
     }
 
-    const projectPath = nextSnapshot?.projectPath ?? this.getProjectPathForTerminal(event.terminalId)
+    const workspaceId = nextSnapshot?.workspaceId ?? this.getWorkspaceIdForTerminal(event.terminalId)
     const publicEvent: TerminalExitEvent = {
       terminalId: event.terminalId,
       exitCode: event.exitCode ?? null,
@@ -295,7 +295,7 @@ export class TerminalService {
     this.broadcastExit(publicEvent)
     this.emitObserverExit(event.terminalId, {
       ...publicEvent,
-      projectPath,
+      workspaceId,
     })
     this.terminalProvenanceService.closeTerminal(event.terminalId)
   }
@@ -336,7 +336,7 @@ export class TerminalService {
       .filter((snapshot): snapshot is TerminalSnapshot => Boolean(snapshot))
 
     this.activeTerminalIds.clear()
-    this.projectTerminals.clear()
+    this.workspaceTerminals.clear()
 
     for (const snapshot of activeSnapshots) {
       this.terminalProvenanceService.closeTerminal(snapshot.id)
@@ -358,7 +358,7 @@ export class TerminalService {
         terminalId: snapshot.id,
         exitCode: nextSnapshot.exitCode,
         runId: snapshot.runId,
-        projectPath: snapshot.projectPath,
+        workspaceId: snapshot.workspaceId,
       })
     }
   }
@@ -471,8 +471,8 @@ export class TerminalService {
     return this.activeTerminalIds.has(terminalId)
   }
 
-  listTerminalIds(projectPath: string): string[] {
-    return this.projectTerminals.get(projectPath) || []
+  listTerminalIds(workspaceId: string): string[] {
+    return this.workspaceTerminals.get(workspaceId) || []
   }
 
   killTerminal(terminalId: string): boolean {
@@ -525,9 +525,9 @@ export class TerminalService {
       return await this.runtimeClient.request('terminal.getProfiles', {})
     })
 
-    ipcMain.handle('terminal:list', (event, options: { projectPath: string }) => {
+    ipcMain.handle('terminal:list', (event, options: { workspaceId: string }) => {
       this.registerOutputTarget(event.sender)
-      return this.listTerminalIds(options.projectPath)
+      return this.listTerminalIds(options.workspaceId)
     })
 
     ipcMain.handle('terminal:getInfo', async (event, options: { terminalId: string }) => {
@@ -560,8 +560,8 @@ export class TerminalService {
     })
   }
 
-  killAllForProject(projectPath: string): void {
-    const terminalIds = this.listTerminalIds(projectPath)
+  killAllForWorkspace(workspaceId: string): void {
+    const terminalIds = this.listTerminalIds(workspaceId)
     for (const terminalId of terminalIds) {
       this.killTerminal(terminalId)
     }
@@ -570,7 +570,7 @@ export class TerminalService {
   killAll(): void {
     void this.runtimeClient.request<{ success: boolean }>('terminal.killAll', {}).catch(() => {})
     this.activeTerminalIds.clear()
-    this.projectTerminals.clear()
+    this.workspaceTerminals.clear()
     this.runtimeClient.dispose()
   }
 }

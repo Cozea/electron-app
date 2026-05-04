@@ -37,8 +37,7 @@ import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
 import { getProjectContextOptionsFromAnalysis } from '../services/ProjectAnalysisService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 import * as Effect from 'effect/Effect'
-import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog.ts'
-import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime.ts'
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 interface RegisterProjectHandlersDeps {
   loadSettings: () => AppSettings
@@ -243,18 +242,7 @@ function normalizeProjectLookup(
   return { slug, projectId, localPathHint, attachedPathHint }
 }
 
-async function getWorkspaceRoot(workspaceId: string): Promise<string> {
-  try {
-    const rt = await waitForWorkspaceCatalogRuntime()
-    const workspace = await rt.runPromise(
-      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
-    )
-    if (workspace?.projectRootPath) return workspace.projectRootPath
-  } catch {
-    // catalog not ready or workspaceId is a legacy path — fall through
-  }
-  throw new Error(`Workspace not found: ${workspaceId}`)
-}
+
 
 export function registerProjectHandlers(
   ipcMain: IpcMain,
@@ -271,7 +259,13 @@ export function registerProjectHandlers(
   ipcMain.handle(
     'project:listGitBranches',
     async (_event, { workspaceId }: { workspaceId: string }) => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
+      let projectPath: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, isRepo: false, hasOriginRemote: false, branches: [], error: String(e) }
+      }
       return listProjectGitBranches(projectPath)
     },
   )
@@ -279,7 +273,13 @@ export function registerProjectHandlers(
   ipcMain.handle(
     'project:checkoutGitBranch',
     async (_event, { workspaceId, branch }: { workspaceId: string; branch: string }) => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
+      let projectPath: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkoutProjectGitBranch({ cwd: projectPath, branch })
     },
   )
@@ -290,7 +290,13 @@ export function registerProjectHandlers(
       _event,
       options: { workspaceId: string; branch: string; newBranch?: string; path?: string | null }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return createProjectGitWorktree({
         cwd: projectPath,
         branch: options.branch,
@@ -381,8 +387,8 @@ export function registerProjectHandlers(
       }
 
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const resolvedPath = path.resolve(projectPath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        const resolvedPath = path.resolve(access.projectRootPath)
         const stats = await fs.promises.stat(resolvedPath)
         if (!stats.isDirectory()) {
           return {
@@ -425,8 +431,8 @@ export function registerProjectHandlers(
     async (_event, { workspaceId }: { workspaceId: string }): Promise<boolean> => {
       if (!workspaceId || typeof workspaceId !== 'string') return false
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        return fs.existsSync(projectPath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        return fs.existsSync(access.projectRootPath)
       } catch {
         return false
       }
@@ -452,8 +458,8 @@ export function registerProjectHandlers(
       }
     ): Promise<WriteFileResult> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const fullPath = resolvePathWithinDirectory(projectPath, filePath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'write-file', relativePath: filePath })
+        const fullPath = access.fullPath!
         const dir = path.dirname(fullPath)
 
         if (!fs.existsSync(dir)) {
@@ -503,8 +509,8 @@ export function registerProjectHandlers(
       { workspaceId, filePath }: { workspaceId: string; filePath: string }
     ): Promise<ReadFileResult> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const fullPath = resolvePathWithinDirectory(projectPath, filePath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file', relativePath: filePath })
+        const fullPath = access.fullPath!
 
         if (!fs.existsSync(fullPath)) {
           return { success: false, error: 'File not found' }
@@ -535,8 +541,8 @@ export function registerProjectHandlers(
       { workspaceId, filePath }: { workspaceId: string; filePath: string }
     ): Promise<ReadFileBase64Result> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const fullPath = resolvePathWithinDirectory(projectPath, filePath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file', relativePath: filePath })
+        const fullPath = access.fullPath!
 
         if (!fs.existsSync(fullPath)) {
           return { success: false, error: 'File not found' }
@@ -564,8 +570,8 @@ export function registerProjectHandlers(
     'project:listFiles',
     async (_event, { workspaceId }: { workspaceId: string }): Promise<ListFilesResult> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        return await listProjectFilesFromIndex(projectPath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'list-files' })
+        return await listProjectFilesFromIndex(access.projectRootPath)
       } catch (error) {
         console.error('[Project] Failed to list files:', error)
         return {
@@ -588,8 +594,12 @@ export function registerProjectHandlers(
         frameworkInfo?: import('../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
       },
     ) => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
-      return await getProjectContextOptionsFromAnalysis({ projectPath, frameworkInfo })
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        return await getProjectContextOptionsFromAnalysis({ projectPath: access.projectRootPath, frameworkInfo })
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
     },
   )
 
@@ -610,9 +620,9 @@ export function registerProjectHandlers(
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const fullOldPath = resolvePathWithinDirectory(projectPath, oldPath)
-        const fullNewPath = resolvePathWithinDirectory(projectPath, newPath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'write-file' })
+        const fullOldPath = resolvePathWithinDirectory(access.projectRootPath, oldPath)
+        const fullNewPath = resolvePathWithinDirectory(access.projectRootPath, newPath)
 
         if (!fs.existsSync(fullOldPath)) {
           return { success: false, error: 'Source file not found' }
@@ -666,8 +676,8 @@ export function registerProjectHandlers(
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const fullPath = resolvePathWithinDirectory(projectPath, targetPath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'delete-file', relativePath: targetPath })
+        const fullPath = access.fullPath!
 
         if (!fs.existsSync(fullPath)) {
           return { success: false, error: 'Target not found' }
@@ -711,9 +721,9 @@ export function registerProjectHandlers(
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        const fullSource = resolvePathWithinDirectory(projectPath, sourcePath)
-        const fullDestination = resolvePathWithinDirectory(projectPath, destinationPath)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'write-file' })
+        const fullSource = resolvePathWithinDirectory(access.projectRootPath, sourcePath)
+        const fullDestination = resolvePathWithinDirectory(access.projectRootPath, destinationPath)
 
         if (!fs.existsSync(fullSource)) {
           return { success: false, error: 'Source not found' }
@@ -838,8 +848,8 @@ export function registerProjectHandlers(
       }
 
       try {
-        const projectPath = await getWorkspaceRoot(workspaceId)
-        return await preflightImportSource(projectPath, mode)
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'import-read' })
+        return await preflightImportSource(access.projectRootPath, mode)
       } catch (error) {
         return {
           success: false,
@@ -853,19 +863,32 @@ export function registerProjectHandlers(
   ipcMain.handle(
     'project:watchStart',
     async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
-      return startProjectWatcher(projectPath)
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        return startProjectWatcher(access.projectRootPath)
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
     }
   )
 
   ipcMain.handle(
     'project:watchStop',
     async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
-      return stopProjectWatcher(projectPath)
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        return stopProjectWatcher(access.projectRootPath)
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
     }
   )
 
+  /**
+   * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.
+   * These MUST NOT be used for reading project files inside a workspace.
+   * For workspace files, use `project.readFile` or `project.listFiles` with a `workspaceId`.
+   */
   ipcMain.handle('fs:readDir', async (_event, dirPath: string): Promise<FileEntry[]> => {
     try {
       const settings = deps.loadSettings()
@@ -1026,8 +1049,16 @@ export function registerProjectHandlers(
     'project:createGitHubRepo',
     async (
       _event,
-      { name, localPath, visibility = 'private' }: { name: string; localPath: string; visibility?: 'private' | 'public' }
+      { workspaceId, name, visibility = 'private' }: { workspaceId: string; name: string; visibility?: 'private' | 'public' }
     ): Promise<CreateGitHubRepoResult> => {
+      let localPath: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'integration-tool' })
+        localPath = access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
+
       const trimmedName = name.trim()
       if (!trimmedName) {
         return { success: false, error: 'Repository name is required.' }

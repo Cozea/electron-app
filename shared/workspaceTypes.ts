@@ -1,5 +1,10 @@
 // ─── Enumerations ────────────────────────────────────────────────────────────
 
+export type CwdSpec =
+  | { kind: "projectRoot" }
+  | { kind: "gitRoot" }
+  | { kind: "relative"; path: string }
+
 export type WorkspaceVerificationStatus =
   | "verified"
   | "missing"
@@ -212,6 +217,8 @@ export interface BindExistingFolderRequest {
   expectedRepo?: RepoIdentity | null
   writeMarker?: boolean
   setActive?: boolean
+  forceBind?: boolean
+  source?: WorkspaceSource
 }
 
 export interface BindExistingFolderResult {

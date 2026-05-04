@@ -1,7 +1,6 @@
 import type { IpcMain } from 'electron'
 import * as Effect from 'effect/Effect'
-import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog.ts'
-import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime.ts'
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import type { DevCommandSuggestion, ProjectRuntimeProfile, RuntimeHealth, RuntimeKind } from '../runtime/runtimeTypes'
 import { loadCapabilityCatalog } from '../runtime/capabilityCatalog'
 import { resolveCommandIntent } from '../runtime/commandResolver'
@@ -9,16 +8,7 @@ import { collectProjectEvidence } from '../runtime/projectEvidence'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimeTarget, resolveCommandWithRuntime, resolveRuntimeHealth } from '../runtime/runtimeResolver'
 
-async function getWorkspaceRoot(workspaceId: string): Promise<string | null> {
-  try {
-    const rt = await waitForWorkspaceCatalogRuntime()
-    const workspace = await rt.runPromise(
-      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
-    )
-    return workspace?.projectRootPath ?? null
-  } catch {
-    return null
-  }
+
 }
 
 const TRACKED_RUNTIMES: RuntimeKind[] = [
@@ -71,13 +61,29 @@ function buildSuggestions(projectPath: string): ProjectRuntimeProfile {
 
 export function registerRuntimeHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('runtime:getProjectCapabilities', async (_event, options: { workspaceId: string }) => {
-    const projectPath = await getWorkspaceRoot(options.workspaceId)
-    return buildSuggestions(projectPath ?? options.workspaceId)
+    try {
+      const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'runtime-detect' })
+      return buildSuggestions(access.projectRootPath)
+    } catch (e) {
+      return {
+        runtimes: [],
+        devServer: { suggestions: [], requiresUserSelection: true },
+        evidence: { files: [], scripts: [], lockfiles: [] }
+      }
+    }
   })
 
   ipcMain.handle('runtime:detectProjectRuntime', async (_event, options: { workspaceId: string }) => {
-    const projectPath = await getWorkspaceRoot(options.workspaceId)
-    return buildSuggestions(projectPath ?? options.workspaceId)
+    try {
+      const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'runtime-detect' })
+      return buildSuggestions(access.projectRootPath)
+    } catch (e) {
+      return {
+        runtimes: [],
+        devServer: { suggestions: [], requiresUserSelection: true },
+        evidence: { files: [], scripts: [], lockfiles: [] }
+      }
+    }
   })
 
   ipcMain.handle('runtime:resolveCommand', async (_event, options: { workspaceId: string; command: string }) => {

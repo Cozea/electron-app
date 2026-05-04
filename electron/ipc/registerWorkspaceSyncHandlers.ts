@@ -1,7 +1,6 @@
 import { type IpcMain } from 'electron'
 import * as Effect from "effect/Effect"
-import { WorkspaceCatalog } from "../workspaces/WorkspaceCatalog.ts"
-import { waitForWorkspaceCatalogRuntime } from "../workspaces/WorkspaceCatalogRuntime.ts"
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
@@ -28,17 +27,7 @@ function sha256Hex(content: Buffer | Uint8Array): string {
 }
 
 
-async function getWorkspaceRoot(workspaceId: string): Promise<string | null> {
-  const rt = await waitForWorkspaceCatalogRuntime()
-  const workspace = await rt.runPromise(
-    Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
-  )
-  if (!workspace) {
-    console.warn(`[WorkspaceSync] Workspace not found: ${workspaceId}`)
-    return null
-  }
-  return workspace.projectRootPath
-}
+
 
 export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   const gitSyncService = GitSyncService.getInstance()
@@ -47,11 +36,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(
     'workspaceSync:hashFile',
-    async (_event, { filePath }: { filePath: string }): Promise<{ hash: string; size: number }> => {
-      const content = await readFile(filePath)
-      const hash = sha256Hex(content)
-
-      return { hash, size: content.length }
+    async (_event, { workspaceId, laneId, path }: { workspaceId: string; laneId?: string; path: string }): Promise<{ hash: string; size: number } | { success: false; error: string }> => {
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'read-file', relativePath: path })
+        const content = await readFile(access.fullPath!)
+        const hash = sha256Hex(content)
+        return { hash, size: content.length }
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+      }
     }
   )
 
@@ -77,7 +70,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       results: Array<{ path: string; success: boolean; error?: string }>
       successCount: number
     }> => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: workspaceId, operation: 'write-file' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { results: [], successCount: 0 }
+      }
       const results: Array<{ path: string; success: boolean; error?: string }> = []
       const opsToEnqueue: SyncOpRecord[] = []
       const opProjectId = opMeta?.projectId ? String(opMeta.projectId) : null
@@ -173,7 +174,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
     ): Promise<{
       results: Array<{ path: string; success: boolean }>
     }> => {
-      const projectPath = await getWorkspaceRoot(workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: workspaceId, operation: 'delete-file' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { results: [] }
+      }
       const results: Array<{ path: string; success: boolean }> = []
       const opsToEnqueue: SyncOpRecord[] = []
       const opProjectId = opMeta?.projectId ? String(opMeta.projectId) : null
@@ -245,7 +254,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.ensureRepo({ ...options, projectPath })
     }
   )
@@ -266,7 +283,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.cloneIfMissing({ ...options, projectPath })
     }
   )
@@ -287,7 +312,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.fetchMain({ ...options, projectPath })
     }
   )
@@ -303,7 +336,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, isRepo: false, error: String(e) }
+      }
       return gitSyncService.getStatus({ ...options, projectPath })
     }
   )
@@ -326,7 +367,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       try {
         return await gitSyncService.pullMain({ ...options, projectPath })
       } finally {
@@ -352,7 +401,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       try {
         return await gitSyncService.replayLocalCommits({ ...options, projectPath })
       } finally {
@@ -372,7 +429,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.classifyRepoHealth({ ...options, projectPath })
     }
   )
@@ -393,7 +458,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.salvageReclone({ ...options, projectPath })
     }
   )
@@ -407,7 +480,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         filePath: string
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.readConflictFile({ ...options, projectPath })
     }
   )
@@ -422,7 +503,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         resolvedContent: string
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.resolveConflictFile({ ...options, projectPath })
     }
   )
@@ -444,7 +533,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       try {
         return await gitSyncService.restoreMain({ ...options, projectPath })
       } finally {
@@ -464,7 +561,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       try {
         return await gitSyncService.adoptWorkspace({ ...options, projectPath })
       } finally {
@@ -483,7 +588,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         addAll?: boolean
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       try {
         return await gitSyncService.commitAll({ ...options, projectPath })
       } finally {
@@ -507,7 +620,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return gitSyncService.pushMain({ ...options, projectPath })
     }
   )
@@ -529,7 +650,15 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         keyId?: string
       }
     ) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      let gitRootPath: string | null = null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+        gitRootPath = access.gitRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       try {
         return await gitSyncService.commitAndPush({ ...options, projectPath })
       } finally {
@@ -549,7 +678,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         authorEmail?: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.captureCheckpoint({
         cwd,
         checkpointId: options.checkpointId,
@@ -570,7 +705,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         filePath?: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.diffCheckpoints({
         cwd,
         fromCheckpointId: options.fromCheckpointId,
@@ -591,7 +732,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         filePath: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.readCheckpointFilePair({
         cwd,
         fromCheckpointId: options.fromCheckpointId,
@@ -610,7 +757,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         checkpointIds: string[]
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.deleteCheckpointRefs({
         cwd,
         checkpointIds: options.checkpointIds,
@@ -626,7 +779,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         workspaceId: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.deleteAllCheckpointRefs({ cwd })
     }
   )
@@ -640,7 +799,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         authorName?: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.getHeadDiffStats({
         cwd,
         authorName: options.authorName,
@@ -658,7 +823,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         authorName?: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.listChanges({
         cwd,
         scope: options.scope,
@@ -678,7 +849,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         authorName?: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.readChangesPatch({
         cwd,
         scope: options.scope,
@@ -698,7 +875,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         authorName?: string
       }
     ) => {
-      const cwd = await getWorkspaceRoot(options.workspaceId)
+      let cwd: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        cwd = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
       return checkpointWorkerClient.readChanges({
         cwd,
         scope: options.scope,
@@ -714,7 +897,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'workspaceSync:subscribeGitChanges',
     async (event, options: { workspaceId: string; scope: GitChangesScope }) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        throw e
+      }
       const snapshot = await gitDirtyStateService.subscribe(event.sender, {
         projectPath,
         scope: options.scope,
@@ -729,7 +918,8 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
     'workspaceSync:unsubscribeGitChanges',
     (event, options: { workspaceId: string; scope: GitChangesScope }) => {
       // Resolve async; unsubscribe is best-effort
-      getWorkspaceRoot(options.workspaceId).then((projectPath) => {
+      resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' }).then((access) => {
+        const projectPath = access.gitRootPath ?? access.projectRootPath
         gitDirtyStateService.unsubscribe(event.sender, projectPath, options.scope)
       }).catch(() => { /* ignore */ })
       return { success: true }
@@ -739,7 +929,13 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'workspaceSync:subscribeGitDirtyState',
     async (event, options: { workspaceId: string; authorName?: string }) => {
-      const projectPath = await getWorkspaceRoot(options.workspaceId)
+      let projectPath: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+        projectPath = access.gitRootPath ?? access.projectRootPath
+      } catch (e) {
+        throw e
+      }
       return gitDirtyStateService.subscribeGitDirtyState(event.sender, {
         projectPath,
         workspaceId: options.workspaceId,
@@ -751,7 +947,8 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'workspaceSync:unsubscribeGitDirtyState',
     (event, options: { workspaceId: string }) => {
-      getWorkspaceRoot(options.workspaceId).then((projectPath) => {
+      resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' }).then((access) => {
+        const projectPath = access.gitRootPath ?? access.projectRootPath
         gitDirtyStateService.unsubscribeGitDirtyState(event.sender, projectPath)
       }).catch(() => { /* ignore */ })
       return { success: true }
