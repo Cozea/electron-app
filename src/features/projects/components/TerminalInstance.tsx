@@ -415,11 +415,12 @@ export function TerminalInstance({
                  if (editor) {
                     void window.electronAPI.editor.openInEditor({
                        editorId: editor.id,
-                       filePath,
+                       workspaceId: workspaceIdRef.current,
+                       path: filePath,
                        line
                     })
                  } else {
-                    void window.electronAPI.shell.openExternal(`file://${filePath}`)
+                    void window.electronAPI.shell.openExternal(`file://${target}`)
                  }
               })
             },

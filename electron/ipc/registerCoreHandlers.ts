@@ -117,14 +117,33 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
     async (
       _event,
       options: {
-        editorId: ExternalEditorId
-        filePath: string
+        editorId?: ExternalEditorId
+        workspaceId?: string
+        filePath?: string
+        path?: string
         line?: number
         column?: number
       }
     ) => {
       try {
-        await deps.openInEditor(options)
+        let finalPath = options.filePath ?? options.path
+        if (options.workspaceId && finalPath) {
+          const access = await resolveAuthorizedWorkspaceAccess({
+            workspaceId: options.workspaceId,
+            operation: 'open-external-editor',
+            relativePath: finalPath,
+          })
+          finalPath = access.fullPath!
+        }
+        if (!finalPath) {
+          return { success: false, error: 'Path is required' }
+        }
+        await deps.openInEditor({
+          editorId: options.editorId ?? 'default',
+          filePath: finalPath,
+          line: options.line,
+          column: options.column,
+        })
         return { success: true }
       } catch (error) {
         return {

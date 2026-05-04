@@ -6,6 +6,7 @@ import type {
   CloneWorkspaceForProjectResult,
   CreateWorkspaceForProjectRequest,
   CreateWorkspaceForProjectResult,
+  CwdSpec,
   LocalWorkspaceDTO,
   LocalWorkspaceRecord,
   ResolveProjectWorkspaceRequest,
@@ -975,7 +976,7 @@ export interface GitChangesSnapshot {
 export interface TerminalCreateOptions {
   workspaceId: string
   profileId?: string
-  cwd?: string
+  cwd?: CwdSpec
   cols?: number
   rows?: number
   runId?: string
@@ -984,7 +985,7 @@ export interface TerminalCreateOptions {
   sessionKey?: string
   laneId?: string
 
-  gitCwd?: string
+  gitCwd?: CwdSpec
   terminalKind?: TerminalKind
 }
 
@@ -1334,8 +1335,10 @@ export interface ElectronAPI {
   editor: {
     listAvailableEditors: () => Promise<AvailableExternalEditor[]>
     openInEditor: (options: {
-      editorId: ExternalEditorId
-      filePath: string
+      editorId?: string
+      workspaceId?: string
+      filePath?: string
+      path?: string
       line?: number
       column?: number
     }) => Promise<{ success: boolean; error?: string }>
@@ -1575,7 +1578,7 @@ export interface ElectronAPI {
     watchStop: (options: { workspaceId: string }) => Promise<WatchProjectResult>
     getPathNativeIcon: (options: { workspaceId: string }) => Promise<ProjectPathNativeIconResult>
     checkGhCliStatus: () => Promise<GhCliStatus>
-    createGitHubRepo: (options: { name: string; localPath: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
+    createGitHubRepo: (options: { workspaceId: string; name: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
   }
   runtime: {
     getProjectCapabilities: (options: { workspaceId: string }) => Promise<ProjectRuntimeProfile>
@@ -1591,6 +1594,11 @@ export interface ElectronAPI {
     }) => Promise<RuntimeEnsureResult>
     getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
+  /**
+   * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.
+   * These MUST NOT be used for reading project files inside a workspace.
+   * For workspace files, use `project.readFile` or `project.listFiles` with a `workspaceId`.
+   */
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>
     readFile: (path: string) => Promise<string | null>

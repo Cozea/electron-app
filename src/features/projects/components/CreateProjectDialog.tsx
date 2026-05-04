@@ -107,7 +107,6 @@ export function CreateProjectDialog({
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
-  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
   const [name, setName] = useState("")
   const [parentDirectory, setParentDirectory] = useState("")
@@ -290,14 +289,13 @@ export function CreateProjectDialog({
         }
 
         createdWorkspaceId = createWorkspaceResult.workspace.workspaceId
-        const projectRootPath = createWorkspaceResult.workspace.projectRootPath
 
         // Optionally create a GitHub repo
         let gitHubRepoUrl: string | undefined
         if (createGitHubRepo) {
           const ghResult = await window.electronAPI.project.createGitHubRepo({
+            workspaceId: createdWorkspaceId,
             name: buildFilesystemSlug(trimmedName),
-            localPath: projectRootPath,
             visibility: repoVisibility,
           })
           if (!ghResult.success) {
@@ -318,12 +316,6 @@ export function CreateProjectDialog({
           userId: convexUserId,
           status: "active",
         })
-        
-        await updateMemberLocalPath({
-          projectId: result.projectId,
-          userId: convexUserId,
-          localPath: createdWorkspaceId,
-        }).catch((e) => console.warn("Failed to mirror workspaceId to member", e))
 
         navigateToProjectWorkbench(
           String(result.projectId),
@@ -384,12 +376,6 @@ export function CreateProjectDialog({
           userId: convexUserId,
           status: "active",
         })
-        
-        await updateMemberLocalPath({
-          projectId: result.projectId,
-          userId: convexUserId,
-          localPath: createdWorkspaceId,
-        }).catch((e) => console.warn("Failed to mirror workspaceId to member", e))
 
         navigateToProjectWorkbench(
           String(result.projectId),

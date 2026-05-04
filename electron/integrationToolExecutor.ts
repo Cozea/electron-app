@@ -10,10 +10,7 @@ import * as integrationKeys from './integrationKeys'
 import * as integrationCrypto from './integrationCrypto'
 import { createRuntimeEnv } from './runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from './runtime/runtimeResolver'
-import * as Effect from 'effect/Effect'
-import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog.ts'
-import { waitForWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime.ts'
-import { resolvePathWithinDirectory } from './pathUtils'
+import { resolveAuthorizedWorkspaceAccess, type CwdSpec } from './workspaces/authorization.ts'
 
 // ============================================
 // Types
@@ -517,20 +514,16 @@ export async function runIntegrationTool(params: {
   // Resolve working directory
   let workingDir = ''
   try {
-    const rt = await waitForWorkspaceCatalogRuntime()
-    const workspace = await rt.runPromise(
-      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(params.workspaceId))
-    )
-    if (!workspace) {
-      return { success: false, error: 'Workspace not found' }
-    }
-
-    workingDir = workspace.projectRootPath
-    if (params.cwd?.kind === 'relative' && params.cwd.path) {
-      workingDir = resolvePathWithinDirectory(workspace.projectRootPath, params.cwd.path)
-    }
+    const access = await resolveAuthorizedWorkspaceAccess({
+      workspaceId: params.workspaceId,
+      laneId: params.laneId,
+      operation: 'integration-tool',
+      cwd: params.cwd as CwdSpec | undefined
+    })
+    workingDir = access.cwd ?? access.projectRootPath
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to resolve workspace path' }
+  }
   }
 
   // Execute the tool

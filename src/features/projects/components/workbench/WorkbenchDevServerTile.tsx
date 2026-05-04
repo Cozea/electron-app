@@ -261,8 +261,8 @@ function WorkbenchRuntimePreviewTile({
       if (!snapshot || !nextTerminalId) {
         const result = await window.electronAPI.terminal.create({
           workspaceId,
-          cwd: workspaceId,
-          gitCwd: workspaceId,
+          cwd: { kind: "projectRoot" },
+          gitCwd: { kind: "projectRoot" },
           sessionKey: workbenchSession.sessionKey,
           laneId,
           terminalKind: "dev-server",

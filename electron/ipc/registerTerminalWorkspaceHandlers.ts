@@ -10,26 +10,14 @@
  */
 
 import type { IpcMain } from 'electron'
-import * as Effect from 'effect/Effect'
-import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog.ts'
-import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime.ts'
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import type { TerminalService } from '../services/TerminalService'
 
 // registerOutputTarget is private on TerminalService; cast to any to access it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TerminalServiceAny = TerminalService & Record<string, any>
 
-async function resolveProjectPath(workspaceId: string): Promise<string | null> {
-  try {
-    const rt = await waitForWorkspaceCatalogRuntime()
-    const workspace = await rt.runPromise(
-      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.getById(workspaceId))
-    )
-    return workspace?.projectRootPath ?? null
-  } catch {
-    return null
-  }
-}
+
 
 export function registerTerminalWorkspaceHandlers(
   ipcMain: IpcMain,
@@ -40,9 +28,23 @@ export function registerTerminalWorkspaceHandlers(
   ipcMain.removeHandler('terminal:create')
   ipcMain.handle('terminal:create', async (event, options: Record<string, unknown>) => {
     const workspaceId = options.workspaceId as string | undefined
-    if (workspaceId && !options.projectPath) {
-      const projectPath = await resolveProjectPath(workspaceId)
-      options = { ...options, projectPath: projectPath ?? workspaceId }
+    if (workspaceId) {
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({
+          workspaceId,
+          laneId: options.laneId as string | undefined,
+          operation: 'terminal-create',
+          cwd: options.cwd as any
+        })
+        options = {
+          ...options,
+          projectRootPath: access.projectRootPath,
+          cwd: access.cwd ?? access.projectRootPath,
+          gitCwd: access.gitRootPath ?? access.projectRootPath,
+        }
+      } catch (e) {
+        return { success: false, error: String(e) }
+      }
     }
     terminalService.registerOutputTarget(event.sender)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +60,12 @@ export function registerTerminalWorkspaceHandlers(
       terminalService.registerOutputTarget(event.sender)
       let key = options.projectPath ?? ''
       if (!key && options.workspaceId) {
-        key = (await resolveProjectPath(options.workspaceId)) ?? options.workspaceId
+        try {
+          const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'terminal-create' })
+          key = access.projectRootPath
+        } catch {
+          return []
+        }
       }
       return terminalService.listTerminalIds(key)
     },

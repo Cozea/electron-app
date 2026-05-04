@@ -221,8 +221,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   editor: {
     listAvailableEditors: () => ipcRenderer.invoke('editor:listAvailableEditors'),
     openInEditor: (options: {
-      editorId: import('../shared/electronApiTypes').ExternalEditorId
-      filePath: string
+      editorId?: string
+      workspaceId?: string
+      filePath?: string
+      path?: string
       line?: number
       column?: number
     }) => ipcRenderer.invoke('editor:openInEditor', options),
@@ -542,7 +544,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:getPathNativeIcon', options),
     checkGhCliStatus: () =>
       ipcRenderer.invoke('project:checkGhCliStatus'),
-    createGitHubRepo: (options: { name: string; localPath: string; visibility?: 'private' | 'public' }) =>
+    createGitHubRepo: (options: { workspaceId: string; name: string; visibility?: 'private' | 'public' }) =>
       ipcRenderer.invoke('project:createGitHubRepo', options),
   },
   runtime: {
