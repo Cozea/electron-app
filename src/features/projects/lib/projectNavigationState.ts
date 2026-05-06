@@ -1,5 +1,3 @@
-import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"
-
 export interface ProjectRouteNavigationState {
   projectId?: string | null
   projectSlug?: string | null
@@ -36,7 +34,7 @@ export function readProjectRouteNavigationState(
   const projectId = normalizeNavigationText(typedState.projectId)
   const projectSlug = normalizeNavigationText(typedState.projectSlug)
   const projectName = normalizeNavigationText(typedState.projectName)
-  const preferredWorkspaceId = normalizeWorkspaceProjectPath(typedState.preferredWorkspaceId)
+  const preferredWorkspaceId = normalizeNavigationText(typedState.preferredWorkspaceId)
 
   if (!projectId && !projectSlug && !projectName && !preferredWorkspaceId) {
     return null
@@ -110,7 +108,7 @@ export function buildProjectRouteNavigationState<
   const projectId = normalizeNavigationText(input.projectId)
   const projectSlug = normalizeNavigationText(input.projectSlug)
   const projectName = normalizeNavigationText(input.projectName)
-  const preferredWorkspaceId = normalizeWorkspaceProjectPath(input.preferredWorkspaceId)
+  const preferredWorkspaceId = normalizeNavigationText(input.preferredWorkspaceId)
 
   if (projectId) {
     state.projectId = projectId

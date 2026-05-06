@@ -92,6 +92,7 @@ function isRecentInternalChange(fullPath: string): boolean {
 
 interface ProjectWatchHandle {
   projectPath: string
+  workspaceId: string | null
   refCount: number
   watcherType: 'recursive' | 'manual'
   rootWatcher: fs.FSWatcher | null
@@ -140,6 +141,9 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     if (stats.isDirectory()) {
       notifyFileMetaChanged({
         filePath: fullPath,
+        workspaceId: handle.workspaceId ?? undefined,
+        projectRootPath: handle.projectPath,
+        relativePath: relNormalized,
         origin: resolvedOrigin,
         isBinary: false,
         isDirectory: true,
@@ -156,6 +160,9 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     if (isBinary || stats.size > MAX_TEXT_FILE_BYTES) {
       notifyFileMetaChanged({
         filePath: fullPath,
+        workspaceId: handle.workspaceId ?? undefined,
+        projectRootPath: handle.projectPath,
+        relativePath: relNormalized,
         origin: resolvedOrigin,
         isBinary,
         isDirectory: false,
@@ -165,9 +172,17 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     }
 
     const content = fs.readFileSync(fullPath, 'utf-8')
-    notifyFileChanged(fullPath, content, { origin: resolvedOrigin })
+    notifyFileChanged(fullPath, content, {
+      origin: resolvedOrigin,
+      workspaceId: handle.workspaceId ?? undefined,
+      projectRootPath: handle.projectPath,
+      relativePath: relNormalized,
+    })
     notifyFileMetaChanged({
       filePath: fullPath,
+      workspaceId: handle.workspaceId ?? undefined,
+      projectRootPath: handle.projectPath,
+      relativePath: relNormalized,
       origin: resolvedOrigin,
       isBinary: false,
       isDirectory: false,
@@ -176,7 +191,12 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
     })
   } catch {
     // Missing path: treat as deletion (rename/remove)
-    notifyFileDeleted(fullPath, { origin: resolvedOrigin })
+    notifyFileDeleted(fullPath, {
+      origin: resolvedOrigin,
+      workspaceId: handle.workspaceId ?? undefined,
+      projectRootPath: handle.projectPath,
+      relativePath: relNormalized,
+    })
 
     // If a directory was removed, close any nested directory watchers.
     if (handle.watcherType === 'manual') {
@@ -257,13 +277,14 @@ async function ensureDirWatched(handle: ProjectWatchHandle, dirPath: string) {
   })
 }
 
-function createProjectWatchHandle(projectPath: string): ProjectWatchHandle {
+function createProjectWatchHandle(projectPath: string, workspaceId: string | null): ProjectWatchHandle {
   const resolvedProjectPath = path.resolve(projectPath)
 
   // Prefer recursive watch when available (macOS/Windows).
   try {
     const handle: ProjectWatchHandle = {
       projectPath: resolvedProjectPath,
+      workspaceId,
       refCount: 1,
       watcherType: 'recursive',
       rootWatcher: null,
@@ -286,6 +307,7 @@ function createProjectWatchHandle(projectPath: string): ProjectWatchHandle {
 
   const handle: ProjectWatchHandle = {
     projectPath: resolvedProjectPath,
+    workspaceId,
     refCount: 1,
     watcherType: 'manual',
     rootWatcher: null,
@@ -307,11 +329,14 @@ function createProjectWatchHandle(projectPath: string): ProjectWatchHandle {
   return handle
 }
 
-export function startProjectWatcher(projectPath: string): { success: boolean; error?: string } {
+export function startProjectWatcher(projectPath: string, workspaceId?: string | null): { success: boolean; error?: string } {
   const resolved = path.resolve(projectPath)
 
   const existing = watchersByProjectPath.get(resolved)
   if (existing) {
+    if (workspaceId) {
+      existing.workspaceId = workspaceId
+    }
     existing.refCount++
     return { success: true }
   }
@@ -325,7 +350,7 @@ export function startProjectWatcher(projectPath: string): { success: boolean; er
     return { success: false, error: err instanceof Error ? err.message : 'Project path not found' }
   }
 
-  const handle = createProjectWatchHandle(resolved)
+  const handle = createProjectWatchHandle(resolved, workspaceId?.trim() || null)
   watchersByProjectPath.set(resolved, handle)
   return { success: true }
 }

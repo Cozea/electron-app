@@ -1,5 +1,4 @@
 import type { BrowserWindow, IpcMain } from 'electron'
-import * as Effect from 'effect/Effect'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
@@ -28,12 +27,13 @@ export function registerDevServerHandlers(
   const service = DevServerService.getInstance()
   const outputBatcher = createIpcOutputBatcher<{
     workspaceId: string
+    laneId?: string | null
     output: string
     stream: 'stdout' | 'stderr'
     runId?: string
   }>({
     channel: 'devServer:output',
-    keyOf: (payload) => `${payload.workspaceId}:${payload.stream}:${payload.runId ?? ''}`,
+    keyOf: (payload) => `${payload.workspaceId}:${payload.laneId ?? 'collab'}:${payload.stream}:${payload.runId ?? ''}`,
     merge: (current, next) => ({
       ...current,
       output: current.output + next.output,
@@ -47,6 +47,7 @@ export function registerDevServerHandlers(
       _event,
       {
         workspaceId,
+        laneId,
         command,
         bootstrapCommand,
         port,
@@ -117,12 +118,26 @@ export function registerDevServerHandlers(
         ? resolved.command 
         : command
 
+      try {
+        await resolveAuthorizedWorkspaceAccess({
+          workspaceId,
+          laneId,
+          operation: 'dev-server-start',
+        })
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+
       const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
         ? runId.trim()
         : createRunId()
 
       return await service.start({
         workspaceId,
+        laneId,
         command: finalCommand,
         bootstrapCommand: finalBootstrapCommand,
         preferredPort: port,
@@ -138,6 +153,7 @@ export function registerDevServerHandlers(
 
           outputBatcher.enqueue(mainWindow.webContents, {
             workspaceId,
+            laneId: laneId ?? null,
             output,
             stream,
             runId: resolvedRunId,
@@ -152,6 +168,7 @@ export function registerDevServerHandlers(
           outputBatcher.flush(mainWindow.webContents)
           mainWindow.webContents.send('devServer:exit', {
             workspaceId,
+            laneId: laneId ?? null,
             code,
             runId: resolvedRunId,
           })
@@ -164,10 +181,14 @@ export function registerDevServerHandlers(
     'devServer:stop',
     async (
       _event,
-      { workspaceId }: { workspaceId: string }
+      { workspaceId, laneId }: { workspaceId: string; laneId?: string | null }
     ): Promise<{ success: boolean; error?: string }> => {
-      const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'dev-server-start' })
-      return await service.stop(access.projectRootPath)
+      try {
+        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+      return await service.stop(workspaceId, laneId)
     }
   )
 
@@ -181,10 +202,10 @@ export function registerDevServerHandlers(
 
   ipcMain.handle(
     'devServer:isRunning',
-    async (_event, { workspaceId }: { workspaceId: string }): Promise<boolean> => {
+    async (_event, { workspaceId, laneId }: { workspaceId: string; laneId?: string | null }): Promise<boolean> => {
       try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'dev-server-start' })
-        return service.isRunning(access.projectRootPath)
+        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
+        return service.isRunning(workspaceId, laneId)
       } catch {
         return false
       }

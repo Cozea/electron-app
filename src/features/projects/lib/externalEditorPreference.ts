@@ -23,15 +23,6 @@ const SUPPORTED_EXTERNAL_EDITOR_IDS: ExternalEditorId[] = [
   'datagrip',
 ]
 
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:\//.test(path)
-}
-
-function normalizeWorkspaceId(workspaceId: string | null): string | null {
-  if (!workspaceId) return null
-  return workspaceId.replace(/\\/g, '/').replace(/\/+$/, '')
-}
-
 export function readStoredExternalEditorPreference(): ExternalEditorId | null {
   try {
     const stored = window.localStorage.getItem(PREVIEW_EDITOR_PREFERENCE_KEY)
@@ -60,21 +51,14 @@ export async function resolveAbsoluteProjectFilePath(
   workspaceId: string | null
 ): Promise<string> {
   const normalizedFilePath = filePath.replace(/\\/g, '/')
-  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId)
-  const resolvedRelativePath =
-    normalizedWorkspaceId != null
-      ? await resolveProjectSourcePath(normalizedFilePath, normalizedWorkspaceId)
-      : null
-
-  if (resolvedRelativePath && normalizedWorkspaceId) {
-    return `${normalizedWorkspaceId}/${resolvedRelativePath.replace(/^\/+/, '')}`
+  if (!workspaceId) {
+    return normalizedFilePath
   }
 
-  if (normalizedWorkspaceId && !isAbsolutePath(normalizedFilePath) && !normalizedFilePath.startsWith(normalizedWorkspaceId)) {
-    return `${normalizedWorkspaceId}/${normalizedFilePath.replace(/^\/+/, '')}`
-  }
-
-  return normalizedFilePath
+  return (
+    (await resolveProjectSourcePath(normalizedFilePath, workspaceId)) ??
+    normalizedFilePath.replace(/^\/+/, '')
+  )
 }
 
 export async function openProjectFileInExternalEditor(options: {
@@ -100,10 +84,12 @@ export async function openProjectFileInExternalEditor(options: {
     }
   }
 
-  const absoluteFilePath = await resolveAbsoluteProjectFilePath(options.filePath, options.workspaceId)
+  const projectRelativePath = await resolveAbsoluteProjectFilePath(options.filePath, options.workspaceId)
   const result = await window.electronAPI.editor.openInEditor({
     editorId,
-    filePath: absoluteFilePath,
+    ...(options.workspaceId
+      ? { workspaceId: options.workspaceId, path: projectRelativePath || '.' }
+      : { filePath: projectRelativePath }),
     line: options.line,
     column: options.column,
   })

@@ -25,7 +25,6 @@ export function useLocalProjectImport() {
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
-  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
   const bindWorkspacePath = useCallback(
     async (projectId: Id<"projects">, folderPath: string): Promise<string | null> => {
@@ -52,36 +51,19 @@ export function useLocalProjectImport() {
         )
       }
 
-      if (!convexUserId || !workspaceId) {
-        return workspaceId
-      }
-
-      try {
-        await updateMemberLocalPath({
-          projectId,
-          userId: convexUserId,
-          localPath: workspaceId,
-        })
-      } catch (persistError) {
-        console.warn(
-          "[LocalProjectImport] Failed to mirror local project path to project membership.",
-          persistError,
-        )
-      }
-      
       return workspaceId
     },
-    [convexUserId, updateMemberLocalPath],
+    [],
   )
 
   const navigateToProjectWorkbench = useCallback(
-    (projectId: string, projectSlug: string, projectPath: string, projectName: string) => {
+    (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
       navigate(buildProjectPath(projectId, "workbench"), {
         state: buildProjectRouteNavigationState({
           projectId,
           projectSlug,
           projectName,
-          preferredWorkspaceId: projectPath,
+          preferredWorkspaceId: workspaceId,
         }),
       })
     },

@@ -1,9 +1,6 @@
 import { useCallback } from "react"
-import { useMutation } from "convex/react"
 
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { api } from "../../../../convex/_generated/api"
-import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
@@ -29,13 +26,11 @@ interface NavigateOptions {
 
 function normalizeWorkspaceId(workspaceId: string | null | undefined): string | null {
   const trimmed = workspaceId?.trim()
-  return trimmed ? trimmed.replace(/\\/g, "/").replace(/\/+$/, "") : null
+  return trimmed || null
 }
 
 export function useProjectWorkspaceActions() {
   const navigate = useViewTransitionNavigate()
-  const { convexUserId } = useAuth()
-  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const cloneProjectPathState = useProjectWorkbenchStore((state) => state.actions.cloneProjectPathState)
   const closeRuntime = useWorkspaceRuntimeStore((state) => state.actions.closeRuntime)
 
@@ -45,35 +40,30 @@ export function useProjectWorkspaceActions() {
       currentWorkspaceId: string | null,
       options?: NavigateOptions,
     ): Promise<string | null> => {
-      const nextWorkspaceId = await browseForDirectory(`Choose local folder for ${project.name}`)
-      if (!nextWorkspaceId) {
+      const folderPath = await browseForDirectory(`Choose local folder for ${project.name}`)
+      if (!folderPath) {
         return null
       }
 
+      const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+        projectId: project.id,
+        folderPath,
+        writeMarker: true,
+        setActive: true,
+        source: "locate",
+      })
+      if (!bindResult.success || !bindResult.workspace) {
+        console.warn("Failed to relink workspace folder", bindResult.error)
+        return null
+      }
+
+      const nextWorkspaceId = bindResult.workspace.workspaceId
       cloneProjectPathState(project.id, currentWorkspaceId, nextWorkspaceId)
       clonePersistedWorkbenchLayoutsForProjectPath({
         projectId: project.id,
         fromProjectPath: currentWorkspaceId,
         toProjectPath: nextWorkspaceId,
       })
-
-      const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
-        projectId: project.id,
-        folderPath: nextWorkspaceId,
-        writeMarker: true,
-        setActive: true,
-      })
-      if (!bindResult.success || !bindResult.workspace) {
-        console.warn("Failed to relink workspace folder", bindResult.error)
-      } else {
-        if (convexUserId) {
-          await updateMemberLocalPath({
-            projectId: project.id as Id<"projects">,
-            userId: convexUserId,
-            localPath: bindResult.workspace.workspaceId,
-          }).catch(e => console.warn("Failed to update member local path", e))
-        }
-      }
 
       navigate(buildProjectPath(project.id, "workbench"), {
         replace: options?.replace,
@@ -87,7 +77,7 @@ export function useProjectWorkspaceActions() {
 
       return nextWorkspaceId
     },
-    [cloneProjectPathState, convexUserId, navigate, updateMemberLocalPath],
+    [cloneProjectPathState, navigate],
   )
 
   const closeProjectWorkspace = useCallback(
@@ -140,7 +130,7 @@ export function useProjectWorkspaceActions() {
           String(runtimeRecord.config.projectId ?? "") === project.id &&
           normalizeWorkspaceId(runtimeRecord.config.workspaceId) === normalizedWorkspaceId
         ) {
-          closeRuntime(runtimeRecord.workspaceId)
+          closeRuntime(runtimeRecord.runtimeId)
         }
       }
 

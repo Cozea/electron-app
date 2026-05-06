@@ -4,6 +4,23 @@ import type { Id } from '../../convex/_generated/dataModel'
 import type { FileChangeAttribution } from '../../shared/electronApiTypes'
 import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
 
+function relativePathFromExternalEvent(data: {
+  filePath: string
+  workspaceId?: string
+  relativePath?: string
+}, workspaceId: string): string | null {
+  if (data.workspaceId) {
+    if (data.workspaceId !== workspaceId) return null
+    return data.relativePath?.replace(/\\/g, '/').replace(/^\/+/, '') ?? null
+  }
+
+  if (!data.filePath.startsWith(workspaceId)) return null
+  return data.filePath
+    .slice(workspaceId.length)
+    .replace(/^[/\\]+/, '')
+    .replace(/\\/g, '/')
+}
+
 /**
  * useBinaryFileSync - Syncs binary files (images, videos, etc.) via replica LFS APIs.
  *
@@ -50,17 +67,16 @@ export function useBinaryFileSync(
 
     const handleExternalFileChange = (data: {
       filePath: string
+      workspaceId?: string
+      relativePath?: string
       origin?: string | FileChangeAttribution
       isBinary: boolean
       sizeBytes: number
       isDirectory?: boolean
     }) => {
-      if (!data.filePath.startsWith(workspaceId)) return
       if (data.isDirectory) return
-      const relativePath = data.filePath
-        .slice(workspaceId.length)
-        .replace(/^[/\\]+/, '')
-        .replace(/\\/g, '/')
+      const relativePath = relativePathFromExternalEvent(data, workspaceId)
+      if (!relativePath) return
 
       // Only handle binary files
       if (!data.isBinary && !isBinaryFile(relativePath)) return

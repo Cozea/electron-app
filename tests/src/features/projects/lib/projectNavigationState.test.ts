@@ -7,12 +7,12 @@ import {
 } from "@/features/projects/lib/projectNavigationState"
 
 describe("projectNavigationState", () => {
-  it("trusts local paths when the navigation state project id matches the route", () => {
+  it("trusts preferred workspace ids when the navigation state project id matches the route", () => {
     const state = buildProjectRouteNavigationState({
       projectId: "project-123",
       projectSlug: "alpha",
       projectName: "Alpha",
-      localPath: "/tmp/alpha/",
+      preferredWorkspaceId: " workspace-123 ",
     })
 
     expect(
@@ -25,15 +25,15 @@ describe("projectNavigationState", () => {
       projectId: "project-123",
       projectSlug: "alpha",
       projectName: "Alpha",
-      localPath: "/tmp/alpha",
+      preferredWorkspaceId: "workspace-123",
     })
   })
 
-  it("rejects local paths from a different project id", () => {
+  it("rejects preferred workspace ids from a different project id", () => {
     const state = buildProjectRouteNavigationState({
       projectId: "project-new",
       projectSlug: "new-app",
-      localPath: "/tmp/new-app",
+      preferredWorkspaceId: "workspace-new",
     })
 
     expect(
@@ -48,7 +48,7 @@ describe("projectNavigationState", () => {
   it("trusts slug-scoped navigation state when the slug matches", () => {
     const state = buildProjectRouteNavigationState({
       projectSlug: "alpha",
-      localPath: "/tmp/alpha",
+      preferredWorkspaceId: "workspace-alpha",
     })
 
     expect(
@@ -61,14 +61,14 @@ describe("projectNavigationState", () => {
       projectId: null,
       projectSlug: "alpha",
       projectName: null,
-      localPath: "/tmp/alpha",
+      preferredWorkspaceId: "workspace-alpha",
     })
   })
 
-  it("does not trust bare localPath state without project identity", () => {
+  it("does not trust bare preferred workspace state without project identity", () => {
     expect(
       resolveTrustedProjectRouteNavigationState({
-        state: { localPath: "/tmp/alpha" },
+        state: { preferredWorkspaceId: "workspace-alpha" },
         routeProjectId: "project-123",
         routeProjectSlug: "alpha",
       }),
@@ -81,13 +81,13 @@ describe("projectNavigationState", () => {
         projectId: " project-123 ",
         projectSlug: " alpha ",
         projectName: " Alpha ",
-        localPath: "C:\\Users\\admin\\alpha\\",
+        preferredWorkspaceId: " workspace-123 ",
       }),
     ).toEqual({
       projectId: "project-123",
       projectSlug: "alpha",
       projectName: "Alpha",
-      localPath: "C:/Users/admin/alpha",
+      preferredWorkspaceId: "workspace-123",
     })
   })
 })

@@ -1049,6 +1049,7 @@ export interface AgentToolPrepareResult extends AgentToolStatus {
 
 export interface DevServerStartOptions {
   workspaceId: string
+  laneId?: string | null
   command: string
   bootstrapCommand?: string | null
   port: number
@@ -1071,6 +1072,7 @@ export interface DevServerStartResult {
 
 export interface DevServerOutputEvent {
   workspaceId: string
+  laneId?: string | null
   output: string
   stream: 'stdout' | 'stderr'
   runId?: string
@@ -1078,6 +1080,7 @@ export interface DevServerOutputEvent {
 
 export interface DevServerExitEvent {
   workspaceId: string
+  laneId?: string | null
   code: number | null
   runId?: string
 }
@@ -1604,7 +1607,8 @@ export interface ElectronAPI {
     readFile: (path: string) => Promise<string | null>
   }
   workspaceSync: {
-    hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
+    hashFile: (options: { workspaceId: string; laneId?: string | null; path: string }) =>
+      Promise<{ hash: string; size: number } | { success: false; error: string }>
     writeFiles: (options: {
       workspaceId: string
       files: SyncWriteFile[]
@@ -1846,11 +1850,17 @@ export interface ElectronAPI {
     setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>
     onExternalFileChange: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       content: string
       origin?: string | FileChangeAttribution
     }) => void) => () => void
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       origin?: string | FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
@@ -1859,14 +1869,17 @@ export interface ElectronAPI {
     }) => void) => () => void
     onExternalFileDelete: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       origin?: string | FileChangeAttribution
     }) => void) => () => void
   }
   devServer: {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
-    stop: (options: { workspaceId: string }) => Promise<{ success: boolean; error?: string }>
-    resize: (options: { workspaceId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
-    isRunning: (options: { workspaceId: string }) => Promise<boolean>
+    stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
+    resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) => Promise<{ success: boolean }>
+    isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
     onError: (callback: (data: { workspaceId: string; error: string }) => void) => () => void
@@ -1879,7 +1892,7 @@ export interface ElectronAPI {
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
     getProfiles: () => Promise<TerminalProfile[]>
-    list: (options: { projectPath: string }) => Promise<string[]>
+    list: (options: { workspaceId: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     getSnapshot: (options: { terminalId: string }) => Promise<TerminalSnapshot | null>
     getOutputEventsSince: (options: { terminalId: string; afterSequence: number }) => Promise<TerminalOutputEvent[]>

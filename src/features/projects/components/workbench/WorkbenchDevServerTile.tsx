@@ -161,6 +161,7 @@ function WorkbenchRuntimePreviewTile({
   const [draftUrl, setDraftUrl] = useState<string>("")
   const devServer = useDevServerManager({
     workspaceId,
+    laneId,
     sessionKey: workbenchSession?.sessionKey ?? null,
     framework,
     terminalId,

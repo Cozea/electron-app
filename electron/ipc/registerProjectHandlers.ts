@@ -21,7 +21,6 @@ import type {
 } from '../../shared/electronApiTypes'
 import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
-import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
@@ -36,7 +35,6 @@ import {
 import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
 import { getProjectContextOptionsFromAnalysis } from '../services/ProjectAnalysisService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
-import * as Effect from 'effect/Effect'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 interface RegisterProjectHandlersDeps {
@@ -148,43 +146,6 @@ async function preflightImportSource(
   }
 }
 
-function normalizeRepositoryUrl(repoUrl: string, provider: string): string | null {
-  const trimmed = repoUrl.trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-
-  if (trimmed.startsWith('git@') || trimmed.startsWith('ssh://') || trimmed.startsWith('git://')) {
-    return trimmed
-  }
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed
-  }
-
-  const shorthandMatch = trimmed.match(/^([\w.-]+)\/([\w.-]+)$/)
-  if (!shorthandMatch) return null
-
-  const owner = shorthandMatch[1]
-  const repo = shorthandMatch[2].replace(/\.git$/i, '')
-  const host = provider === 'gitlab' ? 'gitlab.com' : 'github.com'
-  return `https://${host}/${owner}/${repo}.git`
-}
-
-function resolveAvailableProjectPath(projectsDir: string, slug: string): string {
-  const basePath = path.join(projectsDir, slug)
-  if (!fs.existsSync(basePath)) {
-    return basePath
-  }
-
-  let attempt = 2
-  while (true) {
-    const candidate = path.join(projectsDir, `${slug}-${attempt}`)
-    if (!fs.existsSync(candidate)) {
-      return candidate
-    }
-    attempt += 1
-  }
-}
-
 function runGitCommand(
   args: string[],
   cwd: string
@@ -248,14 +209,6 @@ export function registerProjectHandlers(
   ipcMain: IpcMain,
   deps: RegisterProjectHandlersDeps
 ): void {
-  ipcMain.handle(
-    'project:clearLocalPath',
-    async (_event, { projectId }: { projectId: string }): Promise<{ success: boolean }> => {
-      clearRegisteredProjectPath(projectId)
-      return { success: true }
-    },
-  )
-
   ipcMain.handle(
     'project:listGitBranches',
     async (_event, { workspaceId }: { workspaceId: string }) => {
@@ -411,18 +364,23 @@ export function registerProjectHandlers(
   ipcMain.handle(
     'project:exists',
     async (_event, value: string | { slug: string; projectId?: string }): Promise<boolean> => {
-      const { slug, projectId } = normalizeProjectLookup(value)
+      const { slug } = normalizeProjectLookup(value)
       const settings = deps.loadSettings()
       if (!slug || typeof settings.projectsDirectory !== 'string') {
         console.warn('[ProjectPath] Invalid exists lookup payload', {
           value,
           normalizedSlug: slug,
-          projectId: projectId ?? null,
           projectsDirectoryType: typeof settings.projectsDirectory,
         })
         return false
       }
-      return resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId }) !== null
+      const candidate = path.resolve(settings.projectsDirectory, slug)
+      const projectsDirectory = path.resolve(settings.projectsDirectory)
+      const relative = path.relative(projectsDirectory, candidate)
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        return false
+      }
+      return fs.existsSync(candidate)
     },
   )
 
@@ -477,10 +435,18 @@ export function registerProjectHandlers(
         console.log(`[Project] Wrote file: ${fullPath}`)
 
         if (encoding !== 'base64') {
-          notifyFileChanged(fullPath, content, { origin })
+          notifyFileChanged(fullPath, content, {
+            origin,
+            workspaceId,
+            projectRootPath: access.projectRootPath,
+            relativePath: filePath,
+          })
         }
         notifyFileMetaChanged({
           filePath: fullPath,
+          workspaceId,
+          projectRootPath: access.projectRootPath,
+          relativePath: filePath,
           origin,
           isBinary: encoding === 'base64',
           sizeBytes: stats.size,
@@ -640,9 +606,17 @@ export function registerProjectHandlers(
 
         if (origin) {
           const nextStats = fs.statSync(fullNewPath)
-          notifyFileDeleted(fullOldPath, { origin })
+          notifyFileDeleted(fullOldPath, {
+            origin,
+            workspaceId,
+            projectRootPath: access.projectRootPath,
+            relativePath: oldPath,
+          })
           notifyFileMetaChanged({
             filePath: fullNewPath,
+            workspaceId,
+            projectRootPath: access.projectRootPath,
+            relativePath: newPath,
             origin,
             isBinary: false,
             isDirectory: nextStats.isDirectory(),
@@ -693,7 +667,12 @@ export function registerProjectHandlers(
 
         console.log(`[Project] Deleted: ${targetPath}`)
         if (origin) {
-          notifyFileDeleted(fullPath, { origin })
+          notifyFileDeleted(fullPath, {
+            origin,
+            workspaceId,
+            projectRootPath: access.projectRootPath,
+            relativePath: targetPath,
+          })
         }
         return { success: true }
       } catch (error) {
@@ -865,7 +844,7 @@ export function registerProjectHandlers(
     async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
-        return startProjectWatcher(access.projectRootPath)
+        return startProjectWatcher(access.projectRootPath, workspaceId)
       } catch (e) {
         return { success: false, error: String(e) }
       }

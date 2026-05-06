@@ -60,7 +60,6 @@ import {
 } from "@/features/projects/components/assistant/pendingUserInput"
 import { type Thread } from "@/stores/types"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
-import { ensureNativeApi } from "@/lib/nativeApi"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "@/lib/i18n"
 
@@ -133,6 +132,65 @@ const MODEL_PICKER_PANEL_TRANSITION_MS = 150
 
 function includesNormalized(value: string, query: string): boolean {
   return value.toLowerCase().includes(query.toLowerCase())
+}
+
+function parentPathOf(projectPath: string): string {
+  const normalizedPath = projectPath.replace(/\\/g, "/")
+  const index = normalizedPath.lastIndexOf("/")
+  return index > 0 ? normalizedPath.slice(0, index) : ""
+}
+
+function buildComposerPathMenuItems(
+  files: ReadonlyArray<{ path: string }>,
+  query: string,
+  limit = 80,
+): ComposerPathMenuItem[] {
+  const normalizedQuery = query.trim()
+  const includeAll = normalizedQuery.length === 0 || normalizedQuery === "."
+  const byPath = new Map<string, ComposerPathMenuItem>()
+
+  const addItem = (projectPath: string, kind: ComposerPathMenuItem["kind"]) => {
+    const normalizedPath = projectPath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "")
+    if (!normalizedPath || byPath.has(`${kind}:${normalizedPath}`)) {
+      return
+    }
+
+    if (
+      !includeAll &&
+      !includesNormalized(normalizedPath, normalizedQuery) &&
+      !includesNormalized(basenameOfPath(normalizedPath), normalizedQuery)
+    ) {
+      return
+    }
+
+    byPath.set(`${kind}:${normalizedPath}`, {
+      id: `${kind}:${normalizedPath}`,
+      type: "path",
+      path: normalizedPath,
+      kind,
+      description: parentPathOf(normalizedPath),
+    })
+  }
+
+  for (const file of files) {
+    const normalizedPath = file.path.replace(/\\/g, "/").replace(/^\/+/, "").trim()
+    if (!normalizedPath) continue
+
+    const parts = normalizedPath.split("/").filter(Boolean)
+    for (let index = 1; index < parts.length; index += 1) {
+      addItem(parts.slice(0, index).join("/"), "directory")
+    }
+    addItem(normalizedPath, "file")
+  }
+
+  return Array.from(byPath.values())
+    .sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind === "directory" ? -1 : 1
+      }
+      return left.path.localeCompare(right.path)
+    })
+    .slice(0, limit)
 }
 
 function filterSlashItems<T extends { label: string; description: string }>(
@@ -541,8 +599,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isComposerApprovalState ||
     activePendingUserInput !== null
   const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`
-  const markdownCwd = props.thread?.worktreePath ?? props.workspaceId ?? undefined
-  const workspaceRoot = props.workspaceId ?? undefined
+  const markdownCwd = props.workspaceId ?? undefined
+  const workspaceIdForFileActions = props.workspaceId ?? undefined
   const threadRuntimeBannerState = props.isInterrupting
     ? "interrupting"
     : phase === "error" || phase === "interrupted" || phase === "connecting"
@@ -723,20 +781,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         try {
-          const api = ensureNativeApi()
-          const result = await api.projects.searchEntries({
-            cwd: workspaceId,
-            query: effectiveQuery,
-            limit: 80,
-          })
+          const result = await window.electronAPI.project.listFiles({ workspaceId })
           if (cancelled) return
-          const nextItems = result.entries.map((entry) => ({
-            id: `${entry.kind}:${entry.path}`,
-            type: "path" as const,
-            path: entry.path,
-            kind: entry.kind,
-            description: entry.parentPath ?? "",
-          }))
+          const nextItems =
+            result.success && result.files
+              ? buildComposerPathMenuItems(result.files, effectiveQuery, 80)
+              : []
           composerQueryCacheRef.current.set(cacheKey, nextItems)
           setComposerPathMenuItems(nextItems)
           setIsComposerMenuLoading(false)
@@ -1573,7 +1623,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               markdownCwd={markdownCwd}
               dockedComposerScrollInsetPx={dockedComposerScrollInsetPx}
               resolvedTheme={resolvedTheme}
-              workspaceRoot={workspaceRoot}
+              workspaceId={workspaceIdForFileActions}
+              workspaceRoot={undefined}
             />
           </div>
         )}

@@ -109,6 +109,14 @@ interface WorkbenchAssistantTileControllerResult {
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
 }
 
+async function resolveAssistantWorkspaceRoot(workspaceId: string): Promise<string> {
+  const result = await window.electronAPI.workspace!.verify(workspaceId)
+  if (result.status !== "verified") {
+    throw new Error(`Workspace is not ready for the assistant runtime: ${result.status}`)
+  }
+  return result.workspace.projectRootPath
+}
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -431,7 +439,7 @@ export function useWorkbenchAssistantTileController(
     if (!isRuntimeReady || !input.workspaceId) {
       return
     }
-    const workspaceRoot = input.workspaceId
+    const workspaceId = input.workspaceId
     if (bindingInFlightRef.current) {
       return
     }
@@ -441,43 +449,41 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    // --- Fix 6: Bootstrap pattern ---
-    // For fresh tiles (no threadId), only resolve/create the project.
-    // Thread creation is deferred to the first send to avoid empty thread
-    // accumulation when users open tiles and close them without typing.
-    const isResumingExistingThread = Boolean(input.tile.threadId)
-
-    // Fast path: for fresh tiles, if the project already exists in the store,
-    // bind it synchronously without any async work. This makes the composer
-    // interactive immediately instead of waiting for lock + network calls.
-    if (!isResumingExistingThread) {
-      const currentAssistantState = useStore.getState()
-      const existingProject =
-        (input.tile.assistantProjectId
-          ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
-          : null) ??
-        selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
-        null
-
-      if (existingProject) {
-        if (input.tile.assistantProjectId !== existingProject.id) {
-          updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-            assistantProjectId: existingProject.id,
-          }, input.workspaceId)
-        }
-        setBindingError(null)
-        setIsBinding(false)
-        return
-      }
-      // Project doesn't exist yet — fall through to async binding to create it
-    }
-
     let cancelled = false
     bindingInFlightRef.current = true
     setIsBinding(true)
 
     const ensureBinding = async () => {
       try {
+        const workspaceRoot = await resolveAssistantWorkspaceRoot(workspaceId)
+        if (cancelled) return
+
+        // For fresh tiles (no threadId), only resolve/create the project.
+        // Thread creation is deferred to the first send to avoid empty thread
+        // accumulation when users open tiles and close them without typing.
+        const isResumingExistingThread = Boolean(input.tile.threadId)
+
+        if (!isResumingExistingThread) {
+          const currentAssistantState = useStore.getState()
+          const existingProject =
+            (input.tile.assistantProjectId
+              ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
+              : null) ??
+            selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
+            null
+
+          if (existingProject) {
+            if (input.tile.assistantProjectId !== existingProject.id) {
+              updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+                assistantProjectId: existingProject.id,
+              }, input.workspaceId)
+            }
+            setBindingError(null)
+            setIsBinding(false)
+            return
+          }
+        }
+
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>
@@ -986,11 +992,12 @@ export function useWorkbenchAssistantTileController(
 
         // Resolve the project
         const currentAssistantState = useStore.getState()
+        const workspaceRoot = await resolveAssistantWorkspaceRoot(input.workspaceId)
         const currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
             : null) ??
-          selectAssistantProjectByCwd(currentAssistantState, input.workspaceId) ??
+          selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
           null
 
         if (!currentProject) {

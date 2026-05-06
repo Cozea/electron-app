@@ -76,7 +76,7 @@ export interface SidebarProjectTreeItemSelection {
 
 export interface SidebarProjectTreeItemContext {
   isCurrentProject: boolean
-  currentProjectPath: string | null
+  currentWorkspaceId: string | null
   isSyncingProject: boolean
   prefetchedLaneState?: ProjectLaneState | null
   prefetchedActiveLane?: ProjectLaneDescriptor | null
@@ -84,10 +84,10 @@ export interface SidebarProjectTreeItemContext {
 
 export interface SidebarProjectTreeItemActions {
   toggleExpanded: (projectId: string) => void
-  openProject: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
-  relinkProjectWorkspace: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
-  closeProjectWorkspace: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
-  openProjectFolder: (project: SidebarProjectItem, localPath: string | null) => Promise<void>
+  openProject: (project: SidebarProjectItem, workspaceId: string | null) => Promise<void>
+  relinkProjectWorkspace: (project: SidebarProjectItem, workspaceId: string | null) => Promise<void>
+  closeProjectWorkspace: (project: SidebarProjectItem, workspaceId: string | null) => Promise<void>
+  openProjectFolder: (project: SidebarProjectItem, workspaceId: string | null) => Promise<void>
   openProjectSettings: (project: SidebarProjectItem) => void
   renameProject: (project: SidebarProjectItem) => void
   archiveProject: (project: SidebarProjectItem) => Promise<void>

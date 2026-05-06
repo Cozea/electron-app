@@ -87,12 +87,12 @@ function writeCheckpointPatchCache(key: string, entry: CheckpointPatchCacheEntry
 }
 
 function buildCheckpointPatchCacheKey(input: {
-  gitCwd: string
+  workspaceId: string
   groupId: string
   previousCheckpointGroupId: string | null
 }): string {
   return [
-    input.gitCwd,
+    input.workspaceId,
     input.previousCheckpointGroupId ?? 'head',
     input.groupId,
   ].join('\0')
@@ -113,7 +113,7 @@ function parseCheckpointPatch(
 }
 
 async function loadCheckpointPatch(input: {
-  gitCwd: string
+  workspaceId: string
   groupId: string
   previousCheckpointGroupId: string | null
 }): Promise<CheckpointPatchCacheEntry> {
@@ -126,7 +126,7 @@ async function loadCheckpointPatch(input: {
 
   const request = window.electronAPI.workspaceSync
     .gitDiffCheckpoints({
-      workspaceId: input.gitCwd,
+      workspaceId: input.workspaceId,
       fromCheckpointId: input.previousCheckpointGroupId ?? undefined,
       toCheckpointId: input.groupId,
     })
@@ -519,13 +519,13 @@ interface CheckpointPatchState {
 }
 
 function createCheckpointPatchState(input: {
-  gitCwd: string | null
+  workspaceId: string | null
   groupId: string
   previousCheckpointGroupId: string | null
   noLocalCheckpointMessage: string
 }): CheckpointPatchState {
-  const { gitCwd, groupId, previousCheckpointGroupId } = input
-  if (!gitCwd || !groupId) {
+  const { workspaceId, groupId, previousCheckpointGroupId } = input
+  if (!workspaceId || !groupId) {
     return {
       cacheKey: null,
       patch: null,
@@ -535,7 +535,7 @@ function createCheckpointPatchState(input: {
   }
 
   const cacheInput = {
-    gitCwd,
+    workspaceId,
     groupId,
     previousCheckpointGroupId,
   }
@@ -559,14 +559,14 @@ function createCheckpointPatchState(input: {
 }
 
 function useCheckpointPatch(input: {
-  gitCwd: string | null
+  workspaceId: string | null
   groupId: string
   previousCheckpointGroupId: string | null
   failedToLoadPatchMessage: string
   noLocalCheckpointMessage: string
 }): CheckpointPatchState {
   const {
-    gitCwd,
+    workspaceId,
     groupId,
     previousCheckpointGroupId,
     failedToLoadPatchMessage,
@@ -574,7 +574,7 @@ function useCheckpointPatch(input: {
   } = input
   const [state, setState] = useState<CheckpointPatchState>(() =>
     createCheckpointPatchState({
-      gitCwd,
+      workspaceId,
       groupId,
       previousCheckpointGroupId,
       noLocalCheckpointMessage,
@@ -582,7 +582,7 @@ function useCheckpointPatch(input: {
   )
 
   useLayoutEffect(() => {
-    if (!gitCwd || !groupId) {
+    if (!workspaceId || !groupId) {
       setState({
         cacheKey: null,
         patch: null,
@@ -594,7 +594,7 @@ function useCheckpointPatch(input: {
 
     let cancelled = false
     const cacheKey = buildCheckpointPatchCacheKey({
-      gitCwd,
+      workspaceId,
       groupId,
       previousCheckpointGroupId,
     })
@@ -628,7 +628,7 @@ function useCheckpointPatch(input: {
     })
 
     void loadCheckpointPatch({
-      gitCwd,
+      workspaceId,
       groupId,
       previousCheckpointGroupId,
     })
@@ -656,7 +656,7 @@ function useCheckpointPatch(input: {
     }
   }, [
     failedToLoadPatchMessage,
-    gitCwd,
+    workspaceId,
     groupId,
     noLocalCheckpointMessage,
     previousCheckpointGroupId,
@@ -887,7 +887,7 @@ const FileDiffsView = memo(function FileDiffsView(props: {
 
 const HistoryChangeGroupDiffs = memo(function HistoryChangeGroupDiffs(props: {
   group: ChangeGroup
-  gitCwd: string | null
+  workspaceId: string | null
   previousCheckpointGroupId: string | null
   selectedFilePath: string | null
   diffStyle: ChangesDiffStyle
@@ -895,7 +895,7 @@ const HistoryChangeGroupDiffs = memo(function HistoryChangeGroupDiffs(props: {
 }) {
   const {
     group,
-    gitCwd,
+    workspaceId,
     previousCheckpointGroupId,
     selectedFilePath,
     diffStyle,
@@ -903,7 +903,7 @@ const HistoryChangeGroupDiffs = memo(function HistoryChangeGroupDiffs(props: {
   } = props
   const { t } = useTranslation()
   const { patch, parsedFiles, patchError } = useCheckpointPatch({
-    gitCwd,
+    workspaceId,
     groupId: group.groupId,
     previousCheckpointGroupId,
     failedToLoadPatchMessage: t('changes.error.failedToLoadPatch'),
@@ -956,7 +956,7 @@ const HistoryChangeGroupDiffs = memo(function HistoryChangeGroupDiffs(props: {
 
 const HistoryChangesView = memo(function HistoryChangesView(props: {
   groups: ChangeGroup[]
-  gitCwd: string | null
+  workspaceId: string | null
   previousCheckpointGroupIds: ReadonlyMap<string, string | null>
   selectedFilePath: string | null
   diffStyle: ChangesDiffStyle
@@ -964,7 +964,7 @@ const HistoryChangesView = memo(function HistoryChangesView(props: {
 }) {
   const {
     groups,
-    gitCwd,
+    workspaceId,
     previousCheckpointGroupIds,
     selectedFilePath,
     diffStyle,
@@ -977,7 +977,7 @@ const HistoryChangesView = memo(function HistoryChangesView(props: {
         <HistoryChangeGroupDiffs
           key={group.groupId}
           group={group}
-          gitCwd={gitCwd}
+          workspaceId={workspaceId}
           previousCheckpointGroupId={previousCheckpointGroupIds.get(group.groupId) ?? null}
           selectedFilePath={selectedFilePath}
           diffStyle={diffStyle}
@@ -1022,7 +1022,7 @@ const ParsedPatchDiffView = memo(function ParsedPatchDiffView(props: {
 })
 
 const LastTurnChangesView = memo(function LastTurnChangesView(props: {
-  gitCwd: string | null
+  workspaceId: string | null
   selectedFilePath: string | null
   diffStyle: ChangesDiffStyle
   codeSearchQuery: string
@@ -1031,7 +1031,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
   emptyStateNode?: ReactNode
 }) {
   const {
-    gitCwd,
+    workspaceId,
     selectedFilePath,
     diffStyle,
     codeSearchQuery,
@@ -1046,7 +1046,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
     setPatch(null)
     setPatchError(null)
 
-    if (!gitCwd) {
+    if (!workspaceId) {
       setPatchError('Project path is unavailable.')
       return
     }
@@ -1054,7 +1054,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
     let cancelled = false
     const request = latestGroup?.groupId
       ? window.electronAPI.workspaceSync.gitDiffCheckpoints({
-          workspaceId: gitCwd,
+          workspaceId: workspaceId,
           fromCheckpointId: previousCheckpointGroupId ?? undefined,
           toCheckpointId: latestGroup.groupId,
         })
@@ -1084,7 +1084,7 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
     return () => {
       cancelled = true
     }
-  }, [gitCwd, latestGroup?.groupId, previousCheckpointGroupId])
+  }, [workspaceId, latestGroup?.groupId, previousCheckpointGroupId])
 
   return (
     <ParsedPatchDiffView
@@ -1105,11 +1105,11 @@ export function ChangesPage(_props: ChangesPageProps) {
   const { project } = useAccessibleProject()
   const routeContext = useOptionalProjectRouteContext()
   const syncContext = useOptionalProjectSyncContext()
-  const gitCwd =
+  const workspaceId =
     _props.workspaceId ??
     routeContext?.activeLane?.workspaceId ??
-    routeContext?.gitCwd ??
-    syncContext?.gitCwd ??
+    routeContext?.workspaceId ??
+    syncContext?.workspaceId ??
     null
 
   const activity = useQuery(
@@ -1142,7 +1142,7 @@ export function ChangesPage(_props: ChangesPageProps) {
   const activeGitScope: GitChangesScope | null =
     changesScope === 'current' || changesScope === 'branch' ? changesScope : null;
 
-  const projectState = useGitChangesStore((state) => gitCwd ? state.projects[gitCwd] : undefined)
+  const projectState = useGitChangesStore((state) => workspaceId ? state.projects[workspaceId] : undefined)
   const currentSnapshot = projectState?.current?.snapshot
   const branchSnapshot = projectState?.branch?.snapshot
   const activeGitChanges = activeGitScope === 'current' ? currentSnapshot : activeGitScope === 'branch' ? branchSnapshot : null
@@ -1150,9 +1150,9 @@ export function ChangesPage(_props: ChangesPageProps) {
   const watchGitStatus = useGitChangesStore((state) => state.actions.watchGitStatus)
 
   useEffect(() => {
-    if (!gitCwd || !activeGitScope) return
-    return watchGitStatus(gitCwd, activeGitScope)
-  }, [gitCwd, activeGitScope, watchGitStatus])
+    if (!workspaceId || !activeGitScope) return
+    return watchGitStatus(workspaceId, activeGitScope)
+  }, [workspaceId, activeGitScope, watchGitStatus])
 
   const currentFiles = useMemo(
     () => (currentSnapshot?.files ?? []).map(gitFileToTreeFile),
@@ -1180,14 +1180,14 @@ export function ChangesPage(_props: ChangesPageProps) {
 
   const activeFilesLoaded =
     changesScope === 'current'
-      ? activeGitChanges?.loaded || !gitCwd
+      ? activeGitChanges?.loaded || !workspaceId
       : changesScope === 'branch'
-        ? activeGitChanges?.loaded || !gitCwd
+        ? activeGitChanges?.loaded || !workspaceId
         : hasActivityLoaded;
-  const activeGitChangesError = !gitCwd
+  const activeGitChangesError = !workspaceId
     ? 'Project path is unavailable.'
     : activeGitChanges?.error ?? null;
-  const activeGitChangesLoaded = !gitCwd || (activeGitChanges?.loaded ?? false);
+  const activeGitChangesLoaded = !workspaceId || (activeGitChanges?.loaded ?? false);
 
   const visibleFiles = useMemo(() => {
     if (!fileFilterQuery.trim()) return activeFiles;
@@ -1272,13 +1272,13 @@ export function ChangesPage(_props: ChangesPageProps) {
         diffStyle={diffStyle}
         setDiffStyle={setDiffStyle}
         onRefresh={() => {
-          if (gitCwd && activeGitScope) {
-            window.electronAPI.workspaceSync.subscribeGitChanges({ workspaceId: gitCwd, scope: activeGitScope }).catch(() => {})
+          if (workspaceId && activeGitScope) {
+            window.electronAPI.workspaceSync.subscribeGitChanges({ workspaceId: workspaceId, scope: activeGitScope }).catch(() => {})
           }
         }}
       />
     );
-  }, [setChromeControlsNode, codeSearchQuery, diffStyle, viewMode, activeGitScope, gitCwd]);
+  }, [setChromeControlsNode, codeSearchQuery, diffStyle, viewMode, activeGitScope, workspaceId]);
 
   const filteredGroups = useMemo(() => {
     if (!selectedFilePath) return groups;
@@ -1318,7 +1318,7 @@ export function ChangesPage(_props: ChangesPageProps) {
 	                  filteredGroups.length > 0 ? (
 	                    <HistoryChangesView
 	                      groups={filteredGroups}
-	                      gitCwd={gitCwd}
+	                      workspaceId={workspaceId}
 	                      previousCheckpointGroupIds={previousCheckpointGroupIds}
                       selectedFilePath={selectedFilePath}
                       diffStyle={diffStyle}
@@ -1339,7 +1339,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                   )
                 ) : changesScope === 'lastTurn' ? (
                   <LastTurnChangesView
-                    gitCwd={gitCwd}
+                    workspaceId={workspaceId}
                     selectedFilePath={selectedFilePath}
                     diffStyle={diffStyle}
                     codeSearchQuery={debouncedCodeSearchQuery}

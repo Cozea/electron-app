@@ -109,7 +109,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentProjectPath = projectRouteContext?.localPath ?? projectSyncContext?.workspaceId ?? null;
+  const currentWorkspaceId = projectRouteContext?.workspaceId ?? projectRouteContext?.localPath ?? projectSyncContext?.workspaceId ?? null;
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
@@ -242,7 +242,7 @@ export function ProjectSidebar({
     activeLane: currentActiveLane,
   } = useProjectLaneState({
     projectId: currentProjectId,
-    workspaceId: currentProjectPath,
+    workspaceId: currentWorkspaceId,
     collabBranch: currentCollabBranch,
   });
   const displayedCurrentLaneState = projectRouteContext?.laneState ?? currentLaneState;
@@ -253,13 +253,13 @@ export function ProjectSidebar({
         selectVisibleActiveWorkbenchTileId(
           currentProjectId,
           displayedCurrentActiveLane?.id ?? null,
-          displayedCurrentActiveLane?.workspaceId ?? currentProjectPath,
+          displayedCurrentActiveLane?.workspaceId ?? currentWorkspaceId,
         ),
       [
         displayedCurrentActiveLane?.id,
         displayedCurrentActiveLane?.workspaceId,
         currentProjectId,
-        currentProjectPath,
+        currentWorkspaceId,
       ],
     ),
   );
@@ -307,7 +307,7 @@ export function ProjectSidebar({
       const workbenchWorkspaceId =
         options?.workspaceId ??
         (project.id === currentProjectId
-          ? (displayedCurrentActiveLane?.workspaceId ?? currentProjectPath)
+          ? (displayedCurrentActiveLane?.workspaceId ?? currentWorkspaceId)
           : null);
       workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchWorkspaceId);
 
@@ -345,7 +345,7 @@ export function ProjectSidebar({
         }),
       });
     },
-    [displayedCurrentActiveLane?.workspaceId, currentProjectId, currentProjectPath, navigate],
+    [displayedCurrentActiveLane?.workspaceId, currentProjectId, currentWorkspaceId, navigate],
   );
 
   const handleSyncCurrentProject = React.useCallback(async () => {
@@ -408,12 +408,13 @@ export function ProjectSidebar({
   const showInSidebarSidebarTrigger = isMobile ? openMobile : state === "expanded";
 
   const handleOpenProject = React.useCallback(
-    async (project: SidebarProjectItem) => {
+    async (project: SidebarProjectItem, workspaceId: string | null) => {
       navigate(buildProjectPath(project.id, "workbench"), {
         state: buildProjectRouteNavigationState({
           projectId: project.id,
           projectSlug: project.slug,
           projectName: project.name,
+          preferredWorkspaceId: workspaceId,
         }, {
           projectTemplate: project.template ?? undefined,
         }),
@@ -453,15 +454,15 @@ export function ProjectSidebar({
   );
 
   const handleRelinkProjectWorkspace = React.useCallback(
-    async (project: SidebarProjectItem, localPath: string | null) => {
-      await relinkProjectWorkspace(project, localPath);
+    async (project: SidebarProjectItem, workspaceId: string | null) => {
+      await relinkProjectWorkspace(project, workspaceId);
     },
     [relinkProjectWorkspace],
   );
 
   const handleCloseProjectWorkspace = React.useCallback(
-    async (project: SidebarProjectItem, localPath: string | null) => {
-      await closeProjectWorkspace(project, localPath, { replace: true });
+    async (project: SidebarProjectItem, workspaceId: string | null) => {
+      await closeProjectWorkspace(project, workspaceId, { replace: true });
     },
     [closeProjectWorkspace],
   );
@@ -729,8 +730,8 @@ export function ProjectSidebar({
                   }}
                   context={{
                     isCurrentProject: project.id === currentProjectId,
-                    currentProjectPath:
-                      project.id === currentProjectId ? currentProjectPath : null,
+                    currentWorkspaceId:
+                      project.id === currentProjectId ? currentWorkspaceId : null,
                     isSyncingProject: project.id === currentProjectId && isSyncingProject,
                     prefetchedLaneState:
                       project.id === currentProjectId ? displayedCurrentLaneState : undefined,

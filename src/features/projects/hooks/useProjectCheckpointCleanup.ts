@@ -8,7 +8,7 @@ import { useQueryCache } from "@/stores/useQueryCache";
 
 export function useProjectCheckpointCleanup(
   projectId: Id<"projects"> | null,
-  gitCwd: string | null,
+  workspaceId: string | null,
 ) {
   const clearEphemeralChanges = useMutation(api.activity.clearEphemeralChanges);
   const lastGitStatusRef = useRef<{ clean: boolean; headCommit: string | null } | null>(null);
@@ -16,7 +16,7 @@ export function useProjectCheckpointCleanup(
   const lastCleanedHeadCommitRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!projectId || !gitCwd) {
+    if (!projectId || !workspaceId) {
       lastGitStatusRef.current = null;
       cleanupInFlightRef.current = false;
       lastCleanedHeadCommitRef.current = null;
@@ -28,7 +28,7 @@ export function useProjectCheckpointCleanup(
     const pollStatus = async () => {
       try {
         const statusResult = await window.electronAPI.workspaceSync.gitStatus({
-          workspaceId: gitCwd,
+          workspaceId,
         });
         if (cancelled || !statusResult.success || !statusResult.isRepo) {
           return;
@@ -58,7 +58,7 @@ export function useProjectCheckpointCleanup(
           await Promise.all([
             clearEphemeralChanges({ projectId }),
             window.electronAPI.workspaceSync.gitDeleteAllCheckpointRefs({
-              workspaceId: gitCwd,
+              workspaceId,
             }),
           ]);
           lastCleanedHeadCommitRef.current = nextStatus.headCommit;
@@ -82,5 +82,5 @@ export function useProjectCheckpointCleanup(
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [clearEphemeralChanges, gitCwd, projectId]);
+  }, [clearEphemeralChanges, workspaceId, projectId]);
 }

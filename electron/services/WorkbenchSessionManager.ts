@@ -1,5 +1,4 @@
 import { app } from 'electron'
-import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -62,32 +61,11 @@ const LOW_MEMORY_FREE_RATIO = 0.12
 
 function normalizeWorkspaceId(workspaceId?: string | null): string | null {
   const trimmed = workspaceId?.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  const normalized = path.normalize(trimmed).replace(/[\\/]+$/, '')
-  if (!normalized) {
-    return null
-  }
-
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
-}
-
-function buildWorkspacePathSegment(workspaceId?: string | null): string {
-  const normalizedPath = normalizeWorkspaceId(workspaceId)
-  if (!normalizedPath) {
-    return 'unbound'
-  }
-
-  const basename = path.basename(normalizedPath).replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '')
-  const slug = basename.length > 0 ? basename.slice(0, 48) : 'root'
-  const digest = createHash('sha1').update(normalizedPath).digest('hex').slice(0, 12)
-  return `${slug}-${digest}`
+  return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
 function buildSessionKey(projectId: string, laneId: string, workspaceId?: string | null): string {
-  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${buildWorkspacePathSegment(workspaceId)}`
+  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${normalizeWorkspaceId(workspaceId) ?? 'unbound'}`
 }
 
 function getRegistryPath(): string {
@@ -122,52 +100,6 @@ function writeRegistryState(state: PersistedWorkbenchSessionState): void {
   const registryPath = getRegistryPath()
   fs.mkdirSync(path.dirname(registryPath), { recursive: true })
   fs.writeFileSync(registryPath, JSON.stringify(state, null, 2))
-}
-
-function dedupePersistedSessionPaths(state: PersistedWorkbenchSessionState): boolean {
-  const latestOwnerByPath = new Map<string, { sessionKey: string; score: number; projectId: string }>()
-  let changed = false
-
-  for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const normalizedPath = normalizeWorkspaceId(record.workspaceId)
-    if (!normalizedPath) {
-      continue
-    }
-
-    const score = Math.max(record.lastFocusedAt, record.openedAt)
-    const existingOwner = latestOwnerByPath.get(normalizedPath)
-    if (!existingOwner || score >= existingOwner.score) {
-      latestOwnerByPath.set(normalizedPath, {
-        sessionKey,
-        score,
-        projectId: record.projectId,
-      })
-    }
-  }
-
-  for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const normalizedPath = normalizeWorkspaceId(record.workspaceId)
-    if (!normalizedPath) {
-      continue
-    }
-
-    const owner = latestOwnerByPath.get(normalizedPath)
-    if (!owner || owner.sessionKey === sessionKey || owner.projectId === record.projectId) {
-      continue
-    }
-
-    state.sessions[sessionKey] = {
-      ...record,
-      workspaceId: null,
-    }
-    changed = true
-  }
-
-  return changed
-}
-
-function resolveRegisteredWorkspaceId(projectId: string): string | null {
-  return normalizeWorkspaceId(readRegisteredWorkspaceId(projectId))
 }
 
 function resolveOwnedWorkspaceId(args: {
@@ -338,8 +270,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     const persisted = readRegistryState()
     const repairedPersistedSessions = repairPersistedSessionState(persisted)
-    const dedupedPersistedSessionPaths = dedupePersistedSessionPaths(persisted)
-    if (repairedPersistedSessions || dedupedPersistedSessionPaths) {
+    if (repairedPersistedSessions) {
       writeRegistryState(persisted)
     }
 
@@ -385,7 +316,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
       sessions,
     } satisfies PersistedWorkbenchSessionState
 
-    dedupePersistedSessionPaths(state)
     writeRegistryState(state)
   }
 
@@ -512,7 +442,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       return false
     }
 
-    return this.devServerService.getState(record.workspaceId).running
+    return this.devServerService.getState(record.workspaceId, record.laneId).running
   }
 
   private hasRunningNativePreview(record: LiveWorkbenchSessionRecord): boolean {
@@ -651,7 +581,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     record: LiveWorkbenchSessionRecord,
   ): WorkbenchSessionSnapshot {
     const devServer = record.workspaceId
-      ? this.devServerService.getState(record.workspaceId)
+      ? this.devServerService.getState(record.workspaceId, record.laneId)
       : { running: false, port: null, runId: null }
     const hasBrowserSurface = Object.keys(record.browserBindings).length > 0
     const hasNativePreviewSession = record.nativePreviewLocator

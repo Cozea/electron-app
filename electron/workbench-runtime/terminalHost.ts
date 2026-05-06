@@ -44,7 +44,6 @@ interface ManagedTerminal {
   runId?: string
   sessionKey?: string
   laneId?: string
-  workspaceId?: string
   terminalKind: string
   activityTracking: TerminalActivityTrackingMode
   ptyProcess: pty.NativePty
@@ -687,7 +686,6 @@ export class TerminalRuntimeHost extends EventEmitter {
         terminalKind: terminal.terminalKind,
         sessionKey: terminal.sessionKey,
         laneId: terminal.laneId,
-        workspaceId: terminal.workspaceId,
         runId: terminal.runId,
         commandId: payload?.commandId,
         commandText: payload?.commandText,
@@ -793,7 +791,6 @@ export class TerminalRuntimeHost extends EventEmitter {
         runId: options.runId,
         sessionKey: options.sessionKey,
         laneId: options.laneId,
-        workspaceId: options.workspaceId,
         terminalKind: options.terminalKind ?? 'shell',
         activityTracking: this.normalizeActivityTracking(options.activityTracking),
         cols,

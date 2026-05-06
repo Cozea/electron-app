@@ -12,6 +12,7 @@
 import type { IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import type { TerminalService } from '../services/TerminalService'
+import type { CwdSpec } from '../../shared/workspaceTypes.ts'
 
 // registerOutputTarget is private on TerminalService; cast to any to access it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,7 +35,7 @@ export function registerTerminalWorkspaceHandlers(
           workspaceId,
           laneId: options.laneId as string | undefined,
           operation: 'terminal-create',
-          cwd: options.cwd as any
+          cwd: options.cwd as CwdSpec | undefined,
         })
         options = {
           ...options,
@@ -52,22 +53,15 @@ export function registerTerminalWorkspaceHandlers(
     return { success: result.success, terminalId: result.terminalId, error: result.error }
   })
 
-  // Re-register terminal:list so workspaceId maps to the real path key.
+  // Re-register terminal:list so callers address retained terminals by the
+  // opaque workspace id used in terminal snapshots.
   ipcMain.removeHandler('terminal:list')
   ipcMain.handle(
     'terminal:list',
-    async (event, options: { workspaceId?: string; projectPath?: string }) => {
+    (event, options: { workspaceId?: string }) => {
       terminalService.registerOutputTarget(event.sender)
-      let key = options.projectPath ?? ''
-      if (!key && options.workspaceId) {
-        try {
-          const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'terminal-create' })
-          key = access.projectRootPath
-        } catch {
-          return []
-        }
-      }
-      return terminalService.listTerminalIds(key)
+      const workspaceId = options.workspaceId?.trim()
+      return workspaceId ? terminalService.listTerminalIds(workspaceId) : []
     },
   )
 }

@@ -13,7 +13,7 @@ export function normalizeWorkspaceProjectPath(
     return null
   }
 
-  return trimmed.replace(/\\/g, "/").replace(/\/+$/, "")
+  return trimmed
 }
 
 export function buildLegacyWorkspaceIdentityKey(

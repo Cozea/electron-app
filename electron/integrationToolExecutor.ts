@@ -10,7 +10,8 @@ import * as integrationKeys from './integrationKeys'
 import * as integrationCrypto from './integrationCrypto'
 import { createRuntimeEnv } from './runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from './runtime/runtimeResolver'
-import { resolveAuthorizedWorkspaceAccess, type CwdSpec } from './workspaces/authorization.ts'
+import { resolveAuthorizedWorkspaceAccess } from './workspaces/authorization.ts'
+import type { CwdSpec } from '../shared/workspaceTypes.ts'
 
 // ============================================
 // Types
@@ -523,7 +524,6 @@ export async function runIntegrationTool(params: {
     workingDir = access.cwd ?? access.projectRootPath
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to resolve workspace path' }
-  }
   }
 
   // Execute the tool

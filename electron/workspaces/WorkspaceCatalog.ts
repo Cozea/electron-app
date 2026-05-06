@@ -22,10 +22,8 @@ import type {
   WorkspaceCandidate,
   WorkspaceConflictDTO,
   WorkspaceLaneDTO,
-  WorkspaceLaneKind,
   WorkspaceLaneRecord,
   WorkspaceResolutionAction,
-  WorkspaceSource,
   WorkspaceVerificationStatus,
 } from "../../shared/workspaceTypes.ts"
 import { readWorkspaceMarker, writeWorkspaceMarker } from "./markers.ts"
@@ -496,6 +494,48 @@ export const WorkspaceCatalogLive = Layer.effect(
         return { rootId: newRootId, realPath }
       })
 
+    const listCandidateRoots = () =>
+      Effect.gen(function* () {
+        const roots = new Set<string>()
+        const settingsProjectsDirectory = yield* sql`
+          SELECT value FROM workspace_settings WHERE key = 'projectsDirectory' LIMIT 1
+        `.pipe(
+          Effect.map((rows) => (rows.length > 0 ? String((rows[0] as { value: string }).value) : null)),
+        )
+
+        if (settingsProjectsDirectory) {
+          roots.add(settingsProjectsDirectory)
+        }
+
+        const localRootRows = yield* sql`SELECT real_path FROM local_roots`
+        for (const row of localRootRows as Array<{ real_path?: string }>) {
+          if (row.real_path) roots.add(row.real_path)
+        }
+
+        if (roots.size === 0) {
+          roots.add(path.join(
+            process.env["HOME"] ?? process.env["USERPROFILE"] ?? ".",
+            "Developer",
+            "Cozea",
+          ))
+        }
+
+        return Array.from(roots)
+      })
+
+    const scanCandidateRoots = (
+      projectId: string,
+      projectSlug: string,
+      expectedRepo?: RepoIdentity | null,
+    ) =>
+      Effect.gen(function* () {
+        const roots = yield* listCandidateRoots()
+        return yield* Effect.tryPromise({
+          try: () => scanForCandidates({ roots, projectId, slug: projectSlug, expectedRepo: expectedRepo ?? undefined }),
+          catch: (e) => new Error(String(e)),
+        }).pipe(Effect.orElseSucceed(() => []))
+      })
+
     // ── resolveProject ──────────────────────────────────────────────────────
 
     const resolveProject = (
@@ -535,11 +575,7 @@ export const WorkspaceCatalogLive = Layer.effect(
           }
 
           if (allowCandidateScan && projectSlug) {
-            const candidates = yield* Effect.tryPromise({
-              try: () => scanForCandidates({ roots: [], projectId, slug: projectSlug, expectedRepo: expectedRepo ?? undefined }),
-              catch: (e) => new Error(String(e))
-            }).pipe(Effect.orElseSucceed(() => []))
-
+            const candidates = yield* scanCandidateRoots(projectId, projectSlug, expectedRepo)
             return {
               ...result,
               candidates,
@@ -580,11 +616,7 @@ export const WorkspaceCatalogLive = Layer.effect(
           }
 
           if (allowCandidateScan && projectSlug) {
-            const candidates = yield* Effect.tryPromise({
-              try: () => scanForCandidates({ roots: [], projectId, slug: projectSlug, expectedRepo: expectedRepo ?? undefined }),
-              catch: (e) => new Error(String(e))
-            }).pipe(Effect.orElseSucceed(() => []))
-
+            const candidates = yield* scanCandidateRoots(projectId, projectSlug, expectedRepo)
             return {
               ...result,
               candidates,
@@ -622,8 +654,9 @@ export const WorkspaceCatalogLive = Layer.effect(
           Effect.catch(() => Effect.void),
         )
 
-        // Re-read workspace after updates
-        const fresh = yield* queryActiveWorkspace(projectId)
+        // Re-read the same workspace after updates. Do not fall back to the
+        // active workspace when the caller asked for a preferred workspace.
+        const fresh = yield* queryWorkspaceById(workspace.workspaceId)
         const finalWorkspace = fresh ?? workspace
 
         return {
@@ -758,8 +791,31 @@ export const WorkspaceCatalogLive = Layer.effect(
             }
             return { success: false, conflicts: [conflict] }
           } else if (existingMarker.marker.workspaceId !== undefined && !forceBind) {
-            // Adopt existing workspaceId from marker
-            workspaceId = existingMarker.marker.workspaceId
+            const conflictId = yield* recordConflict(
+              projectId,
+              null,
+              folderPath,
+              realPath,
+              existingMarker.marker.workspaceId,
+              projectId,
+              "marker_mismatch",
+              { markerWorkspaceId: existingMarker.marker.workspaceId },
+            )
+
+            const conflict: WorkspaceConflictDTO = {
+              conflictId,
+              projectId,
+              workspaceId: null,
+              candidatePath: folderPath,
+              candidateRealPath: realPath,
+              existingWorkspaceId: existingMarker.marker.workspaceId,
+              existingProjectId: projectId,
+              reason: "marker_mismatch",
+              status: "open",
+              createdAt: now(),
+              resolvedAt: null,
+            }
+            return { success: false, conflicts: [conflict] }
           }
         }
 
@@ -887,6 +943,7 @@ export const WorkspaceCatalogLive = Layer.effect(
           folderPath: targetPath,
           writeMarker: true,
           setActive,
+          source: "create",
         })
 
         if (!bindResult.success) {
@@ -947,12 +1004,15 @@ export const WorkspaceCatalogLive = Layer.effect(
           Effect.tryPromise({ try: () => readGitRepoIdentity(targetPath), catch: (e) => e }),
         )
         const repoIdentity = repoIdentityResult._tag === "Success" ? (repoIdentityResult.success as RepoIdentity | null) : null
+        const expectedRepo = repoIdentity ?? parseRepoIdentity(repoUrl)
 
         const bindResult = yield* bindExistingFolder({
           projectId,
           folderPath: targetPath,
           writeMarker: true,
           setActive,
+          source: "clone",
+          expectedRepo,
         })
 
         if (!bindResult.success) {
