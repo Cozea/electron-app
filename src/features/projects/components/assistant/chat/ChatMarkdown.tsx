@@ -110,6 +110,14 @@ function extractCodeBlock(
   };
 }
 
+function isAbsolutePathLike(path: string): boolean {
+  return (
+    path.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(path) ||
+    path.startsWith("\\\\")
+  );
+}
+
 function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNode }) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,7 +275,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
   const markdownComponents = useMemo<Components>(
     () => ({
       a({ node: _node, href, ...props }) {
-        const targetPath = resolveMarkdownFileLinkTarget(href, cwd);
+        const targetPath = resolveMarkdownFileLinkTarget(href);
         if (!targetPath) {
           return <a {...props} href={href} target="_blank" rel="noreferrer" />;
         }
@@ -282,13 +290,14 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
               const { path, line: lineStr, column: columnStr } = splitPathAndPosition(targetPath);
               const line = lineStr ? Number.parseInt(lineStr, 10) : undefined;
               const column = columnStr ? Number.parseInt(columnStr, 10) : undefined;
+              const workspaceId = cwd && !isAbsolutePathLike(path) ? cwd : null;
 
               if (typeof window !== "undefined" && window.electronAPI?.editor) {
                 void openProjectFileInExternalEditor({
                   filePath: path,
                   line: Number.isFinite(line) ? line : undefined,
                   column: Number.isFinite(column) ? column : undefined,
-                  workspaceId: cwd ?? null,
+                  workspaceId,
                   preferredEditorId: readStoredExternalEditorPreference(),
                 }).then((result) => {
                   if (!result.success) {

@@ -6,6 +6,7 @@ import type {
   GpuAccelerationDiagnostics,
 } from '../../shared/electronApiTypes'
 import type { IpcMain } from 'electron'
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 interface ToolRunRequest {
   name: string
@@ -127,11 +128,11 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
     ) => {
       try {
         let finalPath = options.filePath ?? options.path
-        if (options.workspaceId && finalPath) {
+        if (options.workspaceId) {
           const access = await resolveAuthorizedWorkspaceAccess({
             workspaceId: options.workspaceId,
             operation: 'open-external-editor',
-            relativePath: finalPath,
+            relativePath: finalPath ?? '.',
           })
           finalPath = access.fullPath!
         }

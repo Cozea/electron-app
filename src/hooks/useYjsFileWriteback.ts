@@ -23,7 +23,7 @@ import { extractRemoteYjsOrigin, type RemoteYjsOrigin } from '@/lib/yjs/origins'
 export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
   workspaceId: string | null,
-  gitCwd: string | null,
+  _gitCwd: string | null,
   projectId: Id<'projects'> | null,
   userId: Id<'users'> | null
 ): void {
@@ -62,11 +62,11 @@ export function useYjsFileWriteback(
 
       const timer = setTimeout(() => {
         pendingCheckpointTimers.delete(checkpointGroupId)
-        if (!gitCwd) {
+        if (!workspaceId) {
           return
         }
         void window.electronAPI.workspaceSync.gitCaptureCheckpoint({
-          workspaceId: gitCwd,
+          workspaceId,
           checkpointId: checkpointGroupId,
           authorName: 'Remote collaborator',
         }).catch((error) => {
@@ -304,5 +304,5 @@ export function useYjsFileWriteback(
       // Unobserve renames map
       yjsDoc.renames.unobserve(renamesMapHandler)
     }
-  }, [gitCwd, projectId, workspaceId, userId, yjsDoc])
+  }, [projectId, workspaceId, userId, yjsDoc])
 }

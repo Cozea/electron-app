@@ -38,7 +38,6 @@ import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchS
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
 import { formatActorDisplayName } from "@/lib/userDisplay";
-import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore";
 import type { WorkspaceResolutionAction } from "../../../../shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
@@ -139,17 +138,19 @@ export function ProjectLayout({
   const { result: workspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
     featureFlags.localWorkspaceCatalog && project?._id ? String(project._id) : null,
     projectSlug,
+    null,
+    trustedNavigationState?.preferredWorkspaceId ?? null,
   );
 
-  // When the catalog flag is on, effectiveLocalPath and gitCwd come from the
-  // verified workspace record. When the flag is off, fall back to the
-  // preferredWorkspaceId hint carried in route navigation state (a path or UUID).
-  const effectiveLocalPath = featureFlags.localWorkspaceCatalog
-    ? (workspaceResolution?.status === "ready" ? workspaceResolution.workspace.workspaceId : null)
-    : (trustedNavigationState?.preferredWorkspaceId ?? null);
-  const gitCwd = workspaceResolution?.status === "ready"
+  const activeWorkspaceId = workspaceResolution?.status === "ready"
     ? workspaceResolution.workspace.workspaceId
     : null;
+  const legacyLocalPath = featureFlags.localWorkspaceCatalog
+    ? null
+    : (trustedNavigationState?.preferredWorkspaceId ?? null);
+  const runtimeWorkspaceId = featureFlags.localWorkspaceCatalog
+    ? activeWorkspaceId
+    : legacyLocalPath;
 
   const pendingTeamSetup = useMemo(
     () => locationState?.pendingTeamSetup ?? [],
@@ -187,12 +188,12 @@ export function ProjectLayout({
         }
 
         const nextState =
-          effectiveLocalPath
+          runtimeWorkspaceId
             ? buildProjectRouteNavigationState({
                 projectId: project?._id ? String(project._id) : routeProjectId ?? null,
                 projectSlug,
                 projectName: effectiveProjectName,
-                preferredWorkspaceId: effectiveLocalPath,
+                preferredWorkspaceId: runtimeWorkspaceId,
               })
             : null;
         navigate(`${location.pathname}${location.search}${location.hash}`, {
@@ -214,7 +215,7 @@ export function ProjectLayout({
     location.hash,
     location.pathname,
     location.search,
-    effectiveLocalPath,
+    runtimeWorkspaceId,
     navigate,
     pendingTeamSetup,
     pendingTeamSetupReady,
@@ -232,13 +233,12 @@ export function ProjectLayout({
     location.pathname.startsWith("/projects/settings/") ||
     location.pathname.startsWith("/projects/workspace/") ||
     location.pathname.startsWith("/projects/teams");
-  const shouldEnableProjectRuntime = Boolean(effectiveLocalPath);
-  const runtimeProjectPath = effectiveLocalPath;
+  const shouldEnableProjectRuntime = Boolean(runtimeWorkspaceId);
   const runtimeEffectsReady = useDeferredActivation(shouldEnableProjectRuntime, {
     delayMs: 250,
     timeoutMs: 3_000,
   });
-  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeProjectPath ?? "no-path"}`;
+  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeWorkspaceId ?? "unbound"}`;
   const collabBranch = useMemo(
     () => resolveProjectSharedBranch(project),
     [project],
@@ -251,12 +251,12 @@ export function ProjectLayout({
     refreshLaneState,
   } = useProjectLaneState({
     projectId: shouldEnableProjectRuntime ? routeProjectIdentity : null,
-    workspaceId: workspaceResolution?.status === "ready" ? workspaceResolution.workspace.workspaceId : null,
+    workspaceId: activeWorkspaceId,
     collabBranch,
   });
   const activeBranch = activeLane?.branch ?? collabBranch;
   const collaborationEnabled =
-    shouldEnableProjectRuntime && Boolean(runtimeProjectPath) && activeBranch === collabBranch;
+    shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && activeBranch === collabBranch;
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
@@ -273,20 +273,20 @@ export function ProjectLayout({
     const switchStartMark = markCozeaInteractionStart("project-switch", {
       projectId: routeProjectId ?? null,
       projectSlug: routeSlug ?? null,
-      hasLocalPath: Boolean(runtimeProjectPath),
+      hasWorkspace: Boolean(runtimeWorkspaceId),
     });
     const frameId = window.requestAnimationFrame(() => {
       markCozeaInteractionEnd("project-switch", switchStartMark, {
         projectId: routeProjectId ?? null,
         projectSlug: routeSlug ?? null,
-        hasLocalPath: Boolean(runtimeProjectPath),
+        hasWorkspace: Boolean(runtimeWorkspaceId),
       });
     });
 
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeProjectPath]);
+  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
 
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
@@ -352,15 +352,22 @@ export function ProjectLayout({
     presencePreSearchAddon: presenceHeaderAddon,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
-    editorProjectPath: effectiveLocalPath ?? null,
+    editorProjectPath: runtimeWorkspaceId ?? null,
   });
-
-  const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open);
 
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
       if (!project?._id) return;
       const projectId = String(project._id);
+      const slug = project.slug ?? routeSlug ?? projectId;
+      const repoUrl =
+        (project as { repoSource?: { repoUrl?: string | null } | null }).repoSource?.repoUrl ??
+        (project as { sourceControl?: { repoUrl?: string | null } | null }).sourceControl?.repoUrl ??
+        null;
+      const branch =
+        (project as { repoSource?: { branch?: string | null } | null }).repoSource?.branch ??
+        (project as { sourceControl?: { defaultBranch?: string | null } | null }).sourceControl?.defaultBranch ??
+        undefined;
 
       try {
         switch (action.kind) {
@@ -372,6 +379,7 @@ export function ProjectLayout({
                 folderPath,
                 writeMarker: true,
                 setActive: true,
+                source: "locate",
               });
               if (bindResult.success) {
                 refreshWorkspace();
@@ -381,12 +389,52 @@ export function ProjectLayout({
             }
             break;
           }
+          case "bind-candidate": {
+            const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+              projectId,
+              folderPath: action.folderPath,
+              writeMarker: true,
+              setActive: true,
+              source: "repair",
+            });
+            if (bindResult.success) {
+              refreshWorkspace();
+            } else {
+              await window.desktopBridge?.confirm("Failed to bind folder: " + (bindResult.error ?? "unknown error"));
+            }
+            break;
+          }
           case "create": {
-            openCreateProjectDialog({ mode: "empty" });
+            const createResult = await window.electronAPI.workspace!.createForProject({
+              projectId,
+              slug,
+              initGit: true,
+              setActive: true,
+            });
+            if (createResult.success) {
+              refreshWorkspace();
+            } else {
+              await window.desktopBridge?.confirm("Failed to create workspace: " + (createResult.error ?? "unknown error"));
+            }
             break;
           }
           case "clone": {
-            openCreateProjectDialog({ mode: "local" });
+            if (!repoUrl) {
+              await window.desktopBridge?.confirm("This project does not have a repository URL to clone.");
+              break;
+            }
+            const cloneResult = await window.electronAPI.workspace!.cloneForProject({
+              projectId,
+              slug,
+              repoUrl,
+              branch,
+              setActive: true,
+            });
+            if (cloneResult.success) {
+              refreshWorkspace();
+            } else {
+              await window.desktopBridge?.confirm("Failed to clone workspace: " + (cloneResult.error ?? "unknown error"));
+            }
             break;
           }
           case "forget": {
@@ -401,7 +449,7 @@ export function ProjectLayout({
         console.error("[ProjectLayout] Repair action failed:", err);
       }
     },
-    [project?._id, refreshWorkspace, openCreateProjectDialog],
+    [project, refreshWorkspace, routeSlug],
   );
 
   const layoutContent = (
@@ -474,8 +522,9 @@ export function ProjectLayout({
       slugResolution: (!routeProjectId ? freshProjectBySlug : undefined) as
         | ProjectRouteSlugResolutionResult
         | undefined,
-      localPath: effectiveLocalPath ?? null,
-      gitCwd,
+      workspaceId: activeWorkspaceId,
+      localPath: legacyLocalPath,
+      gitCwd: null,
       projectBasePath,
       projectName: effectiveProjectName,
       collabBranch,
@@ -491,8 +540,8 @@ export function ProjectLayout({
       collabLane,
       collaborationEnabled,
       effectiveProjectName,
-      gitCwd,
-      effectiveLocalPath,
+      activeWorkspaceId,
+      legacyLocalPath,
       freshProjectBySlug,
       laneState,
       project,
@@ -543,14 +592,14 @@ export function ProjectLayout({
           collaborationScopeId: workspaceResolution.collaborationScopeId,
         }}>
           <ProjectSyncProvider
-            workspaceId={workspaceResolution.workspace.workspaceId}
+            workspaceId={activeWorkspaceId}
             workspaceRevision={workspaceResolution.workspace.workspaceRevision}
             projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
             userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
             userName={displayUserName ?? "User"}
             laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
             projectSlug={projectSlug}
-            gitCwd={shouldEnableProjectRuntime ? gitCwd : null}
+            gitCwd={null}
             lastSyncAt={project?.lastSyncAt}
             collaborationEnabled={collaborationEnabled}
             activeBranch={activeBranch}
@@ -569,7 +618,7 @@ export function ProjectLayout({
           userName={displayUserName ?? "User"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
           projectSlug={projectSlug}
-          gitCwd={shouldEnableProjectRuntime ? gitCwd : null}
+          gitCwd={null}
           lastSyncAt={project?.lastSyncAt}
           collaborationEnabled={collaborationEnabled}
           activeBranch={activeBranch}

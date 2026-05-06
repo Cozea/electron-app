@@ -100,7 +100,7 @@ function shouldExcludeActivityPath(path: string): boolean {
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
-  private gitProjectPath: string | null
+  private workspaceId: string | null
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
@@ -113,14 +113,14 @@ export class ProjectFilesPersistence {
   constructor(
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
-    gitProjectPath: string | null,
+    workspaceId: string | null,
     convex: ConvexReactClient,
     userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
-    this.gitProjectPath = gitProjectPath
+    this.workspaceId = workspaceId
     this.convex = convex
     this.userId = userId
     this.userName = userName
@@ -368,11 +368,11 @@ export class ProjectFilesPersistence {
       if (
         loggedActivity &&
         checkpointGroupId &&
-        this.gitProjectPath &&
+        this.workspaceId &&
         window.electronAPI?.workspaceSync?.gitCaptureCheckpoint
       ) {
         const captureResult = await window.electronAPI.workspaceSync.gitCaptureCheckpoint({
-          workspaceId: this.gitProjectPath,
+          workspaceId: this.workspaceId,
           checkpointId: checkpointGroupId,
           authorName: this.userName,
         })

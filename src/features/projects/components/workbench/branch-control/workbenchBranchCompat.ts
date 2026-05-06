@@ -1,7 +1,5 @@
 import type { GitBranch as NativeGitBranch } from "@cozea/assistant-contracts"
 
-import { readNativeApi } from "@/lib/nativeApi"
-
 export async function loadGitBranchesCompat(workspaceId: string): Promise<{
   isRepo: boolean
   hasOriginRemote: boolean
@@ -23,25 +21,6 @@ export async function loadGitBranchesCompat(workspaceId: string): Promise<{
           branches: [],
           error: error instanceof Error ? error.message : "Failed to list local branches.",
         }
-      }
-    }
-  }
-
-  const api = readNativeApi()
-  if (api?.git?.listBranches) {
-    try {
-      const result = await api.git.listBranches({ cwd: workspaceId })
-      return {
-        isRepo: result.isRepo,
-        hasOriginRemote: result.hasOriginRemote,
-        branches: [...result.branches],
-      }
-    } catch (error) {
-      return {
-        isRepo: false,
-        hasOriginRemote: false,
-        branches: [],
-        error: error instanceof Error ? error.message : "Failed to list local branches.",
       }
     }
   }
@@ -72,23 +51,6 @@ export async function checkoutGitBranchCompat(workspaceId: string, branch: strin
           success: false,
           error: error instanceof Error ? error.message : "Failed to switch branches.",
         }
-      }
-    }
-  }
-
-  const api = readNativeApi()
-  if (api?.git?.checkout) {
-    try {
-      await api.git.checkout({ cwd: workspaceId, branch })
-      const status = await api.git.status({ cwd: workspaceId }).catch(() => null)
-      return {
-        success: true,
-        branch: status?.branch ?? branch,
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to switch branches.",
       }
     }
   }
@@ -129,30 +91,8 @@ export async function createGitWorktreeCompat(input: {
     }
   }
 
-  const api = readNativeApi()
-  if (api?.git?.createWorktree) {
-    try {
-      const result = await api.git.createWorktree({
-        cwd: input.workspaceId,
-        branch: input.branch,
-        newBranch: input.newBranch,
-        path: input.path ?? null,
-      })
-      return {
-        success: true,
-        worktree: result.worktree,
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to create personal lane.",
-      }
-    }
-  }
-
   return {
     success: false,
     error: "Git worktree creation needs a full app restart to load the latest desktop bridge.",
   }
 }
-

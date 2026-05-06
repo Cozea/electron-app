@@ -179,7 +179,7 @@ export function WorkbenchHeaderEditorControl({
 
     void openProjectFileInExternalEditor({
       availableEditors: orderedEditors.map(({ editor }) => editor),
-      filePath: workspaceId,
+      filePath: ".",
       preferredEditorId: selectedEditorOption?.editor.id ?? selectedEditorId,
       workspaceId,
     }).then((result) => {
@@ -256,4 +256,3 @@ export function WorkbenchHeaderEditorControl({
     </Tooltip>
   )
 }
-

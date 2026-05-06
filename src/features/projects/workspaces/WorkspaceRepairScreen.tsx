@@ -39,15 +39,17 @@ export function WorkspaceRepairScreen({
           <div className="mt-3 flex flex-col gap-1 text-left">
             <p className="text-xs font-medium text-muted-foreground">Possible folders found:</p>
             {result.candidates.map((c) => (
-              <div
+              <button
                 key={c.path}
-                className="rounded border border-border bg-muted/50 px-3 py-2 text-xs"
+                type="button"
+                onClick={() => onAction?.({ kind: "bind-candidate", folderPath: c.path, label: "Use this folder" })}
+                className="rounded border border-border bg-muted/50 px-3 py-2 text-left text-xs hover:bg-muted"
               >
                 <span className="font-mono">{c.path}</span>
                 {c.reasons.length > 0 && (
                   <span className="ml-2 text-muted-foreground">— {c.reasons[0]}</span>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}

@@ -43,6 +43,14 @@ interface UseAssistantTileBindingInput {
   ) => void
 }
 
+async function resolveAssistantWorkspaceRoot(workspaceId: string): Promise<string> {
+  const result = await window.electronAPI.workspace!.verify(workspaceId)
+  if (result.status !== "verified") {
+    throw new Error(`Workspace is not ready for the assistant runtime: ${result.status}`)
+  }
+  return result.workspace.projectRootPath
+}
+
 export function useAssistantTileBinding({
   projectId,
   laneId,
@@ -71,7 +79,6 @@ export function useAssistantTileBinding({
     if (!isRuntimeReady || !workspaceId) {
       return
     }
-    const workspaceRoot = workspaceId
     if (bindingInFlightRef.current) {
       return
     }
@@ -94,6 +101,9 @@ export function useAssistantTileBinding({
 
     const ensureBinding = async () => {
       try {
+        const workspaceRoot = await resolveAssistantWorkspaceRoot(workspaceId)
+        if (cancelled) return
+
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>

@@ -90,7 +90,7 @@ export function ProjectSyncProviderRuntime({
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
 
-  useProjectCheckpointCleanup(projectId, gitCwd)
+  useProjectCheckpointCleanup(projectId, workspaceId)
 
   useEffect(() => {
     setLastSyncAt(initialLastSyncAt ?? null)
@@ -227,7 +227,6 @@ export function ProjectSyncProviderRuntime({
         userId={resolvedUserId}
         userName={resolvedUserName}
         workspaceId={workspaceId}
-        gitCwd={gitCwd}
         enabled={canSync}
         documentScopeId={documentScopeId}
         collaborationEnabled={sharedCollaborationEnabled}

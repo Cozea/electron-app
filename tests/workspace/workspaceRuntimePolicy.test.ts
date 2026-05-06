@@ -28,27 +28,30 @@ function createRuntime(
   input: {
     createdAt?: number
     lifecycle?: WorkspaceRuntimeLifecycle
-    localPath?: string | null
+    configWorkspaceId?: string | null
     signals?: Partial<WorkspaceRuntimeSignals>
   } = {},
 ): WorkspaceRuntimeRecord {
   const createdAt = input.createdAt ?? 1
   return {
+    runtimeId: `${workspaceId}:runtime`,
     workspaceId,
     config: {
-      workspaceId,
+      workspaceId: (input.configWorkspaceId === undefined
+        ? workspaceId
+        : input.configWorkspaceId) as WorkspaceRuntimeRecord["config"]["workspaceId"],
       projectId: "project-id" as WorkspaceRuntimeRecord["config"]["projectId"],
       userId: "user-id" as WorkspaceRuntimeRecord["config"]["userId"],
       userName: "Test User",
       projectSlug: "project",
       laneId: "main",
-      localPath: input.localPath === undefined ? `/tmp/${workspaceId}` : input.localPath,
       gitCwd: null,
       lastSyncAt: null,
       collaborationEnabled: true,
       activeBranch: "main",
       sharedBranch: "main",
       documentScopeId: "project-id",
+      workspaceRevision: 1,
     },
     syncContext: null,
     yjsContext: {} as WorkspaceRuntimeRecord["yjsContext"],
@@ -161,7 +164,7 @@ describe("workspaceRuntimePolicy", () => {
     const records = [
       createRuntime("closed", { lifecycle: "closed" }),
       createRuntime("frozen", { lifecycle: "background-frozen" }),
-      createRuntime("missing-path", { localPath: null }),
+      createRuntime("missing-binding", { configWorkspaceId: null }),
     ]
 
     expect(selectHostedWorkspaceRuntimeRecords(records)).toEqual([])

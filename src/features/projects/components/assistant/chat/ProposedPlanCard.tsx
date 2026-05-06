@@ -29,7 +29,6 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { toastManager } from "../ui/toast";
-import { readNativeApi } from "@/lib/nativeApi";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
@@ -81,9 +80,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   };
 
   const handleSaveToWorkspace = () => {
-    const api = readNativeApi();
     const relativePath = savePath.trim();
-    if (!api || !workspaceRoot) {
+    if (!workspaceRoot) {
       return;
     }
     if (!relativePath) {
@@ -95,18 +93,21 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     }
 
     setIsSavingToWorkspace(true);
-    void api.projects
+    void window.electronAPI.project
       .writeFile({
-        cwd: workspaceRoot,
-        relativePath,
-        contents: saveContents,
+        workspaceId: workspaceRoot,
+        filePath: relativePath,
+        content: saveContents,
       })
       .then((result) => {
+        if (!result.success) {
+          throw new Error(result.error ?? "An error occurred while saving.");
+        }
         setIsSaveDialogOpen(false);
         toastManager.add({
           type: "success",
           title: "Plan saved to workspace",
-          description: result.relativePath,
+          description: relativePath,
         });
       })
       .catch((error) => {
@@ -186,7 +187,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <DialogHeader>
             <DialogTitle>Save plan to workspace</DialogTitle>
             <DialogDescription>
-              Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
+              Enter a path relative to <code>the workspace</code>.
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">

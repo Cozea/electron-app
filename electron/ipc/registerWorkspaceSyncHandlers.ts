@@ -70,12 +70,10 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       results: Array<{ path: string; success: boolean; error?: string }>
       successCount: number
     }> => {
-      let projectPath: string
-      let gitRootPath: string | null = null
+      let projectRootPath: string
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: workspaceId, operation: 'write-file' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
+        projectRootPath = access.projectRootPath
       } catch (e) {
         return { results: [], successCount: 0 }
       }
@@ -88,7 +86,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
 
       for (const file of files) {
         try {
-          const fullPath = resolvePathWithinDirectory(projectPath, file.path)
+          const fullPath = resolvePathWithinDirectory(projectRootPath, file.path)
           const dir = path.dirname(fullPath)
 
           await mkdir(dir, { recursive: true })
@@ -129,10 +127,18 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
           }
 
           if (file.encoding !== 'base64') {
-            notifyFileChanged(fullPath, file.content, { origin: 'sync' })
+            notifyFileChanged(fullPath, file.content, {
+              origin: 'sync',
+              workspaceId,
+              projectRootPath,
+              relativePath: file.path,
+            })
           }
           notifyFileMetaChanged({
             filePath: fullPath,
+            workspaceId,
+            projectRootPath,
+            relativePath: file.path,
             origin: 'sync',
             isBinary: file.encoding === 'base64',
             sizeBytes: stats.size,
@@ -174,12 +180,10 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
     ): Promise<{
       results: Array<{ path: string; success: boolean }>
     }> => {
-      let projectPath: string
-      let gitRootPath: string | null = null
+      let projectRootPath: string
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: workspaceId, operation: 'delete-file' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
+        projectRootPath = access.projectRootPath
       } catch (e) {
         return { results: [] }
       }
@@ -192,7 +196,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
 
       for (const relPath of paths) {
         try {
-          const fullPath = resolvePathWithinDirectory(projectPath, relPath)
+          const fullPath = resolvePathWithinDirectory(projectRootPath, relPath)
           try {
             // Prevent the project watcher from treating this as an external change.
             markInternalFsChange(fullPath)
@@ -224,7 +228,12 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
             })
           }
 
-          notifyFileDeleted(fullPath, { origin: 'sync' })
+          notifyFileDeleted(fullPath, {
+            origin: 'sync',
+            workspaceId,
+            projectRootPath,
+            relativePath: relPath,
+          })
         } catch (error) {
           console.error(`[Sync] Failed to delete file: ${relPath}`, error)
           results.push({ path: relPath, success: false })

@@ -215,14 +215,14 @@ export function CreateProjectDialog({
   }, [isSubmitting, onOpenChange])
 
   const navigateToProjectWorkbench = useCallback(
-    (projectId: string, projectSlug: string, projectPath: string, projectName: string) => {
+    (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
       onOpenChange(false)
       navigate(buildProjectPath(projectId, "workbench"), {
         state: buildProjectRouteNavigationState({
           projectId,
           projectSlug,
           projectName,
-          preferredWorkspaceId: projectPath,
+          preferredWorkspaceId: workspaceId,
         }),
       })
     },

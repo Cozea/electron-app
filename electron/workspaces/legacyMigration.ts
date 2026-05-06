@@ -97,6 +97,7 @@ export async function migrateFromLegacyRegistry(
             folderPath: entry.path,
             writeMarker: false,
             setActive: true,
+            source: LEGACY_SOURCE_MAP[entry.source],
           }),
         ),
       )

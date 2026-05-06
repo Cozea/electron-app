@@ -573,7 +573,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
   },
   workspaceSync: {
-    hashFile: (options: { filePath: string }) => ipcRenderer.invoke('workspaceSync:hashFile', options),
+    hashFile: (options: { workspaceId: string; laneId?: string | null; path: string }) =>
+      ipcRenderer.invoke('workspaceSync:hashFile', options),
     writeFiles: (options: {
       workspaceId: string
       files: SyncWriteFile[]
@@ -838,6 +839,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('yjs:setInterestRoots', options),
     onExternalFileChange: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       content: string
       origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
     }) => void) => {
@@ -845,6 +849,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         _event: Electron.IpcRendererEvent,
         data: {
           filePath: string
+          workspaceId?: string
+          projectRootPath?: string
+          relativePath?: string
           content: string
           origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
         }
@@ -854,6 +861,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
@@ -862,6 +872,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         filePath: string
+        workspaceId?: string
+        projectRootPath?: string
+        relativePath?: string
         origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
         isBinary: boolean
         isDirectory?: boolean
@@ -873,10 +886,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     onExternalFileDelete: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         filePath: string
+        workspaceId?: string
+        projectRootPath?: string
+        relativePath?: string
         origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
       }) =>
         callback(data)
@@ -887,6 +906,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   devServer: {
     start: (options: {
       workspaceId: string
+      laneId?: string | null
       command: string
       bootstrapCommand?: string | null
       port: number
@@ -898,11 +918,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       runId?: string
     }) =>
       ipcRenderer.invoke('devServer:start', options),
-    stop: (options: { workspaceId: string }) =>
+    stop: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:stop', options),
-    resize: (options: { workspaceId: string; cols: number; rows: number }) =>
+    resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) =>
       ipcRenderer.invoke('devServer:resize', options),
-    isRunning: (options: { workspaceId: string }) =>
+    isRunning: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:isRunning', options),
     onOutput: (callback: (data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)

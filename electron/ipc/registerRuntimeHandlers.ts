@@ -1,5 +1,4 @@
 import type { IpcMain } from 'electron'
-import * as Effect from 'effect/Effect'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import type { DevCommandSuggestion, ProjectRuntimeProfile, RuntimeHealth, RuntimeKind } from '../runtime/runtimeTypes'
 import { loadCapabilityCatalog } from '../runtime/capabilityCatalog'
@@ -7,9 +6,6 @@ import { resolveCommandIntent } from '../runtime/commandResolver'
 import { collectProjectEvidence } from '../runtime/projectEvidence'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimeTarget, resolveCommandWithRuntime, resolveRuntimeHealth } from '../runtime/runtimeResolver'
-
-
-}
 
 const TRACKED_RUNTIMES: RuntimeKind[] = [
   'node',
@@ -64,7 +60,7 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
     try {
       const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'runtime-detect' })
       return buildSuggestions(access.projectRootPath)
-    } catch (e) {
+    } catch {
       return {
         runtimes: [],
         devServer: { suggestions: [], requiresUserSelection: true },
@@ -77,7 +73,7 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
     try {
       const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'runtime-detect' })
       return buildSuggestions(access.projectRootPath)
-    } catch (e) {
+    } catch {
       return {
         runtimes: [],
         devServer: { suggestions: [], requiresUserSelection: true },
@@ -132,7 +128,7 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
     }
   )
 
-  ipcMain.handle('runtime:getRuntimeStatus', async (_event, _options?: { projectPath?: string }) => {
+  ipcMain.handle('runtime:getRuntimeStatus', async (_event, _options?: { workspaceId?: string }) => {
     return {
       target: getRuntimeTarget(),
       runtimes: TRACKED_RUNTIMES.map((runtime) => resolveRuntimeHealth(runtime)),

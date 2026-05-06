@@ -157,6 +157,7 @@ export type WorkspaceResolutionAction =
   | { kind: "clone"; label: string }
   | { kind: "create"; label: string }
   | { kind: "locate"; label: string }
+  | { kind: "bind-candidate"; folderPath: string; label: string }
   | { kind: "forget"; workspaceId: string; label: string }
   | { kind: "force-bind"; label: string }
   | { kind: "open-found"; projectId: string; label: string }

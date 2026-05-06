@@ -9,7 +9,7 @@ import type {
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { extractTerminalLinks, isTerminalLinkActivation, resolvePathLinkTarget } from '@/lib/terminalLinks'
+import { extractTerminalLinks, isTerminalLinkActivation, splitPathAndPosition } from '@/lib/terminalLinks'
 
 import { cn } from '@/lib/utils'
 
@@ -406,9 +406,9 @@ export function TerminalInstance({
                 return
               }
 
-              const target = resolvePathLinkTarget(match.text, workspaceIdRef.current)
-              const [filePath, lineStr] = target.split(':')
-              const line = lineStr ? parseInt(lineStr, 10) : undefined
+              const target = splitPathAndPosition(match.text)
+              const line = target.line ? parseInt(target.line, 10) : undefined
+              const column = target.column ? parseInt(target.column, 10) : undefined
 
               void window.electronAPI.editor.listAvailableEditors().then((editors) => {
                  const editor = editors[0]
@@ -416,11 +416,12 @@ export function TerminalInstance({
                     void window.electronAPI.editor.openInEditor({
                        editorId: editor.id,
                        workspaceId: workspaceIdRef.current,
-                       path: filePath,
-                       line
+                       path: target.path,
+                       line,
+                       column,
                     })
                  } else {
-                    void window.electronAPI.shell.openExternal(`file://${target}`)
+                    void window.electronAPI.shell.openExternal(`file://${target.path}`)
                  }
               })
             },

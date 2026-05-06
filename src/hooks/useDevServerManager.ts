@@ -33,6 +33,7 @@ function appendDevServerOutput(current: string, chunk: string): string {
 
 interface UseDevServerManagerOptions {
   workspaceId: string | null
+  laneId?: string | null
   sessionKey?: string | null
   framework?: string | null
   terminalId?: string | null
@@ -88,6 +89,7 @@ const MAX_TIMELINE_EVENTS = 80
 
 export function useDevServerManager({
   workspaceId,
+  laneId = null,
   sessionKey = null,
   framework = null,
   terminalId = null,
@@ -247,6 +249,7 @@ export function useDevServerManager({
       // Start the dev server
       const result = await window.electronAPI.devServer.start({
         workspaceId,
+        laneId,
         command,
         bootstrapCommand,
         port: config.port,
@@ -328,6 +331,7 @@ export function useDevServerManager({
     onReady,
     previewMode,
     workspaceId,
+    laneId,
     sessionKey,
     state.status,
     storedDevCommand,
@@ -345,7 +349,7 @@ export function useDevServerManager({
 
     try {
       restartSchedulerRef.current.cancel()
-      const result = await window.electronAPI.devServer.stop({ workspaceId })
+      const result = await window.electronAPI.devServer.stop({ workspaceId, laneId })
       if (!result.success) {
         if (result.error) {
           console.warn('[DevServer] Stop reported an error:', result.error)
@@ -385,7 +389,7 @@ export function useDevServerManager({
     } catch (err) {
       console.error('[DevServer] Failed to stop:', err)
     }
-  }, [appendTimeline, workspaceId, transitionLifecycle])
+  }, [appendTimeline, laneId, workspaceId, transitionLifecycle])
 
   // Restart the dev server
   const restart = useCallback(async () => {
@@ -399,8 +403,9 @@ export function useDevServerManager({
   useEffect(() => {
     if (!workspaceId) return
 
-    const unsubOutput = window.electronAPI.devServer.onOutput(({ workspaceId: path, output, runId }) => {
-      if (path !== workspaceId) return
+    const unsubOutput = window.electronAPI.devServer.onOutput(({ workspaceId: eventWorkspaceId, laneId: eventLaneId, output, runId }) => {
+      if (eventLaneId && eventLaneId !== laneId) return
+      if (eventWorkspaceId !== workspaceId) return
       if (isStaleRunEvent(runId)) return
 
       const resolvedRunId = runId ?? activeRunIdRef.current
@@ -430,8 +435,9 @@ export function useDevServerManager({
       onOutput?.(output)
     })
 
-    const unsubExit = window.electronAPI.devServer.onExit(({ workspaceId: path, code, runId }) => {
-      if (path !== workspaceId) return
+    const unsubExit = window.electronAPI.devServer.onExit(({ workspaceId: eventWorkspaceId, laneId: eventLaneId, code, runId }) => {
+      if (eventLaneId && eventLaneId !== laneId) return
+      if (eventWorkspaceId !== workspaceId) return
       if (isStaleRunEvent(runId)) return
 
       console.log('[DevServer] Exited with code:', code)
@@ -464,8 +470,8 @@ export function useDevServerManager({
       })
     })
 
-    const unsubError = window.electronAPI.devServer.onError(({ workspaceId: path, error }) => {
-      if (path !== workspaceId) return
+    const unsubError = window.electronAPI.devServer.onError(({ workspaceId: eventWorkspaceId, error }) => {
+      if (eventWorkspaceId !== workspaceId) return
 
       console.error('[DevServer] Error:', error)
       const runId = activeRunIdRef.current
@@ -495,7 +501,7 @@ export function useDevServerManager({
     return () => {
       cleanupRef.current?.()
     }
-  }, [appendTimeline, isStaleRunEvent, onError, onOutput, workspaceId, transitionLifecycle])
+  }, [appendTimeline, isStaleRunEvent, laneId, onError, onOutput, workspaceId, transitionLifecycle])
 
   // Auto-start if enabled
   useEffect(() => {
@@ -511,10 +517,10 @@ export function useDevServerManager({
       scheduler.cancel()
       if (!keepAliveOnUnmount && activeRunIdRef.current && workspaceId) {
         console.log('[DevServer] Cleaning up on unmount')
-        window.electronAPI.devServer.stop({ workspaceId }).catch(console.error)
+        window.electronAPI.devServer.stop({ workspaceId, laneId }).catch(console.error)
       }
     }
-  }, [keepAliveOnUnmount, workspaceId])
+  }, [keepAliveOnUnmount, laneId, workspaceId])
 
   const setLatestDomSnapshot = useCallback((snapshot: string | null) => {
     setState((prev) => ({ ...prev, latestDomSnapshot: snapshot }))
