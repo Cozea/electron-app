@@ -20,7 +20,8 @@ export interface WorkbenchDockPanelParams {
 export interface WorkbenchDockRuntimeValue {
   projectId: string
   laneId: string
-  projectPath: string | null
+  projectRootPath: string | null
+  gitRootPath: string | null
   projectName: string | null
   workspaceId: string | null
   framework: string | null
@@ -53,7 +54,8 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
     () => ({
       projectId: props.projectId,
       laneId: props.laneId,
-      projectPath: props.projectPath,
+      projectRootPath: props.projectRootPath,
+      gitRootPath: props.gitRootPath,
       projectName: props.projectName,
       workspaceId: props.workspaceId,
       framework: props.framework,
@@ -68,7 +70,8 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
     [
       props.projectId,
       props.laneId,
-      props.projectPath,
+      props.projectRootPath,
+      props.gitRootPath,
       props.projectName,
       props.workspaceId,
       props.framework,

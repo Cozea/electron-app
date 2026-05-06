@@ -40,6 +40,8 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+const RECENT_VERIFICATION_TTL_MS = 30_000
+
 function newId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`
 }
@@ -722,13 +724,19 @@ export const WorkspaceCatalogLive = Layer.effect(
           return result
         }
 
-        // Fast verification
-        const verification = yield* Effect.tryPromise({
-          try: () => verifyWorkspacePath(workspace!, expectedRepo ?? null),
-          catch: (e) => new Error(`Verification failed: ${String(e)}`),
-        })
+        const verificationIsRecent =
+          !expectedRepo &&
+          workspace.verificationStatus === "verified" &&
+          typeof workspace.verifiedAt === "number" &&
+          now() - workspace.verifiedAt <= RECENT_VERIFICATION_TTL_MS
+        const verification = verificationIsRecent
+          ? null
+          : yield* Effect.tryPromise({
+              try: () => verifyWorkspacePath(workspace!, expectedRepo ?? null),
+              catch: (e) => new Error(`Verification failed: ${String(e)}`),
+            })
 
-        if (verification.status !== "verified") {
+        if (verification && verification.status !== "verified") {
           // Persist the new status
           yield* updateVerificationStatus(
             workspace.workspaceId,
@@ -764,20 +772,22 @@ export const WorkspaceCatalogLive = Layer.effect(
         }
 
         // Persist verified state
-        yield* updateVerificationStatus(
-          workspace.workspaceId,
-          "verified",
-          null,
-          {
-            realPath: verification.realPath,
-            markerWorkspaceId: verification.markerWorkspaceId,
-            markerProjectId: verification.markerProjectId,
-            markerPath: verification.markerPath,
-            gitRepoIdentityJson: verification.repoIdentity
-              ? JSON.stringify(verification.repoIdentity)
-              : null,
-          },
-        ).pipe(Effect.catch(() => Effect.void))
+        if (verification) {
+          yield* updateVerificationStatus(
+            workspace.workspaceId,
+            "verified",
+            null,
+            {
+              realPath: verification.realPath,
+              markerWorkspaceId: verification.markerWorkspaceId,
+              markerProjectId: verification.markerProjectId,
+              markerPath: verification.markerPath,
+              gitRepoIdentityJson: verification.repoIdentity
+                ? JSON.stringify(verification.repoIdentity)
+                : null,
+            },
+          ).pipe(Effect.catch(() => Effect.void))
+        }
 
         let lane: WorkspaceLaneRecord | null = null
         if (preferredLaneId) {

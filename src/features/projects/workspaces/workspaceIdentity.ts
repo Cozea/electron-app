@@ -5,16 +5,19 @@ export function normalizeWorkspaceLaneId(laneId: string | null | undefined): str
   return normalized && normalized.length > 0 ? normalized : DEFAULT_WORKSPACE_LANE_ID
 }
 
-export function normalizeWorkspaceProjectPath(
-  projectPath: string | null | undefined,
+export function normalizeWorkspaceId(
+  workspaceId: string | null | undefined,
 ): string | null {
-  const trimmed = projectPath?.trim()
+  const trimmed = workspaceId?.trim()
   if (!trimmed) {
     return null
   }
 
   return trimmed
 }
+
+/** @deprecated Use normalizeWorkspaceId. Kept for persisted-state migration code. */
+export const normalizeWorkspaceProjectPath = normalizeWorkspaceId
 
 export function buildLegacyWorkspaceIdentityKey(
   projectId: string | null | undefined,

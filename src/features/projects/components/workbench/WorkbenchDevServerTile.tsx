@@ -258,12 +258,13 @@ function WorkbenchRuntimePreviewTile({
         nextTerminalId
           ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
           : null
+      let info = null
 
       if (!snapshot || !nextTerminalId) {
         const result = await window.electronAPI.terminal.create({
           workspaceId,
           cwd: { kind: "projectRoot" },
-          gitCwd: { kind: "projectRoot" },
+          gitCwd: { kind: "gitRoot" },
           sessionKey: workbenchSession.sessionKey,
           laneId,
           terminalKind: "dev-server",
@@ -278,6 +279,8 @@ function WorkbenchRuntimePreviewTile({
         }
 
         nextTerminalId = result.terminalId
+        snapshot = result.snapshot ?? null
+        info = result.info ?? null
         await window.electronAPI.workbenchSession.bindTerminal({
           sessionKey: workbenchSession.sessionKey,
           projectId,
@@ -285,16 +288,18 @@ function WorkbenchRuntimePreviewTile({
           tileId: tile.id,
           terminalId: result.terminalId,
         })
-        snapshot = await window.electronAPI.terminal.getSnapshot({
-          terminalId: result.terminalId,
-        })
+        if (!snapshot) {
+          snapshot = await window.electronAPI.terminal.getSnapshot({
+            terminalId: result.terminalId,
+          })
+        }
       }
 
       if (!nextTerminalId || cancelled) {
         return
       }
 
-      const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
+      info = info ?? await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
       if (cancelled) return
 
       registerTerminal({

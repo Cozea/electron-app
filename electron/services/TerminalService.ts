@@ -523,6 +523,8 @@ export class TerminalService {
         success: result.success,
         terminalId: result.terminalId,
         error: result.error,
+        snapshot: result.snapshot ?? null,
+        info: result.info ?? null,
       }
     })
 

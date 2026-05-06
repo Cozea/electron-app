@@ -1,5 +1,4 @@
 import { type IpcMain } from 'electron'
-import * as Effect from "effect/Effect"
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 import { createHash, randomUUID } from 'node:crypto'
@@ -74,7 +73,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: workspaceId, operation: 'write-file' })
         projectRootPath = access.projectRootPath
-      } catch (e) {
+      } catch {
         return { results: [], successCount: 0 }
       }
       const results: Array<{ path: string; success: boolean; error?: string }> = []
@@ -184,7 +183,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: workspaceId, operation: 'delete-file' })
         projectRootPath = access.projectRootPath
-      } catch (e) {
+      } catch {
         return { results: [] }
       }
       const results: Array<{ path: string; success: boolean }> = []
@@ -264,11 +263,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -293,11 +290,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -322,11 +317,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -346,11 +339,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, isRepo: false, error: String(e) }
       }
@@ -377,11 +368,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -411,11 +400,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -439,11 +426,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -468,11 +453,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -490,11 +473,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -513,11 +494,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -543,11 +522,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -571,11 +548,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -598,11 +573,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -630,11 +603,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -660,11 +631,9 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
-      let gitRootPath: string | null = null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
         projectPath = access.gitRootPath ?? access.projectRootPath
-        gitRootPath = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
       }
@@ -900,19 +869,14 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   )
 
   // ── Git changes subscriptions ────────────────────────────────────────────────
-  // The GitChangesBroadcaster registers on 'sync:*' channels; we add workspace-
-  // scoped aliases here that resolve workspaceId → projectPath before delegating.
+  // Keep git-change subscriptions on the workspace-scoped API. Older raw
+  // `sync:*` IPC channels are intentionally not registered from the renderer.
 
   ipcMain.handle(
     'workspaceSync:subscribeGitChanges',
     async (event, options: { workspaceId: string; scope: GitChangesScope }) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        throw e
-      }
+      const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+      const projectPath = access.gitRootPath ?? access.projectRootPath
       const snapshot = await gitDirtyStateService.subscribe(event.sender, {
         projectPath,
         scope: options.scope,
@@ -938,13 +902,8 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'workspaceSync:subscribeGitDirtyState',
     async (event, options: { workspaceId: string; authorName?: string }) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        throw e
-      }
+      const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
+      const projectPath = access.gitRootPath ?? access.projectRootPath
       return gitDirtyStateService.subscribeGitDirtyState(event.sender, {
         projectPath,
         workspaceId: options.workspaceId,

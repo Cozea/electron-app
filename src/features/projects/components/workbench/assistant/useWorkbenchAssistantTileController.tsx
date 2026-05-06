@@ -98,6 +98,7 @@ interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
   laneId: string
   workspaceId: string | null
+  projectRootPath: string | null
   tile: WorkbenchAssistantChatTileRecord
 }
 
@@ -107,14 +108,6 @@ interface WorkbenchAssistantTileControllerResult {
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
-}
-
-async function resolveAssistantWorkspaceRoot(workspaceId: string): Promise<string> {
-  const result = await window.electronAPI.workspace!.verify(workspaceId)
-  if (result.status !== "verified") {
-    throw new Error(`Workspace is not ready for the assistant runtime: ${result.status}`)
-  }
-  return result.workspace.projectRootPath
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -184,9 +177,9 @@ export function useWorkbenchAssistantTileController(
     () =>
       createAssistantProjectSelectorForTile({
         assistantProjectId: input.tile.assistantProjectId,
-        workspaceId: input.workspaceId,
+        projectPath: input.projectRootPath,
       }),
-    [input.workspaceId, input.tile.assistantProjectId],
+    [input.projectRootPath, input.tile.assistantProjectId],
   )
   const threadSelector = useMemo(
     () => createAssistantThreadSelectorById(input.tile.threadId),
@@ -436,10 +429,10 @@ export function useWorkbenchAssistantTileController(
   ])
 
   useEffect(() => {
-    if (!isRuntimeReady || !input.workspaceId) {
+    if (!isRuntimeReady || !input.workspaceId || !input.projectRootPath) {
       return
     }
-    const workspaceId = input.workspaceId
+    const workspaceRoot = input.projectRootPath
     if (bindingInFlightRef.current) {
       return
     }
@@ -455,7 +448,6 @@ export function useWorkbenchAssistantTileController(
 
     const ensureBinding = async () => {
       try {
-        const workspaceRoot = await resolveAssistantWorkspaceRoot(workspaceId)
         if (cancelled) return
 
         // For fresh tiles (no threadId), only resolve/create the project.
@@ -629,6 +621,7 @@ export function useWorkbenchAssistantTileController(
     input.laneId,
     input.projectId,
     input.workspaceId,
+    input.projectRootPath,
     input.tile,
     isRuntimeReady,
     updateAssistantTile,
@@ -981,7 +974,7 @@ export function useWorkbenchAssistantTileController(
     // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
     let resolvedThread = thread
     if (!resolvedThread) {
-      if (!input.workspaceId) {
+      if (!input.workspaceId || !input.projectRootPath) {
         return
       }
       try {
@@ -992,7 +985,7 @@ export function useWorkbenchAssistantTileController(
 
         // Resolve the project
         const currentAssistantState = useStore.getState()
-        const workspaceRoot = await resolveAssistantWorkspaceRoot(input.workspaceId)
+        const workspaceRoot = input.projectRootPath
         const currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)

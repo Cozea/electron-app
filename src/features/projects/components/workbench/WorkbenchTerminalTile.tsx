@@ -84,12 +84,13 @@ export function WorkbenchTerminalTile({
         nextTerminalId
           ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
           : null
+      let info = null
 
       if (!snapshot || !nextTerminalId) {
         const result = await window.electronAPI.terminal.create({
           workspaceId,
           cwd: { kind: "projectRoot" },
-          gitCwd: { kind: "projectRoot" },
+          gitCwd: { kind: "gitRoot" },
           sessionKey: workbenchSession.sessionKey,
           laneId,
           terminalKind: "shell",
@@ -106,6 +107,8 @@ export function WorkbenchTerminalTile({
         }
 
         nextTerminalId = result.terminalId
+        snapshot = result.snapshot ?? null
+        info = result.info ?? null
         await window.electronAPI.workbenchSession.bindTerminal({
           sessionKey: workbenchSession.sessionKey,
           projectId,
@@ -114,16 +117,18 @@ export function WorkbenchTerminalTile({
           terminalId: result.terminalId,
           workspaceId,
         })
-        snapshot = await window.electronAPI.terminal.getSnapshot({
-          terminalId: result.terminalId,
-        })
+        if (!snapshot) {
+          snapshot = await window.electronAPI.terminal.getSnapshot({
+            terminalId: result.terminalId,
+          })
+        }
       }
 
       if (cancelled || !nextTerminalId) {
         return
       }
 
-      const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
+      info = info ?? await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
       if (cancelled) {
         return
       }
