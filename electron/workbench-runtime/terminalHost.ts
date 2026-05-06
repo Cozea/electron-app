@@ -40,6 +40,7 @@ function getLoginShellArgs(shellPath: string): string[] | undefined {
 interface ManagedTerminal {
   id: string
   workspaceId: string
+  projectRootPath: string
   gitCwd: string
   runId?: string
   sessionKey?: string
@@ -681,6 +682,7 @@ export class TerminalRuntimeHost extends EventEmitter {
       payload: {
         terminalId: terminal.id,
         workspaceId: terminal.workspaceId,
+        projectRootPath: terminal.projectRootPath,
         gitCwd: terminal.gitCwd,
         title: terminal.title,
         terminalKind: terminal.terminalKind,
@@ -770,6 +772,10 @@ export class TerminalRuntimeHost extends EventEmitter {
       const cols = normalizeTerminalDimension(options.cols ?? DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS)
       const rows = normalizeTerminalDimension(options.rows ?? DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS)
       const cwd = typeof options.cwd === 'string' ? options.cwd : (options as any).projectRootPath
+      const projectRootPath =
+        typeof (options as any).projectRootPath === 'string'
+          ? (options as any).projectRootPath
+          : cwd
 
       if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
         return { success: false, error: `Terminal working directory does not exist: ${cwd || '(empty)'}` }
@@ -787,6 +793,7 @@ export class TerminalRuntimeHost extends EventEmitter {
       const terminal: Partial<ManagedTerminal> = {
         id: terminalId,
         workspaceId: options.workspaceId,
+        projectRootPath,
         gitCwd: typeof options.gitCwd === 'string' ? options.gitCwd : cwd,
         runId: options.runId,
         sessionKey: options.sessionKey,
