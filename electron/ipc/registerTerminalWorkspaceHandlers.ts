@@ -3,10 +3,10 @@
  * TerminalService.registerIpcHandlers() registers to support the new
  * workspaceId-based API.
  *
- * TerminalService registers these handlers internally using `projectPath`.
+ * TerminalService registers these handlers internally using concrete paths.
  * After the workspace catalog was introduced, callers pass `workspaceId` (a
  * UUID) instead of a raw filesystem path.  This file removes the original
- * handlers and re-registers them with workspaceId → projectPath resolution.
+ * handlers and re-registers them with workspaceId → workspace root resolution.
  */
 
 import type { IpcMain } from 'electron'
@@ -50,7 +50,13 @@ export function registerTerminalWorkspaceHandlers(
     terminalService.registerOutputTarget(event.sender)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await terminalService.createTerminal(options as any)
-    return { success: result.success, terminalId: result.terminalId, error: result.error }
+    return {
+      success: result.success,
+      terminalId: result.terminalId,
+      error: result.error,
+      snapshot: result.snapshot ?? null,
+      info: result.info ?? null,
+    }
   })
 
   // Re-register terminal:list so callers address retained terminals by the

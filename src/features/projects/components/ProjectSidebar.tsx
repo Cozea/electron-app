@@ -113,7 +113,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentWorkspaceId = projectRouteContext?.workspaceId ?? projectRouteContext?.localPath ?? projectSyncContext?.workspaceId ?? null;
+  const currentWorkspaceId = projectRouteContext?.workspaceId ?? projectSyncContext?.workspaceId ?? null;
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(

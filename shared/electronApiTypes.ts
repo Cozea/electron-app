@@ -991,6 +991,14 @@ export interface TerminalCreateOptions {
   terminalKind?: TerminalKind
 }
 
+export interface TerminalCreateResult {
+  success: boolean
+  terminalId?: string
+  error?: string
+  snapshot?: TerminalSnapshot | null
+  info?: TerminalInfo | null
+}
+
 export interface TerminalAttachViewOptions {
   terminalId: string
   cols: number
@@ -1893,7 +1901,7 @@ export interface ElectronAPI {
     onError: (callback: (data: { workspaceId: string; error: string }) => void) => () => void
   }
   terminal: {
-    create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
+    create: (options: TerminalCreateOptions) => Promise<TerminalCreateResult>
     attachView: (options: TerminalAttachViewOptions) => Promise<TerminalAttachViewResult>
     detachView: (options: TerminalDetachViewOptions) => Promise<{ success: boolean }>
     input: (options: { terminalId: string; data: string }) => Promise<boolean>

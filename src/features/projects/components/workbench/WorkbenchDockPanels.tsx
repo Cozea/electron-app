@@ -714,6 +714,7 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
         projectId={props.params.projectId}
         laneId={props.params.laneId}
         workspaceId={runtime.workspaceId}
+        projectRootPath={runtime.projectRootPath}
         tile={tile as WorkbenchAssistantChatTileRecord}
         panelApi={props.api}
         containerApi={props.containerApi}
