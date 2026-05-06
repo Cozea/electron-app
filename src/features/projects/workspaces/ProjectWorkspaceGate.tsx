@@ -38,6 +38,9 @@ export function ProjectWorkspaceGate({
   const { result: resolution } = useProjectWorkspaceResolution(
     project._id,
     project.slug,
+    null,
+    null,
+    { allowCandidateScan: true },
   )
 
   if (!resolution) {

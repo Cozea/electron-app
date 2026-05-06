@@ -10,6 +10,7 @@ interface WorkbenchAssistantChatTileProps {
   projectId: string
   laneId: string
   workspaceId: string | null
+  projectRootPath: string | null
   tile: WorkbenchAssistantChatTileRecord
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
@@ -22,6 +23,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
       projectId: props.projectId,
       laneId: props.laneId,
       workspaceId: props.workspaceId,
+      projectRootPath: props.projectRootPath,
       tile: props.tile,
     })
 

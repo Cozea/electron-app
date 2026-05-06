@@ -9,7 +9,7 @@ import {
   clearProjectBranchSession,
 } from "@/features/projects/lib/projectBranchSessionStore"
 import { clearCachedProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
-import { clonePersistedWorkbenchLayoutsForProjectPath } from "@/features/projects/lib/workbenchLayoutPersistence"
+import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/projects/lib/workbenchLayoutPersistence"
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
 
@@ -31,7 +31,7 @@ function normalizeWorkspaceId(workspaceId: string | null | undefined): string | 
 
 export function useProjectWorkspaceActions() {
   const navigate = useViewTransitionNavigate()
-  const cloneProjectPathState = useProjectWorkbenchStore((state) => state.actions.cloneProjectPathState)
+  const cloneWorkspaceState = useProjectWorkbenchStore((state) => state.actions.cloneWorkspaceState)
   const closeRuntime = useWorkspaceRuntimeStore((state) => state.actions.closeRuntime)
 
   const relinkProjectWorkspace = useCallback(
@@ -58,11 +58,11 @@ export function useProjectWorkspaceActions() {
       }
 
       const nextWorkspaceId = bindResult.workspace.workspaceId
-      cloneProjectPathState(project.id, currentWorkspaceId, nextWorkspaceId)
-      clonePersistedWorkbenchLayoutsForProjectPath({
+      cloneWorkspaceState(project.id, currentWorkspaceId, nextWorkspaceId)
+      clonePersistedWorkbenchLayoutsForWorkspace({
         projectId: project.id,
-        fromProjectPath: currentWorkspaceId,
-        toProjectPath: nextWorkspaceId,
+        fromWorkspace: currentWorkspaceId,
+        toWorkspace: nextWorkspaceId,
       })
 
       navigate(buildProjectPath(project.id, "workbench"), {
@@ -77,7 +77,7 @@ export function useProjectWorkspaceActions() {
 
       return nextWorkspaceId
     },
-    [cloneProjectPathState, navigate],
+    [cloneWorkspaceState, navigate],
   )
 
   const closeProjectWorkspace = useCallback(

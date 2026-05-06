@@ -90,7 +90,12 @@ export function ProjectWorkbenchSurface() {
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project, projectIdParam } = useAccessibleProject();
   const syncContext = useOptionalProjectSyncContext();
-  const workspaceId = syncContext?.workspaceId ?? projectRouteContext?.workspaceId ?? projectRouteContext?.localPath ?? null;
+  const activeWorkspace = useActiveWorkspaceOrNull();
+  const workspaceId =
+    syncContext?.workspaceId ??
+    activeWorkspace?.workspace.workspaceId ??
+    projectRouteContext?.workspaceId ??
+    null;
   const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -113,6 +118,15 @@ export function ProjectWorkbenchSurface() {
     laneState?.collabLaneId ??
     DEFAULT_WORKBENCH_LANE_ID;
   const activeWorkbenchId = activeLane?.workspaceId ?? workspaceId;
+  const projectRootPath =
+    activeWorkspace?.lane.projectRootPath ??
+    projectRouteContext?.projectRootPath ??
+    null;
+  const gitRootPath =
+    activeWorkspace?.lane.gitRootPath ??
+    projectRouteContext?.gitRootPath ??
+    syncContext?.gitCwd ??
+    null;
   const workbenchScopeKey = projectId
     ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchId)
     : null;
@@ -127,7 +141,6 @@ export function ProjectWorkbenchSurface() {
   );
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
   const workspaceSelectionId = user?.id ?? "local-device";
-  const activeWorkspace = useActiveWorkspaceOrNull();
   const currentWorkspaceRuntimeId = useMemo(
     () =>
       resolveWorkspaceRuntimeId({
@@ -386,7 +399,8 @@ export function ProjectWorkbenchSurface() {
     <WorkbenchDockRuntimeProvider
       projectId={projectId}
       laneId={activeLaneId}
-      projectPath={null}
+      projectRootPath={projectRootPath}
+      gitRootPath={gitRootPath}
       projectName={projectName}
       workspaceId={activeWorkbenchId}
       framework={project?.frameworkInfo?.framework ?? null}

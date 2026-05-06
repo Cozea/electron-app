@@ -14,6 +14,7 @@ export function useProjectWorkspaceResolution(
   projectSlug?: string | null,
   expectedRepo?: RepoIdentity | null,
   preferredWorkspaceId?: string | null,
+  options?: { allowCandidateScan?: boolean },
 ): { result: ResolveProjectWorkspaceResult | null, refresh: () => void } {
   const [result, setResult] = useState<ResolveProjectWorkspaceResult | null>(null)
   const [refreshCounter, setRefreshCounter] = useState(0)
@@ -32,7 +33,7 @@ export function useProjectWorkspaceResolution(
       projectSlug: projectSlug ?? null,
       expectedRepo: expectedRepo ?? null,
       preferredWorkspaceId: preferredWorkspaceId ?? null,
-      allowCandidateScan: true,
+      allowCandidateScan: options?.allowCandidateScan ?? false,
     }
 
     if (!window.electronAPI.workspace) {
@@ -62,7 +63,7 @@ export function useProjectWorkspaceResolution(
     return () => {
       cancelled = true
     }
-  }, [projectId, projectSlug, expectedRepo, preferredWorkspaceId, refreshCounter])
+  }, [projectId, projectSlug, expectedRepo, options?.allowCandidateScan, preferredWorkspaceId, refreshCounter])
 
   return { result, refresh: () => setRefreshCounter((c) => c + 1) }
 }

@@ -140,17 +140,19 @@ export function ProjectLayout({
     projectSlug,
     null,
     trustedNavigationState?.preferredWorkspaceId ?? null,
+    { allowCandidateScan: true },
   );
 
   const activeWorkspaceId = workspaceResolution?.status === "ready"
     ? workspaceResolution.workspace.workspaceId
     : null;
-  const legacyLocalPath = featureFlags.localWorkspaceCatalog
-    ? null
-    : (trustedNavigationState?.preferredWorkspaceId ?? null);
-  const runtimeWorkspaceId = featureFlags.localWorkspaceCatalog
-    ? activeWorkspaceId
-    : legacyLocalPath;
+  const activeProjectRootPath = workspaceResolution?.status === "ready"
+    ? workspaceResolution.workspace.projectRootPath
+    : null;
+  const activeGitRootPath = workspaceResolution?.status === "ready"
+    ? (workspaceResolution.lane.gitRootPath ?? workspaceResolution.workspace.gitRootPath)
+    : null;
+  const runtimeWorkspaceId = activeWorkspaceId;
 
   const pendingTeamSetup = useMemo(
     () => locationState?.pendingTeamSetup ?? [],
@@ -523,8 +525,9 @@ export function ProjectLayout({
         | ProjectRouteSlugResolutionResult
         | undefined,
       workspaceId: activeWorkspaceId,
-      localPath: legacyLocalPath,
-      gitCwd: null,
+      projectRootPath: activeProjectRootPath,
+      gitRootPath: activeGitRootPath,
+      gitCwd: activeGitRootPath,
       projectBasePath,
       projectName: effectiveProjectName,
       collabBranch,
@@ -540,8 +543,9 @@ export function ProjectLayout({
       collabLane,
       collaborationEnabled,
       effectiveProjectName,
+      activeGitRootPath,
+      activeProjectRootPath,
       activeWorkspaceId,
-      legacyLocalPath,
       freshProjectBySlug,
       laneState,
       project,
@@ -599,7 +603,7 @@ export function ProjectLayout({
             userName={displayUserName ?? "User"}
             laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
             projectSlug={projectSlug}
-            gitCwd={null}
+            gitCwd={activeGitRootPath}
             lastSyncAt={project?.lastSyncAt}
             collaborationEnabled={collaborationEnabled}
             activeBranch={activeBranch}

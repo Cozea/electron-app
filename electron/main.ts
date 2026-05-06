@@ -17,7 +17,6 @@ import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { AgentToolService } from './services/AgentToolService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
-import { GitChangesBroadcaster } from './services/GitChangesBroadcaster'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
@@ -1416,7 +1415,6 @@ TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
-GitChangesBroadcaster.getInstance().registerIpcHandlers(ipcMain)
 
 // Override terminal handlers to support workspaceId (UUID) → resolve to
 // real filesystem path before delegating to TerminalService.
