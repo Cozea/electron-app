@@ -1,9 +1,12 @@
 import type { BrowserWindow, IpcMain } from 'electron'
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
 import type { DevServerStartOptions as SharedDevServerStartOptions, DevServerStartResult } from '../../shared/electronApiTypes'
 import { DevServerService } from '../services/DevServerService'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
+
+
 
 interface RegisterDevServerHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -23,13 +26,14 @@ export function registerDevServerHandlers(
 ): void {
   const service = DevServerService.getInstance()
   const outputBatcher = createIpcOutputBatcher<{
-    projectPath: string
+    workspaceId: string
+    laneId?: string | null
     output: string
     stream: 'stdout' | 'stderr'
     runId?: string
   }>({
     channel: 'devServer:output',
-    keyOf: (payload) => `${payload.projectPath}:${payload.stream}:${payload.runId ?? ''}`,
+    keyOf: (payload) => `${payload.workspaceId}:${payload.laneId ?? 'collab'}:${payload.stream}:${payload.runId ?? ''}`,
     merge: (current, next) => ({
       ...current,
       output: current.output + next.output,
@@ -42,7 +46,8 @@ export function registerDevServerHandlers(
     async (
       _event,
       {
-        projectPath,
+        workspaceId,
+        laneId,
         command,
         bootstrapCommand,
         port,
@@ -113,12 +118,26 @@ export function registerDevServerHandlers(
         ? resolved.command 
         : command
 
+      try {
+        await resolveAuthorizedWorkspaceAccess({
+          workspaceId,
+          laneId,
+          operation: 'dev-server-start',
+        })
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+
       const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
         ? runId.trim()
         : createRunId()
 
       return await service.start({
-        projectPath,
+        workspaceId,
+        laneId,
         command: finalCommand,
         bootstrapCommand: finalBootstrapCommand,
         preferredPort: port,
@@ -133,7 +152,8 @@ export function registerDevServerHandlers(
           }
 
           outputBatcher.enqueue(mainWindow.webContents, {
-            projectPath,
+            workspaceId,
+            laneId: laneId ?? null,
             output,
             stream,
             runId: resolvedRunId,
@@ -147,7 +167,8 @@ export function registerDevServerHandlers(
 
           outputBatcher.flush(mainWindow.webContents)
           mainWindow.webContents.send('devServer:exit', {
-            projectPath,
+            workspaceId,
+            laneId: laneId ?? null,
             code,
             runId: resolvedRunId,
           })
@@ -160,9 +181,14 @@ export function registerDevServerHandlers(
     'devServer:stop',
     async (
       _event,
-      { projectPath }: { projectPath: string }
+      { workspaceId, laneId }: { workspaceId: string; laneId?: string | null }
     ): Promise<{ success: boolean; error?: string }> => {
-      return await service.stop(projectPath)
+      try {
+        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+      return await service.stop(workspaceId, laneId)
     }
   )
 
@@ -176,8 +202,13 @@ export function registerDevServerHandlers(
 
   ipcMain.handle(
     'devServer:isRunning',
-    (_event, { projectPath }: { projectPath: string }): boolean => {
-      return service.isRunning(projectPath)
+    async (_event, { workspaceId, laneId }: { workspaceId: string; laneId?: string | null }): Promise<boolean> => {
+      try {
+        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
+        return service.isRunning(workspaceId, laneId)
+      } catch {
+        return false
+      }
     }
   )
 }

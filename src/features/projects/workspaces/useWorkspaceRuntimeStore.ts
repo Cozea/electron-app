@@ -26,13 +26,13 @@ export interface WorkspaceRuntimeConfig {
   userName: string | null
   projectSlug: string | null
   laneId: string
-  localPath: string | null
   gitCwd: string | null
   lastSyncAt: number | null
   collaborationEnabled: boolean
   activeBranch: string | null
   sharedBranch: string | null
   documentScopeId: string | null
+  workspaceRevision: number
 }
 
 export interface WorkspaceRuntimeSignals {
@@ -48,6 +48,7 @@ export interface WorkspaceRuntimeSignals {
 }
 
 export interface WorkspaceRuntimeRecord {
+  runtimeId: string
   workspaceId: string
   config: WorkspaceRuntimeConfig
   syncContext: ProjectSyncContextValue | null
@@ -65,15 +66,15 @@ export interface WorkspaceRuntimeRecord {
 interface WorkspaceRuntimeState {
   runtimes: Record<string, WorkspaceRuntimeRecord>
   actions: {
-    ensureRuntime: (config: Omit<WorkspaceRuntimeConfig, "workspaceId">) => string | null
-    attachRuntime: (workspaceId: string) => void
-    detachRuntime: (workspaceId: string) => void
-    publishSyncContext: (workspaceId: string, value: ProjectSyncContextValue | null) => void
-    publishYjsContext: (workspaceId: string, value: YjsProjectContextValue) => void
-    clearPublishedContexts: (workspaceId: string) => void
-    bindSessionSnapshot: (workspaceId: string, snapshot: WorkbenchSessionSnapshot | null) => void
+    ensureRuntime: (config: WorkspaceRuntimeConfig) => string | null
+    attachRuntime: (runtimeId: string) => void
+    detachRuntime: (runtimeId: string) => void
+    publishSyncContext: (runtimeId: string, value: ProjectSyncContextValue | null) => void
+    publishYjsContext: (runtimeId: string, value: YjsProjectContextValue) => void
+    clearPublishedContexts: (runtimeId: string) => void
+    bindSessionSnapshot: (runtimeId: string, snapshot: WorkbenchSessionSnapshot | null) => void
     refreshLifecycles: () => void
-    closeRuntime: (workspaceId: string) => void
+    closeRuntime: (runtimeId: string) => void
   }
 }
 
@@ -179,9 +180,10 @@ function resolveLifecycle(
   }
 }
 
-function createRecord(config: WorkspaceRuntimeConfig): WorkspaceRuntimeRecord {
+function createRecord(runtimeId: string, config: WorkspaceRuntimeConfig): WorkspaceRuntimeRecord {
   const now = Date.now()
   const record: WorkspaceRuntimeRecord = {
+    runtimeId,
     workspaceId: config.workspaceId,
     config,
     syncContext: null,
@@ -222,13 +224,15 @@ function applyResolvedLifecycle(record: WorkspaceRuntimeRecord, now = Date.now()
 
 export function resolveWorkspaceRuntimeId(input: {
   projectId: Id<"projects"> | null
+  workspaceId: string | null
   laneId?: string | null
-  localPath?: string | null
+  workspaceRevision?: number
 }): string | null {
   return buildWorkspaceIdentityKey(
     input.projectId ? String(input.projectId) : null,
+    input.workspaceId,
     normalizeWorkspaceLaneId(input.laneId),
-    input.localPath,
+    input.workspaceRevision ?? 1,
   )
 }
 
@@ -236,20 +240,20 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
   runtimes: {},
   actions: {
     ensureRuntime: (config) => {
-      const workspaceId = resolveWorkspaceRuntimeId({
+      const runtimeId = resolveWorkspaceRuntimeId({
         projectId: config.projectId,
+        workspaceId: config.workspaceId,
         laneId: config.laneId,
-        localPath: config.localPath,
+        workspaceRevision: config.workspaceRevision,
       })
-      if (!workspaceId) {
+      if (!runtimeId) {
         return null
       }
 
       set((state) => {
-        const existing = state.runtimes[workspaceId] ?? null
+        const existing = state.runtimes[runtimeId] ?? null
         const nextConfig: WorkspaceRuntimeConfig = {
           ...config,
-          workspaceId,
           laneId: normalizeWorkspaceLaneId(config.laneId),
         }
 
@@ -258,21 +262,21 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
               ...existing,
               config: nextConfig,
             })
-          : createRecord(nextConfig)
+          : createRecord(runtimeId, nextConfig)
 
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
 
-      return workspaceId
+      return runtimeId
     },
-    attachRuntime: (workspaceId) => {
+    attachRuntime: (runtimeId) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
@@ -282,14 +286,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
     },
-    detachRuntime: (workspaceId) => {
+    detachRuntime: (runtimeId) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
@@ -299,14 +303,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
     },
-    publishSyncContext: (workspaceId, value) => {
+    publishSyncContext: (runtimeId, value) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
@@ -315,14 +319,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
     },
-    publishYjsContext: (workspaceId, value) => {
+    publishYjsContext: (runtimeId, value) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
@@ -331,14 +335,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
     },
-    clearPublishedContexts: (workspaceId) => {
+    clearPublishedContexts: (runtimeId) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
@@ -348,14 +352,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
     },
-    bindSessionSnapshot: (workspaceId, snapshot) => {
+    bindSessionSnapshot: (runtimeId, snapshot) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
@@ -365,7 +369,7 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: nextRecord,
+            [runtimeId]: nextRecord,
           },
         }
       })
@@ -375,14 +379,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         let mutated = false
         const nextRuntimes: Record<string, WorkspaceRuntimeRecord> = {}
 
-        for (const [workspaceId, record] of Object.entries(state.runtimes)) {
+        for (const [runtimeId, record] of Object.entries(state.runtimes)) {
           if (record.lifecycle === "closed") {
-            nextRuntimes[workspaceId] = record
+            nextRuntimes[runtimeId] = record
             continue
           }
 
           const nextRecord = applyResolvedLifecycle(record)
-          nextRuntimes[workspaceId] = nextRecord
+          nextRuntimes[runtimeId] = nextRecord
           if (
             nextRecord.lifecycle !== record.lifecycle ||
             nextRecord.signals.lifecycleReason !== record.signals.lifecycleReason ||
@@ -395,14 +399,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         return mutated ? { runtimes: nextRuntimes } : state
       })
     },
-    closeRuntime: (workspaceId) => {
+    closeRuntime: (runtimeId) => {
       set((state) => {
-        const record = state.runtimes[workspaceId]
+        const record = state.runtimes[runtimeId]
         if (!record) return state
         return {
           runtimes: {
             ...state.runtimes,
-            [workspaceId]: {
+            [runtimeId]: {
               ...record,
               lifecycle: "closed",
               signals: {
@@ -418,11 +422,11 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
 }))
 
 export function getWorkspaceRuntimeRecord(
-  workspaceId: string | null | undefined,
+  runtimeId: string | null | undefined,
 ): WorkspaceRuntimeRecord | null {
-  if (!workspaceId) {
+  if (!runtimeId) {
     return null
   }
 
-  return useWorkspaceRuntimeStore.getState().runtimes[workspaceId] ?? null
+  return useWorkspaceRuntimeStore.getState().runtimes[runtimeId] ?? null
 }

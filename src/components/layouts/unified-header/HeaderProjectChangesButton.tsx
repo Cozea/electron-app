@@ -20,15 +20,15 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   const location = useLocation();
   const convex = useConvex();
   const routeContext = useOptionalProjectRouteContext();
-  const gitCwd = routeContext?.gitCwd ?? null;
-  const projectState = useGitChangesStore((state) => gitCwd ? state.projects[gitCwd] : undefined)
+  const workspaceId = routeContext?.activeLane?.workspaceId ?? routeContext?.workspaceId ?? null;
+  const projectState = useGitChangesStore((state) => workspaceId ? state.projects[workspaceId] : undefined)
   const diffStats = projectState?.current?.snapshot ?? null;
   const watchGitStatus = useGitChangesStore((state) => state.actions.watchGitStatus);
 
   useEffect(() => {
-    if (!gitCwd) return;
-    return watchGitStatus(gitCwd, 'current');
-  }, [gitCwd, watchGitStatus]);
+    if (!workspaceId) return;
+    return watchGitStatus(workspaceId, 'current');
+  }, [workspaceId, watchGitStatus]);
 
   const isSidebarOpen = useChangesSidebarStore((state) => state.isOpen);
   const sidebarActions = useChangesSidebarStore((state) => state.actions);

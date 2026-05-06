@@ -23,15 +23,6 @@ const SUPPORTED_EXTERNAL_EDITOR_IDS: ExternalEditorId[] = [
   'datagrip',
 ]
 
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:\//.test(path)
-}
-
-function normalizeProjectPath(projectPath: string | null): string | null {
-  if (!projectPath) return null
-  return projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
-}
-
 export function readStoredExternalEditorPreference(): ExternalEditorId | null {
   try {
     const stored = window.localStorage.getItem(PREVIEW_EDITOR_PREFERENCE_KEY)
@@ -57,24 +48,17 @@ export function resolvePreferredExternalEditorId(
 
 export async function resolveAbsoluteProjectFilePath(
   filePath: string,
-  projectPath: string | null
+  workspaceId: string | null
 ): Promise<string> {
   const normalizedFilePath = filePath.replace(/\\/g, '/')
-  const normalizedProjectPath = normalizeProjectPath(projectPath)
-  const resolvedRelativePath =
-    normalizedProjectPath != null
-      ? await resolveProjectSourcePath(normalizedFilePath, normalizedProjectPath)
-      : null
-
-  if (resolvedRelativePath && normalizedProjectPath) {
-    return `${normalizedProjectPath}/${resolvedRelativePath.replace(/^\/+/, '')}`
+  if (!workspaceId) {
+    return normalizedFilePath
   }
 
-  if (normalizedProjectPath && !isAbsolutePath(normalizedFilePath) && !normalizedFilePath.startsWith(normalizedProjectPath)) {
-    return `${normalizedProjectPath}/${normalizedFilePath.replace(/^\/+/, '')}`
-  }
-
-  return normalizedFilePath
+  return (
+    (await resolveProjectSourcePath(normalizedFilePath, workspaceId)) ??
+    normalizedFilePath.replace(/^\/+/, '')
+  )
 }
 
 export async function openProjectFileInExternalEditor(options: {
@@ -83,7 +67,7 @@ export async function openProjectFileInExternalEditor(options: {
   line?: number
   column?: number
   preferredEditorId?: ExternalEditorId | null
-  projectPath: string | null
+  workspaceId: string | null
 }): Promise<{ success: boolean; editorId: ExternalEditorId | null; error?: string }> {
   const availableEditors =
     options.availableEditors ?? (await window.electronAPI.editor.listAvailableEditors())
@@ -100,10 +84,12 @@ export async function openProjectFileInExternalEditor(options: {
     }
   }
 
-  const absoluteFilePath = await resolveAbsoluteProjectFilePath(options.filePath, options.projectPath)
+  const projectRelativePath = await resolveAbsoluteProjectFilePath(options.filePath, options.workspaceId)
   const result = await window.electronAPI.editor.openInEditor({
     editorId,
-    filePath: absoluteFilePath,
+    ...(options.workspaceId
+      ? { workspaceId: options.workspaceId, path: projectRelativePath || '.' }
+      : { filePath: projectRelativePath }),
     line: options.line,
     column: options.column,
   })

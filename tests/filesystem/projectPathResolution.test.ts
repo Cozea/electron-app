@@ -1,68 +1,25 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
+import { describe, expect, it } from 'vitest'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import {
+  buildWorkspaceIdentityKey,
+  normalizeWorkspaceProjectPath,
+} from '../../src/features/projects/workspaces/workspaceIdentity'
 
-import { resolveKnownProjectPath } from '../../electron/projectPathResolution'
-
-function writeGitConfig(projectPath: string, remoteUrl: string): void {
-  const gitDir = path.join(projectPath, '.git')
-  fs.mkdirSync(gitDir, { recursive: true })
-  fs.writeFileSync(
-    path.join(gitDir, 'config'),
-    `[remote "origin"]\n\turl = ${remoteUrl}\n`,
-    'utf-8',
-  )
-}
-
-describe('projectPathResolution', () => {
-  const tempRoots: string[] = []
-
-  afterEach(() => {
-    for (const tempRoot of tempRoots.splice(0, tempRoots.length)) {
-      fs.rmSync(tempRoot, { recursive: true, force: true })
-    }
+describe('workspace identity normalization', () => {
+  it('treats workspace ids as opaque values instead of filesystem paths', () => {
+    expect(normalizeWorkspaceProjectPath(' workspace\\id/with/trailing/ ')).toBe(
+      'workspace\\id/with/trailing/',
+    )
   })
 
-  it('matches the suffixed directory when the git remote points at the requested project id', () => {
-    const projectsDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'cozea-project-paths-'))
-    tempRoots.push(projectsDirectory)
-
-    const exactPath = path.join(projectsDirectory, 'demo')
-    const suffixedPath = path.join(projectsDirectory, 'demo-2')
-    fs.mkdirSync(exactPath)
-    fs.mkdirSync(suffixedPath)
-    writeGitConfig(exactPath, 'https://api.cozea.app/git/project-a.git')
-    writeGitConfig(suffixedPath, 'https://api.cozea.app/git/project-b.git')
-
+  it('builds lane identity keys from the opaque workspace id', () => {
     expect(
-      resolveKnownProjectPath(projectsDirectory, { slug: 'demo', projectId: 'project-b' }),
-    ).toBe(suffixedPath)
-  })
-
-  it('falls back to the exact slug path when no project id is provided', () => {
-    const projectsDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'cozea-project-paths-'))
-    tempRoots.push(projectsDirectory)
-
-    const exactPath = path.join(projectsDirectory, 'demo')
-    const suffixedPath = path.join(projectsDirectory, 'demo-2')
-    fs.mkdirSync(exactPath)
-    fs.mkdirSync(suffixedPath)
-
-    expect(resolveKnownProjectPath(projectsDirectory, { slug: 'demo' })).toBe(exactPath)
-  })
-
-  it('resolves the only matching suffix when the exact slug path does not exist', () => {
-    const projectsDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'cozea-project-paths-'))
-    tempRoots.push(projectsDirectory)
-
-    const suffixedPath = path.join(projectsDirectory, 'demo-2')
-    fs.mkdirSync(suffixedPath)
-    writeGitConfig(suffixedPath, 'https://api.cozea.app/git/project-b.git')
-
-    expect(
-      resolveKnownProjectPath(projectsDirectory, { slug: 'demo', projectId: 'project-b' }),
-    ).toBe(suffixedPath)
+      buildWorkspaceIdentityKey(
+        'project-123',
+        'workspace\\id/with/trailing/',
+        'feature',
+        3,
+      ),
+    ).toBe('project-123::feature::workspace\\id/with/trailing/::v3')
   })
 })

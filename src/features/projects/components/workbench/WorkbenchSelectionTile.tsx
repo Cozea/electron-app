@@ -48,7 +48,7 @@ interface WorkbenchSelectionTileProps {
   /** True when this is the only tile and the workbench is in empty state (no tools opened yet). */
   singletonEmptyWorkbench?: boolean
   projectName?: string | null
-  projectPath?: string | null
+  workspaceId?: string | null
   onChoose: (request: WorkbenchSelectionLaunchRequest) => void
 }
 
@@ -60,10 +60,10 @@ function isLauncherGroup(category: CategoryTab): category is DevAppLauncherGroup
 
 function WelcomeHero({
   projectName,
-  projectPath,
+  workspaceId,
 }: {
   projectName?: string | null
-  projectPath?: string | null
+  workspaceId?: string | null
 }) {
   const { t } = useTranslation()
   const normalizedProjectName = projectName?.trim() || "this project"
@@ -76,7 +76,7 @@ function WelcomeHero({
         </span>
         <span className="inline-flex items-center gap-3 text-center text-2xl font-bold tracking-tight text-foreground md:text-4xl">
           <NativeProjectFolderIcon
-            folderPath={projectPath}
+            folderPath={workspaceId}
             fallbackClassName="h-7 w-7 text-muted-foreground md:h-9 md:w-9"
             imgClassName="h-7 w-7 md:h-9 md:w-9"
           />
@@ -343,7 +343,7 @@ export function WorkbenchSelectionTile({
   tile: _tile,
   singletonEmptyWorkbench = false,
   projectName,
-  projectPath,
+  workspaceId,
   onChoose,
 }: WorkbenchSelectionTileProps) {
   const { t } = useTranslation()
@@ -506,7 +506,7 @@ export function WorkbenchSelectionTile({
       >
         {showHero ? (
           <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-8 md:px-10 md:pt-10">
-            <WelcomeHero projectName={projectName} projectPath={projectPath} />
+            <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
             {useListView ? null : sharedFilterBar}
           </div>
         ) : null}

@@ -28,7 +28,7 @@ import { ArrowDown01Icon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2Huge
 const Code2 = (props: any) => <HugeiconsIcon icon={__Code2HugeIcon} {...props} />
 
 interface WorkbenchHeaderEditorControlProps {
-  projectPath: string | null
+  workspaceId: string | null
   /** When the project drawer is open, use sidebar palette so icons read on glass/vibrancy. */
   adjacentOpenSidebar?: boolean
 }
@@ -122,7 +122,7 @@ function orderDetectedEditors(availableEditors: ReadonlyArray<AvailableExternalE
 }
 
 export function WorkbenchHeaderEditorControl({
-  projectPath,
+  workspaceId,
   adjacentOpenSidebar = false,
 }: WorkbenchHeaderEditorControlProps) {
   const { t } = useTranslation()
@@ -175,19 +175,19 @@ export function WorkbenchHeaderEditorControl({
   )
 
   const handleOpenProjectInEditor = useCallback(() => {
-    if (!projectPath) return
+    if (!workspaceId) return
 
     void openProjectFileInExternalEditor({
       availableEditors: orderedEditors.map(({ editor }) => editor),
-      filePath: projectPath,
+      filePath: ".",
       preferredEditorId: selectedEditorOption?.editor.id ?? selectedEditorId,
-      projectPath,
+      workspaceId,
     }).then((result) => {
       if (!result.success) {
         console.error("[Workbench] Failed to open project in external editor", result.error)
       }
     })
-  }, [orderedEditors, projectPath, selectedEditorId, selectedEditorOption])
+  }, [orderedEditors, workspaceId, selectedEditorId, selectedEditorOption])
 
   const handleShowEditorPicker = useCallback(
     async (event: MouseEvent<HTMLButtonElement>) => {
@@ -223,7 +223,7 @@ export function WorkbenchHeaderEditorControl({
             variant="ghost"
             className={cn("h-full shrink-0 rounded-none bg-transparent !px-2 shadow-none", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
-            disabled={!projectPath || !selectedEditorOption}
+            disabled={!workspaceId || !selectedEditorOption}
             aria-label={
               selectedEditorOption
                 ? t("workbench.editor.openIn").replace("{editor}", selectedEditorOption.editor.name)
@@ -256,4 +256,3 @@ export function WorkbenchHeaderEditorControl({
     </Tooltip>
   )
 }
-

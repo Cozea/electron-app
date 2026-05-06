@@ -5,7 +5,7 @@ import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 interface UseWorkbenchSessionLifecycleArgs {
   projectId: string | null
   laneId: string | null
-  projectPath: string | null
+  workspaceId: string | null
   backgroundMode?: "backgroundWarm" | "backgroundFrozen"
   enabled?: boolean
 }
@@ -15,7 +15,7 @@ function matchesSession(
   sessionKey: string | null,
   projectId: string | null,
   laneId: string | null,
-  projectPath: string | null,
+  workspaceId: string | null,
 ): boolean {
   if (sessionKey) {
     return snapshot.sessionKey === sessionKey
@@ -24,8 +24,8 @@ function matchesSession(
   if (snapshot.projectId !== projectId || snapshot.laneId !== laneId) {
     return false
   }
-  if (projectPath) {
-    return snapshot.projectPath === projectPath
+  if (workspaceId) {
+    return snapshot.workspaceId === workspaceId
   }
   return true
 }
@@ -33,7 +33,7 @@ function matchesSession(
 export function useWorkbenchSessionLifecycle({
   projectId,
   laneId,
-  projectPath,
+  workspaceId,
   backgroundMode = "backgroundWarm",
   enabled = true,
 }: UseWorkbenchSessionLifecycleArgs): WorkbenchSessionSnapshot | null {
@@ -51,7 +51,7 @@ export function useWorkbenchSessionLifecycle({
 
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
-      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, projectPath)) return
+      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, workspaceId)) return
       setSnapshot(nextSnapshot)
     }
 
@@ -59,7 +59,7 @@ export function useWorkbenchSessionLifecycle({
       .ensureSession({
         projectId,
         laneId,
-        projectPath,
+        workspaceId,
       })
       .then((nextSnapshot) => {
         activeSessionKeyRef.current = nextSnapshot.sessionKey
@@ -68,7 +68,7 @@ export function useWorkbenchSessionLifecycle({
           sessionKey: nextSnapshot.sessionKey,
           projectId,
           laneId,
-          projectPath,
+          workspaceId,
         })
       })
       .then((nextSnapshot) => {
@@ -101,7 +101,7 @@ export function useWorkbenchSessionLifecycle({
           console.warn("[WorkbenchSession] Failed to background session", error)
         })
     }
-  }, [backgroundMode, enabled, laneId, projectId, projectPath])
+  }, [backgroundMode, enabled, laneId, projectId, workspaceId])
 
   return snapshot
 }

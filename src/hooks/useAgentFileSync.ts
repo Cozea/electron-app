@@ -4,6 +4,23 @@ import type { FileChangeAttribution } from '../../shared/electronApiTypes'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
+function relativePathFromExternalEvent(data: {
+  filePath: string
+  workspaceId?: string
+  relativePath?: string
+}, workspaceId: string): string | null {
+  if (data.workspaceId) {
+    if (data.workspaceId !== workspaceId) return null
+    return data.relativePath?.replace(/\\/g, '/').replace(/^\/+/, '') ?? null
+  }
+
+  if (!data.filePath.startsWith(workspaceId)) return null
+  return data.filePath
+    .slice(workspaceId.length)
+    .replace(/^[/\\]+/, '')
+    .replace(/\\/g, '/')
+}
+
 /**
  * useAgentFileSync - Bridges external file changes (from AI agents) to Yjs.
  *
@@ -13,7 +30,7 @@ import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
  */
 export function useAgentFileSync(
   yjsDoc: YjsProjectDoc | null,
-  projectPath: string | null,
+  workspaceId: string | null,
   projectId: Id<'projects'> | null,
   userId: Id<'users'> | null
 ): void {
@@ -34,7 +51,7 @@ export function useAgentFileSync(
   }, [projectId, userId])
 
   useEffect(() => {
-    if (!yjsDoc || !projectPath) return
+    if (!yjsDoc || !workspaceId) return
 
     const cleanups: Array<() => void> = []
 
@@ -122,16 +139,13 @@ export function useAgentFileSync(
 
     // Subscribe to external file changes from Electron main process
     const cleanupChange = window.electronAPI.yjs?.onExternalFileChange?.(
-      ({ filePath, content, origin }) => {
-        // Check if this file belongs to our project
-        if (!filePath.startsWith(projectPath)) return
-
-        // Get relative path within project
-        const relativePath = filePath
-          .slice(projectPath.length)
-          .replace(/^[/\\]+/, '')
-        // Normalize path separators
-        const normalizedPath = relativePath.replace(/\\/g, '/')
+      ({ filePath, workspaceId: eventWorkspaceId, relativePath, content, origin }) => {
+        const normalizedPath = relativePathFromExternalEvent({
+          filePath,
+          workspaceId: eventWorkspaceId,
+          relativePath,
+        }, workspaceId)
+        if (!normalizedPath) return
 
         // console.log(`[AgentSync] External file change: ${normalizedPath}`)
 
@@ -150,13 +164,13 @@ export function useAgentFileSync(
     if (cleanupChange) cleanups.push(cleanupChange)
 
     const cleanupDelete = window.electronAPI.yjs?.onExternalFileDelete?.(
-      ({ filePath, origin }) => {
-        if (!filePath.startsWith(projectPath)) return
-
-        const relativePath = filePath
-          .slice(projectPath.length)
-          .replace(/^[/\\]+/, '')
-        const normalizedPath = relativePath.replace(/\\/g, '/')
+      ({ filePath, workspaceId: eventWorkspaceId, relativePath, origin }) => {
+        const normalizedPath = relativePathFromExternalEvent({
+          filePath,
+          workspaceId: eventWorkspaceId,
+          relativePath,
+        }, workspaceId)
+        if (!normalizedPath) return
 
         // console.log(`[AgentSync] External file delete: ${normalizedPath}`)
         yjsDoc.deletePath(normalizedPath, origin ?? 'agent')
@@ -173,5 +187,5 @@ export function useAgentFileSync(
     return () => {
       for (const cleanup of cleanups) cleanup()
     }
-  }, [yjsDoc, projectPath, userId])
+  }, [yjsDoc, workspaceId, userId])
 }

@@ -1,13 +1,13 @@
 import path from 'node:path'
 
-import type { FileChangeAttribution, TerminalCreateOptions, TerminalKind } from '../../shared/electronApiTypes'
+import type { FileChangeAttribution, TerminalKind } from '../../shared/electronApiTypes'
 
 const COMMAND_PROVENANCE_WINDOW_MS = 30_000
 const SUBPROCESS_PROVENANCE_WINDOW_MS = 2 * 60_000
 
 interface TerminalProvenanceRecord {
   terminalId: string
-  projectPath: string
+  projectRootPath: string
   gitCwd: string
   title: string
   terminalKind: TerminalKind | string
@@ -20,6 +20,18 @@ interface TerminalProvenanceRecord {
   lastCommandId?: string
   lastCommandText?: string
   lastCommandAt?: number
+}
+
+interface TerminalProvenanceRegistration {
+  terminalId: string
+  projectRootPath: string
+  gitCwd?: string | null
+  title: string
+  terminalKind?: TerminalKind | string | null
+  runId?: string | null
+  sessionKey?: string | null
+  laneId?: string | null
+  workspaceId?: string | null
 }
 
 function pathIsWithinRoot(filePath: string, rootPath: string): boolean {
@@ -47,23 +59,28 @@ export class TerminalProvenanceService {
   }
 
   registerTerminal(
-    terminalId: string,
-    options: TerminalCreateOptions,
-    title: string,
+    input: TerminalProvenanceRegistration,
   ): void {
     const now = Date.now()
-    this.records.set(terminalId, {
-      terminalId,
-      projectPath: path.resolve(options.projectPath),
-      gitCwd: path.resolve(options.gitCwd ?? options.projectPath),
-      title,
-      terminalKind: options.terminalKind ?? 'shell',
-      runId: options.runId,
-      sessionKey: options.sessionKey?.trim() || undefined,
-      laneId: options.laneId?.trim() || undefined,
-      workspaceId: options.workspaceId?.trim() || undefined,
+    const existing = this.records.get(input.terminalId)
+    const projectRootPath = path.resolve(input.projectRootPath)
+    const gitCwd = path.resolve(input.gitCwd?.trim() || projectRootPath)
+
+    this.records.set(input.terminalId, {
+      terminalId: input.terminalId,
+      projectRootPath,
+      gitCwd,
+      title: input.title,
+      terminalKind: input.terminalKind ?? 'shell',
+      runId: input.runId?.trim() || existing?.runId,
+      sessionKey: input.sessionKey?.trim() || existing?.sessionKey,
+      laneId: input.laneId?.trim() || existing?.laneId,
+      workspaceId: input.workspaceId?.trim() || existing?.workspaceId,
       hasRunningSubprocess: false,
       lastActivityAt: now,
+      lastCommandId: existing?.lastCommandId,
+      lastCommandText: existing?.lastCommandText,
+      lastCommandAt: existing?.lastCommandAt,
     })
   }
 

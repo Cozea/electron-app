@@ -4,6 +4,23 @@ import type { Id } from '../../convex/_generated/dataModel'
 import type { FileChangeAttribution } from '../../shared/electronApiTypes'
 import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
 
+function relativePathFromExternalEvent(data: {
+  filePath: string
+  workspaceId?: string
+  relativePath?: string
+}, workspaceId: string): string | null {
+  if (data.workspaceId) {
+    if (data.workspaceId !== workspaceId) return null
+    return data.relativePath?.replace(/\\/g, '/').replace(/^\/+/, '') ?? null
+  }
+
+  if (!data.filePath.startsWith(workspaceId)) return null
+  return data.filePath
+    .slice(workspaceId.length)
+    .replace(/^[/\\]+/, '')
+    .replace(/\\/g, '/')
+}
+
 /**
  * useBinaryFileSync - Syncs binary files (images, videos, etc.) via replica LFS APIs.
  *
@@ -20,7 +37,7 @@ import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
  */
 export function useBinaryFileSync(
   projectId: Id<'projects'> | null,
-  projectPath: string | null,
+  workspaceId: string | null,
   userId: Id<'users'> | null
 ): { pendingUploads: number } {
   const convex = useConvex()
@@ -28,12 +45,12 @@ export function useBinaryFileSync(
 
   // Initialize BinaryFileSync
   useEffect(() => {
-    if (!projectId || !projectPath || !userId) {
+    if (!projectId || !workspaceId || !userId) {
       binarySyncRef.current = null
       return
     }
 
-    binarySyncRef.current = new BinaryFileSync(projectId, projectPath, convex, userId)
+    binarySyncRef.current = new BinaryFileSync(projectId, workspaceId, convex, userId)
 
     // Process any queued uploads from previous sessions
     void binarySyncRef.current.processQueue()
@@ -42,25 +59,24 @@ export function useBinaryFileSync(
       binarySyncRef.current?.destroy()
       binarySyncRef.current = null
     }
-  }, [convex, projectId, projectPath, userId])
+  }, [convex, projectId, workspaceId, userId])
 
   // Handle local binary file changes
   useEffect(() => {
-    if (!projectPath || !binarySyncRef.current) return
+    if (!workspaceId || !binarySyncRef.current) return
 
     const handleExternalFileChange = (data: {
       filePath: string
+      workspaceId?: string
+      relativePath?: string
       origin?: string | FileChangeAttribution
       isBinary: boolean
       sizeBytes: number
       isDirectory?: boolean
     }) => {
-      if (!data.filePath.startsWith(projectPath)) return
       if (data.isDirectory) return
-      const relativePath = data.filePath
-        .slice(projectPath.length)
-        .replace(/^[/\\]+/, '')
-        .replace(/\\/g, '/')
+      const relativePath = relativePathFromExternalEvent(data, workspaceId)
+      if (!relativePath) return
 
       // Only handle binary files
       if (!data.isBinary && !isBinaryFile(relativePath)) return
@@ -86,7 +102,7 @@ export function useBinaryFileSync(
     return () => {
       unsubscribe()
     }
-  }, [projectPath])
+  }, [workspaceId])
 
   // Handle reconnection - process queued uploads
   useEffect(() => {

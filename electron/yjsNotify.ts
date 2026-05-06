@@ -11,12 +11,18 @@ import {
 
 export interface ExternalFileChangePayload {
   filePath: string
+  workspaceId?: string
+  projectRootPath?: string
+  relativePath?: string
   content: string
   origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
 }
 
 export interface ExternalFileMetaChangePayload {
   filePath: string
+  workspaceId?: string
+  projectRootPath?: string
+  relativePath?: string
   origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
   isBinary: boolean
   isDirectory?: boolean
@@ -26,6 +32,9 @@ export interface ExternalFileMetaChangePayload {
 
 export interface ExternalFileDeletePayload {
   filePath: string
+  workspaceId?: string
+  projectRootPath?: string
+  relativePath?: string
   origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
 }
 
@@ -102,7 +111,7 @@ function forEachInterestedWindowForPath(filePath: string, fn: (window: BrowserWi
 
   const sentWindowIds = new Set<number>()
 
-  for (const [wcId, roots] of [...interestRootsByWebContentsId.entries()]) {
+  for (const [wcId, roots] of interestRootsByWebContentsId.entries()) {
     if (!fileMatchesAnyRoot(filePath, roots)) continue
 
     pruneStaleInterestEntry(wcId)
@@ -125,10 +134,18 @@ function forEachInterestedWindowForPath(filePath: string, fn: (window: BrowserWi
 export function notifyFileChanged(
   filePath: string,
   content: string,
-  options?: { origin?: string | import("../shared/electronApiTypes").FileChangeAttribution },
+  options?: {
+    origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+    workspaceId?: string
+    projectRootPath?: string
+    relativePath?: string
+  },
 ): void {
   const payload: ExternalFileChangePayload = {
     filePath,
+    workspaceId: options?.workspaceId,
+    projectRootPath: options?.projectRootPath,
+    relativePath: options?.relativePath,
     content,
     origin: options?.origin,
   }
@@ -149,12 +166,20 @@ export function notifyFileMetaChanged(payload: ExternalFileMetaChangePayload): v
 
 export function notifyFileDeleted(
   filePath: string,
-  options?: { origin?: string | import("../shared/electronApiTypes").FileChangeAttribution },
+  options?: {
+    origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+    workspaceId?: string
+    projectRootPath?: string
+    relativePath?: string
+  },
 ): void {
   applyProjectFileDeleteToIndex(filePath)
   markProjectAnalysisStaleForFile(filePath)
   const payload: ExternalFileDeletePayload = {
     filePath,
+    workspaceId: options?.workspaceId,
+    projectRootPath: options?.projectRootPath,
+    relativePath: options?.relativePath,
     origin: options?.origin,
   }
   forEachInterestedWindowForPath(filePath, (window) => {

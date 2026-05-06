@@ -71,8 +71,7 @@ interface YjsProjectProviderProps {
   projectId: Id<"projects">
   userId: Id<"users">
   userName: string
-  projectPath: string | null
-  gitCwd?: string | null
+  workspaceId: string | null
   enabled?: boolean
   documentScopeId?: string | null
   collaborationEnabled?: boolean
@@ -85,8 +84,7 @@ export function YjsProjectProvider({
   projectId,
   userId,
   userName,
-  projectPath,
-  gitCwd = null,
+  workspaceId,
   enabled = true,
   documentScopeId = null,
   collaborationEnabled = true,
@@ -190,7 +188,7 @@ export function YjsProjectProvider({
       const persistence = new ProjectFilesPersistence(
         doc.files,
         projectId,
-        gitCwd,
+        workspaceId,
         convex,
         userId,
         userName,
@@ -240,8 +238,7 @@ export function YjsProjectProvider({
     destroyPersistenceForInit,
     enabled,
     projectId,
-    projectPath,
-    gitCwd,
+    workspaceId,
     scopeKey,
     userId,
     userName,

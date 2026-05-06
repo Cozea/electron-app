@@ -97,7 +97,7 @@ import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-i
 interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   tile: WorkbenchAssistantChatTileRecord
 }
 
@@ -107,6 +107,14 @@ interface WorkbenchAssistantTileControllerResult {
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
+}
+
+async function resolveAssistantWorkspaceRoot(workspaceId: string): Promise<string> {
+  const result = await window.electronAPI.workspace!.verify(workspaceId)
+  if (result.status !== "verified") {
+    throw new Error(`Workspace is not ready for the assistant runtime: ${result.status}`)
+  }
+  return result.workspace.projectRootPath
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -176,9 +184,9 @@ export function useWorkbenchAssistantTileController(
     () =>
       createAssistantProjectSelectorForTile({
         assistantProjectId: input.tile.assistantProjectId,
-        projectPath: input.projectPath,
+        workspaceId: input.workspaceId,
       }),
-    [input.projectPath, input.tile.assistantProjectId],
+    [input.workspaceId, input.tile.assistantProjectId],
   )
   const threadSelector = useMemo(
     () => createAssistantThreadSelectorById(input.tile.threadId),
@@ -411,8 +419,8 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
-  }, [input.laneId, input.projectId, input.projectPath, input.tile, thread, updateAssistantTile])
+    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
+  }, [input.laneId, input.projectId, input.workspaceId, input.tile, thread, updateAssistantTile])
 
   useEffect(() => {
     const timeline = timelineRef.current
@@ -428,10 +436,10 @@ export function useWorkbenchAssistantTileController(
   ])
 
   useEffect(() => {
-    if (!isRuntimeReady || !input.projectPath) {
+    if (!isRuntimeReady || !input.workspaceId) {
       return
     }
-    const workspaceRoot = input.projectPath
+    const workspaceId = input.workspaceId
     if (bindingInFlightRef.current) {
       return
     }
@@ -441,47 +449,45 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    // --- Fix 6: Bootstrap pattern ---
-    // For fresh tiles (no threadId), only resolve/create the project.
-    // Thread creation is deferred to the first send to avoid empty thread
-    // accumulation when users open tiles and close them without typing.
-    const isResumingExistingThread = Boolean(input.tile.threadId)
-
-    // Fast path: for fresh tiles, if the project already exists in the store,
-    // bind it synchronously without any async work. This makes the composer
-    // interactive immediately instead of waiting for lock + network calls.
-    if (!isResumingExistingThread) {
-      const currentAssistantState = useStore.getState()
-      const existingProject =
-        (input.tile.assistantProjectId
-          ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
-          : null) ??
-        selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
-        null
-
-      if (existingProject) {
-        if (input.tile.assistantProjectId !== existingProject.id) {
-          updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-            assistantProjectId: existingProject.id,
-          }, input.projectPath)
-        }
-        setBindingError(null)
-        setIsBinding(false)
-        return
-      }
-      // Project doesn't exist yet — fall through to async binding to create it
-    }
-
     let cancelled = false
     bindingInFlightRef.current = true
     setIsBinding(true)
 
     const ensureBinding = async () => {
       try {
+        const workspaceRoot = await resolveAssistantWorkspaceRoot(workspaceId)
+        if (cancelled) return
+
+        // For fresh tiles (no threadId), only resolve/create the project.
+        // Thread creation is deferred to the first send to avoid empty thread
+        // accumulation when users open tiles and close them without typing.
+        const isResumingExistingThread = Boolean(input.tile.threadId)
+
+        if (!isResumingExistingThread) {
+          const currentAssistantState = useStore.getState()
+          const existingProject =
+            (input.tile.assistantProjectId
+              ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
+              : null) ??
+            selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
+            null
+
+          if (existingProject) {
+            if (input.tile.assistantProjectId !== existingProject.id) {
+              updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
+                assistantProjectId: existingProject.id,
+              }, input.workspaceId)
+            }
+            setBindingError(null)
+            setIsBinding(false)
+            return
+          }
+        }
+
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>
-            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.projectPath) ?? input.tile
+            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ?? input.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
 
           const currentTile = liveTile()
@@ -583,7 +589,7 @@ export function useWorkbenchAssistantTileController(
             }
 
             if (!cancelled && Object.keys(patch).length > 0) {
-              updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.projectPath)
+              updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
             }
           } else {
             // --- Fix 6: Fresh tile --- just bind the project, no thread yet
@@ -591,7 +597,7 @@ export function useWorkbenchAssistantTileController(
             if (!cancelled && latestTile.assistantProjectId !== nextProject.id) {
               updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
                 assistantProjectId: nextProject.id,
-              }, input.projectPath)
+              }, input.workspaceId)
             }
           }
 
@@ -622,7 +628,7 @@ export function useWorkbenchAssistantTileController(
     hasBoundThread,
     input.laneId,
     input.projectId,
-    input.projectPath,
+    input.workspaceId,
     input.tile,
     isRuntimeReady,
     updateAssistantTile,
@@ -700,7 +706,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -732,7 +738,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       model: nextModelSelection.model,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -783,7 +789,7 @@ export function useWorkbenchAssistantTileController(
     })
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       runtimeMode: nextRuntimeMode,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -808,7 +814,7 @@ export function useWorkbenchAssistantTileController(
     })
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       interactionMode: nextInteractionMode,
-    }, input.projectPath)
+    }, input.workspaceId)
 
     if (!thread) {
       return
@@ -912,7 +918,7 @@ export function useWorkbenchAssistantTileController(
         })
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           interactionMode: followUp.interactionMode,
-        }, input.projectPath)
+        }, input.workspaceId)
 
         await api.orchestration.dispatchCommand({
           type: "thread.interaction-mode.set",
@@ -975,7 +981,7 @@ export function useWorkbenchAssistantTileController(
     // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
     let resolvedThread = thread
     if (!resolvedThread) {
-      if (!input.projectPath) {
+      if (!input.workspaceId) {
         return
       }
       try {
@@ -986,11 +992,12 @@ export function useWorkbenchAssistantTileController(
 
         // Resolve the project
         const currentAssistantState = useStore.getState()
+        const workspaceRoot = await resolveAssistantWorkspaceRoot(input.workspaceId)
         const currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
             : null) ??
-          selectAssistantProjectByCwd(currentAssistantState, input.projectPath) ??
+          selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
           null
 
         if (!currentProject) {
@@ -1020,7 +1027,7 @@ export function useWorkbenchAssistantTileController(
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           threadId,
           assistantProjectId: currentProject.id,
-        }, input.projectPath)
+        }, input.workspaceId)
 
         // Build a minimal thread-like object from the data we just sent.
         // We can't read from the store yet because the domain event hasn't
@@ -1112,7 +1119,7 @@ export function useWorkbenchAssistantTileController(
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           title: nextThreadTitle,
-        }, input.projectPath)
+        }, input.workspaceId)
 
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
@@ -1511,7 +1518,7 @@ export function useWorkbenchAssistantTileController(
       dockComposerOnHover: true,
       isRuntimeReady,
       runtimeErrorMessage,
-      projectPath: input.projectPath,
+      workspaceId: input.workspaceId,
       thread: visibleThread,
       providerSnapshot,
       isRunning,

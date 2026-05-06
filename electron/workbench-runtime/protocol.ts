@@ -68,13 +68,13 @@ export interface WorkbenchRuntimeTerminalActivityPayload extends TerminalActivit
 
 export interface WorkbenchRuntimeTerminalProvenancePayload {
   terminalId: string
-  projectPath: string
+  workspaceId: string
+  projectRootPath: string
   gitCwd: string
   title: string
   terminalKind: string
   sessionKey?: string
   laneId?: string
-  workspaceId?: string
   runId?: string
   commandId?: string
   commandText?: string
@@ -117,7 +117,7 @@ export interface WorkbenchRuntimeTerminalKillParams {
 }
 
 export interface WorkbenchRuntimeTerminalListParams {
-  projectPath: string
+  workspaceId: string
 }
 
 export interface WorkbenchRuntimeTerminalInfoParams {

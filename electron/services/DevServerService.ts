@@ -5,7 +5,8 @@ import { TerminalService } from './TerminalService'
 import { applyDevServerPortOverride } from './devServerCommandPortOverride'
 
 export interface DevServerStartOptions {
-  projectPath: string
+  workspaceId: string
+  laneId?: string | null
   command: string
   bootstrapCommand?: string | null
   preferredPort: number
@@ -25,7 +26,9 @@ export interface DevServerStartResult {
 }
 
 interface ManagedDevServerRun {
-  projectPath: string
+  workspaceId: string
+  laneId: string
+  runKey: string
   sessionKey: string
   terminalId: string
   runId: string
@@ -48,6 +51,16 @@ interface ManagedDevServerRun {
 const MAX_BOOTSTRAP_OUTPUT_LENGTH = 48_000
 const BOOTSTRAP_TIMEOUT_MS = 15 * 60 * 1000
 const BOOTSTRAP_SETTLE_DELAY_MS = 1200
+const DEFAULT_LANE_ID = 'collab'
+
+function normalizeLaneId(laneId?: string | null): string {
+  const trimmed = laneId?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_LANE_ID
+}
+
+function buildRunKey(workspaceId: string, laneId?: string | null): string {
+  return `${workspaceId}::${normalizeLaneId(laneId)}`
+}
 
 function appendBootstrapOutput(current: string, chunk: string): string {
   const next = current + chunk
@@ -90,7 +103,8 @@ export class DevServerService {
 
   public async start(options: DevServerStartOptions): Promise<DevServerStartResult> {
     const {
-      projectPath,
+      workspaceId,
+      laneId,
       command,
       bootstrapCommand,
       preferredPort,
@@ -101,8 +115,10 @@ export class DevServerService {
       onOutput,
       onExit,
     } = options
+    const normalizedLaneId = normalizeLaneId(laneId)
+    const runKey = buildRunKey(workspaceId, normalizedLaneId)
 
-    const stopResult = await this.stop(projectPath)
+    const stopResult = await this.stop(workspaceId, normalizedLaneId)
     if (!stopResult.success) {
       return {
         success: false,
@@ -122,10 +138,10 @@ export class DevServerService {
     try {
       this.terminalService.setActivityTracking(terminalId, 'subprocess')
 
-      const normalizedSessionKey = sessionKey?.trim() || projectPath
+      const normalizedSessionKey = sessionKey?.trim() || runKey
       const portLease = await this.portBroker.acquirePort({
         sessionKey: normalizedSessionKey,
-        projectPath,
+        workspaceId,
         preferredPort,
         isPortReachable: (port) => this.checkPort(port),
       })
@@ -145,7 +161,9 @@ export class DevServerService {
       })
 
       const run: ManagedDevServerRun = {
-        projectPath,
+        workspaceId,
+        laneId: normalizedLaneId,
+        runKey,
         sessionKey: normalizedSessionKey,
         terminalId,
         runId,
@@ -179,17 +197,17 @@ export class DevServerService {
         },
         onExit: ({ exitCode }) => {
           if (run.disposed) return
-          this.disposeRun(projectPath, exitCode)
+          this.disposeRun(runKey, exitCode)
         },
         onActivity: ({ hasRunningSubprocess }) => {
           if (run.disposed || run.stopping || !run.ready || hasRunningSubprocess) {
             return
           }
-          void this.handleUnexpectedStop(projectPath)
+          void this.handleUnexpectedStop(runKey)
         },
       })
 
-      this.processes.set(projectPath, run)
+      this.processes.set(runKey, run)
 
       const terminalInfo = this.terminalService.getInfo(terminalId)
       const profileId = terminalInfo?.profileId ?? null
@@ -204,7 +222,7 @@ export class DevServerService {
           `${run.bootstrapCommand}\r`,
         )
         if (!bootstrapAccepted) {
-          this.discardRun(projectPath)
+          this.discardRun(runKey)
           return {
             success: false,
             runId,
@@ -215,11 +233,11 @@ export class DevServerService {
         const bootstrapCompleted = await this.waitForTerminalCommandToSettle(
           terminalId,
           BOOTSTRAP_TIMEOUT_MS,
-          () => this.processes.get(projectPath)?.runId === runId,
+          () => this.processes.get(runKey)?.runId === runId,
         )
 
         if (!bootstrapCompleted) {
-          await this.stop(projectPath)
+          await this.stop(workspaceId, normalizedLaneId)
           return {
             success: false,
             runId,
@@ -227,7 +245,7 @@ export class DevServerService {
           }
         }
 
-        const activeAfterBootstrap = this.processes.get(projectPath)
+        const activeAfterBootstrap = this.processes.get(runKey)
         if (!activeAfterBootstrap || activeAfterBootstrap.runId !== runId) {
           return {
             success: false,
@@ -237,7 +255,7 @@ export class DevServerService {
         }
 
         if (detectBootstrapFailure(activeAfterBootstrap.bootstrapOutput)) {
-          this.discardRun(projectPath)
+          this.discardRun(runKey)
           return {
             success: false,
             runId,
@@ -259,7 +277,7 @@ export class DevServerService {
       onOutput(`[DevServer] Starting ${effectiveCommand} on port ${actualPort}\n`, 'stdout')
       const accepted = await this.terminalService.sendInput(terminalId, `${launchCommand}\r`)
       if (!accepted) {
-        this.discardRun(projectPath)
+        this.discardRun(runKey)
         return {
           success: false,
           runId,
@@ -270,11 +288,11 @@ export class DevServerService {
       const reachablePort = await this.waitForReadyPort(
         run.candidatePorts,
         30000,
-        () => this.processes.get(projectPath)?.runId === runId,
+        () => this.processes.get(runKey)?.runId === runId,
       )
 
       if (!reachablePort) {
-        await this.stop(projectPath)
+        await this.stop(workspaceId, normalizedLaneId)
         return {
           success: false,
           runId,
@@ -282,7 +300,7 @@ export class DevServerService {
         }
       }
 
-      const active = this.processes.get(projectPath)
+      const active = this.processes.get(runKey)
       if (active?.runId === runId) {
         active.activePort = reachablePort
         active.ready = true
@@ -292,10 +310,10 @@ export class DevServerService {
       onOutput(`[DevServer] Ready on port ${reachablePort}\n`, 'stdout')
       return { success: true, port: reachablePort, runId }
     } catch (error) {
-      if (!this.processes.has(projectPath)) {
+      if (!this.processes.has(runKey)) {
         this.terminalService.setActivityTracking(terminalId, 'off')
       }
-      this.disposeRun(projectPath, null)
+      this.disposeRun(runKey, null)
       return {
         success: false,
         runId,
@@ -304,8 +322,9 @@ export class DevServerService {
     }
   }
 
-  public async stop(projectPath: string): Promise<{ success: boolean; error?: string }> {
-    const entry = this.processes.get(projectPath)
+  public async stop(workspaceId: string, laneId?: string | null): Promise<{ success: boolean; error?: string }> {
+    const runKey = buildRunKey(workspaceId, laneId)
+    const entry = this.processes.get(runKey)
     if (!entry) {
       return { success: true }
     }
@@ -320,10 +339,14 @@ export class DevServerService {
           await this.terminalService.sendInput(entry.terminalId, '\u0003')
           const releasedAfterRetry = await this.waitForPortState(entry.activePort, false, 2500)
           if (!releasedAfterRetry) {
-            entry.stopping = false
-            return {
-              success: false,
-              error: 'Dev server did not stop after sending Ctrl+C to the terminal.',
+            this.terminalService.killTerminal(entry.terminalId)
+            const releasedAfterKill = await this.waitForPortState(entry.activePort, false, 2500)
+            if (!releasedAfterKill) {
+              entry.stopping = false
+              return {
+                success: false,
+                error: 'Dev server did not stop after sending Ctrl+C and killing the terminal.',
+              }
             }
           }
         }
@@ -331,7 +354,7 @@ export class DevServerService {
         await new Promise((resolve) => setTimeout(resolve, 300))
       }
 
-      this.disposeRun(projectPath, 0)
+      this.disposeRun(runKey, 0)
       return { success: true }
     } catch (error) {
       entry.stopping = false
@@ -339,12 +362,12 @@ export class DevServerService {
     }
   }
 
-  public isRunning(projectPath: string): boolean {
-    return this.processes.has(projectPath)
+  public isRunning(workspaceId: string, laneId?: string | null): boolean {
+    return this.processes.has(buildRunKey(workspaceId, laneId))
   }
 
-  public getState(projectPath: string): { running: boolean; port: number | null; runId: string | null } {
-    const entry = this.processes.get(projectPath)
+  public getState(workspaceId: string, laneId?: string | null): { running: boolean; port: number | null; runId: string | null } {
+    const entry = this.processes.get(buildRunKey(workspaceId, laneId))
     return {
       running: Boolean(entry),
       port: entry?.activePort ?? null,
@@ -353,13 +376,13 @@ export class DevServerService {
   }
 
   public killAll() {
-    for (const [projectPath] of this.processes) {
-      this.stop(projectPath).catch(console.error)
+    for (const [, entry] of this.processes) {
+      this.stop(entry.workspaceId, entry.laneId).catch(console.error)
     }
   }
 
-  private async handleUnexpectedStop(projectPath: string): Promise<void> {
-    const entry = this.processes.get(projectPath)
+  private async handleUnexpectedStop(runKey: string): Promise<void> {
+    const entry = this.processes.get(runKey)
     if (!entry || entry.activePort === null) {
       return
     }
@@ -369,11 +392,11 @@ export class DevServerService {
       return
     }
 
-    this.disposeRun(projectPath, null)
+    this.disposeRun(runKey, null)
   }
 
-  private discardRun(projectPath: string): void {
-    const entry = this.processes.get(projectPath)
+  private discardRun(runKey: string): void {
+    const entry = this.processes.get(runKey)
     if (!entry) {
       return
     }
@@ -382,12 +405,12 @@ export class DevServerService {
     entry.unsubscribeTerminal?.()
     entry.unsubscribeTerminal = null
     this.terminalService.setActivityTracking(entry.terminalId, 'off')
-    this.processes.delete(projectPath)
-    this.portBroker.releasePort(entry.sessionKey, entry.projectPath)
+    this.processes.delete(runKey)
+    this.portBroker.releasePort(entry.sessionKey, entry.workspaceId)
   }
 
-  private disposeRun(projectPath: string, exitCode: number | null): void {
-    const entry = this.processes.get(projectPath)
+  private disposeRun(runKey: string, exitCode: number | null): void {
+    const entry = this.processes.get(runKey)
     if (!entry) {
       return
     }
@@ -396,8 +419,8 @@ export class DevServerService {
     entry.unsubscribeTerminal?.()
     entry.unsubscribeTerminal = null
     this.terminalService.setActivityTracking(entry.terminalId, 'off')
-    this.processes.delete(projectPath)
-    this.portBroker.releasePort(entry.sessionKey, entry.projectPath)
+    this.processes.delete(runKey)
+    this.portBroker.releasePort(entry.sessionKey, entry.workspaceId)
     entry.onExit(exitCode)
   }
 

@@ -1,19 +1,9 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-const electronMockState = vi.hoisted(() => ({
-  userDataPath: '',
-}))
+import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
   app: {
-    getPath: () => electronMockState.userDataPath,
-  },
-  ipcMain: {
-    handle: vi.fn(),
-    on: vi.fn(),
+    getPath: () => '/tmp/cozea-workbench-session-test',
+    once: vi.fn(),
   },
   BrowserWindow: class {},
   WebContentsView: class {},
@@ -25,70 +15,54 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { rememberProjectPath } from '../../electron/projectPathRegistry'
 import { __workbenchSessionTestUtils } from '../../electron/services/WorkbenchSessionManager'
 
-function createDirectory(name: string): string {
-  const directory = path.join(electronMockState.userDataPath, name)
-  fs.mkdirSync(directory, { recursive: true })
-  return directory
-}
-
 describe('workbench session ownership', () => {
-  beforeEach(() => {
-    electronMockState.userDataPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'cozea-workbench-session-'),
-    )
+  it('builds session keys from opaque workspace ids without path hashing', () => {
+    expect(
+      __workbenchSessionTestUtils.buildSessionKey(
+        'project-a',
+        'collab',
+        ' workspace-123 ',
+      ),
+    ).toBe('project-a::collab::workspace-123')
   })
 
-  afterEach(() => {
-    fs.rmSync(electronMockState.userDataPath, { recursive: true, force: true })
-  })
-
-  it('rewrites a mismatched project path to the registered owner path', () => {
-    const projectPath = createDirectory('project-a')
-    const foreignPath = createDirectory('project-b')
-    rememberProjectPath('rewrite-project-a', projectPath)
-    rememberProjectPath('rewrite-project-b', foreignPath)
-
-    const events: Array<{ event: string; details: Record<string, unknown> }> = []
-    const resolvedPath = __workbenchSessionTestUtils.resolveOwnedProjectPath({
-      projectId: 'rewrite-project-a',
-      projectPath: foreignPath,
-      warn: (event, details) => events.push({ event, details }),
-    })
-
-    expect(resolvedPath).toBe(projectPath)
-    expect(events[0]?.event).toBe('project_path_rewritten_to_registered_owner')
-  })
-
-  it('rejects a path owned by another project when the current project has no registered path', () => {
-    const foreignPath = createDirectory('foreign-project')
-    rememberProjectPath('foreign-owner-project', foreignPath)
-
-    const resolvedPath = __workbenchSessionTestUtils.resolveOwnedProjectPath({
-      projectId: 'unregistered-project',
-      projectPath: foreignPath,
-    })
-
-    expect(resolvedPath).toBeNull()
-  })
-
-  it('repairs persisted records into the canonical project path and collapses duplicates', () => {
-    const projectPath = createDirectory('repair-project')
-    const foreignPath = createDirectory('other-project')
-    rememberProjectPath('repair-project', projectPath)
-    rememberProjectPath('other-project', foreignPath)
-
+  it('repairs persisted records into canonical opaque workspace keys', () => {
     const canonicalKey = __workbenchSessionTestUtils.buildSessionKey(
       'repair-project',
       'collab',
-      projectPath,
+      'workspace-a',
     )
-    const foreignKey = __workbenchSessionTestUtils.buildSessionKey(
+    const staleKey = 'repair-project::collab::old-path-derived-key'
+    const state = {
+      version: 1 as const,
+      sessions: {
+        [staleKey]: {
+          projectId: 'repair-project',
+          laneId: 'collab',
+          workspaceId: ' workspace-a ',
+          lifecycle: 'backgroundFrozen' as const,
+          pinned: false,
+          openedAt: 100,
+          lastFocusedAt: 100,
+          lastBackgroundedAt: 100,
+        },
+      },
+    }
+
+    const changed = __workbenchSessionTestUtils.repairPersistedSessionState(state)
+
+    expect(changed).toBe(true)
+    expect(Object.keys(state.sessions)).toEqual([canonicalKey])
+    expect(state.sessions[canonicalKey]?.workspaceId).toBe('workspace-a')
+  })
+
+  it('collapses duplicate persisted workspace records by latest focus time', () => {
+    const canonicalKey = __workbenchSessionTestUtils.buildSessionKey(
       'repair-project',
       'collab',
-      foreignPath,
+      'workspace-a',
     )
     const state = {
       version: 1 as const,
@@ -96,17 +70,17 @@ describe('workbench session ownership', () => {
         [canonicalKey]: {
           projectId: 'repair-project',
           laneId: 'collab',
-          projectPath,
+          workspaceId: 'workspace-a',
           lifecycle: 'backgroundFrozen' as const,
           pinned: false,
           openedAt: 100,
           lastFocusedAt: 100,
           lastBackgroundedAt: 100,
         },
-        [foreignKey]: {
+        'repair-project::collab::duplicate': {
           projectId: 'repair-project',
           laneId: 'collab',
-          projectPath: foreignPath,
+          workspaceId: ' workspace-a ',
           lifecycle: 'backgroundFrozen' as const,
           pinned: false,
           openedAt: 200,
@@ -120,7 +94,6 @@ describe('workbench session ownership', () => {
 
     expect(changed).toBe(true)
     expect(Object.keys(state.sessions)).toEqual([canonicalKey])
-    expect(state.sessions[canonicalKey]?.projectPath).toBe(projectPath)
     expect(state.sessions[canonicalKey]?.lastFocusedAt).toBe(200)
   })
 

@@ -106,6 +106,7 @@ interface MessagesTimelineProps {
   markdownCwd: string | undefined;
   dockedComposerScrollInsetPx?: number;
   resolvedTheme: "light" | "dark";
+  workspaceId: string | undefined;
   workspaceRoot: string | undefined;
 }
 
@@ -180,6 +181,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   markdownCwd,
   dockedComposerScrollInsetPx = 0,
   resolvedTheme,
+  workspaceId,
   workspaceRoot,
 }: MessagesTimelineProps) {
   const { t } = useTranslation();
@@ -806,7 +808,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <ProposedPlanCard
             planMarkdown={row.proposedPlan.planMarkdown}
             cwd={markdownCwd}
-            workspaceRoot={workspaceRoot}
+            workspaceRoot={workspaceId}
           />
         </div>
       )}

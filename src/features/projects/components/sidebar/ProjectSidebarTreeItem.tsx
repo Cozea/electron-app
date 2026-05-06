@@ -6,11 +6,10 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
-import { useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath"
+import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
-import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints"
 import {
 
   resolveProjectCollabBranch,
@@ -61,22 +60,12 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
-    const attachedPathHint = React.useMemo(
-      () => resolveAttachedLocalProjectPathHint(project),
-      [project],
-    )
-    const { localPath } = useLocalProjectPath({
-      initialPath: context.isCurrentProject ? context.currentProjectPath : null,
-      preferInitialPath: Boolean(context.isCurrentProject && context.currentProjectPath),
-      lookupOnMount: shouldLoadLanes,
-      projectId: project.id,
-      projectSlug: project.slug,
-      cloudPathHint: project.localPath,
-      attachedPathHint,
-    })
+    const { result: workspaceResolution } = useProjectWorkspaceResolution(project.id, project.slug)
+    const workspaceId = workspaceResolution?.status === "ready" ? workspaceResolution.workspace.workspaceId : null
+    
     const fetchedLaneState = useProjectLaneState({
       projectId: context.prefetchedLaneState ? null : shouldLoadLanes ? project.id : null,
-      projectPath: context.prefetchedLaneState ? null : shouldLoadLanes ? localPath : null,
+      workspaceId: context.prefetchedLaneState ? null : shouldLoadLanes ? workspaceId : null,
       collabBranch,
     })
     const activeLane = context.prefetchedActiveLane ?? fetchedLaneState.activeLane
@@ -85,7 +74,7 @@ export const ProjectSidebarTreeItem = React.memo(
       return selectProjectWorkbench(
         project.id,
         activeLane.id,
-        activeLane.projectPath ?? localPath,
+        activeLane.workspaceId ?? workspaceId,
       )(state)
     })
     const activeLaneSummary = React.useMemo(
@@ -104,8 +93,8 @@ export const ProjectSidebarTreeItem = React.memo(
 
     const handleProjectOpenClick = React.useCallback((e: React.MouseEvent) => {
       e.stopPropagation();
-      void actions.openProject(project, localPath);
-    }, [actions, project, localPath]);
+      void actions.openProject(project, workspaceId);
+    }, [actions, project, workspaceId]);
 
     const handleProjectToggleClick = React.useCallback((e: React.MouseEvent) => {
       e.stopPropagation();
@@ -146,7 +135,7 @@ export const ProjectSidebarTreeItem = React.memo(
         const hasSidebarActions =
           projectIndex > 0 ||
           projectIndex < projectCount - 1 ||
-          (context.isCurrentProject && context.currentProjectPath && !context.isSyncingProject)
+          (context.isCurrentProject && context.currentWorkspaceId && !context.isSyncingProject)
 
         if (hasSidebarActions) {
           items.push({ id: "divider-secondary", label: "", type: "separator" })
@@ -160,7 +149,7 @@ export const ProjectSidebarTreeItem = React.memo(
           items.push({ id: "move-down", label: "Move down" })
         }
 
-        if (context.isCurrentProject && context.currentProjectPath && !context.isSyncingProject) {
+        if (context.isCurrentProject && context.currentWorkspaceId && !context.isSyncingProject) {
           items.push({ id: "close-workspace", label: "Close Workspace" })
           items.push({ id: "sync", label: "Sync" })
         }
@@ -170,16 +159,16 @@ export const ProjectSidebarTreeItem = React.memo(
 
         switch (action) {
           case "open-project":
-            void actions.openProject(project, localPath)
+            void actions.openProject(project, workspaceId)
             break
           case "relink-project":
-            void actions.relinkProjectWorkspace(project, localPath)
+            void actions.relinkProjectWorkspace(project, workspaceId)
             break
           case "close-workspace":
-            void actions.closeProjectWorkspace(project, context.currentProjectPath)
+            void actions.closeProjectWorkspace(project, context.currentWorkspaceId)
             break
           case "open-folder":
-            void actions.openProjectFolder(project, localPath)
+            void actions.openProjectFolder(project, workspaceId)
             break
           case "settings":
             actions.openProjectSettings(project)
@@ -209,10 +198,10 @@ export const ProjectSidebarTreeItem = React.memo(
       },
       [
         actions,
-        context.currentProjectPath,
+        context.currentWorkspaceId,
         context.isCurrentProject,
         context.isSyncingProject,
-        localPath,
+        workspaceId,
         project,
         project.id,
         project.status,
@@ -241,7 +230,7 @@ export const ProjectSidebarTreeItem = React.memo(
               aria-label={isLanesOpen ? "Collapse" : "Expand"}
             >
               <NativeProjectFolderIcon
-                folderPath={localPath}
+                folderPath={workspaceResolution?.status === "ready" ? workspaceResolution.workspace.projectRootPath : null}
                 isOpen={isLanesOpen}
               />
             </button>
@@ -277,7 +266,7 @@ export const ProjectSidebarTreeItem = React.memo(
               if (!activeLane) return
               void actions.openLaneWorkbench(project, activeLane.id, {
                 ...options,
-                projectPath: activeLane.projectPath ?? localPath,
+                workspaceId: activeLane.workspaceId ?? workspaceId,
               })
             }}
           />
@@ -294,7 +283,7 @@ export const ProjectSidebarTreeItem = React.memo(
       prev.selection.activeSelectionLevel === next.selection.activeSelectionLevel &&
       prev.selection.activeTileId === next.selection.activeTileId &&
       prev.context.isCurrentProject === next.context.isCurrentProject &&
-      prev.context.currentProjectPath === next.context.currentProjectPath &&
+      prev.context.currentWorkspaceId === next.context.currentWorkspaceId &&
       prev.context.isSyncingProject === next.context.isSyncingProject &&
       prev.context.prefetchedLaneState === next.context.prefetchedLaneState &&
       prev.context.prefetchedActiveLane === next.context.prefetchedActiveLane &&

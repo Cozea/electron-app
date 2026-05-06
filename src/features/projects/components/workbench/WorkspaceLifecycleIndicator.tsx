@@ -6,17 +6,17 @@ import { cn } from "@/lib/utils"
 
 interface WorkspaceLifecycleIndicatorProps {
   record: WorkspaceRuntimeRecord | null
-  projectPath: string | null
+  workspaceId: string | null
   className?: string
 }
 
-function basenameFromPath(projectPath: string | null): string {
-  if (!projectPath) {
+function basenameFromWorkspaceId(workspaceId: string | null): string {
+  if (!workspaceId) {
     return "Unbound"
   }
 
-  const segments = projectPath.split(/[\\/]/).filter(Boolean)
-  return segments.at(-1) ?? projectPath
+  const segments = workspaceId.split(/[\\/]/).filter(Boolean)
+  return segments.at(-1) ?? workspaceId
 }
 
 function formatLifecycleLabel(lifecycle: WorkspaceRuntimeRecord["lifecycle"] | null | undefined): string {
@@ -86,11 +86,11 @@ function describeReason(record: WorkspaceRuntimeRecord | null): string {
 
 export function WorkspaceLifecycleIndicator({
   record,
-  projectPath,
+  workspaceId,
   className,
 }: WorkspaceLifecycleIndicatorProps) {
   const lifecycleLabel = formatLifecycleLabel(record?.lifecycle)
-  const rootLabel = useMemo(() => basenameFromPath(projectPath), [projectPath])
+  const rootLabel = useMemo(() => basenameFromWorkspaceId(workspaceId), [workspaceId])
   const detail = describeReason(record)
   const toneClass = resolveLifecycleTone(record?.lifecycle)
   const hasRetainedTerminal = Boolean(record?.signals.hasRunningTerminals)

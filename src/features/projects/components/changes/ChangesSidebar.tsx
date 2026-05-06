@@ -14,7 +14,7 @@ const sidebarSuspenseFallback = (
 )
 
 interface ChangesSidebarProps {
-  projectPath: string | null
+  workspaceId: string | null
 }
 
 export const ChangesSidebar = memo(function ChangesSidebar(props: ChangesSidebarProps) {
@@ -109,7 +109,7 @@ export const ChangesSidebar = memo(function ChangesSidebar(props: ChangesSidebar
         <Suspense fallback={sidebarSuspenseFallback}>
           <LazyChangesPage
             presentation="embedded"
-            projectPath={props.projectPath}
+            workspaceId={props.workspaceId}
             onRequestClose={sidebarActions.close}
             setChromeTitleContent={setTitleContent}
             setChromeControlsNode={setControlsNode}

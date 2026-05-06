@@ -8,7 +8,7 @@ function canHostRuntime(record: WorkspaceRuntimeRecord): boolean {
   return (
     record.lifecycle !== "closed" &&
     record.lifecycle !== "background-frozen" &&
-    Boolean(record.config.projectId && record.config.userId && record.config.localPath)
+    Boolean(record.config.projectId && record.config.userId && record.config.workspaceId)
   )
 }
 
@@ -44,14 +44,14 @@ function sortMostRecentRuntimeFirst(
     return createdDelta
   }
 
-  return left.workspaceId.localeCompare(right.workspaceId)
+  return left.runtimeId.localeCompare(right.runtimeId)
 }
 
 function addRuntime(
   selected: Map<string, WorkspaceRuntimeRecord>,
   record: WorkspaceRuntimeRecord,
 ): void {
-  selected.set(record.workspaceId, record)
+  selected.set(record.runtimeId, record)
 }
 
 function addRecentRuntimes(
@@ -62,7 +62,7 @@ function addRecentRuntimes(
   let added = 0
 
   for (const record of records) {
-    if (selected.has(record.workspaceId)) {
+    if (selected.has(record.runtimeId)) {
       continue
     }
     if (added >= limit) {
@@ -87,7 +87,7 @@ export function selectHostedWorkspaceRuntimeRecords(
   }
 
   const remainingRecords = eligibleRecords
-    .filter((record) => !selected.has(record.workspaceId))
+    .filter((record) => !selected.has(record.runtimeId))
     .sort(sortMostRecentRuntimeFirst)
 
   addRecentRuntimes(
@@ -111,7 +111,7 @@ export function selectHostedWorkspaceRuntimeRecords(
     MAX_WARM_BACKGROUND_HOSTS,
   )
 
-  return records.filter((record) => selected.has(record.workspaceId))
+  return records.filter((record) => selected.has(record.runtimeId))
 }
 
 export function hasHostableWorkspaceRuntime(records: WorkspaceRuntimeRecord[]): boolean {

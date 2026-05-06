@@ -36,7 +36,6 @@ export function ProjectSyncProvider({
   userName,
   laneId = null,
   projectSlug,
-  localPath,
   gitCwd = null,
   lastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
@@ -45,25 +44,28 @@ export function ProjectSyncProvider({
   activeBranch = null,
   sharedBranch = null,
   documentScopeId = null,
+  workspaceId: fallbackWorkspaceId,
+  workspaceRevision = 1,
 }: ProjectSyncProviderProps) {
   const ensureRuntime = useWorkspaceRuntimeStore((state) => state.actions.ensureRuntime)
   const attachRuntime = useWorkspaceRuntimeStore((state) => state.actions.attachRuntime)
   const detachRuntime = useWorkspaceRuntimeStore((state) => state.actions.detachRuntime)
 
-  const workspaceId = useMemo(
+  const runtimeId = useMemo(
     () =>
       resolveWorkspaceRuntimeId({
         projectId,
+        workspaceId: fallbackWorkspaceId,
         laneId,
-        localPath,
+        workspaceRevision,
       }),
-    [laneId, localPath, projectId],
+    [fallbackWorkspaceId, laneId, projectId, workspaceRevision],
   )
 
-  const canHostRuntime = Boolean(projectId && userId && localPath && workspaceId)
+  const canHostRuntime = Boolean(projectId && userId && fallbackWorkspaceId && runtimeId)
 
   useEffect(() => {
-    if (!canHostRuntime || !workspaceId) {
+    if (!canHostRuntime || !runtimeId || !fallbackWorkspaceId) {
       return
     }
 
@@ -71,9 +73,10 @@ export function ProjectSyncProvider({
       projectId,
       userId,
       userName,
+      workspaceId: fallbackWorkspaceId,
       laneId: normalizeWorkspaceLaneId(laneId),
+      workspaceRevision,
       projectSlug,
-      localPath,
       gitCwd,
       lastSyncAt: lastSyncAt ?? null,
       collaborationEnabled,
@@ -90,30 +93,31 @@ export function ProjectSyncProvider({
     gitCwd,
     laneId,
     lastSyncAt,
-    localPath,
     projectId,
     projectSlug,
     sharedBranch,
     userId,
     userName,
-    workspaceId,
+    fallbackWorkspaceId,
+    workspaceRevision,
+    runtimeId,
   ])
 
   useEffect(() => {
-    if (!canHostRuntime || !workspaceId) {
+    if (!canHostRuntime || !runtimeId) {
       return
     }
 
-    attachRuntime(workspaceId)
+    attachRuntime(runtimeId)
     return () => {
-      detachRuntime(workspaceId)
+      detachRuntime(runtimeId)
     }
-  }, [attachRuntime, canHostRuntime, detachRuntime, workspaceId])
+  }, [attachRuntime, canHostRuntime, detachRuntime, runtimeId])
 
   const runtimeRecord = useWorkspaceRuntimeStore(
     useMemo(
-      () => (state) => (workspaceId ? state.runtimes[workspaceId] ?? null : null),
-      [workspaceId],
+      () => (state) => (runtimeId ? state.runtimes[runtimeId] ?? null : null),
+      [runtimeId],
     ),
   )
 

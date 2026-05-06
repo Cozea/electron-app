@@ -140,6 +140,6 @@ export function resolveMarkdownFileLinkTarget(
     return pathWithPosition;
   }
 
-  if (!cwd) return null;
+  if (!cwd) return pathWithPosition;
   return resolvePathLinkTarget(pathWithPosition, cwd);
 }

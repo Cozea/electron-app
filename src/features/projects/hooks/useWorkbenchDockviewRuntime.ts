@@ -41,7 +41,7 @@ function disposeBrowserTileModelDeferred(tileId: string) {
 interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
   activeLaneId: string;
-  projectPath: string | null;
+  workspaceId: string | null;
   workbenchSessionKey: string | null;
   projectWorkbench: WorkbenchProjectState | null;
   workbenchScopeKey: string | null;
@@ -112,9 +112,9 @@ export function useWorkbenchDockviewRuntime(
     return selectProjectWorkbench(
       input.projectId,
       input.activeLaneId,
-      input.projectPath,
+      input.workspaceId,
     )(useProjectWorkbenchStore.getState());
-  }, [input.activeLaneId, input.projectId, input.projectPath]);
+  }, [input.activeLaneId, input.projectId, input.workspaceId]);
 
   const getSelectionPreviewTile = useCallback((tileId: string): WorkbenchSelectionTile | null => {
     return selectionPreviewTilesRef.current[tileId] ?? null;
@@ -374,14 +374,14 @@ export function useWorkbenchDockviewRuntime(
                 input.activeLaneId,
                 resolvedLaunch.tileType,
                 resolvedLaunch.options,
-                input.projectPath,
+                input.workspaceId,
               )
             : workbenchActions.addTile(
                 input.projectId,
                 input.activeLaneId,
                 resolvedLaunch.tileType,
                 resolvedLaunch.options,
-                input.projectPath,
+                input.workspaceId,
               );
         const nextTile = getLiveWorkbench()?.tiles[tileId];
         if (!nextTile) return;
@@ -401,14 +401,14 @@ export function useWorkbenchDockviewRuntime(
           input.projectId,
           input.activeLaneId,
           nextTile.id,
-          input.projectPath,
+          input.workspaceId,
         );
         api.getPanel(nextTile.id)?.api.setActive();
         api.getPanel(selectionTileId)?.api.close();
         transientSelectionTileIdRef.current = null;
       })();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
   const handleDuplicateAssistantTile = useCallback(
@@ -434,7 +434,7 @@ export function useWorkbenchDockviewRuntime(
           agentLabel: sourceTile.agentLabel,
           laneBinding: sourceTile.laneBinding,
         },
-        input.projectPath,
+        input.workspaceId,
       );
       const nextTile = getLiveWorkbench()?.tiles[nextTileId];
       if (!nextTile || !api) return;
@@ -454,11 +454,11 @@ export function useWorkbenchDockviewRuntime(
         input.projectId,
         input.activeLaneId,
         nextTile.id,
-        input.projectPath,
+        input.workspaceId,
       );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
   const handleSplitTile = useCallback(
@@ -477,7 +477,7 @@ export function useWorkbenchDockviewRuntime(
         {
           title: t("workbench.selection.addDevApp"),
         },
-        input.projectPath,
+        input.workspaceId,
       );
       
       const nextTile = getLiveWorkbench()?.tiles[nextTileId];
@@ -503,11 +503,11 @@ export function useWorkbenchDockviewRuntime(
         input.projectId,
         input.activeLaneId,
         nextTile.id,
-        input.projectPath,
+        input.workspaceId,
       );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, input.projectPath, workbenchActions],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
   const handleDockviewReady = useCallback(
@@ -543,7 +543,7 @@ export function useWorkbenchDockviewRuntime(
           input.projectId,
           input.activeLaneId,
           activeId,
-          input.projectPath,
+          input.workspaceId,
         );
       });
 
@@ -657,7 +657,7 @@ export function useWorkbenchDockviewRuntime(
           input.projectId,
           input.activeLaneId,
           panel.id,
-          input.projectPath,
+          input.workspaceId,
         );
         saveLayout();
       });
@@ -666,7 +666,7 @@ export function useWorkbenchDockviewRuntime(
       getLiveWorkbench,
       input.activeLaneId,
       input.projectId,
-      input.projectPath,
+      input.workspaceId,
       input.workbenchScopeKey,
       saveLayout,
       updateSelectionPreviewTiles,

@@ -670,12 +670,15 @@ export function createAssistantThreadSelectorById(
 export function createAssistantProjectSelectorForTile(input: {
   assistantProjectId?: string | null;
   projectPath?: string | null;
+  /** Alias for projectPath; used when workspace catalog is active. */
+  workspaceId?: string | null;
 }): (state: AppState) => Project | null {
+  const cwd = input.projectPath ?? input.workspaceId ?? null;
   return (state) =>
     selectAssistantProjectForTile(
       state,
       { assistantProjectId: input.assistantProjectId ?? null },
-      input.projectPath ?? null,
+      cwd,
     );
 }
 

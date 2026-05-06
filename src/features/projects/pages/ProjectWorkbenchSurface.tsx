@@ -45,6 +45,7 @@ import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
+import { useActiveWorkspaceOrNull } from "@/features/projects/workspaces/ActiveWorkspaceContext";
 import { useTranslation } from "@/lib/i18n";
 
 const LazyProjectSettingsPage = lazy(() =>
@@ -89,7 +90,7 @@ export function ProjectWorkbenchSurface() {
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project, projectIdParam } = useAccessibleProject();
   const syncContext = useOptionalProjectSyncContext();
-  const projectPath = syncContext?.projectPath ?? projectRouteContext?.localPath ?? null;
+  const workspaceId = syncContext?.workspaceId ?? projectRouteContext?.workspaceId ?? projectRouteContext?.localPath ?? null;
   const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -111,29 +112,31 @@ export function ProjectWorkbenchSurface() {
     laneState?.activeLaneId ??
     laneState?.collabLaneId ??
     DEFAULT_WORKBENCH_LANE_ID;
-  const activeWorkbenchPath = activeLane?.projectPath ?? projectPath;
+  const activeWorkbenchId = activeLane?.workspaceId ?? workspaceId;
   const workbenchScopeKey = projectId
-    ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchPath)
+    ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchId)
     : null;
   const legacyWorkbenchScopeKey = projectId
     ? buildWorkbenchScopeKey(projectId, activeLaneId, null)
     : null;
   const projectWorkbench = useProjectWorkbenchStore(
     useMemo(
-      () => selectProjectWorkbench(projectId, activeLaneId, activeWorkbenchPath),
-      [activeLaneId, activeWorkbenchPath, projectId],
+      () => selectProjectWorkbench(projectId, activeLaneId, activeWorkbenchId),
+      [activeLaneId, activeWorkbenchId, projectId],
     ),
   );
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
   const workspaceSelectionId = user?.id ?? "local-device";
+  const activeWorkspace = useActiveWorkspaceOrNull();
   const currentWorkspaceRuntimeId = useMemo(
     () =>
       resolveWorkspaceRuntimeId({
         projectId: project?._id ?? null,
+        workspaceId: activeWorkspace?.workspace.workspaceId ?? null,
         laneId: activeLaneId,
-        localPath: activeWorkbenchPath,
+        workspaceRevision: activeWorkspace?.workspace.workspaceRevision ?? 1,
       }),
-    [activeLaneId, activeWorkbenchPath, project?._id],
+    [activeLaneId, activeWorkspace?.workspace.workspaceId, activeWorkspace?.workspace.workspaceRevision, project?._id],
   );
   const workspaceRuntimeRecord = useWorkspaceRuntimeStore(
     useMemo(
@@ -144,7 +147,7 @@ export function ProjectWorkbenchSurface() {
   const workbenchSession = useWorkbenchSessionLifecycle({
     projectId,
     laneId: activeLaneId,
-    projectPath: activeWorkbenchPath,
+    workspaceId: activeWorkbenchId,
     backgroundMode:
       workspaceRuntimeRecord?.lifecycle === "background-frozen"
         ? "backgroundFrozen"
@@ -184,7 +187,7 @@ export function ProjectWorkbenchSurface() {
   } = useWorkbenchDockviewRuntime({
     projectId,
     activeLaneId,
-    projectPath: activeWorkbenchPath,
+    workspaceId: activeWorkbenchId,
     workbenchSessionKey: workbenchSession?.sessionKey ?? null,
     projectWorkbench,
     workbenchScopeKey,
@@ -223,7 +226,7 @@ export function ProjectWorkbenchSurface() {
             <div className="inline-flex h-6 items-center rounded-md bg-sidebar px-0.5 text-muted-foreground/85 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)]">
               <WorkbenchHeaderBranchControl
                 projectId={projectId}
-                projectPath={projectPath}
+                workspaceId={workspaceId}
                 collabBranch={collabBranch}
                 laneState={laneState}
                 activeLane={activeLane}
@@ -254,7 +257,7 @@ export function ProjectWorkbenchSurface() {
       project?._id,
       projectName,
       projectId,
-      projectPath,
+      workspaceId,
       refreshLaneState,
     ],
   );
@@ -274,27 +277,27 @@ export function ProjectWorkbenchSurface() {
     ) => {
       if (!projectId) return;
       if (target === "devServer" || target === "mobileSimulator") {
-        workbenchActions.openSingletonTile(projectId, activeLaneId, target, undefined, activeWorkbenchPath);
+        workbenchActions.openSingletonTile(projectId, activeLaneId, target, undefined, activeWorkbenchId);
         return;
       }
-      workbenchActions.addTile(projectId, activeLaneId, target, undefined, activeWorkbenchPath);
+      workbenchActions.addTile(projectId, activeLaneId, target, undefined, activeWorkbenchId);
     },
-    [activeLaneId, activeWorkbenchPath, projectId, workbenchActions],
+    [activeLaneId, activeWorkbenchId, projectId, workbenchActions],
   );
 
   const focusWorkbenchTile = useCallback(
     (tileId: string) => {
       if (!projectId) return;
-      workbenchActions.setActiveTile(projectId, activeLaneId, tileId, activeWorkbenchPath);
+      workbenchActions.setActiveTile(projectId, activeLaneId, tileId, activeWorkbenchId);
     },
-    [activeLaneId, activeWorkbenchPath, projectId, workbenchActions],
+    [activeLaneId, activeWorkbenchId, projectId, workbenchActions],
   );
 
   useProjectWorkbenchSearchParamSync({
     projectId,
     activeLaneId,
     collabBranch,
-    projectPath: activeWorkbenchPath,
+    workspaceId: activeWorkbenchId,
     searchParams,
     replaceSearchParams,
     refreshLaneState: async () => {
@@ -312,8 +315,8 @@ export function ProjectWorkbenchSurface() {
 
   useLayoutEffect(() => {
     if (!projectId) return;
-    workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchPath);
-  }, [activeLaneId, activeWorkbenchPath, projectId, workbenchActions]);
+    workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
+  }, [activeLaneId, activeWorkbenchId, projectId, workbenchActions]);
 
   useEffect(() => {
     if (!projectId || !workspaceSelectionId) {
@@ -383,9 +386,9 @@ export function ProjectWorkbenchSurface() {
     <WorkbenchDockRuntimeProvider
       projectId={projectId}
       laneId={activeLaneId}
-      projectPath={activeWorkbenchPath}
+      projectPath={null}
       projectName={projectName}
-      workspaceId={currentWorkspaceRuntimeId}
+      workspaceId={activeWorkbenchId}
       framework={project?.frameworkInfo?.framework ?? null}
       storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
       storedDevPort={project?.frameworkInfo?.devPort ?? null}
@@ -417,7 +420,7 @@ export function ProjectWorkbenchSurface() {
             </div>
 
             <Suspense fallback={null}>
-              <LazyChangesSidebar projectPath={activeWorkbenchPath} />
+              <LazyChangesSidebar workspaceId={activeWorkbenchId} />
             </Suspense>
 
             {isSettingsOpen ? (

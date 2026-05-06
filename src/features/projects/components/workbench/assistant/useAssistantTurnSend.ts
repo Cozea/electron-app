@@ -44,12 +44,12 @@ interface UseAssistantTurnSendInput {
     laneId: string,
     tileId: string,
     patch: Partial<Pick<WorkbenchAssistantChatTileRecord, "title">>,
-    projectPath?: string | null,
+    workspaceId?: string | null,
   ) => void
   projectId: string
   laneId: string
   tileId: string
-  projectPath: string | null
+  workspaceId: string | null
   onComposerReset: () => void
   onComposerRestore: (value: string, images?: ReadonlyArray<ComposerImageDraft>) => void
   onError: (message: string | null) => void
@@ -95,7 +95,7 @@ export function useAssistantTurnSend({
   projectId,
   laneId,
   tileId,
-  projectPath,
+  workspaceId,
   onComposerReset,
   onComposerRestore,
   onError,
@@ -176,7 +176,7 @@ export function useAssistantTurnSend({
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(projectId, laneId, tileId, {
           title: nextThreadTitle,
-        }, projectPath)
+        }, workspaceId)
 
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
@@ -243,7 +243,7 @@ export function useAssistantTurnSend({
     onComposerRestore,
     onError,
     projectId,
-    projectPath,
+    workspaceId,
     providerSkills,
     removeOptimisticUserMessage,
     runtimeErrorMessage,
