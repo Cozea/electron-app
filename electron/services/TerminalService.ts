@@ -301,6 +301,17 @@ export class TerminalService {
   }
 
   private handleRuntimeTerminalProvenance(event: WorkbenchRuntimeTerminalProvenancePayload): void {
+    this.terminalProvenanceService.registerTerminal({
+      terminalId: event.terminalId,
+      projectRootPath: event.projectRootPath,
+      gitCwd: event.gitCwd,
+      title: event.title,
+      terminalKind: event.terminalKind,
+      runId: event.runId,
+      sessionKey: event.sessionKey,
+      laneId: event.laneId,
+      workspaceId: event.workspaceId,
+    })
     this.terminalProvenanceService.recordCommand({
       terminalId: event.terminalId,
       title: event.title,
@@ -400,11 +411,30 @@ export class TerminalService {
     const result = await this.runtimeClient.request<WorkbenchRuntimeTerminalCreateResult>('terminal.create', options)
     if (result.success && result.snapshot) {
       this.syncCacheFromSnapshot(result.snapshot, result.info)
-      this.terminalProvenanceService.registerTerminal(
-        result.snapshot.id,
-        options,
-        result.info?.title ?? result.snapshot.id,
-      )
+      const resolvedOptions = options as TerminalCreateOptions & {
+        projectRootPath?: unknown
+        cwd?: unknown
+        gitCwd?: unknown
+      }
+      const projectRootPath =
+        typeof resolvedOptions.projectRootPath === 'string'
+          ? resolvedOptions.projectRootPath
+          : typeof resolvedOptions.cwd === 'string'
+            ? resolvedOptions.cwd
+            : null
+      if (projectRootPath) {
+        this.terminalProvenanceService.registerTerminal({
+          terminalId: result.snapshot.id,
+          projectRootPath,
+          gitCwd: typeof resolvedOptions.gitCwd === 'string' ? resolvedOptions.gitCwd : projectRootPath,
+          title: result.info?.title ?? result.snapshot.id,
+          terminalKind: options.terminalKind ?? 'shell',
+          runId: options.runId,
+          sessionKey: options.sessionKey,
+          laneId: options.laneId,
+          workspaceId: result.snapshot.workspaceId,
+        })
+      }
     }
     return result
   }
