@@ -6,6 +6,7 @@ import type {
   GpuAccelerationDiagnostics,
 } from '../../shared/electronApiTypes'
 import type { IpcMain } from 'electron'
+import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 interface ToolRunRequest {
   name: string
@@ -16,8 +17,6 @@ interface ToolRunRequest {
 }
 
 interface RegisterCoreHandlersDeps {
-  runTool: (request: ToolRunRequest) => Promise<{ success: boolean; output?: unknown; error?: string }>
-  cancelToolRuns: (runId: string) => Promise<{ success: boolean; canceled?: number; error?: string }>
   getUpdateState: () => unknown
   isAutoUpdateEnabled: () => boolean
   checkForUpdates: () => Promise<void>
@@ -41,14 +40,6 @@ interface RegisterCoreHandlersDeps {
 }
 
 export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandlersDeps): void {
-  ipcMain.handle('tools:run', async (_event, request: ToolRunRequest) => {
-    return deps.runTool(request)
-  })
-
-  ipcMain.handle('tools:cancel', async (_event, request: { runId: string }) => {
-    return deps.cancelToolRuns(request.runId)
-  })
-
   ipcMain.handle('updates:getState', () => deps.getUpdateState())
 
   ipcMain.handle('updates:check', async () => {
@@ -127,14 +118,33 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
     async (
       _event,
       options: {
-        editorId: ExternalEditorId
-        filePath: string
+        editorId?: ExternalEditorId
+        workspaceId?: string
+        filePath?: string
+        path?: string
         line?: number
         column?: number
       }
     ) => {
       try {
-        await deps.openInEditor(options)
+        let finalPath = options.filePath ?? options.path
+        if (options.workspaceId) {
+          const access = await resolveAuthorizedWorkspaceAccess({
+            workspaceId: options.workspaceId,
+            operation: 'open-external-editor',
+            relativePath: finalPath ?? '.',
+          })
+          finalPath = access.fullPath!
+        }
+        if (!finalPath) {
+          return { success: false, error: 'Path is required' }
+        }
+        await deps.openInEditor({
+          editorId: options.editorId ?? 'default',
+          filePath: finalPath,
+          line: options.line,
+          column: options.column,
+        })
         return { success: true }
       } catch (error) {
         return {

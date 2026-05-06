@@ -1,5 +1,4 @@
 import { app } from 'electron'
-import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -9,10 +8,6 @@ import type {
   WorkbenchSessionSnapshot,
 } from '../../shared/electronApiTypes'
 import type { NativePreviewSessionLocator } from '../../shared/nativePreviewTypes'
-import {
-  findRegisteredProjectPathOwner,
-  readRegisteredProjectPath,
-} from '../projectPathRegistry'
 import { DevServerService } from './DevServerService'
 import { TerminalService } from './TerminalService'
 import { WorkbenchBrowserService } from './WorkbenchBrowserService'
@@ -21,7 +16,7 @@ import { NativePreviewManager } from './nativePreview/NativePreviewManager'
 interface PersistedWorkbenchSessionRecord {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   lifecycle: Exclude<WorkbenchSessionLifecycle, 'closed'>
   pinned: boolean
   openedAt: number
@@ -37,7 +32,7 @@ interface PersistedWorkbenchSessionState {
 interface LiveWorkbenchSessionRecord {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   lifecycle: WorkbenchSessionLifecycle
   pinned: boolean
   openedAt: number
@@ -64,34 +59,13 @@ const FROZEN_EPHEMERAL_BROWSER_IDLE_MS = 60 * 1000
 const LOW_MEMORY_FREE_THRESHOLD_KB = 1_500_000
 const LOW_MEMORY_FREE_RATIO = 0.12
 
-function normalizeProjectPath(projectPath?: string | null): string | null {
-  const trimmed = projectPath?.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  const normalized = path.normalize(trimmed).replace(/[\\/]+$/, '')
-  if (!normalized) {
-    return null
-  }
-
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+function normalizeWorkspaceId(workspaceId?: string | null): string | null {
+  const trimmed = workspaceId?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
-function buildWorkspacePathSegment(projectPath?: string | null): string {
-  const normalizedPath = normalizeProjectPath(projectPath)
-  if (!normalizedPath) {
-    return 'unbound'
-  }
-
-  const basename = path.basename(normalizedPath).replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '')
-  const slug = basename.length > 0 ? basename.slice(0, 48) : 'root'
-  const digest = createHash('sha1').update(normalizedPath).digest('hex').slice(0, 12)
-  return `${slug}-${digest}`
-}
-
-function buildSessionKey(projectId: string, laneId: string, projectPath?: string | null): string {
-  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${buildWorkspacePathSegment(projectPath)}`
+function buildSessionKey(projectId: string, laneId: string, workspaceId?: string | null): string {
+  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${normalizeWorkspaceId(workspaceId) ?? 'unbound'}`
 }
 
 function getRegistryPath(): string {
@@ -128,106 +102,30 @@ function writeRegistryState(state: PersistedWorkbenchSessionState): void {
   fs.writeFileSync(registryPath, JSON.stringify(state, null, 2))
 }
 
-function dedupePersistedSessionPaths(state: PersistedWorkbenchSessionState): boolean {
-  const latestOwnerByPath = new Map<string, { sessionKey: string; score: number; projectId: string }>()
-  let changed = false
-
-  for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const normalizedPath = normalizeProjectPath(record.projectPath)
-    if (!normalizedPath) {
-      continue
-    }
-
-    const score = Math.max(record.lastFocusedAt, record.openedAt)
-    const existingOwner = latestOwnerByPath.get(normalizedPath)
-    if (!existingOwner || score >= existingOwner.score) {
-      latestOwnerByPath.set(normalizedPath, {
-        sessionKey,
-        score,
-        projectId: record.projectId,
-      })
-    }
-  }
-
-  for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const normalizedPath = normalizeProjectPath(record.projectPath)
-    if (!normalizedPath) {
-      continue
-    }
-
-    const owner = latestOwnerByPath.get(normalizedPath)
-    if (!owner || owner.sessionKey === sessionKey || owner.projectId === record.projectId) {
-      continue
-    }
-
-    state.sessions[sessionKey] = {
-      ...record,
-      projectPath: null,
-    }
-    changed = true
-  }
-
-  return changed
-}
-
-function resolveRegisteredProjectPath(projectId: string): string | null {
-  return normalizeProjectPath(readRegisteredProjectPath(projectId))
-}
-
-function resolveOwnedProjectPath(args: {
+function resolveOwnedWorkspaceId(args: {
   projectId: string
-  projectPath?: string | null
+  workspaceId?: string | null
   warn?: (event: string, details: Record<string, unknown>) => void
 }): string | null | undefined {
-  if (args.projectPath === undefined) {
+  if (args.workspaceId === undefined) {
     return undefined
   }
-
-  const normalizedProjectPath = normalizeProjectPath(args.projectPath)
-  if (!normalizedProjectPath) {
-    return null
-  }
-
-  const registeredProjectPath = resolveRegisteredProjectPath(args.projectId)
-  if (registeredProjectPath) {
-    if (normalizedProjectPath === registeredProjectPath) {
-      return registeredProjectPath
-    }
-
-    args.warn?.('project_path_rewritten_to_registered_owner', {
-      projectId: args.projectId,
-      requestedProjectPath: normalizedProjectPath,
-      registeredProjectPath,
-    })
-    return registeredProjectPath
-  }
-
-  const registeredOwner = findRegisteredProjectPathOwner(normalizedProjectPath)
-  if (registeredOwner && registeredOwner.projectId !== args.projectId.trim()) {
-    args.warn?.('project_path_rejected_foreign_owner', {
-      projectId: args.projectId,
-      requestedProjectPath: normalizedProjectPath,
-      owningProjectId: registeredOwner.projectId,
-    })
-    return null
-  }
-
-  return normalizedProjectPath
+  return args.workspaceId ? args.workspaceId.trim() : null
 }
 
 function sanitizeSessionInput<T extends {
   projectId: string
   laneId: string
-  projectPath?: string | null
+  workspaceId?: string | null
 }>(
   input: T,
   warn?: (event: string, details: Record<string, unknown>) => void,
 ): T {
   return {
     ...input,
-    projectPath: resolveOwnedProjectPath({
+    workspaceId: resolveOwnedWorkspaceId({
       projectId: input.projectId,
-      projectPath: input.projectPath,
+      workspaceId: input.workspaceId,
       warn,
     }),
   }
@@ -249,19 +147,19 @@ function repairPersistedSessionState(state: PersistedWorkbenchSessionState): boo
   const repairedSessions: Record<string, PersistedWorkbenchSessionRecord> = {}
 
   for (const [sessionKey, record] of Object.entries(state.sessions)) {
-    const ownedProjectPath = resolveOwnedProjectPath({
+    const ownedWorkspaceId = resolveOwnedWorkspaceId({
       projectId: record.projectId,
-      projectPath: record.projectPath,
+      workspaceId: record.workspaceId,
     })
 
     const repairedRecord: PersistedWorkbenchSessionRecord = {
       ...record,
-      projectPath: ownedProjectPath ?? null,
+      workspaceId: ownedWorkspaceId ?? null,
     }
     const repairedSessionKey = buildSessionKey(
       repairedRecord.projectId,
       repairedRecord.laneId,
-      repairedRecord.projectPath,
+      repairedRecord.workspaceId,
     )
     const existingRecord = repairedSessions[repairedSessionKey]
 
@@ -275,7 +173,7 @@ function repairPersistedSessionState(state: PersistedWorkbenchSessionState): boo
 
     if (
       repairedSessionKey !== sessionKey ||
-      repairedRecord.projectPath !== record.projectPath ||
+      repairedRecord.workspaceId !== record.workspaceId ||
       existingRecord
     ) {
       changed = true
@@ -294,14 +192,14 @@ export const __workbenchSessionTestUtils = {
   buildSessionKey,
   findSessionKeysByProjectLane,
   repairPersistedSessionState,
-  resolveOwnedProjectPath,
+  resolveOwnedWorkspaceId,
 }
 
 function toPersistedRecord(record: LiveWorkbenchSessionRecord): PersistedWorkbenchSessionRecord {
   return {
     projectId: record.projectId,
     laneId: record.laneId,
-    projectPath: record.projectPath,
+    workspaceId: record.workspaceId,
     lifecycle:
       record.lifecycle === 'active' ||
       record.lifecycle === 'backgroundWarm' ||
@@ -360,7 +258,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
   private sanitizeSessionInput<T extends {
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }>(input: T): T {
     return sanitizeSessionInput(input, this.warnOwnershipMismatch.bind(this))
   }
@@ -372,16 +270,15 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     const persisted = readRegistryState()
     const repairedPersistedSessions = repairPersistedSessionState(persisted)
-    const dedupedPersistedSessionPaths = dedupePersistedSessionPaths(persisted)
-    if (repairedPersistedSessions || dedupedPersistedSessionPaths) {
+    if (repairedPersistedSessions) {
       writeRegistryState(persisted)
     }
 
     for (const [, record] of Object.entries(persisted.sessions)) {
-      const derivedSessionKey = buildSessionKey(record.projectId, record.laneId, record.projectPath)
+      const derivedSessionKey = buildSessionKey(record.projectId, record.laneId, record.workspaceId)
       const nextRecord: LiveWorkbenchSessionRecord = {
         ...record,
-        projectPath: normalizeProjectPath(record.projectPath),
+        workspaceId: normalizeWorkspaceId(record.workspaceId),
         lifecycle:
           record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
@@ -419,20 +316,19 @@ export class WorkbenchSessionManager extends EventEmitter<{
       sessions,
     } satisfies PersistedWorkbenchSessionState
 
-    dedupePersistedSessionPaths(state)
     writeRegistryState(state)
   }
 
   private createRecord(input: {
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): LiveWorkbenchSessionRecord {
     const now = Date.now()
     return {
       projectId: input.projectId.trim(),
       laneId: input.laneId.trim() || 'collab',
-      projectPath: normalizeProjectPath(input.projectPath),
+      workspaceId: normalizeWorkspaceId(input.workspaceId),
       lifecycle: 'backgroundWarm',
       pinned: false,
       openedAt: now,
@@ -444,8 +340,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
   }
 
-  private normalizeProjectPath(projectPath?: string | null): string | null {
-    return normalizeProjectPath(projectPath)
+  private normalizeWorkspaceId(workspaceId?: string | null): string | null {
+    return normalizeWorkspaceId(workspaceId)
   }
 
   private findLatestSessionKey(input: {
@@ -470,7 +366,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): string | null {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const explicitSessionKey = sanitizedInput.sessionKey?.trim()
@@ -478,11 +374,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
       return this.sessions.has(explicitSessionKey) ? explicitSessionKey : null
     }
 
-    if (sanitizedInput.projectPath !== undefined) {
+    if (sanitizedInput.workspaceId !== undefined) {
       const exactSessionKey = buildSessionKey(
         sanitizedInput.projectId,
         sanitizedInput.laneId,
-        sanitizedInput.projectPath,
+        sanitizedInput.workspaceId,
       )
       if (this.sessions.has(exactSessionKey)) {
         return exactSessionKey
@@ -495,44 +391,44 @@ export class WorkbenchSessionManager extends EventEmitter<{
     })
   }
 
-  private async reconcileSessionProjectPath(
+  private async reconcileSessionWorkspaceId(
     sessionKey: string,
     record: LiveWorkbenchSessionRecord,
-    nextProjectPath?: string | null,
+    nextWorkspaceId?: string | null,
   ): Promise<void> {
-    if (nextProjectPath === undefined) {
+    if (nextWorkspaceId === undefined) {
       return
     }
 
-    const normalizedNextProjectPath = this.normalizeProjectPath(nextProjectPath)
-    if (record.projectPath === normalizedNextProjectPath) {
+    const normalizedNextWorkspaceId = this.normalizeWorkspaceId(nextWorkspaceId)
+    if (record.workspaceId === normalizedNextWorkspaceId) {
       return
     }
 
     // A live workspace should never be soft-reassigned to another local root.
     // If the caller wants a different root, they must address a different session key.
-    if (record.projectPath && normalizedNextProjectPath && record.projectPath !== normalizedNextProjectPath) {
+    if (record.workspaceId && normalizedNextWorkspaceId && record.workspaceId !== normalizedNextWorkspaceId) {
       this.warnOwnershipMismatch("rebind_rejected", {
         sessionKey,
         projectId: record.projectId,
         laneId: record.laneId,
-        currentProjectPath: record.projectPath,
-        requestedProjectPath: normalizedNextProjectPath,
+        currentWorkspaceId: record.workspaceId,
+        requestedWorkspaceId: normalizedNextWorkspaceId,
       })
       return
     }
 
-    if (record.projectPath && normalizedNextProjectPath === null) {
+    if (record.workspaceId && normalizedNextWorkspaceId === null) {
       this.warnOwnershipMismatch("unbind_rejected", {
         sessionKey,
         projectId: record.projectId,
         laneId: record.laneId,
-        currentProjectPath: record.projectPath,
+        currentWorkspaceId: record.workspaceId,
       })
       return
     }
 
-    record.projectPath = normalizedNextProjectPath
+    record.workspaceId = normalizedNextWorkspaceId
     this.emitState(sessionKey, record)
   }
 
@@ -542,11 +438,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   private hasRunningDevServer(record: LiveWorkbenchSessionRecord): boolean {
-    if (!record.projectPath) {
+    if (!record.workspaceId) {
       return false
     }
 
-    return this.devServerService.getState(record.projectPath).running
+    return this.devServerService.getState(record.workspaceId, record.laneId).running
   }
 
   private hasRunningNativePreview(record: LiveWorkbenchSessionRecord): boolean {
@@ -654,7 +550,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): { sessionKey: string; record: LiveWorkbenchSessionRecord } {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const providedSessionKey = sanitizedInput.sessionKey?.trim()
@@ -668,7 +564,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     const sessionKey = buildSessionKey(
       sanitizedInput.projectId,
       sanitizedInput.laneId,
-      sanitizedInput.projectPath,
+      sanitizedInput.workspaceId,
     )
     const existing = this.sessions.get(sessionKey)
     if (existing) {
@@ -684,8 +580,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey: string,
     record: LiveWorkbenchSessionRecord,
   ): WorkbenchSessionSnapshot {
-    const devServer = record.projectPath
-      ? this.devServerService.getState(record.projectPath)
+    const devServer = record.workspaceId
+      ? this.devServerService.getState(record.workspaceId, record.laneId)
       : { running: false, port: null, runId: null }
     const hasBrowserSurface = Object.keys(record.browserBindings).length > 0
     const hasNativePreviewSession = record.nativePreviewLocator
@@ -696,7 +592,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       sessionKey,
       projectId: record.projectId,
       laneId: record.laneId,
-      projectPath: record.projectPath,
+      workspaceId: record.workspaceId,
       lifecycle: record.lifecycle,
       pinned: record.pinned,
       openedAt: record.openedAt,
@@ -757,11 +653,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): Promise<WorkbenchSessionSnapshot> {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
-    await this.reconcileSessionProjectPath(sessionKey, record, sanitizedInput.projectPath)
+    await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
     this.persist()
     const snapshot = this.emitState(sessionKey, record)
     void this.runPolicySweep()
@@ -772,12 +668,12 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): Promise<WorkbenchSessionSnapshot> {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const now = Date.now()
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
-    await this.reconcileSessionProjectPath(sessionKey, record, sanitizedInput.projectPath)
+    await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
     const previousLifecycle = record.lifecycle
     record.lifecycle = 'active'
     record.lastFocusedAt = now
@@ -820,14 +716,14 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): string[] {
     const explicitSessionKey = input.sessionKey?.trim()
     if (explicitSessionKey) {
       return this.sessions.has(explicitSessionKey) ? [explicitSessionKey] : []
     }
 
-    if (input.projectPath !== undefined) {
+    if (input.workspaceId !== undefined) {
       const sessionKey = this.resolveSessionKey(input)
       return sessionKey ? [sessionKey] : []
     }
@@ -851,8 +747,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
     record.browserBindings = {}
 
-    if (record.projectPath) {
-      await this.devServerService.stop(record.projectPath).catch(() => ({ success: false }))
+    if (record.workspaceId) {
+      await this.devServerService.stop(record.workspaceId).catch(() => ({ success: false }))
     }
 
     if (record.nativePreviewLocator) {
@@ -872,7 +768,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): Promise<boolean> {
     const sessionKeys = this.resolveSessionKeysForClose(input)
     if (sessionKeys.length === 0) {
@@ -887,7 +783,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return true
   }
 
-  getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; projectPath?: string | null }): WorkbenchSessionSnapshot | null {
+  getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }): WorkbenchSessionSnapshot | null {
     const sessionKey = this.resolveSessionKey(input)
     if (!sessionKey) {
       return null
@@ -952,13 +848,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
       return null
     }
 
-    if (record.projectPath && snapshot.projectPath !== record.projectPath) {
+    if (record.workspaceId && snapshot.workspaceId !== record.workspaceId) {
       this.warnOwnershipMismatch("terminal_path_mismatch", {
         sessionKey,
         tileId: input.tileId,
         terminalId,
-        expectedProjectPath: record.projectPath,
-        actualProjectPath: snapshot.projectPath,
+        expectedWorkspaceId: record.workspaceId,
+        actualWorkspaceId: snapshot.workspaceId,
       })
       delete record.terminalBindings[input.tileId]
       this.persist()
@@ -975,34 +871,26 @@ export class WorkbenchSessionManager extends EventEmitter<{
     laneId: string
     tileId: string
     terminalId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): Promise<WorkbenchSessionSnapshot> {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
-    await this.reconcileSessionProjectPath(sessionKey, record, sanitizedInput.projectPath)
+    await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
     const snapshot = this.terminalService.getTerminalSnapshot(input.terminalId)
-    if (record.projectPath && snapshot?.projectPath && snapshot.projectPath !== record.projectPath) {
+    if (record.workspaceId && snapshot?.workspaceId && snapshot.workspaceId !== record.workspaceId) {
       this.warnOwnershipMismatch("bind_terminal_rejected", {
         sessionKey,
         tileId: input.tileId,
         terminalId: input.terminalId,
-        expectedProjectPath: record.projectPath,
-        actualProjectPath: snapshot.projectPath,
+        expectedWorkspaceId: record.workspaceId,
+        actualWorkspaceId: snapshot.workspaceId,
       })
       return this.emitState(sessionKey, record)
     }
-    if (!record.projectPath && snapshot?.projectPath) {
-      const registeredOwner = findRegisteredProjectPathOwner(snapshot.projectPath)
-      if (registeredOwner && registeredOwner.projectId !== input.projectId.trim()) {
-        this.warnOwnershipMismatch("bind_terminal_rejected_foreign_owner", {
-          sessionKey,
-          tileId: input.tileId,
-          terminalId: input.terminalId,
-          terminalProjectPath: snapshot.projectPath,
-          owningProjectId: registeredOwner.projectId,
-        })
-        return this.emitState(sessionKey, record)
-      }
+    if (!record.workspaceId && snapshot?.workspaceId) {
+      // workspaceId is no longer dynamically owned via registry.
+      // If we don't have a workspaceId but the terminal does, we don't bind it blindly if we had ownership checks,
+      // but under the new catalog, terminals are bound by workspaceId + laneId directly.
     }
     record.terminalBindings[input.tileId] = input.terminalId
     this.persist()
@@ -1080,7 +968,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     laneId: string
     tileId: string
     browserTileId: string
-    projectPath?: string | null
+    workspaceId?: string | null
   }): WorkbenchSessionSnapshot {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
@@ -1137,10 +1025,10 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     const previousLocator = record.nativePreviewLocator
     const previousKey = previousLocator
-      ? `${previousLocator.platform}:${previousLocator.deviceId}:${previousLocator.projectPath}`
+      ? `${previousLocator.platform}:${previousLocator.deviceId}:${previousLocator.workspaceId}`
       : null
     const nextKey = input.locator
-      ? `${input.locator.platform}:${input.locator.deviceId}:${input.locator.projectPath}`
+      ? `${input.locator.platform}:${input.locator.deviceId}:${input.locator.workspaceId}`
       : null
 
     if (input.stopPrevious && previousLocator && previousKey !== nextKey) {

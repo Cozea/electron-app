@@ -10,7 +10,7 @@ import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/wo
 
 interface UseProjectLaneStateArgs {
   projectId: string | null
-  projectPath: string | null
+  workspaceId: string | null
   collabBranch: string | null
 }
 
@@ -36,28 +36,28 @@ function normalizeBranch(value: string | null | undefined, fallback = "main"): s
 function buildLaneIdentityKey(
   projectId: string | null,
   collabBranch: string | null,
-  projectPath: string | null,
+  workspaceId: string | null,
 ): string | null {
   if (!projectId) return null
-  return `${projectId}::${normalizeBranch(collabBranch)}::${normalizeWorkspaceProjectPath(projectPath) ?? "unbound"}`
+  return `${projectId}::${normalizeBranch(collabBranch)}::${normalizeWorkspaceProjectPath(workspaceId) ?? "unbound"}`
 }
 
 const laneStateCache = new Map<string, ProjectLaneState>()
 
 export function clearCachedProjectLaneState(
   projectId: string | null | undefined,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ): void {
   const trimmedProjectId = projectId?.trim()
   if (!trimmedProjectId) {
     return
   }
 
-  const normalizedProjectPath = normalizeWorkspaceProjectPath(projectPath)
+  const normalizedWorkspaceId = normalizeWorkspaceProjectPath(workspaceId)
   for (const cacheKey of Array.from(laneStateCache.keys())) {
     if (
       cacheKey.startsWith(`${trimmedProjectId}::`) &&
-      (!normalizedProjectPath || cacheKey.endsWith(`::${normalizedProjectPath}`))
+      (!normalizedWorkspaceId || cacheKey.endsWith(`::${normalizedWorkspaceId}`))
     ) {
       laneStateCache.delete(cacheKey)
     }
@@ -66,20 +66,20 @@ export function clearCachedProjectLaneState(
 
 export function useProjectLaneState({
   projectId,
-  projectPath,
+  workspaceId,
   collabBranch,
 }: UseProjectLaneStateArgs): UseProjectLaneStateResult {
   const normalizedCollabBranch = useMemo(
     () => normalizeBranch(collabBranch),
     [collabBranch],
   )
-  const normalizedProjectPath = useMemo(
-    () => normalizeWorkspaceProjectPath(projectPath),
-    [projectPath],
+  const normalizedWorkspaceId = useMemo(
+    () => normalizeWorkspaceProjectPath(workspaceId),
+    [workspaceId],
   )
   const identityKey = useMemo(
-    () => buildLaneIdentityKey(projectId, normalizedCollabBranch, normalizedProjectPath),
-    [normalizedCollabBranch, normalizedProjectPath, projectId],
+    () => buildLaneIdentityKey(projectId, normalizedCollabBranch, normalizedWorkspaceId),
+    [normalizedCollabBranch, normalizedWorkspaceId, projectId],
   )
 
   const [scoped, setScoped] = useState<ScopedLaneState>(() => ({
@@ -125,12 +125,12 @@ export function useProjectLaneState({
     }))
 
     try {
-      const storedSession = readScopedProjectBranchSession(projectId, normalizedProjectPath)
+      const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId)
       let activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
 
-      if (normalizedProjectPath) {
-        const statusResult = await window.electronAPI.sync.gitStatus({
-          projectPath: normalizedProjectPath,
+      if (normalizedWorkspaceId) {
+        const statusResult = await window.electronAPI.workspaceSync.gitStatus({
+          workspaceId: normalizedWorkspaceId,
         }).catch(() => null)
 
         if (statusResult?.success !== false && statusResult?.currentBranch) {
@@ -141,13 +141,13 @@ export function useProjectLaneState({
           projectId,
           branch: activeBranch,
           collabBranch: normalizedCollabBranch,
-          projectPath: normalizedProjectPath,
+          workspaceId: normalizedWorkspaceId,
         })
       }
 
       const nextLaneState = buildProjectBranchLaneState({
         projectId,
-        projectPath: normalizedProjectPath ?? storedSession?.projectPath ?? null,
+        workspaceId: normalizedWorkspaceId ?? storedSession?.workspaceId ?? null,
         collabBranch: normalizedCollabBranch,
         activeBranch,
       })
@@ -177,14 +177,14 @@ export function useProjectLaneState({
         isLoading: false,
       }))
     }
-  }, [identityKey, normalizedCollabBranch, normalizedProjectPath, projectId])
+  }, [identityKey, normalizedCollabBranch, normalizedWorkspaceId, projectId])
 
   useEffect(() => {
     void refreshLaneState()
   }, [refreshLaneState])
 
   useEffect(() => {
-    if (!projectId || !normalizedProjectPath) {
+    if (!projectId || !normalizedWorkspaceId) {
       return
     }
 
@@ -195,7 +195,7 @@ export function useProjectLaneState({
     return () => {
       window.clearInterval(interval)
     }
-  }, [normalizedProjectPath, projectId, refreshLaneState])
+  }, [normalizedWorkspaceId, projectId, refreshLaneState])
 
   const laneState = useMemo(() => {
     if (scoped.identityKey === identityKey) {

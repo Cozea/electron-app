@@ -15,7 +15,7 @@ interface WorkbenchTerminalTileProps {
   projectId: string
   laneId: string
   tileId: string
-  projectPath: string | null
+  workspaceId: string | null
   workbenchSession: WorkbenchSessionSnapshot | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
@@ -25,7 +25,7 @@ export function WorkbenchTerminalTile({
   projectId,
   laneId,
   tileId,
-  projectPath,
+  workspaceId,
   workbenchSession,
   panelApi,
   containerApi,
@@ -56,7 +56,7 @@ export function WorkbenchTerminalTile({
   }, [panelActivity.visible, setTerminalUiAttached, terminalId])
 
   useEffect(() => {
-    if (!projectPath || !workbenchSession?.sessionKey) {
+    if (!workspaceId || !workbenchSession?.sessionKey) {
       const activeTerminalId = terminalIdRef.current
       if (activeTerminalId) {
         setTerminalUiAttached(activeTerminalId, false)
@@ -87,9 +87,9 @@ export function WorkbenchTerminalTile({
 
       if (!snapshot || !nextTerminalId) {
         const result = await window.electronAPI.terminal.create({
-          projectPath,
-          cwd: projectPath,
-          gitCwd: projectPath,
+          workspaceId,
+          cwd: { kind: "projectRoot" },
+          gitCwd: { kind: "projectRoot" },
           sessionKey: workbenchSession.sessionKey,
           laneId,
           terminalKind: "shell",
@@ -112,7 +112,7 @@ export function WorkbenchTerminalTile({
           laneId,
           tileId,
           terminalId: result.terminalId,
-          projectPath,
+          workspaceId,
         })
         snapshot = await window.electronAPI.terminal.getSnapshot({
           terminalId: result.terminalId,
@@ -134,7 +134,7 @@ export function WorkbenchTerminalTile({
         profileId: info?.profileId ?? "default",
         profileName: info?.profileName ?? "Shell",
         title: info?.title ?? "Shell",
-        projectPath,
+        workspaceId,
         kind: "shell",
         surface: "panel",
         status: snapshot?.running === false ? "exited" : "running",
@@ -167,7 +167,7 @@ export function WorkbenchTerminalTile({
     laneId,
     panelApi,
     projectId,
-    projectPath,
+    workspaceId,
     registerTerminal,
     retryKey,
     setTerminalUiAttached,
@@ -177,7 +177,7 @@ export function WorkbenchTerminalTile({
 
   let body: ReactNode
 
-  if (!projectPath) {
+  if (!workspaceId) {
     body = (
       <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
         Open or relink a local project folder to start a terminal here.
@@ -211,7 +211,7 @@ export function WorkbenchTerminalTile({
         <TerminalInstance
           terminalId={terminalId}
           onTerminalError={setError}
-          projectPath={projectPath}
+          workspaceId={workspaceId}
           className="h-full workbench-terminal-instance"
           shouldAutoFocus={panelActivity.focused}
           gpuActive={panelActivity.visible}

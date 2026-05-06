@@ -1,5 +1,19 @@
 import type { Session } from './types'
 import type {
+  BindExistingFolderRequest,
+  BindExistingFolderResult,
+  CloneWorkspaceForProjectRequest,
+  CloneWorkspaceForProjectResult,
+  CreateWorkspaceForProjectRequest,
+  CreateWorkspaceForProjectResult,
+  CwdSpec,
+  LocalWorkspaceDTO,
+  LocalWorkspaceRecord,
+  ResolveProjectWorkspaceRequest,
+  ResolveProjectWorkspaceResult,
+  WorkspaceCandidate,
+} from './workspaceTypes'
+import type {
   NativePreviewActionResult,
   NativePreviewCaptureScreenshotRequest,
   NativePreviewCaptureScreenshotResult,
@@ -91,13 +105,6 @@ export interface LocalProject {
   path: string
   size: number
   lastModified: number
-}
-
-export interface ProjectLocalPathLookupOptions {
-  slug: string
-  projectId?: string
-  localPathHint?: string | null
-  attachedPathHint?: string | null
 }
 
 export interface StorageProjectsPage {
@@ -213,12 +220,6 @@ export interface RuntimeResolveCommandResult {
   error?: string
 }
 
-export interface CreateProjectFolderResult {
-  success: boolean
-  localPath?: string
-  error?: string
-}
-
 export interface GhCliStatus {
   available: boolean
   username?: string
@@ -228,13 +229,6 @@ export interface GhCliStatus {
 export interface CreateGitHubRepoResult {
   success: boolean
   repoUrl?: string
-  error?: string
-}
-
-export interface CloneRepositoryResult {
-  success: boolean
-  localPath?: string
-  normalizedRepoUrl?: string
   error?: string
 }
 
@@ -312,7 +306,7 @@ export interface ProjectLaneDescriptor {
   id: string
   name: string
   branch: string
-  projectPath: string
+  workspaceId: string
   isCollab: boolean
   createdAt: number
   updatedAt: number
@@ -914,7 +908,7 @@ export interface TerminalInfo {
 
 export interface TerminalSnapshot {
   id: string
-  projectPath: string
+  workspaceId: string
   runId?: string
   command?: string
   stdout: string
@@ -957,7 +951,7 @@ export interface FileChangeAttribution {
 }
 
 export interface GitDirtyStateSnapshot {
-  projectPath: string
+  workspaceId: string
   additions: number
   deletions: number
   changedFiles: number
@@ -966,7 +960,7 @@ export interface GitDirtyStateSnapshot {
 }
 
 export interface GitChangesSnapshot {
-  projectPath: string
+  workspaceId: string
   scope: GitChangesScope
   cacheKey: string
   files: GitChangeFileSummary[]
@@ -980,9 +974,9 @@ export interface GitChangesSnapshot {
 }
 
 export interface TerminalCreateOptions {
-  projectPath: string
+  workspaceId: string
   profileId?: string
-  cwd?: string
+  cwd?: CwdSpec
   cols?: number
   rows?: number
   runId?: string
@@ -990,8 +984,8 @@ export interface TerminalCreateOptions {
   activityTracking?: TerminalActivityTrackingMode
   sessionKey?: string
   laneId?: string
-  workspaceId?: string
-  gitCwd?: string
+
+  gitCwd?: CwdSpec
   terminalKind?: TerminalKind
 }
 
@@ -1054,7 +1048,8 @@ export interface AgentToolPrepareResult extends AgentToolStatus {
 }
 
 export interface DevServerStartOptions {
-  projectPath: string
+  workspaceId: string
+  laneId?: string | null
   command: string
   bootstrapCommand?: string | null
   port: number
@@ -1076,14 +1071,16 @@ export interface DevServerStartResult {
 }
 
 export interface DevServerOutputEvent {
-  projectPath: string
+  workspaceId: string
+  laneId?: string | null
   output: string
   stream: 'stdout' | 'stderr'
   runId?: string
 }
 
 export interface DevServerExitEvent {
-  projectPath: string
+  workspaceId: string
+  laneId?: string | null
   code: number | null
   runId?: string
 }
@@ -1247,7 +1244,7 @@ export interface WorkbenchSessionSnapshot {
   sessionKey: string
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   lifecycle: WorkbenchSessionLifecycle
   pinned: boolean
   openedAt: number
@@ -1286,7 +1283,9 @@ export interface ElectronAPI {
     runTool: (options: {
       toolName: string
       args: string[]
-      workingDir: string
+      workspaceId: string
+      laneId: string
+      cwd?: { kind: 'projectRoot' } | { kind: 'relative'; path: string }
       encryptedCredentials: string
       keyId: string
       timeout?: number
@@ -1339,8 +1338,10 @@ export interface ElectronAPI {
   editor: {
     listAvailableEditors: () => Promise<AvailableExternalEditor[]>
     openInEditor: (options: {
-      editorId: ExternalEditorId
-      filePath: string
+      editorId?: string
+      workspaceId?: string
+      filePath?: string
+      path?: string
       line?: number
       column?: number
     }) => Promise<{ success: boolean; error?: string }>
@@ -1423,13 +1424,13 @@ export interface ElectronAPI {
       sessionKey?: string | null
       projectId: string
       laneId: string
-      projectPath?: string | null
+      workspaceId?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     activateSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
-      projectPath?: string | null
+      workspaceId?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     backgroundSession: (options: {
       sessionKey?: string | null
@@ -1441,7 +1442,7 @@ export interface ElectronAPI {
       sessionKey?: string | null
       projectId: string
       laneId: string
-      projectPath?: string | null
+      workspaceId?: string | null
     }) => Promise<{ success: boolean }>
     getSession: (options: {
       sessionKey?: string | null
@@ -1467,7 +1468,7 @@ export interface ElectronAPI {
       laneId: string
       tileId: string
       terminalId: string
-      projectPath?: string | null
+      workspaceId?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
     releaseTerminal: (options: {
       sessionKey?: string | null
@@ -1532,28 +1533,10 @@ export interface ElectronAPI {
     onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
   }
   project: {
-    createFolder: (options: {
-      slug: string
-      initGit?: boolean
-      projectId?: string
-      baseDirectory?: string
-    }) => Promise<CreateProjectFolderResult>
-    cloneRepository: (options: {
-      slug: string
-      repoUrl: string
-      provider: string
-      branch?: string
-      accessToken?: string
-      projectId?: string
-      baseDirectory?: string
-    }) => Promise<CloneRepositoryResult>
-    getLocalPath: (options: string | ProjectLocalPathLookupOptions) => Promise<string | null>
-    rememberLocalPath: (options: { projectId: string; projectPath: string }) => Promise<{ success: boolean; localPath?: string; error?: string }>
-    clearLocalPath: (options: { projectId: string }) => Promise<{ success: boolean }>
-    listGitBranches: (options: { projectPath: string }) => Promise<ProjectGitBranchListResult>
-    checkoutGitBranch: (options: { projectPath: string; branch: string }) => Promise<ProjectGitCheckoutResult>
+    listGitBranches: (options: { workspaceId: string }) => Promise<ProjectGitBranchListResult>
+    checkoutGitBranch: (options: { workspaceId: string; branch: string }) => Promise<ProjectGitCheckoutResult>
     createGitWorktree: (options: {
-      projectPath: string
+      workspaceId: string
       branch: string
       newBranch?: string
       path?: string | null
@@ -1563,49 +1546,49 @@ export interface ElectronAPI {
       collabBranch: string
       sourceBranch: string
     }) => Promise<{ success: boolean; error?: string }>
-    openFolder: (options: { projectPath: string }) => Promise<StorageActionResult>
+    openFolder: (options: { workspaceId: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
-    pathExists: (projectPath: string) => Promise<boolean>
+    pathExists: (workspaceId: string) => Promise<boolean>
     writeFile: (options: {
-      projectPath: string
+      workspaceId: string
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
       origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<WriteFileResult>
-    readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
-    readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
-    listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
+    readFile: (options: { workspaceId: string; filePath: string }) => Promise<ReadFileResult>
+    readFileBase64: (options: { workspaceId: string; filePath: string }) => Promise<ReadFileBase64Result>
+    listFiles: (options: { workspaceId: string }) => Promise<ListFilesResult>
     getContextOptions: (options: {
-      projectPath: string
+      workspaceId: string
       frameworkInfo?: ProjectStoredFrameworkInfo | null
     }) => Promise<ProjectContextOptionsResult>
     renameFile: (options: {
-      projectPath: string
+      workspaceId: string
       oldPath: string
       newPath: string
       origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<RenameFileResult>
     deletePath: (options: {
-      projectPath: string
+      workspaceId: string
       targetPath: string
       origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<{ success: boolean; error?: string }>
-    copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
+    copyPath: (options: { workspaceId: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
     copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>
-    preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
-    watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
-    watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
-    getPathNativeIcon: (options: { projectPath: string }) => Promise<ProjectPathNativeIconResult>
+    preflightImportSource: (options: { workspaceId: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
+    watchStart: (options: { workspaceId: string }) => Promise<WatchProjectResult>
+    watchStop: (options: { workspaceId: string }) => Promise<WatchProjectResult>
+    getPathNativeIcon: (options: { workspaceId: string }) => Promise<ProjectPathNativeIconResult>
     checkGhCliStatus: () => Promise<GhCliStatus>
-    createGitHubRepo: (options: { name: string; localPath: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
+    createGitHubRepo: (options: { workspaceId: string; name: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
   }
   runtime: {
-    getProjectCapabilities: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
-    resolveCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeResolveCommandResult>
-    ensureCommandRuntime: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
-    detectProjectRuntime: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
-    ensureForCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    getProjectCapabilities: (options: { workspaceId: string }) => Promise<ProjectRuntimeProfile>
+    resolveCommand: (options: { workspaceId: string; command: string }) => Promise<RuntimeResolveCommandResult>
+    ensureCommandRuntime: (options: { workspaceId: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    detectProjectRuntime: (options: { workspaceId: string }) => Promise<ProjectRuntimeProfile>
+    ensureForCommand: (options: { workspaceId: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
     ensureRuntime: (options: {
       runtime: RuntimeKind
       target?: string
@@ -1614,14 +1597,20 @@ export interface ElectronAPI {
     }) => Promise<RuntimeEnsureResult>
     getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
+  /**
+   * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.
+   * These MUST NOT be used for reading project files inside a workspace.
+   * For workspace files, use `project.readFile` or `project.listFiles` with a `workspaceId`.
+   */
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>
     readFile: (path: string) => Promise<string | null>
   }
-  sync: {
-    hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
+  workspaceSync: {
+    hashFile: (options: { workspaceId: string; laneId?: string | null; path: string }) =>
+      Promise<{ hash: string; size: number } | { success: false; error: string }>
     writeFiles: (options: {
-      projectPath: string
+      workspaceId: string
       files: SyncWriteFile[]
       opMeta?: {
         projectId: string
@@ -1631,7 +1620,7 @@ export interface ElectronAPI {
       }
     }) => Promise<SyncWriteFilesResult>
     deleteFiles: (options: {
-      projectPath: string
+      workspaceId: string
       paths: string[]
       opMeta?: {
         projectId: string
@@ -1642,13 +1631,13 @@ export interface ElectronAPI {
     }) => Promise<SyncDeleteFilesResult>
     getGitRuntimeHealth: (options?: { force?: boolean }) => Promise<GitRuntimeHealth>
     gitEnsureRepo: (options: {
-      projectPath: string
+      workspaceId: string
       branch?: string
       repoUrl?: string
       debug?: boolean
     }) => Promise<GitSyncEnsureRepoResult>
     gitCloneIfMissing: (options: {
-      projectPath: string
+      workspaceId: string
       repoUrl: string
       branch?: string
       extraHeader?: string
@@ -1659,7 +1648,7 @@ export interface ElectronAPI {
       debug?: boolean
     }) => Promise<GitSyncCloneResult>
     gitFetchMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -1671,13 +1660,13 @@ export interface ElectronAPI {
       debug?: boolean
     }) => Promise<GitSyncFetchResult>
     gitStatus: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       debug?: boolean
     }) => Promise<GitSyncStatusResult>
     gitPullMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -1691,7 +1680,7 @@ export interface ElectronAPI {
       debug?: boolean
     }) => Promise<GitSyncPullResult>
     gitReplayLocalCommits: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -1703,13 +1692,13 @@ export interface ElectronAPI {
       debug?: boolean
     }) => Promise<GitSyncReplayResult>
     gitClassifyRepoHealth: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       debug?: boolean
     }) => Promise<GitRepoHealthResult>
     gitSalvageReclone: (options: {
-      projectPath: string
+      workspaceId: string
       repoUrl: string
       branch?: string
       extraHeader?: string
@@ -1720,16 +1709,16 @@ export interface ElectronAPI {
       debug?: boolean
     }) => Promise<GitSyncSalvageResult>
     gitReadConflictFile: (options: {
-      projectPath: string
+      workspaceId: string
       filePath: string
     }) => Promise<GitConflictFileResult>
     gitResolveConflictFile: (options: {
-      projectPath: string
+      workspaceId: string
       filePath: string
       resolvedContent: string
     }) => Promise<GitResolveConflictResult>
     gitRestoreMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -1741,18 +1730,18 @@ export interface ElectronAPI {
       debug?: boolean
     }) => Promise<GitSyncRestoreResult>
     gitAdoptWorkspace: (options: {
-      projectPath: string
+      workspaceId: string
       branch?: string
       repoUrl?: string
       debug?: boolean
     }) => Promise<GitSyncAdoptResult>
     gitCommitAll: (options: {
-      projectPath: string
+      workspaceId: string
       message: string
       addAll?: boolean
     }) => Promise<GitSyncCommitResult>
     gitPushMain: (options: {
-      projectPath: string
+      workspaceId: string
       remote?: string
       branch?: string
       repoUrl?: string
@@ -1763,7 +1752,7 @@ export interface ElectronAPI {
       keyId?: string
     }) => Promise<GitSyncPushResult>
     gitCommitAndPush: (options: {
-      projectPath: string
+      workspaceId: string
       message: string
       remote?: string
       branch?: string
@@ -1776,65 +1765,65 @@ export interface ElectronAPI {
       keyId?: string
     }) => Promise<GitSyncCommitPushResult>
     gitCaptureCheckpoint: (options: {
-      projectPath: string
+      workspaceId: string
       checkpointId: string
       authorName: string
       authorEmail?: string
     }) => Promise<GitCheckpointCaptureResult>
     gitDiffCheckpoints: (options: {
-      projectPath: string
+      workspaceId: string
       fromCheckpointId?: string | null
       toCheckpointId: string
       filePath?: string
     }) => Promise<GitCheckpointDiffResult>
     gitReadCheckpointFilePair: (options: {
-      projectPath: string
+      workspaceId: string
       fromCheckpointId?: string | null
       toCheckpointId: string
       filePath: string
     }) => Promise<GitCheckpointFilePairResult>
     gitDeleteCheckpointRefs: (options: {
-      projectPath: string
+      workspaceId: string
       checkpointIds: string[]
     }) => Promise<GitCheckpointDeleteResult>
     gitDeleteAllCheckpointRefs: (options: {
-      projectPath: string
+      workspaceId: string
     }) => Promise<GitCheckpointDeleteResult>
     gitGetHeadDiffStats: (options: {
-      projectPath: string
+      workspaceId: string
       authorName?: string
     }) => Promise<GitCheckpointHeadStatsResult>
     gitListChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: GitChangesScope
       authorName?: string
     }) => Promise<GitChangesListResult>
     gitReadChangesPatch: (options: {
-      projectPath: string
+      workspaceId: string
       scope: GitChangesScope
       filePath?: string
       authorName?: string
     }) => Promise<GitChangesPatchResult>
     gitReadChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: GitChangesScope
       authorName?: string
     }) => Promise<GitChangesResult>
     subscribeGitChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: GitChangesScope
     }) => Promise<GitChangesSnapshot>
     unsubscribeGitChanges: (options: {
-      projectPath: string
+      workspaceId: string
       scope: GitChangesScope
     }) => Promise<{ success: boolean }>
     onGitChangesUpdated: (callback: (snapshot: GitChangesSnapshot) => void) => () => void
     subscribeGitDirtyState: (options: {
-      projectPath: string
+      workspaceId: string
       authorName?: string
     }) => Promise<GitDirtyStateSnapshot>
     unsubscribeGitDirtyState: (options: {
-      projectPath: string
+      workspaceId: string
     }) => Promise<{ success: boolean }>
     onGitDirtyStateChange: (callback: (snapshot: GitDirtyStateSnapshot) => void) => () => void
     mergePreview: (options: {
@@ -1861,11 +1850,17 @@ export interface ElectronAPI {
     setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>
     onExternalFileChange: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       content: string
       origin?: string | FileChangeAttribution
     }) => void) => () => void
     onExternalFileMetaChange: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       origin?: string | FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
@@ -1874,17 +1869,20 @@ export interface ElectronAPI {
     }) => void) => () => void
     onExternalFileDelete: (callback: (data: {
       filePath: string
+      workspaceId?: string
+      projectRootPath?: string
+      relativePath?: string
       origin?: string | FileChangeAttribution
     }) => void) => () => void
   }
   devServer: {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
-    stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
-    resize: (options: { projectPath: string; cols: number; rows: number }) => Promise<{ success: boolean }>
-    isRunning: (options: { projectPath: string }) => Promise<boolean>
+    stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
+    resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) => Promise<{ success: boolean }>
+    isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
-    onError: (callback: (data: { projectPath: string; error: string }) => void) => () => void
+    onError: (callback: (data: { workspaceId: string; error: string }) => void) => () => void
   }
   terminal: {
     create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
@@ -1894,7 +1892,7 @@ export interface ElectronAPI {
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
     getProfiles: () => Promise<TerminalProfile[]>
-    list: (options: { projectPath: string }) => Promise<string[]>
+    list: (options: { workspaceId: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     getSnapshot: (options: { terminalId: string }) => Promise<TerminalSnapshot | null>
     getOutputEventsSince: (options: { terminalId: string; afterSequence: number }) => Promise<TerminalOutputEvent[]>
@@ -1931,5 +1929,18 @@ export interface ElectronAPI {
     install: () => Promise<{ success: boolean; error?: string }>
     getState: () => Promise<UpdateState>
     onStatus: (callback: (state: UpdateState) => void) => () => void
+  }
+  workspace?: {
+    resolveProject: (req: ResolveProjectWorkspaceRequest) => Promise<ResolveProjectWorkspaceResult>
+    listForProject: (projectId: string) => Promise<LocalWorkspaceRecord[]>
+    getActiveForProject: (projectId: string) => Promise<LocalWorkspaceRecord | null>
+    setActiveForProject: (req: { workspaceId: string; projectId: string }) => Promise<void>
+    bindExistingFolder: (req: BindExistingFolderRequest) => Promise<BindExistingFolderResult>
+    createForProject: (req: CreateWorkspaceForProjectRequest) => Promise<CreateWorkspaceForProjectResult>
+    cloneForProject: (req: CloneWorkspaceForProjectRequest) => Promise<CloneWorkspaceForProjectResult>
+    verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO }>
+    forget: (workspaceId: string) => Promise<void>
+    listCandidates: (req: { projectId: string; slug: string; roots: string[]; expectedRepo?: unknown }) => Promise<WorkspaceCandidate[]>
+    openInFinder: (folderPath: string) => Promise<void>
   }
 }

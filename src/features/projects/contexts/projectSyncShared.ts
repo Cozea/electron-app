@@ -7,7 +7,7 @@ export interface ProjectSyncContextValue {
   isSynced: boolean;
   cloudSyncBlocked: boolean;
   lastSyncAt: number | null;
-  projectPath: string | null;
+  workspaceId: string | null;
   gitCwd: string | null;
   collaborationEnabled: boolean;
   collaborationMode: "shared" | "local";
@@ -44,9 +44,10 @@ export interface ProjectSyncProviderProps {
   projectId: Id<"projects"> | null;
   userId: Id<"users"> | null;
   userName: string | null;
+  workspaceId: string | null;
+  workspaceRevision: number;
   laneId?: string | null;
   projectSlug: string | null;
-  localPath: string | null;
   gitCwd?: string | null;
   lastSyncAt?: number;
   skipInitialSyncCheck?: boolean;

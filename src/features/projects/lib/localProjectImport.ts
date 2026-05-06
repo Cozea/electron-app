@@ -7,8 +7,8 @@ export interface LocalGitState {
   error: string | null
 }
 
-export function deriveNameFromPath(projectPath: string): string {
-  const normalized = projectPath.replace(/[\\/]+$/, "")
+export function deriveNameFromPath(workspaceId: string): string {
+  const normalized = workspaceId.replace(/[\\/]+$/, "")
   const segments = normalized.split(/[\\/]/).filter(Boolean)
   return segments[segments.length - 1] ?? ""
 }
@@ -95,29 +95,29 @@ function resolveRelativeFsPath(basePath: string, targetPath: string): string {
   return `${rootPrefix}${baseSegments.join("/")}`
 }
 
-export async function detectOriginRemoteUrl(projectPath: string): Promise<string | null> {
-  const directConfig = await window.electronAPI.fs.readFile(joinFsPath(projectPath, ".git", "config"))
+export async function detectOriginRemoteUrl(workspaceId: string): Promise<string | null> {
+  const directConfig = await window.electronAPI.fs.readFile(joinFsPath(workspaceId, ".git", "config"))
   if (directConfig) {
     return parseGitRemoteUrl(directConfig)
   }
 
-  const gitEntry = await window.electronAPI.fs.readFile(joinFsPath(projectPath, ".git"))
+  const gitEntry = await window.electronAPI.fs.readFile(joinFsPath(workspaceId, ".git"))
   const gitDirMatch = gitEntry?.match(/gitdir:\s*(.+)\s*$/i)
   if (!gitDirMatch?.[1]) {
     return null
   }
 
-  const resolvedGitDir = resolveRelativeFsPath(projectPath, gitDirMatch[1].trim())
+  const resolvedGitDir = resolveRelativeFsPath(workspaceId, gitDirMatch[1].trim())
   const linkedConfig = await window.electronAPI.fs.readFile(joinFsPath(resolvedGitDir, "config"))
   return linkedConfig ? parseGitRemoteUrl(linkedConfig) : null
 }
 
 export async function detectCurrentBranch(
-  projectPath: string,
+  workspaceId: string,
   fallbackBranch: string,
 ): Promise<string> {
   try {
-    const result = await window.electronAPI.project.listGitBranches({ projectPath })
+    const result = await window.electronAPI.project.listGitBranches({ workspaceId })
     const currentBranch = result.branches.find(
       (branch) => branch.current && !branch.isRemote,
     )?.name?.trim()
@@ -134,15 +134,15 @@ export async function detectCurrentBranch(
   }
 }
 
-export async function inspectLocalGitState(projectPath: string): Promise<LocalGitState> {
+export async function inspectLocalGitState(workspaceId: string): Promise<LocalGitState> {
   try {
-    const branches = await window.electronAPI.project.listGitBranches({ projectPath })
+    const branches = await window.electronAPI.project.listGitBranches({ workspaceId })
     const branch =
       branches.branches.find((item) => item.current && !item.isRemote)?.name?.trim() ??
       branches.branches.find((item) => item.isDefault && !item.isRemote)?.name?.trim() ??
       "main"
     const remoteUrl = branches.hasOriginRemote
-      ? await detectOriginRemoteUrl(projectPath)
+      ? await detectOriginRemoteUrl(workspaceId)
       : null
 
     return {

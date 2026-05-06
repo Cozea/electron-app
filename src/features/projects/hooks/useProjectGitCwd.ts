@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { projectOpenDesktopClient } from "@/features/projects/lib/projectOpenDesktopClient";
-
-function normalizeProjectPath(projectPath: string): string {
-  return projectPath.replace(/\\/g, "/").replace(/\/+$/, "");
+function normalizeProjectPath(workspaceId: string): string {
+  return workspaceId.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 /**
@@ -12,22 +10,22 @@ function normalizeProjectPath(projectPath: string): string {
  * This intentionally only returns a cwd when the project's own local path is the
  * repo root, so nested folders do not accidentally inherit a parent checkout.
  */
-export function useProjectGitCwd(projectPath: string | null): string | null {
+export function useProjectGitCwd(workspaceId: string | null): string | null {
   const [gitCwd, setGitCwd] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!projectPath) {
+    if (!workspaceId) {
       setGitCwd(null);
       return;
     }
 
-    const normalizedProjectPath = normalizeProjectPath(projectPath);
+    const normalizedProjectPath = normalizeProjectPath(workspaceId);
     let cancelled = false;
 
     const loadGitCwd = async () => {
       try {
-        const statusResult = await projectOpenDesktopClient.sync.gitStatus({
-          projectPath,
+        const statusResult = await window.electronAPI.workspaceSync.gitStatus({
+          workspaceId,
         });
         if (cancelled) {
           return;
@@ -64,7 +62,7 @@ export function useProjectGitCwd(projectPath: string | null): string | null {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [projectPath]);
+  }, [workspaceId]);
 
   return gitCwd;
 }

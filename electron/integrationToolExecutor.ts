@@ -10,6 +10,8 @@ import * as integrationKeys from './integrationKeys'
 import * as integrationCrypto from './integrationCrypto'
 import { createRuntimeEnv } from './runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from './runtime/runtimeResolver'
+import { resolveAuthorizedWorkspaceAccess } from './workspaces/authorization.ts'
+import type { CwdSpec } from '../shared/workspaceTypes.ts'
 
 // ============================================
 // Types
@@ -497,7 +499,9 @@ export async function executeIntegrationTool(
 export async function runIntegrationTool(params: {
   toolName: string
   args: string[]
-  workingDir: string
+  workspaceId: string
+  laneId: string
+  cwd?: { kind: 'projectRoot' } | { kind: 'relative'; path: string }
   encryptedCredentials: string
   keyId: string
   timeout?: number
@@ -508,11 +512,25 @@ export async function runIntegrationTool(params: {
     return { success: false, error: decryptResult.error || 'Failed to decrypt credentials' }
   }
 
+  // Resolve working directory
+  let workingDir = ''
+  try {
+    const access = await resolveAuthorizedWorkspaceAccess({
+      workspaceId: params.workspaceId,
+      laneId: params.laneId,
+      operation: 'integration-tool',
+      cwd: params.cwd as CwdSpec | undefined
+    })
+    workingDir = access.cwd ?? access.projectRootPath
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to resolve workspace path' }
+  }
+
   // Execute the tool
   return executeIntegrationTool({
     toolName: params.toolName,
     args: params.args,
-    workingDir: params.workingDir,
+    workingDir,
     credentials: decryptResult.credentials,
     timeout: params.timeout,
   })

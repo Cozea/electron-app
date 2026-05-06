@@ -39,12 +39,12 @@ function getLoginShellArgs(shellPath: string): string[] | undefined {
 
 interface ManagedTerminal {
   id: string
-  projectPath: string
+  workspaceId: string
+  projectRootPath: string
   gitCwd: string
   runId?: string
   sessionKey?: string
   laneId?: string
-  workspaceId?: string
   terminalKind: string
   activityTracking: TerminalActivityTrackingMode
   ptyProcess: pty.NativePty
@@ -443,7 +443,7 @@ function extractCompletedCommands(
 
 export class TerminalRuntimeHost extends EventEmitter {
   private readonly terminals = new Map<string, ManagedTerminal>()
-  private readonly projectTerminals = new Map<string, string[]>()
+  private readonly workspaceTerminals = new Map<string, string[]>()
   private readonly terminalHistory = new Map<string, TerminalSnapshot>()
 
   private normalizeActivityTracking(
@@ -527,14 +527,14 @@ export class TerminalRuntimeHost extends EventEmitter {
     return candidates
   }
 
-  private removeProjectTerminal(projectPath: string, terminalId: string): void {
-    const ids = this.projectTerminals.get(projectPath) || []
+  private removeWorkspaceTerminal(workspaceId: string, terminalId: string): void {
+    const ids = this.workspaceTerminals.get(workspaceId) || []
     const remaining = ids.filter((id) => id !== terminalId)
     if (remaining.length > 0) {
-      this.projectTerminals.set(projectPath, remaining)
+      this.workspaceTerminals.set(workspaceId, remaining)
       return
     }
-    this.projectTerminals.delete(projectPath)
+    this.workspaceTerminals.delete(workspaceId)
   }
 
   private pruneHistory(now = Date.now()): void {
@@ -563,7 +563,7 @@ export class TerminalRuntimeHost extends EventEmitter {
   private toSnapshot(terminal: ManagedTerminal): TerminalSnapshot {
     return {
       id: terminal.id,
-      projectPath: terminal.projectPath,
+      workspaceId: terminal.workspaceId,
       runId: terminal.runId,
       command: terminal.lastInput,
       stdout: terminal.output,
@@ -681,13 +681,13 @@ export class TerminalRuntimeHost extends EventEmitter {
       event: 'terminal.provenance',
       payload: {
         terminalId: terminal.id,
-        projectPath: terminal.projectPath,
+        workspaceId: terminal.workspaceId,
+        projectRootPath: terminal.projectRootPath,
         gitCwd: terminal.gitCwd,
         title: terminal.title,
         terminalKind: terminal.terminalKind,
         sessionKey: terminal.sessionKey,
         laneId: terminal.laneId,
-        workspaceId: terminal.workspaceId,
         runId: terminal.runId,
         commandId: payload?.commandId,
         commandText: payload?.commandText,
@@ -771,7 +771,11 @@ export class TerminalRuntimeHost extends EventEmitter {
       const candidates = this.getTerminalProfileCandidates(profile)
       const cols = normalizeTerminalDimension(options.cols ?? DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS)
       const rows = normalizeTerminalDimension(options.rows ?? DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS)
-      const cwd = options.cwd || options.projectPath
+      const cwd = typeof options.cwd === 'string' ? options.cwd : (options as any).projectRootPath
+      const projectRootPath =
+        typeof (options as any).projectRootPath === 'string'
+          ? (options as any).projectRootPath
+          : cwd
 
       if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
         return { success: false, error: `Terminal working directory does not exist: ${cwd || '(empty)'}` }
@@ -788,12 +792,12 @@ export class TerminalRuntimeHost extends EventEmitter {
       const terminalId = Math.random().toString(36).substring(2, 15)
       const terminal: Partial<ManagedTerminal> = {
         id: terminalId,
-        projectPath: options.projectPath,
-        gitCwd: options.gitCwd || options.projectPath,
+        workspaceId: options.workspaceId,
+        projectRootPath,
+        gitCwd: typeof options.gitCwd === 'string' ? options.gitCwd : cwd,
         runId: options.runId,
         sessionKey: options.sessionKey,
         laneId: options.laneId,
-        workspaceId: options.workspaceId,
         terminalKind: options.terminalKind ?? 'shell',
         activityTracking: this.normalizeActivityTracking(options.activityTracking),
         cols,
@@ -856,7 +860,7 @@ export class TerminalRuntimeHost extends EventEmitter {
               const managedTerminal = terminal as ManagedTerminal
               this.persistTerminalSnapshot(managedTerminal)
               this.terminals.delete(terminalId)
-              this.removeProjectTerminal(options.projectPath, terminalId)
+              this.removeWorkspaceTerminal(options.workspaceId, terminalId)
 
               const payload: WorkbenchRuntimeTerminalExitPayload = {
                 terminalId,
@@ -892,9 +896,9 @@ export class TerminalRuntimeHost extends EventEmitter {
       this.startActivityPolling(managedTerminal)
       this.emitTerminalProvenance(managedTerminal)
 
-      const projectTerminals = this.projectTerminals.get(options.projectPath) || []
-      projectTerminals.push(terminalId)
-      this.projectTerminals.set(options.projectPath, projectTerminals)
+      const workspaceTerminals = this.workspaceTerminals.get(options.workspaceId) || []
+      workspaceTerminals.push(terminalId)
+      this.workspaceTerminals.set(options.workspaceId, workspaceTerminals)
 
       return {
         success: true,
@@ -906,7 +910,7 @@ export class TerminalRuntimeHost extends EventEmitter {
       const detail = error instanceof Error ? error.message : 'Failed to create terminal'
       return {
         success: false,
-        error: `Failed to create terminal (profile=${options.profileId ?? 'default'}, path=${options.cwd || options.projectPath}): ${detail}`,
+        error: `Failed to create terminal (profile=${options.profileId ?? 'default'}, path=${options.cwd || options.workspaceId}): ${detail}`,
       }
     }
   }
@@ -1005,8 +1009,8 @@ export class TerminalRuntimeHost extends EventEmitter {
     return true
   }
 
-  public listTerminalIds(projectPath: string): string[] {
-    return this.projectTerminals.get(projectPath) || []
+  public listTerminalIds(workspaceId: string): string[] {
+    return this.workspaceTerminals.get(workspaceId) || []
   }
 
   public getInfo(terminalId: string): TerminalInfo | null {
@@ -1053,6 +1057,6 @@ export class TerminalRuntimeHost extends EventEmitter {
     }
 
     this.terminals.clear()
-    this.projectTerminals.clear()
+    this.workspaceTerminals.clear()
   }
 }

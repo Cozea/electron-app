@@ -7,7 +7,7 @@ import { useWorkbenchBranchControl } from "@/features/projects/components/workbe
 
 interface WorkbenchHeaderBranchControlProps {
   projectId: string | null
-  projectPath: string | null
+  workspaceId: string | null
   collabBranch: string
   laneState: ProjectLaneState | null
   activeLane: ProjectLaneDescriptor | null
@@ -19,7 +19,7 @@ interface WorkbenchHeaderBranchControlProps {
 
 export function WorkbenchHeaderBranchControl({
   projectId,
-  projectPath,
+  workspaceId,
   collabBranch,
   laneState,
   activeLane,
@@ -35,7 +35,7 @@ export function WorkbenchHeaderBranchControl({
     handleOpenNativeBranchMenu,
   } = useWorkbenchBranchControl({
     projectId,
-    projectPath,
+    workspaceId,
     collabBranch,
     laneState,
     activeLane,

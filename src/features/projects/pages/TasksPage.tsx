@@ -640,13 +640,13 @@ function buildAssigneeClaimants(
 function TaskListRow({
   item,
   projectId,
-  projectPath,
+  workspaceId,
   onToggleMarker,
   t,
 }: {
   item: BoardItem
   projectId: string
-  projectPath: string | null
+  workspaceId: string | null
   onToggleMarker: (item: BoardItem, markerId: string) => void
   t: any
 }) {
@@ -676,7 +676,7 @@ function TaskListRow({
     if (item.context.kind === 'file') {
       const result = await openProjectFileInExternalEditor({
         filePath: item.context.value,
-        projectPath,
+        workspaceId,
       })
       if (!result.success) {
         console.error('[TasksPage] Failed to open file in external editor', result.error)
@@ -790,7 +790,7 @@ export function TasksPage({
   const { project } = useAccessibleProject()
   const { convexUserId } = useAuth()
   const syncContext = useOptionalProjectSyncContext()
-  const projectPath = syncContext?.projectPath ?? null
+  const workspaceId = syncContext?.workspaceId ?? null
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<BoardStatus, boolean>>(
     DEFAULT_COLLAPSED_GROUPS,
@@ -1011,7 +1011,7 @@ export function TasksPage({
       : draftContextFilesLoading && fileContextOptions.length === 0
 
   useEffect(() => {
-    if (!isCreateDialogOpen || !projectPath) return
+    if (!isCreateDialogOpen || !workspaceId) return
 
     let isCancelled = false
 
@@ -1024,7 +1024,7 @@ export function TasksPage({
       try {
         const contextResult = window.electronAPI?.project
           ? await window.electronAPI.project.getContextOptions({
-            projectPath,
+            workspaceId,
             frameworkInfo: storedFrameworkInfo,
           })
           : null
@@ -1056,7 +1056,7 @@ export function TasksPage({
     return () => {
       isCancelled = true
     }
-  }, [isCreateDialogOpen, projectPath, storedFrameworkInfo])
+  }, [isCreateDialogOpen, workspaceId, storedFrameworkInfo])
 
   useEffect(() => {
     if (pageContextOptions.length > 0 && !pageContextOptions.some((option) => option.value === draftPageContextValue)) {
@@ -1623,7 +1623,7 @@ export function TasksPage({
                   <TaskListRow
                     item={item}
                     projectId={projectId ?? ""}
-                    projectPath={projectPath}
+                    workspaceId={workspaceId}
                     onToggleMarker={handleToggleMarker}
                     t={t}
                   />

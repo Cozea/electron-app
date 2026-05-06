@@ -4,7 +4,7 @@ export const toolingSettingsClient = {
     options?: Parameters<typeof window.electronAPI.runtime.getRuntimeStatus>[0]
   ) => window.electronAPI.runtime.getRuntimeStatus(options),
   getGitRuntimeHealth: () =>
-    window.electronAPI?.sync?.getGitRuntimeHealth
-      ? window.electronAPI.sync.getGitRuntimeHealth()
+    window.electronAPI?.workspaceSync?.getGitRuntimeHealth
+      ? window.electronAPI.workspaceSync.getGitRuntimeHealth()
       : Promise.resolve(null),
 }

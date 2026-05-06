@@ -1,0 +1,107 @@
+# Implementation Plan
+
+- [-] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Dead Code Functions Exist
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the dead code exists
+  - **Scoped PBT Approach**: For deterministic bugs, scope the property to the concrete failing case(s) to ensure reproducibility
+  - Test that the three unused functions exist in the codebase (from Bug Condition in design)
+  - Search for `resolveRegisteredWorkspaceId` in `electron/services/WorkbenchSessionManager.ts` - should find declaration at line 169
+  - Search for `normalizeRepositoryUrl` in `electron/ipc/registerProjectHandlers.ts` - should find declaration at line 151
+  - Search for `resolveAvailableProjectPath` in `electron/ipc/registerProjectHandlers.ts` - should find declaration at line 172
+  - Run ESLint on affected files - should produce "declared but never used" warnings
+  - The test assertions should match the Expected Behavior Properties from design (functions should NOT exist)
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found: ESLint warnings and function declarations present
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
+
+- [~] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Existing Functionality Preserved
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs (all other functions in affected files)
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements
+  - Test that `normalizeWorkspaceId` exists and is callable (dependency of removed function)
+  - Test that `readRegisteredWorkspaceId` exists and is callable (dependency of removed function)
+  - Test that other functions in `WorkbenchSessionManager.ts` exist and are callable
+  - Test that other functions in `registerProjectHandlers.ts` exist and are callable
+  - Test that `bun run typecheck` passes on unfixed code
+  - Test that `bun run build` completes successfully on unfixed code
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
+
+- [~] 3. Remove dead code functions
+
+  - [ ] 3.1 Remove resolveRegisteredWorkspaceId from WorkbenchSessionManager.ts
+    - Delete the entire function declaration at lines 169-172
+    - Remove any JSDoc comments associated with the function
+    - Ensure no blank line gaps are left that would affect code readability
+    - _Bug_Condition: isBugCondition(functionDeclaration) where functionDeclaration.name == 'resolveRegisteredWorkspaceId' AND countCallSites(functionDeclaration) == 0_
+    - _Expected_Behavior: Function declaration should not exist in the codebase (from design)_
+    - _Preservation: All other functions in WorkbenchSessionManager.ts must continue to work correctly; normalizeWorkspaceId and readRegisteredWorkspaceId must remain intact_
+    - _Requirements: 2.1, 2.4, 2.5, 2.6, 3.1, 3.3, 3.4_
+
+  - [ ] 3.2 Remove normalizeRepositoryUrl from registerProjectHandlers.ts
+    - Delete the entire function declaration at lines 151-171
+    - Remove any JSDoc comments associated with the function
+    - Ensure no blank line gaps are left that would affect code readability
+    - Note: A different function with the same name exists in repositoryAccessService.ts and must NOT be removed
+    - _Bug_Condition: isBugCondition(functionDeclaration) where functionDeclaration.name == 'normalizeRepositoryUrl' AND functionDeclaration.file == 'registerProjectHandlers.ts' AND countCallSites(functionDeclaration) == 0_
+    - _Expected_Behavior: Function declaration should not exist in registerProjectHandlers.ts (from design)_
+    - _Preservation: All other functions in registerProjectHandlers.ts must continue to work correctly; the normalizeRepositoryUrl in repositoryAccessService.ts must remain intact_
+    - _Requirements: 2.2, 2.4, 2.5, 2.6, 3.2, 3.4_
+
+  - [ ] 3.3 Remove resolveAvailableProjectPath from registerProjectHandlers.ts
+    - Delete the entire function declaration at lines 172-187
+    - Remove any JSDoc comments associated with the function
+    - Ensure no blank line gaps are left that would affect code readability
+    - _Bug_Condition: isBugCondition(functionDeclaration) where functionDeclaration.name == 'resolveAvailableProjectPath' AND countCallSites(functionDeclaration) == 0_
+    - _Expected_Behavior: Function declaration should not exist in the codebase (from design)_
+    - _Preservation: All other functions in registerProjectHandlers.ts must continue to work correctly_
+    - _Requirements: 2.3, 2.4, 2.5, 2.6, 3.2, 3.4_
+
+  - [ ] 3.4 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Dead Code Functions Removed
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - Search for `resolveRegisteredWorkspaceId` - should find NO results
+    - Search for `normalizeRepositoryUrl` in `registerProjectHandlers.ts` - should find NO results
+    - Search for `resolveAvailableProjectPath` - should find NO results
+    - Run ESLint on affected files - should produce NO "declared but never used" warnings for these functions
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+  - [ ] 3.5 Verify preservation tests still pass
+    - **Property 2: Preservation** - Existing Functionality Preserved
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - Verify `normalizeWorkspaceId` still exists and is callable
+    - Verify `readRegisteredWorkspaceId` still exists and is callable
+    - Verify other functions in affected files still exist and are callable
+    - Verify `bun run typecheck` passes
+    - Verify `bun run build` completes successfully
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm all tests still pass after fix (no regressions)
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
+
+- [~] 4. Checkpoint - Ensure all tests pass
+  - Run `bun run typecheck` - should pass with no errors
+  - Run `bun run lint` - should pass with no warnings for the removed functions
+  - Run `bun run build` - should complete successfully
+  - Launch application - should start without errors
+  - Verify workbench session can be created and activated
+  - Verify project creation flow works
+  - Code search for `resolveRegisteredWorkspaceId` finds no results
+  - Code search for `normalizeRepositoryUrl` in `registerProjectHandlers.ts` finds no results
+  - Code search for `resolveAvailableProjectPath` finds no results
+  - Verify `normalizeWorkspaceId` still exists and is used elsewhere
+  - Verify `readRegisteredWorkspaceId` still exists and is used elsewhere
+  - Ensure all tests pass, ask the user if questions arise

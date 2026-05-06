@@ -5,14 +5,13 @@ import {
 } from "@/contexts/YjsProjectContextValue"
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
 import { ProjectSyncProviderRuntime } from "@/features/projects/contexts/ProjectSyncProviderRuntime"
-import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"
 import {
   useWorkspaceRuntimeStore,
   type WorkspaceRuntimeRecord,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
 import { selectHostedWorkspaceRuntimeRecords } from "@/features/projects/workspaces/workspaceRuntimePolicy"
 
-function WorkspaceRuntimeObserver({ workspaceId }: { workspaceId: string }) {
+function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
   const yjsContext = useYjsProject()
   const syncContext = useOptionalProjectSyncContext()
   const publishSyncContext = useWorkspaceRuntimeStore((state) => state.actions.publishSyncContext)
@@ -20,26 +19,26 @@ function WorkspaceRuntimeObserver({ workspaceId }: { workspaceId: string }) {
   const clearPublishedContexts = useWorkspaceRuntimeStore((state) => state.actions.clearPublishedContexts)
 
   useEffect(() => {
-    publishSyncContext(workspaceId, syncContext)
-  }, [publishSyncContext, syncContext, workspaceId])
+    publishSyncContext(runtimeId, syncContext)
+  }, [publishSyncContext, runtimeId, syncContext])
 
   useEffect(() => {
-    publishYjsContext(workspaceId, yjsContext)
-  }, [publishYjsContext, workspaceId, yjsContext])
+    publishYjsContext(runtimeId, yjsContext)
+  }, [publishYjsContext, runtimeId, yjsContext])
 
   useEffect(() => {
     return () => {
-      clearPublishedContexts(workspaceId)
+      clearPublishedContexts(runtimeId)
     }
-  }, [clearPublishedContexts, workspaceId])
+  }, [clearPublishedContexts, runtimeId])
 
   return null
 }
 
 function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
-  const { config, workspaceId } = record
+  const { config, runtimeId, workspaceId } = record
 
-  if (!config.projectId || !config.userId || !config.localPath) {
+  if (!config.projectId || !config.userId || !config.workspaceId) {
     return null
   }
 
@@ -49,8 +48,9 @@ function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
       userId={config.userId}
       userName={config.userName}
       laneId={config.laneId}
+      workspaceId={workspaceId}
+      workspaceRevision={config.workspaceRevision}
       projectSlug={config.projectSlug}
-      localPath={config.localPath}
       gitCwd={config.gitCwd}
       lastSyncAt={config.lastSyncAt ?? undefined}
       collaborationEnabled={config.collaborationEnabled}
@@ -59,7 +59,7 @@ function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
       documentScopeId={config.documentScopeId}
       renderDeleteConflictDialog={false}
     >
-      <WorkspaceRuntimeObserver workspaceId={workspaceId} />
+      <WorkspaceRuntimeObserver runtimeId={runtimeId} />
     </ProjectSyncProviderRuntime>
   )
 }
@@ -80,32 +80,16 @@ export function WorkspaceRuntimeHosts() {
     [runtimeRecords],
   )
 
-  const interestRoots = useMemo(() => {
-    const seen = new Set<string>()
-    const roots: string[] = []
-
-    for (const record of hostedRuntimeRecords) {
-      const normalizedRoot = normalizeWorkspaceProjectPath(record.config.localPath)
-      if (!normalizedRoot || seen.has(normalizedRoot)) {
-        continue
-      }
-      seen.add(normalizedRoot)
-      roots.push(normalizedRoot)
-    }
-
-    return roots
-  }, [hostedRuntimeRecords])
-
   useEffect(() => {
     const yjsApi = window.electronAPI?.yjs
     if (!yjsApi?.setInterestRoots) {
       return
     }
 
-    void yjsApi.setInterestRoots({ roots: interestRoots }).catch((error) => {
+    void yjsApi.setInterestRoots({ roots: [] }).catch((error) => {
       console.warn("[WorkspaceRuntimeHosts] Failed to update Yjs interest roots", error)
     })
-  }, [interestRoots])
+  }, [])
 
   useEffect(() => {
     refreshLifecycles()
@@ -125,7 +109,7 @@ export function WorkspaceRuntimeHosts() {
   return (
     <>
       {hostedRuntimeRecords.map((record) => (
-        <WorkspaceRuntimeHost key={record.workspaceId} record={record} />
+        <WorkspaceRuntimeHost key={record.runtimeId} record={record} />
       ))}
     </>
   )

@@ -10,7 +10,7 @@ interface GitChangesState {
   projects: Record<string, Partial<Record<GitChangesScope, StoreGitChangesScopeState>>>
   actions: {
     handleSnapshotUpdate: (snapshot: GitChangesSnapshot) => void
-    watchGitStatus: (projectPath: string, scope: GitChangesScope) => () => void
+    watchGitStatus: (workspaceId: string, scope: GitChangesScope) => () => void
   }
 }
 
@@ -19,7 +19,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
   actions: {
     handleSnapshotUpdate: (snapshot) => {
       set((state) => {
-        const projectState = state.projects[snapshot.projectPath] ?? {}
+        const projectState = state.projects[snapshot.workspaceId] ?? {}
         const scopeState = projectState[snapshot.scope] ?? { snapshot: null, refCount: 0 }
 
         if (
@@ -34,7 +34,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
           ...state,
           projects: {
             ...state.projects,
-            [snapshot.projectPath]: {
+            [snapshot.workspaceId]: {
               ...projectState,
               [snapshot.scope]: {
                 ...scopeState,
@@ -45,11 +45,11 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
         }
       })
     },
-    watchGitStatus: (projectPath: string, scope: GitChangesScope) => {
+    watchGitStatus: (workspaceId: string, scope: GitChangesScope) => {
       let isFirstSubscription = false
 
       set((state) => {
-        const projectState = state.projects[projectPath] ?? {}
+        const projectState = state.projects[workspaceId] ?? {}
         const scopeState = projectState[scope] ?? { snapshot: null, refCount: 0 }
 
         isFirstSubscription = scopeState.refCount === 0
@@ -58,7 +58,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
           ...state,
           projects: {
             ...state.projects,
-            [projectPath]: {
+            [workspaceId]: {
               ...projectState,
               [scope]: {
                 ...scopeState,
@@ -70,7 +70,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
       })
 
       if (isFirstSubscription) {
-        window.electronAPI.sync.subscribeGitChanges({ projectPath, scope }).catch(() => {
+        window.electronAPI.workspaceSync.subscribeGitChanges({ workspaceId, scope }).catch(() => {
           // ignore
         })
       }
@@ -79,7 +79,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
         let isLastUnsubscribe = false
 
         set((state) => {
-          const projectState = state.projects[projectPath] ?? {}
+          const projectState = state.projects[workspaceId] ?? {}
           const scopeState = projectState[scope] ?? { snapshot: null, refCount: 0 }
 
           const nextRefCount = Math.max(0, scopeState.refCount - 1)
@@ -89,7 +89,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
             ...state,
             projects: {
               ...state.projects,
-              [projectPath]: {
+              [workspaceId]: {
                 ...projectState,
                 [scope]: {
                   ...scopeState,
@@ -101,7 +101,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
         })
 
         if (isLastUnsubscribe) {
-          window.electronAPI.sync.unsubscribeGitChanges({ projectPath, scope }).catch(() => {
+          window.electronAPI.workspaceSync.unsubscribeGitChanges({ workspaceId, scope }).catch(() => {
             // ignore
           })
         }
@@ -111,7 +111,7 @@ export const useGitChangesStore = create<GitChangesState>()((set) => ({
 }))
 
 if (typeof window !== 'undefined' && window.electronAPI) {
-  window.electronAPI.sync.onGitChangesUpdated((snapshot) => {
+  window.electronAPI.workspaceSync.onGitChangesUpdated((snapshot) => {
     useGitChangesStore.getState().actions.handleSnapshotUpdate(snapshot)
   })
 }

@@ -55,39 +55,33 @@ export function isBareProjectSourceReference(reference: string): boolean {
   return normalized.length > 0 && !normalized.includes('/')
 }
 
-export function toProjectRelativeSourcePath(reference: string, projectPath: string): string | null {
+export function toProjectRelativeSourcePath(reference: string): string | null {
   const normalizedReference = normalizeProjectSourceReference(reference)
-  const normalizedProjectPath = normalizeProjectSourceReference(projectPath)
 
-  if (!normalizedReference || !normalizedProjectPath) {
+  if (!normalizedReference) {
     return null
   }
 
-  if (normalizedReference === normalizedProjectPath) {
-    return ''
-  }
-
-  if (normalizedReference.startsWith(`${normalizedProjectPath}/`)) {
-    return normalizedReference.slice(normalizedProjectPath.length + 1)
-  }
-
   if (/^[A-Za-z]:\//.test(normalizedReference)) {
+    return null
+  }
+  if (normalizedReference.startsWith('/')) {
     return null
   }
 
   return normalizedReference.replace(/^\/+/, '')
 }
 
-export async function resolveProjectSourcePath(reference: string, projectPath: string): Promise<string | null> {
-  const directPath = toProjectRelativeSourcePath(reference, projectPath)
+export async function resolveProjectSourcePath(reference: string, workspaceId: string): Promise<string | null> {
+  const directPath = toProjectRelativeSourcePath(reference)
 
-  const listResult = await window.electronAPI.project.listFiles({ projectPath })
+  const listResult = await window.electronAPI.project.listFiles({ workspaceId })
   if (!listResult.success) {
     return null
   }
   const files = listResult.files ?? []
 
-  if (!directPath) {
+  if (directPath === null) {
     return null
   }
 

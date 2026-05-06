@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo,  } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -19,14 +19,15 @@ import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
-import { primeLocalProjectPath, useLocalProjectPath } from "@/features/projects/hooks/useLocalProjectPath";
-import { resolveAttachedLocalProjectPathHint } from "@/features/projects/lib/projectLocalRootHints";
+import { featureFlags } from "@/lib/featureFlags";
+import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution";
+import { WorkspaceRepairScreen } from "@/features/projects/workspaces/WorkspaceRepairScreen";
+import { ActiveWorkspaceProvider } from "@/features/projects/workspaces/ActiveWorkspaceContext";
 import {
   buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
 } from "@/features/projects/lib/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
-import { useProjectGitCwd } from "@/features/projects/hooks/useProjectGitCwd";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import { useDeferredActivation } from "@/hooks/useDeferredActivation";
 import {
@@ -37,6 +38,7 @@ import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchS
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
 import { formatActorDisplayName } from "@/lib/userDisplay";
+import type { WorkspaceResolutionAction } from "../../../../shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/projects/components/SettingsSidebar").then((module) => ({
@@ -54,13 +56,6 @@ const LazyPresenceAvatarGroup = lazy(() =>
   })),
 );
 
-function normalizeProjectPath(projectPath: string | null | undefined): string | null {
-  if (!projectPath?.trim()) {
-    return null;
-  }
-
-  return projectPath.replace(/\\/g, "/").replace(/\/+$/, "");
-}
 
 function SidebarModeFallback() {
   return <div className="w-56 shrink-0 bg-sidebar" />;
@@ -74,7 +69,7 @@ interface ProjectLayoutLocationState {
   projectId?: string | null;
   projectSlug?: string | null;
   projectName?: string | null;
-  localPath?: string | null;
+  preferredWorkspaceId?: string | null;
   pendingTeamSetup?: Array<{
     email: string;
     name?: string;
@@ -84,14 +79,7 @@ interface ProjectLayoutLocationState {
   }>;
 }
 
-function extractProjectCloudLocalPath(project: unknown): string | null {
-  if (!project || typeof project !== "object" || !("localPath" in project)) {
-    return null;
-  }
 
-  const localPath = (project as { localPath?: unknown }).localPath;
-  return typeof localPath === "string" && localPath.trim().length > 0 ? localPath : null;
-}
 
 export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
@@ -145,58 +133,24 @@ export function ProjectLayout({
         ? buildLegacyProjectPath(projectSlug)
         : null;
 
-  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath);
   const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
   const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
-  const mirroredLocalPathRef = useRef<string | null>(null);
-  const navigationLocalPath = trustedNavigationState?.localPath ?? null;
-  const trustedNavigationPath = useMemo(
-    () => normalizeProjectPath(navigationLocalPath),
-    [navigationLocalPath],
-  );
-  const projectCloudLocalPath = useMemo(() => extractProjectCloudLocalPath(project), [project]);
-  const attachedPathHint = useMemo(
-    () =>
-      resolveAttachedLocalProjectPathHint(
-        project as {
-          importedFrom?: { provider: string; repoFullName: string; branch?: string | null } | null;
-        } | null,
-      ),
-    [project],
-  );
-  const normalizedAttachedPathHint = useMemo(
-    () => normalizeProjectPath(attachedPathHint),
-    [attachedPathHint],
-  );
-  const { localPath: candidateLocalPath } = useLocalProjectPath({
-    initialPath: navigationLocalPath,
-    preferInitialPath: Boolean(navigationLocalPath),
-    verifySeededPath: Boolean(navigationLocalPath),
-    projectId: project?._id ? String(project._id) : routeProjectId,
+  const { result: workspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
+    featureFlags.localWorkspaceCatalog && project?._id ? String(project._id) : null,
     projectSlug,
-    cloudPathHint: projectCloudLocalPath,
-    attachedPathHint,
-  });
-  const [effectiveLocalPath, setEffectiveLocalPath] = useState<string | null>(
-    normalizeProjectPath(navigationLocalPath),
+    null,
+    trustedNavigationState?.preferredWorkspaceId ?? null,
   );
 
-  useEffect(() => {
-    const normalizedCandidatePath = normalizeProjectPath(candidateLocalPath);
-    if (normalizedCandidatePath) {
-      setEffectiveLocalPath(normalizedCandidatePath);
-      return;
-    }
-
-    if (trustedNavigationPath) {
-      setEffectiveLocalPath(trustedNavigationPath);
-      return;
-    }
-
-    setEffectiveLocalPath(normalizeProjectPath(candidateLocalPath));
-  }, [candidateLocalPath, trustedNavigationPath]);
-
-  const gitCwd = useProjectGitCwd(effectiveLocalPath);
+  const activeWorkspaceId = workspaceResolution?.status === "ready"
+    ? workspaceResolution.workspace.workspaceId
+    : null;
+  const legacyLocalPath = featureFlags.localWorkspaceCatalog
+    ? null
+    : (trustedNavigationState?.preferredWorkspaceId ?? null);
+  const runtimeWorkspaceId = featureFlags.localWorkspaceCatalog
+    ? activeWorkspaceId
+    : legacyLocalPath;
 
   const pendingTeamSetup = useMemo(
     () => locationState?.pendingTeamSetup ?? [],
@@ -234,12 +188,12 @@ export function ProjectLayout({
         }
 
         const nextState =
-          navigationLocalPath
+          runtimeWorkspaceId
             ? buildProjectRouteNavigationState({
                 projectId: project?._id ? String(project._id) : routeProjectId ?? null,
                 projectSlug,
                 projectName: effectiveProjectName,
-                localPath: navigationLocalPath,
+                preferredWorkspaceId: runtimeWorkspaceId,
               })
             : null;
         navigate(`${location.pathname}${location.search}${location.hash}`, {
@@ -261,7 +215,7 @@ export function ProjectLayout({
     location.hash,
     location.pathname,
     location.search,
-    navigationLocalPath,
+    runtimeWorkspaceId,
     navigate,
     pendingTeamSetup,
     pendingTeamSetupReady,
@@ -271,55 +225,6 @@ export function ProjectLayout({
     effectiveProjectName,
   ]);
 
-  const trustedCloudMirrorPath = useMemo(() => {
-    if (!effectiveLocalPath) {
-      return null;
-    }
-
-    if (trustedNavigationPath && effectiveLocalPath === trustedNavigationPath) {
-      return trustedNavigationPath;
-    }
-
-    if (normalizedAttachedPathHint && effectiveLocalPath === normalizedAttachedPathHint) {
-      return normalizedAttachedPathHint;
-    }
-
-    return null;
-  }, [effectiveLocalPath, normalizedAttachedPathHint, trustedNavigationPath]);
-
-  useEffect(() => {
-    if (!effectiveLocalPath || !project?._id) {
-      return;
-    }
-
-    primeLocalProjectPath(String(project._id), effectiveLocalPath, projectSlug);
-
-    if (!convexUserId || !trustedCloudMirrorPath) {
-      return;
-    }
-
-    const mirrorKey = `${String(project._id)}:${convexUserId}:${trustedCloudMirrorPath}`;
-    if (mirroredLocalPathRef.current === mirrorKey) {
-      return;
-    }
-    mirroredLocalPathRef.current = mirrorKey;
-
-    void updateMemberLocalPath({
-      projectId: project._id,
-      userId: convexUserId,
-      localPath: trustedCloudMirrorPath,
-    }).catch((error) => {
-      mirroredLocalPathRef.current = null;
-      console.warn("[ProjectLayout] Failed to mirror local project path to cloud metadata:", error);
-    });
-  }, [
-    convexUserId,
-    effectiveLocalPath,
-    project?._id,
-    projectSlug,
-    trustedCloudMirrorPath,
-    updateMemberLocalPath,
-  ]);
 
   const isWorkbenchView = location.pathname.endsWith("/workbench");
   const isChangesView = location.pathname.endsWith("/changes");
@@ -328,13 +233,12 @@ export function ProjectLayout({
     location.pathname.startsWith("/projects/settings/") ||
     location.pathname.startsWith("/projects/workspace/") ||
     location.pathname.startsWith("/projects/teams");
-  const shouldEnableProjectRuntime = Boolean(effectiveLocalPath);
-  const runtimeProjectPath = effectiveLocalPath;
+  const shouldEnableProjectRuntime = Boolean(runtimeWorkspaceId);
   const runtimeEffectsReady = useDeferredActivation(shouldEnableProjectRuntime, {
     delayMs: 250,
     timeoutMs: 3_000,
   });
-  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeProjectPath ?? "no-path"}`;
+  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeWorkspaceId ?? "unbound"}`;
   const collabBranch = useMemo(
     () => resolveProjectSharedBranch(project),
     [project],
@@ -347,12 +251,12 @@ export function ProjectLayout({
     refreshLaneState,
   } = useProjectLaneState({
     projectId: shouldEnableProjectRuntime ? routeProjectIdentity : null,
-    projectPath: runtimeProjectPath,
+    workspaceId: activeWorkspaceId,
     collabBranch,
   });
   const activeBranch = activeLane?.branch ?? collabBranch;
   const collaborationEnabled =
-    shouldEnableProjectRuntime && Boolean(runtimeProjectPath) && activeBranch === collabBranch;
+    shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && activeBranch === collabBranch;
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
@@ -369,20 +273,20 @@ export function ProjectLayout({
     const switchStartMark = markCozeaInteractionStart("project-switch", {
       projectId: routeProjectId ?? null,
       projectSlug: routeSlug ?? null,
-      hasLocalPath: Boolean(runtimeProjectPath),
+      hasWorkspace: Boolean(runtimeWorkspaceId),
     });
     const frameId = window.requestAnimationFrame(() => {
       markCozeaInteractionEnd("project-switch", switchStartMark, {
         projectId: routeProjectId ?? null,
         projectSlug: routeSlug ?? null,
-        hasLocalPath: Boolean(runtimeProjectPath),
+        hasWorkspace: Boolean(runtimeWorkspaceId),
       });
     });
 
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeProjectPath]);
+  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
 
   const currentPreviewPage = usePageContextStore((state) => state.currentPage);
   const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
@@ -448,8 +352,105 @@ export function ProjectLayout({
     presencePreSearchAddon: presenceHeaderAddon,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
-    editorProjectPath: effectiveLocalPath ?? null,
+    editorProjectPath: runtimeWorkspaceId ?? null,
   });
+
+  const handleRepairAction = useCallback(
+    async (action: WorkspaceResolutionAction) => {
+      if (!project?._id) return;
+      const projectId = String(project._id);
+      const slug = project.slug ?? routeSlug ?? projectId;
+      const repoUrl =
+        (project as { repoSource?: { repoUrl?: string | null } | null }).repoSource?.repoUrl ??
+        (project as { sourceControl?: { repoUrl?: string | null } | null }).sourceControl?.repoUrl ??
+        null;
+      const branch =
+        (project as { repoSource?: { branch?: string | null } | null }).repoSource?.branch ??
+        (project as { sourceControl?: { defaultBranch?: string | null } | null }).sourceControl?.defaultBranch ??
+        undefined;
+
+      try {
+        switch (action.kind) {
+          case "locate": {
+            const folderPath = await window.desktopBridge?.pickFolder();
+            if (folderPath) {
+              const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+                projectId,
+                folderPath,
+                writeMarker: true,
+                setActive: true,
+                source: "locate",
+              });
+              if (bindResult.success) {
+                refreshWorkspace();
+              } else {
+                await window.desktopBridge?.confirm("Failed to bind folder: " + bindResult.error);
+              }
+            }
+            break;
+          }
+          case "bind-candidate": {
+            const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+              projectId,
+              folderPath: action.folderPath,
+              writeMarker: true,
+              setActive: true,
+              source: "repair",
+            });
+            if (bindResult.success) {
+              refreshWorkspace();
+            } else {
+              await window.desktopBridge?.confirm("Failed to bind folder: " + (bindResult.error ?? "unknown error"));
+            }
+            break;
+          }
+          case "create": {
+            const createResult = await window.electronAPI.workspace!.createForProject({
+              projectId,
+              slug,
+              initGit: true,
+              setActive: true,
+            });
+            if (createResult.success) {
+              refreshWorkspace();
+            } else {
+              await window.desktopBridge?.confirm("Failed to create workspace: " + (createResult.error ?? "unknown error"));
+            }
+            break;
+          }
+          case "clone": {
+            if (!repoUrl) {
+              await window.desktopBridge?.confirm("This project does not have a repository URL to clone.");
+              break;
+            }
+            const cloneResult = await window.electronAPI.workspace!.cloneForProject({
+              projectId,
+              slug,
+              repoUrl,
+              branch,
+              setActive: true,
+            });
+            if (cloneResult.success) {
+              refreshWorkspace();
+            } else {
+              await window.desktopBridge?.confirm("Failed to clone workspace: " + (cloneResult.error ?? "unknown error"));
+            }
+            break;
+          }
+          case "forget": {
+            if ("workspaceId" in action && action.workspaceId) {
+              await window.electronAPI.workspace!.forget(action.workspaceId);
+              refreshWorkspace();
+            }
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("[ProjectLayout] Repair action failed:", err);
+      }
+    },
+    [project, refreshWorkspace, routeSlug],
+  );
 
   const layoutContent = (
     <SidebarProvider>
@@ -491,7 +492,19 @@ export function ProjectLayout({
                   shouldRemovePadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden",
                 )}
               >
-                {children || <Outlet />}
+                {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                  </div>
+                ) : featureFlags.localWorkspaceCatalog && project?._id && workspaceResolution?.status !== "ready" ? (
+                  <WorkspaceRepairScreen
+                    result={workspaceResolution!}
+                    project={{ _id: String(project._id), slug: project.slug, name: project.name }}
+                    onAction={handleRepairAction}
+                  />
+                ) : (
+                  children || <Outlet />
+                )}
               </div>
               <TerminalEventBridge />
             </div>
@@ -509,8 +522,9 @@ export function ProjectLayout({
       slugResolution: (!routeProjectId ? freshProjectBySlug : undefined) as
         | ProjectRouteSlugResolutionResult
         | undefined,
-      localPath: effectiveLocalPath ?? null,
-      gitCwd,
+      workspaceId: activeWorkspaceId,
+      localPath: legacyLocalPath,
+      gitCwd: null,
       projectBasePath,
       projectName: effectiveProjectName,
       collabBranch,
@@ -526,8 +540,8 @@ export function ProjectLayout({
       collabLane,
       collaborationEnabled,
       effectiveProjectName,
-      gitCwd,
-      effectiveLocalPath,
+      activeWorkspaceId,
+      legacyLocalPath,
       freshProjectBySlug,
       laneState,
       project,
@@ -538,24 +552,83 @@ export function ProjectLayout({
     ],
   );
 
+
+
+  // Only block on project loading when we're actually on a project-specific
+  // route. Routes like /projects/ (launch page) have no routeProjectId or
+  // routeSlug, so project is always null there — don't block them.
+  if (!project && (routeProjectId || routeSlug)) {
+    // freshProject === undefined means Convex hasn't responded yet (still loading).
+    // freshProject === null means Convex responded: project not found / deleted.
+    // Distinguish so we don't spin forever on a deleted project.
+    const convexResolved = freshProject !== undefined;
+    const projectDefinitelyMissing = convexResolved && freshProject === null;
+
+    if (projectDefinitelyMissing) {
+      // Project was deleted or is not accessible. Redirect to the launch page
+      // so the user isn't stuck on a dead URL.
+      navigate("/projects", { replace: true });
+      return null;
+    }
+
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Loading project...
+      </div>
+    );
+  }
+
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
-      <ProjectSyncProvider
-        projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-        userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-        userName={displayUserName ?? "User"}
-        laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
-        projectSlug={projectSlug}
-        localPath={runtimeProjectPath}
-        gitCwd={shouldEnableProjectRuntime ? gitCwd : null}
-        lastSyncAt={project?.lastSyncAt}
-        collaborationEnabled={collaborationEnabled}
-        activeBranch={activeBranch}
-        sharedBranch={collabBranch}
-        documentScopeId={documentScopeId}
-      >
-        {layoutContent}
-      </ProjectSyncProvider>
+      
+      {workspaceResolution?.status === "ready" ? (
+        <ActiveWorkspaceProvider value={{
+          projectId: String(project!._id),
+          projectSlug: project!.slug,
+          projectName: effectiveProjectName,
+          workspace: workspaceResolution.workspace,
+          lane: workspaceResolution.lane,
+          runtime: workspaceResolution.runtimeIdentity,
+          collaborationScopeId: workspaceResolution.collaborationScopeId,
+        }}>
+          <ProjectSyncProvider
+            workspaceId={activeWorkspaceId}
+            workspaceRevision={workspaceResolution.workspace.workspaceRevision}
+            projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+            userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
+            userName={displayUserName ?? "User"}
+            laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
+            projectSlug={projectSlug}
+            gitCwd={null}
+            lastSyncAt={project?.lastSyncAt}
+            collaborationEnabled={collaborationEnabled}
+            activeBranch={activeBranch}
+            sharedBranch={collabBranch}
+            documentScopeId={documentScopeId}
+          >
+            {layoutContent}
+          </ProjectSyncProvider>
+        </ActiveWorkspaceProvider>
+      ) : (
+        <ProjectSyncProvider
+          workspaceId={null}
+          workspaceRevision={1}
+          projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+          userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
+          userName={displayUserName ?? "User"}
+          laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
+          projectSlug={projectSlug}
+          gitCwd={null}
+          lastSyncAt={project?.lastSyncAt}
+          collaborationEnabled={collaborationEnabled}
+          activeBranch={activeBranch}
+          sharedBranch={collabBranch}
+          documentScopeId={documentScopeId}
+        >
+          {layoutContent}
+        </ProjectSyncProvider>
+      )}
+
     </ProjectRouteContext.Provider>
   );
 }

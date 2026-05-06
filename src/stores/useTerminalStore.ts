@@ -20,7 +20,7 @@ export interface TerminalInstance {
   runId?: string
   phase?: 'starting' | 'active' | 'stopping' | 'exited'
   lastHeartbeatAt?: number
-  projectPath?: string
+  workspaceId?: string
   label?: string
   kind?: TerminalKind
   surface?: TerminalSurface
@@ -69,7 +69,7 @@ interface TerminalState {
           | 'command'
           | 'kind'
           | 'surface'
-          | 'projectPath'
+          | 'workspaceId'
           | 'runId'
           | 'phase'
           | 'lastHeartbeatAt'
@@ -94,7 +94,7 @@ interface TerminalState {
     setPanelHeight: (height: number) => void
     resetPanelHeight: () => void
     setProfiles: (profiles: TerminalProfile[]) => void
-    resetProject: (projectPath: string) => void
+    resetProject: (workspaceId: string) => void
     reset: () => void
   }
 }
@@ -122,13 +122,13 @@ export function selectPanelTerminals(state: Pick<TerminalState, 'terminals'>): T
   return Object.values(state.terminals).filter(isPanelTerminal)
 }
 
-export function selectAssistantTerminalsForProject(projectPath?: string | null) {
+export function selectAssistantTerminalsForProject(workspaceId?: string | null) {
   return (state: Pick<TerminalState, 'terminals'>): TerminalInstance[] =>
     Object.values(state.terminals).filter(
       (terminal) =>
         terminal.surface === 'assistant' &&
         terminal.kind === 'agent' &&
-        (!projectPath || terminal.projectPath === projectPath),
+        (!workspaceId || terminal.workspaceId === workspaceId),
     )
 }
 
@@ -499,10 +499,10 @@ export const useTerminalStore = create<TerminalState>()(
           set({ profiles })
         },
 
-        resetProject: (projectPath) => {
+        resetProject: (workspaceId) => {
           set((state) => {
             const terminalIds = Object.values(state.terminals)
-              .filter((terminal) => terminal.projectPath === projectPath)
+              .filter((terminal) => terminal.workspaceId === workspaceId)
               .map((terminal) => terminal.id)
 
             if (terminalIds.length === 0) return state

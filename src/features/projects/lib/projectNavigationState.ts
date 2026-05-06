@@ -1,10 +1,9 @@
-import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"
-
 export interface ProjectRouteNavigationState {
   projectId?: string | null
   projectSlug?: string | null
   projectName?: string | null
-  localPath?: string | null
+  /** Catalog workspace UUID (phase 4+) or filesystem path hint (legacy). */
+  preferredWorkspaceId?: string | null
 }
 
 interface ResolveTrustedProjectRouteNavigationStateArgs {
@@ -35,9 +34,9 @@ export function readProjectRouteNavigationState(
   const projectId = normalizeNavigationText(typedState.projectId)
   const projectSlug = normalizeNavigationText(typedState.projectSlug)
   const projectName = normalizeNavigationText(typedState.projectName)
-  const localPath = normalizeWorkspaceProjectPath(typedState.localPath)
+  const preferredWorkspaceId = normalizeNavigationText(typedState.preferredWorkspaceId)
 
-  if (!projectId && !projectSlug && !projectName && !localPath) {
+  if (!projectId && !projectSlug && !projectName && !preferredWorkspaceId) {
     return null
   }
 
@@ -45,7 +44,7 @@ export function readProjectRouteNavigationState(
     projectId,
     projectSlug,
     projectName,
-    localPath,
+    preferredWorkspaceId,
   }
 }
 
@@ -109,7 +108,7 @@ export function buildProjectRouteNavigationState<
   const projectId = normalizeNavigationText(input.projectId)
   const projectSlug = normalizeNavigationText(input.projectSlug)
   const projectName = normalizeNavigationText(input.projectName)
-  const localPath = normalizeWorkspaceProjectPath(input.localPath)
+  const preferredWorkspaceId = normalizeNavigationText(input.preferredWorkspaceId)
 
   if (projectId) {
     state.projectId = projectId
@@ -120,8 +119,8 @@ export function buildProjectRouteNavigationState<
   if (projectName) {
     state.projectName = projectName
   }
-  if (localPath) {
-    state.localPath = localPath
+  if (preferredWorkspaceId) {
+    state.preferredWorkspaceId = preferredWorkspaceId
   }
 
   return state

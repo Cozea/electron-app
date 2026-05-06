@@ -81,7 +81,6 @@ interface WorkbenchDevServerTileProps {
   projectId: string
   laneId: string
   tile: WorkbenchDevServerTileRecord | WorkbenchMobileSimulatorTileRecord
-  projectPath: string | null
   workspaceId: string | null
   framework: string | null
   storedDevCommand: string | null
@@ -96,7 +95,6 @@ function WorkbenchRuntimePreviewTile({
   projectId,
   laneId,
   tile,
-  projectPath,
   workspaceId,
   framework: storedFramework,
   storedDevCommand,
@@ -120,14 +118,14 @@ function WorkbenchRuntimePreviewTile({
       setResolvedFramework(storedFramework as Framework)
       return
     }
-    if (!projectPath) {
+    if (!workspaceId) {
       setResolvedFramework(null)
       return
     }
 
     let cancelled = false
 
-    void getFrameworkInfo(projectPath, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
+    void getFrameworkInfo(workspaceId, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
       .then((frameworkInfo) => {
         if (cancelled) return
         setResolvedFramework(frameworkInfo.framework)
@@ -140,7 +138,7 @@ function WorkbenchRuntimePreviewTile({
     return () => {
       cancelled = true
     }
-  }, [projectPath, storedDevCommand, storedDevPort, storedFramework])
+  }, [workspaceId, storedDevCommand, storedDevPort, storedFramework])
 
   const framework = resolvedFramework ?? (storedFramework as Framework | null) ?? undefined
   const nativePreviewPlatform = useNativeMobilePreviewMode(framework)
@@ -162,7 +160,8 @@ function WorkbenchRuntimePreviewTile({
   const [internalUrl, setInternalUrl] = useState<string | null>(null)
   const [draftUrl, setDraftUrl] = useState<string>("")
   const devServer = useDevServerManager({
-    projectPath,
+    workspaceId,
+    laneId,
     sessionKey: workbenchSession?.sessionKey ?? null,
     framework,
     terminalId,
@@ -175,12 +174,12 @@ function WorkbenchRuntimePreviewTile({
     initialSnapshot: workbenchSession?.devServer ?? null,
   })
   const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
-  const nativePreviewScopeKey = workbenchSession?.sessionKey ?? `${projectId}::${laneId}::${projectPath ?? 'unbound'}`
+  const nativePreviewScopeKey = workbenchSession?.sessionKey ?? `${projectId}::${laneId}::${workspaceId ?? 'unbound'}`
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
     scopeKey: nativePreviewScopeKey,
     enabled: usesNativePreview,
-    projectPath,
+    workspaceId,
     serverStatus: serverStatusForNative,
     keepAliveOnUnmount: true,
   })
@@ -219,7 +218,6 @@ function WorkbenchRuntimePreviewTile({
     sessionKey: workbenchSession?.sessionKey ?? null,
     projectId,
     laneId,
-    projectPath,
     visible: showWebEmbeddedPreview && panelActivity.visible,
     storageScope: "ephemeral",
     workspaceId: workspaceId ?? undefined,
@@ -231,14 +229,14 @@ function WorkbenchRuntimePreviewTile({
       const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
         url: request.url,
         storageScope: "workspace",
-      }, projectPath)
-      workbenchActions.setActiveTile(projectId, laneId, nextTileId, projectPath)
+      }, workspaceId)
+      workbenchActions.setActiveTile(projectId, laneId, nextTileId, workspaceId)
     },
   })
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!projectPath || !workbenchSession?.sessionKey) {
+    if (!workspaceId || !workbenchSession?.sessionKey) {
       setTerminalId(null)
       setTerminalError(null)
       return
@@ -263,9 +261,9 @@ function WorkbenchRuntimePreviewTile({
 
       if (!snapshot || !nextTerminalId) {
         const result = await window.electronAPI.terminal.create({
-          projectPath,
-          cwd: projectPath,
-          gitCwd: projectPath,
+          workspaceId,
+          cwd: { kind: "projectRoot" },
+          gitCwd: { kind: "projectRoot" },
           sessionKey: workbenchSession.sessionKey,
           laneId,
           terminalKind: "dev-server",
@@ -304,7 +302,7 @@ function WorkbenchRuntimePreviewTile({
         profileId: info?.profileId ?? "default",
         profileName: info?.profileName ?? "Shell",
         title: tile.title,
-        projectPath,
+        workspaceId,
         kind: "dev-server",
         surface: "panel",
         status: snapshot?.running === false ? "exited" : "running",
@@ -318,7 +316,7 @@ function WorkbenchRuntimePreviewTile({
         command: storedDevCommand ?? undefined,
         kind: "dev-server",
         surface: "panel",
-        projectPath,
+        workspaceId,
       })
       setTerminalUiAttached(nextTerminalId, true)
       terminalIdRef.current = nextTerminalId
@@ -335,7 +333,7 @@ function WorkbenchRuntimePreviewTile({
   }, [
     laneId,
     projectId,
-    projectPath,
+    workspaceId,
     registerTerminal,
     setTerminalUiAttached,
     storedDevCommand,
@@ -388,10 +386,10 @@ function WorkbenchRuntimePreviewTile({
       command: storedDevCommand ?? undefined,
       kind: "dev-server",
       surface: "panel",
-      projectPath: projectPath ?? undefined,
+      workspaceId: workspaceId ?? undefined,
       port: devServer.port ?? undefined,
     })
-  }, [devServer.port, projectPath, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
+  }, [devServer.port, workspaceId, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
 
   useEffect(() => {
     let cancelled = false
@@ -449,9 +447,9 @@ function WorkbenchRuntimePreviewTile({
     }
 
     const locator =
-      usesNativePreview && projectPath && nativePreview.selectedSimulator
+      usesNativePreview && workspaceId && nativePreview.selectedSimulator
         ? {
-            projectPath,
+            workspaceId,
             deviceId: nativePreview.selectedSimulator.udid,
             platform: "ios" as const,
           }
@@ -473,7 +471,7 @@ function WorkbenchRuntimePreviewTile({
     laneId,
     nativePreview.selectedSimulator,
     projectId,
-    projectPath,
+    workspaceId,
     workbenchSession?.sessionKey,
   ])
 
@@ -526,15 +524,15 @@ function WorkbenchRuntimePreviewTile({
 
       rotation?: NativePreviewRotation
     }) => {
-      if (!projectPath || !nativePreview.selectedSimulator) return
+      if (!workspaceId || !nativePreview.selectedSimulator) return
       await window.electronAPI.nativePreview.sendTouches({
-        projectPath,
+        workspaceId,
         deviceId: nativePreview.selectedSimulator.udid,
         platform: "ios",
         ...request,
       })
     },
-    [nativePreview.selectedSimulator, projectPath],
+    [nativePreview.selectedSimulator, workspaceId],
   )
 
   const handleNativeSendWheel = useCallback(
@@ -543,28 +541,28 @@ function WorkbenchRuntimePreviewTile({
       deltaX: number
       deltaY: number
     }) => {
-      if (!projectPath || !nativePreview.selectedSimulator) return
+      if (!workspaceId || !nativePreview.selectedSimulator) return
       await window.electronAPI.nativePreview.sendWheel({
-        projectPath,
+        workspaceId,
         deviceId: nativePreview.selectedSimulator.udid,
         platform: "ios",
         ...request,
       })
     },
-    [nativePreview.selectedSimulator, projectPath],
+    [nativePreview.selectedSimulator, workspaceId],
   )
 
   const handleNativeSendKey = useCallback(
     async (request: { direction: "down" | "up"; keyCode: number }) => {
-      if (!projectPath || !nativePreview.selectedSimulator) return
+      if (!workspaceId || !nativePreview.selectedSimulator) return
       await window.electronAPI.nativePreview.sendKey({
-        projectPath,
+        workspaceId,
         deviceId: nativePreview.selectedSimulator.udid,
         platform: "ios",
         ...request,
       })
     },
-    [nativePreview.selectedSimulator, projectPath],
+    [nativePreview.selectedSimulator, workspaceId],
   )
 
   useEffect(() => {
@@ -646,7 +644,7 @@ function WorkbenchRuntimePreviewTile({
     </div>
   )
 
-  const chromeActions = projectPath ? (
+  const chromeActions = workspaceId ? (
     <>
       {devServer.isRunning ? (
         <>
@@ -720,7 +718,7 @@ function WorkbenchRuntimePreviewTile({
       <TerminalInstance
         terminalId={terminalId}
         onTerminalError={setTerminalError}
-        projectPath={projectPath}
+        workspaceId={workspaceId}
         className="h-full workbench-terminal-instance"
         shouldAutoFocus={viewMode === "code" && panelActivity.focused}
         gpuActive={viewMode === "code" && panelActivity.visible}
@@ -844,7 +842,7 @@ function WorkbenchRuntimePreviewTile({
 
   const cozeaEmbeddedPreviewBody = usesNativePreview ? nativeIosPreviewBody : webEmbeddedPreviewBody
 
-  const body = !projectPath ? (
+  const body = !workspaceId ? (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
       {isMobileSimulatorSurface
         ? "Open or relink a local project folder to run a mobile simulator here."
