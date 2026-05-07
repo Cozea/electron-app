@@ -22,6 +22,7 @@ import {
   applyCursorAcpModelSelection,
   makeCursorAcpRuntime,
 } from "../../provider/acp/CursorAcpSupport.ts";
+import { mergeProviderInstanceEnvironment } from "../../provider/ProviderInstanceEnvironment.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 
 const CURSOR_TIMEOUT_MS = 180_000;
@@ -129,6 +130,7 @@ const makeCursorTextGeneration = Effect.gen(function* () {
       const outputRef = yield* Ref.make("");
       const runtime = yield* makeCursorAcpRuntime({
         cursorSettings,
+        environment: mergeProviderInstanceEnvironment(cursorSettings?.environment, process.env),
         childProcessSpawner: commandSpawner,
         cwd,
         clientInfo: { name: "cozea-git-text", version: "0.0.0" },

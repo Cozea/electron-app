@@ -8,6 +8,7 @@ import {
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
   type ProviderKind,
+  type ProviderInstanceId,
 } from "@cozea/assistant-contracts";
 
 export interface SelectableModelOption {
@@ -439,10 +440,12 @@ export function createModelSelection(
   provider: ProviderKind,
   model: string,
   options?: ProviderOptionSelectionsLike,
+  instanceId?: ProviderInstanceId,
 ): ModelSelection {
   const normalizedOptions = options ? coerceSelectionsLike(options) : [];
   return {
     provider,
+    instanceId: instanceId ?? provider,
     model,
     ...(normalizedOptions.length > 0 ? { options: cloneSelections(normalizedOptions) } : {}),
   } as ModelSelection;

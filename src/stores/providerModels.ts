@@ -1,6 +1,7 @@
 // @ts-nocheck
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  defaultInstanceIdForDriver,
   type ModelCapabilities,
   type ProviderKind,
   type ProviderOptionSelection,
@@ -28,14 +29,18 @@ export function getProviderModels(
   providers: ReadonlyArray<ServerProvider>,
   provider: ProviderKind,
 ): ReadonlyArray<ServerProviderModel> {
-  return providers.find((candidate) => candidate.provider === provider)?.models ?? []
+  return getProviderSnapshot(providers, provider)?.models ?? []
 }
 
 export function getProviderSnapshot(
   providers: ReadonlyArray<ServerProvider>,
   provider: ProviderKind,
 ): ServerProvider | undefined {
-  return providers.find((candidate) => candidate.provider === provider)
+  const defaultInstanceId = defaultInstanceIdForDriver(provider as never)
+  return (
+    providers.find((candidate) => candidate.instanceId === defaultInstanceId) ??
+    providers.find((candidate) => candidate.provider === provider)
+  )
 }
 
 export function isProviderEnabled(
@@ -54,7 +59,7 @@ export function resolveSelectableProvider(
     return requested
   }
 
-  return providers.find((candidate) => candidate.enabled)?.provider ?? requested
+  return providers.find((candidate) => candidate.enabled && candidate.availability !== "unavailable")?.provider ?? requested
 }
 
 export function getProviderModelCapabilities(

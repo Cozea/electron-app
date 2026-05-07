@@ -29,6 +29,7 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { OpenCodeAdapter, type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   buildOpenCodePermissionRules,
   connectToOpenCodeServer,
@@ -925,7 +926,14 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
 
           const started = yield* Effect.tryPromise({
             try: async () => {
-              const server = await connectToOpenCodeServer({ binaryPath, serverUrl });
+              const server = await connectToOpenCodeServer({
+                binaryPath,
+                serverUrl,
+                environment: mergeProviderInstanceEnvironment(
+                  settings.providers.opencode.environment,
+                  process.env,
+                ),
+              });
               const client = createOpenCodeSdkClient({
                 baseUrl: server.url,
                 directory,

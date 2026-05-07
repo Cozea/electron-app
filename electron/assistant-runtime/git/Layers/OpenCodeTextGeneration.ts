@@ -33,6 +33,7 @@ import {
   startOpenCodeServerProcess,
   toOpenCodeFileParts,
 } from "../../provider/opencodeRuntime.ts";
+import { mergeProviderInstanceEnvironment } from "../../provider/ProviderInstanceEnvironment.ts";
 
 /** Extract a human-readable error message from an OpenCode prompt response error. */
 function getOpenCodePromptErrorMessage(error: unknown): string | null {
@@ -188,6 +189,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
 
   const acquireSharedServer = (input: {
     readonly binaryPath: string;
+    readonly environment?: NodeJS.ProcessEnv;
     readonly operation:
       | "generateCommitMessage"
       | "generatePrContent"
@@ -221,7 +223,11 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
         }
 
         const server = yield* Effect.tryPromise({
-          try: () => startOpenCodeServerProcess({ binaryPath: input.binaryPath }),
+          try: () =>
+            startOpenCodeServerProcess({
+              binaryPath: input.binaryPath,
+              ...(input.environment ? { environment: input.environment } : {}),
+            }),
           catch: (cause) =>
             new TextGenerationError({
               operation: input.operation,
@@ -368,6 +374,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
         : yield* Effect.acquireUseRelease(
             acquireSharedServer({
               binaryPath: settings.binaryPath,
+              environment: mergeProviderInstanceEnvironment(settings.environment, process.env),
               operation: input.operation,
             }),
             runAgainstServer,

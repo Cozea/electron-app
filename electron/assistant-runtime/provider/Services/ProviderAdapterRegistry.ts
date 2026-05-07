@@ -8,9 +8,13 @@
  *
  * @module ProviderAdapterRegistry
  */
-import type { ProviderKind } from "@cozea/assistant-contracts";
+import type {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderKind,
+} from "@cozea/assistant-contracts";
 import { ServiceMap } from "effect";
-import type { Effect } from "effect";
+import type { Effect, PubSub, Scope, Stream } from "effect";
 
 import type { ProviderAdapterError, ProviderUnsupportedError } from "../Errors.ts";
 import type { ProviderAdapterShape } from "./ProviderAdapter.ts";
@@ -19,8 +23,14 @@ import type { ProviderAdapterShape } from "./ProviderAdapter.ts";
  * ProviderAdapterRegistryShape - Service API for adapter lookup by provider kind.
  */
 export interface ProviderAdapterRegistryShape {
+  readonly getByInstance: (
+    instanceId: ProviderInstanceId,
+  ) => Effect.Effect<ProviderAdapterShape<ProviderAdapterError>, ProviderUnsupportedError>;
+
+  readonly listInstances: () => Effect.Effect<ReadonlyArray<ProviderInstanceId>>;
+
   /**
-   * Resolve the adapter for a provider kind.
+   * Legacy: resolve the default instance for a provider kind.
    */
   readonly getByProvider: (
     provider: ProviderKind,
@@ -30,6 +40,9 @@ export interface ProviderAdapterRegistryShape {
    * List provider kinds currently registered.
    */
   readonly listProviders: () => Effect.Effect<ReadonlyArray<ProviderKind>>;
+
+  readonly streamChanges: Stream.Stream<void>;
+  readonly subscribeChanges: Effect.Effect<PubSub.Subscription<void>, never, Scope.Scope>;
 }
 
 /**

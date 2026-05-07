@@ -196,6 +196,9 @@ export function useAssistantTileBinding({
             if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
               patch.provider = nextThread.modelSelection.provider
             }
+            if (nextThread && latestTile.providerInstanceId !== nextThread.modelSelection.instanceId) {
+              patch.providerInstanceId = nextThread.modelSelection.instanceId
+            }
             if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
               patch.model = nextThread.modelSelection.model
             }

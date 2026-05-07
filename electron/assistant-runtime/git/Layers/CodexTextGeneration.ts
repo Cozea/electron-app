@@ -34,6 +34,7 @@ import {
   toJsonSchemaObject,
 } from "../Utils.ts";
 import { normalizeCodexModelOptions } from "../../provider/Layers/CodexProvider.ts";
+import { mergeProviderInstanceEnvironment } from "../../provider/ProviderInstanceEnvironment.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 
 const CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT = "low";
@@ -169,6 +170,10 @@ const makeCodexTextGeneration = Effect.gen(function* () {
         const reasoningEffort =
           getModelSelectionStringOptionValue(modelSelection, "effort") ??
           CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT;
+        const codexEnvironment = mergeProviderInstanceEnvironment(
+          codexSettings?.environment,
+          process.env,
+        );
         const command = ChildProcess.make(
           codexSettings?.binaryPath || "codex",
           [
@@ -195,7 +200,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           ],
           {
             env: {
-              ...process.env,
+              ...codexEnvironment,
               ...(codexSettings?.homePath ? { CODEX_HOME: codexSettings.homePath } : {}),
             },
             cwd,

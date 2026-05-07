@@ -1,5 +1,6 @@
 import type {
   ProviderInteractionMode,
+  ProviderInstanceId,
   ProviderKind,
   RuntimeMode,
 } from "@cozea/assistant-contracts"
@@ -136,6 +137,7 @@ export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
+  providerInstanceId?: ProviderInstanceId
   model?: string | null
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
@@ -199,6 +201,7 @@ interface CreateTileOptions {
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
+  providerInstanceId?: ProviderInstanceId
   model?: string | null
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
@@ -260,6 +263,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
           | "assistantProjectId"
           | "threadId"
           | "provider"
+          | "providerInstanceId"
           | "model"
           | "runtimeMode"
           | "interactionMode"
@@ -529,6 +533,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         assistantProjectId: options.assistantProjectId ?? null,
         threadId: options.threadId ?? null,
         provider: options.provider,
+        providerInstanceId: options.providerInstanceId,
         model: options.model ?? null,
         runtimeMode: options.runtimeMode ?? "full-access",
         interactionMode: options.interactionMode ?? "default",
@@ -628,6 +633,7 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
         ...tile,
         assistantProjectId: tile.assistantProjectId ?? null,
         threadId: tile.threadId ?? null,
+        providerInstanceId: tile.providerInstanceId,
         model: tile.model ?? null,
         runtimeMode: tile.runtimeMode ?? "full-access",
         interactionMode: tile.interactionMode ?? "default",
