@@ -76,7 +76,7 @@ export const useChangesSidebarStore = create<ChangesSidebarState>()(
     }),
     {
       name: "cozea:changes-sidebar",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => sidebarStorage),
       partialize: (state) => ({
         isOpen: state.isOpen,
