@@ -497,7 +497,7 @@ export function WorkbenchSelectionTile({
   )
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-y-auto",
