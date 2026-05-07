@@ -79,7 +79,13 @@ export function UnifiedHeader({
     sidebar != null &&
     !sidebar.isMobile &&
     sidebar.state === "expanded";
-  const headerSurfaceClassName = "border-b border-border/60 bg-background";
+  const headerSurfaceClassName = "border-b border-border/60";
+  const headerSurfaceStyle = {
+    backgroundColor: 'color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent)',
+    backdropFilter: 'blur(22px) saturate(1.12)',
+    WebkitBackdropFilter: 'blur(22px) saturate(1.12)',
+    isolation: 'isolate',
+  } as React.CSSProperties;
   const headerLayoutClassName =
     layoutMode === "inset"
       ? "relative z-10 w-full shrink-0"
@@ -155,6 +161,7 @@ export function UnifiedHeader({
           headerSurfaceClassName,
           className,
         )}
+        style={headerSurfaceStyle}
       >
         {centerAddon && (
           <div
@@ -220,6 +227,7 @@ export function UnifiedHeader({
         headerSurfaceClassName,
         className,
       )}
+      style={headerSurfaceStyle}
     >
       {centerAddon && (
         <div

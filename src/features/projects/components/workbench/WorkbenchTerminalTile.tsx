@@ -39,12 +39,10 @@ export function WorkbenchTerminalTile({
   const terminalIdRef = useRef<string | null>(null)
 
   const terminalShell = (
-    <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
-      <div
-        className="h-full w-full rounded-[4px]"
-        style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
-      />
-    </div>
+    <div
+      className="h-full min-h-0 w-full"
+      style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
+    />
   )
 
   useEffect(() => {
@@ -212,16 +210,14 @@ export function WorkbenchTerminalTile({
     body = terminalShell
   } else {
     body = (
-      <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
-        <TerminalInstance
-          terminalId={terminalId}
-          onTerminalError={setError}
-          workspaceId={workspaceId}
-          className="h-full workbench-terminal-instance"
-          shouldAutoFocus={panelActivity.focused}
-          gpuActive={panelActivity.visible}
-        />
-      </div>
+      <TerminalInstance
+        terminalId={terminalId}
+        onTerminalError={setError}
+        workspaceId={workspaceId}
+        className="h-full workbench-terminal-instance"
+        shouldAutoFocus={panelActivity.focused}
+        gpuActive={panelActivity.visible}
+      />
     )
   }
 

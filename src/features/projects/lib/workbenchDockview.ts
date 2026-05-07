@@ -28,6 +28,32 @@ const SELECTION_PANEL_CONSTRAINTS = {
   minimumHeight: 180,
 } as const
 
+const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])
+
+function getPanelPlacementReference(api: DockviewApi): IDockviewPanel | undefined {
+  if (api.activePanel && !RESERVED_DOCKVIEW_PANEL_IDS.has(api.activePanel.id)) {
+    return api.activePanel
+  }
+
+  return api.panels.find((panel) => !RESERVED_DOCKVIEW_PANEL_IDS.has(panel.id))
+}
+
+function placePanelLeftOfChanges(
+  base: AddPanelOptions<WorkbenchDockPanelParams>,
+  changesPanel: IDockviewPanel | undefined,
+): AddPanelOptions<WorkbenchDockPanelParams> {
+  if (!changesPanel) return base
+
+  return {
+    ...base,
+    floating: false,
+    position: {
+      referencePanel: changesPanel.id,
+      direction: "left",
+    },
+  }
+}
+
 export function getDockComponentName(
   type: WorkbenchTileType,
 ): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" {
@@ -116,30 +142,32 @@ export function buildAddPanelOptions(
     return base
   }
 
-  const activePanel = api.activePanel
+  const referencePanel = getPanelPlacementReference(api)
+  const changesPanel = api.getPanel("cozea-changes-panel")
+
   switch (tile.type) {
     case "browser":
     case "devServer":
     case "mobileSimulator":
     case "terminal":
-      if (activePanel) {
+      if (referencePanel) {
         return {
           ...base,
           floating: false,
           position: {
-            referencePanel: activePanel.id,
+            referencePanel: referencePanel.id,
             direction: "right",
           },
         }
       }
-      return base
+      return placePanelLeftOfChanges(base, changesPanel)
     case "assistantChat":
-      if (activePanel) {
+      if (referencePanel) {
         return {
           ...base,
           floating: false,
           position: {
-            referencePanel: activePanel.id,
+            referencePanel: referencePanel.id,
             direction: "right",
           },
         }
@@ -149,18 +177,18 @@ export function buildAddPanelOptions(
       break
   }
 
-  if (activePanel) {
+  if (referencePanel) {
     return {
       ...base,
       floating: false,
       position: {
-        referencePanel: activePanel.id,
+        referencePanel: referencePanel.id,
         direction: "right",
       },
     }
   }
 
-  return base
+  return placePanelLeftOfChanges(base, changesPanel)
 }
 
 export function buildDefaultDockview(

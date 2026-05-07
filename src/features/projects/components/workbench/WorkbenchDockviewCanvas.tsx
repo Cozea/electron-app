@@ -1,13 +1,14 @@
 import { useCallback, useMemo, type ComponentProps } from "react"
 import {
   DockviewReact,
-  themeDark,
-  themeLight,
+  themeAbyssSpaced,
+  themeLightSpaced,
   type DockviewTheme,
   type GetTabContextMenuItemsParams,
 } from "dockview"
 
 import "dockview/dist/styles/dockview.css"
+import "@/features/projects/components/workbench/workbench.css"
 
 import {
   WorkbenchDockHeaderActions,
@@ -30,16 +31,17 @@ const WORKBENCH_TAB_GROUP_COLORS = [
   { id: "utility", value: "oklch(0.72 0.14 70)", label: "Utility" },
 ] as const
 
-function buildCozeaDockviewTheme(baseTheme: DockviewTheme): DockviewTheme {
+function buildCozeaDockviewTheme(
+  baseTheme: DockviewTheme,
+  themeScheme: "dark" | "light",
+): DockviewTheme {
   return {
     ...baseTheme,
-    gap: 0,
+    name: `cozea-${baseTheme.name}`,
+    className: `${baseTheme.className} cozea-workbench-dockview-theme cozea-workbench-dockview-theme--${themeScheme}`,
+    colorScheme: themeScheme,
     tabAnimation: "smooth",
-    dndOverlayBorder: "1px solid var(--dv-drag-over-border-color)",
-    dndPanelOverlay: "group",
-    dndTabIndicator: "line",
     tabGroupIndicator: "wrap",
-    edgeGroupCollapsedSize: 32,
   }
 }
 
@@ -110,19 +112,23 @@ function getPopoutBoxForComponent(component: string): {
 interface WorkbenchDockviewCanvasProps {
   dockviewKey: string
   className?: string
+  themeScheme: "dark" | "light"
   onReady: ComponentProps<typeof DockviewReact>["onReady"]
 }
 
 export function WorkbenchDockviewCanvas({
   dockviewKey,
   className,
+  themeScheme,
   onReady,
 }: WorkbenchDockviewCanvasProps) {
   const runtime = useWorkbenchDockRuntime()
-  const isDarkTheme = className?.includes("dockview-theme-dark") ?? false
   const dockviewTheme = useMemo(
-    () => buildCozeaDockviewTheme(isDarkTheme ? themeDark : themeLight),
-    [isDarkTheme],
+    () => buildCozeaDockviewTheme(
+      themeScheme === "dark" ? themeAbyssSpaced : themeLightSpaced,
+      themeScheme,
+    ),
+    [themeScheme],
   )
 
   const getTabContextMenuItems = useCallback(
@@ -237,23 +243,26 @@ export function WorkbenchDockviewCanvas({
   )
 
   return (
-    <DockviewReact
-      key={dockviewKey}
-      className={cn("cozea-workbench-dockview h-full w-full min-w-0", className)}
-      components={WORKBENCH_DOCK_COMPONENTS}
-      defaultTabComponent={WorkbenchDockTab}
-      leftHeaderActionsComponent={WorkbenchDockHeaderControls}
-      rightHeaderActionsComponent={WorkbenchDockHeaderActions}
-      watermarkComponent={WorkbenchDockWatermark}
-      getTabContextMenuItems={getTabContextMenuItems}
-      getTabGroupChipContextMenuItems={() => ["rename", "colorPicker"]}
-      tabGroupColors={[...WORKBENCH_TAB_GROUP_COLORS]}
-      tabGroupAccent="palette"
-      theme={dockviewTheme}
-      floatingGroupBounds="boundedWithinViewport"
-      noPanelsOverlay="watermark"
-      singleTabMode="default"
-      onReady={onReady}
-    />
+    <div className={cn("cozea-workbench-dockview-host h-full min-h-0 w-full min-w-0", className)}>
+      <DockviewReact
+        key={dockviewKey}
+        className="cozea-workbench-dockview h-full min-h-0 w-full min-w-0"
+        components={WORKBENCH_DOCK_COMPONENTS}
+        defaultTabComponent={WorkbenchDockTab}
+        leftHeaderActionsComponent={WorkbenchDockHeaderControls}
+        rightHeaderActionsComponent={WorkbenchDockHeaderActions}
+        watermarkComponent={WorkbenchDockWatermark}
+        getTabContextMenuItems={getTabContextMenuItems}
+        getTabGroupChipContextMenuItems={() => ["rename", "colorPicker"]}
+        tabGroupColors={[...WORKBENCH_TAB_GROUP_COLORS]}
+        tabGroupAccent="palette"
+        theme={dockviewTheme}
+        floatingGroupBounds="boundedWithinViewport"
+        hideBorders
+        noPanelsOverlay="watermark"
+        singleTabMode="default"
+        onReady={onReady}
+      />
+    </div>
   )
 }

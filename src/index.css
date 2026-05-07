@@ -670,7 +670,7 @@ body {
 
 /* Primary left sidebars: translucent surface + blur (native window vibrancy/Mica shows through). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 58%, transparent) !important;
+  background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
   backdrop-filter: blur(22px) saturate(1.12);
   -webkit-backdrop-filter: blur(22px) saturate(1.12);
   isolation: isolate;
@@ -681,7 +681,7 @@ body {
 .wine .sidebar-glass [data-slot="sidebar-inner"],
 .forest .sidebar-glass [data-slot="sidebar-inner"],
 .clay .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 72%, transparent) !important;
+  background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
