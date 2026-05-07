@@ -7,8 +7,6 @@ import {
   useMemo,
   useState,
 } from "react";
-
-import "@/features/projects/components/workbench/workbench.css";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -377,10 +375,10 @@ export function ProjectWorkbenchSurface() {
     };
   }, [isSettingsOpen]);
 
-  const resolvedDockviewThemeClass =
+  const resolvedDockviewThemeScheme =
     theme === "dark" || (theme === "system" && document.documentElement.classList.contains("dark"))
-      ? "dockview-theme-dark"
-      : "dockview-theme-light";
+      ? "dark"
+      : "light";
 
   if (!projectId) {
     return (
@@ -408,20 +406,20 @@ export function ProjectWorkbenchSurface() {
       onSplitTile={handleSplitTile}
     >
       <div
-        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
         data-workbench-session-key={workbenchSession?.sessionKey ?? ""}
         data-workbench-lifecycle={workbenchSession?.lifecycle ?? "loading"}
       >
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <div className="relative flex h-full min-h-0 min-w-0">
             <div
-              className="relative min-w-0 flex-1 overflow-hidden bg-content-surface"
+              className="relative min-w-0 flex-1 overflow-hidden bg-transparent"
             >
               <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">
                 <Suspense fallback={<WorkbenchOverlayLoading />}>
                   <LazyWorkbenchDockviewCanvas
                     dockviewKey={workbenchScopeKey ?? "workbench"}
-                    className={resolvedDockviewThemeClass}
+                    themeScheme={resolvedDockviewThemeScheme}
                     onReady={handleDockviewReady}
                   />
                 </Suspense>

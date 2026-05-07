@@ -39,10 +39,8 @@ import {
 } from "@/features/projects/lib/workbenchLayoutPersistence";
 import {
   CHANGES_TILE_MIN_WIDTH_COLLAPSED,
-  CHANGES_TILE_MIN_WIDTH_EXPANDED,
 } from "@/features/projects/lib/changesTileSizing";
 
-const CHANGES_EDGE_GROUP_ID = "cozea-changes-edge";
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
 function disposeBrowserTileModelDeferred(tileId: string) {
@@ -134,6 +132,8 @@ export function useWorkbenchDockviewRuntime(
   const lastReconciledOrderRef = useRef<string[] | null>(null);
   const lastReconciledTilesRef = useRef<Record<string, WorkbenchTile> | null>(null);
   const isDestroyingRef = useRef(false);
+  const isMigratingChangesPanelRef = useRef(false);
+  const changesPanelRootHomeKeyRef = useRef<string | null>(null);
   const keyboardNavigationCleanupRef = useRef<(() => void) | null>(null);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
@@ -301,53 +301,79 @@ export function useWorkbenchDockviewRuntime(
 
   useEffect(() => {
     const api = dockviewApiRef.current;
+    const projectWorkbench = input.projectWorkbench;
     if (
       !api ||
       !input.projectId ||
+      !projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
     ) {
       return;
     }
 
-    if (!isChangesOpen) {
-      const edgeGroup = api.getEdgeGroup("right");
-      if (edgeGroup) {
-        api.setEdgeGroupVisible("right", false);
+    const legacyEdgeGroup = api.getEdgeGroup("right");
+    if (legacyEdgeGroup) {
+      isMigratingChangesPanelRef.current = true;
+      try {
+        api.removeEdgeGroup("right");
+      } finally {
+        isMigratingChangesPanelRef.current = false;
       }
+    }
+
+    let changesPanel = api.getPanel(CHANGES_PANEL_ID);
+    if (!isChangesOpen) {
+      changesPanel?.api.close();
       return;
     }
 
-    let edgeGroup = api.getEdgeGroup("right");
-    if (!edgeGroup) {
-      edgeGroup = api.addEdgeGroup("right", {
-        id: CHANGES_EDGE_GROUP_ID,
-        initialSize: changesWidth,
-        minimumSize: Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth),
-        maximumSize: Math.max(CHANGES_TILE_MIN_WIDTH_EXPANDED, changesWidth),
-      });
+    const minimumWidth = Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth);
+    const changesPanelRootHomeKey = `${input.workbenchScopeKey}:${input.projectId}:${input.activeLaneId}:${projectWorkbench.layoutResetKey}`;
+    if (changesPanel && changesPanelRootHomeKeyRef.current !== changesPanelRootHomeKey) {
+      changesPanelRootHomeKeyRef.current = changesPanelRootHomeKey;
+      isMigratingChangesPanelRef.current = true;
+      try {
+        changesPanel.api.close();
+      } finally {
+        isMigratingChangesPanelRef.current = false;
+      }
+      changesPanel = undefined;
     }
 
-    api.setEdgeGroupVisible("right", true);
-    edgeGroup.expand();
-    edgeGroup.setSize({ width: changesWidth });
-    edgeGroup.setConstraints({
-      minimumWidth: Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth),
-      maximumWidth: Math.max(CHANGES_TILE_MIN_WIDTH_EXPANDED, changesWidth),
-    });
+    if (changesPanel) {
+      changesPanel.api.setConstraints({
+        minimumWidth,
+        minimumHeight: 260,
+      });
+      changesPanel.api.setActive();
+      return;
+    }
 
-    if (!api.getPanel(CHANGES_PANEL_ID)) {
+    if (api.totalPanels > 0) {
       api.addPanel({
         id: CHANGES_PANEL_ID,
         title: "Changes",
         component: "changes",
         renderer: "always",
-        minimumWidth: Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth),
+        initialWidth: changesWidth,
+        minimumWidth,
         minimumHeight: 260,
         params: getPanelParams(input.projectId, input.activeLaneId, CHANGES_PANEL_ID),
+        floating: false,
         position: {
-          referenceGroup: CHANGES_EDGE_GROUP_ID,
-          direction: "within",
+          direction: "right",
         },
+      });
+    } else {
+      api.addPanel({
+        id: CHANGES_PANEL_ID,
+        title: "Changes",
+        component: "changes",
+        renderer: "always",
+        initialWidth: changesWidth,
+        minimumWidth,
+        minimumHeight: 260,
+        params: getPanelParams(input.projectId, input.activeLaneId, CHANGES_PANEL_ID),
       });
     }
 
@@ -358,6 +384,7 @@ export function useWorkbenchDockviewRuntime(
     dockviewReadyScopeKey,
     input.activeLaneId,
     input.projectId,
+    input.projectWorkbench?.layoutResetKey,
     input.workbenchScopeKey,
     isChangesOpen,
   ]);
@@ -456,28 +483,6 @@ export function useWorkbenchDockviewRuntime(
     };
   }, []);
 
-  useEffect(() => {
-    if (!dockviewReadyScopeKey) return;
-    const host = dockviewHostRef.current;
-    if (!host) return;
-
-    const syncLayout = () => {
-      const api = dockviewApiRef.current;
-      if (!api) return;
-      const width = host.clientWidth;
-      const height = host.clientHeight;
-      if (width <= 0 || height <= 0) return;
-      api.layout(width, height);
-    };
-
-    const ro = new ResizeObserver(() => {
-      requestAnimationFrame(syncLayout);
-    });
-    ro.observe(host);
-    requestAnimationFrame(syncLayout);
-    return () => ro.disconnect();
-  }, [dockviewReadyScopeKey, input.workbenchScopeKey]);
-
   const handleResolveSelectionTile = useCallback(
     (
       selectionTileId: string,
@@ -541,7 +546,13 @@ export function useWorkbenchDockviewRuntime(
         transientSelectionTileIdRef.current = null;
       })();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
+    [
+      getLiveWorkbench,
+      input.activeLaneId,
+      input.projectId,
+      input.workspaceId,
+      workbenchActions,
+    ],
   );
 
   const handleDuplicateAssistantTile = useCallback(
@@ -594,7 +605,13 @@ export function useWorkbenchDockviewRuntime(
       );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
+    [
+      getLiveWorkbench,
+      input.activeLaneId,
+      input.projectId,
+      input.workspaceId,
+      workbenchActions,
+    ],
   );
 
   const handleSplitTile = useCallback(
@@ -645,7 +662,13 @@ export function useWorkbenchDockviewRuntime(
       );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
+    [
+      getLiveWorkbench,
+      input.activeLaneId,
+      input.projectId,
+      input.workspaceId,
+      workbenchActions,
+    ],
   );
 
   const handleDockviewReady = useCallback(
@@ -674,8 +697,10 @@ export function useWorkbenchDockviewRuntime(
       });
 
       event.api.onWillShowOverlay((overlayEvent) => {
-        const groupLocation = overlayEvent.group?.api.location;
-        if (groupLocation?.type === "edge" && overlayEvent.panel?.api.component !== "changes") {
+        const isChangesGroup = overlayEvent.group?.panels.some(
+          (panel) => panel.id === CHANGES_PANEL_ID,
+        );
+        if (isChangesGroup) {
           overlayEvent.preventDefault();
         }
       });
@@ -811,7 +836,9 @@ export function useWorkbenchDockviewRuntime(
         }
 
         if (panel.id === CHANGES_PANEL_ID) {
-          closeChanges();
+          if (!isMigratingChangesPanelRef.current) {
+            closeChanges();
+          }
           saveLayout();
           return;
         }

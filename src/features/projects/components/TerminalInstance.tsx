@@ -756,7 +756,7 @@ export function TerminalInstance({
   return (
     <div
       className={cn(
-        'relative h-full w-full overflow-hidden rounded-[4px]',
+        'relative h-full min-h-0 w-full overflow-hidden p-1.5 pl-2.5',
         className,
       )}
       style={{ backgroundColor: 'var(--terminal-panel-bg, var(--content-surface))' }}

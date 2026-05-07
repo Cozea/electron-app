@@ -159,6 +159,11 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
   )
 }
 
+function isChromeOwnedSurface(component: string | undefined, tile: WorkbenchTile | null): boolean {
+  const surface = tile?.type ?? component
+  return surface === "browser" || surface === "devServer" || surface === "mobileSimulator"
+}
+
 function useWorkbenchTile(
   projectId: string,
   laneId: string,
@@ -193,6 +198,18 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   )
   const title = tile?.title ?? props.api.title ?? resolveTabTileTypeLabel(tile)
   const active = props.api.isActive
+  const chromeOwnedSurface = isChromeOwnedSurface(props.api.component, tile)
+
+  if (chromeOwnedSurface) {
+    return (
+      <div
+        className="cozea-workbench-tab cozea-workbench-tab--chrome-owned flex h-full min-w-0 items-center px-1"
+        title={title}
+      >
+        <span className="sr-only">{title}</span>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -244,6 +261,10 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
 
   if (!activePanel) {
+    return null
+  }
+
+  if (activePanel.api.component === "changes") {
     return null
   }
 
@@ -389,7 +410,7 @@ export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
   )
 
   return (
-    <div className="flex h-full w-full items-center justify-center bg-content-surface p-8">
+    <div className="flex h-full w-full items-center justify-center bg-transparent p-8">
       <div className="flex w-full max-w-2xl flex-col items-center gap-5 text-center">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <HugeiconsIcon icon={__LayersHugeIcon} className="h-4 w-4 text-muted-foreground" />
@@ -718,7 +739,10 @@ const ChangesPanel = memo(function ChangesPanel(props: IDockviewPanelProps<Workb
   useSyncPanelTitle(props.api, "Changes")
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div
+      className="flex h-full min-h-0 flex-col bg-background"
+      data-workbench-changes-panel="true"
+    >
       <header className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
         {titleContent ? <div className="flex shrink-0 items-center">{titleContent}</div> : null}
         <div className="flex min-w-0 flex-1 items-center">
