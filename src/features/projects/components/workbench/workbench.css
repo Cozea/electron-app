@@ -6,6 +6,8 @@
   --dv-floating-box-shadow: none;
   --dv-tabs-and-actions-container-font-size: 12px;
   --dv-tab-font-size: 12px;
+  --dv-spacing-padding: 8px;
+  --dv-border-radius: 12px;
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   --dv-drag-over-background-color: color-mix(in oklch, var(--primary) 12%, transparent);
   --dv-drag-over-border-color: color-mix(in oklch, var(--primary) 42%, transparent);
