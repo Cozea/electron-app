@@ -93,7 +93,7 @@
         "convex": "^1.35.1",
         "date-fns": "^4.1.0",
         "diff-match-patch": "^1.0.5",
-        "dockview": "^5.2.0",
+        "dockview": "^6.0.5",
         "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b",
         "electron-updater": "^6.7.3",
         "electron-window-state": "^5.0.3",
@@ -1484,9 +1484,9 @@
 
     "dmg-license": ["dmg-license@1.0.11", "", { "dependencies": { "@types/plist": "^3.0.1", "@types/verror": "^1.10.3", "ajv": "^6.10.0", "crc": "^3.8.0", "iconv-corefoundation": "^1.1.7", "plist": "^3.0.4", "smart-buffer": "^4.0.2", "verror": "^1.10.0" }, "os": "darwin", "bin": { "dmg-license": "bin/dmg-license.js" } }, "sha512-ZdzmqwKmECOWJpqefloC5OJy1+WZBBse5+MR88z9g9Zn4VY+WYUkAyojmhzJckH5YbbZGcYIuGAkY5/Ys5OM2Q=="],
 
-    "dockview": ["dockview@5.2.0", "", { "dependencies": { "dockview-core": "^5.2.0" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-Eh+SWt+AydcyeVmYkwP+Yxax0XpYSQfXsc4Rad9k+6QEddkSCn4hcjsdxp9lLsw/CaMy39jHawbDVxPMC4kvTg=="],
+    "dockview": ["dockview@6.0.5", "", { "dependencies": { "dockview-core": "^6.0.5" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-1ZohyDtZL5hLnKOgrPwXpLUE2PAo1jI5dhOxsLrmlZfkMBOTxiggu+N2Frgcww+DCIPBIGL+fsLXokVL7ZL9ug=="],
 
-    "dockview-core": ["dockview-core@5.2.0", "", {}, "sha512-Gib8yhK2Ng7w47ASvbUZ7GdhBYbeXEflbIDxf/vobdQBMrN/QXmPaouSsSSkEx5YH0N8ap8GYljfvqjug7h5Fg=="],
+    "dockview-core": ["dockview-core@6.0.5", "", {}, "sha512-tBxKG7rLuTZ/OMg/9cy20ZD+MAvm3ZQe5WR7QacV38+1d7IYsd1ThDA+OKLrtMEwjalBSKS4UOeXVLW8fdSgww=="],
 
     "dompurify": ["dompurify@3.3.3", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-Oj6pzI2+RqBfFG+qOaOLbFXLQ90ARpcGG6UePL82bJLtdsa6CYJD7nmiU8MW9nQNOtCHV3lZ/Bzq1X0QYbBZCA=="],
 

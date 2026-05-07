@@ -20,22 +20,78 @@ import {
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { useTerminalStore } from "@/stores/useTerminalStore";
+import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore";
 import {
   buildDefaultDockview,
   getDockComponentName,
+  getPanelConstraintsForTile,
   getPanelParams,
+  getPanelRendererForTile,
   isObsoleteWorkbenchTile,
   isSelectionTile,
   reconcilePanels,
   syncPanelTitles,
 } from "@/features/projects/lib/workbenchDockview";
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
-import { writePersistedWorkbenchLayout } from "@/features/projects/lib/workbenchLayoutPersistence";
+import {
+  clearPersistedWorkbenchLayout,
+  writePersistedWorkbenchLayout,
+} from "@/features/projects/lib/workbenchLayoutPersistence";
+import {
+  CHANGES_TILE_MIN_WIDTH_COLLAPSED,
+  CHANGES_TILE_MIN_WIDTH_EXPANDED,
+} from "@/features/projects/lib/changesTileSizing";
+
+const CHANGES_EDGE_GROUP_ID = "cozea-changes-edge";
+const CHANGES_PANEL_ID = "cozea-changes-panel";
 
 function disposeBrowserTileModelDeferred(tileId: string) {
   return import("@/features/projects/browser/browserTileModel").then((module) =>
     module.disposeBrowserTileModel(tileId),
   );
+}
+
+function getPathFromDroppedFile(file: File): string | null {
+  const maybePath = (file as File & { path?: unknown }).path;
+  return typeof maybePath === "string" && maybePath.length > 0 ? maybePath : null;
+}
+
+function buildFileUrl(filePath: string): string {
+  if (filePath.startsWith("/")) {
+    return `file://${filePath.split("/").map((part) => encodeURIComponent(part)).join("/")}`;
+  }
+  return `file://${encodeURI(filePath)}`;
+}
+
+function readDroppedBrowserTarget(dataTransfer: DataTransfer | null): {
+  title: string;
+  url: string;
+} | null {
+  if (!dataTransfer) return null;
+
+  const uriList = dataTransfer.getData("text/uri-list")?.trim();
+  if (uriList) {
+    const firstUri = uriList.split(/\r?\n/).find((line) => line && !line.startsWith("#"));
+    if (firstUri) {
+      return { title: "Dropped URL", url: firstUri };
+    }
+  }
+
+  const plainText = dataTransfer.getData("text/plain")?.trim();
+  if (plainText && /^[a-z][a-z0-9+.-]*:/i.test(plainText)) {
+    return { title: "Dropped URL", url: plainText };
+  }
+
+  const firstFile = Array.from(dataTransfer.files ?? [])[0];
+  if (!firstFile) return null;
+
+  const filePath = getPathFromDroppedFile(firstFile);
+  if (!filePath) return null;
+
+  return {
+    title: firstFile.name || "Dropped File",
+    url: buildFileUrl(filePath),
+  };
 }
 
 interface UseWorkbenchDockviewRuntimeInput {
@@ -78,6 +134,7 @@ export function useWorkbenchDockviewRuntime(
   const lastReconciledOrderRef = useRef<string[] | null>(null);
   const lastReconciledTilesRef = useRef<Record<string, WorkbenchTile> | null>(null);
   const isDestroyingRef = useRef(false);
+  const keyboardNavigationCleanupRef = useRef<(() => void) | null>(null);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
   const selectionPreviewTilesRef = useRef<Record<string, WorkbenchSelectionTile>>({});
@@ -86,6 +143,10 @@ export function useWorkbenchDockviewRuntime(
     Record<string, WorkbenchSelectionTile>
   >({});
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
+  const isChangesOpen = useChangesSidebarStore((state) => state.isOpen);
+  const changesWidth = useChangesSidebarStore((state) => state.width);
+  const changesMinWidth = useChangesSidebarStore((state) => state.minWidth);
+  const closeChanges = useChangesSidebarStore((state) => state.actions.close);
   const previewTileIds = useMemo(() => new Set(Object.keys(selectionPreviewTiles)), [selectionPreviewTiles]);
 
   const updateSelectionPreviewTiles = useCallback(
@@ -134,6 +195,10 @@ export function useWorkbenchDockviewRuntime(
           syncPanelTitles(api, input.projectWorkbench);
         } catch (error) {
           console.warn("[WorkbenchDockview] Failed to restore persisted layout", error);
+          if (input.workbenchScopeKey) {
+            clearPersistedWorkbenchLayout(input.workbenchScopeKey);
+          }
+          api.clear();
         }
       }
 
@@ -152,6 +217,7 @@ export function useWorkbenchDockviewRuntime(
       input.persistedLayout,
       input.projectId,
       input.projectWorkbench,
+      input.workbenchScopeKey,
     ],
   );
 
@@ -196,6 +262,8 @@ export function useWorkbenchDockviewRuntime(
       lastReconciledOrderRef.current = null;
       lastReconciledTilesRef.current = null;
       transientSelectionTileIdRef.current = null;
+      keyboardNavigationCleanupRef.current?.();
+      keyboardNavigationCleanupRef.current = null;
       selectionPreviewTilesRef.current = {};
       setSelectionPreviewTiles({});
       setDockviewReadyScopeKey(null);
@@ -229,6 +297,69 @@ export function useWorkbenchDockviewRuntime(
     input.projectWorkbench,
     input.workbenchScopeKey,
     hydrateDockviewPanels,
+  ]);
+
+  useEffect(() => {
+    const api = dockviewApiRef.current;
+    if (
+      !api ||
+      !input.projectId ||
+      dockviewReadyScopeKey !== input.workbenchScopeKey
+    ) {
+      return;
+    }
+
+    if (!isChangesOpen) {
+      const edgeGroup = api.getEdgeGroup("right");
+      if (edgeGroup) {
+        api.setEdgeGroupVisible("right", false);
+      }
+      return;
+    }
+
+    let edgeGroup = api.getEdgeGroup("right");
+    if (!edgeGroup) {
+      edgeGroup = api.addEdgeGroup("right", {
+        id: CHANGES_EDGE_GROUP_ID,
+        initialSize: changesWidth,
+        minimumSize: Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth),
+        maximumSize: Math.max(CHANGES_TILE_MIN_WIDTH_EXPANDED, changesWidth),
+      });
+    }
+
+    api.setEdgeGroupVisible("right", true);
+    edgeGroup.expand();
+    edgeGroup.setSize({ width: changesWidth });
+    edgeGroup.setConstraints({
+      minimumWidth: Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth),
+      maximumWidth: Math.max(CHANGES_TILE_MIN_WIDTH_EXPANDED, changesWidth),
+    });
+
+    if (!api.getPanel(CHANGES_PANEL_ID)) {
+      api.addPanel({
+        id: CHANGES_PANEL_ID,
+        title: "Changes",
+        component: "changes",
+        renderer: "always",
+        minimumWidth: Math.max(CHANGES_TILE_MIN_WIDTH_COLLAPSED, changesMinWidth),
+        minimumHeight: 260,
+        params: getPanelParams(input.projectId, input.activeLaneId, CHANGES_PANEL_ID),
+        position: {
+          referenceGroup: CHANGES_EDGE_GROUP_ID,
+          direction: "within",
+        },
+      });
+    }
+
+    api.getPanel(CHANGES_PANEL_ID)?.api.setActive();
+  }, [
+    changesMinWidth,
+    changesWidth,
+    dockviewReadyScopeKey,
+    input.activeLaneId,
+    input.projectId,
+    input.workbenchScopeKey,
+    isChangesOpen,
   ]);
 
   useEffect(() => {
@@ -391,6 +522,8 @@ export function useWorkbenchDockviewRuntime(
           title: nextTile.title,
           component: getDockComponentName(nextTile.type),
           params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
+          renderer: getPanelRendererForTile(nextTile.type),
+          ...getPanelConstraintsForTile(nextTile.type),
           position: {
             referencePanel: selectionTileId,
             direction: "within",
@@ -445,6 +578,8 @@ export function useWorkbenchDockviewRuntime(
         title: nextTile.title,
         component: getDockComponentName(nextTile.type),
         params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
+        renderer: getPanelRendererForTile(nextTile.type),
+        ...getPanelConstraintsForTile(nextTile.type),
         position: {
           referencePanel: sourceTileId,
           direction: "right",
@@ -494,6 +629,8 @@ export function useWorkbenchDockviewRuntime(
         title: nextTile.title,
         component: getDockComponentName(nextTile.type),
         params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
+        renderer: getPanelRendererForTile(nextTile.type),
+        ...getPanelConstraintsForTile(nextTile.type),
         position: {
           referencePanel: sourceTileId,
           direction: dockDirection,
@@ -529,6 +666,105 @@ export function useWorkbenchDockviewRuntime(
       event.api.onDidLayoutChange(() => {
         saveLayout();
       });
+
+      event.api.onWillDragPanel((dragEvent) => {
+        if (dragEvent.panel.api.component === "changes") {
+          dragEvent.nativeEvent.preventDefault();
+        }
+      });
+
+      event.api.onWillShowOverlay((overlayEvent) => {
+        const groupLocation = overlayEvent.group?.api.location;
+        if (groupLocation?.type === "edge" && overlayEvent.panel?.api.component !== "changes") {
+          overlayEvent.preventDefault();
+        }
+      });
+
+      event.api.onUnhandledDragOverEvent((dragEvent) => {
+        const dataTransfer = dragEvent.nativeEvent.dataTransfer;
+        if (
+          !dataTransfer?.types.includes("Files") &&
+          !dataTransfer?.types.includes("text/uri-list") &&
+          !dataTransfer?.types.includes("text/plain")
+        ) {
+          return;
+        }
+        dragEvent.accept();
+      });
+
+      event.api.onDidDrop((dropEvent) => {
+        if (!input.projectId) return;
+        const droppedTarget = readDroppedBrowserTarget(dropEvent.nativeEvent.dataTransfer);
+        if (!droppedTarget) return;
+
+        const nextTileId = workbenchActions.addTile(
+          input.projectId,
+          input.activeLaneId,
+          "browser",
+          {
+            title: droppedTarget.title,
+            url: droppedTarget.url,
+          },
+          input.workspaceId,
+        );
+        const nextTile = getLiveWorkbench()?.tiles[nextTileId];
+        if (!nextTile) return;
+
+        const referenceGroup = dropEvent.group?.id;
+        event.api.addPanel({
+          id: nextTile.id,
+          title: nextTile.title,
+          component: getDockComponentName(nextTile.type),
+          params: getPanelParams(input.projectId, input.activeLaneId, nextTile.id),
+          renderer: getPanelRendererForTile(nextTile.type),
+          ...getPanelConstraintsForTile(nextTile.type),
+          position: referenceGroup
+            ? {
+                referenceGroup,
+                direction: "within",
+              }
+            : {
+                direction: "right",
+              },
+        });
+
+        workbenchActions.setActiveTile(
+          input.projectId,
+          input.activeLaneId,
+          nextTile.id,
+          input.workspaceId,
+        );
+        event.api.getPanel(nextTile.id)?.api.setActive();
+      });
+
+      event.api.onDidOpenPopoutWindowFail(() => {
+        console.warn("[WorkbenchDockview] Popout window could not be opened");
+      });
+
+      const handleWorkbenchKeyDown = (keyboardEvent: KeyboardEvent) => {
+        const target = keyboardEvent.target as HTMLElement | null;
+        const isEditableTarget =
+          target?.tagName === "INPUT" ||
+          target?.tagName === "TEXTAREA" ||
+          target?.isContentEditable;
+        if (isEditableTarget) return;
+
+        if ((keyboardEvent.metaKey || keyboardEvent.ctrlKey) && keyboardEvent.altKey) {
+          if (keyboardEvent.key === "ArrowRight") {
+            keyboardEvent.preventDefault();
+            event.api.moveToNext({ includePanel: true });
+          } else if (keyboardEvent.key === "ArrowLeft") {
+            keyboardEvent.preventDefault();
+            event.api.moveToPrevious({ includePanel: true });
+          }
+        }
+      };
+
+      keyboardNavigationCleanupRef.current?.();
+      window.addEventListener("keydown", handleWorkbenchKeyDown);
+      keyboardNavigationCleanupRef.current = () => {
+        window.removeEventListener("keydown", handleWorkbenchKeyDown);
+      };
 
       event.api.onDidActivePanelChange((activePanel) => {
         if (!input.projectId) {
@@ -570,6 +806,12 @@ export function useWorkbenchDockviewRuntime(
             delete next[panel.id];
             return next;
           });
+          saveLayout();
+          return;
+        }
+
+        if (panel.id === CHANGES_PANEL_ID) {
+          closeChanges();
           saveLayout();
           return;
         }
@@ -664,6 +906,7 @@ export function useWorkbenchDockviewRuntime(
       });
     },
     [
+      closeChanges,
       getLiveWorkbench,
       input.activeLaneId,
       input.projectId,

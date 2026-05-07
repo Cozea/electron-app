@@ -13,6 +13,21 @@ import type {
 import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
+const RUNTIME_PANEL_CONSTRAINTS = {
+  minimumWidth: 280,
+  minimumHeight: 180,
+} as const
+
+const ASSISTANT_PANEL_CONSTRAINTS = {
+  minimumWidth: 320,
+  minimumHeight: 240,
+} as const
+
+const SELECTION_PANEL_CONSTRAINTS = {
+  minimumWidth: 260,
+  minimumHeight: 180,
+} as const
+
 export function getDockComponentName(
   type: WorkbenchTileType,
 ): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" {
@@ -37,6 +52,41 @@ export function getPanelParams(
   return { projectId, laneId, tileId }
 }
 
+export function getPanelRendererForTile(
+  type: WorkbenchTileType,
+): "always" | "onlyWhenVisible" {
+  switch (type) {
+    case "browser":
+    case "devServer":
+    case "mobileSimulator":
+    case "terminal":
+      return "always"
+    case "assistantChat":
+    case "selection":
+    case "tasks":
+    default:
+      return "onlyWhenVisible"
+  }
+}
+
+export function getPanelConstraintsForTile(
+  type: WorkbenchTileType,
+): Pick<AddPanelOptions<WorkbenchDockPanelParams>, "minimumWidth" | "minimumHeight"> {
+  switch (type) {
+    case "browser":
+    case "terminal":
+    case "devServer":
+    case "mobileSimulator":
+      return RUNTIME_PANEL_CONSTRAINTS
+    case "assistantChat":
+      return ASSISTANT_PANEL_CONSTRAINTS
+    case "selection":
+    case "tasks":
+    default:
+      return SELECTION_PANEL_CONSTRAINTS
+  }
+}
+
 export function isObsoleteWorkbenchTile(tile: WorkbenchTile | undefined | null): boolean {
   return !tile || tile.type === "tasks"
 }
@@ -58,6 +108,8 @@ export function buildAddPanelOptions(
     title: tile.title,
     component: getDockComponentName(tile.type),
     params: getPanelParams(projectId, laneId, tile.id),
+    renderer: getPanelRendererForTile(tile.type),
+    ...getPanelConstraintsForTile(tile.type),
   }
 
   if (api.totalPanels === 0) {

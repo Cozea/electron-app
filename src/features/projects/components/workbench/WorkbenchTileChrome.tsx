@@ -15,6 +15,7 @@ import {
   OpenAI,
   OpenCodeIcon,
 } from "@/features/projects/components/assistant/Icons"
+import { useRegisterWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
@@ -38,6 +39,7 @@ interface WorkbenchTileChromeProps {
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
   chromeVariant?: "bar" | "pill"
+  headerMode?: "native" | "embedded"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
   tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
@@ -160,6 +162,7 @@ export function WorkbenchTileChrome({
   panelApi,
   containerApi,
   chromeVariant = "bar",
+  headerMode = "native",
   hideTitlePill = false,
   hideWindowActions = false,
   tileType,
@@ -181,6 +184,12 @@ export function WorkbenchTileChrome({
   const tileHover = useElementPointerHover<HTMLDivElement>()
   const isHovered = tileHover.isHovered
   const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
+  const useNativeHeader = headerMode === "native"
+
+  useRegisterWorkbenchDockHeaderControls(panelApi.id, {
+    controls: useNativeHeader ? controls : null,
+    actions: useNativeHeader ? actions : null,
+  })
 
   const tileFallbackIconClassName = cn(
     "h-5 w-5 shrink-0",
@@ -309,147 +318,149 @@ export function WorkbenchTileChrome({
       onPointerLeave={tileHover.onPointerLeave}
       onPointerMove={tileHover.onPointerMove}
     >
-      <div
-        className={cn(
-          "flex h-9 shrink-0 items-center gap-2 text-xs shadow-none",
-          chromeVariant === "pill"
-            ? "bg-transparent px-1.5 pt-0.5"
-            : "border-b border-border/60 bg-content-surface px-2",
-        )}
-        data-workbench-chrome="true"
-      >
-        {!hideTitlePill ? (
-          <div
-            className={cn(
-              "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5",
-              chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
-              titlePillClassName,
-            )}
-          >
-            {titleContent ?? (
-              <>
-                <WorkbenchTileGlyph
-                  tileType={tileType}
-                  assistantProvider={assistantProvider}
-                  appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
-                  fallbackClassName={tileFallbackIconClassName}
-                />
-                <span className="truncate text-xs text-foreground">{title}</span>
-              </>
-            )}
-          </div>
-        ) : null}
-
-        {controls ? (
-          <div className="min-w-0 flex-1">
-            {controls}
-          </div>
-        ) : (
-          <div className="min-w-0 flex-1" />
-        )}
-
-        {!hideWindowActions ? (
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-1 transition-colors",
-              chromeVariant === "pill" &&
-                "rounded-md bg-secondary px-1 shadow-none ring-0",
-            )}
-          >
-            {actions}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
+      {!useNativeHeader ? (
+        <div
+          className={cn(
+            "flex h-9 shrink-0 items-center gap-2 text-xs shadow-none",
+            chromeVariant === "pill"
+              ? "bg-transparent px-1.5 pt-0.5"
+              : "border-b border-border/60 bg-content-surface px-2",
+          )}
+          data-workbench-chrome="true"
+        >
+          {!hideTitlePill ? (
+            <div
               className={cn(
-                "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
-                chromeVariant === "pill"
-                  ? pillControlHoverClasses
-                  : "hover:bg-accent",
+                "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5",
+                chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
+                titlePillClassName,
               )}
-              onClick={async (event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                const rect = event.currentTarget.getBoundingClientRect()
-                const position = {
-                  x: Math.round(rect.left + rect.width / 2),
-                  y: Math.round(rect.bottom),
-                }
-
-                const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
-                  {
-                    id: isMaximized ? "restore" : "maximize",
-                    label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
-                  },
-                  { type: "separator", id: "sep1" as any },
-                  {
-                    id: "splitRight",
-                    label: t('workbench.layout.splitRight'),
-                  },
-                  {
-                    id: "splitLeft",
-                    label: t('workbench.layout.splitLeft'),
-                  },
-                  { type: "separator", id: "sep2" as any },
-                  {
-                    id: "splitDown",
-                    label: t('workbench.layout.splitDown'),
-                  },
-                  {
-                    id: "splitUp",
-                    label: t('workbench.layout.splitUp'),
-                  },
-                ]
-
-                const action = await showDesktopContextMenu(items, position)
-                if (!action) return
-
-                switch (action) {
-                  case "maximize":
-                    panelApi.maximize()
-                    setIsMaximized(true)
-                    break
-                  case "restore":
-                    panelApi.exitMaximized()
-                    setIsMaximized(false)
-                    break
-                  case "splitRight":
-                    runtime.onSplitTile(panelApi.id, "right")
-                    break
-                  case "splitLeft":
-                    runtime.onSplitTile(panelApi.id, "left")
-                    break
-                  case "splitDown":
-                    runtime.onSplitTile(panelApi.id, "bottom")
-                    break
-                  case "splitUp":
-                    runtime.onSplitTile(panelApi.id, "top")
-                    break
-                }
-              }}
-              aria-label={t('workbench.layout.optionsLabel')}
             >
-              <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
-            </Button>
+              {titleContent ?? (
+                <>
+                  <WorkbenchTileGlyph
+                    tileType={tileType}
+                    assistantProvider={assistantProvider}
+                    appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
+                    fallbackClassName={tileFallbackIconClassName}
+                  />
+                  <span className="truncate text-xs text-foreground">{title}</span>
+                </>
+              )}
+            </div>
+          ) : null}
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
+          {controls ? (
+            <div className="min-w-0 flex-1">
+              {controls}
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1" />
+          )}
+
+          {!hideWindowActions ? (
+            <div
               className={cn(
-                "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
-                chromeVariant === "pill"
-                  ? pillControlHoverClasses
-                  : "hover:bg-accent",
+                "flex shrink-0 items-center gap-1 transition-colors",
+                chromeVariant === "pill" &&
+                  "rounded-md bg-secondary px-1 shadow-none ring-0",
               )}
-              onClick={() => panelApi.close()}
-              aria-label={t('workbench.layout.closeLabel').replace('{title}', title)}
             >
-              <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ) : null}
-      </div>
+              {actions}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
+                  chromeVariant === "pill"
+                    ? pillControlHoverClasses
+                    : "hover:bg-accent",
+                )}
+                onClick={async (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  const position = {
+                    x: Math.round(rect.left + rect.width / 2),
+                    y: Math.round(rect.bottom),
+                  }
+
+                  const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
+                    {
+                      id: isMaximized ? "restore" : "maximize",
+                      label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
+                    },
+                    { type: "separator", id: "sep1" as any },
+                    {
+                      id: "splitRight",
+                      label: t('workbench.layout.splitRight'),
+                    },
+                    {
+                      id: "splitLeft",
+                      label: t('workbench.layout.splitLeft'),
+                    },
+                    { type: "separator", id: "sep2" as any },
+                    {
+                      id: "splitDown",
+                      label: t('workbench.layout.splitDown'),
+                    },
+                    {
+                      id: "splitUp",
+                      label: t('workbench.layout.splitUp'),
+                    },
+                  ]
+
+                  const action = await showDesktopContextMenu(items, position)
+                  if (!action) return
+
+                  switch (action) {
+                    case "maximize":
+                      panelApi.maximize()
+                      setIsMaximized(true)
+                      break
+                    case "restore":
+                      panelApi.exitMaximized()
+                      setIsMaximized(false)
+                      break
+                    case "splitRight":
+                      runtime.onSplitTile(panelApi.id, "right")
+                      break
+                    case "splitLeft":
+                      runtime.onSplitTile(panelApi.id, "left")
+                      break
+                    case "splitDown":
+                      runtime.onSplitTile(panelApi.id, "bottom")
+                      break
+                    case "splitUp":
+                      runtime.onSplitTile(panelApi.id, "top")
+                      break
+                  }
+                }}
+                aria-label={t('workbench.layout.optionsLabel')}
+              >
+                <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
+                  chromeVariant === "pill"
+                    ? pillControlHoverClasses
+                    : "hover:bg-accent",
+                )}
+                onClick={() => panelApi.close()}
+                aria-label={t('workbench.layout.closeLabel').replace('{title}', title)}
+              >
+                <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className={cn("min-h-0 flex-1", contentClassName)}>
         {children}

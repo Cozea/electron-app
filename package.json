@@ -124,7 +124,7 @@
     "convex": "^1.35.1",
     "date-fns": "^4.1.0",
     "diff-match-patch": "^1.0.5",
-    "dockview": "^5.2.0",
+    "dockview": "^6.0.5",
     "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b",
     "electron-updater": "^6.7.3",
     "electron-window-state": "^5.0.3",

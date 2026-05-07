@@ -1,16 +1,29 @@
 import {
   lazy,
   memo,
-  startTransition,
   Suspense,
   useEffect,
-  useRef,
   useState,
   type ReactNode,
 } from "react"
-import type { IDockviewPanelProps } from "dockview"
+import type {
+  IDockviewHeaderActionsProps,
+  IDockviewPanelHeaderProps,
+  IDockviewPanelProps,
+  IWatermarkPanelProps,
+} from "dockview"
+import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
+import { Button } from "@/components/ui/button"
+import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import {
+  getDevAppForAssistantProvider,
+  getDevAppForSurfaceTileType,
+  listLauncherApps,
+} from "@/features/devapps/registry"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import { useWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
+import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
@@ -25,78 +38,23 @@ import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
-const panelSuspenseFallback = <div className="h-full bg-background" aria-hidden="true" />
-const DEFAULT_BACKGROUND_UI_DETACH_MS = 45_000
-const DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 520
-const RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 650
-const ASSISTANT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS = 900
-const BACKGROUND_UI_HYDRATE_STAGGER_MS = 140
-const BACKGROUND_UI_HYDRATE_SEQUENCE_RESET_MS = 1_500
-const BACKGROUND_UI_PREFETCH_LEAD_MS = 220
-const ASSISTANT_BACKGROUND_UI_DETACH_MS = null
-const SELECTION_BACKGROUND_UI_DETACH_MS = 0
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  ArrowLeft01Icon as __ArrowLeftHugeIcon,
+  ArrowRight01Icon as __ArrowRightHugeIcon,
+  ArrowExpand01Icon as __MaximizeHugeIcon,
+  ArrowShrink01Icon as __RestoreHugeIcon,
+  Cancel01Icon as __XHugeIcon,
+  Layers01Icon as __LayersHugeIcon,
+  Layout04Icon as __Layout04HugeIcon,
+} from "@hugeicons/core-free-icons"
 
-type HydratableWorkbenchTileType =
-  | "selection"
-  | "browser"
-  | "terminal"
-  | "devServer"
-  | "mobileSimulator"
-  | "assistantChat"
-
-let backgroundHydrationSequence = 0
-let backgroundHydrationResetHandle: number | null = null
-
-function getNextBackgroundHydrationDelay(baseDelayMs: number): number {
-  const sequence = backgroundHydrationSequence
-  backgroundHydrationSequence = Math.min(backgroundHydrationSequence + 1, 12)
-  if (backgroundHydrationResetHandle !== null) {
-    window.clearTimeout(backgroundHydrationResetHandle)
-  }
-  backgroundHydrationResetHandle = window.setTimeout(() => {
-    backgroundHydrationSequence = 0
-    backgroundHydrationResetHandle = null
-  }, BACKGROUND_UI_HYDRATE_SEQUENCE_RESET_MS)
-  return baseDelayMs + sequence * BACKGROUND_UI_HYDRATE_STAGGER_MS
-}
-
-function scheduleIdleWork(callback: () => void, timeoutMs: number): () => void {
-  const win = window as Window & {
-    requestIdleCallback?: (
-      callback: IdleRequestCallback,
-      options?: IdleRequestOptions,
-    ) => number
-    cancelIdleCallback?: (handle: number) => void
-  }
-  let cancelled = false
-  let idleHandle: number | null = null
-  let timeoutHandle: number | null = null
-
-  const run = () => {
-    if (!cancelled) {
-      callback()
-    }
-  }
-
-  if (win.requestIdleCallback) {
-    idleHandle = win.requestIdleCallback(run, { timeout: timeoutMs })
-  } else {
-    timeoutHandle = window.setTimeout(run, 0)
-  }
-
-  return () => {
-    cancelled = true
-    if (idleHandle !== null) {
-      win.cancelIdleCallback?.(idleHandle)
-    }
-    if (timeoutHandle !== null) {
-      window.clearTimeout(timeoutHandle)
-    }
-  }
-}
+const changesSuspenseFallback = <div className="h-full bg-background" aria-hidden="true" />
 
 const loadWorkbenchAssistantChatTile = () =>
   import("@/features/projects/components/workbench/WorkbenchAssistantChatTile").then((m) => ({
@@ -129,29 +87,11 @@ const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
 const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
-
-function preloadWorkbenchTileComponent(tileType: HydratableWorkbenchTileType): void {
-  switch (tileType) {
-    case "assistantChat":
-      void loadWorkbenchAssistantChatTile()
-      return
-    case "browser":
-      void loadWorkbenchBrowserTile()
-      return
-    case "devServer":
-      void loadWorkbenchDevServerTile()
-      return
-    case "mobileSimulator":
-      void loadWorkbenchMobileSimulatorTile()
-      return
-    case "selection":
-      void loadWorkbenchSelectionTile()
-      return
-    case "terminal":
-      void loadWorkbenchTerminalTile()
-      return
-  }
-}
+const LazyChangesPage = lazy(() =>
+  import("@/features/projects/pages/ChangesPage").then((m) => ({
+    default: m.ChangesPage,
+  })),
+)
 
 function WorkbenchPlaceholder(props: { title: string; description: string }) {
   return (
@@ -164,238 +104,58 @@ function WorkbenchPlaceholder(props: { title: string; description: string }) {
   )
 }
 
-function DormantTilePlaceholder(props: { title: string }) {
-  return (
-    <WorkbenchPlaceholder
-      title={props.title}
-      description="Select this tile to reattach the retained UI."
-    />
-  )
-}
-
-function usePanelUiHydration(
-  api: IDockviewPanelProps<WorkbenchDockPanelParams>["api"],
-  options: {
-    detachAfterHiddenMs: number | null
-    tileType: HydratableWorkbenchTileType
-    visibleHydrateDelayMs: number
-  },
-) {
-  const detachTimerRef = useRef<number | null>(null)
-  const hydrateTimerRef = useRef<number | null>(null)
-  const prefetchTimerRef = useRef<number | null>(null)
-  const cancelIdleHydrationRef = useRef<(() => void) | null>(null)
-  const cancelIdlePrefetchRef = useRef<(() => void) | null>(null)
-  const [shouldHydrate, setShouldHydrate] = useState(() => {
-    if (api.isActive) return true
-    if (!api.isVisible) return false
-    return options.visibleHydrateDelayMs <= 0
-  })
-
-  useEffect(() => {
-    const clearDetachTimer = () => {
-      if (detachTimerRef.current === null) return
-      window.clearTimeout(detachTimerRef.current)
-      detachTimerRef.current = null
-    }
-    const clearHydrateTimer = () => {
-      if (hydrateTimerRef.current === null) return
-      window.clearTimeout(hydrateTimerRef.current)
-      hydrateTimerRef.current = null
-    }
-    const clearPrefetchTimer = () => {
-      if (prefetchTimerRef.current === null) return
-      window.clearTimeout(prefetchTimerRef.current)
-      prefetchTimerRef.current = null
-    }
-    const clearIdleWork = () => {
-      cancelIdleHydrationRef.current?.()
-      cancelIdleHydrationRef.current = null
-      cancelIdlePrefetchRef.current?.()
-      cancelIdlePrefetchRef.current = null
-    }
-    const clearScheduledWork = () => {
-      clearDetachTimer()
-      clearHydrateTimer()
-      clearPrefetchTimer()
-      clearIdleWork()
-    }
-    const setHydrated = (hydrated: boolean, urgent: boolean) => {
-      if (urgent) {
-        setShouldHydrate(hydrated)
-        return
-      }
-      startTransition(() => {
-        setShouldHydrate(hydrated)
-      })
-    }
-    const schedulePrefetch = (delayMs: number) => {
-      clearPrefetchTimer()
-      cancelIdlePrefetchRef.current?.()
-      cancelIdlePrefetchRef.current = null
-
-      prefetchTimerRef.current = window.setTimeout(() => {
-        prefetchTimerRef.current = null
-        cancelIdlePrefetchRef.current = scheduleIdleWork(
-          () => {
-            cancelIdlePrefetchRef.current = null
-            preloadWorkbenchTileComponent(options.tileType)
-          },
-          1_000,
-        )
-      }, Math.max(0, delayMs))
-    }
-
-    const hydrateNow = () => {
-      clearScheduledWork()
-      preloadWorkbenchTileComponent(options.tileType)
-      setHydrated(true, true)
-    }
-
-    const scheduleVisibleHydration = () => {
-      clearScheduledWork()
-      if (api.isActive || options.visibleHydrateDelayMs <= 0) {
-        hydrateNow()
-        return
-      }
-
-      const hydrationDelayMs = getNextBackgroundHydrationDelay(options.visibleHydrateDelayMs)
-      schedulePrefetch(hydrationDelayMs - BACKGROUND_UI_PREFETCH_LEAD_MS)
-      hydrateTimerRef.current = window.setTimeout(() => {
-        hydrateTimerRef.current = null
-        cancelIdleHydrationRef.current = scheduleIdleWork(
-          () => {
-            cancelIdleHydrationRef.current = null
-            setHydrated(true, false)
-          },
-          1_200,
-        )
-      }, hydrationDelayMs)
-    }
-
-    const scheduleDetach = () => {
-      clearScheduledWork()
-      if (options.detachAfterHiddenMs === null) {
-        return
-      }
-
-      if (options.detachAfterHiddenMs <= 0) {
-        setHydrated(false, false)
-        return
-      }
-
-      detachTimerRef.current = window.setTimeout(() => {
-        detachTimerRef.current = null
-        setHydrated(false, false)
-      }, options.detachAfterHiddenMs)
-    }
-
-    if (api.isActive) {
-      hydrateNow()
-    } else if (api.isVisible) {
-      scheduleVisibleHydration()
-    } else {
-      scheduleDetach()
-    }
-
-    const visibilityDisposable = api.onDidVisibilityChange((event) => {
-      if (event.isVisible) {
-        scheduleVisibleHydration()
-        return
-      }
-
-      scheduleDetach()
-    })
-    const activeDisposable = api.onDidActiveChange((event) => {
-      if (!event.isActive) {
-        return
-      }
-
-      hydrateNow()
-    })
-
-    return () => {
-      clearScheduledWork()
-      visibilityDisposable.dispose()
-      activeDisposable.dispose()
-    }
-  }, [api, options.detachAfterHiddenMs, options.tileType, options.visibleHydrateDelayMs])
-
-  return shouldHydrate
-}
-
-function TileUiHydrationBoundary({
-  children,
-  detachAfterHiddenMs = DEFAULT_BACKGROUND_UI_DETACH_MS,
-  panelApi,
-  tileType,
-  title,
-  visibleHydrateDelayMs = DEFAULT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS,
-}: {
-  children: ReactNode
-  detachAfterHiddenMs?: number | null
-  panelApi: IDockviewPanelProps<WorkbenchDockPanelParams>["api"]
-  tileType: HydratableWorkbenchTileType
-  title: string
-  visibleHydrateDelayMs?: number
-}) {
-  const shouldHydrate = usePanelUiHydration(panelApi, {
-    detachAfterHiddenMs,
-    tileType,
-    visibleHydrateDelayMs,
-  })
-  const [showDormantPlaceholder, setShowDormantPlaceholder] = useState(!shouldHydrate)
-  const [showHydratedUi, setShowHydratedUi] = useState(shouldHydrate)
-
-  useEffect(() => {
-    if (!shouldHydrate) {
-      setShowDormantPlaceholder(true)
-      setShowHydratedUi(false)
-      return
-    }
-
-    setShowHydratedUi(true)
-    const timer = window.setTimeout(() => {
-      setShowDormantPlaceholder(false)
-    }, 160)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [shouldHydrate])
-
-  return (
-    <div className="relative h-full min-h-0">
-      {showDormantPlaceholder ? (
-        <div
-          className={cn(
-            "absolute inset-0 transition-opacity duration-150 ease-out",
-            shouldHydrate ? "opacity-0" : "opacity-100",
-          )}
-        >
-          <DormantTilePlaceholder title={title} />
-        </div>
-      ) : null}
-      {showHydratedUi ? (
-        <div
-          className={cn(
-            "absolute inset-0 transition-opacity duration-150 ease-out",
-            shouldHydrate ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <Suspense fallback={panelSuspenseFallback}>{children}</Suspense>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 function MissingTilePlaceholder() {
   return (
     <WorkbenchPlaceholder
       title="Panel unavailable"
       description="This workbench panel no longer exists in the current session."
     />
+  )
+}
+
+function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
+  switch (tile?.type) {
+    case "assistantChat":
+      return "Agent"
+    case "browser":
+      return "Browser"
+    case "terminal":
+      return "Terminal"
+    case "devServer":
+      return "Dev Server"
+    case "mobileSimulator":
+      return "Simulator"
+    case "selection":
+      return "Add"
+    default:
+      return "Panel"
+  }
+}
+
+function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
+  const devApp =
+    tile?.type === "assistantChat"
+      ? getDevAppForAssistantProvider(tile.provider ?? null)
+      : tile?.type === "browser" ||
+          tile?.type === "terminal" ||
+          tile?.type === "devServer" ||
+          tile?.type === "mobileSimulator"
+        ? getDevAppForSurfaceTileType(tile.type)
+        : null
+
+  if (!devApp) {
+    return (
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/45"
+        aria-hidden="true"
+      />
+    )
+  }
+
+  return (
+    <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
+      <DevAppIcon app={devApp} />
+    </span>
   )
 }
 
@@ -420,6 +180,263 @@ function useSyncPanelTitle(
     api.setTitle(title)
   }, [api, title])
 }
+
+export const WorkbenchDockTab = memo(function WorkbenchDockTab(
+  props: IDockviewPanelHeaderProps<WorkbenchDockPanelParams>,
+) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+  const title = tile?.title ?? props.api.title ?? resolveTabTileTypeLabel(tile)
+  const active = props.api.isActive
+
+  return (
+    <div
+      className={cn(
+        "cozea-workbench-tab flex h-full min-w-0 items-center gap-1.5 px-2 text-[12px]",
+        active ? "text-foreground" : "text-muted-foreground",
+      )}
+      title={title}
+    >
+      <WorkbenchDockTabIcon tile={tile} />
+      <span className="min-w-0 truncate">{title}</span>
+      {tile?.type === "assistantChat" && tile.model ? (
+        <span className="hidden max-w-20 shrink-0 truncate rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground group-hover:inline-flex">
+          {tile.model}
+        </span>
+      ) : tile?.type ? (
+        <span className="hidden shrink-0 rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground group-hover:inline-flex">
+          {resolveTabTileTypeLabel(tile)}
+        </span>
+      ) : null}
+    </div>
+  )
+})
+
+export const WorkbenchDockHeaderControls = memo(function WorkbenchDockHeaderControls(
+  props: IDockviewHeaderActionsProps,
+) {
+  const activePanel = props.activePanel
+  const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
+
+  if (!activePanel || !registeredHeader?.controls) {
+    return null
+  }
+
+  return (
+    <div className="cozea-workbench-header-controls flex h-full min-w-0 items-center px-1">
+      {registeredHeader.controls}
+    </div>
+  )
+})
+
+export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActions(
+  props: IDockviewHeaderActionsProps,
+) {
+  const { t } = useTranslation()
+  const runtime = useWorkbenchDockRuntime()
+  const activePanel = props.activePanel
+  const isMaximized = activePanel?.api.isMaximized() ?? false
+  const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
+
+  if (!activePanel) {
+    return null
+  }
+
+  return (
+    <div className="cozea-workbench-header-actions flex h-full min-w-0 items-center gap-1 px-1">
+      {registeredHeader?.actions ? (
+        <div className="cozea-workbench-header-panel-actions flex shrink-0 items-center gap-0.5">
+          {registeredHeader.actions}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+        title={t('workbench.layout.optionsLabel')}
+        onClick={async (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          const rect = event.currentTarget.getBoundingClientRect()
+          const position = {
+            x: Math.round(rect.left + rect.width / 2),
+            y: Math.round(rect.bottom),
+          }
+          const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
+            {
+              id: isMaximized ? "restore" : "maximize",
+              label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
+            },
+            { type: "separator", id: "sep1" as any },
+            {
+              id: "splitRight",
+              label: t('workbench.layout.splitRight'),
+            },
+            {
+              id: "splitLeft",
+              label: t('workbench.layout.splitLeft'),
+            },
+            { type: "separator", id: "sep2" as any },
+            {
+              id: "splitDown",
+              label: t('workbench.layout.splitDown'),
+            },
+            {
+              id: "splitUp",
+              label: t('workbench.layout.splitUp'),
+            },
+          ]
+          const action = await showDesktopContextMenu(items, position)
+          if (!action) return
+
+          switch (action) {
+            case "maximize":
+              activePanel.api.maximize()
+              break
+            case "restore":
+              activePanel.api.exitMaximized()
+              break
+            case "splitRight":
+              runtime.onSplitTile(activePanel.id, "right")
+              break
+            case "splitLeft":
+              runtime.onSplitTile(activePanel.id, "left")
+              break
+            case "splitDown":
+              runtime.onSplitTile(activePanel.id, "bottom")
+              break
+            case "splitUp":
+              runtime.onSplitTile(activePanel.id, "top")
+              break
+          }
+        }}
+      >
+        <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+        title={isMaximized ? "Restore panel" : "Maximize panel"}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          if (activePanel.api.isMaximized()) {
+            activePanel.api.exitMaximized()
+          } else {
+            activePanel.api.maximize()
+          }
+        }}
+      >
+        <HugeiconsIcon icon={isMaximized ? __RestoreHugeIcon : __MaximizeHugeIcon} className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+        title="Move focus to previous panel"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          props.containerApi.moveToPrevious({ includePanel: true, group: props.group })
+        }}
+      >
+        <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+        title="Move focus to next panel"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          props.containerApi.moveToNext({ includePanel: true, group: props.group })
+        }}
+      >
+        <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        title="Close panel"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          activePanel.api.close()
+        }}
+      >
+        <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+})
+
+export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
+  _props: IWatermarkPanelProps,
+) {
+  const { t } = useTranslation()
+  const runtime = useWorkbenchDockRuntime()
+  const actions = useProjectWorkbenchStore((state) => state.actions)
+  const launcherApps = listLauncherApps().filter(
+    (app) =>
+      app.launch.kind === "assistantChat" ||
+      app.launch.kind === "browser" ||
+      app.launch.kind === "terminal" ||
+      app.launch.kind === "devServer" ||
+      app.launch.kind === "mobileSimulator",
+  )
+
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-content-surface p-8">
+      <div className="flex w-full max-w-2xl flex-col items-center gap-5 text-center">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <HugeiconsIcon icon={__LayersHugeIcon} className="h-4 w-4 text-muted-foreground" />
+          {runtime.projectName ? `Open a tile for ${runtime.projectName}` : "Open a workbench tile"}
+        </div>
+        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
+          {launcherApps.map((app) => (
+            <Button
+              key={app.id}
+              type="button"
+              variant="outline"
+              className="h-20 flex-col gap-2 rounded-md"
+              onClick={() => {
+                const launch = resolveWorkbenchSelectionLaunchRequest({ appId: app.id })
+                if (launch.action === "openSingletonTile") {
+                  actions.openSingletonTile(
+                    runtime.projectId,
+                    runtime.laneId,
+                    launch.tileType,
+                    launch.options,
+                    runtime.workspaceId,
+                  )
+                  return
+                }
+                actions.addTile(
+                  runtime.projectId,
+                  runtime.laneId,
+                  launch.tileType,
+                  launch.options,
+                  runtime.workspaceId,
+                )
+              }}
+            >
+              <span className="size-7 overflow-hidden rounded-md">
+                <DevAppIcon app={app} />
+              </span>
+              <span className="max-w-full truncate text-xs">{app.name}</span>
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t("workbench.selection.searchPlaceholder")}
+        </p>
+      </div>
+    </div>
+  )
+})
 
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const { t } = useTranslation()
@@ -474,13 +491,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
       hideWindowActions={singletonEmptyWorkbench}
       contentClassName="h-full"
     >
-      <TileUiHydrationBoundary
-        detachAfterHiddenMs={SELECTION_BACKGROUND_UI_DETACH_MS}
-        panelApi={props.api}
-        tileType="selection"
-        title={selectionTile.title}
-        visibleHydrateDelayMs={0}
-      >
+      <Suspense fallback={changesSuspenseFallback}>
         <LazyWorkbenchSelectionTile
           tile={selectionTile}
           singletonEmptyWorkbench={singletonEmptyWorkbench}
@@ -490,7 +501,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
             runtime.onResolveSelectionTile(selectionTile.id, request)
           }}
         />
-      </TileUiHydrationBoundary>
+      </Suspense>
     </WorkbenchTileChrome>
   )
 })
@@ -519,12 +530,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
   }
 
   return (
-    <TileUiHydrationBoundary
-      panelApi={props.api}
-      tileType="browser"
-      title={tile.title}
-      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
-    >
+    <Suspense fallback={changesSuspenseFallback}>
       <LazyWorkbenchBrowserTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -534,7 +540,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </TileUiHydrationBoundary>
+    </Suspense>
   )
 })
 
@@ -564,12 +570,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
   }
 
   return (
-    <TileUiHydrationBoundary
-      panelApi={props.api}
-      tileType="terminal"
-      title={tile.title}
-      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
-    >
+    <Suspense fallback={changesSuspenseFallback}>
       <LazyWorkbenchTerminalTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -579,7 +580,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </TileUiHydrationBoundary>
+    </Suspense>
   )
 })
 
@@ -607,12 +608,7 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
   }
 
   return (
-    <TileUiHydrationBoundary
-      panelApi={props.api}
-      tileType="devServer"
-      title={tile.title}
-      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
-    >
+    <Suspense fallback={changesSuspenseFallback}>
       <LazyWorkbenchDevServerTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -625,7 +621,7 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </TileUiHydrationBoundary>
+    </Suspense>
   )
 })
 
@@ -655,12 +651,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   }
 
   return (
-    <TileUiHydrationBoundary
-      panelApi={props.api}
-      tileType="mobileSimulator"
-      title={tile.title}
-      visibleHydrateDelayMs={RUNTIME_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
-    >
+    <Suspense fallback={changesSuspenseFallback}>
       <LazyWorkbenchMobileSimulatorTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -673,7 +664,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
         panelApi={props.api}
         containerApi={props.containerApi}
       />
-    </TileUiHydrationBoundary>
+    </Suspense>
   )
 })
 
@@ -703,13 +694,7 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
   }
 
   return (
-    <TileUiHydrationBoundary
-      detachAfterHiddenMs={ASSISTANT_BACKGROUND_UI_DETACH_MS}
-      panelApi={props.api}
-      tileType="assistantChat"
-      title={tile.title}
-      visibleHydrateDelayMs={ASSISTANT_VISIBLE_BACKGROUND_HYDRATE_DELAY_MS}
-    >
+    <Suspense fallback={changesSuspenseFallback}>
       <LazyWorkbenchAssistantChatTile
         projectId={props.params.projectId}
         laneId={props.params.laneId}
@@ -720,7 +705,40 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
         containerApi={props.containerApi}
         onDuplicate={runtime.onDuplicateAssistantTile}
       />
-    </TileUiHydrationBoundary>
+    </Suspense>
+  )
+})
+
+const ChangesPanel = memo(function ChangesPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+  const runtime = useWorkbenchDockRuntime()
+  const changesActions = useChangesSidebarStore((state) => state.actions)
+  const [titleContent, setTitleContent] = useState<ReactNode>(null)
+  const [controlsNode, setControlsNode] = useState<ReactNode>(null)
+
+  useSyncPanelTitle(props.api, "Changes")
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <header className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
+        {titleContent ? <div className="flex shrink-0 items-center">{titleContent}</div> : null}
+        <div className="flex min-w-0 flex-1 items-center">
+          {controlsNode}
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <Suspense fallback={changesSuspenseFallback}>
+          <LazyChangesPage
+            presentation="embedded"
+            workspaceId={runtime.workspaceId}
+            onRequestClose={changesActions.close}
+            setChromeTitleContent={setTitleContent}
+            setChromeControlsNode={setControlsNode}
+            setDockviewMinimumWidth={changesActions.setMinWidth}
+          />
+        </Suspense>
+      </div>
+    </div>
   )
 })
 
@@ -731,4 +749,5 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   devServer: DevServerPanel,
   mobileSimulator: MobileSimulatorPanel,
   assistantChat: AssistantChatPanel,
+  changes: ChangesPanel,
 }
