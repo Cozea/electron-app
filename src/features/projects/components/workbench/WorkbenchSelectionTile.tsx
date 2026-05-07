@@ -112,7 +112,7 @@ function SelectionFilterBar({
   return (
     <div
       className={cn(
-        "w-full shrink-0 bg-content-surface py-2",
+        "w-full shrink-0 bg-transparent py-2",
         flush ? "px-0" : "px-2 md:px-0",
       )}
     >
@@ -497,7 +497,7 @@ export function WorkbenchSelectionTile({
   )
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-y-auto",

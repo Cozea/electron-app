@@ -1,71 +1,54 @@
-.cozea-workbench-dockview {
-  --dv-border-radius: 0px;
+.cozea-workbench-dockview-host {
+  background: transparent;
+}
+
+.cozea-workbench-dockview-theme {
   --dv-floating-box-shadow: none;
-  --dv-sash-color: color-mix(in oklch, var(--foreground) 8%, transparent);
-  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 24%, transparent);
-  --dv-active-sash-transition-duration: 0.08s;
-  --dv-active-sash-transition-delay: 0s;
-  --dv-tabs-and-actions-container-height: 32px;
   --dv-tabs-and-actions-container-font-size: 12px;
   --dv-tab-font-size: 12px;
-  --dv-tab-margin: 0;
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   --dv-drag-over-background-color: color-mix(in oklch, var(--primary) 12%, transparent);
   --dv-drag-over-border-color: color-mix(in oklch, var(--primary) 42%, transparent);
   --dv-tabs-container-scrollbar-color: color-mix(in oklch, var(--foreground) 20%, transparent);
   --dv-scrollbar-background-color: transparent;
-}
-
-.cozea-workbench-dockview.dockview-theme-light,
-.cozea-workbench-dockview.dockview-theme-dark {
-  --dv-group-view-background-color: var(--content-surface);
+  --dv-background-color: transparent;
+  --dv-group-view-background-color: transparent;
   --dv-tabs-and-actions-container-background-color: var(--content-surface);
-  --dv-activegroup-visiblepanel-tab-background-color: transparent;
-  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: color-mix(
+    in oklch,
+    var(--foreground) 8%,
+    transparent
+  );
+  --dv-activegroup-hiddenpanel-tab-background-color: color-mix(
+    in oklch,
+    var(--foreground) 4%,
+    transparent
+  );
+  --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(
+    in oklch,
+    var(--foreground) 5%,
+    transparent
+  );
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-tab-divider-color: transparent;
-  /* Match `UnifiedHeader` / project strip: `border-border/60` */
-  --dv-separator-border: color-mix(in oklch, var(--border) 60%, transparent);
-  --dv-paneview-header-border-color: color-mix(in oklch, var(--border) 60%, transparent);
-}
-
-.cozea-workbench-dockview.dockview-theme-light {
   --dv-activegroup-visiblepanel-tab-color: var(--foreground);
   --dv-activegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
   --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
   --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: transparent;
+  --dv-floating-group-border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  background-color: transparent;
 }
 
-.cozea-workbench-dockview.dockview-theme-dark {
-  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
-  --dv-activegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
-  --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
-  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 48%, transparent);
-}
-
-.cozea-workbench-dockview .dv-groupview,
-.cozea-workbench-dockview .dv-groupview-content-container,
-.cozea-workbench-dockview .dv-content-container,
-.cozea-workbench-dockview .dv-watermark-container {
-  background: var(--content-surface);
-}
-
-/* Keep panel borders clipped to their own tile during split/open animations. */
-.cozea-workbench-dockview .dv-view,
-.cozea-workbench-dockview .dv-groupview-content,
-.cozea-workbench-dockview .dv-groupview-content-container,
-.cozea-workbench-dockview .dv-content-container {
-  overflow: hidden;
-}
-
-.cozea-workbench-dockview .dv-groupview {
-  border: 0;
-  transition:
-    top 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    left 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 160ms cubic-bezier(0.22, 1, 0.36, 1);
+.cozea-workbench-dockview-theme .cozea-workbench-dockview,
+.cozea-workbench-dockview-theme .dv-dockview,
+.cozea-workbench-dockview-theme .dv-resize-container,
+.cozea-workbench-dockview-theme .dv-groupview,
+.cozea-workbench-dockview-theme .dv-groupview-content-container,
+.cozea-workbench-dockview-theme .dv-groupview .dv-content-container,
+.cozea-workbench-dockview-theme .dv-watermark-container {
+  background-color: transparent;
 }
 
 .cozea-workbench-dockview .dv-groupview.dv-active-group {
@@ -73,21 +56,15 @@
   outline-offset: 0;
 }
 
-.cozea-workbench-dockview .dv-tabs-and-actions-container {
-  height: 32px;
-  min-height: 32px;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-}
-
 .cozea-workbench-dockview .dv-tab {
   letter-spacing: 0;
   min-width: 7rem;
   max-width: 13rem;
-  border-radius: 0;
 }
 
-.cozea-workbench-dockview .dv-tab.dv-active-tab {
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+.cozea-workbench-dockview .dv-tab:has(.cozea-workbench-tab--chrome-owned) {
+  min-width: 2.5rem;
+  max-width: 2.5rem;
 }
 
 .cozea-workbench-dockview .cozea-workbench-tab {
@@ -99,19 +76,22 @@
 }
 
 .cozea-workbench-dockview .dv-left-actions-container {
-  min-width: min(42rem, 42%);
-  max-width: min(46rem, 48%);
-  flex: 1 1 22rem;
+  min-width: 0;
+  flex: 0 0 auto;
 }
 
-.cozea-workbench-dockview .cozea-workbench-header-controls,
+.cozea-workbench-dockview .dv-left-actions-container:has(.cozea-workbench-header-controls) {
+  max-width: min(34rem, 48%);
+  flex: 1 1 18rem;
+}
+
 .cozea-workbench-dockview .cozea-workbench-header-controls > * {
   min-width: 0;
   width: 100%;
 }
 
 .cozea-workbench-dockview .dv-tabs-container {
-  min-width: 7rem;
+  min-width: 2.5rem;
 }
 
 .cozea-workbench-dockview .cozea-workbench-header-actions button,
@@ -119,6 +99,9 @@
   flex-shrink: 0;
 }
 
-.cozea-workbench-dockview .dv-tab-close {
-  border-radius: 0;
+.cozea-workbench-dockview .dv-groupview:has([data-workbench-changes-panel="true"]),
+.cozea-workbench-dockview
+  .dv-groupview:has([data-workbench-changes-panel="true"])
+  > .dv-content-container {
+  overflow: hidden;
 }

@@ -312,7 +312,7 @@ export function WorkbenchTileChrome({
 
   return (
     <div 
-      className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface relative", className)}
+      className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-transparent relative", className)}
       ref={tileHover.ref}
       onPointerEnter={tileHover.onPointerEnter}
       onPointerLeave={tileHover.onPointerLeave}
