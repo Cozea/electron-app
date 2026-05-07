@@ -4,7 +4,7 @@ import {
   type CanonicalRequestType,
   type EventId,
   type ProviderApprovalDecision,
-  type ProviderKind,
+  type ProviderDriverKind,
   type ProviderRuntimeEvent,
   type RuntimeRequestId,
   type ThreadId,
@@ -80,7 +80,7 @@ function runtimeItemStatusFromAcpToolStatus(
 
 export function makeAcpRequestOpenedEvent(input: {
   readonly stamp: AcpEventStamp;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly turnId: TurnId | undefined;
   readonly requestId: RuntimeRequestId;
@@ -113,7 +113,7 @@ export function makeAcpRequestOpenedEvent(input: {
 
 export function makeAcpRequestResolvedEvent(input: {
   readonly stamp: AcpEventStamp;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly turnId: TurnId | undefined;
   readonly requestId: RuntimeRequestId;
@@ -136,7 +136,7 @@ export function makeAcpRequestResolvedEvent(input: {
 
 export function makeAcpPlanUpdatedEvent(input: {
   readonly stamp: AcpEventStamp;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly turnId: TurnId | undefined;
   readonly payload: AcpPlanUpdate;
@@ -161,7 +161,7 @@ export function makeAcpPlanUpdatedEvent(input: {
 
 export function makeAcpToolCallEvent(input: {
   readonly stamp: AcpEventStamp;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly turnId: TurnId | undefined;
   readonly toolCall: AcpToolCallState;
@@ -197,7 +197,7 @@ export function makeAcpToolCallEvent(input: {
 
 export function makeAcpAssistantItemEvent(input: {
   readonly stamp: AcpEventStamp;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly turnId: TurnId | undefined;
   readonly itemId: string;
@@ -219,7 +219,7 @@ export function makeAcpAssistantItemEvent(input: {
 
 export function makeAcpContentDeltaEvent(input: {
   readonly stamp: AcpEventStamp;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly turnId: TurnId | undefined;
   readonly itemId?: string;

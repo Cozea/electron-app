@@ -7,6 +7,7 @@ import {
   ProviderOptionSelections,
 } from "./model";
 import { ModelSelection } from "./orchestration";
+import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -115,6 +116,7 @@ export const ServerSettings = Schema.Struct({
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(() => ({
       provider: "codex" as const,
+      instanceId: "codex" as const,
       model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex,
     })),
   ),
@@ -126,6 +128,9 @@ export const ServerSettings = Schema.Struct({
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
+  providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
+    Schema.withDecodingDefault(() => ({})),
+  ),
 });
 export interface ServerSettings {
   enableAssistantStreaming: boolean;
@@ -137,6 +142,7 @@ export interface ServerSettings {
     cursor: CursorSettings;
     opencode: OpenCodeSettings;
   };
+  providerInstances: Record<string, ProviderInstanceConfig>;
 }
 
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = Schema.decodeSync(ServerSettings)({});
@@ -169,21 +175,25 @@ const OpenCodeSettingsPatch = Schema.Struct({
 const ModelSelectionPatch = Schema.Union([
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("codex")),
+    instanceId: Schema.optional(ProviderInstanceId),
     model: Schema.optional(TrimmedNonEmptyString),
     options: Schema.optional(ProviderOptionSelections),
   }),
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("claudeAgent")),
+    instanceId: Schema.optional(ProviderInstanceId),
     model: Schema.optional(TrimmedNonEmptyString),
     options: Schema.optional(ProviderOptionSelections),
   }),
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("cursor")),
+    instanceId: Schema.optional(ProviderInstanceId),
     model: Schema.optional(TrimmedNonEmptyString),
     options: Schema.optional(ProviderOptionSelections),
   }),
   Schema.Struct({
     provider: Schema.optional(Schema.Literal("opencode")),
+    instanceId: Schema.optional(ProviderInstanceId),
     model: Schema.optional(TrimmedNonEmptyString),
     options: Schema.optional(ProviderOptionSelections),
   }),
@@ -214,5 +224,6 @@ export const ServerSettingsPatch = Schema.Struct({
       opencode: Schema.optional(OpenCodeSettingsPatch),
     }),
   ),
+  providerInstances: Schema.optional(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;

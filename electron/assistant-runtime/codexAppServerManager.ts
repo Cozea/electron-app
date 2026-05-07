@@ -133,6 +133,7 @@ export interface CodexAppServerStartSessionInput {
   readonly resumeCursor?: unknown;
   readonly binaryPath: string;
   readonly homePath?: string;
+  readonly environment?: NodeJS.ProcessEnv;
   readonly runtimeMode: RuntimeMode;
 }
 
@@ -544,6 +545,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
       const codexBinaryPath = input.binaryPath;
       const codexHomePath = input.homePath;
+      const codexEnvironment = input.environment ?? process.env;
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
         cwd: resolvedCwd,
@@ -552,7 +554,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       const child = spawn(codexBinaryPath, ["app-server"], {
         cwd: resolvedCwd,
         env: {
-          ...process.env,
+          ...codexEnvironment,
           ...(codexHomePath ? { CODEX_HOME: codexHomePath } : {}),
         },
         stdio: ["pipe", "pipe", "pipe"],

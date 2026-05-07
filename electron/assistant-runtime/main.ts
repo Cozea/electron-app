@@ -337,8 +337,8 @@ const ServerConfigLive = (input: CliInput) =>
 const LayerLive = (input: CliInput) =>
   Layer.empty.pipe(
     Layer.provideMerge(makeServerRuntimeServicesLayer()),
-    Layer.provideMerge(makeServerProviderLayer()),
     Layer.provideMerge(ProviderRegistryLive),
+    Layer.provideMerge(makeServerProviderLayer()),
     Layer.provideMerge(SqlitePersistence.layerConfig),
     Layer.provideMerge(ServerLoggerLive),
     Layer.provideMerge(AnalyticsServiceLayerLive),

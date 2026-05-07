@@ -3,6 +3,7 @@ import { Cause, Effect, Equal, Layer, Stream } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { compareCliVersions } from "../cliVersion.ts";
 import {
@@ -283,6 +284,7 @@ export function checkOpenCodeProviderStatus(input: {
             connectToOpenCodeServer({
               binaryPath: input.settings.binaryPath,
               serverUrl: input.settings.serverUrl,
+              environment: mergeProviderInstanceEnvironment((input.settings as any).environment, process.env),
             }),
           catch: toOpenCodeProbeError,
         }),

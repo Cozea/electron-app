@@ -1,5 +1,6 @@
 // @ts-nocheck
 import {
+  type ProviderKind,
   ServerSettings,
   type ServerSettingsPatch,
 } from "@cozea/assistant-contracts";
@@ -51,15 +52,30 @@ export function applyServerSettingsPatch(
   patch: ServerSettingsPatch,
 ): ServerSettings {
   const selectionPatch = patch.textGenerationModelSelection;
-  const next = deepMerge(current, patch);
+  const merged = deepMerge(current, patch);
+  const next =
+    patch.providerInstances === undefined
+      ? merged
+      : {
+          ...merged,
+          providerInstances: patch.providerInstances,
+        };
   if (!selectionPatch) {
     return next;
   }
 
-  const provider = selectionPatch.provider ?? current.textGenerationModelSelection.provider;
+  const provider =
+    selectionPatch.provider ??
+    current.textGenerationModelSelection.provider ??
+    inferBuiltInProvider(selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId) ??
+    "codex";
+  const instanceId =
+    selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId ?? provider;
   const model = selectionPatch.model ?? current.textGenerationModelSelection.model;
   const shouldReplaceSelection =
-    selectionPatch.provider !== undefined || selectionPatch.model !== undefined;
+    selectionPatch.provider !== undefined ||
+    selectionPatch.instanceId !== undefined ||
+    selectionPatch.model !== undefined;
   if (!shouldReplaceSelection && selectionPatch.options === undefined) {
     return next;
   }
@@ -72,6 +88,15 @@ export function applyServerSettingsPatch(
 
   return {
     ...next,
-    textGenerationModelSelection: createModelSelection(provider, model, nextOptions),
+    textGenerationModelSelection: createModelSelection(provider, model, nextOptions, instanceId),
   };
+}
+
+function inferBuiltInProvider(instanceId: unknown): ProviderKind | undefined {
+  return instanceId === "codex" ||
+    instanceId === "claudeAgent" ||
+    instanceId === "cursor" ||
+    instanceId === "opencode"
+    ? instanceId
+    : undefined;
 }

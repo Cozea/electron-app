@@ -9,6 +9,7 @@ import {
   type OrchestrationGetTurnDiffResult,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
+  type ProviderInstanceId,
   type ProviderKind,
   type RuntimeMode,
   type TurnId,
@@ -271,7 +272,8 @@ export function useWorkbenchAssistantTileController(
   const selectedInteractionMode =
     composerDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
   const selectedProvider = selectedModelSelection.provider
-  const providerSnapshot = getProviderSnapshot(config, selectedProvider)
+  const selectedProviderInstanceId = selectedModelSelection.instanceId
+  const providerSnapshot = getProviderSnapshot(config, selectedProvider, selectedProviderInstanceId)
   const modelOptionsByProvider = useMemo<ProviderModelOptionsByProvider>(
     () => ({
       codex: getProviderModelOptions(config, "codex"),
@@ -282,7 +284,7 @@ export function useWorkbenchAssistantTileController(
     [config],
   )
   const providerModelOptions = useMemo(() => {
-    const options = getProviderModelOptions(config, selectedProvider)
+    const options = getProviderModelOptions(config, selectedProvider, selectedProviderInstanceId)
     if (options.some((option) => option.slug === selectedModelSelection.model)) {
       return options
     }
@@ -293,7 +295,7 @@ export function useWorkbenchAssistantTileController(
       },
       ...options,
     ]
-  }, [config, selectedModelSelection.model, selectedProvider])
+  }, [config, selectedModelSelection.model, selectedProvider, selectedProviderInstanceId])
   const selectedModelCapabilities = useMemo(
     () =>
       getProviderModelCapabilities(
@@ -650,12 +652,13 @@ export function useWorkbenchAssistantTileController(
     (selection: ModelSelection) =>
       normalizeModelSelection({
         provider: selection.provider,
+        instanceId: selection.instanceId,
         model: selection.model,
         options: buildProviderOptionSelectionsFromDescriptors(
           getModelSelectionOptionDescriptors(
             selection,
             getProviderModelCapabilities(
-              getProviderSnapshot(config, selection.provider)?.models ?? [],
+              getProviderSnapshot(config, selection.provider, selection.instanceId)?.models ?? [],
               selection.model,
               selection.provider,
             ),
@@ -668,6 +671,7 @@ export function useWorkbenchAssistantTileController(
   const handleProviderChange = async (
     nextProviderValue: string,
     nextModelValue?: string,
+    nextInstanceId?: ProviderInstanceId,
   ) => {
     const nextProvider = nextProviderValue as ProviderKind
     const preferredModelSelection = resolvePreferredModelSelection({
@@ -675,10 +679,12 @@ export function useWorkbenchAssistantTileController(
       tile: {
         ...input.tile,
         provider: nextProvider,
+        providerInstanceId: nextInstanceId,
         model: nextModelValue ?? null,
       },
       projectModelSelection: assistantProject?.defaultModelSelection,
       provider: nextProvider,
+      providerInstanceId: nextInstanceId,
     })
     const nextModelSelection = normalizeDraftModelSelection(
       withModelSelectionModel(
@@ -687,7 +693,7 @@ export function useWorkbenchAssistantTileController(
         ? resolveSelectableModel(
             nextProvider,
             nextModelValue,
-            getProviderModelOptions(config, nextProvider),
+            getProviderModelOptions(config, nextProvider, nextInstanceId),
           ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue)
         : null) ?? preferredModelSelection.model,
       ),
@@ -698,6 +704,7 @@ export function useWorkbenchAssistantTileController(
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
+      providerInstanceId: nextModelSelection.instanceId,
       model: nextModelSelection.model,
     }, input.workspaceId)
 
@@ -730,6 +737,7 @@ export function useWorkbenchAssistantTileController(
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
+      providerInstanceId: nextModelSelection.instanceId,
       model: nextModelSelection.model,
     }, input.workspaceId)
 
@@ -752,6 +760,7 @@ export function useWorkbenchAssistantTileController(
     const nextModelSelection = normalizeDraftModelSelection(
       normalizeModelSelection({
         provider: selectedProvider,
+        instanceId: selectedProviderInstanceId,
         model: selectedModelSelection.model,
         options: setProviderOptionSelectionValue(selectedModelSelection.options, optionId, value),
       }),
@@ -1542,9 +1551,9 @@ export function useWorkbenchAssistantTileController(
       providers: config?.providers ?? [],
       modelOptionsByProvider,
       modelOptionDescriptors: selectedModelOptionDescriptors,
-      onProviderModelChange: (provider, model) => {
-        if (provider !== selectedProvider) {
-          void handleProviderChange(provider, model)
+      onProviderModelChange: (provider, model, instanceId) => {
+        if (provider !== selectedProvider || (instanceId && instanceId !== selectedProviderInstanceId)) {
+          void handleProviderChange(provider, model, instanceId)
           return
         }
         void handleModelChange(model)

@@ -118,6 +118,23 @@ export class ProviderUnsupportedError extends Schema.TaggedErrorClass<ProviderUn
 }
 
 /**
+ * ProviderDriverError - Per-instance provider driver materialization failure.
+ */
+export class ProviderDriverError extends Schema.TaggedErrorClass<ProviderDriverError>()(
+  "ProviderDriverError",
+  {
+    driver: Schema.String,
+    instanceId: Schema.String,
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Provider driver '${this.driver}' failed for instance '${this.instanceId}': ${this.detail}`;
+  }
+}
+
+/**
  * ProviderSessionNotFoundError - Provider-facing session not found.
  */
 export class ProviderSessionNotFoundError extends Schema.TaggedErrorClass<ProviderSessionNotFoundError>()(

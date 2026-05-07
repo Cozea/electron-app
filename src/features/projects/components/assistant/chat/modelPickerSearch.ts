@@ -1,11 +1,8 @@
-import { type ProviderKind } from "@cozea/assistant-contracts";
 import { normalizeSearchQuery, scoreQueryMatch } from "@cozea/assistant-shared/searchRanking";
-import { PROVIDER_OPTIONS } from "./session-logic";
-
-const PROVIDER_DISPLAY_NAMES = Object.fromEntries(PROVIDER_OPTIONS.map(p => [p.value, p.label]));
 
 type ModelPickerSearchableModel = {
-  provider: ProviderKind;
+  driverKind: string;
+  providerDisplayName: string;
   name: string;
   shortName?: string;
   subProvider?: string;
@@ -19,8 +16,8 @@ function getModelPickerSearchFields(model: ModelPickerSearchableModel): string[]
     normalizeSearchQuery(model.name),
     ...(model.shortName ? [normalizeSearchQuery(model.shortName)] : []),
     ...(model.subProvider ? [normalizeSearchQuery(model.subProvider)] : []),
-    normalizeSearchQuery(model.provider),
-    normalizeSearchQuery(PROVIDER_DISPLAY_NAMES[model.provider] || model.provider),
+    normalizeSearchQuery(model.driverKind),
+    normalizeSearchQuery(model.providerDisplayName),
     buildModelPickerSearchText(model),
   ];
 }
@@ -47,8 +44,8 @@ export function buildModelPickerSearchText(model: ModelPickerSearchableModel): s
       model.name,
       model.shortName,
       model.subProvider,
-      model.provider,
-      PROVIDER_DISPLAY_NAMES[model.provider] || model.provider,
+      model.driverKind,
+      model.providerDisplayName,
     ]
       .filter((value): value is string => typeof value === "string" && value.length > 0)
       .join(" "),

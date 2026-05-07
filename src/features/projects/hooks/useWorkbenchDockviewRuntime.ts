@@ -428,6 +428,7 @@ export function useWorkbenchDockviewRuntime(
           title: `${sourceTile.title} Copy`,
           assistantProjectId: sourceTile.assistantProjectId,
           provider: sourceTile.provider,
+          providerInstanceId: sourceTile.providerInstanceId,
           model: sourceTile.model,
           runtimeMode: sourceTile.runtimeMode,
           interactionMode: sourceTile.interactionMode,
