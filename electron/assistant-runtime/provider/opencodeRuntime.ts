@@ -375,6 +375,7 @@ export function detectMacosSigkillHint(binaryPath: string): string | null {
 
 export async function startOpenCodeServerProcess(input: {
   readonly binaryPath: string;
+  readonly environment?: NodeJS.ProcessEnv;
   readonly port?: number;
   readonly hostname?: string;
   readonly timeoutMs?: number;
@@ -386,7 +387,7 @@ export async function startOpenCodeServerProcess(input: {
   const child = spawn(input.binaryPath, args, {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...(input.environment ?? process.env),
       OPENCODE_CONFIG_CONTENT: JSON.stringify({}),
     },
   });
@@ -475,6 +476,7 @@ export async function startOpenCodeServerProcess(input: {
 export async function connectToOpenCodeServer(input: {
   readonly binaryPath: string;
   readonly serverUrl?: string | null;
+  readonly environment?: NodeJS.ProcessEnv;
   readonly port?: number;
   readonly hostname?: string;
   readonly timeoutMs?: number;
@@ -491,6 +493,7 @@ export async function connectToOpenCodeServer(input: {
 
   const server = await startOpenCodeServerProcess({
     binaryPath: input.binaryPath,
+    ...(input.environment ? { environment: input.environment } : {}),
     ...(input.port !== undefined ? { port: input.port } : {}),
     ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
     ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),

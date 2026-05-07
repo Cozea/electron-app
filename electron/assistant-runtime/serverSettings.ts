@@ -126,7 +126,8 @@ const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent", "openco
  */
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
   const selection = settings.textGenerationModelSelection;
-  if (settings.providers[selection.provider].enabled) {
+  const provider = selection.provider ?? inferBuiltInProvider(selection.instanceId);
+  if (provider && settings.providers[provider].enabled) {
     return settings;
   }
 
@@ -140,9 +141,19 @@ function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings
     ...settings,
     textGenerationModelSelection: {
       provider: fallback,
+      instanceId: fallback,
       model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[fallback],
     } as ModelSelection,
   };
+}
+
+function inferBuiltInProvider(instanceId: unknown): ProviderKind | undefined {
+  return instanceId === "codex" ||
+    instanceId === "claudeAgent" ||
+    instanceId === "cursor" ||
+    instanceId === "opencode"
+    ? instanceId
+    : undefined;
 }
 
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set(["textGenerationModelSelection"]);

@@ -41,6 +41,7 @@ import {
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import {
   buildCodexSendTurnInput,
@@ -1388,6 +1389,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         runtimeMode: input.runtimeMode,
         binaryPath,
         ...(homePath ? { homePath } : {}),
+        environment: mergeProviderInstanceEnvironment(codexSettings.environment, process.env),
         modelSelection: input.modelSelection,
       });
 

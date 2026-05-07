@@ -14,6 +14,7 @@ import type {
   ServerProviderState,
 } from "@cozea/assistant-contracts";
 import { ServerSettingsError } from "../../serverSettings.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import type * as EffectAcpSchema from "@cozea/effect-acp/schema";
 import { Cause, Effect, Equal, Exit, Layer, Option, Result, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -1404,11 +1405,12 @@ const spawnCursorCommand = (
   binaryPath: string,
   args: ReadonlyArray<string>,
   timeoutMs: number,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<CursorCommandResult> =>
   new Promise((resolve, reject) => {
     const child = nodeChildProcess.spawn(binaryPath, [...args], {
       shell: process.platform === "win32",
-      env: process.env,
+      env: environment ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -1475,7 +1477,13 @@ const runCursorCommand = (
       Effect.map((settings) => settings.providers.cursor),
     );
     const result = yield* Effect.tryPromise({
-      try: () => spawnCursorCommand(cursorSettings.binaryPath, args, timeoutMs),
+      try: () =>
+        spawnCursorCommand(
+          cursorSettings.binaryPath,
+          args,
+          timeoutMs,
+          mergeProviderInstanceEnvironment((cursorSettings as any).environment, process.env),
+        ),
       catch: (error) =>
         error instanceof Error ? error : new Error(String(error)),
     });

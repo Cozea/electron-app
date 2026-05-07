@@ -8,6 +8,7 @@ import {
   type ProviderOptionDescriptor,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
+  type ProviderInstanceId,
   type ProviderKind,
   type RuntimeMode,
   type ServerProvider,
@@ -240,7 +241,7 @@ interface CozeaChatSurfaceProps {
   providers: ReadonlyArray<ServerProvider>
   modelOptionsByProvider: ProviderModelOptionsByProvider
   modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>
-  onProviderModelChange: (provider: ProviderKind, model: string) => void | Promise<void>
+  onProviderModelChange: (provider: ProviderKind, model: string, instanceId?: ProviderInstanceId) => void | Promise<void>
   onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>
   onToggleInteractionMode: () => void | Promise<void>
   onToggleRuntimeMode: () => void | Promise<void>
@@ -1261,14 +1262,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <div className="h-72 p-1.5">
               <ModelPickerContent
                 provider={props.selectedProvider}
+                activeInstanceId={props.selectedModelSelection.instanceId}
                 model={props.selectedModelSelection.model}
                 lockedProvider={props.selectedProvider}
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
                 terminalOpen={false}
                 onRequestClose={() => setIsModelPickerOpen(false)}
-                onProviderModelChange={(provider, model) => {
-                  void props.onProviderModelChange(provider, model)
+                onProviderModelChange={(provider, model, instanceId) => {
+                  void props.onProviderModelChange(provider, model, instanceId)
                   setIsModelPickerOpen(false)
                 }}
               />
@@ -1422,6 +1424,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               </Button>
               <ProviderModelPicker
                 provider={props.selectedProvider}
+                activeInstanceId={props.selectedModelSelection.instanceId}
                 model={props.selectedModelSelection.model}
                 lockedProvider={props.selectedProvider}
                 providers={props.providers}

@@ -35,6 +35,7 @@ import {
   toJsonSchemaObject,
 } from "../Utils.ts";
 import { normalizeClaudeModelOptions } from "../../provider/Layers/ClaudeProvider.ts";
+import { mergeProviderInstanceEnvironment } from "../../provider/ProviderInstanceEnvironment.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
@@ -131,6 +132,7 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
           ],
           {
             cwd,
+            env: mergeProviderInstanceEnvironment(claudeSettings?.environment, process.env),
             shell: process.platform === "win32",
             stdin: {
               stream: Stream.encodeText(Stream.make(prompt)),

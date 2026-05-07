@@ -74,6 +74,7 @@ import {
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
 import { CursorAdapter, type CursorAdapterShape } from "../Services/CursorAdapter.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { resolveCursorAcpSessionModelConfigValue } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -540,6 +541,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
 
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings,
+            environment: mergeProviderInstanceEnvironment(cursorSettings.environment, process.env),
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),

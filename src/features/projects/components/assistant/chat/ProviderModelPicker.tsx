@@ -1,21 +1,32 @@
-import { type ProviderKind, type ServerProvider } from "@cozea/assistant-contracts";
-import { memo } from "react";
+import {
+  defaultInstanceIdForDriver,
+  type ProviderDriverKind,
+  type ProviderInstanceId,
+  type ProviderKind,
+  type ServerProvider,
+} from "@cozea/assistant-contracts";
+import { memo, useMemo } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   type ModelEsque,
-  PROVIDER_ICON_BY_PROVIDER,
   getTriggerDisplayModelLabel,
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
+import {
+  deriveProviderInstanceEntries,
+  sortProviderInstanceEntries,
+} from "../../providerInstances";
 
 interface ProviderModelPickerProps {
   provider: ProviderKind;
+  activeInstanceId?: ProviderInstanceId;
   model: string;
   lockedProvider: ProviderKind | null;
   providers?: ReadonlyArray<ServerProvider>;
@@ -32,14 +43,28 @@ interface ProviderModelPickerProps {
 }
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: ProviderModelPickerProps) {
-  const activeProvider = props.lockedProvider ?? props.provider;
-  const selectedProviderOptions = props.modelOptionsByProvider[activeProvider];
+  const instanceEntries = useMemo(
+    () => sortProviderInstanceEntries(deriveProviderInstanceEntries(props.providers ?? [])),
+    [props.providers],
+  );
+  const activeInstanceId =
+    props.activeInstanceId ?? defaultInstanceIdForDriver(props.provider as ProviderDriverKind);
+  const activeEntry = useMemo(
+    () => instanceEntries.find((entry) => entry.instanceId === activeInstanceId) ?? null,
+    [activeInstanceId, instanceEntries],
+  );
+  const activeProvider = activeEntry?.provider ?? props.lockedProvider ?? props.provider;
+  const selectedProviderOptions = activeEntry?.models.length
+    ? activeEntry.models
+    : props.modelOptionsByProvider[activeProvider];
   
   const selectedModel =
     selectedProviderOptions?.find((option) => option.slug === props.model) ??
     selectedProviderOptions?.[0];
-  
-  const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
+  const duplicateDriverCount = instanceEntries.filter(
+    (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
+  ).length;
+  const showInstanceBadge = Boolean(activeEntry?.accentColor) || duplicateDriverCount > 1;
   const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
   const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
 
@@ -67,10 +92,17 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
           props.compact ? "max-w-36 sm:pl-1" : undefined,
         )}
       >
-        <ProviderIcon
-          aria-hidden="true"
-          className={cn("size-4 shrink-0", props.activeProviderIconClassName)}
-        />
+        {activeEntry ? (
+          <ProviderInstanceIcon
+            driverKind={activeEntry.driverKind}
+            displayName={activeEntry.displayName}
+            accentColor={activeEntry.accentColor}
+            showBadge={showInstanceBadge}
+            className={showInstanceBadge ? "size-5" : "size-4"}
+            iconClassName={cn("size-4", props.activeProviderIconClassName)}
+            badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 text-[7px]"
+          />
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <span

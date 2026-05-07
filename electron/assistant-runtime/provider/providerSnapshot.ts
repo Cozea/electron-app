@@ -1,12 +1,13 @@
 // @ts-nocheck
-import type {
-  ModelCapabilities,
-  ServerProvider,
-  ServerProviderAuth,
-  ServerProviderModel,
-  ServerProviderSkill,
-  ServerProviderSlashCommand,
-  ServerProviderState,
+import {
+  defaultInstanceIdForDriver,
+  type ModelCapabilities,
+  type ServerProvider,
+  type ServerProviderAuth,
+  type ServerProviderModel,
+  type ServerProviderSkill,
+  type ServerProviderSlashCommand,
+  type ServerProviderState,
 } from "@cozea/assistant-contracts";
 import { Effect, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -145,6 +146,8 @@ export function buildServerProvider(input: {
 }): ServerProvider {
   return {
     provider: input.provider,
+    instanceId: defaultInstanceIdForDriver(input.provider),
+    driver: input.provider,
     enabled: input.enabled,
     installed: input.probe.installed,
     version: input.probe.version,
