@@ -567,31 +567,26 @@ function createDefaultWorkbenchState(
   workspaceId?: string | null,
 ): WorkbenchProjectState {
   const normalizedLaneId = normalizeLaneId(laneId)
-  const selectionTile = createTile("selection", {
-    selectionMode: "emptyState",
-  }) as WorkbenchSelectionTile
 
   return {
     projectId,
     laneId: normalizedLaneId,
     workspaceId: normalizeWorkspaceId(workspaceId),
-    activeTileId: selectionTile.id,
+    activeTileId: null,
     layout: null,
     layoutResetKey: nextLayoutResetKey(),
-    order: [selectionTile.id],
-    tiles: {
-      [selectionTile.id]: selectionTile,
-    },
+    order: [],
+    tiles: {},
   }
 }
 
 function isEmptySelectionWorkbench(workbench: WorkbenchProjectState | null | undefined): boolean {
-  if (!workbench || workbench.order.length !== 1) {
-    return false
-  }
+  if (!workbench) return false
+  if (workbench.order.length === 0) return true
+  if (workbench.order.length !== 1) return false
 
   const onlyTile = workbench.tiles[workbench.order[0]!]
-  return onlyTile?.type === "selection"
+  return onlyTile?.type === "selection" && onlyTile.mode === "emptyState"
 }
 
 function readWorkbenchWorkspaceId(workbench: PersistedWorkbenchRecord): string | null {
@@ -670,30 +665,7 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
     }
     sanitizedOrder = nonSelectionTileIds
   } else if (nonSelectionTileIds.length === 0) {
-    const primarySelectionTileId = selectionTileIds[0]
-    if (!primarySelectionTileId) {
-      return createDefaultWorkbenchState(workbench.projectId, workbench.laneId, workspaceId)
-    }
-
-    for (const tileId of selectionTileIds.slice(1)) {
-      delete sanitizedTiles[tileId]
-    }
-
-    const primaryTile = sanitizedTiles[primarySelectionTileId]
-    if (primaryTile?.type === "selection" && primaryTile.mode !== "emptyState") {
-      sanitizedTiles[primarySelectionTileId] = {
-        ...primaryTile,
-        mode: "emptyState",
-        edge: null,
-        referenceTileId: null,
-        adjacentTileId: null,
-        previewScope: null,
-        previewTargetKind: null,
-        previewTargetId: null,
-      }
-    }
-
-    sanitizedOrder = [primarySelectionTileId]
+    return createDefaultWorkbenchState(workbench.projectId, workbench.laneId, workspaceId)
   }
 
   if (sanitizedOrder.length === 0) {

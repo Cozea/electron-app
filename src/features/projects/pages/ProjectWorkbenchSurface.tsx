@@ -63,11 +63,6 @@ const LazyWorkbenchDockviewCanvas = lazy(() =>
     default: module.WorkbenchDockviewCanvas,
   })),
 );
-const LazyChangesSidebar = lazy(() =>
-  import("@/features/projects/components/changes/ChangesSidebar").then((module) => ({
-    default: module.ChangesSidebar,
-  })),
-);
 
 function WorkbenchOverlayLoading() {
   const { t } = useTranslation();
@@ -432,10 +427,6 @@ export function ProjectWorkbenchSurface() {
                 </Suspense>
               </div>
             </div>
-
-            <Suspense fallback={null}>
-              <LazyChangesSidebar workspaceId={activeWorkbenchId} />
-            </Suspense>
 
             {isSettingsOpen ? (
               <>
