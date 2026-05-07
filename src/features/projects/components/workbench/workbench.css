@@ -5,7 +5,7 @@
   --dv-active-sash-color: color-mix(in oklch, var(--foreground) 24%, transparent);
   --dv-active-sash-transition-duration: 0.08s;
   --dv-active-sash-transition-delay: 0s;
-  --dv-tabs-and-actions-container-height: 0px;
+  --dv-tabs-and-actions-container-height: 32px;
   --dv-tabs-and-actions-container-font-size: 12px;
   --dv-tab-font-size: 12px;
   --dv-tab-margin: 0;
@@ -74,14 +74,49 @@
 }
 
 .cozea-workbench-dockview .dv-tabs-and-actions-container {
-  display: none;
-  height: 0;
-  min-height: 0;
-  border-bottom: 0;
+  height: 32px;
+  min-height: 32px;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
 }
 
 .cozea-workbench-dockview .dv-tab {
   letter-spacing: 0;
+  min-width: 7rem;
+  max-width: 13rem;
+  border-radius: 0;
+}
+
+.cozea-workbench-dockview .dv-tab.dv-active-tab {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.cozea-workbench-dockview .cozea-workbench-tab {
+  letter-spacing: 0;
+}
+
+.cozea-workbench-dockview .cozea-workbench-header-actions {
+  border-left: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
+}
+
+.cozea-workbench-dockview .dv-left-actions-container {
+  min-width: min(42rem, 42%);
+  max-width: min(46rem, 48%);
+  flex: 1 1 22rem;
+}
+
+.cozea-workbench-dockview .cozea-workbench-header-controls,
+.cozea-workbench-dockview .cozea-workbench-header-controls > * {
+  min-width: 0;
+  width: 100%;
+}
+
+.cozea-workbench-dockview .dv-tabs-container {
+  min-width: 7rem;
+}
+
+.cozea-workbench-dockview .cozea-workbench-header-actions button,
+.cozea-workbench-dockview .cozea-workbench-header-actions [role="button"] {
+  flex-shrink: 0;
 }
 
 .cozea-workbench-dockview .dv-tab-close {
