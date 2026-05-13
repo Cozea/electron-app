@@ -8,7 +8,9 @@ import { useCollabSession, invalidateCollabSession } from '@/hooks/useCollabSess
 import { useTranslation } from '@/lib/i18n'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
+import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
+import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -387,10 +389,18 @@ export function ProjectSettingsPage({
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      await removeProject({
-        projectId: project._id,
-        userId: convexUserId,
-        confirmName,
+      await withProjectMutationTimeout(
+        removeProject({
+          projectId: project._id,
+          userId: convexUserId,
+          confirmName,
+        }),
+        'Deleting this project is taking longer than expected. Check your connection and try again.',
+      )
+      await cleanupDeletedProjectLocally(String(project._id), {
+        projectName: project.name,
+        projectSlug: project.slug,
+        managedProjectPaths: [project.localPath],
       })
       setShowDeleteDialog(false)
       navigate('/projects')

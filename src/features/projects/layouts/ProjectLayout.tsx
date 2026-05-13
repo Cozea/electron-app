@@ -552,7 +552,7 @@ export function ProjectLayout({
     ],
   );
 
-
+  const canProvideActiveWorkspace = Boolean(project?._id && workspaceResolution?.status === "ready");
 
   // Only block on project loading when we're actually on a project-specific
   // route. Routes like /projects/ (launch page) have no routeProjectId or
@@ -581,10 +581,10 @@ export function ProjectLayout({
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
       
-      {workspaceResolution?.status === "ready" ? (
+      {canProvideActiveWorkspace && workspaceResolution?.status === "ready" && project?._id ? (
         <ActiveWorkspaceProvider value={{
-          projectId: String(project!._id),
-          projectSlug: project!.slug,
+          projectId: String(project._id),
+          projectSlug: project.slug,
           projectName: effectiveProjectName,
           workspace: workspaceResolution.workspace,
           lane: workspaceResolution.lane,

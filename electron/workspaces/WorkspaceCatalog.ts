@@ -13,6 +13,8 @@ import type {
   CloneWorkspaceForProjectResult,
   CreateWorkspaceForProjectRequest,
   CreateWorkspaceForProjectResult,
+  ImportExistingFolderRequest,
+  ImportExistingFolderResult,
   LocalWorkspaceDTO,
   LocalWorkspaceRecord,
   RepoIdentity,
@@ -26,11 +28,15 @@ import type {
   WorkspaceResolutionAction,
   WorkspaceVerificationStatus,
 } from "../../shared/workspaceTypes.ts"
-import { readWorkspaceMarker, writeWorkspaceMarker } from "./markers.ts"
+import { deleteWorkspaceMarker, readWorkspaceMarker, writeWorkspaceMarker } from "./markers.ts"
 import { parseRepoIdentity, readGitRepoIdentity, repoIdentitiesMatch } from "./repoIdentity.ts"
 import { verifyWorkspacePath } from "./verification.ts"
 import { scanForCandidates } from "./candidates.ts"
 import { runGitCommand } from "../gitRuntime.ts"
+import {
+  shouldExcludeGeneratedDirectory,
+  shouldExcludeGeneratedFile,
+} from "../services/generatedArtifactFilters.ts"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -69,6 +75,65 @@ async function findAvailablePath(baseDir: string, slug: string): Promise<string>
       return targetPath
     }
   }
+}
+
+function isNestedDirectory(parentPath: string, childPath: string): boolean {
+  const relative = path.relative(parentPath, childPath)
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative)
+}
+
+function isSameOrNestedDirectory(parentPath: string, childPath: string): boolean {
+  return parentPath === childPath || isNestedDirectory(parentPath, childPath)
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null
+}
+
+function formatWorkspaceCatalogError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as {
+      message?: unknown
+      cause?: unknown
+      error?: unknown
+      reason?: unknown
+      code?: unknown
+    }
+    const message = normalizeOptionalString(record.message)
+    if (message) {
+      const causeMessage = formatWorkspaceCatalogError(record.cause)
+      return causeMessage && causeMessage !== String(record.cause)
+        ? `${message}: ${causeMessage}`
+        : message
+    }
+
+    for (const key of ["cause", "error", "reason", "code"] as const) {
+      const value = record[key]
+      if (value !== undefined && value !== null) {
+        const formatted = formatWorkspaceCatalogError(value)
+        if (formatted) return formatted
+      }
+    }
+  }
+
+  return String(error)
+}
+
+function shouldExcludeImportCopyPath(sourceRoot: string, sourcePath: string): boolean {
+  const relativePath = path.relative(sourceRoot, sourcePath)
+  if (!relativePath) return false
+
+  const normalizedPath = relativePath.replace(/\\/g, "/")
+  if (normalizedPath === ".cozea/workspace.json") return true
+  if (normalizedPath === ".git/cozea/workspace.json") return true
+
+  const entryName = path.basename(sourcePath)
+  if (shouldExcludeGeneratedDirectory(entryName)) return true
+  return shouldExcludeGeneratedFile(normalizedPath)
 }
 
 function recordToDTO(r: LocalWorkspaceRecord): LocalWorkspaceDTO {
@@ -177,6 +242,10 @@ export interface WorkspaceCatalogInterface {
   readonly createForProject: (
     req: CreateWorkspaceForProjectRequest,
   ) => Effect.Effect<CreateWorkspaceForProjectResult>
+
+  readonly importExistingFolder: (
+    req: ImportExistingFolderRequest,
+  ) => Effect.Effect<ImportExistingFolderResult>
 
   readonly cloneForProject: (
     req: CloneWorkspaceForProjectRequest,
@@ -406,20 +475,88 @@ export const WorkspaceCatalogLive = Layer.effect(
       `
     }
 
+    const deleteMarkerAtProjectRoot = (projectRootPath: string) =>
+      Effect.tryPromise({
+        try: () => deleteWorkspaceMarker(projectRootPath),
+        catch: (e) => e,
+      }).pipe(Effect.catch(() => Effect.void))
+
+    const deleteMarkerForWorkspace = (workspace: LocalWorkspaceRecord) =>
+      Effect.tryPromise({
+        try: () =>
+          deleteWorkspaceMarker(workspace.projectRootPath, {
+            projectId: workspace.projectId,
+            workspaceId: workspace.workspaceId,
+          }),
+        catch: (e) => e,
+      }).pipe(Effect.catch(() => Effect.void))
+
+    const forgetWorkspaceBinding = (
+      workspaceId: string,
+      details?: Record<string, unknown>,
+    ) =>
+      Effect.gen(function* () {
+        const record = yield* queryWorkspaceById(workspaceId)
+        if (record) {
+          yield* deleteMarkerForWorkspace(record)
+        }
+        yield* sql`DELETE FROM workspace_lanes WHERE workspace_id = ${workspaceId}`
+        yield* sql`DELETE FROM local_workspaces WHERE workspace_id = ${workspaceId}`
+        yield* emitEvent(workspaceId, record?.projectId ?? null, "workspace.forgotten", details).pipe(
+          Effect.catch(() => Effect.void),
+        )
+      })
+
+    const cleanupMissingWorkspaceBindingsUnderRoot = (rootPath: string) =>
+      Effect.gen(function* () {
+        const rows = yield* sql`
+          SELECT workspace_id, project_root_path, real_path
+          FROM local_workspaces
+        `
+
+        for (const row of rows as Array<Record<string, unknown>>) {
+          const workspaceId = normalizeOptionalString(row.workspace_id ?? row.workspaceId)
+          const projectRootPath = normalizeOptionalString(row.project_root_path ?? row.projectRootPath)
+          const realPath = normalizeOptionalString(row.real_path ?? row.realPath) ?? projectRootPath
+          if (!workspaceId || !projectRootPath || !realPath) continue
+          if (!isSameOrNestedDirectory(rootPath, realPath)) continue
+
+          const exists = yield* Effect.tryPromise({
+            try: () => fs.access(projectRootPath).then(() => true),
+            catch: () => false as const,
+          }).pipe(Effect.orElseSucceed(() => false as const))
+          if (exists) continue
+
+          yield* forgetWorkspaceBinding(workspaceId, {
+            reason: "missing_managed_project_root",
+            projectRootPath,
+            realPath,
+          })
+        }
+      })
+
     const resolveLocalRoot = (
       rootId?: string,
       rootPathOverride?: string,
     ) =>
       Effect.gen(function* () {
         if (rootPathOverride) {
+          const rootPath = rootPathOverride.trim()
+          if (!rootPath) {
+            throw new Error("rootPathOverride is required")
+          }
+          yield* Effect.tryPromise({
+            try: () => fs.mkdir(rootPath, { recursive: true }),
+            catch: (e) => e,
+          })
           const statResult = yield* Effect.result(
-            Effect.tryPromise({ try: () => fs.stat(rootPathOverride), catch: (e) => e }),
+            Effect.tryPromise({ try: () => fs.stat(rootPath), catch: (e) => e }),
           )
           if (statResult._tag === "Failure" || !(statResult.success as { isDirectory(): boolean }).isDirectory()) {
             throw new Error("rootPathOverride is not a valid directory")
           }
           const realPathResult = yield* Effect.result(
-            Effect.tryPromise({ try: () => fs.realpath(rootPathOverride), catch: (e) => e }),
+            Effect.tryPromise({ try: () => fs.realpath(rootPath), catch: (e) => e }),
           )
           if (realPathResult._tag === "Failure") {
             throw new Error("Failed to resolve real path for rootPathOverride")
@@ -438,7 +575,7 @@ export const WorkspaceCatalogLive = Layer.effect(
           const ts = now()
           yield* sql`
             INSERT INTO local_roots (root_id, path, real_path, kind, created_at, updated_at)
-            VALUES (${newRootId}, ${rootPathOverride}, ${realPath}, ${"user_added"}, ${ts}, ${ts})
+            VALUES (${newRootId}, ${rootPath}, ${realPath}, ${"user_added"}, ${ts}, ${ts})
           `
           return { rootId: newRootId, realPath }
         }
@@ -687,8 +824,7 @@ export const WorkspaceCatalogLive = Layer.effect(
           source = "import",
         } = req
 
-        // stat + realpath
-                const statResult = yield* Effect.result(
+        const statResult = yield* Effect.result(
           Effect.tryPromise({ try: () => fs.stat(folderPath), catch: (e) => e }),
         )
         if (statResult._tag === "Failure") {
@@ -721,31 +857,38 @@ export const WorkspaceCatalogLive = Layer.effect(
 
         if (existing) {
           if (existing.project_id !== projectId) {
-            const conflictId = yield* recordConflict(
-              projectId,
-              null,
-              folderPath,
-              realPath,
-              existing.workspace_id,
-              existing.project_id,
-              "duplicate_path",
-            )
+            if (forceBind) {
+              yield* forgetWorkspaceBinding(existing.workspace_id, {
+                reason: "force_rebind",
+                replacementProjectId: projectId,
+              })
+            } else {
+              const conflictId = yield* recordConflict(
+                projectId,
+                null,
+                folderPath,
+                realPath,
+                existing.workspace_id,
+                existing.project_id,
+                "duplicate_path",
+              )
 
-            const conflict: WorkspaceConflictDTO = {
-              conflictId,
-              projectId,
-              workspaceId: null,
-              candidatePath: folderPath,
-              candidateRealPath: realPath,
-              existingWorkspaceId: existing.workspace_id,
-              existingProjectId: existing.project_id,
-              reason: "duplicate_path",
-              status: "open",
-              createdAt: now(),
-              resolvedAt: null,
+              const conflict: WorkspaceConflictDTO = {
+                conflictId,
+                projectId,
+                workspaceId: null,
+                candidatePath: folderPath,
+                candidateRealPath: realPath,
+                existingWorkspaceId: existing.workspace_id,
+                existingProjectId: existing.project_id,
+                reason: "duplicate_path",
+                status: "open",
+                createdAt: now(),
+                resolvedAt: null,
+              }
+
+              return { success: false, conflicts: [conflict] }
             }
-
-            return { success: false, conflicts: [conflict] }
           } else {
             // P1-08: Same project duplicate bind. Return existing workspace.
             if (setActive) {
@@ -765,57 +908,70 @@ export const WorkspaceCatalogLive = Layer.effect(
         let workspaceId: string | undefined = undefined
 
         if (existingMarker) {
+          const markerWorkspace = existingMarker.marker.workspaceId
+            ? yield* queryWorkspaceById(existingMarker.marker.workspaceId)
+            : null
+          const markerIsTracked = markerWorkspace?.projectId === existingMarker.marker.projectId
+
           if (existingMarker.marker.projectId !== projectId) {
-            const conflictId = yield* recordConflict(
-              projectId,
-              null,
-              folderPath,
-              realPath,
-              existingMarker.marker.workspaceId,
-              existingMarker.marker.projectId,
-              "marker_mismatch",
-            )
+            if (forceBind || !markerIsTracked) {
+              yield* deleteMarkerAtProjectRoot(projectRootPath)
+            } else {
+              const conflictId = yield* recordConflict(
+                projectId,
+                null,
+                folderPath,
+                realPath,
+                existingMarker.marker.workspaceId,
+                existingMarker.marker.projectId,
+                "marker_mismatch",
+              )
 
-            const conflict: WorkspaceConflictDTO = {
-              conflictId,
-              projectId,
-              workspaceId: null,
-              candidatePath: folderPath,
-              candidateRealPath: realPath,
-              existingWorkspaceId: existingMarker.marker.workspaceId,
-              existingProjectId: existingMarker.marker.projectId,
-              reason: "marker_mismatch",
-              status: "open",
-              createdAt: now(),
-              resolvedAt: null,
+              const conflict: WorkspaceConflictDTO = {
+                conflictId,
+                projectId,
+                workspaceId: null,
+                candidatePath: folderPath,
+                candidateRealPath: realPath,
+                existingWorkspaceId: existingMarker.marker.workspaceId,
+                existingProjectId: existingMarker.marker.projectId,
+                reason: "marker_mismatch",
+                status: "open",
+                createdAt: now(),
+                resolvedAt: null,
+              }
+              return { success: false, conflicts: [conflict] }
             }
-            return { success: false, conflicts: [conflict] }
-          } else if (existingMarker.marker.workspaceId !== undefined && !forceBind) {
-            const conflictId = yield* recordConflict(
-              projectId,
-              null,
-              folderPath,
-              realPath,
-              existingMarker.marker.workspaceId,
-              projectId,
-              "marker_mismatch",
-              { markerWorkspaceId: existingMarker.marker.workspaceId },
-            )
+          } else if (existingMarker.marker.workspaceId !== undefined) {
+            if (forceBind || !markerIsTracked) {
+              yield* deleteMarkerAtProjectRoot(projectRootPath)
+            } else {
+              const conflictId = yield* recordConflict(
+                projectId,
+                null,
+                folderPath,
+                realPath,
+                existingMarker.marker.workspaceId,
+                projectId,
+                "marker_mismatch",
+                { markerWorkspaceId: existingMarker.marker.workspaceId },
+              )
 
-            const conflict: WorkspaceConflictDTO = {
-              conflictId,
-              projectId,
-              workspaceId: null,
-              candidatePath: folderPath,
-              candidateRealPath: realPath,
-              existingWorkspaceId: existingMarker.marker.workspaceId,
-              existingProjectId: projectId,
-              reason: "marker_mismatch",
-              status: "open",
-              createdAt: now(),
-              resolvedAt: null,
+              const conflict: WorkspaceConflictDTO = {
+                conflictId,
+                projectId,
+                workspaceId: null,
+                candidatePath: folderPath,
+                candidateRealPath: realPath,
+                existingWorkspaceId: existingMarker.marker.workspaceId,
+                existingProjectId: projectId,
+                reason: "marker_mismatch",
+                status: "open",
+                createdAt: now(),
+                resolvedAt: null,
+              }
+              return { success: false, conflicts: [conflict] }
             }
-            return { success: false, conflicts: [conflict] }
           }
         }
 
@@ -889,7 +1045,7 @@ export const WorkspaceCatalogLive = Layer.effect(
         return { success: true, workspace: record ? recordToDTO(record) : undefined }
       }).pipe(
         Effect.catch((e) =>
-          Effect.succeed({ success: false, error: String(e) }),
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(e) }),
         ),
       )
 
@@ -911,6 +1067,9 @@ export const WorkspaceCatalogLive = Layer.effect(
 
         const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
         const baseDir = resolvedRoot.realPath
+        yield* cleanupMissingWorkspaceBindingsUnderRoot(baseDir).pipe(
+          Effect.catch(() => Effect.void),
+        )
 
         // Find an available folder name
         const targetPath = yield* Effect.tryPromise({
@@ -958,7 +1117,100 @@ export const WorkspaceCatalogLive = Layer.effect(
         return { success: true, workspace: bindResult.workspace }
       }).pipe(
         Effect.catch((e) =>
-          Effect.succeed({ success: false, error: String(e) }),
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(e) }),
+        ),
+      )
+
+    // ── importExistingFolder ────────────────────────────────────────────────
+
+    const importExistingFolder = (
+      req: ImportExistingFolderRequest,
+    ): Effect.Effect<ImportExistingFolderResult> =>
+      Effect.gen(function* () {
+        const {
+          projectId,
+          sourceFolderPath,
+          slug,
+          rootId,
+          rootPathOverride,
+          setActive = true,
+        } = req
+
+        const sourceStatResult = yield* Effect.result(
+          Effect.tryPromise({ try: () => fs.stat(sourceFolderPath), catch: (e) => e }),
+        )
+        if (sourceStatResult._tag === "Failure") {
+          return { success: false, error: "Source folder does not exist or is not accessible" }
+        }
+        if (!(sourceStatResult.success as { isDirectory(): boolean }).isDirectory()) {
+          return { success: false, error: "Source path is not a directory" }
+        }
+
+        const sourceRealPath = yield* Effect.tryPromise({
+          try: () => fs.realpath(sourceFolderPath),
+          catch: (e) => new Error(String(e)),
+        })
+        const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
+        const baseDir = resolvedRoot.realPath
+
+        if (sourceRealPath === baseDir) {
+          return { success: false, error: "Choose a project folder, not the Cozea projects directory." }
+        }
+        yield* cleanupMissingWorkspaceBindingsUnderRoot(baseDir).pipe(
+          Effect.catch(() => Effect.void),
+        )
+
+        const targetPath = yield* Effect.tryPromise({
+          try: () => findAvailablePath(baseDir, slug),
+          catch: (e) => new Error(String(e)),
+        })
+
+        if (isNestedDirectory(sourceRealPath, targetPath)) {
+          return { success: false, error: "Source and imported project folders cannot be nested." }
+        }
+
+        yield* Effect.tryPromise({
+          try: () =>
+            fs.cp(sourceRealPath, targetPath, {
+              recursive: true,
+              force: false,
+              errorOnExist: true,
+              filter: (sourcePath) => !shouldExcludeImportCopyPath(sourceRealPath, sourcePath),
+            }),
+          catch: (e) => new Error(`Failed to copy project folder: ${String(e)}`),
+        })
+
+        const bindResult = yield* bindExistingFolder({
+          projectId,
+          folderPath: targetPath,
+          writeMarker: true,
+          setActive,
+          forceBind: true,
+          source: "import",
+        })
+
+        if (!bindResult.success) {
+          yield* Effect.tryPromise({
+            try: () => fs.rm(targetPath, { recursive: true, force: true }),
+            catch: () => undefined,
+          }).pipe(Effect.catch(() => Effect.void))
+          return { success: false, error: bindResult.error ?? "bind failed" }
+        }
+
+        yield* emitEvent(bindResult.workspace?.workspaceId ?? null, projectId, "workspace.imported.copy", {
+          sourceFolderPath: sourceRealPath,
+          targetPath,
+        }).pipe(Effect.catch(() => Effect.void))
+
+        return {
+          success: true,
+          workspace: bindResult.workspace,
+          importedFrom: sourceRealPath,
+          copiedTo: targetPath,
+        }
+      }).pipe(
+        Effect.catch((e) =>
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(e) }),
         ),
       )
 
@@ -980,6 +1232,9 @@ export const WorkspaceCatalogLive = Layer.effect(
 
         const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
         const baseDir = resolvedRoot.realPath
+        yield* cleanupMissingWorkspaceBindingsUnderRoot(baseDir).pipe(
+          Effect.catch(() => Effect.void),
+        )
 
         const targetPath = yield* Effect.tryPromise({
           try: () => findAvailablePath(baseDir, slug),
@@ -1026,7 +1281,7 @@ export const WorkspaceCatalogLive = Layer.effect(
         return { success: true, workspace: bindResult.workspace, normalizedRepoUrl: repoUrl }
       }).pipe(
         Effect.catch((e) =>
-          Effect.succeed({ success: false, error: String(e) }),
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(e) }),
         ),
       )
 
@@ -1058,13 +1313,7 @@ export const WorkspaceCatalogLive = Layer.effect(
     // ── forget ───────────────────────────────────────────────────────────────
 
     const forget = (workspaceId: string) =>
-      Effect.gen(function* () {
-        yield* sql`DELETE FROM workspace_lanes WHERE workspace_id = ${workspaceId}`
-        yield* sql`DELETE FROM local_workspaces WHERE workspace_id = ${workspaceId}`
-        yield* emitEvent(workspaceId, null, "workspace.forgotten").pipe(
-          Effect.catch(() => Effect.void),
-        )
-      })
+      forgetWorkspaceBinding(workspaceId)
 
     // ── listCandidates ────────────────────────────────────────────────────────
 
@@ -1121,6 +1370,7 @@ export const WorkspaceCatalogLive = Layer.effect(
         ),
       bindExistingFolder,
       createForProject,
+      importExistingFolder,
       cloneForProject,
       verify,
       forget,

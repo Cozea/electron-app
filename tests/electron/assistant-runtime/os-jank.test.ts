@@ -5,8 +5,9 @@ import { fixPath } from "../../../electron/assistant-runtime/os-jank";
 describe("fixPath", () => {
   it("hydrates PATH on linux using the resolved login shell", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/home/test",
       SHELL: "/bin/zsh",
-      PATH: "/Users/test/.local/bin:/usr/bin",
+      PATH: "/usr/bin",
     };
     const readPath = vi.fn(() => "/opt/homebrew/bin:/usr/bin");
 
@@ -17,11 +18,22 @@ describe("fixPath", () => {
     });
 
     expect(readPath).toHaveBeenCalledWith("/bin/zsh");
-    expect(env.PATH).toBe("/opt/homebrew/bin:/usr/bin:/Users/test/.local/bin");
+    expect(env.PATH).toBe(
+      [
+        "/home/test/.local/bin",
+        "/home/test/.bun/bin",
+        "/home/test/.cargo/bin",
+        "/home/test/.npm-global/bin",
+        "/home/linuxbrew/.linuxbrew/bin",
+        "/opt/homebrew/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
   });
 
   it("falls back to launchctl PATH on macOS when shell probing fails", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/Users/test",
       SHELL: "/opt/homebrew/bin/nu",
       PATH: "/usr/bin",
     };
@@ -50,7 +62,20 @@ describe("fixPath", () => {
       "Failed to read PATH from login shell /opt/homebrew/bin/nu.",
       expect.any(Error),
     );
-    expect(env.PATH).toBe("/opt/homebrew/bin:/usr/bin");
+    expect(env.PATH).toBe(
+      [
+        "/Users/test/.local/bin",
+        "/Users/test/.bun/bin",
+        "/Users/test/.cargo/bin",
+        "/Users/test/.npm-global/bin",
+        "/Users/test/Library/pnpm",
+        "/Applications/Codex.app/Contents/Resources",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
   });
 
   it("repairs PATH on Windows by merging PowerShell PATH with inherited PATH", () => {

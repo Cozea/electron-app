@@ -3,6 +3,7 @@ import {
   mergePathEntries,
   readPathFromLaunchctl,
   readEnvironmentFromLoginShell,
+  resolveKnownPosixCliDirs,
   resolveWindowsEnvironment,
 } from "@cozea/assistant-shared/shell";
 import type {
@@ -83,7 +84,9 @@ export function syncShellEnvironment(
       platform === "darwin" && !shellEnvironment.PATH
         ? (options.readLaunchctlPath ?? readPathFromLaunchctl)()
         : undefined;
-    const mergedPath = mergePathEntries(shellEnvironment.PATH ?? launchctlPath, env.PATH, platform);
+    const knownCliPath = resolveKnownPosixCliDirs(env, platform).join(platform === "win32" ? ";" : ":");
+    const shellPath = mergePathEntries(shellEnvironment.PATH ?? launchctlPath, env.PATH, platform);
+    const mergedPath = mergePathEntries(knownCliPath, shellPath, platform);
     if (mergedPath) {
       env.PATH = mergedPath;
     }

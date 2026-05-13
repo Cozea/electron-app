@@ -9,6 +9,7 @@ import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   browseForDirectory,
+  buildFilesystemSlug,
   deriveNameFromPath,
   deriveProviderFromRepoUrl,
   detectCurrentBranch,
@@ -20,38 +21,46 @@ export type LocalProjectImportOutcome =
   | "imported"
   | "error"
 
+interface ImportWorkspacePathResult {
+  workspaceId: string | null
+  error: string | null
+  destinationRoot: string | null
+}
+
 export function useLocalProjectImport() {
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
 
-  const bindWorkspacePath = useCallback(
-    async (projectId: Id<"projects">, folderPath: string): Promise<string | null> => {
-      let workspaceId: string | null = null
+  const importWorkspacePath = useCallback(
+    async (projectId: Id<"projects">, folderPath: string, projectName: string): Promise<ImportWorkspacePathResult> => {
+      let destinationRoot: string | null = null
       try {
-        const result = await window.electronAPI.workspace!.bindExistingFolder({
+        const settings = await window.electronAPI.settings.get()
+        destinationRoot = settings.projectsDirectory?.trim() || null
+        const result = await window.electronAPI.workspace!.importExistingFolder({
           projectId: String(projectId),
-          folderPath,
-          writeMarker: true,
+          sourceFolderPath: folderPath,
+          slug: buildFilesystemSlug(projectName),
+          rootPathOverride: destinationRoot ?? undefined,
           setActive: true,
         })
         if (!result.success || !result.workspace) {
-          console.warn(
-            "[LocalProjectImport] Failed to bind local project path in desktop registry.",
-            result.error,
-          )
+          const error = result.error || "Workspace import did not return a managed local folder."
+          console.warn("[LocalProjectImport] Failed to import local project into managed workspace.", error)
+          return { workspaceId: null, error, destinationRoot }
         } else {
-          workspaceId = result.workspace.workspaceId
+          return { workspaceId: result.workspace.workspaceId, error: null, destinationRoot }
         }
       } catch (bindError) {
+        const error = bindError instanceof Error ? bindError.message : "Unknown workspace import error."
         console.warn(
-          "[LocalProjectImport] Failed to bind local project path in desktop registry.",
+          "[LocalProjectImport] Failed to import local project into managed workspace.",
           bindError,
         )
+        return { workspaceId: null, error, destinationRoot }
       }
-
-      return workspaceId
     },
     [],
   )
@@ -128,19 +137,25 @@ export function useLocalProjectImport() {
           : undefined,
       })
 
+      const importResult = await importWorkspacePath(result.projectId, localFolderPath, projectName)
+      if (!importResult.workspaceId) {
+        throw new Error(
+          [
+            "Failed to import the local folder workspace.",
+            importResult.destinationRoot ? `Destination: ${importResult.destinationRoot}` : null,
+            importResult.error,
+          ].filter(Boolean).join("\n"),
+        )
+      }
       await updateProjectStatus({
         projectId: result.projectId,
         userId: convexUserId,
         status: "active",
       })
-      const workspaceId = await bindWorkspacePath(result.projectId, localFolderPath)
-      if (!workspaceId) {
-        throw new Error("Failed to bind the local folder workspace.")
-      }
       navigateToProjectWorkbench(
         String(result.projectId),
         result.slug,
-        workspaceId,
+        importResult.workspaceId,
         projectName,
       )
       return "imported"
@@ -154,7 +169,7 @@ export function useLocalProjectImport() {
     convexUserId,
     createProject,
     navigateToProjectWorkbench,
-    bindWorkspacePath,
+    importWorkspacePath,
     showImportError,
     updateProjectStatus,
   ])

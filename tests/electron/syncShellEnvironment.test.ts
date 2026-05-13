@@ -5,6 +5,7 @@ import { syncShellEnvironment } from "../../electron/syncShellEnvironment";
 describe("syncShellEnvironment", () => {
   it("hydrates PATH and missing SSH_AUTH_SOCK from the login shell on macOS", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/Users/test",
       SHELL: "/bin/zsh",
       PATH: "/Users/test/.local/bin:/usr/bin",
     };
@@ -28,13 +29,27 @@ describe("syncShellEnvironment", () => {
       "XDG_CONFIG_HOME",
       "XDG_DATA_HOME",
     ]);
-    expect(env.PATH).toBe("/opt/homebrew/bin:/usr/bin:/Users/test/.local/bin");
+    expect(env.PATH).toBe(
+      [
+        "/Users/test/.local/bin",
+        "/Users/test/.bun/bin",
+        "/Users/test/.cargo/bin",
+        "/Users/test/.npm-global/bin",
+        "/Users/test/Library/pnpm",
+        "/Applications/Codex.app/Contents/Resources",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
     expect(env.SSH_AUTH_SOCK).toBe("/tmp/secretive.sock");
     expect(env.HOMEBREW_PREFIX).toBe("/opt/homebrew");
   });
 
   it("preserves an inherited SSH_AUTH_SOCK value", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/Users/test",
       SHELL: "/bin/zsh",
       PATH: "/usr/bin",
       SSH_AUTH_SOCK: "/tmp/inherited.sock",
@@ -49,12 +64,26 @@ describe("syncShellEnvironment", () => {
       readEnvironment,
     });
 
-    expect(env.PATH).toBe("/opt/homebrew/bin:/usr/bin");
+    expect(env.PATH).toBe(
+      [
+        "/Users/test/.local/bin",
+        "/Users/test/.bun/bin",
+        "/Users/test/.cargo/bin",
+        "/Users/test/.npm-global/bin",
+        "/Users/test/Library/pnpm",
+        "/Applications/Codex.app/Contents/Resources",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
     expect(env.SSH_AUTH_SOCK).toBe("/tmp/inherited.sock");
   });
 
   it("preserves inherited values when the login shell omits them", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/Users/test",
       SHELL: "/bin/zsh",
       PATH: "/usr/bin",
       SSH_AUTH_SOCK: "/tmp/inherited.sock",
@@ -68,12 +97,26 @@ describe("syncShellEnvironment", () => {
       readEnvironment,
     });
 
-    expect(env.PATH).toBe("/opt/homebrew/bin:/usr/bin");
+    expect(env.PATH).toBe(
+      [
+        "/Users/test/.local/bin",
+        "/Users/test/.bun/bin",
+        "/Users/test/.cargo/bin",
+        "/Users/test/.npm-global/bin",
+        "/Users/test/Library/pnpm",
+        "/Applications/Codex.app/Contents/Resources",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
     expect(env.SSH_AUTH_SOCK).toBe("/tmp/inherited.sock");
   });
 
   it("hydrates PATH and missing SSH_AUTH_SOCK from the login shell on linux", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/home/test",
       SHELL: "/bin/zsh",
       PATH: "/usr/bin",
     };
@@ -96,12 +139,22 @@ describe("syncShellEnvironment", () => {
       "XDG_CONFIG_HOME",
       "XDG_DATA_HOME",
     ]);
-    expect(env.PATH).toBe("/home/linuxbrew/.linuxbrew/bin:/usr/bin");
+    expect(env.PATH).toBe(
+      [
+        "/home/test/.local/bin",
+        "/home/test/.bun/bin",
+        "/home/test/.cargo/bin",
+        "/home/test/.npm-global/bin",
+        "/home/linuxbrew/.linuxbrew/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
     expect(env.SSH_AUTH_SOCK).toBe("/tmp/secretive.sock");
   });
 
   it("falls back to launchctl PATH on macOS when shell probing does not return one", () => {
     const env: NodeJS.ProcessEnv = {
+      HOME: "/Users/test",
       SHELL: "/opt/homebrew/bin/nu",
       PATH: "/usr/bin",
     };
@@ -145,7 +198,20 @@ describe("syncShellEnvironment", () => {
       "Failed to read login shell environment from /opt/homebrew/bin/nu.",
       expect.any(Error),
     );
-    expect(env.PATH).toBe("/opt/homebrew/bin:/usr/bin");
+    expect(env.PATH).toBe(
+      [
+        "/Users/test/.local/bin",
+        "/Users/test/.bun/bin",
+        "/Users/test/.cargo/bin",
+        "/Users/test/.npm-global/bin",
+        "/Users/test/Library/pnpm",
+        "/Applications/Codex.app/Contents/Resources",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/bin",
+      ].join(":"),
+    );
   });
 
   it("does nothing on unsupported platforms", () => {

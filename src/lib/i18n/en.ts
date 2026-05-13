@@ -122,6 +122,12 @@ const en = {
     "Git is required for project sync and source control. Install Git and restart Cozea, or set `COZEA_GIT_EXECUTABLE` to an absolute git binary path.",
   "settings.tooling.available": "Available",
   "settings.tooling.notAvailable": "Not available",
+  "settings.tooling.projectsDirectory": "Projects directory",
+  "settings.tooling.projectsDirectoryDesc":
+    "Cozea creates new projects and managed imports in this local folder.",
+  "settings.tooling.projectsDirectoryLoading": "Loading project location...",
+  "settings.tooling.projectsDirectoryPickerTitle": "Choose Cozea projects directory",
+  "settings.tooling.changeProjectsDirectory": "Change",
   "settings.tooling.previewEmbedCompatibility": "Preview Embed Compatibility",
   "settings.tooling.previewEmbedDesc":
     "Helps localhost previews load inside Cozea's embedded browser.",

@@ -10,7 +10,7 @@ import type { GitRuntimeHealth, RuntimeHealth, RuntimeKind } from '../../types/e
 import { useTranslation } from '@/lib/i18n'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Archive01Icon as __PackageHugeIcon, CheckmarkCircle02Icon as __CheckHugeIcon, Folder01Icon as __FolderHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ToolingProps {
   surface?: 'page' | 'drawer'
@@ -101,6 +101,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(true)
   const [previewHeaderCompatibilityError, setPreviewHeaderCompatibilityError] = useState<string | null>(null)
   const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
+  const [projectsDirectory, setProjectsDirectory] = useState<string | null>(null)
+  const [projectsDirectoryError, setProjectsDirectoryError] = useState<string | null>(null)
+  const [isSavingProjectsDirectory, setIsSavingProjectsDirectory] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 5
 
@@ -144,6 +147,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
       try {
         const settings = await settingsDesktopClient.get()
         setPreviewHeaderCompatibilityEnabled(settings.previewHeaderCompatibilityEnabled)
+        setProjectsDirectory(settings.projectsDirectory)
       } catch (settingsError) {
         const message =
           settingsError instanceof Error
@@ -183,6 +187,35 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
     [previewHeaderCompatibilityEnabled]
   )
 
+  const handleChooseProjectsDirectory = useCallback(async () => {
+    if (!settingsDesktopClient.hasSettings() || !settingsDesktopClient.hasDialog()) return
+
+    setProjectsDirectoryError(null)
+    setIsSavingProjectsDirectory(true)
+
+    try {
+      const result = await settingsDesktopClient.selectDirectory({
+        title: t('settings.tooling.projectsDirectoryPickerTitle'),
+      })
+      if (!result.success || !result.path) {
+        return
+      }
+
+      await settingsDesktopClient.set({
+        projectsDirectory: result.path,
+      })
+      setProjectsDirectory(result.path)
+    } catch (settingsError) {
+      const message =
+        settingsError instanceof Error
+          ? settingsError.message
+          : 'Failed to save projects directory.'
+      setProjectsDirectoryError(message)
+    } finally {
+      setIsSavingProjectsDirectory(false)
+    }
+  }, [t])
+
   function getRuntimeBadgeLabel(runtime: RuntimeHealth): string {
     if (runtime.available) {
       if (runtime.source === 'override') return t('settings.tooling.override')
@@ -209,6 +242,35 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
             {error}
           </div>
         )}
+
+        <section className="space-y-3">
+          <div className="rounded-2xl bg-secondary/60 px-5 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-medium">{t('settings.tooling.projectsDirectory')}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('settings.tooling.projectsDirectoryDesc')}
+                </p>
+                <p className="mt-3 truncate font-mono text-xs text-muted-foreground" title={projectsDirectory ?? ''}>
+                  {projectsDirectory ?? t('settings.tooling.projectsDirectoryLoading')}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5 text-xs"
+                onClick={() => void handleChooseProjectsDirectory()}
+                disabled={isSavingProjectsDirectory}
+              >
+                <HugeiconsIcon icon={__FolderHugeIcon} className="h-3.5 w-3.5" />
+                {t('settings.tooling.changeProjectsDirectory')}
+              </Button>
+            </div>
+            {projectsDirectoryError && (
+              <p className="mt-3 text-xs text-destructive">{projectsDirectoryError}</p>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">

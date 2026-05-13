@@ -69,3 +69,26 @@ export async function writeWorkspaceMarker(
   await fs.mkdir(path.dirname(markerPath), { recursive: true })
   await fs.writeFile(markerPath, JSON.stringify(marker, null, 2), "utf-8")
 }
+
+export async function deleteWorkspaceMarker(
+  projectRootPath: string,
+  expected?: Partial<Pick<WorkspaceMarker, "projectId" | "workspaceId">>,
+): Promise<boolean> {
+  const markerResult = await readWorkspaceMarker(projectRootPath)
+  if (!markerResult) return false
+
+  if (expected?.projectId && markerResult.marker.projectId !== expected.projectId) {
+    return false
+  }
+  if (expected?.workspaceId && markerResult.marker.workspaceId !== expected.workspaceId) {
+    return false
+  }
+
+  await fs.rm(markerResult.markerPath, { force: true })
+  try {
+    await fs.rmdir(path.dirname(markerResult.markerPath))
+  } catch {
+    // Leave non-empty marker directories alone.
+  }
+  return true
+}

@@ -10,6 +10,7 @@ import {
   readEnvironmentFromWindowsShell,
   readPathFromLaunchctl,
   readPathFromLoginShell,
+  resolveKnownPosixCliDirs,
   resolveKnownWindowsCliDirs,
   resolveWindowsEnvironment,
 } from "../../../shared/assistant-shared/shell";
@@ -193,6 +194,36 @@ describe("mergePathEntries", () => {
     expect(mergePathEntries("C:\\Tools;C:\\Windows", "C:\\Windows;C:\\Git", "win32")).toBe(
       "C:\\Tools;C:\\Windows;C:\\Git",
     );
+  });
+});
+
+describe("resolveKnownPosixCliDirs", () => {
+  it("includes user-local and app-bundled CLI locations on macOS", () => {
+    expect(resolveKnownPosixCliDirs({ HOME: "/Users/test" }, "darwin")).toEqual([
+      "/Users/test/.local/bin",
+      "/Users/test/.bun/bin",
+      "/Users/test/.cargo/bin",
+      "/Users/test/.npm-global/bin",
+      "/Users/test/Library/pnpm",
+      "/Applications/Codex.app/Contents/Resources",
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+    ]);
+  });
+
+  it("includes user-local CLI locations on linux", () => {
+    expect(resolveKnownPosixCliDirs({ HOME: "/home/test" }, "linux")).toEqual([
+      "/home/test/.local/bin",
+      "/home/test/.bun/bin",
+      "/home/test/.cargo/bin",
+      "/home/test/.npm-global/bin",
+      "/home/linuxbrew/.linuxbrew/bin",
+    ]);
+  });
+
+  it("returns an empty list on non-posix desktop platforms", () => {
+    expect(resolveKnownPosixCliDirs({ HOME: "/Users/test" }, "win32")).toEqual([]);
   });
 });
 

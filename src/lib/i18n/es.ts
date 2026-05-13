@@ -130,6 +130,12 @@ const es: Record<TranslationKey, string> = {
     "Git es necesario para la sincronización de proyectos y control de código fuente. Instala Git y reinicia Cozea, o configura `COZEA_GIT_EXECUTABLE` con la ruta absoluta del binario de git.",
   "settings.tooling.available": "Disponible",
   "settings.tooling.notAvailable": "No disponible",
+  "settings.tooling.projectsDirectory": "Carpeta de proyectos",
+  "settings.tooling.projectsDirectoryDesc":
+    "Cozea crea proyectos nuevos e importaciones gestionadas en esta carpeta local.",
+  "settings.tooling.projectsDirectoryLoading": "Cargando ubicación de proyectos...",
+  "settings.tooling.projectsDirectoryPickerTitle": "Elegir carpeta de proyectos de Cozea",
+  "settings.tooling.changeProjectsDirectory": "Cambiar",
   "settings.tooling.previewEmbedCompatibility":
     "Compatibilidad de vista previa",
   "settings.tooling.previewEmbedDesc":

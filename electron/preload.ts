@@ -264,7 +264,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openProjectsDirectory: () => ipcRenderer.invoke('storage:openProjectsDirectory'),
     clearCache: () => ipcRenderer.invoke('storage:clearCache'),
     clearLogs: () => ipcRenderer.invoke('storage:clearLogs'),
-    deleteProject: (options: { workspaceId: string }) => ipcRenderer.invoke('storage:deleteProject', options),
+    deleteProject: (options: { projectPath: string }) => ipcRenderer.invoke('storage:deleteProject', options),
     clearAll: () => ipcRenderer.invoke('storage:clearAll'),
   },
   window: {
@@ -1024,6 +1024,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getActiveForProject: (projectId: string) => ipcRenderer.invoke('workspace:getActiveForProject', projectId),
     setActiveForProject: (req: unknown) => ipcRenderer.invoke('workspace:setActiveForProject', req),
     bindExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:bindExistingFolder', req),
+    importExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:importExistingFolder', req),
     createForProject: (req: unknown) => ipcRenderer.invoke('workspace:createForProject', req),
     cloneForProject: (req: unknown) => ipcRenderer.invoke('workspace:cloneForProject', req),
     verify: (workspaceId: string) => ipcRenderer.invoke('workspace:verify', workspaceId),

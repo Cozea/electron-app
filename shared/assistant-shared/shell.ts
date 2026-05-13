@@ -421,6 +421,41 @@ export function resolveKnownWindowsCliDirs(env: NodeJS.ProcessEnv): ReadonlyArra
   ];
 }
 
+export function resolveKnownPosixCliDirs(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): ReadonlyArray<string> {
+  if (platform !== "darwin" && platform !== "linux") {
+    return [];
+  }
+
+  const home = env.HOME?.trim();
+  const userDirs = home
+    ? [
+        `${home}/.local/bin`,
+        `${home}/.bun/bin`,
+        `${home}/.cargo/bin`,
+        `${home}/.npm-global/bin`,
+      ]
+    : [];
+
+  if (platform === "darwin") {
+    return [
+      ...userDirs,
+      ...(home ? [`${home}/Library/pnpm`] : []),
+      "/Applications/Codex.app/Contents/Resources",
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+    ];
+  }
+
+  return [
+    ...userDirs,
+    "/home/linuxbrew/.linuxbrew/bin",
+  ];
+}
+
 export interface WindowsEnvironmentResolverOptions {
   readonly readEnvironment?: WindowsShellEnvironmentReader;
   readonly commandAvailable?: typeof isCommandAvailable;

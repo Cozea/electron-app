@@ -57,6 +57,8 @@ import {
   formatProjectDeleteError,
   formatProjectRenameError,
 } from "../lib/projectMutationPresentation";
+import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup";
+import { withProjectMutationTimeout } from "@/features/projects/lib/projectMutationTimeout";
 import {
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
@@ -600,10 +602,19 @@ export function ProjectSidebar({
       setIsDeletingProject(true);
       setDeleteError(null);
       try {
-        await deleteProject({
-          projectId: projectPendingDelete._id,
-          userId: convexUserId,
-          confirmName,
+        const deletedProjectId = String(projectPendingDelete._id);
+        await withProjectMutationTimeout(
+          deleteProject({
+            projectId: projectPendingDelete._id,
+            userId: convexUserId,
+            confirmName,
+          }),
+          "Deleting this project is taking longer than expected. Check your connection and try again.",
+        );
+        await cleanupDeletedProjectLocally(deletedProjectId, {
+          projectName: projectPendingDelete.name,
+          projectSlug: projectPendingDelete.slug,
+          managedProjectPaths: [projectPendingDelete.localPath],
         });
         setProjectPendingDelete(null);
       } catch (error) {

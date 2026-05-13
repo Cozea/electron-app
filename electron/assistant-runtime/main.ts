@@ -422,7 +422,7 @@ export const makeServerRuntimeProgram = (input: CliInput) =>
     return yield* stopSignal;
   }).pipe(Effect.provide(LayerLive(input)));
 
-const makeServerProgram = (input: CliInput) =>
+export const makeServerProgram = (input: CliInput) =>
   Effect.gen(function* () {
     const cliConfig = yield* CliConfig;
     yield* cliConfig.fixPath;

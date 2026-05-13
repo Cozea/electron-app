@@ -246,7 +246,7 @@ export function CreateProjectDialog({
       return
     }
 
-    if (mode === "empty" && !trimmedParentDirectory) {
+    if ((mode === "empty" || mode === "local") && !trimmedParentDirectory) {
       setError("Choose a project location.")
       return
     }
@@ -353,23 +353,25 @@ export function CreateProjectDialog({
             : undefined,
         })
 
-        console.log("[CreateProjectDialog] Calling workspace.bindExistingFolder with:", {
+        console.log("[CreateProjectDialog] Calling workspace.importExistingFolder with:", {
           projectId: result.projectId,
-          folderPath: trimmedLocalFolderPath,
+          sourceFolderPath: trimmedLocalFolderPath,
+          rootPathOverride: trimmedParentDirectory,
         })
-        const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+        const importResult = await window.electronAPI.workspace!.importExistingFolder({
           projectId: result.projectId,
-          folderPath: trimmedLocalFolderPath,
-          writeMarker: true,
+          sourceFolderPath: trimmedLocalFolderPath,
+          slug: buildFilesystemSlug(trimmedName),
+          rootPathOverride: trimmedParentDirectory,
           setActive: true,
         })
-        console.log("[CreateProjectDialog] bindResult:", bindResult)
+        console.log("[CreateProjectDialog] importResult:", importResult)
 
-        if (!bindResult.success || !bindResult.workspace) {
-          throw new Error(bindResult.error || "Failed to bind local folder.")
+        if (!importResult.success || !importResult.workspace) {
+          throw new Error(importResult.error || "Failed to import local folder.")
         }
         
-        createdWorkspaceId = bindResult.workspace.workspaceId
+        createdWorkspaceId = importResult.workspace.workspaceId
 
         await updateProjectStatus({
           projectId: result.projectId,
