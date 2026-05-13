@@ -3,6 +3,7 @@ import { exec, execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import * as Effect from 'effect/Effect'
 
 import type {
   AppSettings,
@@ -13,6 +14,13 @@ import type {
   StorageUsage,
 } from '../../shared/electronApiTypes'
 import { rememberApprovedExternalReadRoot } from '../fsAccess'
+import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
+import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
+import {
+  isPathInsideDirectory,
+  pathsReferToSameStorageEntry,
+  resolvePathForStorageGuard,
+} from './storagePathGuard'
 
 interface RegisterSettingsStorageHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -398,6 +406,12 @@ async function removePath(
   return size
 }
 
+async function movePathToTrash(targetPath: string): Promise<boolean> {
+  if (!fs.existsSync(targetPath)) return false
+  await shell.trashItem(targetPath)
+  return true
+}
+
 async function clearDirectoryContents(
   dirPath: string,
   options?: { measureSize?: boolean }
@@ -422,11 +436,6 @@ function getProjectDirectories(projectsDir: string): string[] {
   } catch {
     return []
   }
-}
-
-function isPathInsideDirectory(parentDir: string, targetPath: string): boolean {
-  const relativePath = path.relative(path.resolve(parentDir), path.resolve(targetPath))
-  return Boolean(relativePath) && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
 }
 
 async function collectStorageSnapshot(projectsDir: string): Promise<StorageSnapshotCacheEntry> {
@@ -513,8 +522,22 @@ export function registerSettingsStorageHandlers(
     return deps.loadSettings()
   })
 
-  ipcMain.handle('settings:set', (_event, settings: Partial<AppSettings>) => {
+  ipcMain.handle('settings:set', async (_event, settings: Partial<AppSettings>) => {
     deps.saveSettings(settings)
+    if (typeof settings.projectsDirectory === 'string' && settings.projectsDirectory.trim()) {
+      try {
+        await fs.promises.mkdir(settings.projectsDirectory, { recursive: true })
+        const rt = await waitForWorkspaceCatalogRuntime()
+        await rt.runPromise(
+          Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+            catalog.setSetting('projectsDirectory', settings.projectsDirectory!.trim()),
+          ) as Effect.Effect<void, never, WorkspaceCatalog>,
+        )
+      } catch (error) {
+        console.warn('[Settings] Failed to sync projects directory to workspace catalog.', error)
+      }
+    }
+    invalidateStorageSnapshotCache()
     return { success: true }
   })
 
@@ -686,19 +709,28 @@ export function registerSettingsStorageHandlers(
         return { success: false, error: 'Project path is required.' }
       }
 
-      if (!isPathInsideDirectory(projectsDir, projectPath)) {
+      const [projectsDirForGuard, projectPathForGuard] = await Promise.all([
+        resolvePathForStorageGuard(projectsDir),
+        resolvePathForStorageGuard(projectPath),
+      ])
+
+      if (!isPathInsideDirectory(projectsDirForGuard, projectPathForGuard)) {
         return { success: false, error: 'Project path is outside the configured projects directory.' }
       }
 
       try {
         const cachedSnapshot = getStorageSnapshotCacheForDirectory(projectsDir)
-        const cachedProject = cachedSnapshot?.projects.find((project) => project.path === projectPath)
-        await removePath(projectPath, { measureSize: false })
+        const cachedProject = cachedSnapshot?.projects.find((project) =>
+          pathsReferToSameStorageEntry(project.path, projectPath) ||
+          pathsReferToSameStorageEntry(project.path, projectPathForGuard)
+        )
+        const movedToTrash = await movePathToTrash(projectPathForGuard)
         invalidateStorageSnapshotCache()
+
         return {
           success: true,
           ...(typeof cachedProject?.size === 'number' ? { clearedBytes: cachedProject.size } : {}),
-          deletedCount: 1,
+          deletedCount: movedToTrash ? 1 : 0,
         }
       } catch (error) {
         return {

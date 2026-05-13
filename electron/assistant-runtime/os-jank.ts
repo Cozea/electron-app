@@ -6,6 +6,7 @@ import {
   readEnvironmentFromWindowsShell,
   readPathFromLaunchctl,
   readPathFromLoginShell,
+  resolveKnownPosixCliDirs,
   resolveWindowsEnvironment,
   type CommandAvailabilityOptions,
   type WindowsShellEnvironmentReader,
@@ -72,7 +73,9 @@ export function fixPath(
       platform === "darwin" && !shellPath
         ? (options.readLaunchctlPath ?? readPathFromLaunchctl)()
         : undefined;
-    const mergedPath = mergePathEntries(shellPath ?? launchctlPath, env.PATH, platform);
+    const knownCliPath = resolveKnownPosixCliDirs(env, platform).join(platform === "win32" ? ";" : ":");
+    const hydratedPath = mergePathEntries(shellPath ?? launchctlPath, env.PATH, platform);
+    const mergedPath = mergePathEntries(knownCliPath, hydratedPath, platform);
     if (mergedPath) {
       env.PATH = mergedPath;
     }

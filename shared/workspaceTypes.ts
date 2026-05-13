@@ -246,6 +246,25 @@ export interface CreateWorkspaceForProjectResult {
   error?: string
 }
 
+// ─── workspace:importExistingFolder ─────────────────────────────────────────
+
+export interface ImportExistingFolderRequest {
+  projectId: string
+  sourceFolderPath: string
+  slug: string
+  rootId?: string
+  rootPathOverride?: string
+  setActive?: boolean
+}
+
+export interface ImportExistingFolderResult {
+  success: boolean
+  workspace?: LocalWorkspaceDTO
+  importedFrom?: string
+  copiedTo?: string
+  error?: string
+}
+
 // ─── workspace:cloneForProject ───────────────────────────────────────────────
 
 export interface CloneWorkspaceForProjectRequest {

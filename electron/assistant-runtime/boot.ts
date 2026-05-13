@@ -4,7 +4,7 @@ import { Effect, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { NetService } from "@cozea/assistant-shared/Net";
 
-import { CliConfig, makeServerRuntimeProgram, type CliInput } from "./main";
+import { CliConfig, makeServerProgram, type CliInput } from "./main";
 import { OpenLive } from "./open";
 import { ServerLive } from "./wsServer";
 
@@ -31,7 +31,7 @@ export function startAssistantRuntime() {
     logWebSocketEvents: Option.none(),
   };
 
-  const program = Effect.scoped(makeServerRuntimeProgram(input)).pipe(
+  const program = Effect.scoped(makeServerProgram(input)).pipe(
     Effect.provide(RuntimeLayer),
   ) as any;
 

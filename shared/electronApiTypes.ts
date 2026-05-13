@@ -7,6 +7,8 @@ import type {
   CreateWorkspaceForProjectRequest,
   CreateWorkspaceForProjectResult,
   CwdSpec,
+  ImportExistingFolderRequest,
+  ImportExistingFolderResult,
   LocalWorkspaceDTO,
   LocalWorkspaceRecord,
   ResolveProjectWorkspaceRequest,
@@ -1936,6 +1938,7 @@ export interface ElectronAPI {
     getActiveForProject: (projectId: string) => Promise<LocalWorkspaceRecord | null>
     setActiveForProject: (req: { workspaceId: string; projectId: string }) => Promise<void>
     bindExistingFolder: (req: BindExistingFolderRequest) => Promise<BindExistingFolderResult>
+    importExistingFolder: (req: ImportExistingFolderRequest) => Promise<ImportExistingFolderResult>
     createForProject: (req: CreateWorkspaceForProjectRequest) => Promise<CreateWorkspaceForProjectResult>
     cloneForProject: (req: CloneWorkspaceForProjectRequest) => Promise<CloneWorkspaceForProjectResult>
     verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO }>

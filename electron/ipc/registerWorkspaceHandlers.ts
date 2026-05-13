@@ -6,6 +6,7 @@ import type {
   BindExistingFolderRequest,
   CloneWorkspaceForProjectRequest,
   CreateWorkspaceForProjectRequest,
+  ImportExistingFolderRequest,
   ResolveProjectWorkspaceRequest,
 } from "../../shared/workspaceTypes.ts"
 import { WorkspaceCatalog } from "../workspaces/WorkspaceCatalog.ts"
@@ -53,6 +54,12 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain): void {
     "workspace:bindExistingFolder",
     async (_event, req: BindExistingFolderRequest) =>
       run(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.bindExistingFolder(req))),
+  )
+
+  ipcMain.handle(
+    "workspace:importExistingFolder",
+    async (_event, req: ImportExistingFolderRequest) =>
+      run(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.importExistingFolder(req))),
   )
 
   ipcMain.handle(

@@ -1,9 +1,14 @@
-import { app } from 'electron'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import type { RuntimeHealth, RuntimeKind, RuntimeResolveResult, RuntimeTarget } from './runtimeTypes'
 import { resolveCommandIntent } from './commandResolver'
+
+interface ElectronAppLike {
+  isReady: () => boolean
+  getPath: (name: 'userData') => string
+}
 
 const SYSTEM_MANAGED_RUNTIMES = new Set<RuntimeKind>([
   'node',
@@ -39,9 +44,17 @@ export function getRuntimeTarget(): RuntimeTarget {
 }
 
 export function getRuntimeCacheRoot(): string {
-  if (app && typeof app.isReady === 'function' && app.isReady()) {
-    return path.join(app.getPath('userData'), 'runtimes')
+  try {
+    const requireElectron = createRequire(import.meta.url)
+    const electron = requireElectron('electron') as { app?: ElectronAppLike }
+    if (electron.app && typeof electron.app.isReady === 'function' && electron.app.isReady()) {
+      return path.join(electron.app.getPath('userData'), 'runtimes')
+    }
+  } catch {
+    // Workbench runtime children run with ELECTRON_RUN_AS_NODE in packaged builds,
+    // where the Electron module is not available.
   }
+
   return path.join(os.homedir(), '.cozea', 'runtimes')
 }
 

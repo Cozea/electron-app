@@ -35,7 +35,8 @@ import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
-import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
+import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime, waitForWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
+import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
 import { startAssistantRuntime } from './assistant-runtime/boot'
 import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
 import { waitForHttpReady } from './backendReadiness'
@@ -326,6 +327,23 @@ function saveSettings(settings: Partial<AppSettings>): void {
     fs.writeFileSync(getSettingsPath(), JSON.stringify(updated, null, 2))
   } catch (err) {
     console.error('Failed to save settings:', err)
+  }
+}
+
+async function syncProjectsDirectoryToWorkspaceCatalog(): Promise<void> {
+  const projectsDirectory = loadSettings().projectsDirectory?.trim()
+  if (!projectsDirectory) return
+
+  try {
+    await fs.promises.mkdir(projectsDirectory, { recursive: true })
+    const runtime = await waitForWorkspaceCatalogRuntime()
+    await runtime.runPromise(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+        catalog.setSetting('projectsDirectory', projectsDirectory),
+      ),
+    )
+  } catch (error) {
+    console.warn('[Settings] Failed to sync projects directory to workspace catalog.', error)
   }
 }
 
@@ -885,6 +903,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
 type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
+let canCreateMainWindow = false
 const workbenchBrowserService = new WorkbenchBrowserService({
   getMainWindow: () => win,
 })
@@ -1527,7 +1546,7 @@ app.on('before-quit', () => {
 })
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (canCreateMainWindow && BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
 })
@@ -1547,13 +1566,17 @@ app.whenReady().then(() => {
 
   scheduleBootWork('workspace-catalog-initialized', async () => {
     await initWorkspaceCatalogRuntime(app.getPath('userData'))
+    await syncProjectsDirectoryToWorkspaceCatalog()
     logBootTiming('workspace-catalog-initialized')
   }, 0)
 
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
-  createWindow()
-  logBootTiming('main-window-created')
+  canCreateMainWindow = true
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow()
+    logBootTiming('main-window-created')
+  }
 
   scheduleBootWork('shell-environment-synced', () => {
     if (process.platform === 'darwin') {
