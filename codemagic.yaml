@@ -101,6 +101,11 @@ workflows:
           export BUN_INSTALL="$HOME/.bun"
           export PATH="$BUN_INSTALL/bin:$PATH"
           source "$CM_BUILD_DIR/.codemagic_bash_env"
+          if [[ -n "${COZEA_CI_KEYCHAIN:-}" && -n "${COZEA_CI_KEYCHAIN_PASSWORD:-}" ]]; then
+            security unlock-keychain -p "$COZEA_CI_KEYCHAIN_PASSWORD" "$COZEA_CI_KEYCHAIN"
+            security default-keychain -d user -s "$COZEA_CI_KEYCHAIN"
+            security find-identity -v -p codesigning "$COZEA_CI_KEYCHAIN"
+          fi
           bun run dist -- --mac --x64 --arm64 --publish never
 
       - name: Notarize and verify macOS artifacts
