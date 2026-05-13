@@ -16,7 +16,6 @@ const macUniversalX64ArchFilePackages = [
   "@railway/cli",
   "@rollup/rollup-darwin-*",
   "@tailwindcss/oxide-darwin-*",
-  "@vscode/ripgrep",
   "7zip-bin/mac/x64",
   "better-sqlite3/build/Release",
   "esbuild",
