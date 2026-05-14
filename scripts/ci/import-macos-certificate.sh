@@ -64,13 +64,25 @@ security default-keychain -d user -s "${keychain_path}"
 
 curl -fsSL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "${developer_id_ca_path}"
 curl -fsSL "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -o "${apple_root_ca_path}"
-security add-trusted-cert -d -r trustRoot -k "${keychain_path}" "${apple_root_ca_path}" ||
-  security import "${apple_root_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security ||
-  true
+
+# Import the intermediate and root into our keychain so codesign can find them
+# during chain building. -T flags are a no-op on certs (only keys have ACLs)
+# but harmless.
+security import "${apple_root_ca_path}" -k "${keychain_path}" || true
+security import "${developer_id_ca_path}" -k "${keychain_path}" || true
+
+# Mark both as trusted for code signing in the *user* trust domain (no -d, no
+# sudo required). Without trust settings, codesign on macOS Sequoia cannot
+# build the chain from the leaf to a self-signed root, which surfaces as
+# "unable to build chain to self-signed root" + errSecInternalComponent.
+security add-trusted-cert -r trustRoot -p codeSign -k "${keychain_path}" "${apple_root_ca_path}" || true
+security add-trusted-cert -r trustAsRoot -p codeSign -k "${keychain_path}" "${developer_id_ca_path}" || true
+
+# Best-effort: also trust the Apple Root in the system keychain if sudo is
+# available. Not required when the user-domain trust above succeeds.
 if sudo -n true 2>/dev/null; then
   sudo -n security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${apple_root_ca_path}" || true
 fi
-security import "${developer_id_ca_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
 security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
 if [[ -s "${cert_pem_path}" ]]; then
   security import "${cert_pem_path}" -k "${keychain_path}" -T /usr/bin/codesign -T /usr/bin/security || true
