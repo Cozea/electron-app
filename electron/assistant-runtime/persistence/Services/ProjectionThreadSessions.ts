@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionThreadSessionRepository - Repository interface for thread sessions.
  *

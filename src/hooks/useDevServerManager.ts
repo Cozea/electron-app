@@ -470,32 +470,9 @@ export function useDevServerManager({
       })
     })
 
-    const unsubError = window.electronAPI.devServer.onError(({ workspaceId: eventWorkspaceId, error }) => {
-      if (eventWorkspaceId !== workspaceId) return
-
-      console.error('[DevServer] Error:', error)
-      const runId = activeRunIdRef.current
-      if (runId) {
-        transitionLifecycle({ type: 'error', runId, reason: error })
-      }
-      setState((prev) => ({
-        ...prev,
-        status: 'error',
-        error,
-        failureReason: 'server_unreachable',
-      }))
-      appendTimeline({
-        runId,
-        type: 'error',
-        message: error,
-      })
-      onError?.(error)
-    })
-
     cleanupRef.current = () => {
       unsubOutput()
       unsubExit()
-      unsubError()
     }
 
     return () => {

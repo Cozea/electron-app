@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as NFS from "node:fs";
 import * as Net from "node:net";
 import * as readline from "node:readline";

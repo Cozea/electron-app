@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionThreadRepository - Projection repository interface for threads.
  *

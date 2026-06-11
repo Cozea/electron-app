@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { type ChildProcess as ChildProcessHandle, spawn, spawnSync } from "node:child_process";
 
 export interface ProcessRunOptions {

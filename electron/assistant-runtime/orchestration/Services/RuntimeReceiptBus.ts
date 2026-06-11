@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { CheckpointRef, IsoDateTime, NonNegativeInt, ThreadId, TurnId } from "@cozea/assistant-contracts";
 import { Schema, ServiceMap } from "effect";
 import type { Effect, Stream } from "effect";

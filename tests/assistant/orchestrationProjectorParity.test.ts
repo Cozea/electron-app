@@ -79,6 +79,7 @@ describe("orchestration projector parity", () => {
           title: "Thread",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "approval-required",
@@ -137,6 +138,7 @@ describe("orchestration projector parity", () => {
           title: "Thread",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "approval-required",
@@ -203,6 +205,7 @@ describe("orchestration projector parity", () => {
           title: "Thread",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "approval-required",

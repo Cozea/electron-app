@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ComponentProps } from "react"
+import { memo, useCallback, useMemo, type ComponentProps } from "react"
 import {
   DockviewReact,
   themeAbyssSpaced,
@@ -116,7 +116,10 @@ interface WorkbenchDockviewCanvasProps {
   onReady: ComponentProps<typeof DockviewReact>["onReady"]
 }
 
-export function WorkbenchDockviewCanvas({
+// Memo boundary: dockview re-pushes props into every tab/panel portal root
+// whenever this component renders, so parent cascades (layout/surface churn)
+// must stop here. All props are primitives or stable callbacks.
+export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
   dockviewKey,
   className,
   themeScheme,
@@ -265,4 +268,4 @@ export function WorkbenchDockviewCanvas({
       />
     </div>
   )
-}
+})

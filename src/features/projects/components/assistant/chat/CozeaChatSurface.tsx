@@ -630,7 +630,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isSending ||
     props.isInterrupting
 
-  const showComposerDockChrome = !dockComposerOnHover || dockComposerChromeReasons
+  // Empty thread: keep the composer visible so new sessions have an obvious input.
+  const showComposerDockChrome =
+    !dockComposerOnHover || dockComposerChromeReasons || timelineEntries.length === 0
 
   const reserveScrollSpaceForDockedComposer =
     dockComposerOnHover && dockComposerChromeReasons
@@ -1336,6 +1338,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             onChange={handleComposerFileInputChange}
             tabIndex={-1}
           />
+          <div
+            className={cn(
+              "rounded-xl border border-border/60 bg-input/20 px-3 py-2 transition-colors",
+              "focus-within:border-ring/70 focus-within:bg-input/30",
+              composerDisabled && "opacity-70",
+            )}
+          >
           <ComposerPromptEditor
             value={composerValue}
             cursor={props.composerCursor}
@@ -1371,6 +1380,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
             disabled={composerDisabled}
           />
+          </div>
         </div>
 
         {activePendingApproval ? (

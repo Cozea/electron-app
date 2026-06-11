@@ -197,6 +197,7 @@ describe("ProviderRuntimeIngestion", () => {
         workspaceRoot,
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -211,6 +212,7 @@ describe("ProviderRuntimeIngestion", () => {
         title: "Thread",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -783,6 +785,7 @@ describe("ProviderRuntimeIngestion", () => {
         title: "Plan Source",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: "plan",
@@ -818,6 +821,7 @@ describe("ProviderRuntimeIngestion", () => {
         title: "Plan Target",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -970,6 +974,7 @@ describe("ProviderRuntimeIngestion", () => {
         title: "Plan Source",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: "plan",
@@ -1055,26 +1060,29 @@ describe("ProviderRuntimeIngestion", () => {
       throw new Error("Expected source plan to exist.");
     }
 
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-start-plan-target-guarded"),
-        threadId: targetThreadId,
-        message: {
-          messageId: asMessageId("msg-plan-target-guarded"),
-          role: "user",
-          text: "PLEASE IMPLEMENT THIS PLAN:\n# Source plan",
-          attachments: [],
-        },
-        sourceProposedPlan: {
-          threadId: sourceThreadId,
-          planId: sourcePlan.id,
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: new Date().toISOString(),
-      }),
-    );
+    // The decider now rejects turn starts for busy threads at dispatch time.
+    await expect(
+      Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.makeUnsafe("cmd-turn-start-plan-target-guarded"),
+          threadId: targetThreadId,
+          message: {
+            messageId: asMessageId("msg-plan-target-guarded"),
+            role: "user",
+            text: "PLEASE IMPLEMENT THIS PLAN:\n# Source plan",
+            attachments: [],
+          },
+          sourceProposedPlan: {
+            threadId: sourceThreadId,
+            planId: sourcePlan.id,
+          },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: new Date().toISOString(),
+        }),
+      ),
+    ).rejects.toThrow(/already has an active turn/);
 
     harness.emit({
       type: "turn.started",
@@ -1123,6 +1131,7 @@ describe("ProviderRuntimeIngestion", () => {
         title: "Plan Source",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: "plan",
@@ -1158,6 +1167,7 @@ describe("ProviderRuntimeIngestion", () => {
         title: "Plan Target",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,

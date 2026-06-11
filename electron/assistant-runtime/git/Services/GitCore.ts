@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * GitCore - Effect service contract for low-level Git operations.
  *

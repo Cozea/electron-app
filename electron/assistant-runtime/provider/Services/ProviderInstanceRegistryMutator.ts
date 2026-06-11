@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { ProviderInstanceConfigMap } from "@cozea/assistant-contracts";
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";

@@ -63,8 +63,16 @@ export function useNavigate(): NavigateFunction {
   )
 }
 
-export function useLocation() {
-  return useTanstackLocation()
+/**
+ * Subscribes to router location. Prefer passing `select` to subscribe to a
+ * narrow slice (e.g. `useLocation({ select: (l) => l.pathname })`): without it
+ * the component re-renders on every navigation, including no-op clicks to the
+ * current URL.
+ */
+export function useLocation<TSelected = ReturnType<typeof useTanstackLocation>>(options?: {
+  select?: (location: ReturnType<typeof useTanstackLocation>) => TSelected
+}): TSelected {
+  return useTanstackLocation(options as never) as TSelected
 }
 
 export function useParams<TParams = any>() {
@@ -76,28 +84,21 @@ export function useSearch<TSearch = any>() {
 }
 
 export function useSearchParams() {
-  const search = useTanstackSearch({ strict: false } as never) as Record<string, unknown>
+  // Subscribe to primitive slices only: the parsed `search` object and the
+  // location object change identity on every navigation (even no-op clicks to
+  // the current URL), which would re-render every consumer per click.
+  const searchStr = useTanstackLocation({
+    select: (location: ReturnType<typeof useTanstackLocation>) => location.searchStr ?? '',
+  } as never) as string
+  const pathname = useTanstackLocation({
+    select: (location: ReturnType<typeof useTanstackLocation>) => location.pathname,
+  } as never) as string
+  const hash = useTanstackLocation({
+    select: (location: ReturnType<typeof useTanstackLocation>) => location.hash ?? '',
+  } as never) as string
   const navigate = useTanstackNavigate({ from: '/' })
-  const location = useTanstackLocation()
 
-  const searchParams = useMemo(() => {
-    const params = new URLSearchParams()
-
-    for (const [key, value] of Object.entries(search ?? {})) {
-      if (value == null) continue
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (item != null) {
-            params.append(key, String(item))
-          }
-        }
-      } else {
-        params.set(key, String(value))
-      }
-    }
-
-    return params
-  }, [search])
+  const searchParams = useMemo(() => new URLSearchParams(searchStr), [searchStr])
 
   const setSearchParams = useCallback(
     (
@@ -127,14 +128,14 @@ export function useSearchParams() {
       }
 
       const searchString = params.toString()
-      const target = `${location.pathname}${searchString ? `?${searchString}` : ''}${location.hash ?? ''}`
+      const target = `${pathname}${searchString ? `?${searchString}` : ''}${hash}`
 
       navigate({
         to: target,
         replace: options?.replace,
       } as never)
     },
-    [location.hash, location.pathname, navigate, searchParams]
+    [hash, pathname, navigate, searchParams]
   )
 
   return [searchParams, setSearchParams] as const

@@ -86,6 +86,7 @@ it.effect("trims branded ids and command string fields at decode boundaries", ()
       workspaceRoot: " /tmp/workspace ",
       defaultModelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: " gpt-5.2 ",
       },
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -96,6 +97,7 @@ it.effect("trims branded ids and command string fields at decode boundaries", ()
     assert.strictEqual(parsed.workspaceRoot, "/tmp/workspace");
     assert.deepStrictEqual(parsed.defaultModelSelection, {
       provider: "codex",
+      instanceId: "codex",
       model: "gpt-5.2",
     });
   }),
@@ -109,6 +111,7 @@ it.effect("decodes historical project.created payloads with a default provider",
       workspaceRoot: "/tmp/workspace",
       defaultModelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.4",
       },
       scripts: [],
@@ -125,6 +128,7 @@ it.effect("decodes project.meta-updated payloads with explicit default provider"
       projectId: "project-1",
       defaultModelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-opus-4-6",
       },
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -183,6 +187,7 @@ it.effect("preserves explicit provider and runtime mode in thread.turn.start", (
       },
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.4",
       },
       runtimeMode: "full-access",
@@ -202,6 +207,7 @@ it.effect("decodes thread.created runtime mode for historical events", () =>
       title: "Thread title",
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.4",
       },
       interactionMode: "default",
@@ -222,6 +228,7 @@ it.effect("decodes thread.meta-updated payloads with explicit provider", () =>
       threadId: "thread-1",
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-opus-4-6",
       },
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -244,6 +251,7 @@ it.effect("accepts provider-scoped model options in thread.turn.start", () =>
       },
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.3-codex",
         options: {
           reasoningEffort: "high",

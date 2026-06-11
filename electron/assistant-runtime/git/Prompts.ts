@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Shared prompt builders for text generation providers.
  *

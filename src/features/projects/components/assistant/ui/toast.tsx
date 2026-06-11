@@ -9,7 +9,6 @@ const CircleAlertIcon = (props: any) => <HugeiconsIcon icon={__CircleAlertIconHu
 const TriangleAlertIcon = (props: any) => <HugeiconsIcon icon={__TriangleAlertIconHugeIcon} {...props} />
 const InfoIcon = (props: any) => <HugeiconsIcon icon={__InfoIconHugeIcon} {...props} />
 
-"use client";
 
 import { Toast } from "@base-ui/react/toast";
 import { useEffect, type CSSProperties } from "react";

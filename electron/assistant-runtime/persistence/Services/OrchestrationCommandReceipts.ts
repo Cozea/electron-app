@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * OrchestrationCommandReceiptRepository - Repository interface for command receipts.
  *

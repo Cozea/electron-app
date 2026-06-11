@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckIconHugeIcon } from '@hugeicons/core-free-icons'
 
-// @ts-nocheck
 import { type ApprovalRequestId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useRef } from "react";
 import { type PendingUserInput } from "./session-logic";

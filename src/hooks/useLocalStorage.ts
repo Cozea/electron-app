@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Schema } from "effect";
 import * as Record from "effect/Record";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,18 +19,18 @@ const isomorphicLocalStorage: Storage =
         };
       })();
 
-const decode = <T>(schema: Schema.Schema<T, any, never>, value: string) =>
+const decode = <T>(schema: Schema.Codec<T, any, never, never>, value: string) =>
   Schema.decodeUnknownSync(schema)(JSON.parse(value));
 
-const encode = <T>(schema: Schema.Schema<T, any, never>, value: T) =>
+const encode = <T>(schema: Schema.Codec<T, any, never, never>, value: T) =>
   JSON.stringify(Schema.encodeSync(schema)(value));
 
-export const getLocalStorageItem = <T>(key: string, schema: Schema.Schema<T, any, never>): T | null => {
+export const getLocalStorageItem = <T>(key: string, schema: Schema.Codec<T, any, never, never>): T | null => {
   const item = isomorphicLocalStorage.getItem(key);
   return item ? decode(schema, item) : null;
 };
 
-export const setLocalStorageItem = <T>(key: string, value: T, schema: Schema.Schema<T, any, never>) => {
+export const setLocalStorageItem = <T>(key: string, value: T, schema: Schema.Codec<T, any, never, never>) => {
   const valueToSet = encode(schema, value);
   isomorphicLocalStorage.setItem(key, valueToSet);
 };
@@ -54,7 +53,7 @@ function dispatchLocalStorageChange(key: string) {
 export function useLocalStorage<T>(
   key: string,
   initialValue: T,
-  schema: Schema.Schema<T, any, never>,
+  schema: Schema.Codec<T, any, never, never>,
 ): [T, (value: T | ((val: T) => T)) => void] {
   // Get the initial value from localStorage or use the provided initialValue
   const [storedValue, setStoredValue] = useState<T>(() => {

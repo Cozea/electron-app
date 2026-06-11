@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   ProviderInstanceId,
   type ProviderDriverKind,
@@ -9,7 +8,6 @@ import {
 } from "@cozea/assistant-contracts";
 import { Cause, Effect, Equal, Exit, Layer, PubSub, Ref, Schema, Scope, ServiceMap, Stream } from "effect";
 
-import { ProviderDriverError } from "../Errors.ts";
 import type { AnyProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
 import { asBuiltInProviderKind } from "../ProviderInstanceScopedSettings.ts";
 import {

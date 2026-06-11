@@ -11,6 +11,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -79,6 +80,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  /* Desktop copy size; prevents unstyled text falling back to the 16px browser default. */
+  font-size: var(--app-copy-font-size);
 }
 
 /* Chat markdown rendering (t3 parity; link color uses --primary — no --info-foreground in theme) */
@@ -932,6 +935,7 @@ body {
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.20 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.22 0 0);
@@ -973,6 +977,7 @@ body {
 }
 
 .navy {
+  color-scheme: dark;
   --background: hsl(222 36% 8%);
   --foreground: hsl(210 33% 96%);
   --card: hsl(222 34% 9%);
@@ -1014,6 +1019,7 @@ body {
 }
 
 .wine {
+  color-scheme: dark;
   --background: hsl(340 45% 10%);
   --foreground: hsl(330 24% 96%);
   --card: hsl(340 42% 11%);
@@ -1053,6 +1059,7 @@ body {
 }
 
 .clay {
+  color-scheme: dark;
   --background: hsl(25 30% 10%);
   --foreground: hsl(35 25% 94%);
   --card: hsl(25 28% 12%);
@@ -1103,6 +1110,7 @@ body {
 }
 
 .forest {
+  color-scheme: dark;
   --background: hsl(150 32% 10%);
   --foreground: hsl(148 20% 96%);
   --card: hsl(150 30% 11%);

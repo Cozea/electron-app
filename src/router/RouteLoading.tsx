@@ -1,16 +1,15 @@
-
-
+import { useTranslation } from "@/lib/i18n"
+import type { TranslationKey } from "@/lib/i18n/en"
 import { cn } from "@/lib/utils"
 
 interface RouteLoadingProps {
   className?: string
-  label?: string
+  labelKey?: TranslationKey
 }
 
-export function RouteLoading({
-  className,
-  label = "Loading page…",
-}: RouteLoadingProps) {
+export function RouteLoading({ className, labelKey }: RouteLoadingProps) {
+  const { t } = useTranslation()
+
   return (
     <div
       className={cn(
@@ -20,9 +19,8 @@ export function RouteLoading({
     >
       <div className="flex items-center gap-2">
         <div className="loader" />
-        <span>{label}</span>
+        <span>{t(labelKey ?? "routeLoading.default")}</span>
       </div>
     </div>
   )
 }
-

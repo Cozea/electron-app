@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronDownIconHugeIcon, ChevronDoubleCloseIcon as __ChevronUpIconHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client"
 
 import * as React from "react"
 import { Select as BaseSelect } from "@base-ui/react"
@@ -85,14 +84,14 @@ function SelectTrigger({
       data-size={size}
       {...triggerProps}
       className={cn(
-        "data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 flex w-fit items-center justify-between gap-2 rounded-full bg-secondary px-3 py-2 text-sm whitespace-nowrap transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[placeholder]:text-muted-foreground relative flex w-fit cursor-pointer items-center justify-between gap-2 rounded-lg border border-input bg-popover not-dark:bg-clip-padding px-[calc(--spacing(3)-1px)] text-sm text-foreground whitespace-nowrap shadow-xs/5 transition-shadow outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-disabled:not-active:before:shadow-[0_1px_--theme(--color-black/4%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-64 disabled:shadow-none dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/6%)] hover:bg-accent/50 dark:hover:bg-input/64 data-[size=default]:h-9 sm:data-[size=default]:h-8 data-[size=sm]:h-8 sm:data-[size=sm]:h-7 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
       {children}
       <BaseSelect.Icon>
-        <HugeiconsIcon icon={__ChevronDownIconHugeIcon} className="size-4 opacity-50" />
+        <HugeiconsIcon icon={__ChevronDownIconHugeIcon} className="-mr-0.5 size-4 opacity-80" />
       </BaseSelect.Icon>
     </BaseSelect.Trigger>
   )
@@ -110,28 +109,25 @@ function SelectContent({
 
   return (
     <BaseSelect.Portal>
-      <BaseSelect.Positioner align={align as any} sideOffset={4}>
+      <BaseSelect.Positioner align={align as any} sideOffset={4} className="z-50">
         <BaseSelect.Popup
           data-native-surface-overlay="true"
           data-native-surface-overlay-reason="Select menu"
           data-slot="select-content"
           className={cn(
-            "app-scrollbar bg-secondary text-secondary-foreground relative z-50 max-h-[min(24rem,80vh)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-md shadow-xl outline-hidden",
+            "titlebar-no-drag relative z-50 flex min-w-32 flex-col origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             className
           )}
-          style={{
-            scrollbarGutter: "auto",
-            ...style,
-          }}
+          style={style}
           {...props}
         >
           <SelectScrollUpButton />
           <div
             className={cn(
-              "p-1",
-              position === "popper" &&
-                "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
+              "app-scrollbar max-h-[min(24rem,var(--available-height))] w-full overflow-y-auto p-1",
+              position === "popper" && "scroll-my-1"
             )}
+            style={{ scrollbarGutter: "auto" }}
           >
             {children}
           </div>
@@ -164,7 +160,7 @@ function SelectItem({
     <BaseSelect.Item
       data-slot="select-item"
       className={cn(
-        "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground focus:bg-accent focus:text-accent-foreground relative flex w-full min-h-7 cursor-default items-center gap-2 rounded-sm py-1 pr-8 pl-2 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
       )}
       {...props}
@@ -189,7 +185,7 @@ function SelectSeparator({
   return (
     <BaseSelect.Separator
       data-slot="select-separator"
-      className={cn("bg-border pointer-events-none -mx-1 my-1 h-px", className)}
+      className={cn("bg-border pointer-events-none mx-2 my-1 h-px", className)}
       {...props}
     />
   )

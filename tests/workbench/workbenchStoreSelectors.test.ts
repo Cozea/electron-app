@@ -49,47 +49,47 @@ describe('workbench store selectors', () => {
     expect(selector(useProjectWorkbenchStore.getState())).toBe(assistantTileId)
   })
 
-  it('falls back to the most recently used path-scoped workbench when no path is available', async () => {
+  it('falls back to the most recently used workspace-scoped workbench when no workspace id is available', async () => {
     const actions = useProjectWorkbenchStore.getState().actions
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-a')
-    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, '/tmp/project-a')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-a')
+    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, 'ws-a')
     await new Promise((resolve) => setTimeout(resolve, 2))
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-b')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-b')
     const latestTileId = actions.addTile(
       'project-1',
       'collab',
       'assistantChat',
       { title: 'Latest agent' },
-      '/tmp/project-b',
+      'ws-b',
     )
 
     const workbench = selectProjectWorkbench('project-1', 'collab')(
       useProjectWorkbenchStore.getState(),
     )
 
-    expect(workbench?.projectPath).toBe('/tmp/project-b')
+    expect(workbench?.workspaceId).toBe('ws-b')
     expect(workbench?.activeTileId).toBe(latestTileId)
   })
 
-  it('uses the most recently used workbench for lane summaries when paths differ', async () => {
+  it('uses the most recently used workbench for lane summaries when workspace ids differ', async () => {
     const actions = useProjectWorkbenchStore.getState().actions
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-a')
-    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, '/tmp/project-a')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-a')
+    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, 'ws-a')
     await new Promise((resolve) => setTimeout(resolve, 2))
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-b')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-b')
     const latestTileId = actions.addTile(
       'project-1',
       'collab',
       'assistantChat',
       { title: 'Latest agent' },
-      '/tmp/project-b',
+      'ws-b',
     )
 
     const byLane = selectProjectLaneWorkbenches('project-1')(
       useProjectWorkbenchStore.getState(),
     )
 
-    expect(byLane.collab?.projectPath).toBe('/tmp/project-b')
+    expect(byLane.collab?.workspaceId).toBe('ws-b')
     expect(byLane.collab?.activeTileId).toBe(latestTileId)
   })
 

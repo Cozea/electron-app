@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { create } from "zustand"
 
 const TYPING_IDLE_MS = 2500

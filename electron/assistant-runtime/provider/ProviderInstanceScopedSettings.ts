@@ -7,7 +7,7 @@ import {
 } from "@cozea/assistant-contracts";
 import { Effect, Stream } from "effect";
 
-import { ServerSettingsService, type ServerSettingsShape } from "../serverSettings.ts";
+import type { ServerSettingsShape } from "../serverSettings.ts";
 
 export function asBuiltInProviderKind(driver: ProviderDriverKind): ProviderKind | undefined {
   return driver === "codex" ||

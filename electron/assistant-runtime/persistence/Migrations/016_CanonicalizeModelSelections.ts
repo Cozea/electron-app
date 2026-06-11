@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as Effect from "effect/Effect";
 import * as SqlClient from "@effect/sql/SqlClient";
 

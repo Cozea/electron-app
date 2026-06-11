@@ -1233,8 +1233,14 @@ function createWindow() {
   const isMac = process.platform === 'darwin'
   const isWindows = process.platform === 'win32'
   const isReleaseBuild = app.isPackaged
-  const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
   const userSettings = loadSettings()
+  // Restore the persisted theme source before computing native colors, so a
+  // cold start doesn't follow the OS theme until the renderer syncs it.
+  const persistedThemeSource = userSettings.nativeThemeSource
+  if (persistedThemeSource === 'system' || persistedThemeSource === 'light' || persistedThemeSource === 'dark') {
+    nativeTheme.themeSource = persistedThemeSource
+  }
+  const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
   const useTransparency = isMac && !userSettings.deactivateTransparency
   let routeRecoveryInFlight = false
 
@@ -1468,6 +1474,9 @@ registerCoreHandlers(ipcMain, {
   getGpuDiagnostics: () => gpuDiagnostics,
   setNativeThemeSource: async (source) => {
     nativeTheme.themeSource = source
+    if (loadSettings().nativeThemeSource !== source) {
+      saveSettings({ nativeThemeSource: source })
+    }
   },
   isWindowFullScreen: () => win?.isFullScreen() ?? false,
   openSettingsWindow,

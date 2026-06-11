@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon } from '@hugeicons/core-free-icons'
 
-// @ts-nocheck
 import { type TurnId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { type TurnDiffFileChange } from "@/stores/types";

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionPendingApprovalRepository - Repository interface for pending approvals.
  *

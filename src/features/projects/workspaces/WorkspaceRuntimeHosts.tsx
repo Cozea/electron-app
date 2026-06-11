@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { memo, useEffect, useMemo } from "react"
 
 import {
   useYjsProject,
@@ -35,7 +35,9 @@ function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
   return null
 }
 
-function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
+// Memoized so a write to one runtime record does not re-render every other
+// host (records keep identity unless actually touched).
+const WorkspaceRuntimeHost = memo(function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
   const { config, runtimeId, workspaceId } = record
 
   if (!config.projectId || !config.userId || !config.workspaceId) {
@@ -62,7 +64,7 @@ function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
       <WorkspaceRuntimeObserver runtimeId={runtimeId} />
     </ProjectSyncProviderRuntime>
   )
-}
+})
 
 export function WorkspaceRuntimeHosts() {
   const runtimes = useWorkspaceRuntimeStore((state) => state.runtimes)

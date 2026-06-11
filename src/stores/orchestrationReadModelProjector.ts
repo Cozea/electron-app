@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Synchronous port of `electron/assistant-runtime/orchestration/projector.ts`
  * `projectEvent` for renderer-side incremental updates from WS domain events.

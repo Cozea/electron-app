@@ -36,6 +36,8 @@ describe('authCallbackState', () => {
         originalState: 'opaque-client-state',
         desktopRedirectUri: 'cozea://auth/callback',
         webRedirectUri: undefined,
+        flow: 'login',
+        invitationToken: undefined,
       },
     })
   })

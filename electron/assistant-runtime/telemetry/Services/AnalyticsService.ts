@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnalyticsService - Anonymous telemetry capture contract.
  *

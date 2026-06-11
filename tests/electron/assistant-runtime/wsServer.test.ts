@@ -49,6 +49,7 @@ import { TerminalManager, type TerminalManagerShape } from "../../../electron/as
 import { makeSqlitePersistenceLive, SqlitePersistenceMemory } from "../../../electron/assistant-runtime/persistence/Layers/Sqlite";
 import { SqlClient, SqlError } from "effect/unstable/sql";
 import { ProviderService, type ProviderServiceShape } from "../../../electron/assistant-runtime/provider/Services/ProviderService";
+import { ProviderInstanceRegistry } from "../../../electron/assistant-runtime/provider/Services/ProviderInstanceRegistry";
 import { ProviderRegistry, type ProviderRegistryShape } from "../../../electron/assistant-runtime/provider/Services/ProviderRegistry";
 import { Open, type OpenShape } from "../../../electron/assistant-runtime/open";
 import { GitManager, type GitManagerShape } from "../../../electron/assistant-runtime/git/Services/GitManager.ts";
@@ -760,6 +761,7 @@ describe("WebSocket Server", () => {
           title: "bootstrap-workspace",
           defaultModelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
         }),
@@ -773,6 +775,7 @@ describe("WebSocket Server", () => {
           title: "New thread",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           branch: null,
@@ -1299,7 +1302,19 @@ describe("WebSocket Server", () => {
       rollbackConversation: () => unsupported(),
       streamEvents: Stream.fromPubSub(runtimeEventPubSub),
     };
-    const providerLayer = Layer.succeed(ProviderService, providerService);
+    // The server runtime stack expects ProviderInstanceRegistry alongside
+    // ProviderService (the default makeServerProviderLayer merges both).
+    const fakeInstanceRegistry = {
+      getInstance: () => Effect.succeed(undefined),
+      listInstances: Effect.succeed([]),
+      listUnavailable: Effect.succeed([]),
+      streamChanges: Stream.empty,
+      subscribeChanges: Effect.flatMap(PubSub.unbounded(), (pubsub) => PubSub.subscribe(pubsub)),
+    } as unknown as typeof ProviderInstanceRegistry.Service;
+    const providerLayer = Layer.merge(
+      Layer.succeed(ProviderService, providerService),
+      Layer.succeed(ProviderInstanceRegistry, fakeInstanceRegistry),
+    );
 
     server = await createTestServer({
       cwd: "/test",

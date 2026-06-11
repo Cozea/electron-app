@@ -48,6 +48,13 @@ export interface AppSettings {
   previewHeaderCompatibilityEnabled: boolean
   approvedExternalReadRoots?: string[]
   deactivateTransparency?: boolean
+  /**
+   * Last theme source the renderer synced via app:setNativeThemeSource.
+   * Restored before window creation so native UI (window background,
+   * titlebar overlay, menus) matches the app theme from the first frame
+   * of a cold start instead of following the OS until React mounts.
+   */
+  nativeThemeSource?: 'system' | 'light' | 'dark'
 }
 
 export type UpdateStatus =
@@ -1335,16 +1342,6 @@ export interface ElectronAPI {
     }) => Promise<{ roomKeyBase64: string }>
     deleteDeviceIdentity: () => Promise<{ success: boolean; error?: string }>
   }
-  tools: {
-    run: (request: {
-      name: string
-      input: Record<string, unknown>
-      projectPath?: string
-      runId?: string
-      toolCallId?: string
-    }) => Promise<{ success: boolean; output?: unknown; error?: string }>
-    cancel: (request: { runId: string }) => Promise<{ success: boolean; canceled?: number; error?: string }>
-  }
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
     listAvailableBrowsers: () => Promise<AvailableExternalBrowserResult>
@@ -1898,7 +1895,6 @@ export interface ElectronAPI {
     isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
-    onError: (callback: (data: { workspaceId: string; error: string }) => void) => () => void
   }
   terminal: {
     create: (options: TerminalCreateOptions) => Promise<TerminalCreateResult>

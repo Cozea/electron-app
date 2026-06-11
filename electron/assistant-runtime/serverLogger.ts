@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 
 import { Effect, Logger } from "effect";

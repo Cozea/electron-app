@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Option, Schema } from "effect";
 
 import {

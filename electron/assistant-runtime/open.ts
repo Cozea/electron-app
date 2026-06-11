@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Open - Browser/editor launch service interface.
  *
@@ -258,15 +257,13 @@ export const launchDetached = (launch: EditorLaunch) =>
     });
   });
 
-const make = Effect.gen(function* () {
-  return {
-    openBrowser: (target) =>
-      launchDetached({
-        command: fileManagerCommandForPlatform(process.platform),
-        args: [target],
-      }),
-    openInEditor: (input) => Effect.flatMap(resolveEditorLaunch(input), launchDetached),
-  } satisfies OpenShape;
-});
+const make = Effect.sync(() => ({
+  openBrowser: (target) =>
+    launchDetached({
+      command: fileManagerCommandForPlatform(process.platform),
+      args: [target],
+    }),
+  openInEditor: (input) => Effect.flatMap(resolveEditorLaunch(input), launchDetached),
+} satisfies OpenShape));
 
 export const OpenLive = Layer.effect(Open, make);

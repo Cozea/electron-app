@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, MinusSignIcon as __CircleIconHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client"
 
 import * as React from 'react'
 import { Menu as BaseMenu } from '@base-ui/react'
@@ -14,8 +13,11 @@ import {
 } from '@/lib/nativeSurfaceOcclusion'
 import { cn } from '@/lib/utils'
 
+const dropdownMenuPopupClassName =
+  'titlebar-no-drag relative flex min-w-32 origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] focus:outline-none dark:before:shadow-[0_-1px_--theme(--color-white/6%)]'
+
 const dropdownMenuInteractiveItemClassName =
-  'data-[highlighted]:bg-foreground/10 dark:data-[highlighted]:bg-foreground/16 data-[highlighted]:text-foreground focus:bg-foreground/10 dark:focus:bg-foreground/16 focus:text-foreground transition-colors'
+  'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground focus:bg-accent focus:text-accent-foreground transition-colors'
 
 function DropdownMenu({ ...props }: React.ComponentProps<typeof BaseMenu.Root>) {
   return <BaseMenu.Root data-slot="dropdown-menu" {...props} />
@@ -83,22 +85,26 @@ function DropdownMenuContent({
 
   return (
     <BaseMenu.Portal>
-      <BaseMenu.Positioner side={side as any} align={align as any} sideOffset={sideOffset}>
+      <BaseMenu.Positioner
+        side={side as any}
+        align={align as any}
+        sideOffset={sideOffset}
+        className="z-50"
+      >
         <BaseMenu.Popup
           data-native-surface-overlay="true"
           data-native-surface-overlay-reason="Dropdown menu"
           data-slot="dropdown-menu-content"
-          className={cn(
-            'titlebar-no-drag app-scrollbar bg-secondary text-secondary-foreground z-50 max-h-[min(24rem,80vh)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-[1.25rem] p-1 shadow-xl outline-hidden',
-            className
-          )}
-          style={{
-            scrollbarGutter: 'auto',
-            ...style,
-          }}
+          className={cn(dropdownMenuPopupClassName, className)}
+          style={style}
           {...props}
         >
-          {children}
+          <div
+            className="app-scrollbar max-h-[min(24rem,var(--available-height))] w-full overflow-y-auto p-1"
+            style={{ scrollbarGutter: 'auto' }}
+          >
+            {children}
+          </div>
         </BaseMenu.Popup>
       </BaseMenu.Positioner>
     </BaseMenu.Portal>
@@ -130,7 +136,7 @@ function DropdownMenuItem({
       data-variant={variant}
       className={cn(
         dropdownMenuInteractiveItemClassName,
-        "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/12 dark:data-[variant=destructive]:focus:bg-destructive/22 data-[variant=destructive]:data-[highlighted]:bg-destructive/12 dark:data-[variant=destructive]:data-[highlighted]:bg-destructive/22 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:data-[highlighted]:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-[1rem] px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[variant=destructive]:text-destructive data-[variant=destructive]:data-[highlighted]:text-destructive data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:data-[highlighted]:bg-destructive/8 dark:data-[variant=destructive]:data-[highlighted]:bg-destructive/16 data-[variant=destructive]:focus:bg-destructive/8 dark:data-[variant=destructive]:focus:bg-destructive/16 data-[variant=destructive]:*:[svg]:!text-destructive flex min-h-7 cursor-default items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-64 data-[inset]:pl-8 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       onClick={(e) => {
@@ -160,7 +166,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       className={cn(
         dropdownMenuInteractiveItemClassName,
-        "relative flex cursor-default items-center gap-2 rounded-[1rem] py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex min-h-7 cursor-default items-center gap-2 rounded-sm py-1 pr-4 pl-8 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-64 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
@@ -170,7 +176,7 @@ function DropdownMenuCheckboxItem({
       }}
       {...props}
     >
-      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+      <span className="pointer-events-none absolute left-2 flex size-4 items-center justify-center">
         <BaseMenu.CheckboxItemIndicator>
           <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-4" />
         </BaseMenu.CheckboxItemIndicator>
@@ -199,7 +205,7 @@ function DropdownMenuRadioItem({
       data-slot="dropdown-menu-radio-item"
       className={cn(
         dropdownMenuInteractiveItemClassName,
-        "relative flex cursor-default items-center gap-2 rounded-[1rem] py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex min-h-7 cursor-default items-center gap-2 rounded-sm py-1 pr-4 pl-8 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-64 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       onClick={(e) => {
@@ -208,7 +214,7 @@ function DropdownMenuRadioItem({
       }}
       {...props}
     >
-      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+      <span className="pointer-events-none absolute left-2 flex size-4 items-center justify-center">
         <BaseMenu.RadioItemIndicator>
           <HugeiconsIcon icon={__CircleIconHugeIcon} className="size-2 fill-current" />
         </BaseMenu.RadioItemIndicator>
@@ -229,7 +235,7 @@ function DropdownMenuLabel({
     <div
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn('px-2 py-1.5 text-sm font-normal data-[inset]:pl-8', className)}
+      className={cn('px-2 py-1.5 font-normal text-muted-foreground text-xs data-[inset]:pl-8', className)}
       role="presentation"
       {...props}
     />
@@ -240,7 +246,13 @@ function DropdownMenuSeparator({
   className,
   ...props
 }: React.ComponentProps<typeof BaseMenu.Separator>) {
-  return <BaseMenu.Separator data-slot="dropdown-menu-separator" className={cn('hidden', className)} {...props} />
+  return (
+    <BaseMenu.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn('mx-2 my-1 h-px bg-border', className)}
+      {...props}
+    />
+  )
 }
 
 function DropdownMenuShortcut({
@@ -250,7 +262,7 @@ function DropdownMenuShortcut({
   return (
     <span
       data-slot="dropdown-menu-shortcut"
-      className={cn('text-muted-foreground ml-auto text-xs tracking-widest', className)}
+      className={cn('ml-auto font-normal text-muted-foreground/72 text-xs tracking-widest', className)}
       {...props}
     />
   )
@@ -274,20 +286,20 @@ function DropdownMenuSubTrigger({
       data-inset={inset}
       className={cn(
         dropdownMenuInteractiveItemClassName,
-        "data-[popup-open]:bg-foreground/10 dark:data-[popup-open]:bg-foreground/16 data-[popup-open]:text-foreground [&_svg:not([class*='text-'])]:text-muted-foreground flex cursor-default items-center gap-2 rounded-[1rem] px-2 py-1.5 text-sm outline-hidden select-none data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[popup-open]:bg-accent data-[popup-open]:text-accent-foreground flex min-h-7 cursor-default items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none select-none data-[inset]:pl-8 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
       {children}
-      <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="ml-auto size-4" />
+      <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="-mr-0.5 ml-auto size-4 opacity-80" />
     </BaseMenu.SubmenuTrigger>
   )
 }
 
 function DropdownMenuSubContent({
   className,
-  sideOffset = 4,
+  sideOffset = 0,
   children,
   ...props
 }: React.ComponentProps<typeof BaseMenu.Popup> & { sideOffset?: number }) {
@@ -295,18 +307,17 @@ function DropdownMenuSubContent({
 
   return (
     <BaseMenu.Portal>
-      <BaseMenu.Positioner side="right" sideOffset={sideOffset}>
+      <BaseMenu.Positioner side="right" sideOffset={sideOffset} className="z-50">
         <BaseMenu.Popup
           data-native-surface-overlay="true"
           data-native-surface-overlay-reason="Dropdown menu"
           data-slot="dropdown-menu-sub-content"
-          className={cn(
-            'titlebar-no-drag bg-secondary text-secondary-foreground z-50 min-w-[8rem] overflow-hidden rounded-[1.25rem] p-1 shadow-xl outline-hidden',
-            className
-          )}
+          className={cn(dropdownMenuPopupClassName, className)}
           {...props}
         >
-          {children}
+          <div className="app-scrollbar max-h-[min(24rem,var(--available-height))] w-full overflow-y-auto p-1">
+            {children}
+          </div>
         </BaseMenu.Popup>
       </BaseMenu.Positioner>
     </BaseMenu.Portal>

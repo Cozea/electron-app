@@ -41,12 +41,11 @@ import {
 import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  ArrowLeft01Icon as __ArrowLeftHugeIcon,
-  ArrowRight01Icon as __ArrowRightHugeIcon,
   ArrowExpand01Icon as __MaximizeHugeIcon,
   ArrowShrink01Icon as __RestoreHugeIcon,
   Cancel01Icon as __XHugeIcon,
@@ -275,10 +274,12 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
           {registeredHeader.actions}
         </div>
       ) : null}
+      <Tooltip>
+      <TooltipTrigger asChild>
       <button
         type="button"
         className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        title={t('workbench.layout.optionsLabel')}
+        aria-label={t('workbench.layout.optionsLabel')}
         onClick={async (event) => {
           event.preventDefault()
           event.stopPropagation()
@@ -338,10 +339,15 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
       >
         <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
       </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{t('workbench.layout.optionsLabel')}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+      <TooltipTrigger asChild>
       <button
         type="button"
         className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        title={isMaximized ? "Restore panel" : "Maximize panel"}
+        aria-label={isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize')}
         onClick={(event) => {
           event.preventDefault()
           event.stopPropagation()
@@ -354,34 +360,17 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
       >
         <HugeiconsIcon icon={isMaximized ? __RestoreHugeIcon : __MaximizeHugeIcon} className="h-3.5 w-3.5" />
       </button>
-      <button
-        type="button"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        title="Move focus to previous panel"
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          props.containerApi.moveToPrevious({ includePanel: true, group: props.group })
-        }}
-      >
-        <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-3.5 w-3.5" />
-      </button>
-      <button
-        type="button"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        title="Move focus to next panel"
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          props.containerApi.moveToNext({ includePanel: true, group: props.group })
-        }}
-      >
-        <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
-      </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize')}
+      </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+      <TooltipTrigger asChild>
       <button
         type="button"
         className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-        title="Close panel"
+        aria-label={t('workbench.panel.close')}
         onClick={(event) => {
           event.preventDefault()
           event.stopPropagation()
@@ -390,6 +379,9 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
       >
         <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
       </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{t('workbench.panel.close')}</TooltipContent>
+      </Tooltip>
     </div>
   )
 })

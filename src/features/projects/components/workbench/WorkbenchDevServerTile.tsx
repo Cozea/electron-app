@@ -12,6 +12,8 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
+import { appToast } from "@/lib/appToast"
+import { useTranslation } from "@/lib/i18n"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
@@ -104,6 +106,7 @@ function WorkbenchRuntimePreviewTile({
   containerApi,
   surfaceType,
 }: WorkbenchDevServerTileProps) {
+  const { t } = useTranslation()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
@@ -515,9 +518,13 @@ function WorkbenchRuntimePreviewTile({
       if (!result.success) {
         lastExternalPreviewKeyRef.current = null
         console.error("[WorkbenchDevServerTile] Failed to open preview in browser", result.error)
+        appToast.error({
+          title: t("workbench.devserver.openBrowserFailed"),
+          description: result.error ?? undefined,
+        })
       }
     },
-    [effectiveBrowserId, externalPreviewUrl]
+    [effectiveBrowserId, externalPreviewUrl, t]
   )
 
   const handleNativeSendTouches = useCallback(

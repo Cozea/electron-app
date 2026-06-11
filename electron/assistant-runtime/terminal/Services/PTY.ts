@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * PtyAdapter - Terminal PTY adapter service contract.
  *
