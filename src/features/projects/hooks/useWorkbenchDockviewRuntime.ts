@@ -419,7 +419,7 @@ export function useWorkbenchDockviewRuntime(
     }
     if (
       hydratedProjectKeyRef.current !==
-      `${input.projectId}:${input.activeLaneId}:${input.projectWorkbench.layoutResetKey}`
+      `${input.workbenchScopeKey}:${input.projectWorkbench.layoutResetKey}`
     ) {
       return;
     }
@@ -696,6 +696,8 @@ export function useWorkbenchDockviewRuntime(
       if (import.meta.env.DEV && typeof window !== "undefined") {
         // Exposed for layout diagnostics (panel move/bounds verification).
         (window as unknown as Record<string, unknown>).__dockApi = event.api;
+        (window as unknown as Record<string, unknown>).__dockReadyScope =
+          input.workbenchScopeKey ?? "workbench";
       }
 
       layoutSnapshotDebouncerRef.current?.cancel();

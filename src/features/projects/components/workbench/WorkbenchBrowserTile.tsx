@@ -25,6 +25,7 @@ import { useWorkbenchBrowserView } from "@/features/projects/components/workbenc
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
+import { dispatchBrowserFocusUrl } from "@/features/projects/browser/urlInput"
 import {
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   useProjectWorkbenchStore,
@@ -182,13 +183,12 @@ export function WorkbenchBrowserTile({
 
   const focusUrlInput = useCallback(() => {
     panelApi.setActive()
+    // The address bar lives in the dock header (BrowserPanelHeaderControls)
+    // and owns its own input; ask it to focus instead of touching a local ref.
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        urlInputRef.current?.focus()
-        urlInputRef.current?.select()
-      })
+      dispatchBrowserFocusUrl(tile.id)
     })
-  }, [panelApi])
+  }, [panelApi, tile.id])
 
   const openFind = useCallback((nextQuery?: string) => {
     panelApi.setActive()
