@@ -1,6 +1,7 @@
 import {
   useCallback,
-  useEffect,
+  useLayoutEffect,
+  useRef,
   useSyncExternalStore,
   type ReactNode,
 } from "react"
@@ -77,19 +78,36 @@ export function useRegisterWorkbenchDockHeaderControls(
   panelId: string,
   controls: WorkbenchDockHeaderControls,
 ) {
-  useEffect(() => {
-    if (!controls.controls && !controls.actions) {
+  const registeredRef = useRef<WorkbenchDockHeaderControls | null>(null)
+
+  // Drops this instance's registration, but never a replacement's: panels are
+  // torn down and recreated with the same id (dock rebuilds, tile fallbacks),
+  // and a stale unmount must not wipe the successor's entry.
+  const unregister = useCallback(() => {
+    if (
+      registeredRef.current &&
+      headerControlsByPanelId.get(panelId) === registeredRef.current
+    ) {
       headerControlsByPanelId.delete(panelId)
       emitHeaderControlsChange(panelId)
+    }
+    registeredRef.current = null
+  }, [panelId])
+
+  // Layout effect, not passive: the header must see the registration before
+  // first paint, or the dock renders bare (no URL bar/actions) for as long as
+  // the main thread stays busy after a tile mounts — most visibly during
+  // project switches.
+  useLayoutEffect(() => {
+    if (!controls.controls && !controls.actions) {
+      unregister()
       return
     }
 
     headerControlsByPanelId.set(panelId, controls)
+    registeredRef.current = controls
     emitHeaderControlsChange(panelId)
+  }, [controls, panelId, unregister])
 
-    return () => {
-      headerControlsByPanelId.delete(panelId)
-      emitHeaderControlsChange(panelId)
-    }
-  }, [controls, panelId])
+  useLayoutEffect(() => unregister, [unregister])
 }

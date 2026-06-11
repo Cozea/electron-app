@@ -316,29 +316,36 @@ export function ProjectSidebar({
         (project.id === currentProjectId
           ? (displayedCurrentActiveLane?.workspaceId ?? currentWorkspaceId)
           : null);
-      workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchWorkspaceId);
-
-      const ensuredWorkbench = selectProjectWorkbench(
-        project.id,
-        laneId,
-        workbenchWorkspaceId,
-      )(useProjectWorkbenchStore.getState());
 
       let nextOptions = options;
-      if (!options?.openTile && !options?.focusTileId && ensuredWorkbench) {
-        const hasVisibleTiles = ensuredWorkbench.order.some((tileId) => {
-          const tile = ensuredWorkbench.tiles[tileId];
-          return tile && tile.type !== "selection";
-        });
+      if (workbenchWorkspaceId) {
+        // Only touch the store when the workspace scope is known. Ensuring or
+        // writing tiles with a null scope creates orphan `project::lane`
+        // benches whose tiles silently disappear once the real (workspace-
+        // scoped) bench resolves.
+        workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchWorkspaceId);
 
-        if (!hasVisibleTiles) {
-          const selectionTileId =
-            ensuredWorkbench.order.find(
-              (tileId) => ensuredWorkbench.tiles[tileId]?.type === "selection",
-            ) ?? null;
+        const ensuredWorkbench = selectProjectWorkbench(
+          project.id,
+          laneId,
+          workbenchWorkspaceId,
+        )(useProjectWorkbenchStore.getState());
 
-          if (selectionTileId) {
-            nextOptions = { focusTileId: selectionTileId };
+        if (!options?.openTile && !options?.focusTileId && ensuredWorkbench) {
+          const hasVisibleTiles = ensuredWorkbench.order.some((tileId) => {
+            const tile = ensuredWorkbench.tiles[tileId];
+            return tile && tile.type !== "selection";
+          });
+
+          if (!hasVisibleTiles) {
+            const selectionTileId =
+              ensuredWorkbench.order.find(
+                (tileId) => ensuredWorkbench.tiles[tileId]?.type === "selection",
+              ) ?? null;
+
+            if (selectionTileId) {
+              nextOptions = { focusTileId: selectionTileId };
+            }
           }
         }
       }
@@ -348,7 +355,10 @@ export function ProjectSidebar({
       // to three router transitions per click (param navigation plus the sync
       // hook's cleanup replaces) and re-push every dockview portal root. This
       // mirrors what useProjectWorkbenchSearchParamSync would do with the params.
+      // Requires a known workspace scope; before resolution the intent rides
+      // navigation state instead and applies once the surface has the scope.
       const isSameWorkbenchView =
+        Boolean(workbenchWorkspaceId) &&
         project.id === currentProjectId &&
         displayedCurrentActiveLane?.id === laneId &&
         pathname === `${buildProjectPath(project.id)}/workbench`;

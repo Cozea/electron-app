@@ -480,6 +480,12 @@ export function TerminalInstance({
     fitAddon.fit()
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+    // Load WebGL before any output paints: the DOM renderer advances text by
+    // the exact measured char width while WebGL floors it to whole device
+    // pixels, so a later swap visibly reflows ("font shrinks") on-screen text.
+    if (wantsGpuRendererRef.current) {
+      syncWebglRendererRef.current()
+    }
     if (import.meta.env.DEV) {
       // Buffer handle for CDP diagnostics (keep-alive verification reads the
       // canvas-rendered buffer, which has no DOM text).
@@ -687,13 +693,10 @@ export function TerminalInstance({
       return
     }
 
-    const enableGpuTimeout = window.setTimeout(() => {
-      syncWebglRendererRef.current()
-    }, 96)
-
-    return () => {
-      window.clearTimeout(enableGpuTimeout)
-    }
+    // Re-enable immediately on re-attach (parked terminals render via the DOM
+    // renderer); any delay shows DOM-metric frames that reflow once WebGL
+    // takes over.
+    syncWebglRendererRef.current()
   }, [disposeWebglRenderer, shouldUseGpuRenderer])
 
   const handleResize = useCallback(() => {

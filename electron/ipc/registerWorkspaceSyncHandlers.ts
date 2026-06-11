@@ -656,12 +656,18 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         authorEmail?: string
       }
     ) => {
-      let cwd: string
+      let cwd: string | null
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        cwd = access.gitRootPath ?? access.projectRootPath
+        cwd = access.gitRootPath
       } catch (e) {
         return { success: false, error: String(e) }
+      }
+      if (!cwd) {
+        // Workspace has no git repository — checkpoints are git commits, so
+        // there is nothing to capture. Not an error: plain imported folders
+        // hit this on every persisted change batch.
+        return { success: true, skipped: 'no-git-root' }
       }
       return checkpointWorkerClient.captureCheckpoint({
         cwd,

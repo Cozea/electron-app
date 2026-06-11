@@ -197,14 +197,21 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   )
   const title = tile?.title ?? props.api.title ?? resolveTabTileTypeLabel(tile)
   const active = props.api.isActive
-  const chromeOwnedSurface = isChromeOwnedSurface(props.api.component, tile)
+  const registeredHeader = useWorkbenchDockHeaderControls(props.api.id)
+  // Collapse to the mini pill only while the tile's own header controls (URL
+  // bar etc.) carry its identity; without them (lazy chunk loading, missing
+  // tile record) an empty pill reads as a broken header, so fall back to the
+  // regular labeled tab.
+  const chromeOwnedSurface =
+    isChromeOwnedSurface(props.api.component, tile) && Boolean(registeredHeader?.controls)
 
   if (chromeOwnedSurface) {
     return (
       <div
-        className="cozea-workbench-tab cozea-workbench-tab--chrome-owned flex h-full min-w-0 items-center px-1"
+        className="cozea-workbench-tab cozea-workbench-tab--chrome-owned flex h-full min-w-0 items-center justify-center px-1"
         title={title}
       >
+        <WorkbenchDockTabIcon tile={tile} />
         <span className="sr-only">{title}</span>
       </div>
     )
