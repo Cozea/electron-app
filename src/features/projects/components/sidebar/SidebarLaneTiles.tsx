@@ -27,6 +27,7 @@ import {
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import { createAssistantThreadSelectorById, useStore } from "@/stores/assistant-store"
+import type { Thread as AssistantThread } from "@/stores/types"
 import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarSurfaceTileSummary,
@@ -167,7 +168,7 @@ function providerGlyphColorClass(
 }
 
 function hasUnseenCompletion(
-  thread: NonNullable<ReturnType<typeof useStore.getState>["threads"][number]>,
+  thread: AssistantThread,
 ): boolean {
   if (!thread.latestTurn?.completedAt) return false
   const completedAt = Date.parse(thread.latestTurn.completedAt)
@@ -180,7 +181,7 @@ function hasUnseenCompletion(
 }
 
 function resolveAgentStatusPill(input: {
-  thread: NonNullable<ReturnType<typeof useStore.getState>["threads"][number]>
+  thread: AssistantThread
   hasPendingApprovals: boolean
   hasPendingUserInput: boolean
 }): SidebarAgentStatusPill | null {
