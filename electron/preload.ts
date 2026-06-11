@@ -916,6 +916,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('devServer:resize', options),
     isRunning: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:isRunning', options),
+    getState: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('devServer:getState', options),
     onOutput: (callback: (data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:output', handler)

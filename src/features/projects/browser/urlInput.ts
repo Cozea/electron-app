@@ -2,6 +2,13 @@ export function normalizeUrlInput(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return ""
 
+  // host:port before the scheme check: `localhost:3000` parses as a URI with
+  // scheme `localhost:`, which loadURL can't handle. Digits right after the
+  // colon can only be a port — scheme separators are followed by a non-digit.
+  if (/^localhost(:|\/|$)/i.test(trimmed) || /^[\w.-]+:\d+/.test(trimmed)) {
+    return `http://${trimmed}`
+  }
+
   // If it's explicitly a URL scheme (e.g., http://, https://, file://)
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
     return trimmed
@@ -10,11 +17,6 @@ export function normalizeUrlInput(value: string): string {
   // If it contains spaces, it's definitely a search query
   if (trimmed.includes(" ")) {
     return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
-  }
-
-  // If it's localhost or an IP with a port
-  if (/^localhost(:|\/|$)/i.test(trimmed) || /^[\w.-]+:\d+/.test(trimmed)) {
-    return `http://${trimmed}`
   }
 
   // If it looks like a domain name or IP address (has a dot)

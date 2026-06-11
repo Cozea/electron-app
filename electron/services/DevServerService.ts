@@ -366,10 +366,11 @@ export class DevServerService {
     return this.processes.has(buildRunKey(workspaceId, laneId))
   }
 
-  public getState(workspaceId: string, laneId?: string | null): { running: boolean; port: number | null; runId: string | null } {
+  public getState(workspaceId: string, laneId?: string | null): { running: boolean; ready: boolean; port: number | null; runId: string | null } {
     const entry = this.processes.get(buildRunKey(workspaceId, laneId))
     return {
       running: Boolean(entry),
+      ready: Boolean(entry?.ready),
       port: entry?.activePort ?? null,
       runId: entry?.runId ?? null,
     }
