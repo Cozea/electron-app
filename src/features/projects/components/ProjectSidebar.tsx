@@ -30,7 +30,7 @@ import { useTranslation } from "@/lib/i18n";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { buildProjectPath } from "../lib/projectRoutes";
-import { buildWorkbenchHref } from "../lib/lastWorkbenchRoute";
+import { buildWorkbenchIntentState } from "../lib/workbenchIntent";
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
 import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
 import {
@@ -378,13 +378,22 @@ export function ProjectSidebar({
         return;
       }
 
-      navigate(buildWorkbenchHref(project.id, laneId, nextOptions), {
-        state: buildProjectRouteNavigationState({
-          projectId: project.id,
-          projectSlug: project.slug,
-          projectName: project.name,
-          preferredWorkspaceId: workbenchWorkspaceId,
-        }),
+      // Clean URL; the intent rides navigation state. The search-param flow
+      // remains only for external deep links (see lib/workbenchIntent.ts).
+      navigate(`${buildProjectPath(project.id)}/workbench`, {
+        state: {
+          ...buildProjectRouteNavigationState({
+            projectId: project.id,
+            projectSlug: project.slug,
+            projectName: project.name,
+            preferredWorkspaceId: workbenchWorkspaceId,
+          }),
+          ...buildWorkbenchIntentState({
+            laneId,
+            ...(nextOptions?.openTile ? { openTile: nextOptions.openTile } : {}),
+            ...(nextOptions?.focusTileId ? { focusTileId: nextOptions.focusTileId } : {}),
+          }),
+        },
       });
     },
     [
