@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckIconHugeIcon, DocumentAttachmentIcon as __CopyIconHugeIcon } from '@hugeicons/core-free-icons'
 
-// @ts-nocheck
 import { memo } from "react";
 import { Button } from "../ui/button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";

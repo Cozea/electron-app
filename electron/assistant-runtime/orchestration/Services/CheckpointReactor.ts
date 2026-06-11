@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CheckpointReactor - Checkpoint reaction service interface.
  *

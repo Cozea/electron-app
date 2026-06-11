@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   Cause,
   Effect,
@@ -11,10 +10,16 @@ import {
   SchemaTransformation,
 } from "effect";
 
-export const decodeJsonResult = <S extends Schema.Codec<unknown, unknown, never, never>>(
-  schema: S,
-) => {
-  const decode = Schema.decodeExit(Schema.fromJsonString(schema));
+export const decodeJsonResult = <S extends Schema.Top>(schema: S) => {
+  // Our contract schemas require no decoding services at runtime, but composite
+  // schemas (unions) don't expose `DecodingServices: never` statically.
+  const jsonSchema = Schema.fromJsonString(schema) as unknown as Schema.Codec<
+    S["Type"],
+    string,
+    never,
+    never
+  >;
+  const decode = Schema.decodeExit(jsonSchema);
   return (input: string) => {
     const result = decode(input);
     if (Exit.isFailure(result)) {
@@ -24,10 +29,15 @@ export const decodeJsonResult = <S extends Schema.Codec<unknown, unknown, never,
   };
 };
 
-export const decodeUnknownJsonResult = <S extends Schema.Codec<unknown, unknown, never, never>>(
-  schema: S,
-) => {
-  const decode = Schema.decodeUnknownExit(Schema.fromJsonString(schema));
+export const decodeUnknownJsonResult = <S extends Schema.Top>(schema: S) => {
+  // Same static/runtime gap as `decodeJsonResult` above.
+  const jsonSchema = Schema.fromJsonString(schema) as unknown as Schema.Codec<
+    S["Type"],
+    string,
+    never,
+    never
+  >;
+  const decode = Schema.decodeUnknownExit(jsonSchema);
   return (input: unknown) => {
     const result = decode(input);
     if (Exit.isFailure(result)) {

@@ -548,6 +548,39 @@ const en = {
   "appStore.updates.desc": "Fresh drops, release notes, curated releases, and what is landing next in the store.",
 
   "nav.thisDevice": "This {device}",
+
+  // ── Workspace actions ───────────────────────────────────────────────
+  "workspace.bindFailed": "Couldn't bind folder",
+  "workspace.createFailed": "Couldn't create workspace",
+  "workspace.cloneFailed": "Couldn't clone repository",
+  "workspace.noRepoUrl": "This project has no repository URL to clone",
+  "workspace.actionFailed": "Workspace action failed",
+
+  // ── Error screen ────────────────────────────────────────────────────
+  "errorScreen.title": "Something went wrong",
+  "errorScreen.description": "An unexpected error occurred in this view. You can try again, or reload the app.",
+  "errorScreen.tryAgain": "Try again",
+  "errorScreen.reload": "Reload app",
+
+  // ── Workbench panels / header ───────────────────────────────────────
+  "workbench.panel.close": "Close panel",
+  "workbench.branch.currentBranch": "Current branch",
+  "workbench.devserver.openBrowserFailed": "Couldn't open the browser",
+
+  // ── Route loading ───────────────────────────────────────────────────
+  "routeLoading.default": "Loading page…",
+  "routeLoading.projectInvite": "Loading project invite…",
+  "routeLoading.project": "Loading project…",
+  "routeLoading.projects": "Loading projects…",
+  "routeLoading.workbench": "Loading workbench…",
+  "routeLoading.tasks": "Loading tasks…",
+  "routeLoading.conflicts": "Loading conflicts…",
+  "routeLoading.team": "Loading team…",
+  "routeLoading.store": "Loading DevApps Store…",
+  "routeLoading.newProject": "Loading new project…",
+  "routeLoading.account": "Loading account…",
+  "routeLoading.appearance": "Loading appearance…",
+  "routeLoading.tooling": "Loading tooling…",
 } as const
 
 export type TranslationKey = keyof typeof en

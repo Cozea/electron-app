@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * GitHubCli - Effect service contract for `gh` process interactions.
  *

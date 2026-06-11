@@ -98,6 +98,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: "codex",
+        instanceId: "codex",
         model: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
         options: [
           { id: "effort", value: "high" },
@@ -133,6 +134,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.4",
         options: [{ id: "effort", value: "high" }],
       });
@@ -163,6 +165,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.provider,
+        instanceId: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.provider,
         model: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
@@ -283,6 +286,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: "opencode",
+        instanceId: "opencode",
         model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.opencode,
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),

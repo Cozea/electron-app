@@ -218,7 +218,7 @@ export const updatePreferences = mutation({
 
     // Merge with existing preferences to allow partial updates
     const nextPreferences: NonNullable<typeof user.preferences> = {
-      ...(user.preferences || {}),
+      ...user.preferences,
     }
     if (args.preferences.theme !== undefined) nextPreferences.theme = args.preferences.theme
     if (args.preferences.defaultModel !== undefined) {

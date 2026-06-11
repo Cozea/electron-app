@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as SqlClient from "@effect/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import { Effect, Layer, Schema, Struct } from "effect";

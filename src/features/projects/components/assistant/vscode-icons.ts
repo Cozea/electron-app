@@ -1,4 +1,3 @@
-// @ts-nocheck
 import vscodeIconsManifest from "./vscode-icons-manifest.json";
 import languageAssociationsData from "./vscode-icons-language-associations.json";
 

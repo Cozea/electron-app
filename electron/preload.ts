@@ -201,17 +201,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('collab:unwrapRecoveryKit', options),
     deleteDeviceIdentity: () => ipcRenderer.invoke('collab:deleteDeviceIdentity'),
   },
-  tools: {
-    run: (request: {
-      name: string
-      input: Record<string, unknown>
-      workspaceId?: string
-      runId?: string
-      toolCallId?: string
-    }) =>
-      ipcRenderer.invoke('tools:run', request),
-    cancel: (request: { runId: string }) => ipcRenderer.invoke('tools:cancel', request),
-  },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
     listAvailableBrowsers: () => ipcRenderer.invoke('shell:listAvailableBrowsers'),
@@ -933,11 +922,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; code: number | null; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:exit', handler)
       return () => ipcRenderer.removeListener('devServer:exit', handler)
-    },
-    onError: (callback: (data: { workspaceId: string; error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; error: string }) => callback(data)
-      ipcRenderer.on('devServer:error', handler)
-      return () => ipcRenderer.removeListener('devServer:error', handler)
     },
   },
   terminal: {

@@ -8,14 +8,6 @@ import type {
 import type { IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
-interface ToolRunRequest {
-  name: string
-  input: Record<string, unknown>
-  projectPath?: string
-  runId?: string
-  toolCallId?: string
-}
-
 interface RegisterCoreHandlersDeps {
   getUpdateState: () => unknown
   isAutoUpdateEnabled: () => boolean

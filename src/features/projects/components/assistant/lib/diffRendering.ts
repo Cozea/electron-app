@@ -1,4 +1,3 @@
-// @ts-nocheck
 export const DIFF_THEME_NAMES = {
   light: "github-light",
   dark: "github-dark",

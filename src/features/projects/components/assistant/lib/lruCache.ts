@@ -1,4 +1,3 @@
-// @ts-nocheck
 interface CacheEntry<T> {
   value: T;
   approximateSize: number;
@@ -7,11 +6,13 @@ interface CacheEntry<T> {
 export class LRUCache<T> {
   private cache = new Map<string, CacheEntry<T>>();
   private totalSize = 0;
+  private readonly maxEntries: number;
+  private readonly maxMemoryBytes: number;
 
-  constructor(
-    private readonly maxEntries: number,
-    private readonly maxMemoryBytes: number,
-  ) {}
+  constructor(maxEntries: number, maxMemoryBytes: number) {
+    this.maxEntries = maxEntries;
+    this.maxMemoryBytes = maxMemoryBytes;
+  }
 
   get(key: string): T | null {
     const entry = this.cache.get(key);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Layer, ServiceMap } from "effect";
 
 import type { EventNdjsonLogger } from "./EventNdjsonLogger.ts";

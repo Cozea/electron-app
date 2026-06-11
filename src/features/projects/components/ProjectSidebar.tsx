@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon, FolderAddIcon as __FolderAddHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client";
 
 import * as React from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -98,7 +97,7 @@ export function ProjectSidebar({
 }: ProjectSidebarProps) {
   const { t } = useTranslation();
   const navigate = useViewTransitionNavigate();
-  const location = useLocation();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { convexUserId } = useAuth();
   const projectRouteContext = useOptionalProjectRouteContext();
@@ -204,6 +203,13 @@ export function ProjectSidebar({
   );
 
   React.useEffect(() => {
+    // Only prune expansion state for projects that actually disappeared. While
+    // the projects query is still loading, projectItems is momentarily empty —
+    // pruning then wiped (and persisted) the expansion list, which made the
+    // sidebar auto-collapse everything on every launch.
+    if (accessibleProjects === undefined) {
+      return;
+    }
     const nextProjectIdSet = new Set(projectItems.map((project) => project.id));
 
     setExpandedProjectIds((current) => {
@@ -211,7 +217,7 @@ export function ProjectSidebar({
       return areStringArraysEqual(current, filtered) ? current : filtered;
     });
 
-  }, [projectItems]);
+  }, [accessibleProjects, projectItems]);
 
   React.useEffect(() => {
     if (currentProjectId) {
@@ -336,6 +342,38 @@ export function ProjectSidebar({
         }
       }
 
+      // Same project, same lane, already on the workbench route: apply the tile
+      // intent directly on the store. Routing it through the URL would run two
+      // to three router transitions per click (param navigation plus the sync
+      // hook's cleanup replaces) and re-push every dockview portal root. This
+      // mirrors what useProjectWorkbenchSearchParamSync would do with the params.
+      const isSameWorkbenchView =
+        project.id === currentProjectId &&
+        displayedCurrentActiveLane?.id === laneId &&
+        pathname === `${buildProjectPath(project.id)}/workbench`;
+      if (isSameWorkbenchView) {
+        if (nextOptions?.focusTileId) {
+          workbenchStore.actions.setActiveTile(
+            project.id,
+            laneId,
+            nextOptions.focusTileId,
+            workbenchWorkspaceId,
+          );
+          return;
+        }
+        if (nextOptions?.openTile) {
+          workbenchStore.actions.addTile(
+            project.id,
+            laneId,
+            nextOptions.openTile,
+            undefined,
+            workbenchWorkspaceId,
+          );
+          return;
+        }
+        return;
+      }
+
       navigate(buildWorkbenchHref(project.id, laneId, nextOptions), {
         state: buildProjectRouteNavigationState({
           projectId: project.id,
@@ -345,7 +383,14 @@ export function ProjectSidebar({
         }),
       });
     },
-    [displayedCurrentActiveLane?.workspaceId, currentProjectId, currentWorkspaceId, navigate],
+    [
+      displayedCurrentActiveLane?.id,
+      displayedCurrentActiveLane?.workspaceId,
+      currentProjectId,
+      currentWorkspaceId,
+      navigate,
+      pathname,
+    ],
   );
 
   const handleSyncCurrentProject = React.useCallback(async () => {
@@ -376,7 +421,7 @@ export function ProjectSidebar({
   } = React.useMemo(
     () =>
       getProjectSidebarRouteState({
-        pathname: location.pathname,
+        pathname: pathname,
         currentProjectId,
         currentWorkbenchPath,
         currentProjectSettingsBasePath,
@@ -387,7 +432,7 @@ export function ProjectSidebar({
       currentProjectSettingsBasePath,
       currentVisibleActiveTileId,
       currentWorkbenchPath,
-      location.pathname,
+      pathname,
     ],
   );
 
@@ -402,7 +447,7 @@ export function ProjectSidebar({
     navigate("/projects/store");
   }, [navigate]);
 
-  const isOnAppStore = location.pathname === "/projects/store";
+  const isOnAppStore = pathname === "/projects/store";
 
   const { isMobile, state, openMobile } = useSidebar();
   const showInSidebarSidebarTrigger = isMobile ? openMobile : state === "expanded";

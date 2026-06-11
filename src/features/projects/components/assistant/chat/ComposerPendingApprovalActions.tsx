@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { type ApprovalRequestId, type ProviderApprovalDecision } from "@cozea/assistant-contracts";
 import { memo } from "react";
 import { Button } from "../ui/button";

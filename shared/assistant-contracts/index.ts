@@ -1,4 +1,3 @@
-// @ts-nocheck
 export * from "./baseSchemas";
 export * from "./ipc";
 export * from "./terminal";

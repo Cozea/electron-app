@@ -62,3 +62,47 @@ export function extractStringArgCalls(options: {
   visit(sourceFile)
   return results
 }
+
+/**
+ * Collects string literals assigned to a given property name, e.g. the
+ * `channel: 'terminal:output'` option objects passed to IPC broadcast helpers
+ * (createIpcOutputBatcher, forEachBroadcastWindow wrappers, ...). These emit
+ * via webContents.send internally, so a literal channel property counts as an
+ * emitter for coverage purposes.
+ */
+export function extractStringPropertyAssignments(options: {
+  filePath: string
+  propertyNames: string[]
+}): Set<string> {
+  const content = fs.readFileSync(options.filePath, 'utf-8')
+  const sourceFile = ts.createSourceFile(options.filePath, content, ts.ScriptTarget.ESNext, true)
+  const results = new Set<string>()
+
+  function visit(node: ts.Node) {
+    if (ts.isPropertyAssignment(node)) {
+      const name = node.name
+      const nameText = ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : null
+      if (nameText && options.propertyNames.includes(nameText)) {
+        const init = node.initializer
+        if (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init)) {
+          results.add(init.text)
+        }
+      }
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      // const SOME_CHANNEL = 'x:y' consts that are later passed as channels.
+      const init = node.initializer
+      if (
+        init &&
+        (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init)) &&
+        /CHANNEL/i.test(node.name.text)
+      ) {
+        results.add(init.text)
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return results
+}

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Encoding } from "effect";
 import { CheckpointRef, ProjectId, type ThreadId } from "@cozea/assistant-contracts";
 

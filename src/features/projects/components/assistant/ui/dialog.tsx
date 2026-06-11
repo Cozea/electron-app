@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type * as React from "react";

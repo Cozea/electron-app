@@ -35,6 +35,27 @@ export interface WorkspaceRuntimeConfig {
   workspaceRevision: number
 }
 
+function workspaceRuntimeConfigsEqual(
+  a: WorkspaceRuntimeConfig,
+  b: WorkspaceRuntimeConfig,
+): boolean {
+  return (
+    a.workspaceId === b.workspaceId &&
+    a.projectId === b.projectId &&
+    a.userId === b.userId &&
+    a.userName === b.userName &&
+    a.projectSlug === b.projectSlug &&
+    a.laneId === b.laneId &&
+    a.gitCwd === b.gitCwd &&
+    a.lastSyncAt === b.lastSyncAt &&
+    a.collaborationEnabled === b.collaborationEnabled &&
+    a.activeBranch === b.activeBranch &&
+    a.sharedBranch === b.sharedBranch &&
+    a.documentScopeId === b.documentScopeId &&
+    a.workspaceRevision === b.workspaceRevision
+  )
+}
+
 export interface WorkspaceRuntimeSignals {
   hasConnectedCollab: boolean
   hasSyncActivity: boolean
@@ -213,12 +234,33 @@ function createRecord(runtimeId: string, config: WorkspaceRuntimeConfig): Worksp
   return record
 }
 
+function signalsEqual(a: WorkspaceRuntimeSignals, b: WorkspaceRuntimeSignals): boolean {
+  return (
+    a.hasConnectedCollab === b.hasConnectedCollab &&
+    a.hasSyncActivity === b.hasSyncActivity &&
+    a.hasRunningTerminals === b.hasRunningTerminals &&
+    a.hasRunningDevServer === b.hasRunningDevServer &&
+    a.hasVisibleBrowserSurface === b.hasVisibleBrowserSurface &&
+    a.hasNativePreview === b.hasNativePreview &&
+    a.pendingSyncStatus === b.pendingSyncStatus &&
+    a.lastActivityAt === b.lastActivityAt &&
+    a.lifecycleReason === b.lifecycleReason
+  )
+}
+
 function applyResolvedLifecycle(record: WorkspaceRuntimeRecord, now = Date.now()): WorkspaceRuntimeRecord {
   const nextState = resolveLifecycle(record, now)
+  // Preserve identity when the resolution is a no-op: a rebuilt signals object
+  // on every write made selectors downstream re-render the runtime hosts on
+  // each store touch even when nothing visible changed.
+  const signals = signalsEqual(record.signals, nextState.signals) ? record.signals : nextState.signals
+  if (record.lifecycle === nextState.lifecycle && signals === record.signals) {
+    return record
+  }
   return {
     ...record,
     lifecycle: nextState.lifecycle,
-    signals: nextState.signals,
+    signals,
   }
 }
 
@@ -255,6 +297,12 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
         const nextConfig: WorkspaceRuntimeConfig = {
           ...config,
           laneId: normalizeWorkspaceLaneId(config.laneId),
+        }
+
+        // No-op when nothing changed: ensureRuntime runs on every host render,
+        // and an unconditional rewrite broadcast to every store subscriber.
+        if (existing && workspaceRuntimeConfigsEqual(existing.config, nextConfig)) {
+          return state
         }
 
         const nextRecord = existing
@@ -361,9 +409,13 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
       set((state) => {
         const record = state.runtimes[runtimeId]
         if (!record) return state
+        const nextSessionKey = snapshot?.sessionKey?.trim() || null
+        if (record.sessionSnapshot === snapshot && record.sessionKey === nextSessionKey) {
+          return state
+        }
         const nextRecord = applyResolvedLifecycle({
           ...record,
-          sessionKey: snapshot?.sessionKey?.trim() || null,
+          sessionKey: nextSessionKey,
           sessionSnapshot: snapshot,
         })
         return {
@@ -429,4 +481,9 @@ export function getWorkspaceRuntimeRecord(
   }
 
   return useWorkspaceRuntimeStore.getState().runtimes[runtimeId] ?? null
+}
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  // Exposed for render-performance diagnostics (store emission counting).
+  ;(window as unknown as Record<string, unknown>).__workspaceRuntimeStore = useWorkspaceRuntimeStore
 }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * TextGeneration - Effect service contract for AI-generated Git content.
  *

@@ -119,7 +119,7 @@ async function mapWithConcurrency<T, R>(
   mapper: (item: T, index: number) => Promise<R>
 ): Promise<R[]> {
   const normalizedConcurrency = Math.max(1, Math.min(concurrency, items.length || 1))
-  const results = new Array<R>(items.length)
+  const results = Array.from({ length: items.length }) as R[]
   let nextIndex = 0
 
   async function worker(): Promise<void> {

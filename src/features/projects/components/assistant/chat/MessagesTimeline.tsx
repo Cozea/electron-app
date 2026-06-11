@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant-contracts";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -13,6 +12,7 @@ import {
   type RefObject,
   type ReactNode,
   type SVGProps,
+  type SyntheticEvent,
 } from "react";
 import {
   LegendList,
@@ -60,7 +60,7 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
-import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+import { ClaudeAI, CursorIcon, OpenAI, OpenCodeIcon } from "../Icons";
 
 const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
 const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
@@ -145,8 +145,6 @@ function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined)
       return ClaudeAI
     case "cursor":
       return CursorIcon
-    case "gemini":
-      return Gemini
     case "opencode":
       return OpenCodeIcon
     case "codex":
@@ -469,12 +467,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     });
   }, []);
 
-  const onLegendListLoad = useCallback((info: { elapsedTimeInMs: number }) => {
-    if (!shouldLogLegendListDiagnostics()) return;
-    console.info("[LegendList][AgentTimeline] load", {
-      elapsedTimeInMs: info.elapsedTimeInMs,
-    });
-  }, []);
+  // LegendList types `onLoad` as an intersection with the DOM handler, so accept both shapes.
+  const onLegendListLoad = useCallback(
+    (info: { elapsedTimeInMs: number } | SyntheticEvent<HTMLDivElement>) => {
+      if (!shouldLogLegendListDiagnostics()) return;
+      if (!("elapsedTimeInMs" in info)) return;
+      console.info("[LegendList][AgentTimeline] load", {
+        elapsedTimeInMs: info.elapsedTimeInMs,
+      });
+    },
+    [],
+  );
   const onLegendListMetricsChange = useCallback((metrics: LegendListMetrics) => {
     if (!shouldLogLegendListDiagnostics()) return;
     console.info("[LegendList][AgentTimeline] metrics", {
@@ -706,30 +709,48 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                           </button>
                         ) : null}
                       </div>
+                      <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+                        {displayedUserMessage.copyText && (
+                          <MessageCopyButton text={displayedUserMessage.copyText} />
+                        )}
+                        {canRevertAgentWork && (
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="rounded-md border border-transparent bg-secondary/80 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            disabled={isRevertingCheckpoint || isWorking}
+                            onClick={() => onRevertUserMessage(row.message.id)}
+                            title="Revert to this message"
+                            aria-label="Revert to this message"
+                          >
+                            <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                <div className="mt-0.5 flex w-full min-w-0 items-center justify-end gap-2 px-1">
-                  <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
-                    {displayedUserMessage.copyText && (
-                      <MessageCopyButton text={displayedUserMessage.copyText} />
-                    )}
-                    {canRevertAgentWork && (
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        className="rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-                        disabled={isRevertingCheckpoint || isWorking}
-                        onClick={() => onRevertUserMessage(row.message.id)}
-                        title="Revert to this message"
-                        aria-label="Revert to this message"
-                      >
-                        <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                {!(displayedUserMessage.visibleText.trim().length > 0 ||
+                  terminalContexts.length > 0) &&
+                  canRevertAgentWork && (
+                    <div className="mt-0.5 flex w-full min-w-0 items-center justify-end gap-2 px-1">
+                      <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className="rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+                          disabled={isRevertingCheckpoint || isWorking}
+                          onClick={() => onRevertUserMessage(row.message.id)}
+                          title="Revert to this message"
+                          aria-label="Revert to this message"
+                        >
+                          <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
               </div>
             </div>
           );
@@ -1235,7 +1256,7 @@ function workToneIcon(tone: TimelineWorkEntry["tone"], status?: TimelineWorkEntr
   if (tone === "error") {
     return {
       icon: CircleAlertIcon,
-      className: "text-rose-300/50 dark:text-rose-300/50",
+      className: "text-destructive",
     };
   }
   if (tone === "thinking") {
@@ -1258,7 +1279,7 @@ function workToneIcon(tone: TimelineWorkEntry["tone"], status?: TimelineWorkEntr
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error", status?: TimelineWorkEntry["status"]): string {
   if (status === "failed") return "text-destructive";
-  if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
+  if (tone === "error") return "text-destructive";
   if (tone === "tool") return "text-muted-foreground/70";
   if (tone === "thinking") return "text-muted-foreground/50";
   return "text-muted-foreground/40";
@@ -1394,6 +1415,12 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
       label: "Warning",
       className:
         "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    };
+  }
+  if (workEntry.activityKind === "runtime.error") {
+    return {
+      label: "Error",
+      className: "border-destructive/35 bg-destructive/10 text-destructive",
     };
   }
   if (workEntry.activityKind === "model.rerouted") {

@@ -98,7 +98,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRegionRef = useRef<HTMLDivElement>(null);
-  const [favorites, setFavorites] = useLocalStorage<Array<{ provider: string; model: string }>>("cozea:favorites", [], FavoritesSchema);
+  const [favorites, setFavorites] = useLocalStorage<ReadonlyArray<{ provider: string; model: string }>>("cozea:favorites", [], FavoritesSchema);
 
   const instanceEntries = useMemo(
     () => sortProviderInstanceEntries(deriveProviderInstanceEntries(props.providers ?? [])),

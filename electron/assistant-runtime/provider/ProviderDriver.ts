@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   ProviderDriverKind,
   ProviderInstanceConfig,

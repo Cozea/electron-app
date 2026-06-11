@@ -1,4 +1,3 @@
-// @ts-nocheck
 export interface TimelineDurationMessage {
   id: string;
   role: "user" | "assistant" | "system";

@@ -18,16 +18,6 @@ interface PackageJsonShape {
   devDependencies?: Record<string, string>
 }
 
-interface LaunchEnvOptions {
-  projectPath: string
-  port: number
-  devtoolsPort: number
-  runtimeBridgePort: number | null
-  runtimeDir: string
-  customMetroConfigPath: string | null
-  kind: NativePreviewLaunchKind
-}
-
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DEFAULT_METRO_PORT = 8081

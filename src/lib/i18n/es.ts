@@ -558,6 +558,39 @@ const es: Record<TranslationKey, string> = {
   "appStore.updates.desc": "Nuevos lanzamientos, notas de versión, publicaciones curadas y lo que llegará próximamente a la tienda.",
 
   "nav.thisDevice": "Este {device}",
+
+  // ── Workspace actions ───────────────────────────────────────────────
+  "workspace.bindFailed": "No se pudo vincular la carpeta",
+  "workspace.createFailed": "No se pudo crear el espacio de trabajo",
+  "workspace.cloneFailed": "No se pudo clonar el repositorio",
+  "workspace.noRepoUrl": "Este proyecto no tiene una URL de repositorio para clonar",
+  "workspace.actionFailed": "La acción del espacio de trabajo falló",
+
+  // ── Error screen ────────────────────────────────────────────────────
+  "errorScreen.title": "Algo salió mal",
+  "errorScreen.description": "Ocurrió un error inesperado en esta vista. Puedes intentarlo de nuevo o recargar la aplicación.",
+  "errorScreen.tryAgain": "Intentar de nuevo",
+  "errorScreen.reload": "Recargar aplicación",
+
+  // ── Workbench panels / header ───────────────────────────────────────
+  "workbench.panel.close": "Cerrar panel",
+  "workbench.branch.currentBranch": "Rama actual",
+  "workbench.devserver.openBrowserFailed": "No se pudo abrir el navegador",
+
+  // ── Route loading ───────────────────────────────────────────────────
+  "routeLoading.default": "Cargando página…",
+  "routeLoading.projectInvite": "Cargando invitación al proyecto…",
+  "routeLoading.project": "Cargando proyecto…",
+  "routeLoading.projects": "Cargando proyectos…",
+  "routeLoading.workbench": "Cargando el workbench…",
+  "routeLoading.tasks": "Cargando tareas…",
+  "routeLoading.conflicts": "Cargando conflictos…",
+  "routeLoading.team": "Cargando equipo…",
+  "routeLoading.store": "Cargando Tienda DevApps…",
+  "routeLoading.newProject": "Cargando nuevo proyecto…",
+  "routeLoading.account": "Cargando cuenta…",
+  "routeLoading.appearance": "Cargando apariencia…",
+  "routeLoading.tooling": "Cargando herramientas…",
 } as const
 
 export default es

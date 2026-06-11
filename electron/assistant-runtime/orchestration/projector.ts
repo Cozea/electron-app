@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { OrchestrationEvent, OrchestrationReadModel, ThreadId } from "@cozea/assistant-contracts";
 import {
   OrchestrationCheckpointSummary,

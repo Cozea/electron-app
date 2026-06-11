@@ -955,7 +955,7 @@ export function makeOpenCodeAdapterLive(_options?: OpenCodeAdapterLiveOptions) {
               }
 
               const openCodeSession = await client.session.create({
-                title: `T3 Code ${input.threadId}`,
+                title: `Cozea ${input.threadId}`,
                 permission: buildOpenCodePermissionRules(input.runtimeMode),
               });
               if (!openCodeSession.data) {

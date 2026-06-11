@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { OrchestrationThreadActivity, ThreadTokenUsageSnapshot } from "@cozea/assistant-contracts";
 
 function asRecord(value: unknown): Record<string, unknown> | null {

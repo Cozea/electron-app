@@ -95,6 +95,11 @@ jobs:
           command: |
             source "$BASH_ENV"
             bun run lint
+      - run:
+          name: Test
+          command: |
+            source "$BASH_ENV"
+            bun run test
 
   build_macos_universal:
     macos:

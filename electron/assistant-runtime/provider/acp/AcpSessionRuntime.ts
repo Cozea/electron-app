@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Cause, Deferred, Effect, Exit, Layer, Queue, Ref, Scope, ServiceMap, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import * as EffectAcpClient from "@cozea/effect-acp/client";

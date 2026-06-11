@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Fragment, type ReactNode, createElement, useEffect } from "react";
 import type {
   MessageId,
@@ -312,7 +311,7 @@ function mapProjectsFromReadModel(
     .map((entry) => {
       const existing =
         previousById.get(entry.project.id) ?? previousByCwd.get(entry.project.cwd);
-      return projectsEqual(existing, entry.project) ? existing : entry.project;
+      return existing && projectsEqual(existing, entry.project) ? existing : entry.project;
     });
 }
 
@@ -328,7 +327,12 @@ function attachmentPreviewRoutePath(attachmentId: string): string {
 }
 
 function mapMessage(message: OrchestrationReadModel["threads"][number]["messages"][number]): ChatMessage {
-  const attachments = message.attachments?.map((attachment) => ({
+  const attachments = message.attachments?.map((attachment: {
+    id: string;
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+  }) => ({
     type: "image" as const,
     id: attachment.id,
     name: attachment.name,
@@ -571,7 +575,7 @@ export function selectAssistantProjectById(
   state: AppState,
   projectId: ProjectId | string | null | undefined,
 ): Project | null {
-  return projectId ? (state.projectById[projectId] ?? null) : null;
+  return projectId ? (state.projectById[projectId as ProjectId] ?? null) : null;
 }
 
 export function selectAssistantProjectByCwd(
@@ -617,22 +621,23 @@ export function createAssistantThreadSelectorById(
 
   return (state) => {
     if (!threadId) return null;
-    const shell = state.threadShellById[threadId];
+    const id = threadId as ThreadId;
+    const shell = state.threadShellById[id];
     if (!shell) {
       previousShell = undefined;
       previousThread = null;
       return null;
     }
-    const session = state.threadSessionById[threadId] ?? null;
-    const turnState = state.threadTurnStateById[threadId];
-    const messageIds = state.messageIdsByThreadId[threadId];
-    const messagesById = state.messageByThreadId[threadId];
-    const activityIds = state.activityIdsByThreadId[threadId];
-    const activitiesById = state.activityByThreadId[threadId];
-    const proposedPlanIds = state.proposedPlanIdsByThreadId[threadId];
-    const proposedPlansById = state.proposedPlanByThreadId[threadId];
-    const turnDiffIds = state.turnDiffIdsByThreadId[threadId];
-    const turnDiffsById = state.turnDiffSummaryByThreadId[threadId];
+    const session = state.threadSessionById[id] ?? null;
+    const turnState = state.threadTurnStateById[id];
+    const messageIds = state.messageIdsByThreadId[id];
+    const messagesById = state.messageByThreadId[id];
+    const activityIds = state.activityIdsByThreadId[id];
+    const activitiesById = state.activityByThreadId[id];
+    const proposedPlanIds = state.proposedPlanIdsByThreadId[id];
+    const proposedPlansById = state.proposedPlanByThreadId[id];
+    const turnDiffIds = state.turnDiffIdsByThreadId[id];
+    const turnDiffsById = state.turnDiffSummaryByThreadId[id];
 
     if (
       previousThread &&
@@ -777,33 +782,61 @@ function writeThreadFromReadModel(
   }
 
   if (previousRawThread?.messages !== thread.messages || !nextState.messageIdsByThreadId[thread.id]) {
-    const messageSlice = buildMessageSlice(thread);
-    nextState = {
-      ...nextState,
-      messageIdsByThreadId: {
-        ...nextState.messageIdsByThreadId,
-        [thread.id]: messageSlice.ids,
-      },
-      messageByThreadId: {
-        ...nextState.messageByThreadId,
-        [thread.id]: messageSlice.byId,
-      },
-    };
+    // Snapshot resyncs deserialize fresh objects, so raw identity always
+    // differs even when nothing changed — and rebuilding every thread's
+    // message slice froze the renderer for seconds on cold project switches.
+    // A cheap content fingerprint (length + last id + last text length +
+    // streaming flag) detects the identical case and keeps the existing slice.
+    const existingIds = nextState.messageIdsByThreadId[thread.id];
+    const existingById = nextState.messageByThreadId[thread.id];
+    const lastRaw = thread.messages.at(-1);
+    const lastExistingId = existingIds?.at(-1);
+    const lastExisting = lastExistingId ? existingById?.[lastExistingId] : undefined;
+    const sliceLooksCurrent =
+      existingIds !== undefined &&
+      existingById !== undefined &&
+      existingIds.length === thread.messages.length &&
+      lastRaw?.id === lastExistingId &&
+      (lastRaw === undefined ||
+        (lastExisting !== undefined &&
+          (lastRaw.text?.length ?? 0) === (lastExisting.text?.length ?? 0) &&
+          Boolean(lastRaw.streaming) === Boolean(lastExisting.streaming)));
+    if (!sliceLooksCurrent) {
+      const messageSlice = buildMessageSlice(thread);
+      nextState = {
+        ...nextState,
+        messageIdsByThreadId: {
+          ...nextState.messageIdsByThreadId,
+          [thread.id]: messageSlice.ids,
+        },
+        messageByThreadId: {
+          ...nextState.messageByThreadId,
+          [thread.id]: messageSlice.byId,
+        },
+      };
+    }
   }
 
   if (previousRawThread?.activities !== thread.activities || !nextState.activityIdsByThreadId[thread.id]) {
-    const activitySlice = buildActivitySlice(thread);
-    nextState = {
-      ...nextState,
-      activityIdsByThreadId: {
-        ...nextState.activityIdsByThreadId,
-        [thread.id]: activitySlice.ids,
-      },
-      activityByThreadId: {
-        ...nextState.activityByThreadId,
-        [thread.id]: activitySlice.byId,
-      },
-    };
+    const existingActivityIds = nextState.activityIdsByThreadId[thread.id];
+    const activitySliceLooksCurrent =
+      existingActivityIds !== undefined &&
+      existingActivityIds.length === thread.activities.length &&
+      existingActivityIds.at(-1) === thread.activities.at(-1)?.id;
+    if (!activitySliceLooksCurrent) {
+      const activitySlice = buildActivitySlice(thread);
+      nextState = {
+        ...nextState,
+        activityIdsByThreadId: {
+          ...nextState.activityIdsByThreadId,
+          [thread.id]: activitySlice.ids,
+        },
+        activityByThreadId: {
+          ...nextState.activityByThreadId,
+          [thread.id]: activitySlice.byId,
+        },
+      };
+    }
   }
 
   if (

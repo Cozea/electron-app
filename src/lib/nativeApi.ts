@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { NativeApi } from "@cozea/assistant-contracts";
 
 import { readConfiguredWsUrl } from "./desktopBridgeClient";

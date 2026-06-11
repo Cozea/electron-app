@@ -3,14 +3,15 @@ import type { ProviderKind } from "@cozea/assistant-contracts";
 import { it, assert, vi } from "@effect/vitest";
 import { assertFailure } from "@effect/vitest/utils";
 
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, PubSub, Stream } from "effect";
 
-import { ClaudeAdapter, ClaudeAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/ClaudeAdapter.ts";
-import { CodexAdapter, CodexAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/CodexAdapter.ts";
-import { CursorAdapter, CursorAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/CursorAdapter.ts";
-import { OpenCodeAdapter, OpenCodeAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/OpenCodeAdapter.ts";
+import type { ClaudeAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/ClaudeAdapter.ts";
+import type { CodexAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/CodexAdapter.ts";
+import type { CursorAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/CursorAdapter.ts";
+import type { OpenCodeAdapterShape } from "../../../../../electron/assistant-runtime/provider/Services/OpenCodeAdapter.ts";
 import { ProviderAdapterRegistry } from "../../../../../electron/assistant-runtime/provider/Services/ProviderAdapterRegistry.ts";
 import { ProviderAdapterRegistryLive } from "../../../../../electron/assistant-runtime/provider/Layers/ProviderAdapterRegistry.ts";
+import { ProviderInstanceRegistry } from "../../../../../electron/assistant-runtime/provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderUnsupportedError } from "../../../../../electron/assistant-runtime/provider/Errors.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
@@ -82,14 +83,41 @@ const fakeCursorAdapter: CursorAdapterShape = {
   streamEvents: Stream.empty,
 };
 
+// ProviderAdapterRegistryLive is now a facade over ProviderInstanceRegistry:
+// instances own the adapters, and provider-kind lookups map to default
+// instance ids. Tests fake the instance registry instead of adapter services.
+function makeFakeInstanceRegistry(adapters: Array<{ provider: string; adapter: unknown }>) {
+  const instances = adapters.map(({ provider, adapter }) => ({
+    instanceId: provider,
+    driverKind: provider,
+    displayName: provider,
+    enabled: true,
+    config: {},
+    snapshot: {},
+    adapter,
+    textGeneration: {},
+  }));
+  const byId = new Map(instances.map((instance) => [instance.instanceId, instance]));
+  return {
+    getInstance: (instanceId: string) => Effect.succeed(byId.get(instanceId)),
+    listInstances: Effect.succeed(instances),
+    listUnavailable: Effect.succeed([]),
+    streamChanges: Stream.empty,
+    subscribeChanges: Effect.flatMap(PubSub.unbounded(), (pubsub) => PubSub.subscribe(pubsub)),
+  };
+}
+
 const layer = it.layer(
   Layer.mergeAll(
     Layer.provide(
       ProviderAdapterRegistryLive,
-      Layer.mergeAll(
-        Layer.succeed(CodexAdapter, fakeCodexAdapter),
-        Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
-        Layer.succeed(OpenCodeAdapter, fakeOpenCodeAdapter),
+      Layer.succeed(
+        ProviderInstanceRegistry,
+        makeFakeInstanceRegistry([
+          { provider: "codex", adapter: fakeCodexAdapter },
+          { provider: "claudeAgent", adapter: fakeClaudeAdapter },
+          { provider: "opencode", adapter: fakeOpenCodeAdapter },
+        ]),
       ),
     ),
     NodeServices.layer,
@@ -133,11 +161,14 @@ it.effect("ProviderAdapterRegistryLive registers Cursor only when the adapter se
       Layer.mergeAll(
         Layer.provide(
           ProviderAdapterRegistryLive,
-          Layer.mergeAll(
-            Layer.succeed(CodexAdapter, fakeCodexAdapter),
-            Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
-            Layer.succeed(OpenCodeAdapter, fakeOpenCodeAdapter),
-            Layer.succeed(CursorAdapter, fakeCursorAdapter),
+          Layer.succeed(
+            ProviderInstanceRegistry,
+            makeFakeInstanceRegistry([
+              { provider: "codex", adapter: fakeCodexAdapter },
+              { provider: "claudeAgent", adapter: fakeClaudeAdapter },
+              { provider: "opencode", adapter: fakeOpenCodeAdapter },
+              { provider: "cursor", adapter: fakeCursorAdapter },
+            ]),
           ),
         ),
         NodeServices.layer,

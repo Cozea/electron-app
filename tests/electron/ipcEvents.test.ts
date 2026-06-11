@@ -1,9 +1,9 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { collectSourceFiles } from '../helpers/scan'
-import { extractStringArgCalls } from '../helpers/tsAst'
+import { extractStringArgCalls, extractStringPropertyAssignments } from '../helpers/tsAst'
 
-const REPO_ROOT = path.resolve(__dirname, '..')
+const REPO_ROOT = path.resolve(__dirname, '..', '..')
 
 function collectAllStrings(sets: Array<Set<string>>): Set<string> {
   const out = new Set<string>()
@@ -44,15 +44,21 @@ describe('IPC Event Coverage', () => {
       )
     )
 
-    const emitted = new Set<string>([...emittedBySend, ...emittedByHelper])
+    // Channels routed through batching/broadcast helpers take the channel name as
+    // a `channel:` option or a *_CHANNEL const instead of a direct send() argument.
+    const emittedByChannelOption = collectAllStrings(
+      electronFiles.map((filePath) =>
+        extractStringPropertyAssignments({
+          filePath,
+          propertyNames: ['channel'],
+        })
+      )
+    )
 
-    const allowlist = new Set<string>([
-      // These are currently part of the preload API surface but not emitted anywhere
-      // (i.e. the callback would never fire). We allowlist them so we don't block
-      // refactors on known gaps; if/when implemented, remove from allowlist.
-      'devServer:error',
-      'window:fullscreen-change',
-    ])
+    const emitted = new Set<string>([...emittedBySend, ...emittedByHelper, ...emittedByChannelOption])
+
+    // No allowlisted gaps: every preload listener must have an emitter.
+    const allowlist = new Set<string>([])
 
     const missing = Array.from(subscribed)
       .filter((eventName) => !allowlist.has(eventName))

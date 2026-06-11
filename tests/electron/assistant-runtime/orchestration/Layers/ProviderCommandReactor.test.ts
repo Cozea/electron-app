@@ -109,6 +109,7 @@ describe("ProviderCommandReactor", () => {
     const runtimeSessions: Array<ProviderSession> = [];
     const modelSelection = input?.threadModelSelection ?? {
       provider: "codex",
+      instanceId: "codex",
       model: "gpt-5-codex",
     };
     const startSession = vi.fn((_: unknown, input: unknown) => {
@@ -135,6 +136,12 @@ describe("ProviderCommandReactor", () => {
             ? input.runtimeMode
             : "full-access",
         ...(modelSelection.model !== undefined ? { model: modelSelection.model } : {}),
+        ...(typeof input === "object" &&
+        input !== null &&
+        "cwd" in input &&
+        typeof input.cwd === "string"
+          ? { cwd: input.cwd }
+          : {}),
         threadId,
         resumeCursor: resumeCursor ?? { opaque: `resume-${sessionIndex}` },
         createdAt: now,
@@ -425,6 +432,7 @@ describe("ProviderCommandReactor", () => {
       cwd: "/tmp/provider-project",
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5-codex",
       },
       runtimeMode: "approval-required",
@@ -453,11 +461,18 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5.3-codex",
-          options: {
-            reasoningEffort: "high",
-            fastMode: true,
-          },
+          options: [
+            {
+              id: "effort",
+              value: "high",
+            },
+            {
+              id: "fastMode",
+              value: true,
+            },
+          ],
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
@@ -470,22 +485,36 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.3-codex",
-        options: {
-          reasoningEffort: "high",
-          fastMode: true,
-        },
+        options: [
+          {
+            id: "effort",
+            value: "high",
+          },
+          {
+            id: "fastMode",
+            value: true,
+          },
+        ],
       },
     });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.makeUnsafe("thread-1"),
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.3-codex",
-        options: {
-          reasoningEffort: "high",
-          fastMode: true,
-        },
+        options: [
+          {
+            id: "effort",
+            value: "high",
+          },
+          {
+            id: "fastMode",
+            value: true,
+          },
+        ],
       },
     });
   });
@@ -509,10 +538,14 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-sonnet-4-6",
-          options: {
-            effort: "max",
-          },
+          options: [
+            {
+              id: "effort",
+              value: "max",
+            },
+          ],
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
@@ -525,20 +558,28 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-sonnet-4-6",
-        options: {
-          effort: "max",
-        },
+        options: [
+          {
+            id: "effort",
+            value: "max",
+          },
+        ],
       },
     });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.makeUnsafe("thread-1"),
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-sonnet-4-6",
-        options: {
-          effort: "max",
-        },
+        options: [
+          {
+            id: "effort",
+            value: "max",
+          },
+        ],
       },
     });
   });
@@ -562,10 +603,14 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-opus-4-6",
-          options: {
-            fastMode: true,
-          },
+          options: [
+            {
+              id: "fastMode",
+              value: true,
+            },
+          ],
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
@@ -578,20 +623,28 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-opus-4-6",
-        options: {
-          fastMode: true,
-        },
+        options: [
+          {
+            id: "fastMode",
+            value: true,
+          },
+        ],
       },
     });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.makeUnsafe("thread-1"),
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-opus-4-6",
-        options: {
-          fastMode: true,
-        },
+        options: [
+          {
+            id: "fastMode",
+            value: true,
+          },
+        ],
       },
     });
   });
@@ -653,6 +706,7 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-opus-4-6",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -734,6 +788,7 @@ describe("ProviderCommandReactor", () => {
       threadId: ThreadId.makeUnsafe("thread-1"),
       modelSelection: {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5-codex",
       },
     });
@@ -804,10 +859,14 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-sonnet-4-6",
-          options: {
-            effort: "medium",
-          },
+          options: [
+            {
+              id: "effort",
+              value: "medium",
+            },
+          ],
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
@@ -831,10 +890,14 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-sonnet-4-6",
-          options: {
-            effort: "max",
-          },
+          options: [
+            {
+              id: "effort",
+              value: "max",
+            },
+          ],
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
@@ -848,10 +911,14 @@ describe("ProviderCommandReactor", () => {
       resumeCursor: { opaque: "resume-1" },
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-sonnet-4-6",
-        options: {
-          effort: "max",
-        },
+        options: [
+          {
+            id: "effort",
+            value: "max",
+          },
+        ],
       },
     });
   });
@@ -982,6 +1049,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
       modelSelection: {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-opus-4-6",
       },
       runtimeMode: "approval-required",
@@ -1025,6 +1093,7 @@ describe("ProviderCommandReactor", () => {
         },
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-opus-4-6",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
