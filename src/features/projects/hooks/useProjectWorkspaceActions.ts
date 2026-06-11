@@ -12,6 +12,7 @@ import { clearCachedProjectLaneState } from "@/features/projects/hooks/useProjec
 import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/projects/lib/workbenchLayoutPersistence"
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import { invalidateProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
 
 interface ProjectWorkspaceActionProject {
   _id: Id<"projects">
@@ -58,6 +59,7 @@ export function useProjectWorkspaceActions() {
       }
 
       const nextWorkspaceId = bindResult.workspace.workspaceId
+      invalidateProjectWorkspaceResolution(project.id)
       cloneWorkspaceState(project.id, currentWorkspaceId, nextWorkspaceId)
       clonePersistedWorkbenchLayoutsForWorkspace({
         projectId: project.id,
@@ -135,6 +137,7 @@ export function useProjectWorkspaceActions() {
       }
 
       await window.electronAPI.workspace!.forget(normalizedWorkspaceId)
+      invalidateProjectWorkspaceResolution(project.id)
 
       clearProjectBranchSession(project.id, normalizedWorkspaceId)
       clearCachedProjectLaneState(project.id, normalizedWorkspaceId)

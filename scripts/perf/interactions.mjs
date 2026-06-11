@@ -13,7 +13,11 @@ import { connect, installCommitHook, evalJson, reportScenario } from "./lib.mjs"
 const BUDGETS = {
   tileSwitch: { commits: 4, totalRenders: 450 },
   sameTileReclick: { commits: 1, totalRenders: 50 },
-  warmProjectSwitch: { totalBlockedMs: 150 },
+  // 200, not 150: since the workspace-resolution SWR cache (R3) removed the
+  // revisit spinner, content (xterm WebGL re-attach + GC, ~2x80ms) mounts
+  // inside the measured window instead of behind a loading frame. Same work,
+  // strictly better UX. Ratchet back down when terminal keep-alive lands.
+  warmProjectSwitch: { totalBlockedMs: 200 },
   returnNavigation: { commits: 34, totalRenders: 3900 },
   ipcPerNavigation: { sessionStateChanged: 4, workbenchStore: 2 },
 }

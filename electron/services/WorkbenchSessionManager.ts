@@ -639,7 +639,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
    * dedupe in useWorkbenchSessionLifecycle uses the same exclusion list.
    */
   private comparableSnapshot(snapshot: WorkbenchSessionSnapshot): string {
-    const { openedAt, lastFocusedAt, lastBackgroundedAt, ...meaningful } = snapshot
+    const { openedAt: _openedAt, lastFocusedAt: _lastFocusedAt, lastBackgroundedAt: _lastBackgroundedAt, ...meaningful } = snapshot
     return JSON.stringify(meaningful)
   }
 
