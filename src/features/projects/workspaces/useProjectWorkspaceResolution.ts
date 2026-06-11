@@ -5,9 +5,29 @@ import type {
   ResolveProjectWorkspaceResult,
 } from "../../../../shared/workspaceTypes"
 
+// Stale-while-revalidate cache. Without it, every navigation into a project
+// re-resolved the workspace over IPC with `result === null` in the meantime —
+// the content area showed a spinner on each project revisit even when the
+// answer could not have changed.
+const resolutionCache = new Map<string, ResolveProjectWorkspaceResult>()
+
+function resolutionCacheKey(projectId: string, preferredWorkspaceId: string | null): string {
+  return `${projectId}::${preferredWorkspaceId ?? ""}`
+}
+
+/** Drops cached resolutions for a project after relink/close/repair actions. */
+export function invalidateProjectWorkspaceResolution(projectId: string): void {
+  for (const key of resolutionCache.keys()) {
+    if (key.startsWith(`${projectId}::`)) {
+      resolutionCache.delete(key)
+    }
+  }
+}
+
 /**
  * Calls workspace:resolveProject via IPC and returns the result.
- * Returns null while the resolution is in flight.
+ * Returns the last known result for the project immediately (stale-while-
+ * revalidate) and null only when nothing has ever resolved for it.
  */
 export function useProjectWorkspaceResolution(
   projectId: string | null | undefined,
@@ -16,16 +36,23 @@ export function useProjectWorkspaceResolution(
   preferredWorkspaceId?: string | null,
   options?: { allowCandidateScan?: boolean },
 ): { result: ResolveProjectWorkspaceResult | null, refresh: () => void } {
-  const [result, setResult] = useState<ResolveProjectWorkspaceResult | null>(null)
+  const cacheKey = projectId
+    ? resolutionCacheKey(projectId, preferredWorkspaceId ?? null)
+    : null
+  const [result, setResult] = useState<ResolveProjectWorkspaceResult | null>(() =>
+    cacheKey ? resolutionCache.get(cacheKey) ?? null : null,
+  )
   const [refreshCounter, setRefreshCounter] = useState(0)
 
   useEffect(() => {
-    if (!projectId) {
+    if (!projectId || !cacheKey) {
       setResult(null)
       return
     }
 
-    setResult(null)
+    // Keep showing the cached result while revalidating; reset to null only
+    // when this project has never resolved (true first visit -> loading state).
+    setResult(resolutionCache.get(cacheKey) ?? null)
     let cancelled = false
 
     const req: ResolveProjectWorkspaceRequest = {
@@ -42,12 +69,17 @@ export function useProjectWorkspaceResolution(
     }
 
     window.electronAPI.workspace.resolveProject(req).then((res) => {
-      if (!cancelled) setResult(res)
+      // Preserve identity when revalidation returns the same content, so the
+      // providers downstream don't see a "new" resolution on every revisit.
+      const prev = resolutionCache.get(cacheKey)
+      const next = prev && JSON.stringify(prev) === JSON.stringify(res) ? prev : res
+      resolutionCache.set(cacheKey, next)
+      if (!cancelled) setResult(next)
     }).catch((err) => {
       console.error("[useProjectWorkspaceResolution] IPC error:", err)
       if (!cancelled) {
         // Surface the error as a missing-binding so the repair screen shows
-        // instead of an infinite spinner.
+        // instead of an infinite spinner. Not cached: errors should retry.
         setResult({
           status: "missing-binding",
           projectId,
@@ -63,7 +95,14 @@ export function useProjectWorkspaceResolution(
     return () => {
       cancelled = true
     }
-  }, [projectId, projectSlug, expectedRepo, options?.allowCandidateScan, preferredWorkspaceId, refreshCounter])
+  }, [projectId, cacheKey, projectSlug, expectedRepo, options?.allowCandidateScan, preferredWorkspaceId, refreshCounter])
 
-  return { result, refresh: () => setRefreshCounter((c) => c + 1) }
+  // refresh() is the post-mutation path (relink/clone/create): the cached
+  // answer is known-invalid, so drop it rather than serving it stale.
+  const refresh = () => {
+    if (cacheKey) resolutionCache.delete(cacheKey)
+    setRefreshCounter((c) => c + 1)
+  }
+
+  return { result, refresh }
 }

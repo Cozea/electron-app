@@ -19,7 +19,7 @@ Exit code 1 on any budget violation.
 | --- | --- | --- |
 | tileSwitch | ≤2 commits, no navigation | Tile focus is a store write, not a route change (`ProjectSidebar.openLaneWorkbench` bypass). Was ~30 commits + 2-3 router transitions. |
 | sameTileReclick | ≤1 commit | Store actions no-op on unchanged input. Was a full broadcast. |
-| warmProjectSwitch | ≤150ms blocked | Assistant-store snapshot resync is content-fingerprinted. Was 2.1s of long tasks. |
+| warmProjectSwitch | ≤200ms blocked | Assistant-store snapshot resync is content-fingerprinted (was 2.1s). The remaining ~160ms is xterm WebGL re-attach + GC, pulled into the window once the resolution SWR cache removed the revisit spinner. Ratchet down when terminal keep-alive lands. |
 | returnNavigation | ≤34 commits | Route transition + post-nav settle storms. Ratchet DOWN as the sidebar post-navigation storm (~12 commits at t≈1s) and the intent-system migration land — never up without a named cause. |
 | ipcPerNavigation | ≤4 session broadcasts | `WorkbenchSessionManager.emitState` coalesces per tick and dedupes content (timestamps excluded). Was 16 per navigation. |
 
@@ -46,6 +46,19 @@ Known architecture rules these budgets encode:
   reference equality across the boundary.
 - The dock runtime context must only change identity when the session itself
   changes (sessionKey), not on lifecycle/timestamp churn.
+- Anything polled (`useProjectLaneState` runs every 5s in **every** sidebar
+  tree item plus the layout) must preserve object identity for unchanged
+  content and must not flip `isLoading` on background refreshes — a careless
+  `setState({...})` there is a layout-wide re-render metronome.
+- `useProjectWorkspaceResolution` is stale-while-revalidate: revisits render
+  the cached resolution synchronously (no spinner) and revalidation preserves
+  identity on equal content. Mutating bindings must call
+  `invalidateProjectWorkspaceResolution(projectId)` (or the hook's `refresh`,
+  which invalidates its own key).
+- ProjectLayout must not subscribe to `location.href`, navigation state it
+  doesn't render, presence, or page-context objects — those live in
+  null-rendering/leaf siblings (`PendingTeamSetupEffect`,
+  `ProjectPresenceHeaderAddon`).
 
 ## Fixture requirements
 
