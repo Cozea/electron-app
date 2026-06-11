@@ -2,9 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 
 import { Button } from "@/components/ui/button"
-import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
+import {
+  adoptTerminalViewInto,
+  useTerminalViewKeepAlive,
+} from "@/features/projects/terminals/terminalViewKeepAlive"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -18,6 +21,49 @@ interface WorkbenchTerminalTileProps {
   workbenchSessionKey: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
+}
+
+/**
+ * Adopts the long-lived terminal view (see terminalViewKeepAlive.ts) into
+ * this tile's DOM. The xterm React subtree lives in TerminalViewHost and is
+ * reparented here — unmounting this tile parks the view instead of paying
+ * a full xterm rebuild on the next visit.
+ */
+function KeepAliveTerminalView({
+  terminalId,
+  workspaceId,
+  focused,
+}: {
+  terminalId: string
+  workspaceId: string | null
+  focused: boolean
+}) {
+  const targetRef = useRef<HTMLDivElement | null>(null)
+  const attach = useTerminalViewKeepAlive((state) => state.attach)
+  const detach = useTerminalViewKeepAlive((state) => state.detach)
+  const setFocused = useTerminalViewKeepAlive((state) => state.setFocused)
+  const focusedRef = useRef(focused)
+  focusedRef.current = focused
+
+  useEffect(() => {
+    const target = targetRef.current
+    if (!target) return
+
+    attach({ terminalId, workspaceId, focused: focusedRef.current })
+    const release = adoptTerminalViewInto(target, terminalId)
+    return () => {
+      release()
+      detach(terminalId)
+    }
+    // focused intentionally excluded: focus changes must not re-adopt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attach, detach, terminalId, workspaceId])
+
+  useEffect(() => {
+    setFocused(terminalId, focused)
+  }, [focused, setFocused, terminalId])
+
+  return <div ref={targetRef} className="h-full min-h-0 w-full" />
 }
 
 export function WorkbenchTerminalTile({
@@ -209,13 +255,10 @@ export function WorkbenchTerminalTile({
     body = terminalShell
   } else {
     body = (
-      <TerminalInstance
+      <KeepAliveTerminalView
         terminalId={terminalId}
-        onTerminalError={setError}
         workspaceId={workspaceId}
-        className="h-full workbench-terminal-instance"
-        shouldAutoFocus={panelActivity.focused}
-        gpuActive={panelActivity.visible}
+        focused={panelActivity.focused}
       />
     )
   }

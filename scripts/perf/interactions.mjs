@@ -13,13 +13,11 @@ import { connect, installCommitHook, evalJson, reportScenario } from "./lib.mjs"
 const BUDGETS = {
   tileSwitch: { commits: 4, totalRenders: 450 },
   sameTileReclick: { commits: 1, totalRenders: 50 },
-  // Dominated by xterm re-attach (WebGL + font measure + GC), ~170ms per
-  // terminal tile in the first project, inside the measured window since the
-  // workspace-resolution SWR cache (R3) removed the revisit loading frame.
-  // 450 covers the 2-terminal fixture; assistant-store resync itself is
-  // content-fingerprinted and contributes ~0. Ratchet down when terminal
-  // keep-alive across project switches lands.
-  warmProjectSwitch: { totalBlockedMs: 450 },
+  // Terminal keep-alive (TerminalViewHost) parks xterm instances across
+  // project switches, so no font-atlas/scrollback rebuild happens on revisit.
+  // The remainder is dev-mode route remount + GC (~200ms with two terminals);
+  // assistant-store resync is content-fingerprinted and contributes ~0.
+  warmProjectSwitch: { totalBlockedMs: 300 },
   returnNavigation: { commits: 34, totalRenders: 3900 },
   ipcPerNavigation: { sessionStateChanged: 4, workbenchStore: 2 },
 }

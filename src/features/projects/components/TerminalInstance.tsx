@@ -480,6 +480,11 @@ export function TerminalInstance({
     fitAddon.fit()
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+    if (import.meta.env.DEV) {
+      // Buffer handle for CDP diagnostics (keep-alive verification reads the
+      // canvas-rendered buffer, which has no DOM text).
+      ;(container as HTMLElement & { __xterm?: Terminal }).__xterm = term
+    }
 
     let disposed = false
     let hydrated = false
@@ -531,6 +536,9 @@ export function TerminalInstance({
 
       const nextTerminalId = resolution.terminalId
       activeTerminalIdRef.current = nextTerminalId
+      if (import.meta.env.DEV) {
+        ;(container as HTMLElement & { __xtermTerminalId?: string }).__xtermTerminalId = nextTerminalId
+      }
       onTerminalResolvedRef.current?.(resolution)
 
       unsubscribeOutput = window.electronAPI.terminal.onOutputForTerminal(nextTerminalId, (event) => {

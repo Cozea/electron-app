@@ -13,6 +13,7 @@ import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/projects/
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
 import { invalidateProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
+import { evictTerminalViewsForWorkspace } from "@/features/projects/terminals/terminalViewKeepAlive"
 
 interface ProjectWorkspaceActionProject {
   _id: Id<"projects">
@@ -138,6 +139,7 @@ export function useProjectWorkspaceActions() {
 
       await window.electronAPI.workspace!.forget(normalizedWorkspaceId)
       invalidateProjectWorkspaceResolution(project.id)
+      evictTerminalViewsForWorkspace(normalizedWorkspaceId)
 
       clearProjectBranchSession(project.id, normalizedWorkspaceId)
       clearCachedProjectLaneState(project.id, normalizedWorkspaceId)
