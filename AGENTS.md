@@ -36,6 +36,31 @@ across all four). Consequences:
 - 46 files still carry `// @ts-nocheck` headers for real effect-typing errors (provider adapters
   mostly). Do not add new ones; the rest of the runtime is typechecked.
 
+### ACP schema pin (packages/effect-acp) — assessed 2026-06-11
+
+`src/_generated/` is generated from ACP schema release **v0.11.3** (unstable variant) and is
+committed; the `generate` script is currently **not runnable as-is** (its
+`@effect/openapi-generator` devDependency is not installed) — this is deliberate:
+
+- Regenerating with `@effect/openapi-generator@4.0.0-beta.79` is **lossy even at v0.11.3**
+  (drops `SessionConfigOptionCategory`, collapses `SessionConfigOption` unions). The committed
+  output came from an older/patched generator stack. Never commit a regen that doesn't
+  byte-match unless you've diffed the semantic content.
+- Upgrading to schema v0.12+/v0.13.x additionally hits a generator fidelity gap: the new
+  upstream composition style (`allOf` refs inside `oneOf` variants + parent-level properties,
+  e.g. `CreateElicitationRequest`, `SetSessionConfigOptionRequest`) is flattened into unions
+  that lose `message`/`requestedSchema`/`sessionId` — wire-invalid schemas.
+- Protocol deltas v0.11.3 → v0.13.6 that matter when migrating: `session/set_model` was
+  REMOVED (only `session/set_mode` remains; our runtime never called set_model),
+  `session/elicitation*` renamed to `elicitation/create` + `elicitation/complete` (types
+  `CreateElicitationRequest/Response`, `CompleteElicitationNotification`), plus stabilized
+  `session/resume`/`close`/`delete`/`logout`, `additionalDirectories`, session usage updates.
+  The mechanical rename fallout is ~54 type errors confined to this package and test fixtures.
+- Reference check (2026-06-11): t3code (upstream sibling, actively developed) also still pins
+  v0.11.3 with the same generator architecture — nobody on this stack has cracked v0.13
+  generation yet. They pin published `effect@4.0.0-beta.78` + a patch adding RpcClient
+  RequestHooks instead of our pkg.pr.new commit; consider that pin style on the next repin.
+
 ## Commands
 
 ```shell
