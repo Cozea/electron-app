@@ -705,6 +705,13 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
   }
 }
 
+function workbenchHasRealTiles(workbench: WorkbenchProjectState): boolean {
+  return workbench.order.some((tileId) => {
+    const tile = workbench.tiles[tileId]
+    return Boolean(tile) && tile!.type !== "selection"
+  })
+}
+
 function sanitizePersistedWorkbenches(
   workbenches: Record<string, PersistedWorkbenchRecord> | undefined,
 ): Record<string, WorkbenchProjectState> {
@@ -726,7 +733,25 @@ function sanitizePersistedWorkbenches(
     ])
   }
 
-  return Object.fromEntries(sanitizedEntries)
+  // Drop dead legacy (workspace-less) benches: once a workspace-scoped bench
+  // exists for the same project+lane the legacy one is permanently shadowed
+  // (reads prefer the scoped key, the legacy-promotion bridge only fires when
+  // the scoped bench is missing), and empty/selection-only legacy benches are
+  // junk left behind by pre-fix null-scope writes. Tiled, unshadowed legacy
+  // benches stay — promoteLegacyWorkbenchIfNeeded adopts them on first write.
+  const scopedLanes = new Set(
+    sanitizedEntries
+      .filter(([, workbench]) => readWorkbenchWorkspaceId(workbench))
+      .map(([, workbench]) => `${workbench.projectId}::${workbench.laneId}`),
+  )
+  const keptEntries = sanitizedEntries.filter(([, workbench]) => {
+    if (readWorkbenchWorkspaceId(workbench)) return true
+    const laneKey = `${workbench.projectId}::${workbench.laneId}`
+    if (scopedLanes.has(laneKey)) return false
+    return workbenchHasRealTiles(workbench)
+  })
+
+  return Object.fromEntries(keptEntries)
 }
 
 function cloneWorkbenchState(workbench: WorkbenchProjectState, workspaceId: string): WorkbenchProjectState {
@@ -740,7 +765,7 @@ function cloneWorkbenchState(workbench: WorkbenchProjectState, workspaceId: stri
   })
 }
 
-function migratePersistedWorkbenchState(
+export function migratePersistedWorkbenchState(
   persistedState: unknown,
 ): PersistedWorkbenchState {
   if (!persistedState || typeof persistedState !== "object") {
