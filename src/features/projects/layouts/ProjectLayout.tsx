@@ -81,6 +81,173 @@ interface ProjectLayoutLocationState {
   }>;
 }
 
+/**
+ * Null-rendering sibling that owns the deferred team-setup flow. It subscribes
+ * to `location.href` and navigation state, which change on every navigation —
+ * isolating those subscriptions here keeps ProjectLayout (and the whole route
+ * tree under it) from re-rendering when only the URL or state changed.
+ */
+function PendingTeamSetupEffect({
+  projectId,
+  convexUserId,
+  projectSlug,
+  projectName,
+  runtimeWorkspaceId,
+  routeProjectId,
+}: {
+  projectId: Id<"projects">;
+  convexUserId: Id<"users">;
+  projectSlug: string | null;
+  projectName: string | null;
+  runtimeWorkspaceId: string | null;
+  routeProjectId: string | null;
+}) {
+  const navigate = useViewTransitionNavigate();
+  const locationHref = useLocation({ select: (location) => location.href });
+  const statePendingTeamSetup = useLocation({
+    select: (location) =>
+      (location.state as ProjectLayoutLocationState | null)?.pendingTeamSetup ?? null,
+  });
+  const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
+  const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
+
+  const pendingTeamSetup = useMemo(
+    () => statePendingTeamSetup ?? [],
+    [statePendingTeamSetup],
+  );
+
+  useEffect(() => {
+    if (pendingTeamSetup.length === 0) {
+      return;
+    }
+
+    const pendingKey = `${String(projectId)}:${pendingTeamSetup
+      .map((member) => `${member.email}:${member.role}`)
+      .sort()
+      .join("|")}`;
+
+    if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
+      return;
+    }
+    appliedInitialTeamSetupKeysRef.current.add(pendingKey);
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await applyInitialTeamSetup({
+          projectId,
+          actorUserId: convexUserId,
+          team: pendingTeamSetup,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextState =
+          runtimeWorkspaceId
+            ? buildProjectRouteNavigationState({
+                projectId: String(projectId) || (routeProjectId ?? null),
+                projectSlug,
+                projectName,
+                preferredWorkspaceId: runtimeWorkspaceId,
+              })
+            : null;
+        navigate(locationHref, {
+          replace: true,
+          state: nextState,
+        });
+      } catch (error) {
+        console.warn("[ProjectLayout] Failed to apply deferred initial team setup:", error);
+        appliedInitialTeamSetupKeysRef.current.delete(pendingKey);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyInitialTeamSetup,
+    convexUserId,
+    locationHref,
+    runtimeWorkspaceId,
+    navigate,
+    pendingTeamSetup,
+    projectSlug,
+    projectId,
+    routeProjectId,
+    projectName,
+  ]);
+
+  return null;
+}
+
+/**
+ * Presence subscription isolated from the layout: heartbeats from other users
+ * arrive frequently, and subscribing in ProjectLayout re-rendered the entire
+ * project surface per update. This renders only the avatar group.
+ */
+function ProjectPresenceHeaderAddon({
+  projectId,
+  convexUserId,
+  userName,
+  userEmail,
+  userAvatarUrl,
+  isWorkbenchView,
+  projectBasePath,
+}: {
+  projectId: Id<"projects"> | null;
+  convexUserId: Id<"users"> | null;
+  userName: string | null;
+  userEmail: string | null;
+  userAvatarUrl: string | null;
+  isWorkbenchView: boolean;
+  projectBasePath: string | null;
+}) {
+  const navigate = useViewTransitionNavigate();
+  const presenceActiveFile = usePageContextStore((state) =>
+    isWorkbenchView ? (state.currentPage?.filePath ?? null) : null,
+  );
+  const presenceActiveRoute = usePageContextStore((state) =>
+    isWorkbenchView ? (state.currentPage?.route ?? null) : null,
+  );
+
+  const { otherUsers: presenceUsers } = useProjectPresence({
+    projectId,
+    userId: convexUserId,
+    userName,
+    userEmail,
+    userAvatarUrl,
+    activeFile: presenceActiveFile,
+    activeRoute: presenceActiveRoute,
+  });
+
+  const handlePresenceUserClick = useCallback(
+    (presenceUser: PresenceUser) => {
+      if (!projectBasePath) return;
+      navigate(
+        `${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`,
+      );
+    },
+    [navigate, projectBasePath],
+  );
+
+  if (presenceUsers.length === 0) {
+    return null;
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <LazyPresenceAvatarGroup
+        users={presenceUsers}
+        maxVisible={4}
+        onUserClick={handlePresenceUserClick}
+      />
+    </Suspense>
+  );
+}
+
 
 
 export function ProjectLayout({
@@ -92,7 +259,6 @@ export function ProjectLayout({
   // re-renders this layout (and everything under it) on every navigation,
   // including no-op clicks to the current URL.
   const pathname = useLocation({ select: (location) => location.pathname });
-  const locationHref = useLocation({ select: (location) => location.href });
   const stateProjectId = useLocation({
     select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectId ?? null,
   });
@@ -105,10 +271,6 @@ export function ProjectLayout({
   const statePreferredWorkspaceId = useLocation({
     select: (location) =>
       (location.state as ProjectLayoutLocationState | null)?.preferredWorkspaceId ?? null,
-  });
-  const statePendingTeamSetup = useLocation({
-    select: (location) =>
-      (location.state as ProjectLayoutLocationState | null)?.pendingTeamSetup ?? null,
   });
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
@@ -170,8 +332,6 @@ export function ProjectLayout({
         ? buildLegacyProjectPath(projectSlug)
         : null;
 
-  const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
-  const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
   const { result: workspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
     featureFlags.localWorkspaceCatalog && project?._id ? String(project._id) : null,
     projectSlug,
@@ -190,78 +350,6 @@ export function ProjectLayout({
     ? (workspaceResolution.lane.gitRootPath ?? workspaceResolution.workspace.gitRootPath)
     : null;
   const runtimeWorkspaceId = activeWorkspaceId;
-
-  const pendingTeamSetup = useMemo(
-    () => statePendingTeamSetup ?? [],
-    [statePendingTeamSetup],
-  );
-  const pendingTeamSetupReady = pendingTeamSetup.length > 0 && project?._id && convexUserId;
-
-  useEffect(() => {
-    if (!pendingTeamSetupReady || !project?._id || !convexUserId) {
-      return;
-    }
-
-    const pendingKey = `${String(project._id)}:${pendingTeamSetup
-      .map((member) => `${member.email}:${member.role}`)
-      .sort()
-      .join("|")}`;
-
-    if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
-      return;
-    }
-    appliedInitialTeamSetupKeysRef.current.add(pendingKey);
-
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        await applyInitialTeamSetup({
-          projectId: project._id,
-          actorUserId: convexUserId,
-          team: pendingTeamSetup,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextState =
-          runtimeWorkspaceId
-            ? buildProjectRouteNavigationState({
-                projectId: project?._id ? String(project._id) : routeProjectId ?? null,
-                projectSlug,
-                projectName: effectiveProjectName,
-                preferredWorkspaceId: runtimeWorkspaceId,
-              })
-            : null;
-        navigate(locationHref, {
-          replace: true,
-          state: nextState,
-        });
-      } catch (error) {
-        console.warn("[ProjectLayout] Failed to apply deferred initial team setup:", error);
-        appliedInitialTeamSetupKeysRef.current.delete(pendingKey);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyInitialTeamSetup,
-    convexUserId,
-    locationHref,
-    runtimeWorkspaceId,
-    navigate,
-    pendingTeamSetup,
-    pendingTeamSetupReady,
-    projectSlug,
-    project?._id,
-    routeProjectId,
-    effectiveProjectName,
-  ]);
-
 
   const isWorkbenchView = pathname.endsWith("/workbench");
   const isChangesView = pathname.endsWith("/changes");
@@ -325,52 +413,37 @@ export function ProjectLayout({
     };
   }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
 
-  const currentPreviewPage = usePageContextStore((state) => state.currentPage);
-  const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
-  const presenceActiveRoute = isWorkbenchView ? (currentPreviewPage?.route ?? null) : null;
   const displayUserName = user
     ? formatActorDisplayName(user.firstName || user.email, "User")
     : null;
 
-  // Real-time presence tracking
-  const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId: runtimeEffectsReady && shouldEnableProjectRuntime ? project?._id : null,
-    userId: runtimeEffectsReady && shouldEnableProjectRuntime ? convexUserId : null,
-    userName:
-      runtimeEffectsReady && shouldEnableProjectRuntime
-        ? displayUserName
-        : null,
-    userEmail: runtimeEffectsReady && shouldEnableProjectRuntime ? user?.email || null : null,
-    userAvatarUrl: shouldEnableProjectRuntime ? user?.profileImageUrl || null : null,
-    activeFile: presenceActiveFile,
-    activeRoute: presenceActiveRoute,
-  });
-
-  const handlePresenceUserClick = useCallback(
-    (presenceUser: PresenceUser) => {
-      if (!projectBasePath) return;
-      navigate(
-        `${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`,
-      );
-    },
-    [navigate, projectBasePath],
-  );
-
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding = isWorkbenchView || isChangesView;
 
+  const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime;
   const presenceHeaderAddon = useMemo(
-    () =>
-      presenceUsers.length > 0 ? (
-        <Suspense fallback={null}>
-          <LazyPresenceAvatarGroup
-            users={presenceUsers}
-            maxVisible={4}
-            onUserClick={handlePresenceUserClick}
-          />
-        </Suspense>
-      ) : null,
-    [handlePresenceUserClick, presenceUsers],
+    () => (
+      <ProjectPresenceHeaderAddon
+        projectId={presenceGateOpen ? project?._id ?? null : null}
+        convexUserId={presenceGateOpen ? convexUserId ?? null : null}
+        userName={presenceGateOpen ? displayUserName : null}
+        userEmail={presenceGateOpen ? user?.email || null : null}
+        userAvatarUrl={shouldEnableProjectRuntime ? user?.profileImageUrl || null : null}
+        isWorkbenchView={isWorkbenchView}
+        projectBasePath={projectBasePath}
+      />
+    ),
+    [
+      presenceGateOpen,
+      project?._id,
+      convexUserId,
+      displayUserName,
+      user?.email,
+      user?.profileImageUrl,
+      shouldEnableProjectRuntime,
+      isWorkbenchView,
+      projectBasePath,
+    ],
   );
 
   const workspaceSelectionId = user?.id ?? "local-device";
@@ -391,6 +464,20 @@ export function ProjectLayout({
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,
   });
+
+  // Stable element: layout re-renders bail out of the header subtree unless
+  // the chrome inputs actually changed (chromeHeader is memoized upstream).
+  const headerElement = useMemo(
+    () => (
+      <UnifiedHeader
+        layoutMode="embedded"
+        leftWindowControlsInset
+        compactHeaderActions
+        {...chromeHeader}
+      />
+    ),
+    [chromeHeader],
+  );
 
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
@@ -529,12 +616,7 @@ export function ProjectLayout({
             color="currentColor"
             className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none md:peer-data-[variant=inset]:bg-transparent"
           >
-            <UnifiedHeader
-              layoutMode="embedded"
-              leftWindowControlsInset
-              compactHeaderActions
-              {...chromeHeader}
-            />
+            {headerElement}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
                 className={cn(
@@ -641,8 +723,22 @@ export function ProjectLayout({
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
+<<<<<<< HEAD
       
       {canProvideActiveWorkspace && workspaceResolution?.status === "ready" && project?._id ? (
+=======
+      {project?._id && convexUserId ? (
+        <PendingTeamSetupEffect
+          projectId={project._id}
+          convexUserId={convexUserId}
+          projectSlug={projectSlug}
+          projectName={effectiveProjectName}
+          runtimeWorkspaceId={runtimeWorkspaceId}
+          routeProjectId={routeProjectId ?? null}
+        />
+      ) : null}
+      {workspaceResolution?.status === "ready" && project ? (
+>>>>>>> 5d359cab (ProjectLayout diet + workspace-resolution SWR cache)
         <ActiveWorkspaceProvider value={{
           projectId: String(project._id),
           projectSlug: project.slug,
