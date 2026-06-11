@@ -10,6 +10,7 @@ import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
 import { WorkspaceRuntimeHostsGate } from '@/features/projects/workspaces/WorkspaceRuntimeHostsGate'
+import { TerminalViewHost } from '@/features/projects/terminals/TerminalViewHost'
 
 const LazyLogin = lazy(() =>
   import('./pages/Login').then((module) => ({
@@ -291,6 +292,7 @@ function AppContent() {
       <DeferredUpdateMenu enabled={!isSettingsWindow} />
       <Outlet />
       <WorkspaceRuntimeHostsGate />
+      <TerminalViewHost />
       <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       <SettingsDrawerHost enabled={!isSettingsWindow} />
