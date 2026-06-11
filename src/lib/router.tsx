@@ -29,7 +29,10 @@ export interface NavigateOptions {
   state?: unknown
 }
 
-export type NavigateFunction = (to: To | number, options?: NavigateOptions) => void
+// Returns the router's transition promise (resolves once the destination
+// route has loaded) so callers like the View Transition wrapper can await the
+// commit. Fire-and-forget callers can ignore it.
+export type NavigateFunction = (to: To | number, options?: NavigateOptions) => void | Promise<void>
 
 export function createPath(to: To): string {
   if (typeof to === 'string') {
@@ -53,11 +56,10 @@ export function useNavigate(): NavigateFunction {
       }
 
       if (typeof to === 'string') {
-        navigate({ to, replace: options?.replace, state: options?.state } as never)
-        return
+        return navigate({ to, replace: options?.replace, state: options?.state } as never) as unknown as Promise<void>
       }
 
-      navigate({ to: createPath(to), replace: options?.replace, state: options?.state } as never)
+      return navigate({ to: createPath(to), replace: options?.replace, state: options?.state } as never) as unknown as Promise<void>
     },
     [navigate]
   )

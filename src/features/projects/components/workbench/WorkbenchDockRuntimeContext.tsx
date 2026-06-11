@@ -27,7 +27,15 @@ export interface WorkbenchDockRuntimeValue {
   framework: string | null
   storedDevCommand: string | null
   storedDevPort: number | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  /**
+   * Session identity + on-demand snapshot access. The context deliberately
+   * does NOT carry the snapshot object: its content (terminal bindings, dev
+   * server state, lifecycle) churns without the session changing, and a
+   * snapshot here would re-render every dock tile per churn. Render on the
+   * key; read content through the getter when an effect/handler needs it.
+   */
+  workbenchSessionKey: string | null
+  getWorkbenchSession: () => WorkbenchSessionSnapshot | null
   getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
@@ -61,7 +69,8 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       framework: props.framework,
       storedDevCommand: props.storedDevCommand,
       storedDevPort: props.storedDevPort,
-      workbenchSession: props.workbenchSession,
+      workbenchSessionKey: props.workbenchSessionKey,
+      getWorkbenchSession: props.getWorkbenchSession,
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
       onResolveSelectionTile: props.onResolveSelectionTile,
@@ -77,7 +86,8 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       props.framework,
       props.storedDevCommand,
       props.storedDevPort,
-      props.workbenchSession,
+      props.workbenchSessionKey,
+      props.getWorkbenchSession,
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,
       props.onResolveSelectionTile,

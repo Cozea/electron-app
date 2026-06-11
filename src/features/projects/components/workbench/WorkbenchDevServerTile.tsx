@@ -87,7 +87,8 @@ interface WorkbenchDevServerTileProps {
   framework: string | null
   storedDevCommand: string | null
   storedDevPort: number | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  workbenchSessionKey: string | null
+  getWorkbenchSession: () => WorkbenchSessionSnapshot | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
   surfaceType: "web" | "mobileSimulator"
@@ -101,7 +102,8 @@ function WorkbenchRuntimePreviewTile({
   framework: storedFramework,
   storedDevCommand,
   storedDevPort,
-  workbenchSession,
+  workbenchSessionKey,
+  getWorkbenchSession,
   panelApi,
   containerApi,
   surfaceType,
@@ -165,7 +167,7 @@ function WorkbenchRuntimePreviewTile({
   const devServer = useDevServerManager({
     workspaceId,
     laneId,
-    sessionKey: workbenchSession?.sessionKey ?? null,
+    sessionKey: workbenchSessionKey,
     framework,
     terminalId,
     autoStart: false,
@@ -174,10 +176,10 @@ function WorkbenchRuntimePreviewTile({
     previewMode: usesNativePreview ? "native" : "web",
     nativePlatform: usesNativePreview ? nativePreviewPlatform : null,
     keepAliveOnUnmount: true,
-    initialSnapshot: workbenchSession?.devServer ?? null,
+    initialSnapshot: getWorkbenchSession()?.devServer ?? null,
   })
   const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
-  const nativePreviewScopeKey = workbenchSession?.sessionKey ?? `${projectId}::${laneId}::${workspaceId ?? 'unbound'}`
+  const nativePreviewScopeKey = workbenchSessionKey ?? `${projectId}::${laneId}::${workspaceId ?? 'unbound'}`
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
     scopeKey: nativePreviewScopeKey,
@@ -216,7 +218,7 @@ function WorkbenchRuntimePreviewTile({
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: showWebEmbeddedPreview && !suppressPreviewUrl ? displayUrl : "",
-    sessionKey: workbenchSession?.sessionKey ?? null,
+    sessionKey: workbenchSessionKey,
     projectId,
     laneId,
     visible: showWebEmbeddedPreview && panelActivity.visible,
@@ -237,7 +239,7 @@ function WorkbenchRuntimePreviewTile({
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!workspaceId || !workbenchSession?.sessionKey) {
+    if (!workspaceId || !workbenchSessionKey) {
       setTerminalId(null)
       setTerminalError(null)
       return
@@ -249,7 +251,7 @@ function WorkbenchRuntimePreviewTile({
       setTerminalError(null)
 
       let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
-        sessionKey: workbenchSession.sessionKey,
+        sessionKey: workbenchSessionKey,
         projectId,
         laneId,
         tileId: tile.id,
@@ -266,7 +268,7 @@ function WorkbenchRuntimePreviewTile({
           workspaceId,
           cwd: { kind: "projectRoot" },
           gitCwd: { kind: "gitRoot" },
-          sessionKey: workbenchSession.sessionKey,
+          sessionKey: workbenchSessionKey,
           laneId,
           terminalKind: "dev-server",
           activityTracking: "off",
@@ -283,7 +285,7 @@ function WorkbenchRuntimePreviewTile({
         snapshot = result.snapshot ?? null
         info = result.info ?? null
         await window.electronAPI.workbenchSession.bindTerminal({
-          sessionKey: workbenchSession.sessionKey,
+          sessionKey: workbenchSessionKey,
           projectId,
           laneId,
           tileId: tile.id,
@@ -346,7 +348,7 @@ function WorkbenchRuntimePreviewTile({
     tile.id,
     tile.title,
     updateTerminalDisplay,
-    workbenchSession?.sessionKey,
+    workbenchSessionKey,
   ])
 
   useEffect(() => {
@@ -463,7 +465,7 @@ function WorkbenchRuntimePreviewTile({
 
     void window.electronAPI.workbenchSession
       .setNativePreviewSession({
-        sessionKey: workbenchSession?.sessionKey ?? null,
+        sessionKey: workbenchSessionKey,
         projectId,
         laneId,
         locator,
@@ -478,7 +480,7 @@ function WorkbenchRuntimePreviewTile({
     nativePreview.selectedSimulator,
     projectId,
     workspaceId,
-    workbenchSession?.sessionKey,
+    workbenchSessionKey,
   ])
 
   const visibleBrowsers = useMemo(() => {

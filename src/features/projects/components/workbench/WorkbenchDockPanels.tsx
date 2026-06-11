@@ -549,7 +549,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         laneId={props.params.laneId}
         tile={tile as WorkbenchBrowserTileRecord}
         workspaceId={runtime.workspaceId}
-        workbenchSession={runtime.workbenchSession}
+        workbenchSessionKey={runtime.workbenchSessionKey}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -589,7 +589,7 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
         laneId={props.params.laneId}
         tileId={props.params.tileId}
         workspaceId={runtime.workspaceId}
-        workbenchSession={runtime.workbenchSession}
+        workbenchSessionKey={runtime.workbenchSessionKey}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -630,7 +630,8 @@ const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<W
         framework={runtime.framework}
         storedDevCommand={runtime.storedDevCommand}
         storedDevPort={runtime.storedDevPort}
-        workbenchSession={runtime.workbenchSession}
+        workbenchSessionKey={runtime.workbenchSessionKey}
+        getWorkbenchSession={runtime.getWorkbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -673,7 +674,8 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
         framework={runtime.framework}
         storedDevCommand={runtime.storedDevCommand}
         storedDevPort={runtime.storedDevPort}
-        workbenchSession={runtime.workbenchSession}
+        workbenchSessionKey={runtime.workbenchSessionKey}
+        getWorkbenchSession={runtime.getWorkbenchSession}
         panelApi={props.api}
         containerApi={props.containerApi}
       />

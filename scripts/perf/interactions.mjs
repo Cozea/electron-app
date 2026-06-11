@@ -71,9 +71,11 @@ const tile = await evalJson(send, `(async () => {
   if (tileRows().length < 2) return JSON.stringify({ skipped: 'need >=2 tile rows; have ' + tileRows().length })
   const [rowA, rowB] = tileRows()
   // Normalize: make rowA active (untraced), then measure a guaranteed switch
-  // to rowB and a guaranteed same-tile re-click on rowB.
+  // to rowB and a guaranteed same-tile re-click on rowB. The long settle lets
+  // the post-navigation sync transient (#25, ~6s of convex-driven layout
+  // commits) decay so the trace measures the click, not background noise.
   rowA.click()
-  await new Promise((r) => setTimeout(r, 800))
+  await new Promise((r) => setTimeout(r, 5000))
   const switchResult = await traceClick(rowB)
   const reclick = await traceClick(rowB)
   return JSON.stringify({ switch: switchResult, reclick })

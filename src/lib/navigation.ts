@@ -17,12 +17,12 @@ const VIEW_TRANSITION_WATCHDOG_MS = 400
 
 let activeViewTransition: ViewTransitionHandle | null = null
 
-function runWithViewTransition(update: () => void): void {
+function runWithViewTransition(update: () => void | Promise<void>): void {
   const documentWithTransition = document as unknown as {
     startViewTransition?: (updateCallback: () => void | Promise<void>) => ViewTransitionHandle
   }
   if (!featureFlags.viewTransitions) {
-    update()
+    void update()
     return
   }
   if (typeof documentWithTransition.startViewTransition !== 'function') {
@@ -32,11 +32,17 @@ function runWithViewTransition(update: () => void): void {
   // three UI states on screen. Apply the update directly instead.
   if (activeViewTransition) {
     activeViewTransition.skipTransition?.()
-    update()
+    void update()
     return
   }
 
-  const transition = documentWithTransition.startViewTransition(update)
+  // Await the router transition plus one macrotask before the new-state
+  // capture, so React has committed the destination route. (Not rAF: frames
+  // are suppressed while a view transition captures, timers are not.)
+  const transition = documentWithTransition.startViewTransition(async () => {
+    await update()
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  })
   activeViewTransition = transition
 
   const release = () => {
@@ -101,10 +107,9 @@ export function navigateWithTransition(
 
   runWithViewTransition(() => {
     if (typeof to === 'number') {
-      navigate(to)
-      return
+      return navigate(to)
     }
-    navigate(to, options)
+    return navigate(to, options)
   })
 }
 
