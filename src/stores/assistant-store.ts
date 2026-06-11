@@ -39,13 +39,6 @@ export interface ThreadTurnState {
 }
 
 export interface AppState {
-  /**
-   * Compatibility collections for existing callers. New hot-path selectors
-   * should prefer the normalized records below so unrelated thread changes do
-   * not fan out through every assistant tile.
-   */
-  projects: Project[];
-  threads: Thread[];
   projectIds: ProjectId[];
   projectById: Record<ProjectId, Project>;
   projectIdByCwd: Record<string, ProjectId>;
@@ -80,8 +73,6 @@ const EMPTY_TURN_DIFF_MAP: Record<TurnId, TurnDiffSummary> = {};
 const EMPTY_THREAD_IDS: ThreadId[] = [];
 
 const initialState: AppState = {
-  projects: [],
-  threads: [],
   projectIds: [],
   projectById: {},
   projectIdByCwd: {},
@@ -153,10 +144,6 @@ function persistState(state: AppState): void {
 const debouncedPersistState = new Debouncer(persistState, { wait: 500 });
 
 // ── Identity and equality helpers ────────────────────────────────────
-
-function shallowRefArrayEqual<T>(left: readonly T[], right: readonly T[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
 
 function scalarArrayEqual<T extends string>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
@@ -687,19 +674,6 @@ export function createAssistantProjectSelectorForTile(input: {
     );
 }
 
-function materializeLegacyCollections(state: AppState): AppState {
-  const projects = selectAssistantProjects(state);
-  const threads = selectAssistantThreads(state);
-  let nextState = state;
-  if (!shallowRefArrayEqual(state.projects, projects)) {
-    nextState = { ...nextState, projects };
-  }
-  if (!shallowRefArrayEqual(state.threads, threads)) {
-    nextState = { ...nextState, threads };
-  }
-  return nextState;
-}
-
 // ── Pure state transition functions ────────────────────────────────────
 
 function writeProjectCollection(
@@ -942,7 +916,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
     readModel.projects.filter((project) => project.deletedAt === null),
   );
   nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
-  return materializeLegacyCollections(nextState);
+  return nextState;
 }
 
 /**
@@ -1010,7 +984,7 @@ export function applyOrchestrationDomainEventsToState(
     readModel.projects.filter((project) => project.deletedAt === null),
   );
   nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
-  return materializeLegacyCollections(nextState);
+  return nextState;
 }
 
 export function markThreadVisited(
@@ -1031,7 +1005,7 @@ export function markThreadVisited(
     return state;
   }
 
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
@@ -1051,7 +1025,7 @@ export function markThreadUnread(state: AppState, threadId: ThreadId): AppState 
   if (Number.isNaN(latestTurnCompletedAtMs)) return state;
   const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
   if (shell.lastVisitedAt === unreadVisitedAt) return state;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
@@ -1076,7 +1050,7 @@ export function setProjectExpanded(
 ): AppState {
   const project = state.projectById[projectId];
   if (!project || project.expanded === expanded) return state;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     projectById: {
       ...state.projectById,
@@ -1101,7 +1075,7 @@ export function reorderProjects(
   const [draggedProject] = projectIds.splice(draggedIndex, 1);
   if (!draggedProject) return state;
   projectIds.splice(targetIndex, 0, draggedProject);
-  return materializeLegacyCollections({
+  return ({
     ...state,
     projectIds,
   });
@@ -1110,7 +1084,7 @@ export function reorderProjects(
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
   const shell = state.threadShellById[threadId];
   if (!shell || shell.error === error) return state;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
@@ -1132,7 +1106,7 @@ export function setThreadBranch(
   if (!shell) return state;
   if (shell.branch === branch && shell.worktreePath === worktreePath) return state;
   const cwdChanged = shell.worktreePath !== worktreePath;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
