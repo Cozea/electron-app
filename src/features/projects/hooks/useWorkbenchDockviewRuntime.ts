@@ -693,6 +693,10 @@ export function useWorkbenchDockviewRuntime(
     (event: DockviewReadyEvent) => {
       dockviewApiRef.current = event.api;
       setDockviewReadyScopeKey(input.workbenchScopeKey ?? "workbench");
+      if (import.meta.env.DEV && typeof window !== "undefined") {
+        // Exposed for layout diagnostics (panel move/bounds verification).
+        (window as unknown as Record<string, unknown>).__dockApi = event.api;
+      }
 
       layoutSnapshotDebouncerRef.current?.cancel();
       layoutSnapshotDebouncerRef.current = new Debouncer(
@@ -706,6 +710,10 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onDidLayoutChange(() => {
         saveLayout();
+        // Native surfaces (browser tiles) sync their window-relative bounds
+        // from DOM rects; panel moves/drags can change position without a
+        // resize, so layout changes must nudge them explicitly.
+        window.dispatchEvent(new CustomEvent("cozea:dock-layout-change"));
       });
 
       event.api.onWillDragPanel((dragEvent) => {

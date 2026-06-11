@@ -1403,6 +1403,7 @@ export interface ElectronAPI {
     }) => Promise<boolean>
     navigate: (options: { tileId: string; url: string }) => Promise<WorkbenchBrowserViewState | null>
     getState: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
+    getViewBounds: (options: { tileId: string }) => Promise<{ bounds: { x: number; y: number; width: number; height: number }; visible: boolean } | null>
     goBack: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
     goForward: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
     reload: (options: { tileId: string; hard?: boolean }) => Promise<WorkbenchBrowserViewState | null>
