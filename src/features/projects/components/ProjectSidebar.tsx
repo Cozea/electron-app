@@ -62,6 +62,7 @@ import {
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
+import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
 
 const LazyProjectDeleteDialog = React.lazy(() =>
@@ -108,7 +109,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentWorkspaceId = projectRouteContext?.workspaceId ?? projectSyncContext?.workspaceId ?? null;
+  const { workspaceId: currentWorkspaceId } = useWorkspaceIdentity();
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
