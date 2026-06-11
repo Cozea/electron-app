@@ -211,4 +211,22 @@ export function registerDevServerHandlers(
       }
     }
   )
+
+  // Source-of-truth snapshot for renderer reconciliation: the renderer mirror
+  // (devServerRunStore) re-syncs from this on mount/focus instead of trusting
+  // whatever events it happened to be mounted for.
+  ipcMain.handle(
+    'devServer:getState',
+    async (
+      _event,
+      { workspaceId, laneId }: { workspaceId: string; laneId?: string | null }
+    ): Promise<{ running: boolean; ready: boolean; port: number | null; runId: string | null }> => {
+      try {
+        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
+        return service.getState(workspaceId, laneId)
+      } catch {
+        return { running: false, ready: false, port: null, runId: null }
+      }
+    }
+  )
 }

@@ -1102,6 +1102,14 @@ export interface DevServerExitEvent {
   runId?: string
 }
 
+/** Main-process truth about one workspace::lane dev server run. */
+export interface DevServerProcessState {
+  running: boolean
+  ready: boolean
+  port: number | null
+  runId: string | null
+}
+
 export interface IntegrationKeyResult {
   success: boolean
   keyId?: string
@@ -1888,6 +1896,7 @@ export interface ElectronAPI {
     stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
     resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) => Promise<{ success: boolean }>
     isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
+    getState: (options: { workspaceId: string; laneId?: string | null }) => Promise<DevServerProcessState>
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
   }

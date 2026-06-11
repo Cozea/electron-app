@@ -82,6 +82,8 @@ export type WorkbenchTileType =
   | "tasks"
   | "assistantChat"
 
+export type WorkbenchRuntimePreviewViewMode = "preview" | "code"
+
 export type WorkbenchSelectionTileMode =
   | "emptyState"
   | "edgePreview"
@@ -111,10 +113,18 @@ export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
 
 export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   type: "devServer"
+  viewMode?: WorkbenchRuntimePreviewViewMode
+  /**
+   * URL the user navigated the embedded preview to, when it differs from the
+   * dev server's own URL. Persisted intent: survives remounts, cleared
+   * explicitly ("back to server URL") or by navigating back to the base.
+   */
+  previewOverrideUrl?: string | null
 }
 
 export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
   type: "mobileSimulator"
+  viewMode?: WorkbenchRuntimePreviewViewMode
 }
 
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
@@ -278,6 +288,16 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
       laneId: string,
       tileId: string,
       patch: Partial<Pick<WorkbenchBrowserTile, "url" | "title" | "favicon" | "storageScope">>,
+      workspaceId?: string | null,
+    ) => void
+    updateRuntimePreviewTile: (
+      projectId: string,
+      laneId: string,
+      tileId: string,
+      patch: Partial<{
+        viewMode: WorkbenchRuntimePreviewViewMode
+        previewOverrideUrl: string | null
+      }>,
       workspaceId?: string | null,
     ) => void
     updateTileTitle: (
@@ -1180,6 +1200,32 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
 
             if (patch.storageScope !== undefined && patch.storageScope !== tile.storageScope) {
               tile.storageScope = patch.storageScope
+            }
+          })
+        },
+        updateRuntimePreviewTile: (projectId, laneId, tileId, patch, workspaceId) => {
+          set((state) => {
+            const { workbench } = resolveMutableWorkbenchState(
+              state.workbenches,
+              projectId,
+              laneId,
+              workspaceId,
+              { createIfMissing: false },
+            )
+            const tile = workbench?.tiles[tileId]
+            if (!workbench || !tile) return
+            if (tile.type !== "devServer" && tile.type !== "mobileSimulator") return
+
+            if (patch.viewMode !== undefined && patch.viewMode !== tile.viewMode) {
+              tile.viewMode = patch.viewMode
+            }
+
+            if (
+              patch.previewOverrideUrl !== undefined &&
+              tile.type === "devServer" &&
+              patch.previewOverrideUrl !== tile.previewOverrideUrl
+            ) {
+              tile.previewOverrideUrl = patch.previewOverrideUrl
             }
           })
         },
