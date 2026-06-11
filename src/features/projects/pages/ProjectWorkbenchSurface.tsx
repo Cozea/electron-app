@@ -237,7 +237,7 @@ export function ProjectWorkbenchSurface() {
             <span className="truncate">{projectName}</span>
           </div>
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-            <div className="inline-flex h-6 items-center rounded-md bg-sidebar px-0.5 text-muted-foreground/85 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)]">
+            <div className="inline-flex h-6 items-center rounded-md bg-secondary px-0.5 text-muted-foreground/85 transition-colors hover:bg-accent/80">
               {/* Lane/branch state is read from context inside the control so
                   this element stays identity-stable while lanes settle. */}
               <WorkbenchHeaderBranchControl

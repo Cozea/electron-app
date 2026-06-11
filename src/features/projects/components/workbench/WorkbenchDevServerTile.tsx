@@ -647,7 +647,7 @@ function WorkbenchRuntimePreviewTile({
               }
             }}
             className={cn(
-              "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none",
+              "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none dark:bg-transparent",
               "placeholder:text-muted-foreground/45 focus-visible:ring-0",
             )}
           />

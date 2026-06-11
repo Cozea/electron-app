@@ -508,6 +508,9 @@ export class WorkbenchBrowserService {
       },
     })
     view.setBackgroundColor('#00000000')
+    // Native views ignore DOM clipping; round to nest inside the workbench
+    // tile card (12px --dv-border-radius minus the 1px host inset).
+    view.setBorderRadius(11)
     view.setVisible(false)
 
     const record: WorkbenchBrowserRecord = {

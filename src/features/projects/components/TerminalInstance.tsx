@@ -678,7 +678,9 @@ export function TerminalInstance({
     } catch {
       // Ignore refresh errors after disposal or while dimensions settle
     }
-  }, [terminalId, initRetry, theme])
+    // gpuActive: re-resolve on tile re-attach too — the CSS tokens behind the
+    // computed theme can change while a keep-alive terminal is parked.
+  }, [terminalId, initRetry, theme, gpuActive])
 
   useEffect(() => {
     if (!shouldAutoFocus || readOnly) return

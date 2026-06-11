@@ -13,7 +13,9 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
+  /* Light shell: pronounced grey canvas (#d4d4d4) so tile cards pop; tiles
+     use --content-surface, white stays for dialogs/popovers. */
+  --background: oklch(0.87 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -21,31 +23,32 @@
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  --secondary: oklch(0.84 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --muted: oklch(0.84 0 0);
+  --muted-foreground: oklch(0.50 0 0);
+  --accent: oklch(0.88 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --table-row-hover: color-mix(in oklch, var(--secondary) 90%, var(--foreground) 10%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 88%, var(--foreground) 12%);
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.627 0.194 149.214);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: oklch(0.82 0 0);
+  --input: oklch(0.82 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.935 0.004 258);
+  /* Match the workbench tiles (slight vibrancy translucency still applies). */
+  --sidebar: var(--content-surface);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: color-mix(in oklch, var(--sidebar) 86%, var(--foreground) 14%);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.86 0.006 258);
+  --sidebar-border: oklch(0.825 0.006 258);
   --sidebar-ring: oklch(0.708 0 0);
   --terminal-panel-bg: var(--content-surface);
   --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
@@ -61,7 +64,7 @@
   --tool-diff-added-line-number-fg: #4ade80;
   --tool-diff-deleted-line-number-fg: #f87171;
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
-  --left-sidebar-surface: color-mix(in oklch, var(--secondary) 74%, var(--border) 26%);
+  --left-sidebar-surface: var(--content-surface);
   --left-sidebar-accent: color-mix(in oklch, var(--left-sidebar-surface) 86%, var(--foreground) 14%);
   --left-sidebar-border: color-mix(in oklch, var(--foreground) 12%, transparent);
   --app-scrollbar-size: 8px;
@@ -218,6 +221,15 @@ body {
   background: transparent;
   padding: 0;
   font-size: 0.75rem;
+}
+
+/* Light mode: --border sits Δ0.02 from --muted, so borders on muted chips
+   read as mud rather than edges — let the fill carry the shape. (:where keeps
+   specificity flat so the darker :hover border on file links still wins.) */
+:where(html.light) .chat-markdown :not(pre) > code,
+:where(html.light) .chat-markdown pre,
+:where(html.light) .chat-markdown-file-link {
+  border-color: transparent;
 }
 
 .markdown-file-link-tooltip-scroll {
@@ -932,23 +944,25 @@ body {
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-content-surface: var(--content-surface);
+  --color-surface-raised: var(--surface-raised);
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.20 0 0);
+  /* Cursor-like dark canvas (#1f1f1f); was 0.20, which read near-black. */
+  --background: oklch(0.24 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.22 0 0);
+  --card: oklch(0.30 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.22 0 0);
+  --popover: oklch(0.30 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.28 0 0);
+  --secondary: oklch(0.33 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.28 0 0);
+  --muted: oklch(0.33 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.28 0 0);
+  --accent: oklch(0.33 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
@@ -980,17 +994,17 @@ body {
   color-scheme: dark;
   --background: hsl(222 36% 8%);
   --foreground: hsl(210 33% 96%);
-  --card: hsl(222 34% 9%);
+  --card: hsl(222 34% 14%);
   --card-foreground: hsl(210 33% 96%);
-  --popover: hsl(222 34% 9%);
+  --popover: hsl(222 34% 14%);
   --popover-foreground: hsl(210 33% 96%);
   --primary: hsl(210 78% 62%);
   --primary-foreground: hsl(216 100% 98%);
-  --secondary: hsl(222 26% 12%);
+  --secondary: hsl(222 26% 17%);
   --secondary-foreground: hsl(210 33% 96%);
-  --muted: hsl(222 24% 12%);
+  --muted: hsl(222 24% 17%);
   --muted-foreground: hsl(215 21% 70%);
-  --accent: hsl(222 28% 13%);
+  --accent: hsl(222 28% 18%);
   --accent-foreground: hsl(210 33% 96%);
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
@@ -1022,17 +1036,17 @@ body {
   color-scheme: dark;
   --background: hsl(340 45% 10%);
   --foreground: hsl(330 24% 96%);
-  --card: hsl(340 42% 11%);
+  --card: hsl(340 42% 16%);
   --card-foreground: hsl(330 24% 96%);
-  --popover: hsl(340 42% 11%);
+  --popover: hsl(340 42% 16%);
   --popover-foreground: hsl(330 24% 96%);
   --primary: hsl(345 72% 50%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(340 30% 14%);
+  --secondary: hsl(340 30% 19%);
   --secondary-foreground: hsl(330 24% 94%);
-  --muted: hsl(340 28% 14%);
+  --muted: hsl(340 28% 19%);
   --muted-foreground: hsl(330 18% 70%);
-  --accent: hsl(340 30% 15%);
+  --accent: hsl(340 30% 20%);
   --accent-foreground: hsl(330 22% 94%);
   --destructive: hsl(0 70% 48%);
   --success: hsl(152 70% 48%);
@@ -1062,17 +1076,17 @@ body {
   color-scheme: dark;
   --background: hsl(25 30% 10%);
   --foreground: hsl(35 25% 94%);
-  --card: hsl(25 28% 12%);
+  --card: hsl(25 28% 17%);
   --card-foreground: hsl(35 25% 94%);
-  --popover: hsl(25 28% 12%);
+  --popover: hsl(25 28% 17%);
   --popover-foreground: hsl(35 25% 94%);
   --primary: hsl(28 65% 52%);
   --primary-foreground: hsl(25 30% 8%);
-  --secondary: hsl(25 22% 16%);
+  --secondary: hsl(25 22% 20%);
   --secondary-foreground: hsl(35 25% 94%);
-  --muted: hsl(26 20% 16%);
+  --muted: hsl(26 20% 20%);
   --muted-foreground: hsl(35 18% 65%);
-  --accent: hsl(25 24% 18%);
+  --accent: hsl(25 24% 22%);
   --accent-foreground: hsl(35 25% 94%);
   --destructive: hsl(0 65% 55%);
   --success: hsl(152 65% 55%);
@@ -1113,17 +1127,17 @@ body {
   color-scheme: dark;
   --background: hsl(150 32% 10%);
   --foreground: hsl(148 20% 96%);
-  --card: hsl(150 30% 11%);
+  --card: hsl(150 30% 16%);
   --card-foreground: hsl(148 20% 96%);
-  --popover: hsl(150 30% 11%);
+  --popover: hsl(150 30% 16%);
   --popover-foreground: hsl(148 20% 96%);
   --primary: hsl(150 42% 34%);
   --primary-foreground: hsl(144 50% 94%);
-  --secondary: hsl(150 24% 14%);
+  --secondary: hsl(150 24% 19%);
   --secondary-foreground: hsl(148 20% 94%);
-  --muted: hsl(150 22% 14%);
+  --muted: hsl(150 22% 19%);
   --muted-foreground: hsl(148 16% 70%);
-  --accent: hsl(150 24% 15%);
+  --accent: hsl(150 24% 20%);
   --accent-foreground: hsl(148 18% 94%);
   --destructive: hsl(0 68% 45%);
   --success: hsl(152 68% 45%);
@@ -1390,7 +1404,13 @@ body {
     var(--sidebar),
     transparent calc(100% - var(--sidebar-opacity) * 100%)
   );
-  --content-surface: var(--background);
+  /* Light theme: grey cards above the dark canvas; chips/hovers (--secondary)
+     sit below the canvas, white stays for dialogs/popovers. */
+  --content-surface: oklch(0.915 0 0);
+  /* Large chat surfaces on tiles (user bubbles, composer): canvas color in
+     light mode (soft inset against the lighter tile); dark themes reuse
+     their interactive tier. */
+  --surface-raised: var(--background);
 }
 
 .dark,
@@ -1398,7 +1418,11 @@ body {
 .wine,
 .forest,
 .clay {
-  --content-surface: var(--background);
+  /* Slight elevation above --background so tiles read as cards against the
+     workbench canvas (body paints --background; identical values made tile
+     surfaces invisible). */
+  --content-surface: color-mix(in oklch, var(--background) 95%, var(--foreground) 5%);
+  --surface-raised: var(--secondary);
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
 }
