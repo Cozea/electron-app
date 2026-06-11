@@ -392,6 +392,22 @@ export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
   const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
   const actions = useProjectWorkbenchStore((state) => state.actions)
+  // Dockview mounts this overlay whenever it momentarily has zero panels —
+  // including mid-hydration (clear -> fromJSON) on every project switch.
+  // Render the launcher only when the lane is GENUINELY empty; otherwise the
+  // launcher flashes over the content area while the real tiles rebuild.
+  const laneHasTiles = useProjectWorkbenchStore((state) => {
+    const workbench = selectProjectWorkbench(
+      runtime.projectId,
+      runtime.laneId,
+      runtime.workspaceId,
+    )(state)
+    if (!workbench) return false
+    return workbench.order.some((tileId) => {
+      const tile = workbench.tiles[tileId]
+      return Boolean(tile) && tile!.type !== "selection"
+    })
+  })
   const launcherApps = listLauncherApps().filter(
     (app) =>
       app.launch.kind === "assistantChat" ||
@@ -400,6 +416,10 @@ export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
       app.launch.kind === "devServer" ||
       app.launch.kind === "mobileSimulator",
   )
+
+  if (laneHasTiles) {
+    return null
+  }
 
   return (
     <div className="flex h-full w-full items-center justify-center bg-transparent p-8">

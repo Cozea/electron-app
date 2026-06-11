@@ -132,6 +132,12 @@ export function useWorkbenchDockviewRuntime(
   const lastReconciledOrderRef = useRef<string[] | null>(null);
   const lastReconciledTilesRef = useRef<Record<string, WorkbenchTile> | null>(null);
   const isDestroyingRef = useRef(false);
+  // Suppresses panel-removal side effects (removeTile, terminal release,
+  // layout save) while hydrateDockviewPanels programmatically rebuilds the
+  // dock: api.clear() fires onDidRemovePanel per panel, and treating those as
+  // user-closes wiped the workbench (tiles removed from the store and the
+  // empty layout persisted) whenever hydration ran on a populated dock.
+  const isHydratingRef = useRef(false);
   const isMigratingChangesPanelRef = useRef(false);
   const changesPanelRootHomeKeyRef = useRef<string | null>(null);
   const keyboardNavigationCleanupRef = useRef<(() => void) | null>(null);
@@ -187,30 +193,35 @@ export function useWorkbenchDockviewRuntime(
         return;
       }
 
-      api.clear();
+      isHydratingRef.current = true;
+      try {
+        api.clear();
 
-      if (input.persistedLayout) {
-        try {
-          api.fromJSON(input.persistedLayout, { reuseExistingPanels: false });
-          syncPanelTitles(api, input.projectWorkbench);
-        } catch (error) {
-          console.warn("[WorkbenchDockview] Failed to restore persisted layout", error);
-          if (input.workbenchScopeKey) {
-            clearPersistedWorkbenchLayout(input.workbenchScopeKey);
+        if (input.persistedLayout) {
+          try {
+            api.fromJSON(input.persistedLayout, { reuseExistingPanels: false });
+            syncPanelTitles(api, input.projectWorkbench);
+          } catch (error) {
+            console.warn("[WorkbenchDockview] Failed to restore persisted layout", error);
+            if (input.workbenchScopeKey) {
+              clearPersistedWorkbenchLayout(input.workbenchScopeKey);
+            }
+            api.clear();
           }
-          api.clear();
         }
-      }
 
-      if (api.totalPanels === 0) {
-        buildDefaultDockview(api, input.projectWorkbench, input.projectId, input.activeLaneId);
-      }
+        if (api.totalPanels === 0) {
+          buildDefaultDockview(api, input.projectWorkbench, input.projectId, input.activeLaneId);
+        }
 
-      if (input.projectWorkbench.activeTileId) {
-        api.getPanel(input.projectWorkbench.activeTileId)?.api.setActive();
-      }
+        if (input.projectWorkbench.activeTileId) {
+          api.getPanel(input.projectWorkbench.activeTileId)?.api.setActive();
+        }
 
-      syncPanelTitles(api, input.projectWorkbench);
+        syncPanelTitles(api, input.projectWorkbench);
+      } finally {
+        isHydratingRef.current = false;
+      }
     },
     [
       input.activeLaneId,
@@ -223,6 +234,11 @@ export function useWorkbenchDockviewRuntime(
 
   const saveLayout = useCallback(() => {
     if (!input.projectId) return;
+    if (isHydratingRef.current) {
+      // Mid-rebuild layouts are transient (possibly empty); persisting one
+      // overwrites the user's real layout.
+      return;
+    }
     if (Object.keys(selectionPreviewTilesRef.current).length > 0) {
       return;
     }
@@ -282,7 +298,9 @@ export function useWorkbenchDockviewRuntime(
       return;
     }
 
-    const hydrationKey = `${input.projectId}:${input.activeLaneId}:${input.projectWorkbench.layoutResetKey}`;
+    // Scope key (not project:lane) so a hydration against a transient boot
+    // scope cannot mark the settled scope as already hydrated.
+    const hydrationKey = `${input.workbenchScopeKey}:${input.projectWorkbench.layoutResetKey}`;
     if (hydratedProjectKeyRef.current === hydrationKey) return;
 
     hydratedProjectKeyRef.current = hydrationKey;
@@ -810,7 +828,7 @@ export function useWorkbenchDockviewRuntime(
       });
 
       event.api.onDidRemovePanel((panel) => {
-        if (isDestroyingRef.current) {
+        if (isDestroyingRef.current || isHydratingRef.current) {
           return;
         }
 
@@ -931,12 +949,27 @@ export function useWorkbenchDockviewRuntime(
         );
         saveLayout();
       });
+
+      // Hydrate synchronously when the layout is already known (warm project
+      // switches). Deferring to the post-commit effect lets the fresh dockview
+      // paint a zero-panel frame, which flashes the watermark launcher over
+      // the content area before the real tiles replace it.
+      if (input.projectId && input.projectWorkbench && input.isLayoutPersistenceReady) {
+        const hydrationKey = `${input.workbenchScopeKey}:${input.projectWorkbench.layoutResetKey}`;
+        if (hydratedProjectKeyRef.current !== hydrationKey) {
+          hydratedProjectKeyRef.current = hydrationKey;
+          hydrateDockviewPanels(event.api);
+        }
+      }
     },
     [
       closeChanges,
       getLiveWorkbench,
+      hydrateDockviewPanels,
       input.activeLaneId,
+      input.isLayoutPersistenceReady,
       input.projectId,
+      input.projectWorkbench,
       input.workspaceId,
       input.workbenchScopeKey,
       saveLayout,
