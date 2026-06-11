@@ -66,6 +66,12 @@ export function useReconnectionSync(
     }
   }, [projectId, yjsDoc, convex])
 
+  // Identity-stable across yjsDoc/conflict-list changes: this callback flows
+  // into the Yjs context value, which is republished store-wide — a dep-driven
+  // rebuild here re-rendered every sync/yjs consumer on each connect step.
+  const resolveConflictInputsRef = useRef({ projectId, yjsDoc, deleteConflicts })
+  resolveConflictInputsRef.current = { projectId, yjsDoc, deleteConflicts }
+
   /**
    * Resolve a delete conflict.
    * @param filePath - The conflicted file path
@@ -73,6 +79,7 @@ export function useReconnectionSync(
    */
   const resolveConflict = useCallback(
     async (filePath: string, keepLocal: boolean) => {
+      const { projectId, yjsDoc, deleteConflicts } = resolveConflictInputsRef.current
       if (!projectId || !yjsDoc) return
 
       const conflict = deleteConflicts.find((c) => c.filePath === filePath)
@@ -100,7 +107,7 @@ export function useReconnectionSync(
       // Remove from conflicts list
       setDeleteConflicts((prev) => prev.filter((c) => c.filePath !== filePath))
     },
-    [projectId, yjsDoc, deleteConflicts]
+    []
   )
 
   // Sync when coming back online

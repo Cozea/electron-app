@@ -1,34 +1,40 @@
-import type { ReactNode } from "react"
+import { useCallback, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext"
+import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity"
 import { useWorkbenchBranchControl } from "@/features/projects/components/workbench/branch-control/useWorkbenchBranchControl"
 
 interface WorkbenchHeaderBranchControlProps {
-  projectId: string | null
-  workspaceId: string | null
-  collabBranch: string
-  laneState: ProjectLaneState | null
-  activeLane: ProjectLaneDescriptor | null
-  onLaneStateChange?: () => void
   triggerClassName?: string
   /** Rendered inside the branch button after the label; pointer-events disabled so the control stays one hit target. */
   trailing?: ReactNode
 }
 
+/**
+ * Reads lane/branch state from ProjectRouteContext itself instead of taking
+ * it as props: this control lives inside the header element that pages hand
+ * to useProjectHeader, and prop-feeding lane state forced that element (and
+ * the chrome store, and therefore the whole layout) to be rebuilt on every
+ * lane settle step. As a context-reading leaf it just re-renders itself.
+ */
 export function WorkbenchHeaderBranchControl({
-  projectId,
-  workspaceId,
-  collabBranch,
-  laneState,
-  activeLane,
-  onLaneStateChange,
   triggerClassName,
   trailing,
 }: WorkbenchHeaderBranchControlProps) {
+  const routeContext = useOptionalProjectRouteContext()
+  const { workspaceId } = useWorkspaceIdentity()
+  const projectId = routeContext?.project?._id
+    ? String(routeContext.project._id)
+    : routeContext?.projectIdParam ?? null
+  const refreshLaneState = routeContext?.refreshLaneState
+  const onLaneStateChange = useCallback(() => {
+    void refreshLaneState?.()
+  }, [refreshLaneState])
+
   const {
     branchCwd,
     chromeLabel,
@@ -38,9 +44,9 @@ export function WorkbenchHeaderBranchControl({
   } = useWorkbenchBranchControl({
     projectId,
     workspaceId,
-    collabBranch,
-    laneState,
-    activeLane,
+    collabBranch: routeContext?.collabBranch ?? "main",
+    laneState: routeContext?.laneState ?? null,
+    activeLane: routeContext?.activeLane ?? null,
     onLaneStateChange,
   })
 

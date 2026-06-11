@@ -98,7 +98,7 @@ export function ProjectSyncProviderRuntime({
 
   const canSync = Boolean(projectId && userId && workspaceId)
   const sharedCollaborationEnabled = canSync && collaborationEnabled
-  const collaborationMode = sharedCollaborationEnabled ? "shared" : "local"
+  const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
 
   const {
     status: collabSessionStatus,
@@ -202,26 +202,43 @@ export function ProjectSyncProviderRuntime({
     }
   }, [workspaceId, onFilesChanged, projectId, refreshActiveCollabSession, sharedCollaborationEnabled])
 
+  // Identity-stable context value: this object is republished into the
+  // workspace runtime store and fans out to ~100 consumers (sidebar, header,
+  // sync chrome). As an inline literal it changed identity on every render
+  // of this engine — each collab/yjs/progress flip re-rendered them all.
+  const syncContextValue = useMemo(
+    () =>
+      canSync
+        ? {
+            isSynced: true,
+            cloudSyncBlocked: false,
+            lastSyncAt,
+            workspaceId,
+            gitCwd,
+            collaborationEnabled: sharedCollaborationEnabled,
+            collaborationMode,
+            activeBranch,
+            sharedBranch,
+            triggerSync,
+            syncProgress: progress,
+          }
+        : null,
+    [
+      canSync,
+      lastSyncAt,
+      workspaceId,
+      gitCwd,
+      sharedCollaborationEnabled,
+      collaborationMode,
+      activeBranch,
+      sharedBranch,
+      triggerSync,
+      progress,
+    ],
+  )
+
   return (
-    <ProjectSyncContext.Provider
-      value={
-        canSync
-          ? {
-              isSynced: true,
-              cloudSyncBlocked: false,
-              lastSyncAt,
-              workspaceId,
-              gitCwd,
-              collaborationEnabled: sharedCollaborationEnabled,
-              collaborationMode,
-              activeBranch,
-              sharedBranch,
-              triggerSync,
-              syncProgress: progress,
-            }
-          : null
-      }
-    >
+    <ProjectSyncContext.Provider value={syncContextValue}>
       <YjsProjectProvider
         projectId={resolvedProjectId}
         userId={resolvedUserId}

@@ -12,27 +12,17 @@ export function useProjectHeader(
   centerAddon?: ReactNode | null,
   options?: ProjectHeaderOptions
 ) {
-  const setHeader = useProjectHeaderStore((state) => state.setHeader)
-  const setCenterAddon = useProjectHeaderStore((state) => state.setCenterAddon)
-  const setInsetLeft = useProjectHeaderStore((state) => state.setInsetLeft)
-  const setInsetRight = useProjectHeaderStore((state) => state.setInsetRight)
+  const setChrome = useProjectHeaderStore((state) => state.setChrome)
   const reset = useProjectHeaderStore((state) => state.reset)
 
   useEffect(() => {
-    setHeader(header ?? null)
-    setCenterAddon(centerAddon ?? null)
-    setInsetLeft(options?.insetLeft ?? 0)
-    setInsetRight(options?.insetRight ?? 0)
-  }, [
-    header,
-    centerAddon,
-    options?.insetLeft,
-    options?.insetRight,
-    setHeader,
-    setCenterAddon,
-    setInsetLeft,
-    setInsetRight,
-  ])
+    setChrome({
+      header: header ?? null,
+      centerAddon: centerAddon ?? null,
+      insetLeft: options?.insetLeft ?? 0,
+      insetRight: options?.insetRight ?? 0,
+    })
+  }, [header, centerAddon, options?.insetLeft, options?.insetRight, setChrome])
 
   useEffect(() => reset, [reset])
 }
