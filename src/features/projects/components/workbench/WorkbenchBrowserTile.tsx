@@ -390,7 +390,7 @@ export function WorkbenchBrowserTile({
           }}
           placeholder="Search or enter address"
           className={cn(
-            "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none",
+            "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none dark:bg-transparent",
             "placeholder:text-muted-foreground/45 focus-visible:ring-0",
           )}
         />
@@ -417,7 +417,7 @@ export function WorkbenchBrowserTile({
               }
             }}
             placeholder="Find"
-            className="h-7 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+            className="h-7 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           <span className="min-w-[2.5rem] text-right text-[10px] tabular-nums text-muted-foreground">
             {findResultLabel}

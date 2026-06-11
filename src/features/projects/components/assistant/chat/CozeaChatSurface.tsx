@@ -1118,7 +1118,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       <div
         className={cn(
-          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
+          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl bg-surface-raised transition-colors",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
         onBlurCapture={handleComposerShellBlurCapture}
@@ -1562,7 +1562,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background relative"
+      className="flex h-full min-h-0 flex-col overflow-x-hidden bg-content-surface relative"
       onDragEnter={handleSurfaceDragEnter}
       onDragOver={handleSurfaceDragOver}
       onDragLeave={handleSurfaceDragLeave}
@@ -1654,7 +1654,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             >
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
+                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-content-surface via-content-surface/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
                   showComposerDockChrome ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden

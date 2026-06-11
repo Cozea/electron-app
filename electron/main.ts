@@ -307,6 +307,18 @@ function getDefaultSettings(): AppSettings {
   return _defaultSettings
 }
 
+/** Backing color for opaque windows (transparency deactivated, Windows, Linux).
+ * Must track the renderer's --background (src/index.css) so pre-paint and
+ * resize flashes match the page. */
+function getThemedOpaqueBackground(): string {
+  return nativeTheme.shouldUseDarkColors ? '#1f1f1f' : '#d4d4d4'
+}
+
+/** Windows caption-control glyph color; must stay legible against the page. */
+function getThemedCaptionSymbolColor(): string {
+  return nativeTheme.shouldUseDarkColors ? '#f5f5f6' : '#111827'
+}
+
 function loadSettings(): AppSettings {
   try {
     if (fs.existsSync(getSettingsPath())) {
@@ -1240,7 +1252,6 @@ function createWindow() {
   if (persistedThemeSource === 'system' || persistedThemeSource === 'light' || persistedThemeSource === 'dark') {
     nativeTheme.themeSource = persistedThemeSource
   }
-  const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
   const useTransparency = isMac && !userSettings.deactivateTransparency
   let routeRecoveryInFlight = false
 
@@ -1268,7 +1279,7 @@ function createWindow() {
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
     // - Windows 11: system backdrop material.
     transparent: useTransparency,
-    backgroundColor: useTransparency ? '#00000000' : themedOpaqueBackground,
+    backgroundColor: useTransparency ? '#00000000' : getThemedOpaqueBackground(),
     vibrancy: useTransparency ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
     visualEffectState: useTransparency ? 'active' : undefined,
     backgroundMaterial: isWindows ? 'mica' : undefined,
@@ -1276,7 +1287,7 @@ function createWindow() {
     titleBarOverlay: isWindows
       ? {
           color: '#00000000',
-          symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f6' : '#111827',
+          symbolColor: getThemedCaptionSymbolColor(),
           height: 36,
         }
       : false,
@@ -1410,16 +1421,27 @@ function createWindow() {
     logBootTiming('main-window-ready-to-show')
   })
 
-  // Update background color on system theme change
-  nativeTheme.on('updated', () => {
+  // Re-theme the window backing on system theme change. The vibrancy window
+  // must stay fully transparent; opaque windows (transparency deactivated on
+  // macOS, Windows, Linux) follow the themed background so resize/load flashes
+  // match the page instead of flashing black.
+  const handleNativeThemeUpdated = () => {
     if (!win) return
-    if (process.platform === 'darwin') {
-      // Keep transparent on macOS so vibrancy remains visible.
+    if (useTransparency) {
       win.setBackgroundColor('#00000000')
       return
     }
-    const bgColor = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
-    win.setBackgroundColor(bgColor)
+    win.setBackgroundColor(getThemedOpaqueBackground())
+    if (isWindows) {
+      win.setTitleBarOverlay({ symbolColor: getThemedCaptionSymbolColor() })
+    }
+  }
+  nativeTheme.on('updated', handleNativeThemeUpdated)
+  // createWindow runs again when the app is re-activated after all windows
+  // closed; without cleanup each run would stack another listener capturing
+  // a stale useTransparency.
+  win.once('closed', () => {
+    nativeTheme.removeListener('updated', handleNativeThemeUpdated)
   })
 
   if (VITE_DEV_SERVER_URL) {

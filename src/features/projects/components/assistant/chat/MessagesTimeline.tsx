@@ -726,7 +726,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   )}
                   {(displayedUserMessage.visibleText.trim().length > 0 ||
                     terminalContexts.length > 0) && (
-                    <div className="relative w-full min-w-0 rounded-md bg-secondary px-3.5 py-2.5">
+                    <div className="relative w-full min-w-0 rounded-md bg-surface-raised px-3.5 py-2.5">
                       <div className="flex w-full min-w-0 items-start gap-1">
                         <div
                           className={cn(
