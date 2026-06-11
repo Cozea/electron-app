@@ -249,12 +249,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           groupedEntries.push(nextEntry.entry);
           cursor += 1;
         }
-        nextRows.push({
-          kind: "work",
-          id: timelineEntry.id,
-          createdAt: timelineEntry.createdAt,
-          groupedEntries,
-        });
+        // Session diagnostics (runtime/config warnings, non-fatal provider
+        // errors) fold into quiet collapsed "notices" rows instead of red
+        // entries inline with the turn's work; turn failures surface through
+        // the thread error state, not these activities. Order is preserved by
+        // splitting the run into consecutive same-kind segments.
+        let segmentStart = 0;
+        for (let cut = 1; cut <= groupedEntries.length; cut += 1) {
+          const boundary =
+            cut === groupedEntries.length ||
+            isDiagnosticWorkEntry(groupedEntries[cut]!) !==
+              isDiagnosticWorkEntry(groupedEntries[segmentStart]!);
+          if (!boundary) continue;
+          const segment = groupedEntries.slice(segmentStart, cut);
+          const first = segment[0]!;
+          nextRows.push({
+            kind: isDiagnosticWorkEntry(first) ? "notices" : "work",
+            id: segmentStart === 0 ? timelineEntry.id : `${timelineEntry.id}:${segmentStart}`,
+            createdAt: first.createdAt ?? timelineEntry.createdAt,
+            groupedEntries: segment,
+          });
+          segmentStart = cut;
+        }
         index = cursor - 1;
         continue;
       }
@@ -608,6 +624,42 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           );
         })()}
 
+      {row.kind === "notices" &&
+        (() => {
+          const isExpanded = expandedWorkGroups[row.id] ?? false;
+          const count = row.groupedEntries.length;
+          return (
+            <div className="px-1 py-0.5">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground/65 transition-colors duration-150 hover:bg-muted/40 hover:text-muted-foreground"
+                aria-expanded={isExpanded}
+                onClick={() => onToggleWorkGroup(row.id)}
+              >
+                <CircleAlertIcon className="size-3" aria-hidden="true" />
+                <span>{count === 1 ? "1 agent notice" : `${count} agent notices`}</span>
+                <HugeiconsIcon
+                  icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
+                  className="size-3 stroke-[2.2]"
+                  aria-hidden="true"
+                />
+              </button>
+              {isExpanded && (
+                <div className="mt-0.5 space-y-0.5 rounded-lg border border-border/35 bg-card/15 px-2 py-1.5">
+                  {row.groupedEntries.map((workEntry) => (
+                    <SimpleWorkEntryRow
+                      key={`notice-row:${workEntry.id}`}
+                      workEntry={workEntry}
+                      workspaceRoot={workspaceRoot}
+                      resolvedTheme={resolvedTheme}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       {row.kind === "message" &&
         row.message.role === "user" &&
         (() => {
@@ -946,6 +998,12 @@ type TimelineRow =
       groupedEntries: TimelineWorkEntry[];
     }
   | {
+      kind: "notices";
+      id: string;
+      createdAt: string;
+      groupedEntries: TimelineWorkEntry[];
+    }
+  | {
       kind: "message";
       id: string;
       createdAt: string;
@@ -982,6 +1040,9 @@ function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | n
         : row.groupedEntries.reduce((total, entry) => total + estimateWorkEntryHeight(entry), 0);
       return 24 + overflowHeaderHeight + variableHeight;
     }
+    case "notices":
+      // Collapsed single line; expanded height is corrected by measurement.
+      return 28;
     case "message":
       return (
         estimateTimelineMessageHeight(row.message, { timelineWidthPx }) +
@@ -1014,6 +1075,14 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
       previousLastEntry?.detail === nextLastEntry?.detail &&
       previousLastEntry?.command === nextLastEntry?.command &&
       previousLastEntry?.tone === nextLastEntry?.tone
+    );
+  }
+
+  if (previousRow.kind === "notices" && nextRow.kind === "notices") {
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousRow.groupedEntries.length === nextRow.groupedEntries.length &&
+      previousRow.groupedEntries.at(-1)?.id === nextRow.groupedEntries.at(-1)?.id
     );
   }
 
@@ -1393,6 +1462,20 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
     return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
   }
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
+}
+
+/**
+ * Session diagnostics that should not interrupt the conversation flow: they
+ * fold into a quiet collapsed "agent notices" row instead of inline error
+ * entries. Turn failures surface through the thread error state, not these.
+ */
+function isDiagnosticWorkEntry(workEntry: TimelineWorkEntry): boolean {
+  return (
+    workEntry.activityKind === "runtime.error" ||
+    workEntry.activityKind === "runtime.warning" ||
+    workEntry.activityKind === "config.warning" ||
+    workEntry.activityKind === "deprecation.notice"
+  );
 }
 
 function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
