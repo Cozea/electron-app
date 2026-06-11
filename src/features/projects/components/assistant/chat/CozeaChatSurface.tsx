@@ -1340,8 +1340,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           />
           <div
             className={cn(
-              "rounded-xl border border-border/60 bg-input/20 px-3 py-2 transition-colors",
-              "focus-within:border-ring/70 focus-within:bg-input/30",
+              "px-3 py-2",
               composerDisabled && "opacity-70",
             )}
           >

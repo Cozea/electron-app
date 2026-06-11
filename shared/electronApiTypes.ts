@@ -793,6 +793,8 @@ export interface GitCheckpointCaptureResult {
   ref?: string
   commitOid?: string
   error?: string
+  /** Set when capture was a clean no-op (e.g. workspace has no git root). */
+  skipped?: 'no-git-root'
 }
 
 export interface GitCheckpointDiffResult {
