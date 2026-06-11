@@ -114,15 +114,25 @@ export function ProjectSyncProvider({
     }
   }, [attachRuntime, canHostRuntime, detachRuntime, runtimeId])
 
-  const runtimeRecord = useWorkspaceRuntimeStore(
+  // Subscribe to exactly the two fields this provider renders. The full
+  // runtime record changes on every attach/detach, session-snapshot bind and
+  // lifecycle flip, and each of those re-rendered this provider plus its
+  // entire context subtree (~100 components: sidebar, header, sync chrome).
+  const syncContextValue = useWorkspaceRuntimeStore(
     useMemo(
-      () => (state) => (runtimeId ? state.runtimes[runtimeId] ?? null : null),
+      () => (state) => (runtimeId ? state.runtimes[runtimeId]?.syncContext ?? null : null),
       [runtimeId],
     ),
   )
-
-  const syncContextValue = runtimeRecord?.syncContext ?? null
-  const yjsContextValue = runtimeRecord?.yjsContext ?? EMPTY_YJS_PROJECT_CONTEXT_VALUE
+  const yjsContextValue = useWorkspaceRuntimeStore(
+    useMemo(
+      () => (state) =>
+        runtimeId
+          ? state.runtimes[runtimeId]?.yjsContext ?? EMPTY_YJS_PROJECT_CONTEXT_VALUE
+          : EMPTY_YJS_PROJECT_CONTEXT_VALUE,
+      [runtimeId],
+    ),
+  )
 
   return (
     <ProjectSyncContext.Provider value={syncContextValue}>

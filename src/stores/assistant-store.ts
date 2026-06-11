@@ -817,36 +817,72 @@ function writeThreadFromReadModel(
     previousRawThread?.proposedPlans !== thread.proposedPlans ||
     !nextState.proposedPlanIdsByThreadId[thread.id]
   ) {
-    const proposedPlanSlice = buildProposedPlanSlice(thread);
-    nextState = {
-      ...nextState,
-      proposedPlanIdsByThreadId: {
-        ...nextState.proposedPlanIdsByThreadId,
-        [thread.id]: proposedPlanSlice.ids,
-      },
-      proposedPlanByThreadId: {
-        ...nextState.proposedPlanByThreadId,
-        [thread.id]: proposedPlanSlice.byId,
-      },
-    };
+    // Same snapshot-resync identity problem as messages above: fingerprint by
+    // id + updatedAt (mutations bump updatedAt) before rebuilding the slice.
+    const existingPlanIds = nextState.proposedPlanIdsByThreadId[thread.id];
+    const existingPlanById = nextState.proposedPlanByThreadId[thread.id];
+    const planSliceLooksCurrent =
+      existingPlanIds !== undefined &&
+      existingPlanById !== undefined &&
+      existingPlanIds.length === thread.proposedPlans.length &&
+      thread.proposedPlans.every((raw) => {
+        const existing = existingPlanById[raw.id];
+        return existing !== undefined && existing.updatedAt === raw.updatedAt;
+      });
+    if (!planSliceLooksCurrent) {
+      const proposedPlanSlice = buildProposedPlanSlice(thread);
+      nextState = {
+        ...nextState,
+        proposedPlanIdsByThreadId: {
+          ...nextState.proposedPlanIdsByThreadId,
+          [thread.id]: proposedPlanSlice.ids,
+        },
+        proposedPlanByThreadId: {
+          ...nextState.proposedPlanByThreadId,
+          [thread.id]: proposedPlanSlice.byId,
+        },
+      };
+    }
   }
 
   if (
     previousRawThread?.checkpoints !== thread.checkpoints ||
     !nextState.turnDiffIdsByThreadId[thread.id]
   ) {
-    const turnDiffSlice = buildTurnDiffSlice(thread);
-    nextState = {
-      ...nextState,
-      turnDiffIdsByThreadId: {
-        ...nextState.turnDiffIdsByThreadId,
-        [thread.id]: turnDiffSlice.ids,
-      },
-      turnDiffSummaryByThreadId: {
-        ...nextState.turnDiffSummaryByThreadId,
-        [thread.id]: turnDiffSlice.byId,
-      },
-    };
+    // Fingerprint per checkpoint on the fields the summary derives from;
+    // checkpointRef/completedAt/status change whenever a checkpoint is
+    // rewritten, so equal values mean the slice is already current.
+    const existingDiffIds = nextState.turnDiffIdsByThreadId[thread.id];
+    const existingDiffById = nextState.turnDiffSummaryByThreadId[thread.id];
+    const diffSliceLooksCurrent =
+      existingDiffIds !== undefined &&
+      existingDiffById !== undefined &&
+      existingDiffIds.length === thread.checkpoints.length &&
+      thread.checkpoints.every((raw) => {
+        const existing = existingDiffById[raw.turnId];
+        return (
+          existing !== undefined &&
+          existing.completedAt === raw.completedAt &&
+          existing.status === raw.status &&
+          existing.checkpointTurnCount === raw.checkpointTurnCount &&
+          existing.checkpointRef === raw.checkpointRef &&
+          existing.files.length === raw.files.length
+        );
+      });
+    if (!diffSliceLooksCurrent) {
+      const turnDiffSlice = buildTurnDiffSlice(thread);
+      nextState = {
+        ...nextState,
+        turnDiffIdsByThreadId: {
+          ...nextState.turnDiffIdsByThreadId,
+          [thread.id]: turnDiffSlice.ids,
+        },
+        turnDiffSummaryByThreadId: {
+          ...nextState.turnDiffSummaryByThreadId,
+          [thread.id]: turnDiffSlice.byId,
+        },
+      };
+    }
   }
 
   return nextState;
