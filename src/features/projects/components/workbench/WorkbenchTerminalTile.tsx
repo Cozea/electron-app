@@ -6,7 +6,6 @@ import { TerminalInstance } from "@/features/projects/components/TerminalInstanc
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { useTerminalStore } from "@/stores/useTerminalStore"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon } from '@hugeicons/core-free-icons'
@@ -16,7 +15,7 @@ interface WorkbenchTerminalTileProps {
   laneId: string
   tileId: string
   workspaceId: string | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  workbenchSessionKey: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
 }
@@ -26,7 +25,7 @@ export function WorkbenchTerminalTile({
   laneId,
   tileId,
   workspaceId,
-  workbenchSession,
+  workbenchSessionKey,
   panelApi,
   containerApi,
 }: WorkbenchTerminalTileProps) {
@@ -54,7 +53,7 @@ export function WorkbenchTerminalTile({
   }, [panelActivity.visible, setTerminalUiAttached, terminalId])
 
   useEffect(() => {
-    if (!workspaceId || !workbenchSession?.sessionKey) {
+    if (!workspaceId || !workbenchSessionKey) {
       const activeTerminalId = terminalIdRef.current
       if (activeTerminalId) {
         setTerminalUiAttached(activeTerminalId, false)
@@ -72,7 +71,7 @@ export function WorkbenchTerminalTile({
       setTerminalId(null)
 
       let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
-        sessionKey: workbenchSession.sessionKey,
+        sessionKey: workbenchSessionKey,
         projectId,
         laneId,
         tileId,
@@ -89,7 +88,7 @@ export function WorkbenchTerminalTile({
           workspaceId,
           cwd: { kind: "projectRoot" },
           gitCwd: { kind: "gitRoot" },
-          sessionKey: workbenchSession.sessionKey,
+          sessionKey: workbenchSessionKey,
           laneId,
           terminalKind: "shell",
           activityTracking: "off",
@@ -108,7 +107,7 @@ export function WorkbenchTerminalTile({
         snapshot = result.snapshot ?? null
         info = result.info ?? null
         await window.electronAPI.workbenchSession.bindTerminal({
-          sessionKey: workbenchSession.sessionKey,
+          sessionKey: workbenchSessionKey,
           projectId,
           laneId,
           tileId,
@@ -175,7 +174,7 @@ export function WorkbenchTerminalTile({
     retryKey,
     setTerminalUiAttached,
     tileId,
-    workbenchSession?.sessionKey,
+    workbenchSessionKey,
   ])
 
   let body: ReactNode

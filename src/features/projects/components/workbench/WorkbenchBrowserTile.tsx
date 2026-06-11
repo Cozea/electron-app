@@ -29,7 +29,6 @@ import {
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreVerticalIcon as __EllipsisVerticalHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, Cancel01Icon as __XHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, ChevronDoubleCloseIcon as __ChevronUpHugeIcon, Globe02Icon as __GlobeHugeIcon, LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
@@ -39,7 +38,7 @@ interface WorkbenchBrowserTileProps {
   laneId: string
   tile: WorkbenchBrowserTileRecord
   workspaceId: string | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  workbenchSessionKey: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
 }
@@ -94,7 +93,7 @@ export function WorkbenchBrowserTile({
   laneId,
   tile,
   workspaceId,
-  workbenchSession,
+  workbenchSessionKey,
   panelApi,
   containerApi,
 }: WorkbenchBrowserTileProps) {
@@ -117,7 +116,7 @@ export function WorkbenchBrowserTile({
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: tile.url,
-    sessionKey: workbenchSession?.sessionKey ?? null,
+    sessionKey: workbenchSessionKey,
     projectId,
     laneId,
     workspaceId: workspaceId ?? undefined,

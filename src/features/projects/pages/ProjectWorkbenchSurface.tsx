@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
@@ -168,14 +169,14 @@ export function ProjectWorkbenchSurface() {
     enabled: Boolean(projectId),
   });
   const bindWorkspaceSessionSnapshot = useWorkspaceRuntimeStore((state) => state.actions.bindSessionSnapshot);
-  // Dock tiles only read sessionKey (plus devServer as an initial value), so
-  // the snapshot fed into the dock runtime context keeps identity until the
-  // session itself changes. Without this, every lifecycle/binding broadcast
-  // (e.g. backgrounding ~1s after navigating away) changed the context value
-  // and re-rendered every dockview portal root.
+  // The dock runtime context renders on sessionKey only; tiles read snapshot
+  // content (e.g. devServer initial state) through this getter on demand, so
+  // lifecycle/binding broadcasts never re-render the dockview portal roots
+  // and reads are never stale.
   const workbenchSessionKey = workbenchSession?.sessionKey ?? null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const dockWorkbenchSession = useMemo(() => workbenchSession, [workbenchSessionKey]);
+  const workbenchSessionRef = useRef(workbenchSession);
+  workbenchSessionRef.current = workbenchSession;
+  const getWorkbenchSession = useCallback(() => workbenchSessionRef.current, []);
   const persistedLayout = useMemo(() => {
     if (!workbenchScopeKey || !projectWorkbench) {
       return null;
@@ -463,7 +464,8 @@ export function ProjectWorkbenchSurface() {
       framework={project?.frameworkInfo?.framework ?? null}
       storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
       storedDevPort={project?.frameworkInfo?.devPort ?? null}
-      workbenchSession={dockWorkbenchSession}
+      workbenchSessionKey={workbenchSessionKey}
+      getWorkbenchSession={getWorkbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
       onResolveSelectionTile={handleResolveSelectionTile}

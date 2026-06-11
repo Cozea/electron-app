@@ -693,6 +693,11 @@ export class CollabWsProvider {
       return
     }
     this.hasPendingAwarenessPublish = false
+    // A publish queued before teardown can run after removeAwarenessStates
+    // dropped the local entry; encodeAwarenessUpdate throws on missing states.
+    if (!this.awareness.getStates().has(this.doc.clientID)) {
+      return
+    }
     try {
       const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
       const targetSocket = this.socket
