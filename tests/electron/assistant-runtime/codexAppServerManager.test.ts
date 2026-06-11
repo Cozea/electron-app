@@ -193,6 +193,20 @@ describe("classifyCodexStderrLine", () => {
     expect(classifyCodexStderrLine(line)).toBeNull();
   });
 
+  it("ignores MCP OAuth-required transport failures (headless sessions cannot complete the flow)", () => {
+    const line =
+      '2026-06-11T14:26:58.499601Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer realm=\\"OAuth\\", resource_metadata=\\"https://mcp.cloudflare.com/.well-known/oauth-protected-resource/mcp\\", error=\\"invalid_token\\", error_description=\\"Missing or invalid access token\\"" })';
+    expect(classifyCodexStderrLine(line)).toBeNull();
+  });
+
+  it("keeps non-auth MCP transport failures", () => {
+    const line =
+      "2026-06-11T14:26:58.499601Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Io(Os { code: 61, kind: ConnectionRefused })";
+    expect(classifyCodexStderrLine(line)).toEqual({
+      message: line,
+    });
+  });
+
   it("keeps unknown structured errors", () => {
     const line = "2026-02-08T04:24:20.085687Z ERROR codex_core::runtime: unrecoverable failure";
     expect(classifyCodexStderrLine(line)).toEqual({
