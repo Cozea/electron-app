@@ -32,6 +32,12 @@ import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSync
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime";
 import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
+import {
+  markWorkbenchIntentApplied,
+  readWorkbenchIntentFromState,
+  wasWorkbenchIntentApplied,
+} from "@/features/projects/lib/workbenchIntent";
+import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore";
 import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import {
   ensureWorkbenchLayoutPersistenceReady,
@@ -321,6 +327,55 @@ export function ProjectWorkbenchSurface() {
     openWorkbenchTarget,
     focusWorkbenchTile,
   });
+
+  // In-app intents arrive via navigation state (see lib/workbenchIntent.ts) —
+  // no URL params, no cleanup replace-navigation. Each navigation produces a
+  // fresh intent object; the ref makes application one-shot.
+  const workbenchIntent = useLocation({
+    select: (location) => readWorkbenchIntentFromState(location.state),
+  });
+  useEffect(() => {
+    if (!projectId || !workbenchIntent) return;
+    if (wasWorkbenchIntentApplied(workbenchIntent)) return;
+
+    if (workbenchIntent.laneId && workbenchIntent.laneId !== activeLaneId) {
+      // Activate the requested lane; the effect re-runs once activeLaneId
+      // converges and then applies the tile part of the intent.
+      activateProjectBranchLane({
+        projectId,
+        laneId: workbenchIntent.laneId,
+        collabBranch,
+        workspaceId: activeWorkbenchId,
+      });
+      void refreshLaneState?.();
+      return;
+    }
+
+    markWorkbenchIntentApplied(workbenchIntent);
+    if (workbenchIntent.focusTileId) {
+      const liveWorkbench = selectProjectWorkbench(
+        projectId,
+        activeLaneId,
+        activeWorkbenchId,
+      )(useProjectWorkbenchStore.getState());
+      if (liveWorkbench?.tiles[workbenchIntent.focusTileId]) {
+        focusWorkbenchTile(workbenchIntent.focusTileId);
+      }
+      return;
+    }
+    if (workbenchIntent.openTile) {
+      openWorkbenchTarget(workbenchIntent.openTile);
+    }
+  }, [
+    activeLaneId,
+    activeWorkbenchId,
+    collabBranch,
+    focusWorkbenchTile,
+    openWorkbenchTarget,
+    projectId,
+    refreshLaneState,
+    workbenchIntent,
+  ]);
 
   const closeSettingsOverlay = () => {
     const nextParams = new URLSearchParams(searchParams);
