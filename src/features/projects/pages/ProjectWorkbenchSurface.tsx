@@ -9,7 +9,6 @@ import {
   useState,
 } from "react";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/hooks/useProjectHeader";
 import {
@@ -51,6 +50,7 @@ import {
   useWorkspaceRuntimeStore,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
 import { useActiveWorkspaceOrNull } from "@/features/projects/workspaces/ActiveWorkspaceContext";
+import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
 
 const LazyProjectSettingsPage = lazy(() =>
@@ -89,13 +89,12 @@ export function ProjectWorkbenchSurface() {
   const { t } = useTranslation();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project, projectIdParam } = useAccessibleProject();
-  const syncContext = useOptionalProjectSyncContext();
   const activeWorkspace = useActiveWorkspaceOrNull();
-  const workspaceId =
-    syncContext?.workspaceId ??
-    activeWorkspace?.workspace.workspaceId ??
-    projectRouteContext?.workspaceId ??
-    null;
+  const {
+    workspaceId,
+    projectRootPath: identityProjectRootPath,
+    gitRootPath: identityGitRootPath,
+  } = useWorkspaceIdentity();
   const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
   const taskOverlayState = useLocation({
     select: (location) => (location.state as TaskOverlayLocationState | null)?.taskOverlay ?? null,
@@ -119,15 +118,8 @@ export function ProjectWorkbenchSurface() {
     laneState?.collabLaneId ??
     DEFAULT_WORKBENCH_LANE_ID;
   const activeWorkbenchId = activeLane?.workspaceId ?? workspaceId;
-  const projectRootPath =
-    activeWorkspace?.lane.projectRootPath ??
-    projectRouteContext?.projectRootPath ??
-    null;
-  const gitRootPath =
-    activeWorkspace?.lane.gitRootPath ??
-    projectRouteContext?.gitRootPath ??
-    syncContext?.gitCwd ??
-    null;
+  const projectRootPath = identityProjectRootPath;
+  const gitRootPath = identityGitRootPath;
   const workbenchScopeKey = projectId
     ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchId)
     : null;
