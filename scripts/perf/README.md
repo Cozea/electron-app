@@ -1,0 +1,55 @@
+# Interaction-performance harness
+
+Regression gate for the 2026-06 render-performance work. It attaches to a
+running dev instance over CDP, installs a React-commit tracer, drives real
+interactions, and asserts budgets.
+
+## Run
+
+```bash
+bun run dev:chrome-devtools   # exposes the debug port on 127.0.0.1:9222
+bun run perf:interactions     # in another shell
+```
+
+Exit code 1 on any budget violation.
+
+## Budgets (and where they come from)
+
+| Scenario | Budget | Rationale |
+| --- | --- | --- |
+| tileSwitch | ≤2 commits, no navigation | Tile focus is a store write, not a route change (`ProjectSidebar.openLaneWorkbench` bypass). Was ~30 commits + 2-3 router transitions. |
+| sameTileReclick | ≤1 commit | Store actions no-op on unchanged input. Was a full broadcast. |
+| warmProjectSwitch | ≤150ms blocked | Assistant-store snapshot resync is content-fingerprinted. Was 2.1s of long tasks. |
+| returnNavigation | ≤34 commits | Route transition + post-nav settle storms. Ratchet DOWN as the sidebar post-navigation storm (~12 commits at t≈1s) and the intent-system migration land — never up without a named cause. |
+| ipcPerNavigation | ≤4 session broadcasts | `WorkbenchSessionManager.emitState` coalesces per tick and dedupes content (timestamps excluded). Was 16 per navigation. |
+
+## When a budget fails
+
+Don't raise the budget first — find the new emitter. Techniques that found
+every regression so far:
+
+1. **Commit tracing** (what re-rendered, per commit): this harness's hook —
+   add `entries` logging in `lib.mjs`, look at the *top* (root) components of
+   each commit. Roots are subscribers; everything else is cascade.
+2. **Emission counting** (who broadcast): subscribe to
+   `window.__workbenchStore`, `window.__workspaceRuntimeStore`,
+   `window.electronAPI.workbenchSession.onStateChanged`, and
+   `window.__appRouter` during the interaction and count.
+3. **CPU profile** (what burned the time): `Profiler.start/stop` over the
+   interaction; group samples by function name.
+
+Known architecture rules these budgets encode:
+
+- Dockview re-pushes **every** tab/panel portal root whenever
+  `WorkbenchDockviewCanvas` renders — keep it memoized with primitive props.
+- Store snapshots crossing IPC lose identity; compare content, never rely on
+  reference equality across the boundary.
+- The dock runtime context must only change identity when the session itself
+  changes (sessionKey), not on lifecycle/timestamp churn.
+
+## Fixture requirements
+
+- `tileSwitch` needs the first project (sidebar order) to have **two or more
+  tiles** in its lane; it SKIPs otherwise. Keep a chat tile + terminal tile in
+  the first project of your dev profile.
+- `warmProjectSwitch` needs **two projects**.

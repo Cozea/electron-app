@@ -33,7 +33,8 @@
     "test:watch": "bunx vitest",
     "preview": "unset ELECTRON_RUN_AS_NODE && electron-vite preview",
     "fmt": "bunx --bun oxfmt -w .",
-    "fmt:check": "bunx --bun oxfmt --check ."
+    "fmt:check": "bunx --bun oxfmt --check .",
+    "perf:interactions": "node scripts/perf/interactions.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.85",

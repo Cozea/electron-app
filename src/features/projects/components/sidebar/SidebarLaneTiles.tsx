@@ -394,6 +394,9 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
         <button
           key={tile.id}
           type="button"
+          data-sidebar-tile-row={tile.id}
+          data-sidebar-tile-type="assistantChat"
+          data-sidebar-tile-active={resolvedActiveTileId === tile.id || undefined}
           className={cn(
             "relative w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
@@ -423,6 +426,9 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
         <button
           key={tile.id}
           type="button"
+          data-sidebar-tile-row={tile.id}
+          data-sidebar-tile-type={tile.type}
+          data-sidebar-tile-active={resolvedActiveTileId === tile.id || undefined}
           className={cn(
             "w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
