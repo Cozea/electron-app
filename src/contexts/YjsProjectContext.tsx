@@ -694,16 +694,22 @@ export function YjsProjectProvider({
     canRunCollaborationSync ? yjsDoc : null,
   )
 
+  // Identity-stable: this value is republished into the workspace runtime
+  // store and consumed across the whole project surface; an inline literal
+  // re-rendered all of it on every render of this provider.
+  const contextValue = useMemo(
+    () => ({
+      yjsDoc,
+      awareness: yjsDoc?.awareness ?? null,
+      isConnected,
+      deleteConflicts,
+      resolveDeleteConflict: resolveConflict,
+    }),
+    [yjsDoc, isConnected, deleteConflicts, resolveConflict],
+  )
+
   return (
-    <YjsProjectContext.Provider
-      value={{
-        yjsDoc,
-        awareness: yjsDoc?.awareness ?? null,
-        isConnected,
-        deleteConflicts,
-        resolveDeleteConflict: resolveConflict,
-      }}
-    >
+    <YjsProjectContext.Provider value={contextValue}>
       {children}
     </YjsProjectContext.Provider>
   )

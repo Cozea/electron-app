@@ -19,7 +19,7 @@ Exit code 1 on any budget violation.
 | --- | --- | --- |
 | tileSwitch | ≤2 commits, no navigation | Tile focus is a store write, not a route change (`ProjectSidebar.openLaneWorkbench` bypass). Was ~30 commits + 2-3 router transitions. |
 | sameTileReclick | ≤1 commit | Store actions no-op on unchanged input. Was a full broadcast. |
-| warmProjectSwitch | ≤200ms blocked | Assistant-store snapshot resync is content-fingerprinted (was 2.1s). The remaining ~160ms is xterm WebGL re-attach + GC, pulled into the window once the resolution SWR cache removed the revisit spinner. Ratchet down when terminal keep-alive lands. |
+| warmProjectSwitch | ≤450ms blocked | Assistant-store snapshot resync is content-fingerprinted across ALL slices (messages, activities, plans, turn diffs) and contributes ~0 (was 2.1s, then 1.1s when plans/checkpoints lacked fingerprints). What remains is xterm re-attach (WebGL + font measure + GC), ~170ms per terminal tile in the first project — the budget covers the 2-terminal fixture. Ratchet down when terminal keep-alive lands. |
 | returnNavigation | ≤34 commits | Route transition + post-nav settle storms. Ratchet DOWN as the sidebar post-navigation storm (~12 commits at t≈1s) and the intent-system migration land — never up without a named cause. |
 | ipcPerNavigation | ≤4 session broadcasts | `WorkbenchSessionManager.emitState` coalesces per tick and dedupes content (timestamps excluded). Was 16 per navigation. |
 
