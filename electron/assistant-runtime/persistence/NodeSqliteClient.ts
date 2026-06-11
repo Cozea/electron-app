@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Port of `@effect/sql-sqlite-node` that uses the native `node:sqlite`
  * bindings instead of `better-sqlite3`.

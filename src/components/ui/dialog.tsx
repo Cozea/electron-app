@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client"
 
 import * as React from "react"
 import { Dialog as BaseDialog } from "@base-ui/react"
@@ -13,6 +12,7 @@ import {
   useNativeSurfaceOverlayLifecycle,
 } from "@/lib/nativeSurfaceOcclusion"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 
 function Dialog({ ...props }: React.ComponentProps<typeof BaseDialog.Root>) {
   return <BaseDialog.Root data-slot="dialog" {...props} />
@@ -85,7 +85,7 @@ function DialogOverlay({
       data-native-surface-overlay-reason="Dialog backdrop"
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 transition-all",
+        "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
         className
       )}
       {...props}
@@ -107,7 +107,7 @@ function DialogContent({
       <BaseDialog.Popup
         data-slot="dialog-content"
         className={cn(
-          "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-3xl p-6 shadow-lg duration-200 outline-none sm:max-w-lg transition-all outline-hidden",
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-2xl border bg-popover not-dark:bg-clip-padding p-6 text-popover-foreground shadow-lg/5 outline-none transition-[scale,opacity] duration-200 ease-in-out will-change-transform before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 sm:max-w-lg dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
           className
         )}
         {...props}
@@ -115,8 +115,10 @@ function DialogContent({
         {children}
         {showCloseButton && (
           <BaseDialog.Close
+            aria-label="Close"
             data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="absolute end-2 top-2"
+            render={<Button size="icon" variant="ghost" />}
           >
             <HugeiconsIcon icon={__XIconHugeIcon} />
             <span className="sr-only">Close</span>
@@ -157,7 +159,7 @@ function DialogTitle({
   return (
     <BaseDialog.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
+      className={cn("font-heading font-semibold text-xl leading-none", className)}
       {...props}
     />
   )

@@ -1,5 +1,4 @@
 import path from "node:path"
-import * as Effect from "effect/Effect"
 import * as ManagedRuntime from "effect/ManagedRuntime"
 
 import { WorkspaceCatalog } from "./WorkspaceCatalog.ts"

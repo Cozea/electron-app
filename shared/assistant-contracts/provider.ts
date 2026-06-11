@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Schema } from "effect";
 
 import { TrimmedNonEmptyString } from "./baseSchemas";
@@ -18,7 +17,6 @@ import {
   ProviderApprovalDecision,
   ProviderApprovalPolicy,
   ProviderInteractionMode,
-  ProviderKind,
   ProviderRequestKind,
   ProviderSandboxMode,
   ProviderUserInputAnswers,

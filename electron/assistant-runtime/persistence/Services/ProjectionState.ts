@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionStateRepository - Projection repository interface for projector cursors.
  *

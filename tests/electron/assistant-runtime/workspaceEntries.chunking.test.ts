@@ -13,7 +13,7 @@ const { runProcessMock } = vi.hoisted(() => ({
     >(),
 }));
 
-vi.mock("./processRunner", () => ({
+vi.mock("../../../electron/assistant-runtime/processRunner", () => ({
   runProcess: runProcessMock,
 }));
 

@@ -43,7 +43,7 @@ const ExtRequest = jsonRpcRequest("x/test", Schema.Struct({ hello: Schema.String
 const ExtResponse = jsonRpcResponse(Schema.Struct({ ok: Schema.Boolean }));
 
 const mockPeerPath = Effect.map(Effect.service(Path.Path), (path) =>
-  path.join(import.meta.dirname, "../test/fixtures/acp-mock-peer.ts"),
+  path.join(import.meta.dirname, "../../../../packages/effect-acp/test/fixtures/acp-mock-peer.ts"),
 );
 
 const makeHandle = (env?: Record<string, string>) =>
@@ -51,7 +51,7 @@ const makeHandle = (env?: Record<string, string>) =>
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const path = yield* Path.Path;
     const command = ChildProcess.make("bun", ["run", yield* mockPeerPath], {
-      cwd: path.join(import.meta.dirname, ".."),
+      cwd: path.join(import.meta.dirname, "../../../../packages/effect-acp"),
       shell: process.platform === "win32",
       ...(env ? { env: { ...process.env, ...env } } : {}),
     });
@@ -315,7 +315,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       const lateResponse = yield* Deferred.make<unknown>();
 
       yield* transport.clientProtocol
-        .run(0, (message) => Deferred.succeed(lateResponse, message).pipe(Effect.asVoid))
+        .run((message) => Deferred.succeed(lateResponse, message).pipe(Effect.asVoid))
         .pipe(Effect.forkScoped);
 
       const response = yield* transport
@@ -371,7 +371,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       });
 
       yield* transport.clientProtocol
-        .run(0, (message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
+        .run((message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
         .pipe(Effect.forkScoped);
 
       const message = yield* Deferred.await(firstMessage);
@@ -405,7 +405,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       });
 
       yield* transport.clientProtocol
-        .run(0, (message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
+        .run((message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
         .pipe(Effect.forkScoped);
 
       const message = yield* Deferred.await(firstMessage);

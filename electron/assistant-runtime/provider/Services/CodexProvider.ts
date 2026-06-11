@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { ServiceMap } from "effect";
 
 import type { ServerProviderShape } from "./ServerProvider";

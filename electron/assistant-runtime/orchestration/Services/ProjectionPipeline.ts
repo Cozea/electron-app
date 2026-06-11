@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * OrchestrationProjectionPipeline - Event projection pipeline service interface.
  *

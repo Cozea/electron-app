@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as Net from "node:net";
 
 import { Data, Effect, Layer, ServiceMap } from "effect";

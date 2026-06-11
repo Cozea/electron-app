@@ -1,12 +1,11 @@
 import assert from "assert";
 import { beforeEach, describe, it } from "vitest";
 import { InternalResponseBodyData } from "../../../native-preview-runtime/network/networkRequestParsers";
-import { AsyncBoundedResponseBuffer as AsyncBuffer } from "../../../native-preview-runtime/network/AsyncBoundedResponseBuffer";
-
-const {
+import {
   AsyncBoundedResponseBuffer,
+  AsyncBoundedResponseBuffer as AsyncBuffer,
   REQUEST_BUFFER_MAX_SIZE_BYTES,
-} = require("../../../native-preview-runtime/network/AsyncBoundedResponseBuffer");
+} from "../../../native-preview-runtime/network/AsyncBoundedResponseBuffer";
 
 describe("AsyncBoundedResponseBuffer", () => {
   let buffer: AsyncBuffer;
@@ -65,7 +64,9 @@ describe("AsyncBoundedResponseBuffer", () => {
     });
   });
 
-  it("should remove data after it was retrieved (one-time access)", async () => {
+  // Repeated reads are intentional: devtools requests Network.getResponseBody twice
+  // in dev (React Strict Mode), so entries persist until eviction or clear().
+  it("should keep data retrievable across repeated gets", async () => {
     const requestId1 = "test-request-1";
     const responseData1: InternalResponseBodyData = {
       body: "test response body",
@@ -86,12 +87,11 @@ describe("AsyncBoundedResponseBuffer", () => {
     assert.notStrictEqual(retrievedPromise1, undefined);
     assert.notStrictEqual(retrievedPromise2, undefined);
 
-    assert.strictEqual(buffer.get(requestId1), undefined);
-    assert.strictEqual(buffer.get(requestId2), undefined);
+    assert.strictEqual(buffer.get(requestId1), retrievedPromise1);
+    assert.strictEqual(buffer.get(requestId2), retrievedPromise2);
 
     const stats = buffer.getStats();
-    assert.strictEqual(stats.entryCount, 0);
-    assert.strictEqual(stats.currentSizeBytes, 0);
+    assert.strictEqual(stats.entryCount, 2);
   });
 
   describe("memory management and eviction", () => {

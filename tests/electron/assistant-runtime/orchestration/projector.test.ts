@@ -59,6 +59,7 @@ describe("orchestration projector", () => {
             title: "demo",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5-codex",
             },
             runtimeMode: "full-access",
@@ -79,6 +80,7 @@ describe("orchestration projector", () => {
         title: "demo",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         runtimeMode: "full-access",
@@ -119,6 +121,7 @@ describe("orchestration projector", () => {
               title: "demo",
               modelSelection: {
                 provider: "codex",
+                instanceId: "codex",
                 model: "gpt-5-codex",
               },
               branch: null,
@@ -182,6 +185,7 @@ describe("orchestration projector", () => {
             title: "demo",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5.3-codex",
             },
             runtimeMode: "full-access",
@@ -248,6 +252,7 @@ describe("orchestration projector", () => {
             title: "demo",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5.3-codex",
             },
             runtimeMode: "full-access",
@@ -305,6 +310,7 @@ describe("orchestration projector", () => {
             title: "demo",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5.3-codex",
             },
             runtimeMode: "full-access",
@@ -392,6 +398,7 @@ describe("orchestration projector", () => {
             title: "demo",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5.3-codex",
             },
             runtimeMode: "full-access",
@@ -607,6 +614,7 @@ describe("orchestration projector", () => {
             title: "demo",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5.3-codex",
             },
             runtimeMode: "full-access",
@@ -760,6 +768,7 @@ describe("orchestration projector", () => {
             title: "capped",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5-codex",
             },
             runtimeMode: "full-access",

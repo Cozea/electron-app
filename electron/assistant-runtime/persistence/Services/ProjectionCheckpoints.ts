@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionCheckpointRepository - Projection repository interface for checkpoints.
  *

@@ -1,4 +1,4 @@
-import * as Context from "effect/Context";
+import * as ServiceMap from "effect/ServiceMap";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -207,7 +207,7 @@ export interface AcpAgentShape {
   ) => Effect.Effect<void>;
 }
 
-export class AcpAgent extends Context.Service<AcpAgent, AcpAgentShape>()("effect-acp/AcpAgent") {}
+export class AcpAgent extends ServiceMap.Service<AcpAgent, AcpAgentShape>()("effect-acp/AcpAgent") {}
 
 interface AcpCoreAgentRequestHandlers {
   initialize?: (

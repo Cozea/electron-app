@@ -90,14 +90,15 @@ export function ProjectWorkbenchSurface() {
     projectRouteContext?.workspaceId ??
     null;
   const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
-  const location = useLocation();
+  const taskOverlayState = useLocation({
+    select: (location) => (location.state as TaskOverlayLocationState | null)?.taskOverlay ?? null,
+  });
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = project?._id ? String(project._id) : projectIdParam ?? null;
-  const locationState = (location.state as TaskOverlayLocationState | null) ?? null;
   const { theme } = useTheme();
   const { user } = useAuth();
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
-    locationState?.taskOverlay ? [locationState.taskOverlay] : [],
+    taskOverlayState ? [taskOverlayState] : [],
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false);
@@ -161,6 +162,14 @@ export function ProjectWorkbenchSurface() {
     enabled: Boolean(projectId),
   });
   const bindWorkspaceSessionSnapshot = useWorkspaceRuntimeStore((state) => state.actions.bindSessionSnapshot);
+  // Dock tiles only read sessionKey (plus devServer as an initial value), so
+  // the snapshot fed into the dock runtime context keeps identity until the
+  // session itself changes. Without this, every lifecycle/binding broadcast
+  // (e.g. backgrounding ~1s after navigating away) changed the context value
+  // and re-rendered every dockview portal root.
+  const workbenchSessionKey = workbenchSession?.sessionKey ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dockWorkbenchSession = useMemo(() => workbenchSession, [workbenchSessionKey]);
   const persistedLayout = useMemo(() => {
     if (!workbenchScopeKey || !projectWorkbench) {
       return null;
@@ -343,7 +352,7 @@ export function ProjectWorkbenchSurface() {
   }, [searchParams]);
 
   useEffect(() => {
-    const nextTask = locationState?.taskOverlay;
+    const nextTask = taskOverlayState;
     if (!nextTask) return;
 
     setTaskCards((current) => {
@@ -351,7 +360,7 @@ export function ProjectWorkbenchSurface() {
       const remaining = current.filter((task) => getTaskOverlayKey(task) !== nextKey);
       return [nextTask, ...remaining].slice(0, 3);
     });
-  }, [locationState?.taskOverlay]);
+  }, [taskOverlayState]);
 
   useEffect(() => {
     if (!projectId) {
@@ -399,7 +408,7 @@ export function ProjectWorkbenchSurface() {
       framework={project?.frameworkInfo?.framework ?? null}
       storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
       storedDevPort={project?.frameworkInfo?.devPort ?? null}
-      workbenchSession={workbenchSession}
+      workbenchSession={dockWorkbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
       onResolveSelectionTile={handleResolveSelectionTile}

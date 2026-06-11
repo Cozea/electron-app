@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * DrainableWorker - A queue-based worker that exposes a `drain()` effect.
  *

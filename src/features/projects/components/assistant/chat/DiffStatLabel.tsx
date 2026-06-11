@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { memo } from "react";
 
 export function hasNonZeroStat(stat: { additions: number; deletions: number }): boolean {

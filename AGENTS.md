@@ -18,6 +18,24 @@ This is an Electron desktop application with a React frontend and Convex backend
 
 > **Note**: Use web search to find current versions and documentation. Do not hardcode specific version numbers.
 
+### Effect (effect-smol) pin — read before touching `effect` deps
+
+`effect`, `@effect/platform-node`, `@effect/sql-sqlite-bun`, and `@effect/vitest` are pinned to
+**experimental effect-smol snapshot builds** via immutable `pkg.pr.new` URLs (one commit hash shared
+across all four). Consequences:
+
+- The API differs from mainline Effect v3 and moves between snapshots. Known traps:
+  `effect/Context` does not exist (use `effect/ServiceMap`); `Effect.fork` is `forkScoped`/`forkIn`;
+  client `RpcClient.Protocol.run(f)` takes a single handler (server `run` takes `(clientId, message)`).
+- Repins must update **all four URLs to the same commit hash** (including
+  `packages/effect-acp/package.json`), then run the full suite — a repin is an API migration,
+  not a version bump.
+- `scripts/apply-effect-rpc-jsonrpc-id-patch.mjs` (postinstall) patches an upstream bug where
+  JSON-RPC `id: 0` is dropped by a truthiness check. On every repin, check whether upstream fixed
+  it (the script throws if its anchor is missing) and drop the patch when it has.
+- 46 files still carry `// @ts-nocheck` headers for real effect-typing errors (provider adapters
+  mostly). Do not add new ones; the rest of the runtime is typechecked.
+
 ## Commands
 
 ```shell

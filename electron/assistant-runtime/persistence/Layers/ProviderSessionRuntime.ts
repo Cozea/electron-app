@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { ThreadId } from "@cozea/assistant-contracts";
 import * as SqlClient from "@effect/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";

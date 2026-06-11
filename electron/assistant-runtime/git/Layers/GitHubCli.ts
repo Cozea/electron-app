@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Effect, Layer, Schema } from "effect";
 import { PositiveInt, TrimmedNonEmptyString } from "@cozea/assistant-contracts";
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as P from "effect/Predicate";
 
 export type DeepPartial<T> = T extends readonly (infer U)[]

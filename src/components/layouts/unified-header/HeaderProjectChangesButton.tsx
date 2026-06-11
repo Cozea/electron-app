@@ -17,7 +17,7 @@ import { useGitChangesStore } from "@/stores/useGitChangesStore";
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();
-  const location = useLocation();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const convex = useConvex();
   const routeContext = useOptionalProjectRouteContext();
   const workspaceId = routeContext?.activeLane?.workspaceId ?? routeContext?.workspaceId ?? null;
@@ -65,7 +65,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   if (!hasDisplayableDiff) return null;
 
   const workbenchPath = buildProjectPath(String(projectId), "workbench");
-  const isOnWorkbench = location.pathname === workbenchPath;
+  const isOnWorkbench = pathname === workbenchPath;
 
   return (
     <Tooltip>

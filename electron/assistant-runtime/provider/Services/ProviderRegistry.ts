@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProviderRegistry - Provider snapshot service.
  *

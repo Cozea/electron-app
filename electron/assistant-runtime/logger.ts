@@ -1,4 +1,3 @@
-// @ts-nocheck
 import util from "node:util";
 
 type LogLevel = "info" | "warn" | "error" | "event";

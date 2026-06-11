@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionProjectRepository - Projection repository interface for projects.
  *

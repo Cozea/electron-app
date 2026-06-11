@@ -15,6 +15,10 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Several suites parse the repo with the TS compiler API or spawn child
+    // processes (CLI boot, mock ACP agents); under full-suite load or on CI
+    // the default 5s limit flakes.
+    testTimeout: 20_000,
     include: [
       'tests/**/*.test.ts',
       'tests/**/*.spec.ts',

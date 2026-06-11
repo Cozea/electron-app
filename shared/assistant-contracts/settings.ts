@@ -65,7 +65,7 @@ export interface CodexSettings {
   enabled: boolean;
   binaryPath: string;
   homePath: string;
-  customModels: string[];
+  customModels: ReadonlyArray<string>;
 }
 
 export const ClaudeSettings = Schema.Struct({
@@ -76,7 +76,7 @@ export const ClaudeSettings = Schema.Struct({
 export interface ClaudeSettings {
   enabled: boolean;
   binaryPath: string;
-  customModels: string[];
+  customModels: ReadonlyArray<string>;
 }
 
 
@@ -90,7 +90,7 @@ export interface CursorSettings {
   enabled: boolean;
   binaryPath: string;
   apiEndpoint: string;
-  customModels: string[];
+  customModels: ReadonlyArray<string>;
 }
 
 export const OpenCodeSettings = Schema.Struct({
@@ -105,7 +105,7 @@ export interface OpenCodeSettings {
   binaryPath: string;
   serverUrl: string;
   serverPassword: string;
-  customModels: string[];
+  customModels: ReadonlyArray<string>;
 }
 
 export const ServerSettings = Schema.Struct({

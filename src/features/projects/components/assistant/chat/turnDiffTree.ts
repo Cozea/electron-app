@@ -1,5 +1,4 @@
-// @ts-nocheck
-import type { TurnDiffFileChange } from "../types";
+import type { TurnDiffFileChange } from "@/stores/types";
 
 export interface TurnDiffStat {
   additions: number;

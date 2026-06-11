@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Sanitize an arbitrary string into a valid, lowercase git branch fragment.
  * Strips quotes, collapses separators, limits to 64 chars.

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import path from "node:path";
 
 export const ATTACHMENTS_ROUTE_PREFIX = "/attachments";

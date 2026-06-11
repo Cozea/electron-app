@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { TerminalProfile } from '@/types/electron'

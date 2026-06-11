@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useSyncExternalStore,
   type ReactNode,
@@ -11,35 +12,58 @@ interface WorkbenchDockHeaderControls {
 
 type HeaderControlsListener = () => void
 
+// Registrations and notifications are scoped per panel id. Panels re-register
+// on every render (the registered ReactNodes never keep identity), so a global
+// version + listener set would broadcast every panel render to every dock tab
+// and header — which rang back and forth across the whole dock chrome on each
+// click. Scoping the subscription means a panel render only re-renders its own
+// header controls.
 const headerControlsByPanelId = new Map<string, WorkbenchDockHeaderControls>()
-const listeners = new Set<HeaderControlsListener>()
-let headerControlsVersion = 0
+const versionByPanelId = new Map<string, number>()
+const listenersByPanelId = new Map<string, Set<HeaderControlsListener>>()
 
-function emitHeaderControlsChange() {
-  headerControlsVersion += 1
-  for (const listener of listeners) {
+function emitHeaderControlsChange(panelId: string) {
+  versionByPanelId.set(panelId, (versionByPanelId.get(panelId) ?? 0) + 1)
+  const panelListeners = listenersByPanelId.get(panelId)
+  if (!panelListeners) return
+  for (const listener of panelListeners) {
     listener()
   }
 }
 
-function subscribeHeaderControls(listener: HeaderControlsListener) {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
-
-function getHeaderControlsSnapshot() {
-  return headerControlsVersion
-}
+const noopSubscribe = () => () => {}
+const zeroSnapshot = () => 0
 
 export function useWorkbenchDockHeaderControls(
   panelId: string | null | undefined,
 ): WorkbenchDockHeaderControls | null {
+  const subscribe = useCallback(
+    (listener: HeaderControlsListener) => {
+      if (!panelId) return () => {}
+      let panelListeners = listenersByPanelId.get(panelId)
+      if (!panelListeners) {
+        panelListeners = new Set()
+        listenersByPanelId.set(panelId, panelListeners)
+      }
+      panelListeners.add(listener)
+      return () => {
+        panelListeners.delete(listener)
+        if (panelListeners.size === 0) {
+          listenersByPanelId.delete(panelId)
+        }
+      }
+    },
+    [panelId],
+  )
+  const getSnapshot = useCallback(
+    () => (panelId ? (versionByPanelId.get(panelId) ?? 0) : 0),
+    [panelId],
+  )
+
   useSyncExternalStore(
-    subscribeHeaderControls,
-    getHeaderControlsSnapshot,
-    getHeaderControlsSnapshot,
+    panelId ? subscribe : noopSubscribe,
+    panelId ? getSnapshot : zeroSnapshot,
+    panelId ? getSnapshot : zeroSnapshot,
   )
 
   if (!panelId) {
@@ -56,16 +80,16 @@ export function useRegisterWorkbenchDockHeaderControls(
   useEffect(() => {
     if (!controls.controls && !controls.actions) {
       headerControlsByPanelId.delete(panelId)
-      emitHeaderControlsChange()
+      emitHeaderControlsChange(panelId)
       return
     }
 
     headerControlsByPanelId.set(panelId, controls)
-    emitHeaderControlsChange()
+    emitHeaderControlsChange(panelId)
 
     return () => {
       headerControlsByPanelId.delete(panelId)
-      emitHeaderControlsChange()
+      emitHeaderControlsChange(panelId)
     }
   }, [controls, panelId])
 }

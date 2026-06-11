@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionThreadMessageRepository - Projection repository interface for messages.
  *

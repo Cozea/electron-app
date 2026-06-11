@@ -30,6 +30,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         workspaceRoot: "/tmp/project-null-options",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5.4",
         },
         scripts: [],
@@ -50,19 +51,18 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         return yield* Effect.fail(new Error("Expected projection_projects row to exist."));
       }
 
-      assert.strictEqual(
-        row.defaultModelSelection,
-        JSON.stringify({
-          provider: "codex",
-          model: "gpt-5.4",
-        }),
-      );
+      assert.deepStrictEqual(JSON.parse(row.defaultModelSelection ?? "null"), {
+        provider: "codex",
+        instanceId: "codex",
+        model: "gpt-5.4",
+      });
 
       const persisted = yield* projects.getById({
         projectId: ProjectId.makeUnsafe("project-null-options"),
       });
       assert.deepStrictEqual(Option.getOrNull(persisted)?.defaultModelSelection, {
         provider: "codex",
+        instanceId: "codex",
         model: "gpt-5.4",
       });
     }),
@@ -79,6 +79,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         title: "Null options thread",
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-opus-4-6",
         },
         runtimeMode: "full-access",
@@ -103,19 +104,18 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         return yield* Effect.fail(new Error("Expected projection_threads row to exist."));
       }
 
-      assert.strictEqual(
-        row.modelSelection,
-        JSON.stringify({
-          provider: "claudeAgent",
-          model: "claude-opus-4-6",
-        }),
-      );
+      assert.deepStrictEqual(JSON.parse(row.modelSelection ?? "null"), {
+        provider: "claudeAgent",
+        instanceId: "claudeAgent",
+        model: "claude-opus-4-6",
+      });
 
       const persisted = yield* threads.getById({
         threadId: ThreadId.makeUnsafe("thread-null-options"),
       });
       assert.deepStrictEqual(Option.getOrNull(persisted)?.modelSelection, {
         provider: "claudeAgent",
+        instanceId: "claudeAgent",
         model: "claude-opus-4-6",
       });
     }),

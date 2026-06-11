@@ -3,26 +3,15 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it, assert } from "@effect/vitest";
 import {
   Effect,
-  Exit,
   FileSystem,
   Layer,
   Path,
-  PubSub,
-  Ref,
-  Schema,
-  Scope,
   Sink,
   Stream,
 } from "effect";
-import {
-  DEFAULT_SERVER_SETTINGS,
-  ServerSettings,
-  type ServerProvider,
-  type ServerSettings as ContractServerSettings,
-} from "@cozea/assistant-contracts";
+import { type ServerProvider } from "@cozea/assistant-contracts";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
-import { deepMerge } from "@cozea/assistant-shared/Struct";
 
 import {
   checkCodexProviderStatus,
@@ -32,10 +21,8 @@ import {
 } from "../../../../../electron/assistant-runtime/provider/Layers/CodexProvider";
 import { checkClaudeProviderStatus, parseClaudeAuthStatusFromOutput } from "../../../../../electron/assistant-runtime/provider/Layers/ClaudeProvider";
 import { parseCursorAboutOutput } from "../../../../../electron/assistant-runtime/provider/Layers/CursorProvider";
-import { haveProvidersChanged, mergeProviderSnapshot, ProviderRegistryLive } from "../../../../../electron/assistant-runtime/provider/Layers/ProviderRegistry";
-import { ServerConfig } from "../../../../../electron/assistant-runtime/config";
-import { ServerSettingsService, type ServerSettingsShape } from "../../../../../electron/assistant-runtime/serverSettings";
-import { ProviderRegistry } from "../../../../../electron/assistant-runtime/provider/Services/ProviderRegistry";
+import { haveProvidersChanged, mergeProviderSnapshot } from "../../../../../electron/assistant-runtime/provider/Layers/ProviderRegistry";
+import { ServerSettingsService } from "../../../../../electron/assistant-runtime/serverSettings";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -68,21 +55,6 @@ function mockSpawnerLayer(
   );
 }
 
-function mockCommandSpawnerLayer(
-  handler: (
-    command: string,
-    args: ReadonlyArray<string>,
-  ) => { stdout: string; stderr: string; code: number },
-) {
-  return Layer.succeed(
-    ChildProcessSpawner.ChildProcessSpawner,
-    ChildProcessSpawner.make((command) => {
-      const cmd = command as unknown as { command: string; args: ReadonlyArray<string> };
-      return Effect.succeed(mockHandle(handler(cmd.command, cmd.args)));
-    }),
-  );
-}
-
 function failingSpawnerLayer(description: string) {
   return Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
@@ -97,30 +69,6 @@ function failingSpawnerLayer(description: string) {
       ),
     ),
   );
-}
-
-function makeMutableServerSettingsService(
-  initial: ContractServerSettings = DEFAULT_SERVER_SETTINGS,
-) {
-  return Effect.gen(function* () {
-    const settingsRef = yield* Ref.make(initial);
-    const changes = yield* PubSub.unbounded<ContractServerSettings>();
-
-    return {
-      start: Effect.void,
-      ready: Effect.void,
-      getSettings: Ref.get(settingsRef),
-      updateSettings: (patch) =>
-        Effect.gen(function* () {
-          const current = yield* Ref.get(settingsRef);
-          const next = Schema.decodeSync(ServerSettings)(deepMerge(current, patch));
-          yield* Ref.set(settingsRef, next);
-          yield* PubSub.publish(changes, next);
-          return next;
-        }),
-      streamChanges: Stream.fromPubSub(changes),
-    } satisfies ServerSettingsShape;
-  });
 }
 
 /**
@@ -391,77 +339,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
         assert.strictEqual(haveProvidersChanged(providers, [...providers]), false);
       });
 
-      it.effect(
-        "reruns codex health when codex provider settings change",
-        () =>
-          Effect.gen(function* () {
-          const serverSettings = yield* makeMutableServerSettingsService();
-          const scope = yield* Scope.make();
-          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
-          const providerRegistryLayer = ProviderRegistryLive.pipe(
-            Layer.provideMerge(Layer.succeed(ServerSettingsService, serverSettings)),
-            Layer.provideMerge(
-              ServerConfig.layerTest(process.cwd(), {
-                prefix: "t3-provider-registry-",
-              }),
-            ),
-            Layer.provideMerge(
-              mockCommandSpawnerLayer((command, args) => {
-                const joined = args.join(" ");
-                if (joined === "--version") {
-                  if (command === "codex") {
-                    return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
-                  }
-                  return { stdout: "", stderr: "spawn ENOENT", code: 1 };
-                }
-                if (joined === "login status") {
-                  return { stdout: "Logged in\n", stderr: "", code: 0 };
-                }
-                throw new Error(`Unexpected args: ${joined}`);
-              }),
-            ),
-          );
-          const runtimeServices = yield* Layer.build(
-            Layer.mergeAll(
-              Layer.succeed(ServerSettingsService, serverSettings),
-              providerRegistryLayer,
-            ),
-          ).pipe(Scope.provide(scope));
-
-          yield* Effect.gen(function* () {
-            const registry = yield* ProviderRegistry;
-
-            const initial = yield* registry.refresh("codex");
-            assert.strictEqual(
-              initial.find((status) => status.provider === "codex")?.status,
-              "ready",
-            );
-
-            yield* serverSettings.updateSettings({
-              providers: {
-                codex: {
-                  binaryPath: "/custom/codex",
-                },
-              },
-            });
-
-            for (let attempt = 0; attempt < 20; attempt += 1) {
-              const updated = yield* registry.getProviders;
-              if (updated.find((status) => status.provider === "codex")?.status === "error") {
-                return;
-              }
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
-            }
-
-            const updated = yield* registry.getProviders;
-            assert.strictEqual(
-              updated.find((status) => status.provider === "codex")?.status,
-              "error",
-            );
-          }).pipe(Effect.provide(runtimeServices));
-          }),
-        15_000,
-      );
+      // Settings-change health re-runs are covered by
+      // tests/electron/assistant-runtime/provider/makeManagedServerProvider.test.ts
 
       it.effect("skips codex probes entirely when the provider is disabled", () =>
         Effect.gen(function* () {

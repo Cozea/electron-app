@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProviderAdapterRegistry - Lookup boundary for provider adapter implementations.
  *
@@ -9,7 +8,6 @@
  * @module ProviderAdapterRegistry
  */
 import type {
-  ProviderDriverKind,
   ProviderInstanceId,
   ProviderKind,
 } from "@cozea/assistant-contracts";

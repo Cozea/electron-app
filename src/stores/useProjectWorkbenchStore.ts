@@ -881,15 +881,13 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           if (!projectId) return
 
           set((state) => {
-            const {
-              scopeKey,
-              normalizedLaneId,
-              normalizedWorkspace,
-              workbench,
-            } = resolveMutableWorkbenchState(state.workbenches, projectId, laneId, workspaceId)
-            state.workbenches[scopeKey] = workbench
-              ? sanitizeWorkbenchState(workbench)
-              : createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedWorkspace)
+            // resolveMutableWorkbenchState creates the workbench when missing,
+            // promotes legacy scope keys, and fixes identity fields. Existing
+            // workbenches are already sanitized at hydration (see
+            // migratePersistedWorkbenchState), so reassigning a rebuilt object
+            // here would notify every store subscriber on every call — e.g.
+            // each sidebar click re-rendered all workbench tiles.
+            resolveMutableWorkbenchState(state.workbenches, projectId, laneId, workspaceId)
           })
         },
         resetWorkbench: (projectId, laneId, workspaceId) => {
@@ -1191,3 +1189,8 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     },
   ),
 )
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  // Exposed for render-performance diagnostics (store emission counting).
+  ;(window as unknown as Record<string, unknown>).__workbenchStore = useProjectWorkbenchStore
+}

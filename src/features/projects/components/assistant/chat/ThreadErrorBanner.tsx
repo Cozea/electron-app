@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
 
-// @ts-nocheck
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 

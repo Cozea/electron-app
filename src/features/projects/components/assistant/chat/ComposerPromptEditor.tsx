@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { ServerProviderSkill } from "@cozea/assistant-contracts";
 import { LexicalComposer, type InitialConfigType } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";

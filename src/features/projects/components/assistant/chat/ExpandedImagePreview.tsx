@@ -1,4 +1,3 @@
-// @ts-nocheck
 export interface ExpandedImageItem {
   src: string;
   name: string;

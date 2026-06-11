@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "main": "out/main/index.js",
   "scripts": {
-    "postinstall": "bun -e \"if(process.platform==='darwin'){const fs=require('fs');const path=require('path');for(const a of ['darwin-arm64','darwin-x64']){const p=path.join('node_modules','node-pty','prebuilds',a,'spawn-helper');try{if(fs.existsSync(p))fs.chmodSync(p,0o755)}catch{}}}\" && bun run scripts/apply-legend-list-patch.mjs",
+    "postinstall": "bun -e \"if(process.platform==='darwin'){const fs=require('fs');const path=require('path');for(const a of ['darwin-arm64','darwin-x64']){const p=path.join('node_modules','node-pty','prebuilds',a,'spawn-helper');try{if(fs.existsSync(p))fs.chmodSync(p,0o755)}catch{}}}\" && bun run scripts/apply-legend-list-patch.mjs && bun run scripts/apply-effect-rpc-jsonrpc-id-patch.mjs",
     "dev": "unset ELECTRON_RUN_AS_NODE && electron-vite dev",
     "dev:chrome-devtools": "unset ELECTRON_RUN_AS_NODE && ELECTRON_REMOTE_DEBUGGING_PORT=9222 electron-vite dev",
     "dev:perf:modern": "unset ELECTRON_RUN_AS_NODE && electron-vite dev",

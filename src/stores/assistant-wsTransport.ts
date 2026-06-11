@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type WsPush,
   type WsPushChannel,
