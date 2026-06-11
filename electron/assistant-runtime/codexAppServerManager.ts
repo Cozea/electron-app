@@ -155,6 +155,13 @@ const CODEX_STDERR_LOG_REGEX =
 const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db missing rollout path for thread",
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
+  // MCP servers that need OAuth (e.g. the Cloudflare plugin's
+  // mcp.cloudflare.com) cannot complete their browser auth flow inside a
+  // headless codex session; rmcp logs a fatal for that one connection and
+  // codex continues without those tools. Surfacing it as a chat error every
+  // first prompt is pure noise until MCP auth UX is built — the codex CLI
+  // remains the place to complete the OAuth flow.
+  "rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired",
 ];
 const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "not found",
