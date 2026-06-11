@@ -39,20 +39,37 @@ export function useProjectWorkspaceResolution(
   const cacheKey = projectId
     ? resolutionCacheKey(projectId, preferredWorkspaceId ?? null)
     : null
-  const [result, setResult] = useState<ResolveProjectWorkspaceResult | null>(() =>
-    cacheKey ? resolutionCache.get(cacheKey) ?? null : null,
-  )
+  // Key-scoped state, adjusted DURING render on key change (React derived-
+  // state pattern). An effect-based reset leaves one render where the
+  // previous project's ready resolution is returned for the new project —
+  // that window let consumers create workbenches/sessions for project B
+  // keyed with project A's workspaceId (persisted scope contamination,
+  // observed as "my terminals vanished").
+  const [entry, setEntry] = useState<{
+    key: string | null
+    result: ResolveProjectWorkspaceResult | null
+  }>(() => ({ key: cacheKey, result: cacheKey ? resolutionCache.get(cacheKey) ?? null : null }))
+  if (entry.key !== cacheKey) {
+    setEntry({ key: cacheKey, result: cacheKey ? resolutionCache.get(cacheKey) ?? null : null })
+  }
+  const result = entry.key === cacheKey ? entry.result : null
+  const setResult = (next: ResolveProjectWorkspaceResult | null) => {
+    setEntry((current) => {
+      // Drop late writes that belong to a key we already navigated away from.
+      if (current.key !== cacheKey) return current
+      if (current.result === next) return current
+      return { key: cacheKey, result: next }
+    })
+  }
   const [refreshCounter, setRefreshCounter] = useState(0)
 
   useEffect(() => {
     if (!projectId || !cacheKey) {
-      setResult(null)
       return
     }
 
-    // Keep showing the cached result while revalidating; reset to null only
-    // when this project has never resolved (true first visit -> loading state).
-    setResult(resolutionCache.get(cacheKey) ?? null)
+    // Revalidate; the render-time adjustment above already serves the cached
+    // result synchronously (no spinner) or null on a true first visit.
     let cancelled = false
 
     const req: ResolveProjectWorkspaceRequest = {
@@ -101,6 +118,11 @@ export function useProjectWorkspaceResolution(
   // answer is known-invalid, so drop it rather than serving it stale.
   const refresh = () => {
     if (cacheKey) resolutionCache.delete(cacheKey)
+    setEntry((current) =>
+      current.key === cacheKey && current.result !== null
+        ? { key: cacheKey, result: null }
+        : current,
+    )
     setRefreshCounter((c) => c + 1)
   }
 

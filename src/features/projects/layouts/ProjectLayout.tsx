@@ -332,13 +332,20 @@ export function ProjectLayout({
         ? buildLegacyProjectPath(projectSlug)
         : null;
 
-  const { result: workspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
+  const { result: rawWorkspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
     featureFlags.localWorkspaceCatalog && project?._id ? String(project._id) : null,
     projectSlug,
     null,
     trustedNavigationState?.preferredWorkspaceId ?? null,
     { allowCandidateScan: true },
   );
+  // Never act on a resolution for a different project. A stale window here
+  // once created workbenches for project B keyed with project A's workspace
+  // id; the hook is now render-time key-scoped, this is cheap insurance.
+  const workspaceResolution =
+    rawWorkspaceResolution && project?._id && rawWorkspaceResolution.projectId !== String(project._id)
+      ? null
+      : rawWorkspaceResolution;
 
   const activeWorkspaceId = workspaceResolution?.status === "ready"
     ? workspaceResolution.workspace.workspaceId
