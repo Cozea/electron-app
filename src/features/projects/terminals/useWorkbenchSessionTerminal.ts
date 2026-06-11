@@ -17,6 +17,12 @@ interface UseWorkbenchSessionTerminalOptions {
   retryKey?: number
 }
 
+// PTY allocation can fail transiently (macOS pseudo-terminal pool pressure:
+// openpty ENXIO "Device not configured"). Retry a couple of times before
+// surfacing the error — a failed create must not brick the tile forever.
+const MAX_AUTO_RETRIES = 2
+const AUTO_RETRY_BASE_DELAY_MS = 1200
+
 /**
  * Resolves the session-bound terminal for a workbench tile: reuse the
  * session's existing binding when its PTY is still alive, otherwise create a
@@ -36,9 +42,12 @@ export function useWorkbenchSessionTerminal({
 }: UseWorkbenchSessionTerminalOptions): { terminalId: string | null; error: string | null } {
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [autoRetrySeq, setAutoRetrySeq] = useState(0)
   const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
   const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
   const terminalIdRef = useRef<string | null>(null)
+  const attemptRef = useRef(0)
+  const attemptIdentityRef = useRef<string | null>(null)
   const visibleRef = useRef(visible)
   visibleRef.current = visible
   const titleRef = useRef(title)
@@ -62,6 +71,29 @@ export function useWorkbenchSessionTerminal({
     }
 
     let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+    // Fresh binding identity (or an explicit user retry) resets the
+    // auto-retry budget; auto-retry re-runs keep consuming it.
+    const attemptIdentity = [workspaceId, workbenchSessionKey, projectId, laneId, tileId, terminalKind, retryKey].join('|')
+    if (attemptIdentityRef.current !== attemptIdentity) {
+      attemptIdentityRef.current = attemptIdentity
+      attemptRef.current = 0
+    }
+
+    const failOrRetry = (message: string) => {
+      if (cancelled) return
+      if (attemptRef.current < MAX_AUTO_RETRIES) {
+        attemptRef.current += 1
+        retryTimer = setTimeout(() => {
+          if (!cancelled) {
+            setAutoRetrySeq((current) => current + 1)
+          }
+        }, AUTO_RETRY_BASE_DELAY_MS * attemptRef.current)
+        return
+      }
+      setError(message)
+    }
 
     void (async () => {
       setError(null)
@@ -96,7 +128,7 @@ export function useWorkbenchSessionTerminal({
         }
 
         if (!result.success || !result.terminalId) {
-          setError(result.error ?? "Failed to prepare the terminal session")
+          failOrRetry(result.error ?? "Failed to prepare the terminal session")
           return
         }
 
@@ -152,17 +184,21 @@ export function useWorkbenchSessionTerminal({
         nextError instanceof Error
           ? nextError.message
           : "Failed to prepare the terminal session"
-      setError(message)
+      failOrRetry(message)
     })
 
     return () => {
       cancelled = true
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+      }
       const activeTerminalId = terminalIdRef.current
       if (!activeTerminalId) return
       setTerminalUiAttached(activeTerminalId, false)
       terminalIdRef.current = null
     }
   }, [
+    autoRetrySeq,
     laneId,
     projectId,
     registerTerminal,

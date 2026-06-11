@@ -628,6 +628,7 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
       size="icon"
       className="h-7 w-7"
       disabled={!hasTerminal}
+      title={hasTerminal ? undefined : "Waiting for the dev server terminal — check the logs view if this persists"}
       onClick={() => {
         void startDevServerRun(runKey)
       }}

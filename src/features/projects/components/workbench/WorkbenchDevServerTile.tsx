@@ -8,6 +8,7 @@ import type {
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
+import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/i18n"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
@@ -166,6 +167,7 @@ function WorkbenchRuntimePreviewTile({
   const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
   const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() => readStoredPreviewDestinationPreference())
 
+  const [terminalRetryKey, setTerminalRetryKey] = useState(0)
   const { terminalId, error: terminalError } = useWorkbenchSessionTerminal({
     workspaceId,
     workbenchSessionKey,
@@ -175,6 +177,7 @@ function WorkbenchRuntimePreviewTile({
     terminalKind: "dev-server",
     title: tile.title,
     visible: panelActivity.visible,
+    retryKey: terminalRetryKey,
   })
 
   const devServer = useDevServerManager({
@@ -513,8 +516,18 @@ function WorkbenchRuntimePreviewTile({
   }, [externalPreviewUrl, isMobileSimulatorSurface, openPreviewExternally, previewDestination, viewMode])
 
   const codeBody = terminalError ? (
-    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-      {terminalError}
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-sm text-muted-foreground">{terminalError}</p>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        onClick={() => {
+          setTerminalRetryKey((current) => current + 1)
+        }}
+      >
+        Retry
+      </Button>
     </div>
   ) : !terminalId || viewMode !== "code" || !panelActivity.visible ? (
     terminalShell
