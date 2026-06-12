@@ -5,6 +5,7 @@ import {
   buildProjectBranchLaneState,
   readScopedProjectBranchSession,
   rememberProjectBranchSession,
+  resolveLaneBranchKnowledge,
 } from "@/features/projects/lib/projectBranchSessionStore"
 import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"
 
@@ -145,23 +146,56 @@ export function useProjectLaneState({
 
     try {
       const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId)
-      let activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
+      let activeBranch: string
 
       if (normalizedWorkspaceId) {
         const statusResult = await window.electronAPI.workspaceSync.gitStatus({
           workspaceId: normalizedWorkspaceId,
         }).catch(() => null)
 
-        if (statusResult?.success !== false && statusResult?.currentBranch) {
-          activeBranch = statusResult.currentBranch
+        const resolution = resolveLaneBranchKnowledge({
+          statusResult,
+          storedBranch: storedSession?.activeBranch ?? null,
+          collabBranch: normalizedCollabBranch,
+        })
+
+        if (resolution.kind === "unresolved") {
+          if (refreshRequestIdRef.current !== requestId) return
+          // No fresh status, no stored knowledge: building lane state anyway
+          // would fabricate the collab lane, flip the workbench scope key, and
+          // strand open tiles. Hold (the 5s poll retries) and keep whatever
+          // state is already showing.
+          setScoped((current) => {
+            const carried =
+              current.identityKey === identityKey
+                ? current.laneState
+                : laneStateCache.get(identityKey) ?? null
+            const nextLoading = carried === null
+            if (
+              current.identityKey === identityKey &&
+              current.laneState === carried &&
+              current.isLoading === nextLoading
+            ) {
+              return current
+            }
+            return { identityKey, laneState: carried, isLoading: nextLoading }
+          })
+          return
         }
 
-        rememberProjectBranchSession({
-          projectId,
-          branch: activeBranch,
-          collabBranch: normalizedCollabBranch,
-          workspaceId: normalizedWorkspaceId,
-        })
+        activeBranch = resolution.branch
+        if (resolution.remember) {
+          // Persist only fresh git truth — remembering fallback values poisoned
+          // the stored session with the fabricated branch.
+          rememberProjectBranchSession({
+            projectId,
+            branch: activeBranch,
+            collabBranch: normalizedCollabBranch,
+            workspaceId: normalizedWorkspaceId,
+          })
+        }
+      } else {
+        activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
       }
 
       const nextLaneState = buildProjectBranchLaneState({

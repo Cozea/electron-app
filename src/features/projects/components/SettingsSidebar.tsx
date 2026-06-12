@@ -2,15 +2,11 @@ import * as React from "react"
 
 import { NavUser } from "@/components/nav-user"
 import {
-
-  Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
-  SidebarRail,
   SidebarSeparator,
-  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useLocation } from "@/lib/router"
@@ -26,7 +22,8 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon } from '@hugeicons/core-free-icons'
 import { useTranslation } from '@/lib/i18n'
 
-interface SettingsSidebarProps extends React.ComponentProps<typeof Sidebar> {
+/** Content-only: renders inside the persistent AppSidebarShell. */
+interface SettingsSidebarProps {
   user?: {
     email: string
     firstName?: string | null
@@ -63,7 +60,7 @@ function SettingsSidebarNavRow({
   )
 }
 
-export function SettingsSidebar({ user, className, ...props }: SettingsSidebarProps) {
+export function SettingsSidebar({ user }: SettingsSidebarProps) {
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
   const { t, language } = useTranslation()
@@ -84,21 +81,7 @@ export function SettingsSidebar({ user, className, ...props }: SettingsSidebarPr
   const isSubRoute = !directSectionRoute && Boolean(parentSectionRoute)
 
   return (
-    <Sidebar
-      collapsible="offcanvas"
-      windowChromeAware
-      windowChromeEndAddon={
-        <SidebarTrigger
-          className={cn(
-            "h-7 w-7 shrink-0 rounded-md",
-            "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
-          )}
-        />
-      }
-      rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
-      className="h-full min-w-0 z-20 sidebar-glass"
-      {...props}
-    >
+    <>
       <SidebarContent className="gap-0 px-2 py-3">
         <div className="mb-2">
           <button
@@ -152,7 +135,6 @@ export function SettingsSidebar({ user, className, ...props }: SettingsSidebarPr
           </div>
         )}
       </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+    </>
   )
 }

@@ -771,7 +771,24 @@ function sanitizePersistedWorkbenches(
     return workbenchHasRealTiles(workbench)
   })
 
-  return Object.fromEntries(keptEntries)
+  // Drop ghost lane-siblings: the lane id derives from a branch comparison,
+  // and a mis-resolved branch (collab vs branch:*) used to mint an empty bench
+  // beside the real one for the same project+workspace. A selection-only bench
+  // whose sibling has real tiles is that artifact — keeping it means users can
+  // land on it and see "everything closed". Content benches are never touched
+  // (multiple tiled lanes per workspace is the intended per-branch feature).
+  const contentByProjectWorkspace = new Set(
+    keptEntries
+      .filter(([, workbench]) => readWorkbenchWorkspaceId(workbench) && workbenchHasRealTiles(workbench))
+      .map(([, workbench]) => `${workbench.projectId}::${readWorkbenchWorkspaceId(workbench)}`),
+  )
+  const dedupedEntries = keptEntries.filter(([, workbench]) => {
+    const workspaceId = readWorkbenchWorkspaceId(workbench)
+    if (!workspaceId || workbenchHasRealTiles(workbench)) return true
+    return !contentByProjectWorkspace.has(`${workbench.projectId}::${workspaceId}`)
+  })
+
+  return Object.fromEntries(dedupedEntries)
 }
 
 function cloneWorkbenchState(workbench: WorkbenchProjectState, workspaceId: string): WorkbenchProjectState {

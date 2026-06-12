@@ -66,6 +66,8 @@ create index if not exists local_workspaces_real_path_idx
   on local_workspaces(real_path);
 create unique index if not exists local_workspaces_unique_project_root_idx
   on local_workspaces(real_path, project_root_relative_path);
+create unique index if not exists local_workspaces_active_unique_idx
+  on local_workspaces(project_id) where is_active = 1;
 `
 
 export const CREATE_WORKSPACE_LANES = `
@@ -91,6 +93,8 @@ create index if not exists workspace_lanes_workspace_idx
   on workspace_lanes(workspace_id);
 create index if not exists workspace_lanes_project_idx
   on workspace_lanes(project_id);
+create unique index if not exists workspace_lanes_active_unique_idx
+  on workspace_lanes(workspace_id) where is_active = 1;
 `
 
 export const CREATE_WORKSPACE_CONFLICTS = `
@@ -119,6 +123,8 @@ create table if not exists workspace_events (
   details_json text,
   created_at   integer not null
 );
+create index if not exists workspace_events_created_idx
+  on workspace_events(created_at);
 `
 
 export const CREATE_WORKSPACE_SETTINGS = `

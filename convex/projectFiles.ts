@@ -1,20 +1,44 @@
+import { ConvexError } from "convex/values"
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import type { Id } from "./_generated/dataModel"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
+import { canAccessProject, canEditProject } from "./lib/projectAccess"
 import {
   applyProjectStorageDeltas,
   getProjectStorageAccountingState,
 } from "./lib/workspaceLimits"
 
+/** Membership gate: reading project files requires project access. */
+async function requireProjectAccess(
+  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  projectId: Id<"projects">,
+  userId: Id<"users">,
+): Promise<void> {
+  if (!(await canAccessProject(ctx, projectId, userId))) {
+    throw new ConvexError("You do not have access to this project")
+  }
+}
+
+/** Membership gate: mutating project files requires non-viewer access. */
+async function requireProjectEdit(
+  ctx: Pick<MutationCtx, "db">,
+  projectId: Id<"projects">,
+  userId: Id<"users">,
+): Promise<void> {
+  if (!(await canEditProject(ctx, projectId, userId))) {
+    throw new ConvexError("You do not have permission to modify this project's files")
+  }
+}
+
 // Generate upload URL for a project file
 export const generateUploadUrl = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    // Verify project exists
-    const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
-
+    await requireProjectEdit(ctx, args.projectId, args.userId)
     return await ctx.storage.generateUploadUrl()
   },
 })
@@ -22,9 +46,12 @@ export const generateUploadUrl = mutation({
 // Get download URL for a file by storage ID
 export const getFileUrl = query({
   args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
+    await requireProjectAccess(ctx, args.projectId, args.userId)
     return await ctx.storage.getUrl(args.storageId)
   },
 })
@@ -42,6 +69,7 @@ export const saveFile = mutation({
     checksum: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireProjectEdit(ctx, args.projectId, args.userId)
     const now = Date.now()
 
     const project = await ctx.db.get(args.projectId)
@@ -99,8 +127,9 @@ export const saveFile = mutation({
 
 // List all active files for a project
 export const listForProject = query({
-  args: { projectId: v.id("projects") },
+  args: { projectId: v.id("projects"), userId: v.id("users") },
   handler: async (ctx, args) => {
+    await requireProjectAccess(ctx, args.projectId, args.userId)
     const files = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_and_status", (q) =>
@@ -120,10 +149,11 @@ export const listForProject = query({
 
 // Get download URL for a specific file
 export const getDownloadUrl = query({
-  args: { fileId: v.id("projectFiles") },
+  args: { fileId: v.id("projectFiles"), userId: v.id("users") },
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
     if (!file) throw new Error("File not found")
+    await requireProjectAccess(ctx, file.projectId, args.userId)
 
     const url = await ctx.storage.getUrl(file.storageId)
     return { file, url }
@@ -139,6 +169,7 @@ export const deleteFile = mutation({
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
     if (!file) throw new Error("File not found")
+    await requireProjectEdit(ctx, file.projectId, args.userId)
     const project = await ctx.db.get(file.projectId)
     if (!project) throw new Error("Project not found")
     const storageAccounting = await getProjectStorageAccountingState(ctx, file.projectId)
@@ -169,8 +200,9 @@ export const deleteFile = mutation({
 
 // Get file count for a project
 export const getFileCount = query({
-  args: { projectId: v.id("projects") },
+  args: { projectId: v.id("projects"), userId: v.id("users") },
   handler: async (ctx, args) => {
+    await requireProjectAccess(ctx, args.projectId, args.userId)
     const files = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_and_status", (q) =>
@@ -188,8 +220,9 @@ export const getFileCount = query({
 
 // Get manifest of all active files for sync comparison
 export const getManifestForProject = query({
-  args: { projectId: v.id("projects") },
+  args: { projectId: v.id("projects"), userId: v.id("users") },
   handler: async (ctx, args) => {
+    await requireProjectAccess(ctx, args.projectId, args.userId)
     const files = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_and_status", (q) =>
@@ -226,6 +259,7 @@ export const saveFiles = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireProjectEdit(ctx, args.projectId, args.userId)
     const now = Date.now()
     const results: Array<{ path: string; fileId: string }> = []
 
@@ -297,12 +331,14 @@ export const saveFiles = mutation({
 export const saveFileContent = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
     path: v.string(),
     content: v.string(),
     checksum: v.string(),
     mtime: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireProjectEdit(ctx, args.projectId, args.userId)
     // Find existing file at this path
     const existing = await ctx.db
       .query("projectFiles")
@@ -339,9 +375,11 @@ export const saveFileContent = mutation({
 export const markFilesDeleted = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
     filePaths: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireProjectEdit(ctx, args.projectId, args.userId)
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
     const storageAccounting = await getProjectStorageAccountingState(ctx, args.projectId)

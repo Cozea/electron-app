@@ -974,6 +974,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('agentTools:getStatus', options),
     prepare: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:prepare', options),
+    loginStart: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+      ipcRenderer.invoke('agentTools:loginStart', options),
+    loginInput: (options: { sessionId: string; value: string }) =>
+      ipcRenderer.invoke('agentTools:loginInput', options),
+    loginCancel: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('agentTools:loginCancel', options),
+    onLoginEvent: (
+      callback: (event: import('../shared/electronApiTypes').AgentToolLoginEvent) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: import('../shared/electronApiTypes').AgentToolLoginEvent,
+      ) => callback(payload)
+      ipcRenderer.on('agentTools:login-event', handler)
+      return () => ipcRenderer.removeListener('agentTools:login-event', handler)
+    },
   },
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>
@@ -1020,6 +1036,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     forget: (workspaceId: string) => ipcRenderer.invoke('workspace:forget', workspaceId),
     listCandidates: (req: unknown) => ipcRenderer.invoke('workspace:listCandidates', req),
     openInFinder: (folderPath: string) => ipcRenderer.invoke('workspace:openInFinder', folderPath),
+    getCatalogSnapshot: () => ipcRenderer.invoke('workspace:getCatalogSnapshot'),
+    onCatalogSnapshotChanged: (callback: (snapshot: unknown) => void) => {
+      const handler = (_event: unknown, snapshot: unknown) => callback(snapshot)
+      ipcRenderer.on('workspace:catalogSnapshotChanged', handler)
+      return () => {
+        ipcRenderer.removeListener('workspace:catalogSnapshotChanged', handler)
+      }
+    },
   },
 } satisfies ElectronAPI)
 

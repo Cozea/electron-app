@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
-import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
+import { useWorkspaceSnapshotEntry } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
@@ -60,9 +60,11 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
-    const { result: workspaceResolution } = useProjectWorkspaceResolution(project.id, project.slug)
-    const workspaceId = workspaceResolution?.status === "ready" ? workspaceResolution.workspace.workspaceId : null
-    
+    // Pushed catalog snapshot: no per-row resolveProject IPC. The layout still
+    // does a fresh, candidate-scanning resolution when a project is opened.
+    const snapshotEntry = useWorkspaceSnapshotEntry(project.id)
+    const workspaceId = snapshotEntry?.status === "ready" ? snapshotEntry.workspace.workspaceId : null
+
     const fetchedLaneState = useProjectLaneState({
       projectId: context.prefetchedLaneState ? null : shouldLoadLanes ? project.id : null,
       workspaceId: context.prefetchedLaneState ? null : shouldLoadLanes ? workspaceId : null,
@@ -230,7 +232,7 @@ export const ProjectSidebarTreeItem = React.memo(
               aria-label={isLanesOpen ? "Collapse" : "Expand"}
             >
               <NativeProjectFolderIcon
-                folderPath={workspaceResolution?.status === "ready" ? workspaceResolution.workspace.projectRootPath : null}
+                folderPath={snapshotEntry?.status === "ready" ? snapshotEntry.workspace.projectRootPath : null}
                 isOpen={isLanesOpen}
               />
             </button>

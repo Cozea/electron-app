@@ -35,6 +35,7 @@ export type WorkspaceLaneKind = "shared" | "branch" | "worktree" | "task" | "det
 export type WorkspaceConflictReason =
   | "duplicate_path"
   | "marker_mismatch"
+  | "copied_workspace"
   | "repo_mismatch"
   | "missing_path"
   | "ambiguous_candidates"
@@ -243,6 +244,7 @@ export interface CreateWorkspaceForProjectRequest {
 export interface CreateWorkspaceForProjectResult {
   success: boolean
   workspace?: LocalWorkspaceDTO
+  conflicts?: WorkspaceConflictDTO[]
   error?: string
 }
 
@@ -281,8 +283,36 @@ export interface CloneWorkspaceForProjectRequest {
 export interface CloneWorkspaceForProjectResult {
   success: boolean
   workspace?: LocalWorkspaceDTO
+  conflicts?: WorkspaceConflictDTO[]
   normalizedRepoUrl?: string
   error?: string
+}
+
+// ─── workspace:catalogSnapshot ───────────────────────────────────────────────
+
+/**
+ * One entry per project that has an active local workspace on this device.
+ * "ready" is optimistic: untrusted (not-yet-verified) bindings count as ready
+ * until the background verifier demotes them; hard failures are "broken".
+ */
+export interface WorkspaceCatalogSnapshotEntry {
+  projectId: string
+  status: "ready" | "broken"
+  workspace: LocalWorkspaceDTO
+  lane: WorkspaceLaneDTO | null
+  runtimeIdentity: RuntimeIdentityDTO | null
+  collaborationScopeId: string
+  reason: string | null
+}
+
+/**
+ * Pushed to every window whenever the catalog changes; replaces per-project
+ * resolveProject fan-out for read-only consumers (sidebar rows).
+ */
+export interface WorkspaceCatalogSnapshot {
+  revision: number
+  generatedAt: number
+  entries: Record<string, WorkspaceCatalogSnapshotEntry>
 }
 
 // ─── Active workspace context (renderer) ─────────────────────────────────────

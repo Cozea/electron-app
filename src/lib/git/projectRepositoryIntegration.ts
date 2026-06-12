@@ -14,7 +14,17 @@ type SourceControlLike = {
   workingCopyMode?: "managed" | "attached" | null
 }
 
+type CanonicalRepoLike = {
+  provider?: string | null
+  url?: string | null
+  defaultBranch?: string | null
+  setupMode?: VersionControlSetupMode | null
+  workingCopyMode?: "managed" | "attached" | null
+}
+
 type ProjectRepositoryIntegrationProjectLike = {
+  /** Canonical descriptor; preferred over the legacy pair below. */
+  repo?: CanonicalRepoLike | null
   gitRepository?: RepositoryLike | null
   sourceControl?: SourceControlLike | null
 }
@@ -38,6 +48,7 @@ export function resolveProjectSharedBranch(
   project: ProjectRepositoryIntegrationProjectLike | null | undefined,
 ): string {
   return (
+    project?.repo?.defaultBranch?.trim() ||
     project?.sourceControl?.defaultBranch?.trim() ||
     project?.gitRepository?.defaultBranch?.trim() ||
     "main"
@@ -48,9 +59,12 @@ export function resolveProjectRepositoryIntegration(
   project: ProjectRepositoryIntegrationProjectLike | null | undefined,
 ): ProjectRepositoryIntegration {
   const provider = normalizeProvider(
-    project?.sourceControl?.provider ?? project?.gitRepository?.provider,
+    project?.repo?.provider ??
+      project?.sourceControl?.provider ??
+      project?.gitRepository?.provider,
   )
   const repoUrl =
+    project?.repo?.url?.trim() ||
     project?.sourceControl?.repoUrl?.trim() ||
     project?.gitRepository?.url?.trim() ||
     ""
@@ -59,9 +73,9 @@ export function resolveProjectRepositoryIntegration(
     provider,
     repoUrl,
     defaultBranch: resolveProjectSharedBranch(project),
-    setupMode: project?.sourceControl?.setupMode ?? null,
+    setupMode: project?.repo?.setupMode ?? project?.sourceControl?.setupMode ?? null,
     workingCopyMode:
-      project?.sourceControl?.workingCopyMode === "attached"
+      (project?.repo?.workingCopyMode ?? project?.sourceControl?.workingCopyMode) === "attached"
         ? "attached"
         : "managed",
     hasRepository: provider !== "local" && Boolean(repoUrl),

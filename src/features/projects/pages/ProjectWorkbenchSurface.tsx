@@ -118,6 +118,11 @@ export function ProjectWorkbenchSurface() {
     laneState?.collabLaneId ??
     DEFAULT_WORKBENCH_LANE_ID;
   const activeWorkbenchId = activeLane?.workspaceId ?? workspaceId;
+  // Until lane state resolves, activeLaneId is the "collab" placeholder, NOT a
+  // real lane. Keying or ensuring a bench from it created (and switched to) an
+  // empty sibling bench whenever resolution was slow — the "came back to an
+  // empty workspace" bug. While pending: render a holding state, write nothing.
+  const laneResolutionPending = Boolean(activeWorkbenchId) && !activeLane && !laneState;
   const projectRootPath = identityProjectRootPath;
   const gitRootPath = identityGitRootPath;
   const workbenchScopeKey = projectId
@@ -312,7 +317,7 @@ export function ProjectWorkbenchSurface() {
     select: (location) => readWorkbenchIntentFromState(location.state),
   });
   useEffect(() => {
-    if (!projectId || !workbenchIntent) return;
+    if (!projectId || !workbenchIntent || laneResolutionPending) return;
     if (wasWorkbenchIntentApplied(workbenchIntent)) return;
 
     if (workbenchIntent.laneId && workbenchIntent.laneId !== activeLaneId) {
@@ -348,6 +353,7 @@ export function ProjectWorkbenchSurface() {
     activeWorkbenchId,
     collabBranch,
     focusWorkbenchTile,
+    laneResolutionPending,
     openWorkbenchTarget,
     projectId,
     refreshLaneState,
@@ -361,12 +367,12 @@ export function ProjectWorkbenchSurface() {
   };
 
   useLayoutEffect(() => {
-    if (!projectId) return;
+    if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
-  }, [activeLaneId, activeWorkbenchId, projectId, workbenchActions]);
+  }, [activeLaneId, activeWorkbenchId, laneResolutionPending, projectId, workbenchActions]);
 
   useEffect(() => {
-    if (!projectId || !workspaceSelectionId) {
+    if (!projectId || !workspaceSelectionId || laneResolutionPending) {
       return;
     }
 
@@ -377,7 +383,7 @@ export function ProjectWorkbenchSurface() {
       focusTileId: projectWorkbench?.activeTileId ?? null,
       updatedAt: Date.now(),
     });
-  }, [activeLaneId, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
+  }, [activeLaneId, laneResolutionPending, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
 
   useEffect(() => {
     setIsSettingsOpen(searchParams.get("settings") === "1");
@@ -421,7 +427,7 @@ export function ProjectWorkbenchSurface() {
       ? "dark"
       : "light";
 
-  if (!projectId) {
+  if (!projectId || laneResolutionPending) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         {t('workbench.surface.loadingWorkbench')}
