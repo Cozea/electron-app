@@ -38,6 +38,7 @@ import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
 } from "@/features/projects/components/assistant/chat/composerDraftStore"
+import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
 import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   newCommandId,
@@ -1493,6 +1494,11 @@ export function useWorkbenchAssistantTileController(
         <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
           <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1">{sendError ?? requestError}</span>
+          <ProviderRemediationAction
+            provider={selectedProvider}
+            message={sendError ?? requestError}
+            onResolved={() => setSendError(null)}
+          />
         </div>
       )
     }

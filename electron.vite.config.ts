@@ -118,8 +118,6 @@ function rendererManualChunks(id: string): string | undefined {
     normalizedId.includes('/node_modules/@radix-ui/') ||
     normalizedId.includes('/node_modules/@base-ui/') ||
     normalizedId.includes('/node_modules/cmdk/') ||
-    normalizedId.includes('/node_modules/framer-motion/') ||
-    normalizedId.includes('/node_modules/motion/') ||
     normalizedId.includes('/node_modules/@hugeicons/') ||
     normalizedId.includes('/node_modules/@react-symbols/')
   ) {

@@ -8,6 +8,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
+import { AppSidebarShell } from "../components/sidebar/AppSidebarShell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
@@ -28,6 +29,7 @@ import {
   resolveTrustedProjectRouteNavigationState,
 } from "@/features/projects/lib/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
+import { formatWorkspaceBindFailure } from "@/features/projects/lib/localProjectImport";
 import { appToast } from "@/lib/appToast";
 import { useTranslation } from "@/lib/i18n";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
@@ -60,7 +62,8 @@ const LazyPresenceAvatarGroup = lazy(() =>
 
 
 function SidebarModeFallback() {
-  return <div className="w-56 shrink-0 bg-sidebar" />;
+  // Content-only: the persistent AppSidebarShell already paints the surface.
+  return <div className="min-h-0 flex-1" />;
 }
 
 interface ProjectLayoutProps {
@@ -274,6 +277,7 @@ export function ProjectLayout({
   });
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
+  const updateProjectStatusMutation = useMutation(api.projects.updateStatus);
 
   // Get project data (with caching)
   const freshProjectById = useQuery(
@@ -291,11 +295,16 @@ export function ProjectLayout({
         }
       : "skip",
   );
+  // For slug routes, `undefined` must stay "still loading" — collapsing it to
+  // null made projectDefinitelyMissing fire mid-flight and bounce legacy slug
+  // links to /projects before the query resolved.
   const freshProject = routeProjectId
     ? freshProjectById
-    : freshProjectBySlug?.status === "ok"
-      ? freshProjectBySlug.project
-      : null;
+    : freshProjectBySlug === undefined
+      ? undefined
+      : freshProjectBySlug.status === "ok"
+        ? freshProjectBySlug.project
+        : null;
   const project = useCachedQuery(`layout-project-${routeProjectId ?? routeSlug}`, freshProject);
   const projectSlug = project?.slug ?? routeSlug ?? null;
   const trustedNavigationState = useMemo(
@@ -486,6 +495,22 @@ export function ProjectLayout({
     [chromeHeader],
   );
 
+  // Resume path for the creation saga: a crash between doc creation and the
+  // local workspace step leaves status "provisioning"; a successful repair
+  // (locate/bind/create/clone) completes what the original attempt started.
+  const finalizeProvisioningAfterRepair = useCallback(async () => {
+    if (!project?._id || !convexUserId || project.status !== "provisioning") return;
+    try {
+      await updateProjectStatusMutation({
+        projectId: project._id,
+        userId: convexUserId,
+        status: "active",
+      });
+    } catch (error) {
+      console.warn("[ProjectLayout] Failed to finalize provisioning project:", error);
+    }
+  }, [convexUserId, project?._id, project?.status, updateProjectStatusMutation]);
+
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
       if (!project?._id) return;
@@ -514,10 +539,11 @@ export function ProjectLayout({
               });
               if (bindResult.success) {
                 refreshWorkspace();
+                await finalizeProvisioningAfterRepair();
               } else {
                 appToast.error({
                   title: t("workspace.bindFailed"),
-                  description: bindResult.error ?? undefined,
+                  description: formatWorkspaceBindFailure(bindResult),
                 });
               }
             }
@@ -533,10 +559,11 @@ export function ProjectLayout({
             });
             if (bindResult.success) {
               refreshWorkspace();
+              await finalizeProvisioningAfterRepair();
             } else {
               appToast.error({
                 title: t("workspace.bindFailed"),
-                description: bindResult.error ?? undefined,
+                description: formatWorkspaceBindFailure(bindResult),
               });
             }
             break;
@@ -550,6 +577,7 @@ export function ProjectLayout({
             });
             if (createResult.success) {
               refreshWorkspace();
+              await finalizeProvisioningAfterRepair();
             } else {
               appToast.error({
                 title: t("workspace.createFailed"),
@@ -572,6 +600,7 @@ export function ProjectLayout({
             });
             if (cloneResult.success) {
               refreshWorkspace();
+              await finalizeProvisioningAfterRepair();
             } else {
               appToast.error({
                 title: t("workspace.cloneFailed"),
@@ -596,29 +625,49 @@ export function ProjectLayout({
         });
       }
     },
-    [project, refreshWorkspace, routeSlug, t],
+    [finalizeProvisioningAfterRepair, project, refreshWorkspace, routeSlug, t],
   );
+
+  // Only block on project loading when we're actually on a project-specific
+  // route. Routes like /projects/ (launch page) have no routeProjectId or
+  // routeSlug, so project is always null there — don't block them.
+  // freshProject === undefined means Convex hasn't responded yet (still loading).
+  // freshProject === null means Convex responded: project not found / deleted.
+  // Distinguish so we don't spin forever on a deleted project.
+  const isResolvingProject = !project && Boolean(routeProjectId || routeSlug);
+  const projectDefinitelyMissing = isResolvingProject && freshProject === null;
+
+  useEffect(() => {
+    if (!projectDefinitelyMissing) return;
+    // Project was deleted or is not accessible. Redirect to the launch page
+    // so the user isn't stuck on a dead URL.
+    navigate("/projects", { replace: true });
+  }, [navigate, projectDefinitelyMissing]);
 
   const layoutContent = (
     <SidebarProvider>
       <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
-          {isAppStoreRoute ? (
-            <Suspense fallback={<SidebarModeFallback />}>
-              <LazyAppStoreSidebar color="currentColor" user={user} />
-            </Suspense>
-          ) : isSettingsModeRoute ? (
-            <Suspense fallback={<SidebarModeFallback />}>
-              <LazySettingsSidebar color="currentColor" user={user} />
-            </Suspense>
-          ) : (
-            <ProjectSidebar
-              color="currentColor"
-              user={user}
-              projectId={project?._id ?? null}
-            />
-          )}
+          {/* Persistent shell: route-mode switches swap only the content. */}
+          <AppSidebarShell
+            surface={isAppStoreRoute ? "appStore" : isSettingsModeRoute ? "settings" : "project"}
+          >
+            {isAppStoreRoute ? (
+              <Suspense fallback={<SidebarModeFallback />}>
+                <LazyAppStoreSidebar user={user} />
+              </Suspense>
+            ) : isSettingsModeRoute ? (
+              <Suspense fallback={<SidebarModeFallback />}>
+                <LazySettingsSidebar user={user} />
+              </Suspense>
+            ) : (
+              <ProjectSidebar
+                user={user}
+                projectId={project?._id ?? null}
+              />
+            )}
+          </AppSidebarShell>
           <SidebarInset
             color="currentColor"
             // bg-background: keep window vibrancy/transparency confined to the
@@ -636,7 +685,14 @@ export function ProjectLayout({
                   shouldRemovePadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden",
                 )}
               >
-                {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (
+                {isResolvingProject ? (
+                  // Resolve in place: early-returning a bare loading screen here
+                  // unmounted the whole shell (sidebar included) on every cold
+                  // project switch, then remounted it when Convex answered.
+                  <div className="flex h-full items-center justify-center">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                  </div>
+                ) : featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (
                   <div className="flex h-full items-center justify-center">
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
                   </div>
@@ -699,30 +755,6 @@ export function ProjectLayout({
   );
 
 
-
-  // Only block on project loading when we're actually on a project-specific
-  // route. Routes like /projects/ (launch page) have no routeProjectId or
-  // routeSlug, so project is always null there — don't block them.
-  if (!project && (routeProjectId || routeSlug)) {
-    // freshProject === undefined means Convex hasn't responded yet (still loading).
-    // freshProject === null means Convex responded: project not found / deleted.
-    // Distinguish so we don't spin forever on a deleted project.
-    const convexResolved = freshProject !== undefined;
-    const projectDefinitelyMissing = convexResolved && freshProject === null;
-
-    if (projectDefinitelyMissing) {
-      // Project was deleted or is not accessible. Redirect to the launch page
-      // so the user isn't stuck on a dead URL.
-      navigate("/projects", { replace: true });
-      return null;
-    }
-
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading project...
-      </div>
-    );
-  }
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>

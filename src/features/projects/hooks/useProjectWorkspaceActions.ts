@@ -1,9 +1,15 @@
 import { useCallback } from "react"
+import { useMutation } from "convex/react"
 
+import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
+import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
-import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
+import {
+  browseForDirectory,
+  formatWorkspaceBindFailure,
+} from "@/features/projects/lib/localProjectImport"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   clearProjectBranchSession,
@@ -20,6 +26,8 @@ interface ProjectWorkspaceActionProject {
   id: string
   name: string
   slug: string
+  /** When "provisioning", a successful relink finalizes the saga to active. */
+  status?: string
 }
 
 interface NavigateOptions {
@@ -33,6 +41,8 @@ function normalizeWorkspaceId(workspaceId: string | null | undefined): string | 
 
 export function useProjectWorkspaceActions() {
   const navigate = useViewTransitionNavigate()
+  const { convexUserId } = useAuth()
+  const updateProjectStatus = useMutation(api.projects.updateStatus)
   const cloneWorkspaceState = useProjectWorkbenchStore((state) => state.actions.cloneWorkspaceState)
   const closeRuntime = useWorkspaceRuntimeStore((state) => state.actions.closeRuntime)
 
@@ -55,11 +65,37 @@ export function useProjectWorkspaceActions() {
         source: "locate",
       })
       if (!bindResult.success || !bindResult.workspace) {
-        console.warn("Failed to relink workspace folder", bindResult.error)
+        // Conflicts used to die in a console.warn: the user picked a folder
+        // and nothing visibly happened.
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          buttons: ["OK"],
+          defaultId: 0,
+          title: "Relink Failed",
+          message: `Could not relink ${project.name}`,
+          detail: formatWorkspaceBindFailure(bindResult),
+          noLink: true,
+        })
         return null
       }
 
       const nextWorkspaceId = bindResult.workspace.workspaceId
+
+      // Finalize the create saga if this relink is the repair for a project
+      // left stuck "provisioning" by an earlier crash. Other create flows
+      // finalize on their own happy path; relink is the one that didn't.
+      if (project.status === "provisioning" && convexUserId) {
+        try {
+          await updateProjectStatus({
+            projectId: project._id,
+            userId: convexUserId,
+            status: "active",
+          })
+        } catch (finalizeError) {
+          console.warn("[ProjectWorkspaceActions] Failed to finalize provisioning project on relink:", finalizeError)
+        }
+      }
+
       invalidateProjectWorkspaceResolution(project.id)
       cloneWorkspaceState(project.id, currentWorkspaceId, nextWorkspaceId)
       clonePersistedWorkbenchLayoutsForWorkspace({
@@ -80,7 +116,7 @@ export function useProjectWorkspaceActions() {
 
       return nextWorkspaceId
     },
-    [cloneWorkspaceState, navigate],
+    [cloneWorkspaceState, convexUserId, navigate, updateProjectStatus],
   )
 
   const closeProjectWorkspace = useCallback(

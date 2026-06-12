@@ -12,6 +12,7 @@ import type {
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
   WorkspaceCandidate,
+  WorkspaceCatalogSnapshot,
 } from './workspaceTypes'
 import type {
   NativePreviewActionResult,
@@ -236,6 +237,7 @@ export interface GhCliStatus {
 export interface CreateGitHubRepoResult {
   success: boolean
   repoUrl?: string
+  defaultBranch?: string
   error?: string
 }
 
@@ -1043,7 +1045,7 @@ export interface TerminalExitEvent {
   runId?: string
 }
 
-export type AgentToolId = 'claude' | 'gemini' | 'kilo' | 'shell' | 'copilot' | 'codex'
+export type AgentToolId = 'claude' | 'gemini' | 'kilo' | 'shell' | 'copilot' | 'codex' | 'cursor' | 'opencode'
 
 export type AgentToolSource = 'builtin' | 'system' | 'managed' | 'missing'
 
@@ -1062,6 +1064,23 @@ export interface AgentToolStatus {
 
 export interface AgentToolPrepareResult extends AgentToolStatus {
   success: boolean
+}
+
+export interface AgentToolLoginStartResult {
+  sessionId: string | null
+  error?: string
+}
+
+export interface AgentToolLoginEvent {
+  sessionId: string
+  toolId: AgentToolId
+  type: 'auth-url' | 'awaiting-code' | 'output' | 'closed'
+  /** auth-url: the URL opened in the browser; awaiting-code: the prompt line;
+   * output: latest output tail; closed: final output tail. */
+  data?: string
+  /** Only on 'closed'. */
+  success?: boolean
+  error?: string
 }
 
 export interface DevServerStartOptions {
@@ -1920,6 +1939,10 @@ export interface ElectronAPI {
   agentTools: {
     getStatus: (options: { toolId: AgentToolId }) => Promise<AgentToolStatus>
     prepare: (options: { toolId: AgentToolId }) => Promise<AgentToolPrepareResult>
+    loginStart: (options: { toolId: AgentToolId }) => Promise<AgentToolLoginStartResult>
+    loginInput: (options: { sessionId: string; value: string }) => Promise<{ success: boolean }>
+    loginCancel: (options: { sessionId: string }) => Promise<{ success: boolean }>
+    onLoginEvent: (callback: (event: AgentToolLoginEvent) => void) => () => void
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
@@ -1954,9 +1977,11 @@ export interface ElectronAPI {
     bindExistingFolder: (req: BindExistingFolderRequest) => Promise<BindExistingFolderResult>
     createForProject: (req: CreateWorkspaceForProjectRequest) => Promise<CreateWorkspaceForProjectResult>
     cloneForProject: (req: CloneWorkspaceForProjectRequest) => Promise<CloneWorkspaceForProjectResult>
-    verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO }>
+    verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO | null }>
     forget: (workspaceId: string) => Promise<void>
     listCandidates: (req: { projectId: string; slug: string; roots: string[]; expectedRepo?: unknown }) => Promise<WorkspaceCandidate[]>
     openInFinder: (folderPath: string) => Promise<void>
+    getCatalogSnapshot: () => Promise<WorkspaceCatalogSnapshot>
+    onCatalogSnapshotChanged: (callback: (snapshot: WorkspaceCatalogSnapshot) => void) => () => void
   }
 }

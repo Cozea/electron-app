@@ -789,6 +789,14 @@ export function TasksPage({
   const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
   const { convexUserId } = useAuth()
+  // Plan pages live in the artifacts table (split off the project doc);
+  // the query coalesces legacy inline fields server-side.
+  const projectArtifacts = useQuery(
+    api.projects.getArtifacts,
+    project?._id && convexUserId
+      ? { projectId: project._id, userId: convexUserId }
+      : 'skip',
+  )
   const syncContext = useOptionalProjectSyncContext()
   const workspaceId = syncContext?.workspaceId ?? null
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -897,14 +905,14 @@ export function TasksPage({
   const defaultManualTaskContext = useMemo<TaskContextAttachment | null>(() => {
     if (!project) return null
 
-    const planPages = (project.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
+    const planPages = (projectArtifacts?.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
 
     if (planPages[0]) {
       return createPageContextAttachment(planPages[0], projectPagesPath)
     }
 
     return createFileContextAttachment('convex/schema.ts')
-  }, [project, projectPagesPath])
+  }, [project, projectArtifacts?.generatedPlan?.pages, projectPagesPath])
   const pageContextOptions = useMemo<TaskContextAttachment[]>(() => {
     const options: TaskContextAttachment[] = []
     const seen = new Set<string>()
@@ -925,7 +933,7 @@ export function TasksPage({
       )
     }
 
-    const planPages = (project?.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
+    const planPages = (projectArtifacts?.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
     for (const page of planPages) {
       const routePath = page.route?.trim() || ''
       const key = routePath || page.name.trim().toLowerCase()
@@ -935,7 +943,7 @@ export function TasksPage({
     }
 
     return options
-  }, [draftScannedRoutes, project?.generatedPlan?.pages, projectPagesPath])
+  }, [draftScannedRoutes, projectArtifacts?.generatedPlan?.pages, projectPagesPath])
   const fileContextOptions = useMemo<TaskContextAttachment[]>(
     () =>
       [...draftProjectFiles]

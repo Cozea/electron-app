@@ -124,7 +124,14 @@ export async function getProjectStorageAccountingState(
   projectId: Id<"projects">
 ): Promise<ProjectStorageAccountingState> {
   const project = await ctx.db.get(projectId)
-  const repoBytes = Math.max(0, project?.gitSyncState?.repoBytes ?? 0)
+  const syncState = await ctx.db
+    .query("projectSyncState")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .first()
+  const repoBytes = Math.max(
+    0,
+    syncState?.gitSyncState?.repoBytes ?? project?.gitSyncState?.repoBytes ?? 0,
+  )
 
   return {
     repoBytes,

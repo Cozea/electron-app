@@ -11,7 +11,7 @@ import {
   browseForDirectory,
   deriveNameFromPath,
   deriveProviderFromRepoUrl,
-  detectCurrentBranch,
+  formatWorkspaceBindFailure,
   inspectLocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 
@@ -20,41 +20,26 @@ export type LocalProjectImportOutcome =
   | "imported"
   | "error"
 
+export interface LocalProjectImportResult {
+  outcome: LocalProjectImportOutcome
+  errorMessage: string | null
+}
+
+interface ImportLocalFolderOptions {
+  /**
+   * "dialog" (default) reports failures via a native message box; "return"
+   * leaves presentation to the caller (used by CreateProjectDialog, which
+   * renders the message inline).
+   */
+  reportError?: "dialog" | "return"
+}
+
 export function useLocalProjectImport() {
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
+  const deleteProject = useMutation(api.projects.deleteProject)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
-
-  const bindWorkspacePath = useCallback(
-    async (projectId: Id<"projects">, folderPath: string): Promise<string | null> => {
-      let workspaceId: string | null = null
-      try {
-        const result = await window.electronAPI.workspace!.bindExistingFolder({
-          projectId: String(projectId),
-          folderPath,
-          writeMarker: true,
-          setActive: true,
-        })
-        if (!result.success || !result.workspace) {
-          console.warn(
-            "[LocalProjectImport] Failed to bind local project path in desktop registry.",
-            result.error,
-          )
-        } else {
-          workspaceId = result.workspace.workspaceId
-        }
-      } catch (bindError) {
-        console.warn(
-          "[LocalProjectImport] Failed to bind local project path in desktop registry.",
-          bindError,
-        )
-      }
-
-      return workspaceId
-    },
-    [],
-  )
 
   const navigateToProjectWorkbench = useCallback(
     (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
@@ -84,32 +69,48 @@ export function useLocalProjectImport() {
 
   const importPickedLocalFolder = useCallback(async (
     selectedPath: string,
-  ): Promise<LocalProjectImportOutcome> => {
+    options?: ImportLocalFolderOptions,
+  ): Promise<LocalProjectImportResult> => {
+    const reportError = options?.reportError ?? "dialog"
+    const fail = async (errorMessage: string): Promise<LocalProjectImportResult> => {
+      if (reportError === "dialog") {
+        await showImportError(errorMessage)
+      }
+      return { outcome: "error", errorMessage }
+    }
+
     const localFolderPath = selectedPath.trim()
     if (!localFolderPath) {
-      return "cancelled"
+      return { outcome: "cancelled", errorMessage: null }
     }
-
-    const localGitState = await inspectLocalGitState(localFolderPath)
 
     if (!convexUserId) {
-      await showImportError("No project profile is ready right now.")
-      return "error"
+      return fail("No project profile is ready right now.")
     }
 
+    const projectName = deriveNameFromPath(localFolderPath) || "Project"
+    // One inspection pass: it already resolves the current branch with the
+    // same fallbacks the old detectCurrentBranch round-trip re-derived.
+    const localGitState = await inspectLocalGitState(localFolderPath)
+    const branch = localGitState.branch || "main"
+    const existingRemoteUrl = localGitState.remoteUrl?.trim() || ""
+    const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
+
+    // Compensation only ever undoes effects THIS run created. A resumed doc
+    // (deterministic token matched a pre-existing project) and any binding it
+    // already had are the user's real data — never roll those back.
+    let createdProjectId: Id<"projects"> | null = null
+    let boundWorkspaceId: string | null = null
     try {
-      const projectName = deriveNameFromPath(localFolderPath) || "Project"
-      const branch = await detectCurrentBranch(
-        localFolderPath,
-        localGitState.branch || "main",
-      )
-      const existingRemoteUrl = localGitState.remoteUrl?.trim() || ""
-      const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
       const result = await createProject({
         userId: convexUserId,
         name: projectName,
         template: "blank",
         creationPath: "repo",
+        status: "provisioning",
+        // Deterministic per folder: re-importing the same path resumes the
+        // same doc even across app restarts.
+        creationToken: `local-import:${localFolderPath}`,
         sourceControl: existingRemoteUrl && provider
           ? {
               provider,
@@ -127,42 +128,80 @@ export function useLocalProjectImport() {
             }
           : undefined,
       })
+      // Only a freshly-created doc is ours to delete on failure.
+      const createdThisRun = !result.resumed
+      if (createdThisRun) {
+        createdProjectId = result.projectId
+      }
 
+      const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+        projectId: String(result.projectId),
+        folderPath: localFolderPath,
+        writeMarker: true,
+        setActive: true,
+      })
+
+      if (!bindResult.success || !bindResult.workspace) {
+        throw new Error(formatWorkspaceBindFailure(bindResult))
+      }
+      // Track the binding for rollback only when we own the project doc; a
+      // resumed project's binding pre-existed and must survive a later failure.
+      if (createdThisRun) {
+        boundWorkspaceId = bindResult.workspace.workspaceId
+      }
+
+      // Local effects done: finalize the saga.
       await updateProjectStatus({
         projectId: result.projectId,
         userId: convexUserId,
         status: "active",
       })
-      const workspaceId = await bindWorkspacePath(result.projectId, localFolderPath)
-      if (!workspaceId) {
-        throw new Error("Failed to bind the local folder workspace.")
-      }
+
       navigateToProjectWorkbench(
         String(result.projectId),
         result.slug,
-        workspaceId,
+        bindResult.workspace.workspaceId,
         projectName,
       )
-      return "imported"
+      return { outcome: "imported", errorMessage: null }
     } catch (error) {
-      await showImportError(
-        error instanceof Error ? error.message : "Unknown import error.",
-      )
-      return "error"
+      // Compensate in reverse: undo the local bind (catalog row + on-disk
+      // marker) before deleting the cloud doc, so a later-step failure can't
+      // leave the folder bound to a deleted project — which made every retry
+      // a duplicate_path conflict that only "forget" could escape.
+      if (boundWorkspaceId) {
+        try {
+          await window.electronAPI.workspace!.forget(boundWorkspaceId)
+        } catch (cleanupError) {
+          console.warn("[LocalProjectImport] Failed to release workspace binding after import error:", cleanupError)
+        }
+      }
+      if (createdProjectId) {
+        try {
+          await deleteProject({
+            projectId: createdProjectId,
+            userId: convexUserId,
+            confirmName: projectName,
+          })
+        } catch (cleanupError) {
+          console.warn("[LocalProjectImport] Failed to clean up project after import error:", cleanupError)
+        }
+      }
+      return fail(error instanceof Error ? error.message : "Unknown import error.")
     }
   }, [
     convexUserId,
     createProject,
+    deleteProject,
     navigateToProjectWorkbench,
-    bindWorkspacePath,
     showImportError,
     updateProjectStatus,
   ])
 
-  const importLocalFolder = useCallback(async (): Promise<LocalProjectImportOutcome> => {
+  const importLocalFolder = useCallback(async (): Promise<LocalProjectImportResult> => {
     const selectedPath = await browseForDirectory("Select local project folder")
     if (!selectedPath?.trim()) {
-      return "cancelled"
+      return { outcome: "cancelled", errorMessage: null }
     }
 
     return importPickedLocalFolder(selectedPath)

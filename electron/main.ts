@@ -35,6 +35,7 @@ import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspa
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
 import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
+import { startCatalogSnapshotService, stopCatalogSnapshotService } from './workspaces/CatalogSnapshot'
 import { startAssistantRuntime } from './assistant-runtime/boot'
 import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
 import { waitForHttpReady } from './backendReadiness'
@@ -316,6 +317,26 @@ function getThemedOpaqueBackground(): string {
 /** Windows caption-control glyph color; must stay legible against the page. */
 function getThemedCaptionSymbolColor(): string {
   return nativeTheme.shouldUseDarkColors ? '#f5f5f6' : '#111827'
+}
+
+// Live transparency state of the main window. The window is always created
+// transparent-capable on macOS (the alpha channel is the only creation-time
+// constraint); the visible effect is just vibrancy + backing color, both of
+// which can be toggled at runtime — no relaunch needed.
+let mainWindowTransparencyActive = false
+
+function applyMainWindowTransparency(deactivated: boolean): void {
+  if (process.platform !== 'darwin') return
+  if (!win || win.isDestroyed()) return
+
+  mainWindowTransparencyActive = !deactivated
+  if (mainWindowTransparencyActive) {
+    win.setVibrancy('sidebar')
+    win.setBackgroundColor('#00000000')
+  } else {
+    win.setVibrancy(null)
+    win.setBackgroundColor(getThemedOpaqueBackground())
+  }
 }
 
 function loadSettings(): AppSettings {
@@ -1257,12 +1278,14 @@ function createWindow() {
       additionalArguments: ['--cozea-window=main', ASSISTANT_RUNTIME_WS_URL_ARG],
     },
     // Native material effects:
-    // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
+    // - macOS: always transparent-capable (creation-time-only flag) so the
+    //   vibrancy effect can be toggled live; "deactivated" just paints an
+    //   opaque backing color with no vibrancy material.
     // - Windows 11: system backdrop material.
-    transparent: useTransparency,
+    transparent: isMac,
     backgroundColor: useTransparency ? '#00000000' : getThemedOpaqueBackground(),
     vibrancy: useTransparency ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
-    visualEffectState: useTransparency ? 'active' : undefined,
+    visualEffectState: isMac ? 'active' : undefined,
     backgroundMaterial: isWindows ? 'mica' : undefined,
     titleBarStyle: isMac ? 'hiddenInset' : (isWindows ? 'hidden' : 'default'),
     titleBarOverlay: isWindows
@@ -1402,13 +1425,15 @@ function createWindow() {
     logBootTiming('main-window-ready-to-show')
   })
 
+  mainWindowTransparencyActive = useTransparency
+
   // Re-theme the window backing on system theme change. The vibrancy window
   // must stay fully transparent; opaque windows (transparency deactivated on
   // macOS, Windows, Linux) follow the themed background so resize/load flashes
   // match the page instead of flashing black.
   const handleNativeThemeUpdated = () => {
     if (!win) return
-    if (useTransparency) {
+    if (mainWindowTransparencyActive) {
       win.setBackgroundColor('#00000000')
       return
     }
@@ -1419,8 +1444,7 @@ function createWindow() {
   }
   nativeTheme.on('updated', handleNativeThemeUpdated)
   // createWindow runs again when the app is re-activated after all windows
-  // closed; without cleanup each run would stack another listener capturing
-  // a stale useTransparency.
+  // closed; without cleanup each run would stack another listener.
   win.once('closed', () => {
     nativeTheme.removeListener('updated', handleNativeThemeUpdated)
   })
@@ -1498,7 +1522,12 @@ registerNativePreviewHandlers(ipcMain, {
 registerSettingsStorageHandlers(ipcMain, {
   getMainWindow: () => win,
   loadSettings,
-  saveSettings,
+  saveSettings: (settings) => {
+    saveSettings(settings)
+    if ('deactivateTransparency' in settings) {
+      applyMainWindowTransparency(Boolean(settings.deactivateTransparency))
+    }
+  },
 })
 
 registerProjectHandlers(ipcMain, {
@@ -1551,6 +1580,7 @@ app.on('before-quit', () => {
   logAssistantBridge('app-before-quit')
   workbenchBrowserService.dispose()
   PreviewSnapshotService.getInstance().dispose()
+  stopCatalogSnapshotService()
   void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
 })
@@ -1576,6 +1606,9 @@ app.whenReady().then(() => {
 
   scheduleBootWork('workspace-catalog-initialized', async () => {
     await initWorkspaceCatalogRuntime(app.getPath('userData'))
+    // Pushed snapshot + background verifier replace per-project resolve
+    // polling for read-only consumers (sidebar).
+    await startCatalogSnapshotService()
   }, 0)
 
   installPreviewHeaderCompatibilityPolicy()

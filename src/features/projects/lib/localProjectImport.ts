@@ -15,12 +15,15 @@ export function deriveNameFromPath(workspaceId: string): string {
 
 export function deriveProviderFromRepoUrl(
   repoUrl: string,
-): "github" | "gitlab" | "bitbucket" {
+): "github" | "gitlab" | "bitbucket" | "other" {
   const trimmed = repoUrl.trim()
-  if (!trimmed) return "github"
+  // "other" rather than assuming github: self-hosted remotes used to be
+  // recorded with a provider they do not have.
+  if (!trimmed) return "other"
+  if (/github/i.test(trimmed)) return "github"
   if (/bitbucket/i.test(trimmed)) return "bitbucket"
   if (/gitlab/i.test(trimmed)) return "gitlab"
-  return "github"
+  return "other"
 }
 
 export function buildFilesystemSlug(name: string): string {
@@ -95,63 +98,60 @@ function resolveRelativeFsPath(basePath: string, targetPath: string): string {
   return `${rootPrefix}${baseSegments.join("/")}`
 }
 
-export async function detectOriginRemoteUrl(workspaceId: string): Promise<string | null> {
-  const directConfig = await window.electronAPI.fs.readFile(joinFsPath(workspaceId, ".git", "config"))
-  if (directConfig) {
-    return parseGitRemoteUrl(directConfig)
+function parseGitHeadBranch(headText: string): string | null {
+  const match = headText.match(/ref:\s*refs\/heads\/(.+?)\s*$/i)
+  return match?.[1]?.trim() || null
+}
+
+/** Resolve the real .git directory for a folder, following a `gitdir:` link
+ * file (worktrees / submodules). Returns null when the folder isn't a repo. */
+async function resolveGitDir(folderPath: string): Promise<string | null> {
+  const directHead = await window.electronAPI.fs.readFile(joinFsPath(folderPath, ".git", "HEAD"))
+  if (directHead !== null) {
+    return joinFsPath(folderPath, ".git")
   }
 
-  const gitEntry = await window.electronAPI.fs.readFile(joinFsPath(workspaceId, ".git"))
+  const gitEntry = await window.electronAPI.fs.readFile(joinFsPath(folderPath, ".git"))
   const gitDirMatch = gitEntry?.match(/gitdir:\s*(.+)\s*$/i)
   if (!gitDirMatch?.[1]) {
     return null
   }
-
-  const resolvedGitDir = resolveRelativeFsPath(workspaceId, gitDirMatch[1].trim())
-  const linkedConfig = await window.electronAPI.fs.readFile(joinFsPath(resolvedGitDir, "config"))
-  return linkedConfig ? parseGitRemoteUrl(linkedConfig) : null
+  return resolveRelativeFsPath(folderPath, gitDirMatch[1].trim())
 }
 
-export async function detectCurrentBranch(
-  workspaceId: string,
-  fallbackBranch: string,
-): Promise<string> {
+/**
+ * Inspect a local folder's git state by reading `.git` directly (HEAD +
+ * config). Path-pure on purpose: this runs during import BEFORE the folder is
+ * bound into the workspace catalog, so the catalog-backed `project:*` git IPC
+ * (which resolves a workspaceId) would always fail here and silently report
+ * "not a repo". Takes a filesystem path, not a workspaceId.
+ */
+export async function inspectLocalGitState(folderPath: string): Promise<LocalGitState> {
   try {
-    const result = await window.electronAPI.project.listGitBranches({ workspaceId })
-    const currentBranch = result.branches.find(
-      (branch) => branch.current && !branch.isRemote,
-    )?.name?.trim()
-    if (currentBranch) {
-      return currentBranch
+    const gitDir = await resolveGitDir(folderPath)
+    if (!gitDir) {
+      return {
+        isLoading: false,
+        isRepo: false,
+        hasOriginRemote: false,
+        branch: "main",
+        remoteUrl: null,
+        error: null,
+      }
     }
 
-    const defaultBranch = result.branches.find(
-      (branch) => branch.isDefault && !branch.isRemote,
-    )?.name?.trim()
-    return defaultBranch || fallbackBranch
-  } catch {
-    return fallbackBranch
-  }
-}
-
-export async function inspectLocalGitState(workspaceId: string): Promise<LocalGitState> {
-  try {
-    const branches = await window.electronAPI.project.listGitBranches({ workspaceId })
-    const branch =
-      branches.branches.find((item) => item.current && !item.isRemote)?.name?.trim() ??
-      branches.branches.find((item) => item.isDefault && !item.isRemote)?.name?.trim() ??
-      "main"
-    const remoteUrl = branches.hasOriginRemote
-      ? await detectOriginRemoteUrl(workspaceId)
-      : null
+    const headText = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "HEAD"))
+    const branch = (headText ? parseGitHeadBranch(headText) : null) || "main"
+    const configText = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "config"))
+    const remoteUrl = configText ? parseGitRemoteUrl(configText) : null
 
     return {
       isLoading: false,
-      isRepo: branches.isRepo,
-      hasOriginRemote: branches.hasOriginRemote,
+      isRepo: true,
+      hasOriginRemote: Boolean(remoteUrl),
       branch,
       remoteUrl,
-      error: branches.error ?? null,
+      error: null,
     }
   } catch (error) {
     return {
@@ -174,4 +174,45 @@ export async function browseForDirectory(title: string): Promise<string | null> 
     return null
   }
   return result.path
+}
+
+interface WorkspaceBindFailureLike {
+  error?: string
+  conflicts?: Array<{
+    reason: string
+    existingProjectId?: string | null
+    candidatePath?: string
+  }>
+}
+
+/**
+ * Bind failures carry structured conflicts with no `error` string; surfacing
+ * them raw left actions failing with "undefined". One formatter for every
+ * bind call site (import, relink, repair).
+ */
+export function formatWorkspaceBindFailure(
+  result: WorkspaceBindFailureLike | null | undefined,
+  fallback = "Failed to bind the local folder.",
+): string {
+  if (result?.error) {
+    return result.error
+  }
+
+  const conflict = result?.conflicts?.[0]
+  if (!conflict) {
+    return fallback
+  }
+
+  switch (conflict.reason) {
+    case "duplicate_path":
+      return conflict.existingProjectId
+        ? "This folder is already linked to another project. Open that project instead, or choose a different folder."
+        : "This folder is already linked to another workspace."
+    case "marker_mismatch":
+      return "This folder belongs to a different Cozea project (its workspace marker points elsewhere). Choose a different folder, or remove the .cozea marker if this is intentional."
+    case "copied_workspace":
+      return "This looks like a copy of an already-linked folder (the original still exists). Open the original project, or remove the .cozea marker from this copy to link it as a separate project."
+    default:
+      return fallback
+  }
 }

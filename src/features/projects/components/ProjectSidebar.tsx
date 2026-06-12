@@ -18,13 +18,9 @@ import { useOptionalProjectSyncContext } from "@/features/projects/contexts/Proj
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu";
 import {
-  Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarRail,
   SidebarSeparator,
-  SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { useTranslation } from "@/lib/i18n";
 import { NavUser } from "@/components/nav-user";
@@ -76,7 +72,8 @@ const LazyProjectRenameDialog = React.lazy(() =>
   })),
 );
 
-interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
+/** Content-only: renders inside the persistent AppSidebarShell. */
+interface ProjectSidebarProps {
   user?: {
     email: string;
     firstName?: string | null;
@@ -93,8 +90,6 @@ export function ProjectSidebar({
   projectId: providedProjectId,
   presenceUsers: _presenceUsers,
   presenceCount: _presenceCount,
-  className,
-  ...props
 }: ProjectSidebarProps) {
   const { t } = useTranslation();
   const navigate = useViewTransitionNavigate();
@@ -139,8 +134,10 @@ export function ProjectSidebar({
     closeProjectWorkspace,
   } = useProjectWorkspaceActions();
 
+  // Slim projection: the sidebar re-renders on every list push, so it
+  // subscribes only to the fields it renders (no generatedPlan/buildContract).
   const accessibleProjects = useQuery(
-    api.projects.listForCurrentUser,
+    api.projects.listSummariesForCurrentUser,
     convexUserId
       ? {
           userId: convexUserId,
@@ -169,8 +166,8 @@ export function ProjectSidebar({
           updatedAt: project.updatedAt,
           createdBy: project.createdBy ?? null,
           localPath: project.localPath ?? null,
-          sourceControl: project.sourceControl,
-          gitRepository: project.gitRepository,
+          sourceControl: project.sourceControl ?? undefined,
+          gitRepository: project.gitRepository ?? undefined,
           importedFrom: project.importedFrom ?? null,
         };
 
@@ -469,9 +466,6 @@ export function ProjectSidebar({
 
   const isOnAppStore = pathname === "/projects/store";
 
-  const { isMobile, state, openMobile } = useSidebar();
-  const showInSidebarSidebarTrigger = isMobile ? openMobile : state === "expanded";
-
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string | null) => {
       navigate(buildProjectPath(project.id, "workbench"), {
@@ -697,25 +691,7 @@ export function ProjectSidebar({
 
   return (
     <>
-      <Sidebar
-        collapsible="offcanvas"
-        windowChromeAware
-        windowChromeEndAddon={
-          showInSidebarSidebarTrigger ? (
-            <SidebarTrigger
-              className={cn(
-                "h-7 w-7 shrink-0 rounded-md",
-                "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
-              )}
-            />
-          ) : null
-        }
-        rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
-        rootStyle={{ "--sidebar-width": "14rem" } as React.CSSProperties}
-        className="h-full min-w-0 z-20 sidebar-glass"
-        {...props}
-      >
-        <SidebarContent className="gap-0 px-2 py-3">
+      <SidebarContent className="gap-0 px-2 py-3">
           {!isOnCurrentProjectSubMenu && (
             <div className="mb-4 space-y-1">
               <button
@@ -843,9 +819,6 @@ export function ProjectSidebar({
             </div>
           )}
         </SidebarFooter>
-
-        <SidebarRail />
-      </Sidebar>
       {projectPendingRename ? (
         <React.Suspense fallback={null}>
           <LazyProjectRenameDialog

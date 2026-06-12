@@ -46,6 +46,7 @@ import { ProviderOptionControls } from "@/features/projects/components/assistant
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
 import { ModelPickerContent } from "@/features/projects/components/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
+import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
 import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
 import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
 import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
@@ -630,12 +631,23 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isSending ||
     props.isInterrupting
 
+  // No workspace / provider unavailable: the banner replaces the timeline and
+  // sending is impossible — hide the composer entirely (hover included).
+  const composerSuppressed =
+    !props.workspaceId ||
+    Boolean(
+      props.providerSnapshot &&
+        props.providerSnapshot.status !== "ready" &&
+        props.providerSnapshot.status !== "disabled",
+    )
+
   // Empty thread: keep the composer visible so new sessions have an obvious input.
   const showComposerDockChrome =
-    !dockComposerOnHover || dockComposerChromeReasons || timelineEntries.length === 0
+    !composerSuppressed &&
+    (!dockComposerOnHover || dockComposerChromeReasons || timelineEntries.length === 0)
 
   const reserveScrollSpaceForDockedComposer =
-    dockComposerOnHover && dockComposerChromeReasons
+    dockComposerOnHover && dockComposerChromeReasons && !composerSuppressed
 
   useLayoutEffect(() => {
     if (!dockComposerOnHover || !reserveScrollSpaceForDockedComposer) {
@@ -1131,6 +1143,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             state={threadRuntimeBannerState}
             detail={threadRuntimeDetail}
             isForceStopAvailable={props.isForceStopAvailable}
+            action={
+              <ProviderRemediationAction
+                provider={props.selectedProvider}
+                message={threadRuntimeDetail}
+              />
+            }
           />
         ) : null}
         {activePendingApproval ? (
@@ -1604,7 +1622,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             </div>
           </div>
         ) : hasProviderBanner ? (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8">
+          <div
+            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8"
+            // Keep the banner centered in the area above the docked composer
+            // overlay instead of the full tile height (which hides its lower
+            // half behind the composer).
+            style={{ paddingBottom: dockedComposerScrollInsetPx ? dockedComposerScrollInsetPx + 32 : undefined }}
+          >
             <ProviderStatusBanner status={props.providerSnapshot} />
           </div>
         ) : (
@@ -1640,7 +1664,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             />
           </div>
         )}
-        {dockComposerOnHover ? (
+        {dockComposerOnHover && !composerSuppressed ? (
           <div
             ref={dockedComposerFrameRef}
             className={cn(
@@ -1679,7 +1703,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : null}
       </div>
 
-      {!dockComposerOnHover ? (
+      {!dockComposerOnHover && !composerSuppressed ? (
         <div className="px-3 pt-1.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5">{composerForm}</div>
       ) : null}
 

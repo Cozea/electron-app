@@ -85,7 +85,8 @@ export async function migrateFromLegacyRegistry(
       }
 
       if (!pathExists) {
-        // Path is gone — record as broken so it appears in repair UI
+        // Path is gone — skip the bind. The project resolves as
+        // missing-binding, which is what surfaces the repair screen.
         broken++
         continue
       }
@@ -114,6 +115,9 @@ export async function migrateFromLegacyRegistry(
     }
   }
 
+  // Marked complete even when individual entries failed: a retry loop on
+  // every launch would re-log the same errors forever. Failed entries fall
+  // back to the per-project repair screen like broken paths do.
   await run(
     Effect.flatMap(Effect.service(WorkspaceCatalog), (c) =>
       c.setSetting(MIGRATION_SETTING_KEY, String(Date.now())),

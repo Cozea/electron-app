@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation } from "convex/react"
 
 import { api } from "../../../../convex/_generated/api"
+import type { Id } from "../../../../convex/_generated/dataModel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,10 +34,12 @@ import {
   browseForDirectory,
   buildFilesystemSlug,
   deriveNameFromPath,
-  deriveProviderFromRepoUrl,
+  formatWorkspaceBindFailure,
   inspectLocalGitState,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
+import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
+import { appToast } from "@/lib/appToast"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 import { useTranslation } from "@/lib/i18n"
 
@@ -48,12 +51,6 @@ interface CreateProjectDialogProps {
   mode: CreateProjectDialogMode
   initialLocalFolderPath?: string
   onOpenChange: (open: boolean) => void
-}
-
-interface DialogCopy {
-  title: string
-  description: string
-  submitLabel: string
 }
 
 interface DialogCopy {
@@ -106,7 +103,13 @@ export function CreateProjectDialog({
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
+  const deleteProject = useMutation(api.projects.deleteProject)
+  const setSourceControl = useMutation(api.projects.setSourceControl)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
+  const { importPickedLocalFolder } = useLocalProjectImport()
+  // One token per creation attempt: retries resume the same provisioning doc
+  // instead of minting "name-1" twins. Cleared on success or clean rollback.
+  const creationTokenRef = useRef<string | null>(null)
 
   const [name, setName] = useState("")
   const [parentDirectory, setParentDirectory] = useState("")
@@ -157,6 +160,7 @@ export function CreateProjectDialog({
         setError(null)
         setHasEditedName(false)
         setCreateGitHubRepo(false)
+        creationTokenRef.current = null
 
         // Resolve cached gh CLI status (fires once per app session)
         if (mode === "empty") {
@@ -228,7 +232,12 @@ export function CreateProjectDialog({
     },
     [navigate, onOpenChange],
   )
-  const isCreateProjectDisabled = isSubmitting || (mode === "empty" && name.trim().length === 0)
+  const isCreateProjectDisabled =
+    isSubmitting ||
+    (mode === "empty" && name.trim().length === 0) ||
+    // Submitting mid-inspection silently dropped the folder's remote/branch
+    // from the imported project.
+    (mode === "local" && Boolean(localGitState?.isLoading))
 
   const handleSubmit = useCallback(async () => {
     if (!convexUserId || isSubmitting) {
@@ -259,22 +268,40 @@ export function CreateProjectDialog({
     setIsSubmitting(true)
     setError(null)
 
-    let createdWorkspaceId: string | null = null
-
     try {
-      if (mode === "empty") {
+      if (mode === "local") {
+        // Same pipeline as every other local-import entry point; the dialog
+        // only differs in rendering the failure inline.
+        const importResult = await importPickedLocalFolder(trimmedLocalFolderPath, {
+          reportError: "return",
+        })
+        if (importResult.outcome === "imported") {
+          onOpenChange(false)
+        } else if (importResult.outcome === "error") {
+          setError(importResult.errorMessage ?? "Failed to import the local folder.")
+        }
+        return
+      }
+
+      // mode === "empty"
+      let createdProjectId: Id<"projects"> | null = null
+      let createdWorkspaceId: string | null = null
+      try {
+        creationTokenRef.current ??= crypto.randomUUID()
         const result = await createProject({
           userId: convexUserId,
           name: trimmedName,
           template: "blank",
           creationPath: "fresh",
+          status: "provisioning",
+          creationToken: creationTokenRef.current,
         })
+        // Only a freshly-created doc is ours to roll back on failure.
+        const createdThisRun = !result.resumed
+        if (createdThisRun) {
+          createdProjectId = result.projectId
+        }
 
-        console.log("[CreateProjectDialog] Calling workspace.createForProject with:", {
-          projectId: result.projectId,
-          slug: buildFilesystemSlug(trimmedName),
-          rootPathOverride: trimmedParentDirectory,
-        })
         const createWorkspaceResult = await window.electronAPI.workspace!.createForProject({
           projectId: result.projectId,
           slug: buildFilesystemSlug(trimmedName),
@@ -282,108 +309,89 @@ export function CreateProjectDialog({
           rootPathOverride: trimmedParentDirectory,
           setActive: true,
         })
-        console.log("[CreateProjectDialog] createWorkspaceResult:", createWorkspaceResult)
 
         if (!createWorkspaceResult.success || !createWorkspaceResult.workspace) {
-          throw new Error(createWorkspaceResult.error || "Failed to create the local project folder.")
+          throw new Error(
+            formatWorkspaceBindFailure(
+              createWorkspaceResult,
+              "Failed to create the local project folder.",
+            ),
+          )
         }
 
-        createdWorkspaceId = createWorkspaceResult.workspace.workspaceId
+        const workspaceId = createWorkspaceResult.workspace.workspaceId
+        if (createdThisRun) {
+          createdWorkspaceId = workspaceId
+        }
 
-        // Optionally create a GitHub repo
-        let gitHubRepoUrl: string | undefined
+        // GitHub repo is best-effort: the project works without it, so a gh
+        // failure must not torch the project + folder we just created.
         if (createGitHubRepo) {
           const ghResult = await window.electronAPI.project.createGitHubRepo({
-            workspaceId: createdWorkspaceId,
+            workspaceId,
             name: buildFilesystemSlug(trimmedName),
             visibility: repoVisibility,
           })
-          if (!ghResult.success) {
-            throw new Error(ghResult.error || "Failed to create GitHub repository.")
+          if (ghResult.success && ghResult.repoUrl) {
+            await setSourceControl({
+              projectId: result.projectId,
+              userId: convexUserId,
+              provider: "github",
+              repoUrl: ghResult.repoUrl,
+              defaultBranch: ghResult.defaultBranch ?? "main",
+              visibility: repoVisibility,
+              workingCopyMode: "managed",
+              setupMode: "personal",
+            })
+          } else {
+            appToast.error({
+              title: "GitHub repository not created",
+              description: ghResult.error ?? "You can publish the project from settings later.",
+            })
           }
-          gitHubRepoUrl = ghResult.repoUrl
         }
 
-        if (gitHubRepoUrl) {
-          // If we created a GitHub repo, update the project with sourceControl
-          // (This requires a mutation to update sourceControl, but since we already created it,
-          //  we might need a new mutation or just skip it for now. Actually, let's just leave it 
-          //  as created in GitHub. The app will sync it.)
-        }
-
+        // Local effects done: the saga finalizes the doc to active.
         await updateProjectStatus({
           projectId: result.projectId,
           userId: convexUserId,
           status: "active",
         })
+        creationTokenRef.current = null
 
         navigateToProjectWorkbench(
           String(result.projectId),
           result.slug,
-          createdWorkspaceId,
+          workspaceId,
           trimmedName,
         )
-        return
-      }
-
-      if (mode === "local") {
-        const existingRemoteUrl = localGitState?.remoteUrl?.trim() || ""
-        const normalizedBranch = localGitState?.branch || "main"
-        const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
-        const result = await createProject({
-          userId: convexUserId,
-          name: trimmedName,
-          template: "blank",
-          creationPath: "repo",
-          sourceControl: existingRemoteUrl && provider
-            ? {
-                provider,
-                repoUrl: existingRemoteUrl,
-                defaultBranch: normalizedBranch,
-                workingCopyMode: "attached",
-                setupMode: "personal",
-              }
-            : undefined,
-          repoSource: existingRemoteUrl && provider
-            ? {
-                provider,
-                repoUrl: existingRemoteUrl,
-                branch: normalizedBranch,
-              }
-            : undefined,
-        })
-
-        console.log("[CreateProjectDialog] Calling workspace.bindExistingFolder with:", {
-          projectId: result.projectId,
-          folderPath: trimmedLocalFolderPath,
-        })
-        const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
-          projectId: result.projectId,
-          folderPath: trimmedLocalFolderPath,
-          writeMarker: true,
-          setActive: true,
-        })
-        console.log("[CreateProjectDialog] bindResult:", bindResult)
-
-        if (!bindResult.success || !bindResult.workspace) {
-          throw new Error(bindResult.error || "Failed to bind local folder.")
+      } catch (creationError) {
+        // Compensate in reverse, undoing only what this run created: release
+        // the local workspace (catalog row + on-disk marker) before deleting
+        // the cloud doc. Without the forget, a later-step failure left a live
+        // marker that turned every retry into a duplicate_path conflict.
+        if (createdWorkspaceId) {
+          try {
+            await window.electronAPI.workspace!.forget(createdWorkspaceId)
+          } catch (cleanupError) {
+            console.warn("[CreateProjectDialog] Failed to release workspace after error:", cleanupError)
+          }
         }
-        
-        createdWorkspaceId = bindResult.workspace.workspaceId
-
-        await updateProjectStatus({
-          projectId: result.projectId,
-          userId: convexUserId,
-          status: "active",
-        })
-
-        navigateToProjectWorkbench(
-          String(result.projectId),
-          result.slug,
-          createdWorkspaceId,
-          trimmedName,
-        )
-        return
+        if (createdProjectId) {
+          try {
+            await deleteProject({
+              projectId: createdProjectId,
+              userId: convexUserId,
+              confirmName: trimmedName,
+            })
+            creationTokenRef.current = null
+          } catch (cleanupError) {
+            // Keep the token: the next attempt resumes the surviving
+            // provisioning doc instead of duplicating it.
+            console.warn("[CreateProjectDialog] Failed to clean up project after error:", cleanupError)
+          }
+        }
+        throw creationError
       }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to create project.")
@@ -394,14 +402,17 @@ export function CreateProjectDialog({
     convexUserId,
     createGitHubRepo,
     createProject,
+    deleteProject,
+    importPickedLocalFolder,
     isSubmitting,
     localFolderPath,
-    localGitState?.branch,
-    localGitState?.remoteUrl,
     mode,
     name,
     navigateToProjectWorkbench,
+    onOpenChange,
     parentDirectory,
+    repoVisibility,
+    setSourceControl,
     updateProjectStatus,
   ])
 

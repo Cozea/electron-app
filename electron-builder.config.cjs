@@ -18,7 +18,6 @@ const macUniversalX64ArchFilePackages = [
   "@tailwindcss/oxide-darwin-*",
   "@vscode/ripgrep",
   "7zip-bin/mac/x64",
-  "better-sqlite3/build/Release",
   "esbuild",
   "lightningcss-darwin-*",
   "msgpackr-extract/build/Release",

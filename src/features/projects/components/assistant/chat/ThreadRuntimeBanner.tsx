@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertCircleIcon as __CircleAlertIconHugeIcon,
@@ -15,6 +15,8 @@ interface ThreadRuntimeBannerProps {
   state: ThreadRuntimeBannerState;
   detail?: string | null;
   isForceStopAvailable?: boolean;
+  /** One-click fix (install CLI / run login) when the detail is actionable. */
+  action?: ReactNode;
 }
 
 function bannerPresentation(state: ThreadRuntimeBannerState, isForceStopAvailable: boolean | undefined) {
@@ -89,6 +91,7 @@ export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
           {detail ? (
             <p className="mt-0.5 text-xs leading-5 opacity-85">{detail}</p>
           ) : null}
+          {props.action ? <div className="mt-1.5">{props.action}</div> : null}
         </div>
         <button
           onClick={() => setDismissedKey(currentKey)}
