@@ -133,6 +133,59 @@ export function buildBranchSessionLaneId(branch: string, collabBranch: string): 
   return `${LOCAL_LANE_PREFIX}${encodeURIComponent(normalizeBranch(branch, collabBranch))}`
 }
 
+export type LaneBranchResolution =
+  | { kind: "resolved"; branch: string; remember: boolean }
+  | { kind: "unresolved" }
+
+interface GitStatusLike {
+  success?: boolean
+  isRepo?: boolean
+  currentBranch?: string | null
+}
+
+/**
+ * Decide which branch a workspace's lane state is built from. Lane ids derive
+ * from `branch === collabBranch`, so the branch must never be guessed: a
+ * fabricated fallback flips the workbench scope key and strands every open
+ * tile under the previous key (the "came back to an empty workspace" bug).
+ *
+ * Only two answers are allowed to resolve a branch we'll act on:
+ *  - a successful git status (fresh truth; the only case worth persisting), or
+ *  - the stored branch session (last fresh truth).
+ * A definitive "not a git repo" resolves to the collab lane — that is its
+ * stable home, not a guess. Anything transient (IPC rejection, authorization
+ * not ready, git error) with no prior knowledge stays unresolved and the
+ * caller retries.
+ */
+export function resolveLaneBranchKnowledge(args: {
+  statusResult: GitStatusLike | null | undefined
+  storedBranch: string | null
+  collabBranch: string
+}): LaneBranchResolution {
+  const { statusResult, storedBranch, collabBranch } = args
+
+  const freshBranch = statusResult?.success ? statusResult.currentBranch?.trim() : null
+  if (freshBranch) {
+    return { kind: "resolved", branch: freshBranch, remember: true }
+  }
+
+  if (statusResult?.success && statusResult.isRepo === false) {
+    return { kind: "resolved", branch: collabBranch, remember: false }
+  }
+
+  if (storedBranch?.trim()) {
+    return { kind: "resolved", branch: storedBranch.trim(), remember: false }
+  }
+
+  // Repo with no readable branch (detached HEAD, unborn HEAD) and no history:
+  // collab is as good as it gets, and it is stable for that repo state.
+  if (statusResult?.success && statusResult.isRepo) {
+    return { kind: "resolved", branch: collabBranch, remember: false }
+  }
+
+  return { kind: "unresolved" }
+}
+
 export function resolveBranchSessionLaneBranch(
   laneId: string | null | undefined,
   collabBranch: string,

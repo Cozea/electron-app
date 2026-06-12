@@ -689,6 +689,8 @@ body {
   backdrop-filter: blur(22px) saturate(1.12);
   -webkit-backdrop-filter: blur(22px) saturate(1.12);
   isolation: isolate;
+  /* Sidebar reads as recessed: the content surface casts a soft shadow onto its right edge. */
+  box-shadow: inset -28px 0 32px -20px rgb(0 0 0 / 0.07);
 }
 
 .dark .sidebar-glass [data-slot="sidebar-inner"],
@@ -697,6 +699,7 @@ body {
 .forest .sidebar-glass [data-slot="sidebar-inner"],
 .clay .sidebar-glass [data-slot="sidebar-inner"] {
   background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
+  box-shadow: inset -32px 0 36px -22px rgb(0 0 0 / 0.18);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -1430,6 +1433,14 @@ body {
 .bg-sidebar {
   /* Override standard bg-sidebar to allow vibrancy to show through */
   background-color: var(--sidebar-surface);
+}
+
+/* Live sidebar resize: suspend the width animations (root + gap + container)
+   so the drag tracks the pointer instead of rubber-banding. */
+.sidebar-resizing,
+.sidebar-resizing [data-slot="sidebar-gap"],
+.sidebar-resizing [data-slot="sidebar-container"] {
+  transition: none !important;
 }
 
 [data-slot="sidebar"][data-side="left"] {

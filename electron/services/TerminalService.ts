@@ -113,6 +113,25 @@ export class TerminalService {
     }
   }
 
+  /**
+   * Drop every per-terminal cache for a destroyed terminal. Exited terminals
+   * intentionally retain their snapshot/output for re-attach, so this runs on
+   * explicit kill/teardown — not on plain exit — to bound memory over long
+   * sessions (snapshot + up to MAX_TERMINAL_REPLAY_EVENTS per terminal).
+   */
+  private evictTerminalCaches(terminalId: string): void {
+    const workspaceId = this.getWorkspaceIdForTerminal(terminalId)
+    if (workspaceId) {
+      this.removeWorkspaceTerminal(workspaceId, terminalId)
+    }
+    this.terminalSnapshots.delete(terminalId)
+    this.terminalInfos.delete(terminalId)
+    this.terminalOutputEvents.delete(terminalId)
+    this.terminalWorkspaceIds.delete(terminalId)
+    this.activeTerminalIds.delete(terminalId)
+    this.terminalObservers.delete(terminalId)
+  }
+
   private registerOutputTarget(sender: WebContents): void {
     if (sender.isDestroyed()) return
     if (this.outputTargets.has(sender)) return
@@ -506,13 +525,14 @@ export class TerminalService {
   }
 
   killTerminal(terminalId: string): boolean {
-    const exists = this.activeTerminalIds.has(terminalId)
-    if (!exists) {
-      return false
+    const wasActive = this.activeTerminalIds.has(terminalId)
+    if (wasActive) {
+      void this.runtimeClient.request<{ success: boolean }>('terminal.kill', { terminalId }).catch(() => {})
     }
-
-    void this.runtimeClient.request<{ success: boolean }>('terminal.kill', { terminalId }).catch(() => {})
-    return true
+    // Free caches whether the terminal was still running or already exited —
+    // killing/closing a tile is the teardown signal that retention is over.
+    this.evictTerminalCaches(terminalId)
+    return wasActive
   }
 
   registerIpcHandlers(): void {
@@ -601,8 +621,16 @@ export class TerminalService {
 
   killAll(): void {
     void this.runtimeClient.request<{ success: boolean }>('terminal.killAll', {}).catch(() => {})
+    // Clear every per-terminal cache, not just the two that were cleared
+    // before — snapshots/infos/output buffers/workspace ids/observers all
+    // leaked across a full teardown otherwise.
     this.activeTerminalIds.clear()
     this.workspaceTerminals.clear()
+    this.terminalSnapshots.clear()
+    this.terminalInfos.clear()
+    this.terminalOutputEvents.clear()
+    this.terminalWorkspaceIds.clear()
+    this.terminalObservers.clear()
     this.runtimeClient.dispose()
   }
 }

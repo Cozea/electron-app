@@ -1,5 +1,6 @@
-import fs from "node:fs"
+import fs from "node:fs/promises"
 import path from "node:path"
+import type { Dirent } from "node:fs"
 import type {
   RepoIdentity,
   WorkspaceCandidate,
@@ -31,11 +32,9 @@ export async function scanForCandidates(
   const candidates: WorkspaceCandidate[] = []
 
   for (const root of roots) {
-    if (!fs.existsSync(root)) continue
-
-    let entries: fs.Dirent[]
+    let entries: Dirent[]
     try {
-      entries = fs.readdirSync(root, { withFileTypes: true })
+      entries = await fs.readdir(root, { withFileTypes: true })
     } catch {
       continue
     }
@@ -69,7 +68,7 @@ async function scoreCandidate(
 
   let realPath = candidatePath
   try {
-    realPath = fs.realpathSync(candidatePath)
+    realPath = await fs.realpath(candidatePath)
   } catch {
     // use original
   }

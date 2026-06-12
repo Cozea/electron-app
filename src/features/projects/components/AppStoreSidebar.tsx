@@ -2,17 +2,13 @@ import * as React from "react"
 
 import { NavUser } from "@/components/nav-user"
 import {
-
-  Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInput,
-  SidebarRail,
   SidebarSeparator,
-  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useTranslation } from "@/lib/i18n"
 import { useSearchParams } from "@/lib/router"
@@ -31,7 +27,8 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon, Search01Icon as __SearchHugeIcon } from '@hugeicons/core-free-icons'
 
-interface AppStoreSidebarProps extends React.ComponentProps<typeof Sidebar> {
+/** Content-only: renders inside the persistent AppSidebarShell. */
+interface AppStoreSidebarProps {
   user?: {
     email: string
     firstName?: string | null
@@ -63,7 +60,7 @@ function AppStoreSidebarNavRow({
   )
 }
 
-export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarProps) {
+export function AppStoreSidebar({ user }: AppStoreSidebarProps) {
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -95,22 +92,7 @@ export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarPr
   )
 
   return (
-    <Sidebar
-      collapsible="offcanvas"
-      windowChromeAware
-      windowChromeEndAddon={
-        <SidebarTrigger
-          className={cn(
-            "h-7 w-7 shrink-0 rounded-md",
-            "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
-          )}
-        />
-      }
-      rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
-      rootStyle={{ "--sidebar-width": "14rem" } as React.CSSProperties}
-      className="z-20 h-full min-w-0 sidebar-glass"
-      {...props}
-    >
+    <>
       <SidebarHeader className="gap-3 px-3 pt-3 pb-2">
         <button
           type="button"
@@ -154,8 +136,7 @@ export function AppStoreSidebar({ user, className, ...props }: AppStoreSidebarPr
       <SidebarFooter className="gap-3 p-3">
         <NavUser user={user} />
       </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+    </>
   )
 }
 
