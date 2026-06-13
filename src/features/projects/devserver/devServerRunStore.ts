@@ -464,6 +464,12 @@ export async function startDevServerRun(key: string): Promise<void> {
         failureReason: null,
         error: null,
       }))
+    } else {
+      // A success without a reachable port can't surface a preview, and there
+      // is no renderer-side probe or timeout to rescue it — leaving the run in
+      // 'starting' would strand the tile on a permanent spinner. Treat it as an
+      // error so the user gets a recoverable Stop/Retry state instead.
+      throw new Error('Dev server started but reported no reachable port')
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
@@ -483,9 +489,15 @@ export async function startDevServerRun(key: string): Promise<void> {
   }
 }
 
-export async function stopDevServerRun(key: string): Promise<void> {
+/**
+ * Returns true when the stop succeeded (run is now 'stopped'); false when main
+ * reported a failed stop or the IPC threw, in which case the run was left in
+ * 'error' and the underlying process may still be alive. Callers that chain a
+ * start (restart) must honor a false result.
+ */
+export async function stopDevServerRun(key: string): Promise<boolean> {
   const context = runtime.store.getState().contexts[key]
-  if (!context?.workspaceId) return
+  if (!context?.workspaceId) return false
 
   const currentRunId = getRun(key).runId
 
@@ -510,7 +522,7 @@ export async function stopDevServerRun(key: string): Promise<void> {
         type: 'error',
         message: result.error ?? 'Failed to stop dev server',
       })
-      return
+      return false
     }
 
     if (currentRunId) {
@@ -526,13 +538,21 @@ export async function stopDevServerRun(key: string): Promise<void> {
       failureReason: null,
     }))
     appendTimeline(key, { runId: currentRunId, type: 'stopped', message: 'Dev server stopped' })
+    return true
   } catch (error) {
     console.error('[DevServer] Failed to stop:', error)
+    return false
   }
 }
 
 export async function restartDevServerRun(key: string): Promise<void> {
-  await stopDevServerRun(key)
+  // If the stop failed, main left the run in 'error' with the process possibly
+  // still holding its port. Scheduling a start over that would flip the UI to a
+  // misleading 'starting' and provoke a second failed stop in main — bail and
+  // surface the stop error instead.
+  const stopped = await stopDevServerRun(key)
+  if (!stopped) return
+
   getScheduler(key).schedule(() => {
     void startDevServerRun(key)
   })

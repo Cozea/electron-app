@@ -590,7 +590,7 @@ export class GitSyncService {
             hadConflicts:
               Boolean(autoResolveResult?.remainingConflictedPaths?.length) ||
               (statusAfterFailure.success && statusAfterFailure.isRepo && Boolean(statusAfterFailure.hasConflicts)) ||
-              /conflict/i.test(cherryPick.error),
+              /conflict/i.test(cherryPick.error ?? ''),
             conflictedPaths:
               autoResolveResult?.remainingConflictedPaths ??
               (statusAfterFailure.success && statusAfterFailure.isRepo

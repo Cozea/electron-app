@@ -212,6 +212,13 @@ interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
   runtimeErrorMessage: string | null
   workspaceId: string | null
+  /**
+   * Absolute filesystem root of the bound workspace. Used only to trim
+   * absolute tool/changedFiles paths down to a `projectName/relative/path`
+   * label in the timeline. This is the real path, NOT the opaque
+   * `workspaceId` catalog id (which only resolves file opens in main).
+   */
+  workspaceRoot?: string | null
   thread: Thread | null
   providerSnapshot: ServerProvider | null
   isRunning: boolean
@@ -1660,7 +1667,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               dockedComposerScrollInsetPx={dockedComposerScrollInsetPx}
               resolvedTheme={resolvedTheme}
               workspaceId={workspaceIdForFileActions}
-              workspaceRoot={undefined}
+              workspaceRoot={props.workspaceRoot ?? undefined}
             />
           </div>
         )}

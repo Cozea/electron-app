@@ -51,6 +51,7 @@ import {
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
 import { ensureNativeApi } from "@/lib/nativeApi"
+import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
 import {
   createAssistantProjectSelectorForTile,
@@ -196,6 +197,40 @@ export function useWorkbenchAssistantTileController(
       [draftTargetKey],
     ),
   )
+
+  // Absolute filesystem root of the bound workspace, used to trim absolute
+  // tool/changedFiles/proposed-plan paths down to workspace-relative labels in
+  // the timeline. The runtime context already exposes the real root via
+  // `input.projectRootPath`; only fall back to resolving from the opaque
+  // workspaceId when that is unavailable.
+  const [resolvedWorkspaceRoot, setResolvedWorkspaceRoot] = useState<string | null>(null)
+  useEffect(() => {
+    if (input.projectRootPath) {
+      setResolvedWorkspaceRoot(input.projectRootPath)
+      return
+    }
+    if (!input.workspaceId) {
+      setResolvedWorkspaceRoot(null)
+      return
+    }
+    let cancelled = false
+    const workspaceId = input.workspaceId
+    void projectAnalysisDesktopClient
+      .resolveRoot(workspaceId)
+      .then((root) => {
+        if (!cancelled) {
+          setResolvedWorkspaceRoot(root)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedWorkspaceRoot(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [input.projectRootPath, input.workspaceId])
 
   useEffect(() => {
     if (!thread?.id) {
@@ -1527,6 +1562,7 @@ export function useWorkbenchAssistantTileController(
       isRuntimeReady,
       runtimeErrorMessage,
       workspaceId: input.workspaceId,
+      workspaceRoot: resolvedWorkspaceRoot,
       thread: visibleThread,
       providerSnapshot,
       isRunning,

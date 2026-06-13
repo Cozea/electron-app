@@ -83,6 +83,12 @@ export const useChangesSidebarStore = create<ChangesSidebarState>()(
         width: state.width,
         viewMode: state.viewMode,
       }),
+      // The persisted shape (isOpen/width/viewMode) is unchanged across v1->v2,
+      // so carry the previously persisted preferences through rather than
+      // discarding them (zustand drops persisted state on a version mismatch
+      // when no migrate fn is provided).
+      migrate: (persistedState) =>
+        persistedState as Pick<ChangesSidebarState, "isOpen" | "width" | "viewMode">,
     },
   ),
 )

@@ -120,8 +120,12 @@ const buildEntry = <R>(input: {
       };
     }
 
-    const childScope = yield* Scope.make();
-    yield* Scope.addFinalizer(parentScope, Scope.close(childScope, Exit.void).pipe(Effect.ignore));
+    // Use Scope.fork (not Scope.make + addFinalizer) so the parent-scope finalizer
+    // registered for this child is removed when the child scope is closed directly
+    // on reconcile (remove/replace). With Scope.make the parent finalizer would
+    // never be detached, growing the parent's finalizer list unbounded across
+    // reconciles. Scope.fork links the child to the parent and self-cleans on close.
+    const childScope = yield* Scope.fork(parentScope);
     const typedConfig = decodeExit.value;
     const createExit = yield* Effect.exit(
       driver

@@ -759,22 +759,26 @@ function writeThreadFromReadModel(
     // Snapshot resyncs deserialize fresh objects, so raw identity always
     // differs even when nothing changed — and rebuilding every thread's
     // message slice froze the renderer for seconds on cold project switches.
-    // A cheap content fingerprint (length + last id + last text length +
-    // streaming flag) detects the identical case and keeps the existing slice.
+    // A cheap content fingerprint detects the identical case and keeps the
+    // existing slice. We compare EVERY message (id + text length + streaming
+    // flag), not just the last one, because the projector edits messages in
+    // place by id — an in-place edit to a non-last message with an unchanged
+    // text length would otherwise slip past a last-message-only fingerprint.
     const existingIds = nextState.messageIdsByThreadId[thread.id];
     const existingById = nextState.messageByThreadId[thread.id];
-    const lastRaw = thread.messages.at(-1);
-    const lastExistingId = existingIds?.at(-1);
-    const lastExisting = lastExistingId ? existingById?.[lastExistingId] : undefined;
     const sliceLooksCurrent =
       existingIds !== undefined &&
       existingById !== undefined &&
       existingIds.length === thread.messages.length &&
-      lastRaw?.id === lastExistingId &&
-      (lastRaw === undefined ||
-        (lastExisting !== undefined &&
-          (lastRaw.text?.length ?? 0) === (lastExisting.text?.length ?? 0) &&
-          Boolean(lastRaw.streaming) === Boolean(lastExisting.streaming)));
+      thread.messages.every((raw, index) => {
+        if (existingIds[index] !== raw.id) return false;
+        const existing = existingById[raw.id];
+        return (
+          existing !== undefined &&
+          (raw.text?.length ?? 0) === (existing.text?.length ?? 0) &&
+          Boolean(raw.streaming) === Boolean(existing.streaming)
+        );
+      });
     if (!sliceLooksCurrent) {
       const messageSlice = buildMessageSlice(thread);
       nextState = {
@@ -866,7 +870,19 @@ function writeThreadFromReadModel(
           existing.status === raw.status &&
           existing.checkpointTurnCount === raw.checkpointTurnCount &&
           existing.checkpointRef === raw.checkpointRef &&
-          existing.files.length === raw.files.length
+          (existing.assistantMessageId ?? undefined) ===
+            (raw.assistantMessageId ?? undefined) &&
+          existing.files.length === raw.files.length &&
+          existing.files.every((existingFile, index) => {
+            const rawFile = raw.files[index];
+            return (
+              rawFile !== undefined &&
+              existingFile.path === rawFile.path &&
+              existingFile.kind === rawFile.kind &&
+              existingFile.additions === rawFile.additions &&
+              existingFile.deletions === rawFile.deletions
+            );
+          })
         );
       });
     if (!diffSliceLooksCurrent) {

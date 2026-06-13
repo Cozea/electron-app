@@ -52,6 +52,17 @@ export const getFileUrl = query({
   },
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId, args.userId)
+
+    // Verify the storage object actually belongs to this project before minting
+    // a URL, otherwise a project member could download any file in the deployment.
+    const file = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_storage_id", (q) => q.eq("storageId", args.storageId))
+      .first()
+    if (!file || file.projectId !== args.projectId) {
+      throw new ConvexError("File not found in this project")
+    }
+
     return await ctx.storage.getUrl(args.storageId)
   },
 })

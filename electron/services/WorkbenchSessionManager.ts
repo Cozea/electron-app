@@ -248,6 +248,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     nextLifecycle: WorkbenchSessionLifecycle,
     reason: string,
   ): void {
+    void sessionKey
     void reason
     if (previousLifecycle === nextLifecycle) {
       return
@@ -649,6 +650,23 @@ export class WorkbenchSessionManager extends EventEmitter<{
     // the broadcast is coalesced. Bursts of mutations within a tick collapse
     // to at most one emit per session, and content-identical states are
     // suppressed entirely.
+    //
+    // 'closed' is a terminal transition the renderer must observe to tear down
+    // its tile. buildSessionKey is deterministic, so a close-then-re-ensure of
+    // the same key within one tick would otherwise overwrite the pending
+    // 'closed' snapshot with a fresh 'backgroundWarm' one and silently drop the
+    // close broadcast. Flush the pending close synchronously before it is
+    // replaced by a non-closed snapshot so the transition is never lost.
+    const previousPending = this.pendingStateEmits.get(sessionKey)
+    if (
+      previousPending &&
+      previousPending.lifecycle === 'closed' &&
+      snapshot.lifecycle !== 'closed'
+    ) {
+      this.pendingStateEmits.delete(sessionKey)
+      this.lastEmittedComparable.delete(sessionKey)
+      this.emit('stateChanged', previousPending)
+    }
     this.pendingStateEmits.set(sessionKey, snapshot)
     if (!this.stateEmitFlushScheduled) {
       this.stateEmitFlushScheduled = true
@@ -810,7 +828,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     record.browserBindings = {}
 
     if (record.workspaceId) {
-      await this.devServerService.stop(record.workspaceId).catch(() => ({ success: false }))
+      await this.devServerService.stop(record.workspaceId, record.laneId).catch(() => ({ success: false }))
     }
 
     if (record.nativePreviewLocator) {
@@ -948,11 +966,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
         actualWorkspaceId: snapshot.workspaceId,
       })
       return this.emitState(sessionKey, record)
-    }
-    if (!record.workspaceId && snapshot?.workspaceId) {
-      // workspaceId is no longer dynamically owned via registry.
-      // If we don't have a workspaceId but the terminal does, we don't bind it blindly if we had ownership checks,
-      // but under the new catalog, terminals are bound by workspaceId + laneId directly.
     }
     record.terminalBindings[input.tileId] = input.terminalId
     this.persist()

@@ -17,6 +17,17 @@ interface StoredProjectBranchSessionState {
   sessions: Record<string, StoredProjectBranchSession>
 }
 
+/**
+ * The v1 on-disk shape: identical to v2 except the folder path lived under
+ * `projectPath` (renamed to `workspaceId` in v2). Records may carry either
+ * field depending on which build wrote them.
+ */
+interface LegacyProjectBranchSession
+  extends Omit<StoredProjectBranchSession, "workspaceId"> {
+  workspaceId?: string | null
+  projectPath?: string | null
+}
+
 function normalizeProjectId(projectId: string | null | undefined): string | null {
   const trimmed = projectId?.trim()
   return trimmed ? trimmed : null
@@ -88,7 +99,7 @@ function readState(): StoredProjectBranchSessionState {
       "projects" in parsed &&
       parsed.projects &&
       typeof parsed.projects === "object"
-        ? (parsed.projects as Record<string, StoredProjectBranchSession>)
+        ? (parsed.projects as Record<string, LegacyProjectBranchSession>)
         : null
 
     if (!legacyProjects) {
@@ -102,12 +113,19 @@ function readState(): StoredProjectBranchSessionState {
         continue
       }
 
+      // v1 records persisted the folder path under `projectPath`; the field
+      // was renamed to `workspaceId` in v2. Read the legacy name so migrated
+      // sessions stay scoped to their folder instead of collapsing onto the
+      // single `${projectId}::unbound` key.
+      const legacyWorkspaceId = session.workspaceId ?? session.projectPath
+      const { projectPath: _legacyProjectPath, ...rest } = session
+
       nextState.sessions[
-        buildSessionStorageKey(normalizedProjectId, session.workspaceId)
+        buildSessionStorageKey(normalizedProjectId, legacyWorkspaceId)
       ] = {
-        ...session,
+        ...rest,
         projectId: normalizedProjectId,
-        workspaceId: normalizeProjectPath(session.workspaceId),
+        workspaceId: normalizeProjectPath(legacyWorkspaceId),
       }
     }
 

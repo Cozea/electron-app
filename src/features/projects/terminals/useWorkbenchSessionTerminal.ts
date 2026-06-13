@@ -124,6 +124,14 @@ export function useWorkbenchSessionTerminal({
         })
 
         if (cancelled) {
+          // The effect was torn down (lane/project switch or unmount) while
+          // terminal.create was in flight. The PTY now exists in main but is
+          // not bound to any session, so no reaper would ever reclaim it —
+          // kill it here to avoid leaking PTYs (macOS openpty ENXIO pool
+          // exhaustion; see the note at the top of this file).
+          if (result.success && result.terminalId) {
+            void window.electronAPI.terminal.kill({ terminalId: result.terminalId })
+          }
           return
         }
 

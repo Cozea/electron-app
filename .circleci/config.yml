@@ -91,6 +91,11 @@ jobs:
             source "$BASH_ENV"
             bun run typecheck:assistant-runtime
       - run:
+          name: Typecheck electron
+          command: |
+            source "$BASH_ENV"
+            bun run typecheck:electron
+      - run:
           name: Lint
           command: |
             source "$BASH_ENV"

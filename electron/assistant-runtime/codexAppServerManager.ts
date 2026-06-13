@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -7,6 +6,7 @@ import readline from "node:readline";
 import {
   ApprovalRequestId,
   EventId,
+  ProviderDriverKind,
   ProviderItemId,
   ProviderRequestKind,
   type ProviderUserInputAnswers,
@@ -171,6 +171,7 @@ const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "unknown thread",
   "does not exist",
 ];
+const CODEX_PROVIDER = ProviderDriverKind.make("codex");
 const CODEX_DEFAULT_MODEL = "gpt-5.3-codex";
 const CODEX_SPARK_MODEL = "gpt-5.3-codex-spark";
 const CODEX_SPARK_DISABLED_PLAN_TYPES = new Set<CodexPlanType>(["free", "go", "plus"]);
@@ -540,7 +541,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       const resolvedCwd = input.cwd ?? process.cwd();
 
       const session: ProviderSession = {
-        provider: "codex",
+        provider: CODEX_PROVIDER,
         status: "connecting",
         runtimeMode: input.runtimeMode,
         model: normalizeCodexModelSlug(input.model),
@@ -730,7 +731,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         this.emitEvent({
           id: EventId.makeUnsafe(randomUUID()),
           kind: "error",
-          provider: "codex",
+          provider: CODEX_PROVIDER,
           threadId,
           createdAt: new Date().toISOString(),
           method: "session/startFailed",
@@ -930,7 +931,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.emitEvent({
       id: EventId.makeUnsafe(randomUUID()),
       kind: "notification",
-      provider: "codex",
+      provider: CODEX_PROVIDER,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
       method: "item/requestApproval/decision",
@@ -969,7 +970,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.emitEvent({
       id: EventId.makeUnsafe(randomUUID()),
       kind: "notification",
-      provider: "codex",
+      provider: CODEX_PROVIDER,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
       method: "item/tool/requestUserInput/answered",
@@ -1151,7 +1152,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.emitEvent({
       id: EventId.makeUnsafe(randomUUID()),
       kind: "notification",
-      provider: "codex",
+      provider: CODEX_PROVIDER,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
       method: notification.method,
@@ -1254,7 +1255,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.emitEvent({
       id: EventId.makeUnsafe(randomUUID()),
       kind: "request",
-      provider: "codex",
+      provider: CODEX_PROVIDER,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
       method: request.method,
@@ -1344,7 +1345,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.emitEvent({
       id: EventId.makeUnsafe(randomUUID()),
       kind: "session",
-      provider: "codex",
+      provider: CODEX_PROVIDER,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
       method,
@@ -1356,7 +1357,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.emitEvent({
       id: EventId.makeUnsafe(randomUUID()),
       kind: "error",
-      provider: "codex",
+      provider: CODEX_PROVIDER,
       threadId: context.session.threadId,
       createdAt: new Date().toISOString(),
       method,

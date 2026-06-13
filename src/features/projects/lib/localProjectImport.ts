@@ -103,6 +103,28 @@ function parseGitHeadBranch(headText: string): string | null {
   return match?.[1]?.trim() || null
 }
 
+/**
+ * When HEAD is detached (a raw SHA, not `ref: refs/heads/...`), parseGitHeadBranch
+ * yields nothing. Resolve the repo's default branch from
+ * `refs/remotes/origin/HEAD`, which is a symbolic ref of the form
+ * `ref: refs/remotes/origin/<branch>`. Falls back to packed-refs, where the same
+ * ref is stored as a one-line target without the `ref:` prefix. Returns null when
+ * no default branch can be determined (e.g. no origin remote).
+ */
+async function resolveDefaultBranchForDetachedHead(gitDir: string): Promise<string | null> {
+  const headRef = await window.electronAPI.fs.readFile(
+    joinFsPath(gitDir, "refs", "remotes", "origin", "HEAD"),
+  )
+  const looseMatch = headRef?.match(/ref:\s*refs\/remotes\/origin\/(.+?)\s*$/i)
+  if (looseMatch?.[1]) {
+    return looseMatch[1].trim()
+  }
+
+  const packedRefs = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "packed-refs"))
+  const packedMatch = packedRefs?.match(/^refs\/remotes\/origin\/HEAD\b.*?refs\/remotes\/origin\/(.+?)\s*$/im)
+  return packedMatch?.[1]?.trim() || null
+}
+
 /** Resolve the real .git directory for a folder, following a `gitdir:` link
  * file (worktrees / submodules). Returns null when the folder isn't a repo. */
 async function resolveGitDir(folderPath: string): Promise<string | null> {
@@ -141,7 +163,11 @@ export async function inspectLocalGitState(folderPath: string): Promise<LocalGit
     }
 
     const headText = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "HEAD"))
-    const branch = (headText ? parseGitHeadBranch(headText) : null) || "main"
+    const headBranch = headText ? parseGitHeadBranch(headText) : null
+    // Detached HEAD (raw SHA, no `ref: refs/heads/...`): resolve the repo's real
+    // default branch instead of collapsing to "main" and losing it.
+    const branch =
+      headBranch ?? (await resolveDefaultBranchForDetachedHead(gitDir)) ?? "main"
     const configText = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "config"))
     const remoteUrl = configText ? parseGitRemoteUrl(configText) : null
 

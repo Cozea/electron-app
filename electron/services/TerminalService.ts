@@ -14,11 +14,26 @@ import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 import { TerminalProvenanceService } from './TerminalProvenanceService'
 import type {
   WorkbenchRuntimeEventMessage,
+  WorkbenchRuntimeTerminalActivityPayload,
   WorkbenchRuntimeTerminalCreateResult,
   WorkbenchRuntimeTerminalExitPayload,
+  WorkbenchRuntimeTerminalOutputPayload,
   WorkbenchRuntimeTerminalProvenancePayload,
 } from '../workbench-runtime/protocol'
 import { WorkbenchRuntimeClient } from './WorkbenchRuntimeClient'
+
+/**
+ * The runtime child always emits a payload that matches its event name, but the
+ * wire type {@link WorkbenchRuntimeEventMessage} declares `payload` as a flat
+ * union with no correlation to `event`, so a `switch (message.event)` cannot
+ * narrow the payload. This correlated view pairs each event with its concrete
+ * payload so the dispatch below is type-safe without per-call casts.
+ */
+type RuntimeEventByName =
+  | { event: 'terminal.output'; payload: WorkbenchRuntimeTerminalOutputPayload }
+  | { event: 'terminal.activity'; payload: WorkbenchRuntimeTerminalActivityPayload }
+  | { event: 'terminal.exit'; payload: WorkbenchRuntimeTerminalExitPayload }
+  | { event: 'terminal.provenance'; payload: WorkbenchRuntimeTerminalProvenancePayload }
 
 interface TerminalObserver {
   onOutput?: (event: TerminalOutputEvent & { workspaceId: string }) => void
@@ -132,7 +147,13 @@ export class TerminalService {
     this.terminalObservers.delete(terminalId)
   }
 
-  private registerOutputTarget(sender: WebContents): void {
+  /**
+   * Register a renderer WebContents as a target for terminal output/exit/
+   * activity broadcasts. Public so the workspaceId-aware IPC overrides in
+   * registerTerminalWorkspaceHandlers can hook the same target the built-in
+   * handlers do, without reaching into private state.
+   */
+  registerOutputTarget(sender: WebContents): void {
     if (sender.isDestroyed()) return
     if (this.outputTargets.has(sender)) return
 
@@ -342,18 +363,21 @@ export class TerminalService {
   }
 
   private handleRuntimeEvent(message: WorkbenchRuntimeEventMessage): void {
-    switch (message.event) {
+    // `event` is the authoritative discriminant; pair it with its concrete
+    // payload so each handler receives a precisely-typed value.
+    const runtimeEvent = message as RuntimeEventByName
+    switch (runtimeEvent.event) {
       case 'terminal.output':
-        this.handleRuntimeOutput(message.payload)
+        this.handleRuntimeOutput(runtimeEvent.payload)
         return
       case 'terminal.activity':
-        this.handleRuntimeActivity(message.payload)
+        this.handleRuntimeActivity(runtimeEvent.payload)
         return
       case 'terminal.exit':
-        this.handleRuntimeTerminalExit(message.payload)
+        this.handleRuntimeTerminalExit(runtimeEvent.payload)
         return
       case 'terminal.provenance':
-        this.handleRuntimeTerminalProvenance(message.payload)
+        this.handleRuntimeTerminalProvenance(runtimeEvent.payload)
         return
       default:
         return

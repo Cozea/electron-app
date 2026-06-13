@@ -82,16 +82,35 @@ export function WorkspaceRuntimeHosts() {
     [runtimeRecords],
   )
 
+  // Per-window file-change interest roots: the workspace git roots this window
+  // hosts. Empty roots make the main process broadcast every external file
+  // change to every window, so keep this populated from the live hosts.
+  const interestRoots = useMemo(() => {
+    const seen = new Set<string>()
+    const roots: string[] = []
+
+    for (const record of hostedRuntimeRecords) {
+      const root = record.config.gitCwd?.trim()
+      if (!root || seen.has(root)) {
+        continue
+      }
+      seen.add(root)
+      roots.push(root)
+    }
+
+    return roots
+  }, [hostedRuntimeRecords])
+
   useEffect(() => {
     const yjsApi = window.electronAPI?.yjs
     if (!yjsApi?.setInterestRoots) {
       return
     }
 
-    void yjsApi.setInterestRoots({ roots: [] }).catch((error) => {
+    void yjsApi.setInterestRoots({ roots: interestRoots }).catch((error) => {
       console.warn("[WorkspaceRuntimeHosts] Failed to update Yjs interest roots", error)
     })
-  }, [])
+  }, [interestRoots])
 
   useEffect(() => {
     refreshLifecycles()

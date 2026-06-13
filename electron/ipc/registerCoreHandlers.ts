@@ -131,8 +131,11 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
         if (!finalPath) {
           return { success: false, error: 'Path is required' }
         }
+        if (!options.editorId) {
+          return { success: false, error: 'No editor selected' }
+        }
         await deps.openInEditor({
-          editorId: options.editorId ?? 'default',
+          editorId: options.editorId,
           filePath: finalPath,
           line: options.line,
           column: options.column,

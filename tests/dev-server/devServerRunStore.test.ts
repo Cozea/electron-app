@@ -20,6 +20,7 @@ import {
   ensureDevServerEventBridge,
   reconcileDevServerRun,
   registerDevServerRunContext,
+  restartDevServerRun,
   startDevServerRun,
   useDevServerRunStore,
   type DevServerRunContext,
@@ -176,6 +177,81 @@ describe('startDevServerRun', () => {
     expect(run.status).toBe('error')
     expect(run.error).toBe('port busy')
     expect(run.failureReason).toBe('server_unreachable')
+  })
+
+  it('errors instead of stranding starting when success carries no port', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    startMock.mockImplementation(async (options: { runId?: string }) => ({
+      success: true,
+      runId: options.runId,
+    }))
+
+    await startDevServerRun(key)
+
+    const run = useDevServerRunStore.getState().runs[key]
+    expect(run.status).toBe('error')
+    expect(run.error).toContain('no reachable port')
+    expect(run.failureReason).toBe('server_unreachable')
+  })
+})
+
+describe('restartDevServerRun', () => {
+  it('does not schedule a start when the preceding stop failed', async () => {
+    vi.useFakeTimers()
+    try {
+      const workspaceId = freshWorkspace()
+      const key = buildDevServerRunKey(workspaceId)
+      registerDevServerRunContext(key, makeContext(workspaceId))
+      startMock.mockImplementation(async (options: { runId?: string }) => ({
+        success: true,
+        port: 5200,
+        runId: options.runId,
+      }))
+      await startDevServerRun(key)
+      expect(useDevServerRunStore.getState().runs[key].status).toBe('ready')
+
+      stopMock.mockResolvedValueOnce({ success: false, error: 'port still held' })
+      startMock.mockClear()
+
+      await restartDevServerRun(key)
+
+      // The scheduled start (if any) fires after RESTART_DELAY_MS.
+      vi.advanceTimersByTime(2000)
+      await Promise.resolve()
+
+      const run = useDevServerRunStore.getState().runs[key]
+      expect(run.status).toBe('error')
+      expect(run.error).toBe('port still held')
+      expect(startMock).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('schedules a start after a clean stop', async () => {
+    vi.useFakeTimers()
+    try {
+      const workspaceId = freshWorkspace()
+      const key = buildDevServerRunKey(workspaceId)
+      registerDevServerRunContext(key, makeContext(workspaceId))
+      startMock.mockImplementation(async (options: { runId?: string }) => ({
+        success: true,
+        port: 5201,
+        runId: options.runId,
+      }))
+      await startDevServerRun(key)
+      stopMock.mockResolvedValueOnce({ success: true })
+      startMock.mockClear()
+
+      await restartDevServerRun(key)
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(startMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

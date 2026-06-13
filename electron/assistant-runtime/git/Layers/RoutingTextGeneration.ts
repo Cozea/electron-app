@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoutingTextGeneration – Dispatches text generation requests to the provider
  * instance selected by each model selection.
@@ -6,6 +5,8 @@
  * @module RoutingTextGeneration
  */
 import { Effect, Layer } from "effect";
+
+import type { ProviderInstanceId } from "@cozea/assistant-contracts";
 
 import { TextGeneration, type TextGenerationShape } from "../Services/TextGeneration.ts";
 import { TextGenerationError } from "../Errors.ts";
@@ -24,7 +25,7 @@ type TextGenerationOp =
 const resolveInstanceTextGeneration = (
   registry: ProviderInstanceRegistryShape,
   operation: TextGenerationOp,
-  instanceId: string,
+  instanceId: ProviderInstanceId,
 ): Effect.Effect<ProviderInstance["textGeneration"], TextGenerationError> =>
   registry.getInstance(instanceId).pipe(
     Effect.flatMap((instance) =>
