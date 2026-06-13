@@ -46,6 +46,23 @@ describe('parseRepoIdentity', () => {
     })
   })
 
+  it('classifies GitHub/GitLab remotes whose path contains a git/ segment by host, not cozea', () => {
+    // The cozea /git/<name>.git pattern must not shadow a real GitLab subgroup
+    // literally named "git" (regression for repo misclassification).
+    expect(parseRepoIdentity('https://gitlab.com/myteam/git/tooling.git')).toMatchObject({
+      provider: 'gitlab',
+      fullName: 'myteam/git/tooling',
+    })
+    expect(parseRepoIdentity('git@gitlab.com:myteam/git/tooling.git')).toMatchObject({
+      provider: 'gitlab',
+      fullName: 'myteam/git/tooling',
+    })
+    expect(parseRepoIdentity('https://github.com/some/git.git')).toMatchObject({
+      provider: 'github',
+      fullName: 'some/git',
+    })
+  })
+
   it('falls back to unknown for self-hosted remotes', () => {
     expect(parseRepoIdentity('git@git.corp.example:team/app.git')).toMatchObject({
       provider: 'unknown',

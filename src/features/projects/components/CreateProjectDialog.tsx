@@ -319,10 +319,13 @@ export function CreateProjectDialog({
           )
         }
 
+        // createForProject always provisions a brand-new workspace this run
+        // (findAvailablePath -> mkdir -> bindExistingFolder with a fresh
+        // marker), even when the project doc was resumed. So the workspace is
+        // always ours to roll back on a later-step failure, independent of
+        // whether we created the doc this run.
         const workspaceId = createWorkspaceResult.workspace.workspaceId
-        if (createdThisRun) {
-          createdWorkspaceId = workspaceId
-        }
+        createdWorkspaceId = workspaceId
 
         // GitHub repo is best-effort: the project works without it, so a gh
         // failure must not torch the project + folder we just created.

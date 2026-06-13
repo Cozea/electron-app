@@ -134,6 +134,21 @@ export function useLocalProjectImport() {
         createdProjectId = result.projectId
       }
 
+      // Whether a binding already existed BEFORE we bind decides whether the
+      // binding is ours to roll back. A resumed project may have had its
+      // binding forgotten (catalog row + marker deleted), in which case the
+      // bind below freshly recreates it this run and a later-step failure must
+      // undo it; a genuinely pre-existing binding is the user's data and must
+      // survive. `createdThisRun` alone is too coarse — it wrongly leaves a
+      // freshly-created binding behind on the resumed path.
+      const hadBindingBeforeRun = createdThisRun
+        ? false
+        : Boolean(
+            await window.electronAPI
+              .workspace!.getActiveForProject(String(result.projectId))
+              .catch(() => null),
+          )
+
       const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
         projectId: String(result.projectId),
         folderPath: localFolderPath,
@@ -144,9 +159,11 @@ export function useLocalProjectImport() {
       if (!bindResult.success || !bindResult.workspace) {
         throw new Error(formatWorkspaceBindFailure(bindResult))
       }
-      // Track the binding for rollback only when we own the project doc; a
-      // resumed project's binding pre-existed and must survive a later failure.
-      if (createdThisRun) {
+      // Track the binding for rollback whenever it was freshly created this
+      // run — for a brand-new doc, or for a resumed doc whose prior binding had
+      // been forgotten. A binding that pre-existed this run must survive a
+      // later failure.
+      if (!hadBindingBeforeRun) {
         boundWorkspaceId = bindResult.workspace.workspaceId
       }
 

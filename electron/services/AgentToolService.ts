@@ -287,6 +287,9 @@ export class AgentToolService {
   private static instance: AgentToolService
   private pendingPreparations = new Map<AgentToolId, Promise<AgentToolPrepareResult>>()
   private loginSessions = new Map<string, { child: ReturnType<typeof spawn>; toolId: AgentToolId }>()
+  /** Tools with a login flow currently in flight, to reject concurrent logins
+   * for the same tool (competing CLI auth processes race the credential store). */
+  private activeLoginToolIds = new Set<AgentToolId>()
   private sessionStatusCache = new Map<AgentToolId, AgentToolStatus>()
 
   static getInstance(): AgentToolService {
@@ -538,8 +541,16 @@ export class AgentToolService {
       return { sessionId: null, error: 'This agent CLI has no automated login flow.' }
     }
 
+    // Re-entrancy guard: a second login for the same tool would spawn a
+    // competing CLI auth process racing on the same on-disk credential store.
+    if (this.activeLoginToolIds.has(toolId)) {
+      return { sessionId: null, error: 'A login for this agent CLI is already in progress.' }
+    }
+    this.activeLoginToolIds.add(toolId)
+
     const status = await this.getStatus(toolId)
     if (!status.available || !status.commandPath) {
+      this.activeLoginToolIds.delete(toolId)
       return { sessionId: null, error: status.error || 'Agent CLI is not installed.' }
     }
 
@@ -554,6 +565,7 @@ export class AgentToolService {
         stdio: ['pipe', 'pipe', 'pipe'],
       })
     } catch (error) {
+      this.activeLoginToolIds.delete(toolId)
       return {
         sessionId: null,
         error: error instanceof Error ? error.message : 'Login process failed to start',
@@ -574,7 +586,9 @@ export class AgentToolService {
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      sender.off('destroyed', onSenderDestroyed)
       this.loginSessions.delete(sessionId)
+      this.activeLoginToolIds.delete(toolId)
       if (success) {
         // Availability/auth state changed under the snapshot caches.
         this.invalidateCachedStatus(toolId)
@@ -587,8 +601,17 @@ export class AgentToolService {
       settle(false, 'Login timed out before the flow completed.')
     }, 10 * 60 * 1000)
 
+    // Reap the long-lived CLI child, its timer, and session bookkeeping if the
+    // requesting renderer is torn down (window closed / reload / crash) before
+    // the flow settles — otherwise the process survives up to the 10-min timeout.
+    const onSenderDestroyed = () => {
+      child.kill('SIGTERM')
+      settle(false, 'Login window was closed before the flow completed.')
+    }
+    sender.once('destroyed', onSenderDestroyed)
+
     const handleChunk = (chunk: Buffer | string) => {
-      combined += chunk.toString()
+      combined = tailOf(combined + chunk.toString(), MAX_LOGIN_BUFFER)
       if (!openedUrl) {
         const match = combined.match(/https?:\/\/[^\s"'<>)\]]+/)
         if (match) {
@@ -636,6 +659,12 @@ export class AgentToolService {
     return true
   }
 }
+
+/** Upper bound on the retained per-session login output buffer. Comfortably
+ * larger than any tail emitted to the renderer (max 600), so capping the
+ * retained buffer never changes auth-url / device-code detection, which only
+ * ever inspect the tail. */
+const MAX_LOGIN_BUFFER = 64 * 1024
 
 function tailOf(text: string, maxLength = 600): string {
   return text.length > maxLength ? text.slice(-maxLength) : text

@@ -57,6 +57,22 @@ export function registerDevServerHandlers(
         runId,
       }: SharedDevServerStartOptions
     ): Promise<DevServerStartResult> => {
+      // 0. Authorize before performing any command resolution or runtime work
+      //    (authorize-then-act): never run side effects for an unverified or
+      //    unauthorized workspace.
+      try {
+        await resolveAuthorizedWorkspaceAccess({
+          workspaceId,
+          laneId,
+          operation: 'dev-server-start',
+        })
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+
       // 1. Resolve bootstrap/install command first when present.
       const trimmedBootstrapCommand =
         typeof bootstrapCommand === 'string' && bootstrapCommand.trim().length > 0
@@ -114,22 +130,9 @@ export function registerDevServerHandlers(
         }
       }
 
-      const finalCommand = resolved.status === 'completed' && resolved.command 
-        ? resolved.command 
+      const finalCommand = resolved.status === 'completed' && resolved.command
+        ? resolved.command
         : command
-
-      try {
-        await resolveAuthorizedWorkspaceAccess({
-          workspaceId,
-          laneId,
-          operation: 'dev-server-start',
-        })
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
-      }
 
       const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
         ? runId.trim()

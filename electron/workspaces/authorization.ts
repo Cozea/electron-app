@@ -45,7 +45,7 @@ export async function resolveAuthorizedWorkspaceAccess(input: {
 
       if (workspace.verificationStatus !== "verified") {
         const verification = yield* catalog.verify(input.workspaceId)
-        if (verification.status !== "verified") {
+        if (verification.status !== "verified" || !verification.workspace) {
           throw new Error(`Workspace ${input.workspaceId} is not verified: ${verification.status}`)
         }
         workspace = verification.workspace

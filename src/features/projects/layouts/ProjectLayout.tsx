@@ -23,7 +23,7 @@ import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRou
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution";
 import { WorkspaceRepairScreen } from "@/features/projects/workspaces/WorkspaceRepairScreen";
-import { ActiveWorkspaceProvider } from "@/features/projects/workspaces/ActiveWorkspaceContext";
+import { ActiveWorkspaceContext } from "@/features/projects/workspaces/ActiveWorkspaceContext";
 import {
   buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
@@ -42,7 +42,10 @@ import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchS
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
 import { formatActorDisplayName } from "@/lib/userDisplay";
-import type { WorkspaceResolutionAction } from "../../../../shared/workspaceTypes";
+import type {
+  ActiveWorkspaceContextValue,
+  WorkspaceResolutionAction,
+} from "../../../../shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/projects/components/SettingsSidebar").then((module) => ({
@@ -410,6 +413,28 @@ export function ProjectLayout({
     return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
   }, [activeLane, collabBranch, routeProjectIdentity]);
 
+  // Active-workspace context value, or null until the workspace resolves. Kept
+  // nullable (rather than gating the provider's presence) so ProjectSyncProvider
+  // and the layout shell stay mounted at the same tree position across the
+  // not-ready -> ready transition instead of remounting the whole subtree.
+  const activeWorkspaceContextValue = useMemo<ActiveWorkspaceContextValue | null>(() => {
+    if (workspaceResolution?.status !== "ready" || !project?._id) {
+      return null;
+    }
+    return {
+      projectId: String(project._id),
+      projectSlug: project.slug ?? null,
+      projectName: effectiveProjectName,
+      workspace: workspaceResolution.workspace,
+      lane: workspaceResolution.lane,
+      runtime: workspaceResolution.runtimeIdentity,
+      collaborationScopeId: workspaceResolution.collaborationScopeId,
+    };
+  }, [workspaceResolution, project?._id, project?.slug, effectiveProjectName]);
+
+  const activeWorkspaceRevision =
+    workspaceResolution?.status === "ready" ? workspaceResolution.workspace.workspaceRevision : 1;
+
   useEffect(() => {
     const switchStartMark = markCozeaInteractionStart("project-switch", {
       projectId: routeProjectId ?? null,
@@ -616,6 +641,24 @@ export function ProjectLayout({
             }
             break;
           }
+          case "force-bind":
+          case "open-found": {
+            // These action kinds exist in the union but have no resolver that
+            // emits them yet and carry no folder/target to act on. Surface them
+            // rather than leaving the rendered button silently inert.
+            console.warn(
+              `[ProjectLayout] Repair action '${action.kind}' is not implemented yet.`,
+            );
+            appToast.warning({ title: t("workspace.actionFailed") });
+            break;
+          }
+          default: {
+            // Exhaustiveness guard: a new WorkspaceResolutionAction kind without
+            // a case here is a compile error, not a silently dead button.
+            const _exhaustive: never = action;
+            void _exhaustive;
+            break;
+          }
         }
       } catch (err) {
         console.error("[ProjectLayout] Repair action failed:", err);
@@ -768,53 +811,32 @@ export function ProjectLayout({
           routeProjectId={routeProjectId ?? null}
         />
       ) : null}
-      {workspaceResolution?.status === "ready" && project ? (
-        <ActiveWorkspaceProvider value={{
-          projectId: String(project._id),
-          projectSlug: project.slug,
-          projectName: effectiveProjectName,
-          workspace: workspaceResolution.workspace,
-          lane: workspaceResolution.lane,
-          runtime: workspaceResolution.runtimeIdentity,
-          collaborationScopeId: workspaceResolution.collaborationScopeId,
-        }}>
-          <ProjectSyncProvider
-            workspaceId={activeWorkspaceId}
-            workspaceRevision={workspaceResolution.workspace.workspaceRevision}
-            projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-            userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-            userName={displayUserName ?? "User"}
-            laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
-            projectSlug={projectSlug}
-            gitCwd={activeGitRootPath}
-            lastSyncAt={project?.lastSyncAt}
-            collaborationEnabled={collaborationEnabled}
-            activeBranch={activeBranch}
-            sharedBranch={collabBranch}
-            documentScopeId={documentScopeId}
-          >
-            {layoutContent}
-          </ProjectSyncProvider>
-        </ActiveWorkspaceProvider>
-      ) : (
-        <ProjectSyncProvider
-          workspaceId={null}
-          workspaceRevision={1}
-          projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-          userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-          userName={displayUserName ?? "User"}
-          laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
-          projectSlug={projectSlug}
-          gitCwd={null}
-          lastSyncAt={project?.lastSyncAt}
-          collaborationEnabled={collaborationEnabled}
-          activeBranch={activeBranch}
-          sharedBranch={collabBranch}
-          documentScopeId={documentScopeId}
-        >
+      {/*
+        Single, stable ProjectSyncProvider + active-workspace context: mounted
+        once at this slot regardless of resolution state. activeWorkspaceId and
+        activeGitRootPath are already null until the workspace is ready, and the
+        active-workspace value is null until then, so the not-ready -> ready flip
+        only updates props instead of remounting the layout shell + sync subtree.
+      */}
+      <ProjectSyncProvider
+        workspaceId={activeWorkspaceId}
+        workspaceRevision={activeWorkspaceRevision}
+        projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+        userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
+        userName={displayUserName ?? "User"}
+        laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
+        projectSlug={projectSlug}
+        gitCwd={activeGitRootPath}
+        lastSyncAt={project?.lastSyncAt}
+        collaborationEnabled={collaborationEnabled}
+        activeBranch={activeBranch}
+        sharedBranch={collabBranch}
+        documentScopeId={documentScopeId}
+      >
+        <ActiveWorkspaceContext.Provider value={activeWorkspaceContextValue}>
           {layoutContent}
-        </ProjectSyncProvider>
-      )}
+        </ActiveWorkspaceContext.Provider>
+      </ProjectSyncProvider>
 
     </ProjectRouteContext.Provider>
   );

@@ -83,6 +83,19 @@ function toDisplayPath(projectRootPath: string): string {
   return projectRootPath
 }
 
+// A malformed git_repo_identity_json (e.g. an external/manual DB edit or a
+// partial write) must not throw: buildSnapshotEntries maps every active
+// workspace through recordToDTO, so one bad row would collapse the whole
+// snapshot. Treat an unparseable value as "no identity" for that row only.
+function parseStoredRepoIdentity(raw: string | null): RepoIdentity | null {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as RepoIdentity
+  } catch {
+    return null
+  }
+}
+
 function recordToDTO(r: LocalWorkspaceRecord): LocalWorkspaceDTO {
   const displayPath = toDisplayPath(r.projectRootPath)
 
@@ -96,9 +109,7 @@ function recordToDTO(r: LocalWorkspaceRecord): LocalWorkspaceDTO {
     projectRootPath: r.projectRootPath,
     gitRootPath: r.gitRootPath,
     gitOriginUrl: r.gitOriginUrl,
-    gitRepoIdentity: r.gitRepoIdentityJson
-      ? (JSON.parse(r.gitRepoIdentityJson) as RepoIdentity)
-      : null,
+    gitRepoIdentity: parseStoredRepoIdentity(r.gitRepoIdentityJson),
     verificationStatus: r.verificationStatus,
     verificationReason: r.verificationReason,
     verifiedAt: r.verifiedAt,
@@ -396,7 +407,10 @@ export const WorkspaceCatalogLive = Layer.effect(
           marker_workspace_id = ${extra.markerWorkspaceId},
           marker_project_id = ${extra.markerProjectId},
           marker_path = ${extra.markerPath},
-          git_repo_identity_json = ${extra.gitRepoIdentityJson}
+          -- Only overwrite the stored identity when a fresh, non-null one was
+          -- read; a transient unreadable/origin-less git config returns null
+          -- and must not wipe a previously known identity.
+          git_repo_identity_json = coalesce(${extra.gitRepoIdentityJson}, git_repo_identity_json)
         WHERE workspace_id = ${workspaceId}
       `.pipe(Effect.asVoid)
     }
@@ -622,7 +636,7 @@ export const WorkspaceCatalogLive = Layer.effect(
         if (preferredWorkspaceId) {
           workspace = yield* queryWorkspaceById(preferredWorkspaceId)
           if (workspace && workspace.projectId !== projectId) {
-            return {
+            const result: ResolveProjectWorkspaceResult = {
               status: "broken-binding" as const,
               projectId,
               workspace: recordToDTO(workspace),
@@ -635,6 +649,7 @@ export const WorkspaceCatalogLive = Layer.effect(
                 },
               ],
             }
+            return result
           }
         }
         if (!workspace) {
@@ -743,7 +758,10 @@ export const WorkspaceCatalogLive = Layer.effect(
           runtimeIdentity: buildRuntimeIdentity(finalWorkspace, lane),
           collaborationScopeId: buildCollaborationScopeId(projectId),
         }
-      })
+        // Verification / scan failures are unrecoverable here and the interface
+        // declares this effect infallible; surface them as defects rather than
+        // leaking an Error into the never-typed channel callers rely on.
+      }).pipe(Effect.orDie)
 
     // ── bindExistingFolder ──────────────────────────────────────────────────
 
@@ -1295,7 +1313,10 @@ export const WorkspaceCatalogLive = Layer.effect(
               : null,
           }
         })
-      })
+        // A failed read of the catalog tables is unrecoverable infrastructure
+        // failure, not a domain outcome; the interface declares this effect
+        // infallible, so surface SqlError as a defect rather than leaking it.
+      }).pipe(Effect.orDie)
 
     // ── settings ──────────────────────────────────────────────────────────────
 
@@ -1330,25 +1351,33 @@ export const WorkspaceCatalogLive = Layer.effect(
       `.pipe(Effect.asVoid)
     }
 
+    // Every catalog method is declared infallible (Effect<A> = Effect<A, never>)
+    // because a SqlError against the local catalog DB is unrecoverable
+    // infrastructure failure, not a domain outcome, and callers (runPromise /
+    // the snapshot service) rely on a `never` error channel. Die on such
+    // failures rather than leaking SqlError. resolveProject/buildSnapshotEntries
+    // already orDie internally.
     return {
       resolveProject,
-      getActive: queryActiveWorkspace,
+      getActive: (projectId: string) => queryActiveWorkspace(projectId).pipe(Effect.orDie),
       listForProject: (projectId) =>
         sql`SELECT * FROM local_workspaces WHERE project_id = ${projectId}`.pipe(
           Effect.map((rows) => rows.map((r) => mapRow(r as Record<string, unknown>))),
+          Effect.orDie,
         ),
-      bindExistingFolder,
-      createForProject,
-      cloneForProject,
-      verify,
-      forget,
-      listCandidates,
-      setActive: doSetActive,
+      bindExistingFolder: (req) => bindExistingFolder(req).pipe(Effect.orDie),
+      createForProject: (req) => createForProject(req).pipe(Effect.orDie),
+      cloneForProject: (req) => cloneForProject(req).pipe(Effect.orDie),
+      verify: (workspaceId) => verify(workspaceId).pipe(Effect.orDie),
+      forget: (workspaceId) => forget(workspaceId).pipe(Effect.orDie),
+      listCandidates: (projectId, slug, roots, expectedRepo) =>
+        listCandidates(projectId, slug, roots, expectedRepo).pipe(Effect.orDie),
+      setActive: (workspaceId, projectId) => doSetActive(workspaceId, projectId).pipe(Effect.orDie),
       getById: (workspaceId: string) =>
         Effect.gen(function* () {
           const w = yield* queryWorkspaceById(workspaceId)
           return w ? recordToDTO(w) : null
-        }),
+        }).pipe(Effect.orDie),
       getLane: (workspaceId: string, laneId?: string | null) =>
         Effect.gen(function* () {
           let l = laneId ? yield* queryLaneById(laneId) : yield* queryActiveLane(workspaceId)
@@ -1359,11 +1388,11 @@ export const WorkspaceCatalogLive = Layer.effect(
             }
           }
           return l ? laneRecordToDTO(l) : null
-        }),
+        }).pipe(Effect.orDie),
       buildSnapshotEntries,
-      upsertProjectsCache,
-      getSetting,
-      setSetting,
+      upsertProjectsCache: (projectId, data) => upsertProjectsCache(projectId, data).pipe(Effect.orDie),
+      getSetting: (key) => getSetting(key).pipe(Effect.orDie),
+      setSetting: (key, value) => setSetting(key, value).pipe(Effect.orDie),
     }
   }),
 )

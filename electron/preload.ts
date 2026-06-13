@@ -13,6 +13,7 @@ import type {
   TerminalOutputEvent,
   UpdateState,
 } from '../shared/electronApiTypes'
+import type { WorkspaceCatalogSnapshot } from '../shared/workspaceTypes'
 import type { MessageBoxOptions } from 'electron'
 import type { ContextMenuItem } from '../shared/assistant-contracts/ipc'
 
@@ -253,7 +254,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openProjectsDirectory: () => ipcRenderer.invoke('storage:openProjectsDirectory'),
     clearCache: () => ipcRenderer.invoke('storage:clearCache'),
     clearLogs: () => ipcRenderer.invoke('storage:clearLogs'),
-    deleteProject: (options: { workspaceId: string }) => ipcRenderer.invoke('storage:deleteProject', options),
+    deleteProject: (options: { projectPath: string }) => ipcRenderer.invoke('storage:deleteProject', options),
     clearAll: () => ipcRenderer.invoke('storage:clearAll'),
   },
   window: {
@@ -495,6 +496,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exists: (options: string | { slug: string; projectId?: string }) =>
       ipcRenderer.invoke('project:exists', options),
     pathExists: (workspaceId: string) => ipcRenderer.invoke('project:pathExists', { workspaceId }),
+    resolveRoot: (workspaceId: string) => ipcRenderer.invoke('project:resolveRoot', { workspaceId }),
     writeFile: (options: {
       workspaceId: string
       filePath: string
@@ -1035,8 +1037,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listCandidates: (req: unknown) => ipcRenderer.invoke('workspace:listCandidates', req),
     openInFinder: (folderPath: string) => ipcRenderer.invoke('workspace:openInFinder', folderPath),
     getCatalogSnapshot: () => ipcRenderer.invoke('workspace:getCatalogSnapshot'),
-    onCatalogSnapshotChanged: (callback: (snapshot: unknown) => void) => {
-      const handler = (_event: unknown, snapshot: unknown) => callback(snapshot)
+    onCatalogSnapshotChanged: (callback: (snapshot: WorkspaceCatalogSnapshot) => void) => {
+      const handler = (_event: unknown, snapshot: unknown) =>
+        callback(snapshot as WorkspaceCatalogSnapshot)
       ipcRenderer.on('workspace:catalogSnapshotChanged', handler)
       return () => {
         ipcRenderer.removeListener('workspace:catalogSnapshotChanged', handler)

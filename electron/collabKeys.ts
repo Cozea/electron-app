@@ -4,8 +4,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-const subtle = webcrypto.subtle
+// node's webcrypto.subtle is runtime-compatible with the DOM SubtleCrypto interface; type it as
+// such so the JsonWebKey/CryptoKey/BufferSource annotations (from lib.dom) line up.
+const subtle = webcrypto.subtle as unknown as SubtleCrypto
 const encoder = new TextEncoder()
+
+// TS 5.7 types Uint8Array as Uint8Array<ArrayBufferLike>, which isn't assignable to the DOM
+// BufferSource (ArrayBufferView<ArrayBuffer>). These byte views are always ArrayBuffer-backed at
+// runtime, so coerce them at the WebCrypto boundary.
+const toBufferSource = (view: Uint8Array): BufferSource => view as BufferSource
 
 const COLLAB_KEYS_DIR = 'collab-keys'
 const DEVICE_IDENTITY_FILE = 'device-identity.bin'
@@ -235,7 +242,7 @@ async function deriveRecoveryWrapKey(args: {
   return await subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt,
+      salt: toBufferSource(args.salt),
       iterations: args.iterations,
       hash: 'SHA-256',
     },
@@ -292,7 +299,7 @@ export async function wrapRoomKeyForRecipient(args: {
       additionalData: aad,
     },
     wrapKey,
-    plaintext,
+    toBufferSource(plaintext),
   )
 
   const envelope: WrappedRoomKeyEnvelopeV1 = {
@@ -335,11 +342,11 @@ export async function unwrapRoomKeyFromSender(args: {
   const plaintext = await subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv: base64ToBytes(envelope.iv),
-      additionalData: base64ToBytes(envelope.aad),
+      iv: toBufferSource(base64ToBytes(envelope.iv)),
+      additionalData: toBufferSource(base64ToBytes(envelope.aad)),
     },
     wrapKey,
-    base64ToBytes(envelope.ciphertext),
+    toBufferSource(base64ToBytes(envelope.ciphertext)),
   )
 
   return {
@@ -376,7 +383,7 @@ export async function createRecoveryKit(args: {
       additionalData: aad,
     },
     wrapKey,
-    base64ToBytes(args.roomKeyBase64),
+    toBufferSource(base64ToBytes(args.roomKeyBase64)),
   )
 
   const envelope: WrappedRecoveryKeyEnvelopeV1 = {
@@ -422,11 +429,11 @@ export async function unwrapRoomKeyFromRecoveryKit(args: {
   const plaintext = await subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv: base64ToBytes(envelope.iv),
-      additionalData: base64ToBytes(envelope.aad),
+      iv: toBufferSource(base64ToBytes(envelope.iv)),
+      additionalData: toBufferSource(base64ToBytes(envelope.aad)),
     },
     wrapKey,
-    base64ToBytes(envelope.ciphertext),
+    toBufferSource(base64ToBytes(envelope.ciphertext)),
   )
 
   return {

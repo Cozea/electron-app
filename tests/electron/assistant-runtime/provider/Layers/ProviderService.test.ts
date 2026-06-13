@@ -828,6 +828,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       const session = yield* provider.startSession(asThreadId("thread-1"), {
         provider: "codex",
         threadId: asThreadId("thread-1"),
+        cwd: "/tmp/project-runtime-status",
         runtimeMode: "full-access",
       });
       yield* provider.sendTurn({
@@ -853,9 +854,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
             lastError: string | null;
             lastRuntimeEvent: string | null;
           };
-          // thread-1 carries a persisted cwd binding from the earlier recovery
-          // test in this shared-layer group; session restarts reuse it.
-          assert.equal(runtimePayload.cwd, "/tmp/project-send-turn");
+          // This test starts thread-1 with an explicit cwd so the assertion is
+          // self-contained and does not depend on persisted state from earlier
+          // tests in the shared-layer group.
+          assert.equal(runtimePayload.cwd, "/tmp/project-runtime-status");
           assert.equal(runtimePayload.model, null);
           assert.equal(runtimePayload.activeTurnId, `turn-${String(session.threadId)}`);
           assert.equal(runtimePayload.lastError, null);
@@ -955,6 +957,90 @@ routing.layer("ProviderServiceLive routing", (it) => {
 
       fs.rmSync(tempDir, { recursive: true, force: true });
     }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "falls back to the driver default instance when the bound instance was removed",
+    () =>
+      Effect.gen(function* () {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-provider-service-orphan-"));
+        const dbPath = path.join(tempDir, "orchestration.sqlite");
+        const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+        const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+          Layer.provide(persistenceLayer),
+        );
+        const directoryLayer = ProviderSessionDirectoryLive.pipe(
+          Layer.provide(runtimeRepositoryLayer),
+        );
+
+        // Persist a binding for a custom instance id that is no longer registered.
+        yield* Effect.gen(function* () {
+          const directory = yield* ProviderSessionDirectory;
+          yield* directory.upsert({
+            provider: "codex",
+            providerInstanceId: "codex-staging",
+            threadId: asThreadId("thread-orphan"),
+            status: "running",
+            runtimePayload: {
+              cwd: "/tmp/project-orphan",
+              model: null,
+              activeTurnId: null,
+              lastError: null,
+            },
+          });
+        }).pipe(Effect.provide(directoryLayer));
+
+        const codex = makeFakeCodexAdapter();
+        // Registry resolves the default "codex" instance but NOT the removed
+        // "codex-staging" instance.
+        const registry: typeof ProviderAdapterRegistry.Service = {
+          getByInstance: (instanceId) =>
+            instanceId === "codex"
+              ? Effect.succeed(codex.adapter)
+              : Effect.fail(new ProviderUnsupportedError({ provider: instanceId })),
+          getByProvider: (provider) =>
+            provider === "codex"
+              ? Effect.succeed(codex.adapter)
+              : Effect.fail(new ProviderUnsupportedError({ provider })),
+          listInstances: () => Effect.succeed(["codex"]),
+          listProviders: () => Effect.succeed(["codex"]),
+          streamChanges: Stream.empty,
+          subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+            PubSub.subscribe(pubsub),
+          ),
+        };
+
+        const providerLayer = makeProviderServiceLive().pipe(
+          Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
+          Layer.provide(directoryLayer),
+          Layer.provide(defaultServerSettingsLayer),
+          Layer.provide(AnalyticsService.layerTest),
+        );
+
+        // stopSession routes via the binding (allowRecovery: false). It must
+        // fall back to the default "codex" instance instead of hard-failing with
+        // ProviderUnsupportedError for the removed "codex-staging" instance.
+        const result = yield* Effect.result(
+          Effect.gen(function* () {
+            const provider = yield* ProviderService;
+            yield* provider.stopSession({ threadId: asThreadId("thread-orphan") });
+          }).pipe(Effect.provide(providerLayer)),
+        );
+
+        assert.equal(result._tag, "Success");
+
+        // The rebound binding is now persisted against the default instance.
+        const rebound = yield* Effect.gen(function* () {
+          const directory = yield* ProviderSessionDirectory;
+          return yield* directory.getBinding(asThreadId("thread-orphan"));
+        }).pipe(Effect.provide(directoryLayer));
+        assert.equal(Option.isSome(rebound), true);
+        if (Option.isSome(rebound)) {
+          assert.equal(rebound.value.providerInstanceId, "codex");
+        }
+
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
 
@@ -1131,11 +1217,15 @@ validation.layer("ProviderServiceLive validation", (it) => {
     Effect.gen(function* () {
       const provider = yield* ProviderService;
 
+      // Use a KNOWN, enabled provider ("codex") so the payload reaches schema
+      // validation rather than short-circuiting at instance lookup. The invalid
+      // `runtimeMode` makes the ProviderSessionStartInput decode fail, which is
+      // the branch this test is meant to cover.
       const failure = yield* Effect.result(
         provider.startSession(asThreadId("thread-validation"), {
           threadId: asThreadId("thread-validation"),
-          provider: "invalid-provider",
-          runtimeMode: "full-access",
+          provider: "codex",
+          runtimeMode: "not-a-real-runtime-mode",
         } as never),
       );
 
@@ -1143,13 +1233,13 @@ validation.layer("ProviderServiceLive validation", (it) => {
       if (failure._tag !== "Failure") {
         return;
       }
-      // Instance lookup now happens before payload validation, so an unknown
-      // provider surfaces as ProviderUnsupportedError.
-      assert.equal(failure.failure._tag, "ProviderUnsupportedError");
-      if (failure.failure._tag !== "ProviderUnsupportedError") {
+      assert.equal(failure.failure._tag, "ProviderValidationError");
+      if (failure.failure._tag !== "ProviderValidationError") {
         return;
       }
-      assert.equal(String(failure.failure.provider).includes("invalid-provider"), true);
+      assert.equal(failure.failure.operation, "ProviderService.startSession");
+      // The schema-decode failure was not for an unknown provider.
+      assert.equal(validation.codex.startSession.mock.calls.length, 0);
     }),
   );
 

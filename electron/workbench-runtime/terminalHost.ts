@@ -21,6 +21,26 @@ import type {
   WorkbenchRuntimeTerminalExitPayload,
 } from './protocol'
 
+/**
+ * Shape the runtime host actually receives for `terminal.create`.
+ *
+ * The renderer-facing `TerminalCreateOptions` types `cwd`/`gitCwd` as a
+ * `CwdSpec` (`{ kind: 'projectRoot' | ... }`), but the main-process IPC
+ * override (registerTerminalWorkspaceHandlers) resolves those specs to real
+ * absolute paths and injects `projectRootPath`/`cwd`/`gitCwd` as strings before
+ * forwarding the request to the runtime child. By the time it reaches the host,
+ * `cwd`/`gitCwd` are resolved strings and `projectRootPath` is present. This
+ * type makes that contract explicit so the host can read the resolved paths
+ * without `as any` casts, while still accepting the original spec shape for any
+ * caller that bypasses the resolver.
+ */
+export interface TerminalRuntimeCreateOptions
+  extends Omit<TerminalCreateOptions, 'cwd' | 'gitCwd'> {
+  cwd?: string | TerminalCreateOptions['cwd']
+  gitCwd?: string | TerminalCreateOptions['gitCwd']
+  projectRootPath?: string
+}
+
 function shellBasename(shellPath: string): string {
   const name = shellPath.split('/').pop()
   return (name && name.length > 0 ? name : shellPath).toLowerCase()
@@ -765,16 +785,16 @@ export class TerminalRuntimeHost extends EventEmitter {
     return true
   }
 
-  public async createTerminal(options: TerminalCreateOptions): Promise<WorkbenchRuntimeTerminalCreateResult> {
+  public async createTerminal(options: TerminalRuntimeCreateOptions): Promise<WorkbenchRuntimeTerminalCreateResult> {
     try {
       const profile = this.getTerminalProfile(options.profileId)
       const candidates = this.getTerminalProfileCandidates(profile)
       const cols = normalizeTerminalDimension(options.cols ?? DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS)
       const rows = normalizeTerminalDimension(options.rows ?? DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS)
-      const cwd = typeof options.cwd === 'string' ? options.cwd : (options as any).projectRootPath
+      const cwd = typeof options.cwd === 'string' ? options.cwd : options.projectRootPath
       const projectRootPath =
-        typeof (options as any).projectRootPath === 'string'
-          ? (options as any).projectRootPath
+        typeof options.projectRootPath === 'string'
+          ? options.projectRootPath
           : cwd
 
       if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {

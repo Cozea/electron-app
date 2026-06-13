@@ -1,7 +1,11 @@
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { ProviderOptionSelections } from "./model";
-import { ProviderInstanceId } from "./providerInstance";
+import {
+  type ProviderDriverKind,
+  ProviderInstanceId,
+  defaultInstanceIdForDriver,
+} from "./providerInstance";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -46,15 +50,16 @@ export const ProviderSandboxMode = Schema.Literals([
 export type ProviderSandboxMode = typeof ProviderSandboxMode.Type;
 export const DEFAULT_PROVIDER_KIND: ProviderKind = "codex";
 
-function defaultInstanceIdForProvider(provider: string): string {
-  return provider;
-}
+const isProviderKind = Schema.is(ProviderKind);
 
-function inferProviderFromInstanceId(instanceId: unknown): string | undefined {
-  return typeof instanceId === "string" &&
-    ["codex", "claudeAgent", "cursor", "opencode"].includes(instanceId)
-    ? instanceId
-    : undefined;
+/**
+ * Built-in provider instances use the driver kind as their instance id (see
+ * `defaultInstanceIdForDriver`). When a wire payload carries only an
+ * `instanceId` and no explicit `provider`, the driver can be recovered iff the
+ * instance id is one of the canonical built-in kinds.
+ */
+export function inferProviderFromInstanceId(instanceId: unknown): ProviderKind | undefined {
+  return isProviderKind(instanceId) ? instanceId : undefined;
 }
 
 const ModelSelectionWire = Schema.Struct({
@@ -76,19 +81,36 @@ export const ModelSelection = ModelSelectionSource.pipe(
     ModelSelectionWire,
     SchemaTransformation.transformOrFail({
       decode: (raw) => {
-        const legacyProvider = Schema.is(ProviderKind)(raw.provider) ? raw.provider : undefined;
+        const legacyProvider = isProviderKind(raw.provider) ? raw.provider : undefined;
         const instanceId =
           raw.instanceId !== undefined
             ? raw.instanceId
             : legacyProvider !== undefined
-              ? defaultInstanceIdForProvider(legacyProvider)
+              ? // Built-in provider kinds are valid driver slugs by construction.
+                defaultInstanceIdForDriver(legacyProvider as ProviderDriverKind)
               : undefined;
-        const provider = legacyProvider ?? inferProviderFromInstanceId(instanceId) ?? "codex";
+        // Resolve the driver: an explicit `provider` wins; otherwise it can be
+        // recovered only when the instance id is itself a built-in kind. A
+        // custom instance id with no explicit provider is *not* assumed to be
+        // codex — that would mislabel e.g. a user-created Claude instance and
+        // misfire downstream provider-gated logic — so the decode fails instead.
+        const provider =
+          legacyProvider ??
+          inferProviderFromInstanceId(instanceId) ??
+          (instanceId === undefined ? DEFAULT_PROVIDER_KIND : undefined);
+        if (provider === undefined) {
+          return Effect.fail(
+            new SchemaIssue.InvalidValue(Option.some(raw.instanceId), {
+              message:
+                "ModelSelection with a custom instanceId must specify a provider; cannot infer the driver from a non-built-in instanceId.",
+            }),
+          );
+        }
         const base: Record<string, unknown> = {
           instanceId,
           model: raw.model,
+          provider,
         };
-        if (provider !== undefined) base.provider = provider;
         if (raw.options !== undefined) base.options = raw.options;
         return Effect.succeed(base as typeof ModelSelectionWire.Encoded);
       },

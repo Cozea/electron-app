@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import type { ProjectPath } from './projectPath'
+
 export const COLLAB_PROTOCOL_VERSION = '1.0'
 
 export type CollabClientType = 'web' | 'electron'

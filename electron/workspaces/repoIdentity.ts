@@ -96,11 +96,9 @@ const GITLAB_REMOTE_PATTERN =
   /(?:^|[/@])gitlab\.com[/:]((?:[^/]+\/)+[^/]+?)(?:\.git)?\/?(?:$|[?#])/i
 
 export function parseRepoIdentity(remoteUrl: string): RepoIdentity {
-  const cozeaProjectId = extractProjectIdFromRemoteUrl(remoteUrl)
-  if (cozeaProjectId) {
-    return { provider: "cozea", projectId: cozeaProjectId, url: remoteUrl }
-  }
-
+  // Check known hosts BEFORE the cozea `/git/<name>.git` pattern: a GitHub or
+  // GitLab repo whose path legitimately contains a `git/` segment (e.g.
+  // gitlab.com/team/git/tooling.git) must not be misclassified as cozea.
   const githubMatch = remoteUrl.match(GITHUB_REMOTE_PATTERN)
   if (githubMatch?.[1]) {
     return { provider: "github", fullName: githubMatch[1], url: remoteUrl }
@@ -109,6 +107,11 @@ export function parseRepoIdentity(remoteUrl: string): RepoIdentity {
   const gitlabMatch = remoteUrl.match(GITLAB_REMOTE_PATTERN)
   if (gitlabMatch?.[1]) {
     return { provider: "gitlab", fullName: gitlabMatch[1], url: remoteUrl }
+  }
+
+  const cozeaProjectId = extractProjectIdFromRemoteUrl(remoteUrl)
+  if (cozeaProjectId) {
+    return { provider: "cozea", projectId: cozeaProjectId, url: remoteUrl }
   }
 
   return { provider: "unknown", url: remoteUrl }

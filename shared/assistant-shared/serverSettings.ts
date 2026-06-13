@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {
-  type ProviderKind,
+  inferProviderFromInstanceId,
   ServerSettings,
   type ServerSettingsPatch,
 } from "@cozea/assistant-contracts";
@@ -58,7 +58,14 @@ export function applyServerSettingsPatch(
       ? merged
       : {
           ...merged,
-          providerInstances: patch.providerInstances,
+          // Merge per-instance so a partial patch (one edited instance) does not
+          // drop the other configured instances. Each patched instance config
+          // replaces its prior entry wholesale — deepMerge would otherwise
+          // index-merge nested arrays (e.g. `environment`), which is incorrect.
+          providerInstances: {
+            ...current.providerInstances,
+            ...patch.providerInstances,
+          },
         };
   if (!selectionPatch) {
     return next;
@@ -67,7 +74,9 @@ export function applyServerSettingsPatch(
   const provider =
     selectionPatch.provider ??
     current.textGenerationModelSelection.provider ??
-    inferBuiltInProvider(selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId) ??
+    inferProviderFromInstanceId(
+      selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId,
+    ) ??
     "codex";
   const instanceId =
     selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId ?? provider;
@@ -90,13 +99,4 @@ export function applyServerSettingsPatch(
     ...next,
     textGenerationModelSelection: createModelSelection(provider, model, nextOptions, instanceId),
   };
-}
-
-function inferBuiltInProvider(instanceId: unknown): ProviderKind | undefined {
-  return instanceId === "codex" ||
-    instanceId === "claudeAgent" ||
-    instanceId === "cursor" ||
-    instanceId === "opencode"
-    ? instanceId
-    : undefined;
 }

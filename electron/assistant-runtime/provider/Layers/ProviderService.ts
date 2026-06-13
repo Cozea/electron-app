@@ -24,7 +24,7 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@cozea/assistant-contracts";
-import { Effect, Layer, Option, PubSub, Queue, Ref, Schema, SchemaIssue, Stream } from "effect";
+import { Effect, Fiber, Layer, Option, PubSub, Queue, Ref, Schema, SchemaIssue, Stream } from "effect";
 
 import { ProviderValidationError } from "../Errors.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
@@ -310,14 +310,28 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     );
     yield* Effect.forkScoped(worker);
 
-    const subscribedAdapters = yield* Ref.make(new Map());
+    // Each subscribed instance keeps its adapter plus the fiber draining its
+    // streamEvents into runtimeEventQueue, so the fiber can be interrupted when
+    // the instance is removed or its adapter is replaced. Without this, the
+    // forkScoped fiber lives until the whole ProviderService scope closes and
+    // (for adapters whose stream does not terminate on child-scope close) leaks.
+    const subscribedAdapters = yield* Ref.make(
+      new Map<
+        unknown,
+        { readonly adapter: unknown; readonly fiber: Fiber.Fiber<void, never> }
+      >(),
+    );
     const getAdapterEntries = Ref.get(subscribedAdapters).pipe(
-      Effect.map((map) => Array.from(map.entries())),
+      Effect.map((map) => Array.from(map.entries(), ([instanceId, value]) => [instanceId, value.adapter] as const)),
     );
     const reconcileInstanceSubscriptions = Effect.gen(function* () {
       const previous = yield* Ref.get(subscribedAdapters);
       const instanceIds = yield* registry.listInstances();
-      const next = new Map();
+      const next = new Map<
+        unknown,
+        { readonly adapter: unknown; readonly fiber: Fiber.Fiber<void, never> }
+      >();
+      const retained = new Set();
       for (const instanceId of instanceIds) {
         const adapterOption = yield* registry
           .getByInstance(instanceId)
@@ -326,11 +340,26 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           continue;
         }
         const adapter = adapterOption.value;
-        next.set(instanceId, adapter);
-        if (previous.get(instanceId) !== adapter) {
-          yield* Stream.runForEach(adapter.streamEvents, (event) =>
-            Queue.offer(runtimeEventQueue, event).pipe(Effect.asVoid),
-          ).pipe(Effect.forkScoped);
+        const existing = previous.get(instanceId);
+        if (existing && existing.adapter === adapter) {
+          next.set(instanceId, existing);
+          retained.add(instanceId);
+          continue;
+        }
+        // Adapter replaced for this instance id: interrupt the stale drain fiber.
+        if (existing) {
+          yield* Fiber.interrupt(existing.fiber);
+        }
+        const fiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+          Queue.offer(runtimeEventQueue, event).pipe(Effect.asVoid),
+        ).pipe(Effect.forkScoped);
+        next.set(instanceId, { adapter, fiber });
+        retained.add(instanceId);
+      }
+      // Interrupt drain fibers for instances that were removed entirely.
+      for (const [instanceId, value] of previous) {
+        if (!retained.has(instanceId)) {
+          yield* Fiber.interrupt(value.fiber);
         }
       }
       yield* Ref.set(subscribedAdapters, next);
@@ -343,14 +372,45 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       () => reconcileInstanceSubscriptions,
     ).pipe(Effect.forkScoped);
 
+    // Resolve the adapter for a persisted binding. If the binding's instance id
+    // no longer exists in the registry (e.g. the user removed a custom provider
+    // instance from settings), fall back to the driver's default instance so the
+    // thread keeps routing instead of hard-failing every op with
+    // ProviderUnsupportedError. Built-in default instances are always registered.
+    const resolveAdapterForBinding = (binding: ProviderRuntimeBinding) =>
+      Effect.gen(function* () {
+        const bindingInstanceId =
+          binding.providerInstanceId ?? defaultInstanceIdForDriver(binding.provider);
+        const defaultInstanceId = defaultInstanceIdForDriver(binding.provider);
+        const adapterOption = yield* registry.getByInstance(bindingInstanceId).pipe(
+          Effect.map(Option.some),
+          Effect.catchTag("ProviderUnsupportedError", () => Effect.succeed(Option.none())),
+        );
+        if (Option.isSome(adapterOption)) {
+          return { adapter: adapterOption.value, providerInstanceId: bindingInstanceId } as const;
+        }
+        if (defaultInstanceId === bindingInstanceId) {
+          return yield* registry
+            .getByInstance(bindingInstanceId)
+            .pipe(Effect.map((adapter) => ({ adapter, providerInstanceId: bindingInstanceId }) as const));
+        }
+        yield* Effect.logWarning("provider.routing.instance-fallback", {
+          threadId: binding.threadId,
+          provider: binding.provider,
+          missingInstanceId: bindingInstanceId,
+          fallbackInstanceId: defaultInstanceId,
+        });
+        const adapter = yield* registry.getByInstance(defaultInstanceId);
+        return { adapter, providerInstanceId: defaultInstanceId } as const;
+      });
+
     const recoverSessionForThread = (input: {
       readonly binding: ProviderRuntimeBinding;
       readonly operation: string;
     }) =>
       Effect.gen(function* () {
-        const bindingInstanceId =
-          input.binding.providerInstanceId ?? defaultInstanceIdForDriver(input.binding.provider);
-        const adapter = yield* registry.getByInstance(bindingInstanceId);
+        const { adapter, providerInstanceId: bindingInstanceId } =
+          yield* resolveAdapterForBinding(input.binding);
         const hasResumeCursor =
           input.binding.resumeCursor !== null && input.binding.resumeCursor !== undefined;
         const hasActiveSession = yield* adapter.hasSession(input.binding.threadId);
@@ -425,9 +485,8 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             `Cannot route thread '${input.threadId}' because no persisted provider binding exists.`,
           );
         }
-        const bindingInstanceId =
-          binding.providerInstanceId ?? defaultInstanceIdForDriver(binding.provider);
-        const adapter = yield* registry.getByInstance(bindingInstanceId);
+        const { adapter, providerInstanceId: bindingInstanceId } =
+          yield* resolveAdapterForBinding(binding);
 
         const hasRequestedSession = yield* adapter.hasSession(input.threadId);
         if (hasRequestedSession) {

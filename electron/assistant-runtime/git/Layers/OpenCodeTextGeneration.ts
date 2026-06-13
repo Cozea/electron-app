@@ -129,11 +129,36 @@ function extractJsonObject(raw: string): string {
   return trimmed.slice(start);
 }
 
+/**
+ * Build a stable, order-independent key for a set of per-instance environment
+ * overrides so the shared OpenCode server is only reused when the environment
+ * matches the one it was started with.
+ */
+function buildEnvironmentKey(
+  environment: ReadonlyArray<{ readonly name: string; readonly value: string }> | undefined,
+): string {
+  if (!environment || environment.length === 0) {
+    return "";
+  }
+  return JSON.stringify(
+    [...environment]
+      .map((variable) => [variable.name, variable.value] as const)
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
+  );
+}
+
 const OPENCODE_TEXT_GENERATION_IDLE_TTL_MS = 30_000;
 
 interface SharedOpenCodeTextGenerationServerState {
   server: OpenCodeServerProcess | null;
   binaryPath: string | null;
+  /**
+   * Stable serialization of the per-instance environment the active server was
+   * started with. Two instances may share a binaryPath but carry different
+   * environment overrides; reuse must key on both so a request never silently
+   * runs against another instance's environment.
+   */
+  environmentKey: string | null;
   activeRequests: number;
   idleCloseFiber: Fiber.Fiber<void, never> | null;
 }
@@ -148,6 +173,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
   const sharedServerState: SharedOpenCodeTextGenerationServerState = {
     server: null,
     binaryPath: null,
+    environmentKey: null,
     activeRequests: 0,
     idleCloseFiber: null,
   };
@@ -156,6 +182,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
     if (sharedServerState.server === server) {
       sharedServerState.server = null;
       sharedServerState.binaryPath = null;
+      sharedServerState.environmentKey = null;
     }
     server.close();
   };
@@ -190,6 +217,11 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
   const acquireSharedServer = (input: {
     readonly binaryPath: string;
     readonly environment?: NodeJS.ProcessEnv;
+    /**
+     * Stable key for the per-instance environment overrides; servers are only
+     * reused when both binaryPath and environmentKey match.
+     */
+    readonly environmentKey: string;
     readonly operation:
       | "generateCommitMessage"
       | "generatePrContent"
@@ -202,19 +234,22 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
 
         const existingServer = sharedServerState.server;
         if (existingServer !== null) {
-          if (
-            sharedServerState.binaryPath !== input.binaryPath &&
-            sharedServerState.activeRequests === 0
-          ) {
+          const binaryPathMismatch = sharedServerState.binaryPath !== input.binaryPath;
+          const environmentMismatch = sharedServerState.environmentKey !== input.environmentKey;
+          const mismatch = binaryPathMismatch || environmentMismatch;
+          if (mismatch && sharedServerState.activeRequests === 0) {
             closeSharedServer(existingServer);
           } else {
-            if (sharedServerState.binaryPath !== input.binaryPath) {
+            if (mismatch) {
               yield* Effect.logWarning(
-                "OpenCode shared server binary path mismatch: requested " +
-                  input.binaryPath +
-                  " but active server uses " +
-                  sharedServerState.binaryPath +
-                  "; reusing existing server because there are active requests",
+                "OpenCode shared server config mismatch (" +
+                  (binaryPathMismatch
+                    ? "binaryPath: requested " +
+                      input.binaryPath +
+                      " but active server uses " +
+                      sharedServerState.binaryPath
+                    : "environment override") +
+                  "); reusing existing server because there are active requests",
               );
             }
             sharedServerState.activeRequests += 1;
@@ -238,6 +273,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
 
         sharedServerState.server = server;
         sharedServerState.binaryPath = input.binaryPath;
+        sharedServerState.environmentKey = input.environmentKey;
         sharedServerState.activeRequests = 1;
         return server;
       }),
@@ -263,6 +299,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
         const server = sharedServerState.server;
         sharedServerState.server = null;
         sharedServerState.binaryPath = null;
+        sharedServerState.environmentKey = null;
         sharedServerState.activeRequests = 0;
         if (server !== null) {
           server.close();
@@ -375,6 +412,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
             acquireSharedServer({
               binaryPath: settings.binaryPath,
               environment: mergeProviderInstanceEnvironment(settings.environment, process.env),
+              environmentKey: buildEnvironmentKey(settings.environment),
               operation: input.operation,
             }),
             runAgainstServer,

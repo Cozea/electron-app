@@ -65,7 +65,16 @@ export async function writeWorkspaceMarker(
   const markerPath = useGitMarker
     ? path.join(projectRootPath, GIT_MARKER_RELATIVE)
     : path.join(projectRootPath, PLAIN_MARKER_RELATIVE)
+  const stalePath = useGitMarker
+    ? path.join(projectRootPath, PLAIN_MARKER_RELATIVE)
+    : path.join(projectRootPath, GIT_MARKER_RELATIVE)
 
   await fs.mkdir(path.dirname(markerPath), { recursive: true })
   await fs.writeFile(markerPath, JSON.stringify(marker, null, 2), "utf-8")
+
+  // Remove the marker at the other location so the two can never diverge:
+  // a stale alternate marker (e.g. a plain marker left behind after `git init`)
+  // would otherwise win/lose reads in resolveMarkerPath and surface as a
+  // marker-mismatch conflict.
+  await fs.rm(stalePath, { force: true })
 }

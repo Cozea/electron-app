@@ -49,7 +49,6 @@ export default Effect.gen(function* () {
       project_root_path            text    not null,
       git_root_path                text,
       git_dir_path                 text,
-      git_head_branch              text,
       git_origin_url               text,
       git_repo_identity_json       text,
       filesystem_device            text,

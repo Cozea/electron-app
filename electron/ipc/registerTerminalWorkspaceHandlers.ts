@@ -14,15 +14,9 @@ import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts
 import type { TerminalService } from '../services/TerminalService'
 import type { CwdSpec } from '../../shared/workspaceTypes.ts'
 
-// registerOutputTarget is private on TerminalService; cast to any to access it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TerminalServiceAny = TerminalService & Record<string, any>
-
-
-
 export function registerTerminalWorkspaceHandlers(
   ipcMain: IpcMain,
-  terminalService: TerminalServiceAny,
+  terminalService: TerminalService,
 ): void {
   // Re-register terminal:create so that workspaceId is resolved to a real path
   // before being passed to the assistant runtime.

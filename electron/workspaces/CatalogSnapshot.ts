@@ -24,6 +24,10 @@ let started = false
 let refreshTimer: NodeJS.Timeout | null = null
 let sweepTimer: NodeJS.Timeout | null = null
 let refreshInFlight: Promise<WorkspaceCatalogSnapshot> | null = null
+// Set when a refresh is requested while one is already in flight, so a mutation
+// that commits after the in-flight rebuild's SELECT can still be picked up by a
+// trailing rebuild instead of being silently dropped until the next mutation.
+let refreshDirty = false
 
 // Parent-directory watchers keyed by the watched directory; each watcher
 // covers every workspace whose root lives directly inside that directory.
@@ -48,11 +52,36 @@ function broadcast(snapshot: WorkspaceCatalogSnapshot): void {
   }
 }
 
+/**
+ * Stable, comparison-only serialization of the snapshot entries:
+ *
+ *  - Keys are sorted so the result is independent of the SQL scan order
+ *    (`SELECT ... WHERE is_active = 1` has no `ORDER BY`, so two rebuilds of the
+ *    same content can come back in a different row order). [#44]
+ *  - The verify sweep bumps `verifiedAt`/`updatedAt` unconditionally every time
+ *    it re-verifies a workspace, even when nothing semantically changed, so
+ *    those timestamps are excluded from the compare to avoid a redundant
+ *    broadcast on each sweep. [#32]
+ */
+function canonicalizeForCompare(
+  entries: Record<string, WorkspaceCatalogSnapshotEntry>,
+): string {
+  const normalized = Object.keys(entries)
+    .sort()
+    .map((key) => {
+      const entry = entries[key]
+      const { verifiedAt: _verifiedAt, updatedAt: _updatedAt, ...workspace } =
+        entry.workspace
+      return [key, { ...entry, workspace }] as const
+    })
+  return JSON.stringify(normalized)
+}
+
 function entriesEqual(
   left: Record<string, WorkspaceCatalogSnapshotEntry>,
   right: Record<string, WorkspaceCatalogSnapshotEntry>,
 ): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  return canonicalizeForCompare(left) === canonicalizeForCompare(right)
 }
 
 async function rebuildSnapshot(): Promise<WorkspaceCatalogSnapshot> {
@@ -78,22 +107,31 @@ async function rebuildSnapshot(): Promise<WorkspaceCatalogSnapshot> {
 }
 
 function refreshNow(): Promise<WorkspaceCatalogSnapshot> {
-  if (!refreshInFlight) {
-    refreshInFlight = rebuildSnapshot()
-      .catch((error) => {
-        console.error("[CatalogSnapshot] refresh failed:", error)
-        return (
-          currentSnapshot ?? {
-            revision,
-            generatedAt: Date.now(),
-            entries: {},
-          }
-        )
-      })
-      .finally(() => {
-        refreshInFlight = null
-      })
+  if (refreshInFlight) {
+    // A rebuild's SELECT was taken before this caller's mutation committed;
+    // flag a trailing rebuild so the change is not dropped until the next
+    // unrelated mutation.
+    refreshDirty = true
+    return refreshInFlight
   }
+  refreshInFlight = rebuildSnapshot()
+    .catch((error) => {
+      console.error("[CatalogSnapshot] refresh failed:", error)
+      return (
+        currentSnapshot ?? {
+          revision,
+          generatedAt: Date.now(),
+          entries: {},
+        }
+      )
+    })
+    .finally(() => {
+      refreshInFlight = null
+      if (refreshDirty) {
+        refreshDirty = false
+        void refreshNow()
+      }
+    })
   return refreshInFlight
 }
 

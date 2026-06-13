@@ -1303,9 +1303,6 @@ export interface WorkbenchSessionSnapshot {
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
-  localAiRuntime: {
-    getStatus: () => Promise<LocalAiRuntimeStatus>
-  }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
     generateKey: () => Promise<IntegrationKeyResult>
@@ -1584,6 +1581,8 @@ export interface ElectronAPI {
     openFolder: (options: { workspaceId: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (workspaceId: string) => Promise<boolean>
+    /** Resolves an opaque workspace id to its absolute project root path (or null if unauthorized/unknown). */
+    resolveRoot: (workspaceId: string) => Promise<string | null>
     writeFile: (options: {
       workspaceId: string
       filePath: string
@@ -1630,7 +1629,7 @@ export interface ElectronAPI {
       cleanBrokenLocalFiles?: boolean
       forceReinstall?: boolean
     }) => Promise<RuntimeEnsureResult>
-    getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
+    getRuntimeStatus: (options?: { workspaceId?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
   /**
    * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.

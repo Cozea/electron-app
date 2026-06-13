@@ -7,7 +7,7 @@ import {
   ProviderOptionSelections,
 } from "./model";
 import { ModelSelection } from "./orchestration";
-import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance";
+import { ProviderInstanceConfig, ProviderInstanceEnvironment, ProviderInstanceId } from "./providerInstance";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -60,23 +60,27 @@ export const CodexSettings = Schema.Struct({
   binaryPath: makeBinaryPathSetting("codex"),
   homePath: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+  environment: Schema.optionalKey(ProviderInstanceEnvironment),
 });
 export interface CodexSettings {
   enabled: boolean;
   binaryPath: string;
   homePath: string;
   customModels: ReadonlyArray<string>;
+  environment?: ProviderInstanceEnvironment;
 }
 
 export const ClaudeSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   binaryPath: makeBinaryPathSetting("claude"),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+  environment: Schema.optionalKey(ProviderInstanceEnvironment),
 });
 export interface ClaudeSettings {
   enabled: boolean;
   binaryPath: string;
   customModels: ReadonlyArray<string>;
+  environment?: ProviderInstanceEnvironment;
 }
 
 
@@ -85,12 +89,14 @@ export const CursorSettings = Schema.Struct({
   binaryPath: makeBinaryPathSetting("agent"),
   apiEndpoint: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+  environment: Schema.optionalKey(ProviderInstanceEnvironment),
 });
 export interface CursorSettings {
   enabled: boolean;
   binaryPath: string;
   apiEndpoint: string;
   customModels: ReadonlyArray<string>;
+  environment?: ProviderInstanceEnvironment;
 }
 
 export const OpenCodeSettings = Schema.Struct({
@@ -99,6 +105,7 @@ export const OpenCodeSettings = Schema.Struct({
   serverUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   serverPassword: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+  environment: Schema.optionalKey(ProviderInstanceEnvironment),
 });
 export interface OpenCodeSettings {
   enabled: boolean;
@@ -106,6 +113,7 @@ export interface OpenCodeSettings {
   serverUrl: string;
   serverPassword: string;
   customModels: ReadonlyArray<string>;
+  environment?: ProviderInstanceEnvironment;
 }
 
 export const ServerSettings = Schema.Struct({

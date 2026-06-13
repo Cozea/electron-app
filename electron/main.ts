@@ -1312,7 +1312,7 @@ function createWindow() {
 
   win.webContents.on(
     'did-fail-load',
-    (_event, errorCode, _errorDescription, validatedURL, isMainFrame) => {
+    (_event, _errorCode, _errorDescription, validatedURL, isMainFrame) => {
       if (!isMainFrame || routeRecoveryInFlight) {
         return
       }

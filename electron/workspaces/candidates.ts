@@ -15,8 +15,6 @@ interface ScanOptions {
   projectId: string
   slug: string
   expectedRepo?: RepoIdentity | null
-  /** workspaceId already bound to projectId on this machine, if any */
-  existingWorkspaceId?: string | null
 }
 
 function slugMatches(basename: string, slug: string): boolean {
@@ -110,7 +108,7 @@ async function scoreCandidate(
     if (expectedRepo && repoIdentitiesMatch(repoIdentity, expectedRepo)) {
       score += 80
       reasons.push("git remote origin matches expected repo")
-    } else if (expectedRepo && repoIdentity) {
+    } else if (expectedRepo) {
       score -= 80
       warnings.push("git remote origin does not match expected repo")
       verificationStatus = "repo-mismatched"

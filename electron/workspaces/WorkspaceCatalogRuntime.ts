@@ -1,4 +1,5 @@
 import path from "node:path"
+import * as Layer from "effect/Layer"
 import * as ManagedRuntime from "effect/ManagedRuntime"
 
 import { WorkspaceCatalog } from "./WorkspaceCatalog.ts"
@@ -24,7 +25,11 @@ export async function initWorkspaceCatalogRuntime(userData: string): Promise<voi
 
   try {
     const dbPath = path.join(userData, "local-workspaces.sqlite")
-    const layer = makeWorkspaceCatalogLayer(dbPath)
+    // A failed catalog DB/migration build is fatal and already surfaced via the
+    // surrounding try/catch + waitForWorkspaceCatalogRuntime; die on layer-build
+    // errors so the runtime's error channel is `never`, matching the contract
+    // that every catalog effect is infallible at the call site.
+    const layer = Layer.orDie(makeWorkspaceCatalogLayer(dbPath))
     _runtime = ManagedRuntime.make(layer)
 
     // Migrate legacy JSON registry on first run (idempotent)

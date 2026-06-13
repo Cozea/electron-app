@@ -88,11 +88,17 @@ export function ProviderRemediationAction(props: {
   const mountedRef = useRef(true)
   const runStateRef = useRef(runState)
   runStateRef.current = runState
+  const loginUnsubscribeRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      // Tear down the login-event listener on unmount so it doesn't leak if
+      // we never receive a 'closed' event (e.g. unmounted mid-login, or the
+      // CLI ignores SIGTERM and never closes).
+      loginUnsubscribeRef.current?.()
+      loginUnsubscribeRef.current = null
       const current = runStateRef.current
       if (current.phase === "running" && current.sessionId) {
         void window.electronAPI.agentTools.loginCancel({ sessionId: current.sessionId })
@@ -143,6 +149,9 @@ export function ProviderRemediationAction(props: {
       const sessionId = start.sessionId
       setRunState({ phase: "running", sessionId })
 
+      // Drop any listener left over from a prior login attempt before
+      // registering a new one.
+      loginUnsubscribeRef.current?.()
       const unsubscribe = window.electronAPI.agentTools.onLoginEvent((event) => {
         if (event.sessionId !== sessionId) return
         if (event.type === "awaiting-code") {
@@ -153,6 +162,7 @@ export function ProviderRemediationAction(props: {
         }
         if (event.type === "closed") {
           unsubscribe()
+          loginUnsubscribeRef.current = null
           finish(
             event.success
               ? { phase: "done" }
@@ -160,6 +170,7 @@ export function ProviderRemediationAction(props: {
           )
         }
       })
+      loginUnsubscribeRef.current = unsubscribe
     } catch (error) {
       finish({ phase: "failed", error: error instanceof Error ? error.message : "Login failed" })
     }
