@@ -123,3 +123,96 @@
   > .dv-content-container {
   overflow: hidden;
 }
+
+/* ── Tab context menu ─────────────────────────────────────────────────────────
+ * dockview renders its tab context menu as in-DOM `.dv-context-menu` (it has no
+ * native-menu hook), so we restyle it to match the app's popover/dropdown
+ * surface instead of dockview's flat default. Scoped under the theme class so
+ * it outranks the library rule (0,2,0 vs 0,1,0) regardless of import order; the
+ * popup mounts inside the themed dockview root, and the app tokens it uses
+ * (--popover/--accent/--border) already flip for dark mode. */
+.cozea-workbench-dockview-theme .dv-context-menu {
+  min-width: 12rem;
+  padding: 4px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+  border-radius: var(--radius);
+  box-shadow:
+    0 12px 32px -12px rgb(0 0 0 / 0.28),
+    0 4px 12px -6px rgb(0 0 0 / 0.16),
+    0 0 0 0.5px rgb(0 0 0 / 0.04);
+  font-size: 13px;
+  line-height: 1.2;
+  transform-origin: top left;
+  animation: cozea-context-menu-in 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark .cozea-workbench-dockview-theme .dv-context-menu,
+.cozea-workbench-dockview-theme--dark .dv-context-menu {
+  border-color: color-mix(in oklch, var(--border) 90%, transparent);
+  box-shadow:
+    0 16px 40px -12px rgb(0 0 0 / 0.6),
+    0 4px 14px -6px rgb(0 0 0 / 0.45),
+    0 0 0 0.5px rgb(255 255 255 / 0.04);
+}
+
+@keyframes cozea-context-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cozea-workbench-dockview-theme .dv-context-menu {
+    animation: none;
+  }
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-item {
+  height: 28px;
+  gap: 8px;
+  padding: 0 8px;
+  margin: 1px 0;
+  border-radius: 6px;
+  color: var(--popover-foreground);
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-item:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-item.dv-context-menu-item--disabled {
+  opacity: 0.5;
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in oklch, var(--border) 60%, transparent);
+}
+
+/* Inline rename + color picker (tab-group chip menu) tracked to the same tokens. */
+.cozea-workbench-dockview-theme .dv-context-menu-rename-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: var(--popover-foreground);
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-rename-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-color-swatch.dv-context-menu-color-swatch--selected {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
