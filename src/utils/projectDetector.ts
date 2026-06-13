@@ -174,12 +174,32 @@ function isPathInsideApprovedRoots(candidatePath: string, approvedRoots: readonl
   return approvedRoots.some((rootPath) => isPathInsideRoot(candidatePath, rootPath))
 }
 
+/**
+ * Resolves an opaque workspace id to its absolute project root path via the main process.
+ * Returns null when the id is empty, unauthorized, or unknown.
+ */
+async function resolveWorkspaceRootPath(workspaceId: string): Promise<string | null> {
+  const trimmed = workspaceId.trim()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    const rootPath = await projectAnalysisDesktopClient.resolveRoot(trimmed)
+    if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
+      return null
+    }
+    return rootPath
+  } catch {
+    return null
+  }
+}
+
 function buildPackageManagerSearchRoots(
-  workspaceId: string,
+  rootPath: string,
   approvedRoots: readonly string[],
 ): string[] {
   const roots: string[] = []
-  const initialRoot = trimTrailingSeparators(workspaceId.trim())
+  const initialRoot = trimTrailingSeparators(rootPath.trim())
   let current: string | null = initialRoot
 
   if (initialRoot) {
@@ -253,6 +273,13 @@ async function readPackageManagerFromAbsolutePackageJson(
 }
 
 async function detectPackageManagerFromRoot(workspaceId: string): Promise<PackageManager> {
+  // workspaceId is an opaque catalog id, not a path. Resolve it to the absolute project root
+  // before walking the filesystem; the path-based fs:* reads below require a real path.
+  const rootPath = await resolveWorkspaceRootPath(workspaceId)
+  if (!rootPath) {
+    return 'npm'
+  }
+
   let approvedRoots: string[] = []
 
   try {
@@ -261,7 +288,7 @@ async function detectPackageManagerFromRoot(workspaceId: string): Promise<Packag
     approvedRoots = []
   }
 
-  for (const candidateRoot of buildPackageManagerSearchRoots(workspaceId, approvedRoots)) {
+  for (const candidateRoot of buildPackageManagerSearchRoots(rootPath, approvedRoots)) {
     const packageManagerFromPackageJson =
       await readPackageManagerFromAbsolutePackageJson(candidateRoot)
     if (packageManagerFromPackageJson) {
@@ -884,7 +911,12 @@ export async function checkDependenciesInstalled(
   packageManager?: PackageManager
 ): Promise<boolean> {
   try {
-    const rootEntries = await projectAnalysisDesktopClient.readDir(workspaceId)
+    // workspaceId is an opaque catalog id; resolve to a real path before the path-based readDir.
+    const rootPath = await resolveWorkspaceRootPath(workspaceId)
+    if (!rootPath) {
+      return false
+    }
+    const rootEntries = await projectAnalysisDesktopClient.readDir(rootPath)
     const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )

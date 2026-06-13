@@ -397,6 +397,23 @@ export function registerProjectHandlers(
     },
   )
 
+  // Resolves an opaque workspace id to its absolute project root path. The renderer holds only
+  // opaque workspace ids, but a few path-based read APIs (fs:readDir / fs:readFile, used for
+  // package-manager and node_modules detection in projectDetector) need a real filesystem path.
+  // Resolving here keeps the authorization check in the main process.
+  ipcMain.handle(
+    'project:resolveRoot',
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<string | null> => {
+      if (!workspaceId || typeof workspaceId !== 'string') return null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        return access.projectRootPath
+      } catch {
+        return null
+      }
+    },
+  )
+
   ipcMain.handle(
     'project:writeFile',
     async (

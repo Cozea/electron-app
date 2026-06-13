@@ -46,11 +46,12 @@ const makeProviderAdapterRegistry = () =>
     const listProviders: ProviderAdapterRegistryShape["listProviders"] = () =>
       registry.listInstances.pipe(
         Effect.map((instances) => {
+          // Report every registered driver kind, deduplicated. Previously this
+          // only counted an instance when it was the driver's default instance,
+          // which silently excluded drivers that have only non-default instances.
           const providers = new Set();
           for (const instance of instances) {
-            if (instance.instanceId === defaultInstanceIdForDriver(instance.driverKind)) {
-              providers.add(instance.driverKind);
-            }
+            providers.add(instance.driverKind);
           }
           return Array.from(providers);
         }),

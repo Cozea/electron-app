@@ -22,6 +22,7 @@ import type {
   NativePreviewStopSessionResult,
 } from '../../../shared/nativePreviewTypes'
 import { buildNativePreviewSessionKey } from '../../../shared/nativePreviewTypes'
+import { resolveAuthorizedWorkspaceAccess } from '../../workspaces/authorization.ts'
 import { NativePreviewRuntimeBridgeService } from './NativePreviewRuntimeBridgeService'
 
 type NativePreviewStateListener = (event: NativePreviewStateChangedEvent) => void
@@ -194,7 +195,7 @@ function encodeWheelPayload(request: NativePreviewSendWheelRequest): string {
 function buildStartingState(request: NativePreviewStartSessionRequest): NativePreviewSessionState {
   return {
     sessionKey: buildNativePreviewSessionKey(request),
-    projectPath: request.projectPath,
+    workspaceId: request.workspaceId,
     deviceId: request.deviceId,
     platform: request.platform,
     deviceSetPath: request.deviceSetPath ?? null,
@@ -242,6 +243,29 @@ export class NativePreviewManager {
     request: NativePreviewStartSessionRequest
   ): Promise<NativePreviewStartSessionResult> {
     const sessionKey = buildNativePreviewSessionKey(request)
+
+    let projectRootPath: string
+    try {
+      ;({ projectRootPath } = await resolveAuthorizedWorkspaceAccess({
+        workspaceId: request.workspaceId,
+        operation: 'read-file',
+      }))
+    } catch (error) {
+      const state: NativePreviewSessionState = {
+        ...buildStartingState(request),
+        status: 'error',
+        lastError: error instanceof Error ? error.message : 'Failed to resolve native preview workspace.',
+      }
+      this.sessionStates.set(sessionKey, state)
+      this.emit({ sessionKey, state })
+
+      return {
+        success: false,
+        error: state.lastError ?? 'Failed to resolve native preview workspace.',
+        state,
+      }
+    }
+
     const existingSession = this.sessions.get(sessionKey)
 
     if (existingSession) {
@@ -282,7 +306,7 @@ export class NativePreviewManager {
     this.sessionStates.set(sessionKey, startingState)
     this.emit({ sessionKey, state: startingState })
     this.attachProcess(sessionKey, session)
-    void this.attachRuntimeBridge(sessionKey, request.projectPath)
+    void this.attachRuntimeBridge(sessionKey, projectRootPath)
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -841,7 +865,7 @@ export class NativePreviewManager {
 
   private updateState(
     sessionKey: string,
-    patch: Partial<Omit<NativePreviewSessionState, 'sessionKey' | 'projectPath' | 'deviceId' | 'platform'>>
+    patch: Partial<Omit<NativePreviewSessionState, 'sessionKey' | 'workspaceId' | 'deviceId' | 'platform'>>
   ): void {
     const currentState = this.sessionStates.get(sessionKey)
     if (!currentState) {

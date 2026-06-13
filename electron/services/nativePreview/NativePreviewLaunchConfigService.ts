@@ -10,6 +10,7 @@ import type {
   NativePreviewResolveLaunchConfigRequest,
   NativePreviewResolveLaunchConfigResult,
 } from '../../../shared/nativePreviewTypes'
+import { resolveAuthorizedWorkspaceAccess } from '../../workspaces/authorization.ts'
 import { NativePreviewRuntimeBridgeService } from './NativePreviewRuntimeBridgeService'
 
 interface PackageJsonShape {
@@ -254,11 +255,16 @@ export class NativePreviewLaunchConfigService {
     }
 
     try {
+      const { projectRootPath } = await resolveAuthorizedWorkspaceAccess({
+        workspaceId: request.workspaceId,
+        operation: 'read-file',
+      })
+
       const runtimeDir = resolveRuntimeDir()
       assertRuntimeFileExists(runtimeDir, 'Native preview runtime directory')
       assertRuntimeFileExists(resolveEditorProxyPath(), 'Native preview editor proxy')
 
-      const packageJson = resolveProjectPackageJson(request.projectPath)
+      const packageJson = resolveProjectPackageJson(projectRootPath)
       const kind = detectLaunchKind(packageJson)
 
       if (!kind) {
@@ -272,11 +278,11 @@ export class NativePreviewLaunchConfigService {
         ? request.preferredPort
         : DEFAULT_METRO_PORT
       const devtoolsPort = await allocateTcpPort()
-      const runtimeBridge = await NativePreviewRuntimeBridgeService.getInstance().getBridge(request.projectPath)
+      const runtimeBridge = await NativePreviewRuntimeBridgeService.getInstance().getBridge(projectRootPath)
       const runtimeBridgePort = runtimeBridge.port
-      const customMetroConfigPath = resolveCustomMetroConfigPath(request.projectPath)
+      const customMetroConfigPath = resolveCustomMetroConfigPath(projectRootPath)
       const env = buildLaunchEnv({
-        projectPath: request.projectPath,
+        projectPath: projectRootPath,
         port,
         devtoolsPort,
         runtimeBridgePort,
@@ -285,7 +291,7 @@ export class NativePreviewLaunchConfigService {
         kind,
       })
       const command = buildLaunchCommand({
-        projectPath: request.projectPath,
+        projectPath: projectRootPath,
         kind,
         runtimeDir,
         port,
@@ -293,7 +299,7 @@ export class NativePreviewLaunchConfigService {
       })
 
       const config: NativePreviewLaunchConfig = {
-        projectPath: request.projectPath,
+        workspaceId: request.workspaceId,
         platform: request.platform,
         kind,
         port,

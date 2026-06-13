@@ -7,6 +7,7 @@ import type {
   CursorSettings,
   ModelCapabilities,
   ModelSelection,
+  ProviderInstanceEnvironment,
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
@@ -40,6 +41,18 @@ import type { AcpAvailableCommand, AcpParsedSessionEvent } from "../acp/AcpRunti
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import { getCodexModelCapabilities } from "./CodexProvider.ts";
+
+// The per-instance `environment` override is injected into the provider settings
+// object by makeProviderInstanceScopedSettings (ProviderInstanceScopedSettings.ts).
+// It is not declared on the shared CursorSettings schema, so this typed accessor
+// reads it without an untyped `as any` cast and yields a properly-typed value.
+// TODO(provider-kind): declare `environment` on the shared CursorSettings schema
+// so this accessor can be removed.
+function readProviderInstanceEnvironment(
+  settings: CursorSettings,
+): ProviderInstanceEnvironment | undefined {
+  return (settings as { readonly environment?: ProviderInstanceEnvironment }).environment;
+}
 
 const PROVIDER = "cursor" as const;
 const EMPTY_CAPABILITIES: ModelCapabilities = {
@@ -1482,7 +1495,7 @@ const runCursorCommand = (
           cursorSettings.binaryPath,
           args,
           timeoutMs,
-          mergeProviderInstanceEnvironment((cursorSettings as any).environment, process.env),
+          mergeProviderInstanceEnvironment(readProviderInstanceEnvironment(cursorSettings), process.env),
         ),
       catch: (error) =>
         error instanceof Error ? error : new Error(String(error)),

@@ -259,6 +259,37 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("merges providerInstances per-instance without dropping siblings", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsService;
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          "my-codex": { driver: "codex", displayName: "My Codex" },
+          "my-claude": {
+            driver: "claudeAgent",
+            displayName: "My Claude",
+            environment: [{ name: "FOO", value: "bar" }],
+          },
+        },
+      });
+
+      // A partial patch touching only one instance must not delete the others.
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          "my-codex": { driver: "codex", displayName: "Renamed Codex" },
+        },
+      });
+
+      assert.equal(next.providerInstances["my-codex"].displayName, "Renamed Codex");
+      assert.deepEqual(next.providerInstances["my-claude"], {
+        driver: "claudeAgent",
+        displayName: "My Claude",
+        environment: [{ name: "FOO", value: "bar", sensitive: false }],
+      });
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("falls back to opencode when earlier providers are disabled", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsService;

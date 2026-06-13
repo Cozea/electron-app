@@ -9,8 +9,19 @@ import type {
   NativePreviewStateChangedEvent,
 } from '../../shared/nativePreviewTypes'
 
+// The manager resolves the opaque workspaceId to a real path via the workspace catalog runtime,
+// which isn't booted in this unit test. Stub it to the fixed project path the fake helper expects.
+vi.mock('../../electron/workspaces/authorization.ts', () => ({
+  resolveAuthorizedWorkspaceAccess: vi.fn(async () => ({
+    workspace: null,
+    lane: null,
+    projectRootPath: '/tmp/example-project',
+    gitRootPath: null,
+  })),
+}))
+
 const REQUEST: NativePreviewStartSessionRequest = {
-  projectPath: '/tmp/example-project',
+  workspaceId: 'ws-example',
   deviceId: 'SIM-123',
   platform: 'ios',
 }

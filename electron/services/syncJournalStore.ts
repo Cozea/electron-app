@@ -481,7 +481,7 @@ function loadSyncStateFromSqlite(): boolean {
             Object.entries(parsedHeads as Record<string, unknown>).filter(
               ([filePath, hash]) => typeof filePath === 'string' && typeof hash === 'string'
             )
-          )
+          ) as Record<string, string>
         }
       } catch {
         pathHeads = {}

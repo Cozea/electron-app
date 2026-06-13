@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ServerSettings - Server-authoritative settings service.
  *
@@ -14,6 +13,7 @@
 import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
+  inferProviderFromInstanceId,
   type ModelSelection,
   type ProviderKind,
   ServerSettings,
@@ -83,7 +83,10 @@ export class ServerSettingsService extends ServiceMap.Service<
       ServerSettingsService,
       Effect.gen(function* () {
         const currentSettingsRef = yield* Ref.make<ServerSettings>(
-          deepMerge(DEFAULT_SERVER_SETTINGS, overrides),
+          // `ServerSettings` is a closed interface (no index signature) so it
+          // does not structurally satisfy `deepMerge`'s `Record<string, unknown>`
+          // constraint; widen at the call boundary only.
+          deepMerge(DEFAULT_SERVER_SETTINGS as ServerSettings & Record<string, unknown>, overrides),
         );
 
         return {
@@ -126,7 +129,7 @@ const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent", "openco
  */
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
   const selection = settings.textGenerationModelSelection;
-  const provider = selection.provider ?? inferBuiltInProvider(selection.instanceId);
+  const provider = selection.provider ?? inferProviderFromInstanceId(selection.instanceId);
   if (provider && settings.providers[provider].enabled) {
     return settings;
   }
@@ -145,15 +148,6 @@ function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings
       model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[fallback],
     } as ModelSelection,
   };
-}
-
-function inferBuiltInProvider(instanceId: unknown): ProviderKind | undefined {
-  return instanceId === "codex" ||
-    instanceId === "claudeAgent" ||
-    instanceId === "cursor" ||
-    instanceId === "opencode"
-    ? instanceId
-    : undefined;
 }
 
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set(["textGenerationModelSelection"]);
