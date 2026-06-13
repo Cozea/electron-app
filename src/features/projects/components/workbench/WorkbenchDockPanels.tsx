@@ -45,7 +45,6 @@ import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
-  listLauncherApps,
 } from "@/features/devapps/registry"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
@@ -80,7 +79,6 @@ import {
   ArrowExpand01Icon as __MaximizeHugeIcon,
   ArrowShrink01Icon as __RestoreHugeIcon,
   Cancel01Icon as __XHugeIcon,
-  Layers01Icon as __LayersHugeIcon,
   Layout04Icon as __Layout04HugeIcon,
   PlayIcon as __PlayHugeIcon,
   Refresh01Icon as __RefreshCcwHugeIcon,
@@ -815,10 +813,21 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   )
 })
 
+// Placeholder record for the empty-lane launcher. WorkbenchSelectionTile only
+// reads `tile` for its preview/positioning modes (unused in the emptyState
+// launcher), so the field values here are inert — they exist to satisfy the
+// prop type while we reuse the full picker as the watermark.
+const WATERMARK_SELECTION_TILE: WorkbenchSelectionTileRecord = {
+  id: "workbench-watermark-selection",
+  type: "selection",
+  title: "Add DevApp",
+  createdAt: 0,
+  mode: "emptyState",
+}
+
 export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
   _props: IWatermarkPanelProps,
 ) {
-  const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
   const actions = useProjectWorkbenchStore((state) => state.actions)
   // Dockview mounts this overlay whenever it momentarily has zero panels —
@@ -837,65 +846,41 @@ export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
       return Boolean(tile) && tile!.type !== "selection"
     })
   })
-  const launcherApps = listLauncherApps().filter(
-    (app) =>
-      app.launch.kind === "assistantChat" ||
-      app.launch.kind === "browser" ||
-      app.launch.kind === "terminal" ||
-      app.launch.kind === "devServer" ||
-      app.launch.kind === "mobileSimulator",
-  )
-
   if (laneHasTiles) {
     return null
   }
 
   return (
-    <div className="flex h-full w-full items-center justify-center bg-transparent p-8">
-      <div className="flex w-full max-w-2xl flex-col items-center gap-5 text-center">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <HugeiconsIcon icon={__LayersHugeIcon} className="h-4 w-4 text-muted-foreground" />
-          {runtime.projectName ? `Open a tile for ${runtime.projectName}` : "Open a workbench tile"}
-        </div>
-        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
-          {launcherApps.map((app) => (
-            <Button
-              key={app.id}
-              type="button"
-              variant="outline"
-              className="h-20 flex-col gap-2 rounded-md"
-              onClick={() => {
-                const launch = resolveWorkbenchSelectionLaunchRequest({ appId: app.id })
-                if (launch.action === "openSingletonTile") {
-                  actions.openSingletonTile(
-                    runtime.projectId,
-                    runtime.laneId,
-                    launch.tileType,
-                    launch.options,
-                    runtime.workspaceId,
-                  )
-                  return
-                }
-                actions.addTile(
-                  runtime.projectId,
-                  runtime.laneId,
-                  launch.tileType,
-                  launch.options,
-                  runtime.workspaceId,
-                )
-              }}
-            >
-              <span className="size-7 overflow-hidden rounded-md">
-                <DevAppIcon app={app} />
-              </span>
-              <span className="max-w-full truncate text-xs">{app.name}</span>
-            </Button>
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t("workbench.selection.searchPlaceholder")}
-        </p>
-      </div>
+    <div className="h-full w-full bg-transparent">
+      <Suspense fallback={null}>
+        <LazyWorkbenchSelectionTile
+          tile={WATERMARK_SELECTION_TILE}
+          singletonEmptyWorkbench
+          projectName={runtime.projectName}
+          workspaceId={runtime.workspaceId}
+          className="bg-transparent"
+          onChoose={(request) => {
+            const launch = resolveWorkbenchSelectionLaunchRequest(request)
+            if (launch.action === "openSingletonTile") {
+              actions.openSingletonTile(
+                runtime.projectId,
+                runtime.laneId,
+                launch.tileType,
+                launch.options,
+                runtime.workspaceId,
+              )
+              return
+            }
+            actions.addTile(
+              runtime.projectId,
+              runtime.laneId,
+              launch.tileType,
+              launch.options,
+              runtime.workspaceId,
+            )
+          }}
+        />
+      </Suspense>
     </div>
   )
 })
