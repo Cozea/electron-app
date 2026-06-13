@@ -50,6 +50,13 @@ interface WorkbenchSelectionTileProps {
   projectName?: string | null
   workspaceId?: string | null
   onChoose: (request: WorkbenchSelectionLaunchRequest) => void
+  /**
+   * Extra classes for the root surface. Defaults to an opaque `bg-content-surface`
+   * (correct inside a tile's rounded chrome). The empty-lane watermark passes
+   * `bg-transparent` so the launcher renders directly on the dock canvas instead
+   * of as a square-cornered opaque panel.
+   */
+  className?: string
 }
 
 const CATEGORY_TABS: CategoryTab[] = ["All", "Development", "Assistant", "Explore DevApps Store"]
@@ -345,6 +352,7 @@ export function WorkbenchSelectionTile({
   projectName,
   workspaceId,
   onChoose,
+  className,
 }: WorkbenchSelectionTileProps) {
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
@@ -497,7 +505,7 @@ export function WorkbenchSelectionTile({
   )
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
+    <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-y-auto",
