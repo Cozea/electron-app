@@ -17,8 +17,16 @@
   --dv-spacing-padding: 8px;
   --dv-border-radius: 12px;
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
-  --dv-drag-over-background-color: color-mix(in oklch, var(--primary) 12%, transparent);
-  --dv-drag-over-border-color: color-mix(in oklch, var(--primary) 42%, transparent);
+  /* Resize sash + drop-target hint. dockview ties BOTH the active resize sash
+     (the line you see hovering between two tiles to widen one) and the drag-over
+     outline to --dv-active-sash-color — it sets
+     `--dv-drag-over-border: 2px solid var(--dv-active-sash-color)` inline — so this
+     single var drives both. dockview's default here is a saturated accent; we make
+     it a neutral foreground tint so it reads as a quiet guide, not an alert.
+     Built from --foreground so it auto-inverts per theme; dark scheme below. */
+  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  --dv-drag-over-background-color: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --dv-drag-over-border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
   --dv-tabs-container-scrollbar-color: color-mix(in oklch, var(--foreground) 20%, transparent);
   --dv-scrollbar-background-color: transparent;
   --dv-background-color: transparent;
@@ -51,6 +59,14 @@
   --dv-paneview-header-border-color: transparent;
   --dv-floating-group-border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
   background-color: transparent;
+}
+
+/* Dark scheme: --foreground is near-white here, so nudge the alphas up a touch
+   to keep the neutral sash + drop hint legible against the dark surface. */
+.cozea-workbench-dockview-theme--dark {
+  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  --dv-drag-over-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --dv-drag-over-border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 
 .cozea-workbench-dockview-theme .cozea-workbench-dockview,
