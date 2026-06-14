@@ -42,6 +42,9 @@ function buildCozeaDockviewTheme(
     colorScheme: themeScheme,
     tabAnimation: "smooth",
     tabGroupIndicator: "wrap",
+    // Tighter inter-tile gap than the Spaced theme default (10px) so adjacent
+    // tiles sit closer while still reading as separate cards.
+    gap: 6,
   }
 }
 
