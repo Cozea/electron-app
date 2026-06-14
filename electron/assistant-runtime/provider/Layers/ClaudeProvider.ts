@@ -119,6 +119,47 @@ const PROVIDER = "claudeAgent" as const;
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
+    slug: "claude-fable-5",
+    name: "Claude Fable 5",
+    isCustom: false,
+    capabilities: makeClaudeCapabilities({
+      effortOptions: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High" },
+        { id: "xhigh", label: "Extra High", isDefault: true },
+        { id: "max", label: "Max" },
+        { id: "ultrathink", label: "Ultrathink" },
+      ],
+      contextWindowOptions: [
+        { id: "200k", label: "200k", isDefault: true },
+        { id: "1m", label: "1M" },
+      ],
+      promptInjectedEffortValues: ["ultrathink"],
+    }),
+  },
+  {
+    slug: "claude-opus-4-8",
+    name: "Claude Opus 4.8",
+    isCustom: false,
+    capabilities: makeClaudeCapabilities({
+      effortOptions: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High" },
+        { id: "xhigh", label: "Extra High", isDefault: true },
+        { id: "max", label: "Max" },
+        { id: "ultrathink", label: "Ultrathink" },
+      ],
+      contextWindowOptions: [
+        { id: "200k", label: "200k", isDefault: true },
+        { id: "1m", label: "1M" },
+      ],
+      promptInjectedEffortValues: ["ultrathink"],
+      supportsFastMode: true,
+    }),
+  },
+  {
     slug: "claude-opus-4-7",
     name: "Claude Opus 4.7",
     isCustom: false,
@@ -210,12 +251,16 @@ function getBuiltInClaudeModelsForVersion(
   if (supportsClaudeOpus47(version)) {
     return BUILT_IN_MODELS;
   }
-  return BUILT_IN_MODELS.filter((model) => model.slug !== "claude-opus-4-7");
+  // Opus 4.8 and Fable 5 post-date Opus 4.7, so gate them behind the same CLI
+  // floor (at minimum). TODO(versions): if they require a newer Claude Code CLI
+  // than 4.7, split these out with their own MINIMUM_* constants.
+  const versionGated = new Set(["claude-opus-4-7", "claude-opus-4-8", "claude-fable-5"]);
+  return BUILT_IN_MODELS.filter((model) => !versionGated.has(model.slug));
 }
 
 function formatClaudeOpus47UpgradeMessage(version: string | null): string {
   const versionLabel = version ? `v${version}` : "the installed version";
-  return `Claude Code ${versionLabel} is too old for Claude Opus 4.7. Upgrade to v${MINIMUM_CLAUDE_OPUS_4_7_VERSION} or newer to access it.`;
+  return `Claude Code ${versionLabel} is too old for the latest Claude models (Opus 4.7 and newer). Upgrade to v${MINIMUM_CLAUDE_OPUS_4_7_VERSION} or newer to access them.`;
 }
 
 export function getClaudeModelCapabilities(model: string | null | undefined): ModelCapabilities {
