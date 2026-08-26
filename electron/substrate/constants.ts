@@ -3,6 +3,8 @@
 export const DEFAULT_SUBSTRATE_SHADOW_HOST = "127.0.0.1";
 export const DEFAULT_SUBSTRATE_SHADOW_PORT = 4783;
 export const SUBSTRATE_SHADOW_READY_PATH = "/.well-known/cozea/substrate/ready";
+/** Phase T2 — renderer obtains T3 WS ticket via shadow child (never exposes pairing token). */
+export const SUBSTRATE_T3_RPC_SESSION_PATH = "/.well-known/cozea/substrate/t3-rpc-session";
 export const SUBSTRATE_SHADOW_SERVER_FLAG = "cozea.substrate.shadowServer" as const;
 
 /** Phase 2 — Effect RPC / contracts chat path (default on). */

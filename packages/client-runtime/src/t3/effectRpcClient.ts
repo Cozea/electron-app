@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import WebSocket from "ws";
-
-export interface T3RpcClientOptions {
+export interface T3EffectRpcClientOptions {
   readonly baseUrl: string;
   readonly wsTicket: string;
   readonly WebSocketImpl?: typeof WebSocket;
@@ -27,8 +25,6 @@ interface RpcChunk {
   readonly values: ReadonlyArray<unknown>;
 }
 
-type RpcInbound = RpcExitSuccess | RpcExitFailure | RpcChunk;
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -36,6 +32,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+/** Minimal Effect RPC wire client for upstream T3 apps/server WebSocket. */
 export class T3EffectRpcClient {
   private readonly wsUrl: string;
   private readonly WebSocketImpl: typeof WebSocket;
@@ -44,11 +41,11 @@ export class T3EffectRpcClient {
   private connectPromise: Promise<WebSocket> | null = null;
   private readonly exitWaiters = new Map<
     string,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
+    { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
   >();
   private readonly chunkListeners = new Map<string, Set<(value: unknown) => void>>();
 
-  constructor(options: T3RpcClientOptions) {
+  constructor(options: T3EffectRpcClientOptions) {
     const url = new URL("/ws", options.baseUrl);
     url.searchParams.set("wsTicket", options.wsTicket);
     url.searchParams.set("clientSurface", "web");
@@ -80,25 +77,25 @@ export class T3EffectRpcClient {
     }
 
     this.connectPromise = new Promise<WebSocket>((resolve, reject) => {
-      const ws = new this.WebSocketImpl(this.wsUrl, { perMessageDeflate: true });
+      const ws = new this.WebSocketImpl(this.wsUrl);
       const timer = setTimeout(() => {
-        ws.terminate();
+        ws.close();
         reject(new Error(`T3 WebSocket connect timed out after ${this.requestTimeoutMs}ms`));
       }, this.requestTimeoutMs);
 
-      ws.on("open", () => {
+      ws.addEventListener("open", () => {
         clearTimeout(timer);
         this.ws = ws;
         resolve(ws);
       });
-      ws.on("error", (error) => {
+      ws.addEventListener("error", () => {
         clearTimeout(timer);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(new Error("T3 WebSocket connection error"));
       });
-      ws.on("message", (raw) => {
-        this.handleMessage(raw);
+      ws.addEventListener("message", (event) => {
+        this.handleMessage(event.data);
       });
-      ws.on("close", () => {
+      ws.addEventListener("close", () => {
         this.ws = null;
         this.connectPromise = null;
       });
@@ -112,10 +109,10 @@ export class T3EffectRpcClient {
     }
   }
 
-  private handleMessage(raw: WebSocket.RawData): void {
+  private handleMessage(raw: unknown): void {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(raw.toString());
+      parsed = JSON.parse(String(raw));
     } catch {
       return;
     }
@@ -166,33 +163,6 @@ export class T3EffectRpcClient {
       this.exitWaiters.set(requestId, { resolve, reject, timer });
       ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
     });
-  }
-
-  async callStream(
-    tag: string,
-    payload: unknown,
-    onValue: (value: unknown) => void,
-  ): Promise<void> {
-    const ws = await this.connect();
-    const requestId = randomUUID();
-    const listeners = new Set<(value: unknown) => void>([onValue]);
-    this.chunkListeners.set(requestId, listeners);
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.exitWaiters.delete(requestId);
-        this.chunkListeners.delete(requestId);
-        reject(new Error(`T3 RPC stream ${tag} timed out after ${this.requestTimeoutMs}ms`));
-      }, this.requestTimeoutMs);
-      this.exitWaiters.set(requestId, {
-        resolve: () => resolve(),
-        reject,
-        timer,
-      });
-      ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
-    });
-
-    this.chunkListeners.delete(requestId);
   }
 
   async openStream(

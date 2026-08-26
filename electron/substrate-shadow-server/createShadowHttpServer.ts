@@ -2,6 +2,7 @@ import http from "node:http";
 
 import {
   SUBSTRATE_SHADOW_READY_PATH,
+  SUBSTRATE_T3_RPC_SESSION_PATH,
   SUBSTRATE_SHADOW_SERVER_FLAG,
   SUBSTRATE_T3_PIN_SHA,
 } from "../substrate/constants";
@@ -37,6 +38,11 @@ export interface CreateShadowHttpServerOptions {
   /** Phase T1 — vendored T3 server orchestration backend when dual-run is active. */
   readonly t3ServerEnabled?: boolean;
   readonly orchestrationBackend?: import("./rpcOrchestrationHandlers.ts").OrchestrationRpcBackend;
+  /** Phase T2 — issue WS tickets for renderer native T3 RPC (localhost only). */
+  readonly t3RpcSession?: {
+    readonly baseUrl: string;
+    readonly issueWsTicket: () => Promise<string>;
+  };
   readonly onListening?: (info: { readonly host: string; readonly port: number }) => void;
   readonly onRequestLog?: (line: string) => void;
 }
@@ -100,6 +106,39 @@ export function createShadowHttpServer(
         } else {
           response.end(body);
         }
+        return;
+      }
+
+      if (requestUrl.pathname === SUBSTRATE_T3_RPC_SESSION_PATH) {
+        if (!options.t3RpcSession) {
+          response.writeHead(503, { "content-type": "application/json; charset=utf-8" });
+          response.end(JSON.stringify({ ok: false, error: "t3_rpc_session_unavailable" }));
+          return;
+        }
+        void (async () => {
+          try {
+            const wsTicket = await options.t3RpcSession!.issueWsTicket();
+            response.writeHead(200, {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
+            });
+            response.end(
+              JSON.stringify({
+                ok: true,
+                baseUrl: options.t3RpcSession!.baseUrl,
+                wsTicket,
+              }),
+            );
+          } catch (error) {
+            response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+            response.end(
+              JSON.stringify({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          }
+        })();
         return;
       }
 

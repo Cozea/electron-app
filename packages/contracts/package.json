@@ -6,6 +6,22 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./t3": {
+      "types": "./src/t3/index.ts",
+      "import": "./src/t3/index.ts"
+    },
+    "./collab": {
+      "types": "./src/collab.ts",
+      "import": "./src/collab.ts"
+    },
+    "./catalog": {
+      "types": "./src/catalog.ts",
+      "import": "./src/catalog.ts"
+    },
+    "./devapps": {
+      "types": "./src/devapps.ts",
+      "import": "./src/devapps.ts"
     }
   },
   "dependencies": {
