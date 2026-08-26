@@ -732,10 +732,6 @@ export function ProjectLayout({
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
-<<<<<<< HEAD
-      
-      {canProvideActiveWorkspace && workspaceResolution?.status === "ready" && project?._id ? (
-=======
       {project?._id && convexUserId ? (
         <PendingTeamSetupEffect
           projectId={project._id}
@@ -746,8 +742,7 @@ export function ProjectLayout({
           routeProjectId={routeProjectId ?? null}
         />
       ) : null}
-      {workspaceResolution?.status === "ready" && project ? (
->>>>>>> 5d359cab (ProjectLayout diet + workspace-resolution SWR cache)
+      {canProvideActiveWorkspace && workspaceResolution?.status === "ready" && project?._id ? (
         <ActiveWorkspaceProvider value={{
           projectId: String(project._id),
           projectSlug: project.slug,
