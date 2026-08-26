@@ -57,3 +57,7 @@ COZEA_SUBSTRATE_SHADOW_SERVER=1 bun run dev
 - `electron/substrate-shadow-server/` — child HTTP scaffold
 - `electron/substrate/ShadowServerManager.ts` — DesktopBackendPool-shaped lite manager
 - Upstream pin: `docs/substrate-t3-pin.md`
+
+## Next
+
+Phase 2 flagged RPC chat: [`docs/substrate-phase2-rpc-chat.md`](./substrate-phase2-rpc-chat.md).

@@ -151,6 +151,7 @@ export class ShadowServerManager {
         COZEA_SUBSTRATE_SHADOW_PORT: String(this.flags.port),
         COZEA_SUBSTRATE_SHADOW_LOG_DIR: this.logDirectory,
         COZEA_SUBSTRATE_T3_PIN: SUBSTRATE_T3_PIN_SHA,
+        COZEA_SUBSTRATE_RPC_CHAT: process.env.COZEA_SUBSTRATE_RPC_CHAT ?? "0",
       },
     });
     this.child = child;

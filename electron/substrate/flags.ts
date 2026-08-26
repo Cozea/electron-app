@@ -1,6 +1,7 @@
 import {
   DEFAULT_SUBSTRATE_SHADOW_HOST,
   DEFAULT_SUBSTRATE_SHADOW_PORT,
+  SUBSTRATE_RPC_CHAT_FLAG,
   SUBSTRATE_SHADOW_SERVER_FLAG,
 } from "./constants";
 
@@ -50,5 +51,25 @@ export function readSubstrateShadowServerFlags(
     enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_SHADOW_SERVER, false),
     host: env.COZEA_SUBSTRATE_SHADOW_HOST?.trim() || DEFAULT_SUBSTRATE_SHADOW_HOST,
     port: parsePort(env.COZEA_SUBSTRATE_SHADOW_PORT, DEFAULT_SUBSTRATE_SHADOW_PORT),
+  };
+}
+
+export interface SubstrateRpcChatFlags {
+  readonly flagId: typeof SUBSTRATE_RPC_CHAT_FLAG;
+  /** When true (and shadow server enabled), expose `/rpc` chat WS on the shadow server. */
+  readonly enabled: boolean;
+}
+
+/**
+ * Phase 2 flag — default **off**.
+ * Enable with `COZEA_SUBSTRATE_RPC_CHAT=1`.
+ * Requires `COZEA_SUBSTRATE_SHADOW_SERVER=1` for the workbench path.
+ */
+export function readSubstrateRpcChatFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstrateRpcChatFlags {
+  return {
+    flagId: SUBSTRATE_RPC_CHAT_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_RPC_CHAT, false),
   };
 }

@@ -5,17 +5,20 @@ import {
   SUBSTRATE_SHADOW_SERVER_FLAG,
   SUBSTRATE_T3_PIN_SHA,
 } from "../substrate/constants";
+import { attachRpcChat, type RpcChatHandle } from "./rpcChat";
 
 export interface ShadowServerReadyPayload {
   readonly ok: true;
   readonly role: "shadow";
-  readonly phase: 1;
+  readonly phase: 1 | 2;
   readonly flagId: typeof SUBSTRATE_SHADOW_SERVER_FLAG;
   readonly pin: string;
   readonly host: string;
   readonly port: number;
   readonly startedAtMs: number;
   readonly pid: number;
+  readonly rpcChat: boolean;
+  readonly rpcPath: "/rpc" | null;
 }
 
 export interface CreateShadowHttpServerOptions {
@@ -24,6 +27,7 @@ export interface CreateShadowHttpServerOptions {
   readonly pin?: string;
   readonly startedAtMs?: number;
   readonly pid?: number;
+  readonly rpcChatEnabled?: boolean;
   readonly onListening?: (info: { readonly host: string; readonly port: number }) => void;
   readonly onRequestLog?: (line: string) => void;
 }
@@ -45,17 +49,21 @@ export function createShadowHttpServer(
   const startedAtMs = options.startedAtMs ?? Date.now();
   const pin = options.pin ?? SUBSTRATE_T3_PIN_SHA;
   const pid = options.pid ?? process.pid;
+  const rpcChatEnabled = options.rpcChatEnabled === true;
+  const phase: 1 | 2 = rpcChatEnabled ? 2 : 1;
 
   const readyPayload: ShadowServerReadyPayload = {
     ok: true,
     role: "shadow",
-    phase: 1,
+    phase,
     flagId: SUBSTRATE_SHADOW_SERVER_FLAG,
     pin,
     host: options.host,
     port: options.port,
     startedAtMs,
     pid,
+    rpcChat: rpcChatEnabled,
+    rpcPath: rpcChatEnabled ? "/rpc" : null,
   };
 
   const server = http.createServer((request, response) => {
@@ -83,7 +91,11 @@ export function createShadowHttpServer(
 
       if (requestUrl.pathname === "/") {
         response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-        response.end("cozea substrate shadow server (phase 1)\n");
+        response.end(
+          rpcChatEnabled
+            ? "cozea substrate shadow server (phase 2 rpc chat)\n"
+            : "cozea substrate shadow server (phase 1)\n",
+        );
         return;
       }
     }
@@ -91,6 +103,8 @@ export function createShadowHttpServer(
     response.writeHead(404, { "content-type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({ ok: false, error: "not_found" }));
   });
+
+  let rpcHandle: RpcChatHandle | null = null;
 
   return {
     server,
@@ -110,6 +124,12 @@ export function createShadowHttpServer(
             address && typeof address === "object" && address.address
               ? address.address
               : options.host;
+          rpcHandle = attachRpcChat({
+            server,
+            pin,
+            rpcChatEnabled,
+            onLog: (line) => options.onRequestLog?.(line),
+          });
           options.onListening?.({ host, port });
           resolve({ host, port });
         };
@@ -118,8 +138,10 @@ export function createShadowHttpServer(
         server.listen(options.port, options.host);
       });
     },
-    stop() {
-      return new Promise<void>((resolve, reject) => {
+    async stop() {
+      rpcHandle?.dispose();
+      rpcHandle = null;
+      await new Promise<void>((resolve, reject) => {
         if (!server.listening) {
           resolve();
           return;

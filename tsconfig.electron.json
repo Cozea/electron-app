@@ -1,9 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -18,15 +24,46 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
-      "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
-      "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
-      "@cozea/effect-acp": ["./packages/effect-acp/src/client.ts"],
-      "@cozea/effect-acp/*": ["./packages/effect-acp/src/*"],
-      "@/*": ["./src/*"],
-      "@shared/*": ["./shared/*"]
+      "@cozea/assistant-contracts": [
+        "./shared/assistant-contracts/index.ts"
+      ],
+      "@cozea/assistant-contracts/*": [
+        "./shared/assistant-contracts/*"
+      ],
+      "@cozea/assistant-shared/*": [
+        "./shared/assistant-shared/*"
+      ],
+      "@cozea/effect-acp": [
+        "./packages/effect-acp/src/client.ts"
+      ],
+      "@cozea/effect-acp/*": [
+        "./packages/effect-acp/src/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ],
+      "@shared/*": [
+        "./shared/*"
+      ],
+      "@cozea/contracts": [
+        "./packages/contracts/src/index.ts"
+      ],
+      "@cozea/contracts/*": [
+        "./packages/contracts/src/*"
+      ],
+      "@cozea/client-runtime": [
+        "./packages/client-runtime/src/index.ts"
+      ],
+      "@cozea/client-runtime/*": [
+        "./packages/client-runtime/src/*"
+      ]
     }
   },
-  "include": ["electron/**/*.ts", "shared/**/*.ts"],
-  "exclude": ["electron/assistant-runtime"]
+  "include": [
+    "electron/**/*.ts",
+    "shared/**/*.ts"
+  ],
+  "exclude": [
+    "electron/assistant-runtime"
+  ]
 }

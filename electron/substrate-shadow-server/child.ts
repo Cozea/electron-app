@@ -48,7 +48,12 @@ function appendLog(line: string): void {
   }
 }
 
+const rpcChatEnabled =
+  process.env.COZEA_SUBSTRATE_RPC_CHAT === "1" ||
+  process.env.COZEA_SUBSTRATE_RPC_CHAT?.trim().toLowerCase() === "true";
+
 const handle = createShadowHttpServer({
+  rpcChatEnabled,
   host,
   port,
   pin: process.env.COZEA_SUBSTRATE_T3_PIN?.trim() || SUBSTRATE_T3_PIN_SHA,

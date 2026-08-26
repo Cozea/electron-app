@@ -34,7 +34,11 @@
       "@cozea/effect-acp": ["./packages/effect-acp/src/client.ts"],
       "@cozea/effect-acp/*": ["./packages/effect-acp/src/*"],
       "@/*": ["./src/*"],
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@cozea/contracts": ["./packages/contracts/src/index.ts"],
+      "@cozea/contracts/*": ["./packages/contracts/src/*"],
+      "@cozea/client-runtime": ["./packages/client-runtime/src/index.ts"],
+      "@cozea/client-runtime/*": ["./packages/client-runtime/src/*"]
     }
   },
   "include": ["src"],
