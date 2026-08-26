@@ -45,6 +45,10 @@ import { listSubstrateRemoteEnvironmentStubs } from './substrate/remoteEnvironme
 import { bootstrapSubstrateVcs } from './substrate/vcs/bootstrap'
 import { registerSubstrateVcsIpcHandlers } from './substrate/vcs/registerIpcHandlers'
 import {
+  startShadowHostedRuntimeMonitor,
+  type ShadowHostedRuntimeMonitorController,
+} from './substrate/shadowHostedRuntimeMonitor'
+import {
   createShadowServerManager,
   getShadowServerManager,
   resolveShadowServerEntryPath,
@@ -499,6 +503,7 @@ let assistantRuntimeStatus: AssistantRuntimeStatus = {
 let assistantRuntimeFiber: unknown | null = null
 let assistantRuntimeGeneration = 0
 let assistantRuntimeRestartTimer: NodeJS.Timeout | null = null
+let shadowHostedRuntimeMonitor: ShadowHostedRuntimeMonitorController | null = null
 let appIsQuitting = false
 let assistantRuntimeBridgeHandlersRegistered = false
 
@@ -686,6 +691,15 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
         pid: status.pid,
       },
     })
+    const featureFlags = readSubstrateFeatureFlags()
+    if (
+      status.phase === 'ready' &&
+      featureFlags.primary &&
+      !shouldStartInProcessAssistantRuntime(featureFlags)
+    ) {
+      assistantRuntimeGeneration += 1
+      beginShadowHostedRuntimeMonitor(assistantRuntimeGeneration)
+    }
   })()
 
   try {
@@ -757,6 +771,45 @@ function registerSubstrateShadowBridgeHandlers(): void {
   })
 }
 
+function stopShadowHostedRuntimeMonitor(): void {
+  shadowHostedRuntimeMonitor?.stop()
+  shadowHostedRuntimeMonitor = null
+}
+
+function beginShadowHostedRuntimeMonitor(generation: number): void {
+  stopShadowHostedRuntimeMonitor()
+  shadowHostedRuntimeMonitor = startShadowHostedRuntimeMonitor({
+    generation,
+    onStarting: () => {
+      setAssistantRuntimeStatus({
+        phase: 'starting',
+        lastError: null,
+      })
+    },
+    onReady: () => {
+      logAssistantBridge('shadow-hosted-runtime-ready', { generation })
+      setAssistantRuntimeStatus({
+        phase: 'ready',
+        lastError: null,
+      })
+    },
+    onError: (message) => {
+      logAssistantBridge('shadow-hosted-runtime-error', { generation, message })
+      setAssistantRuntimeStatus({
+        phase: 'error',
+        lastError:
+          message.trim().length > 0
+            ? message
+            : 'Shadow-hosted assistant runtime failed to become ready.',
+      })
+    },
+    onLog: (event, details) => logAssistantBridge(event, details),
+    shouldApply: (activeGeneration) =>
+      !appIsQuitting && activeGeneration === assistantRuntimeGeneration,
+    httpOrigin: ASSISTANT_RUNTIME_HTTP_URL,
+  })
+}
+
 function ensureAssistantRuntimeStarted(): void {
   const substrateFlags = readSubstrateFeatureFlags()
   if (!shouldStartInProcessAssistantRuntime(substrateFlags)) {
@@ -764,12 +817,12 @@ function ensureAssistantRuntimeStarted(): void {
       primary: substrateFlags.primary,
       shadowServer: substrateFlags.shadowServer.enabled,
     })
-    setAssistantRuntimeStatus({
-      phase: 'idle',
-      lastError: null,
-    })
+    assistantRuntimeGeneration += 1
+    beginShadowHostedRuntimeMonitor(assistantRuntimeGeneration)
     return
   }
+
+  stopShadowHostedRuntimeMonitor()
 
   if (assistantRuntimeFiber) {
     logAssistantBridge('runtime-start-reused', {

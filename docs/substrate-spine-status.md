@@ -17,4 +17,5 @@ PR: **#90** on `cursor/substrate-phases-complete-a002`.
 
 ### Remaining follow-ons
 
+- Product cutover checklist: `docs/substrate-cutover-checklist.md`
 - Remote env stubs (SSH)

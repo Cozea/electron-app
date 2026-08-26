@@ -20,6 +20,11 @@ export async function sendSubstrateRpcTurn(input: {
   readonly threadId: string;
   readonly text: string;
   readonly providerId?: string;
+  readonly modelSelection?: {
+    readonly provider: string;
+    readonly model: string;
+    readonly instanceId?: string;
+  };
   readonly shadowBaseUrl?: string;
   readonly WebSocketImpl?: typeof WebSocket;
 }): Promise<SubstrateRpcTurnResult> {
@@ -41,6 +46,17 @@ export async function sendSubstrateRpcTurn(input: {
       threadId: input.threadId,
       text: input.text,
       ...(input.providerId ? { providerId: input.providerId } : {}),
+      ...(input.modelSelection
+        ? {
+            modelSelection: {
+              provider: input.modelSelection.provider,
+              model: input.modelSelection.model,
+              ...(input.modelSelection.instanceId
+                ? { instanceId: input.modelSelection.instanceId }
+                : {}),
+            },
+          }
+        : {}),
     });
     const events: ChatEvent[] = [];
     let assistantText = "";

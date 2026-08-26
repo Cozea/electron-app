@@ -2,12 +2,21 @@ import { Schema } from "effect";
 
 import { IsoDateTime, TrimmedNonEmptyString, TrimmedString } from "./base";
 
+export const ChatModelSelection = Schema.Struct({
+  provider: TrimmedNonEmptyString,
+  model: TrimmedNonEmptyString,
+  instanceId: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ChatModelSelection = typeof ChatModelSelection.Type;
+
 export const ChatSendInput = Schema.Struct({
   text: TrimmedNonEmptyString,
   threadId: Schema.optionalKey(TrimmedNonEmptyString),
   projectId: Schema.optionalKey(TrimmedNonEmptyString),
   /** Substrate driver kind when Phase 3 providers are enabled (default: opencode). */
   providerId: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Workbench model selection for bridged orchestration turns. */
+  modelSelection: Schema.optionalKey(ChatModelSelection),
 });
 export type ChatSendInput = typeof ChatSendInput.Type;
 

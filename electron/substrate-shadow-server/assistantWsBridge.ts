@@ -22,6 +22,11 @@ export interface BridgeAssistantTurnInput {
   readonly text: string;
   readonly threadId?: string;
   readonly providerId?: string;
+  readonly modelSelection?: {
+    readonly provider: "codex" | "opencode" | "claudeAgent" | "cursor";
+    readonly model: string;
+    readonly instanceId?: string;
+  };
   readonly assistantOrigin?: string;
   readonly assistantWsUrl?: string;
   readonly timeoutMs?: number;
@@ -267,10 +272,21 @@ async function connectAssistantWs(
   return new AssistantWsBridgeClient(ws);
 }
 
-function resolveModelSelection(providerId: string | undefined): {
+function resolveModelSelection(
+  providerId: string | undefined,
+  explicit?: BridgeAssistantTurnInput["modelSelection"],
+): {
   readonly provider: "codex" | "opencode" | "claudeAgent" | "cursor";
   readonly model: string;
+  readonly instanceId?: string;
 } {
+  if (explicit?.provider && explicit.model.trim()) {
+    return {
+      provider: explicit.provider,
+      model: explicit.model.trim(),
+      ...(explicit.instanceId?.trim() ? { instanceId: explicit.instanceId.trim() } : {}),
+    };
+  }
   switch (providerId) {
     case "opencode":
       return { provider: "opencode", model: "opencode/default" };
@@ -291,6 +307,7 @@ async function ensureThreadId(
     readonly welcome: Record<string, unknown>;
     readonly cwd: string;
     readonly providerId?: string;
+    readonly modelSelection?: BridgeAssistantTurnInput["modelSelection"];
     readonly timeoutMs: number;
   },
 ): Promise<string> {
@@ -334,7 +351,7 @@ async function ensureThreadId(
   }
 
   const createdAt = new Date().toISOString();
-  const modelSelection = resolveModelSelection(input.providerId);
+  const modelSelection = resolveModelSelection(input.providerId, input.modelSelection);
 
   if (!projectId) {
     projectId = randomUUID();
@@ -413,6 +430,7 @@ export async function bridgeAssistantTurn(
       welcome,
       cwd,
       providerId: input.providerId,
+      modelSelection: input.modelSelection,
       timeoutMs,
     });
 
