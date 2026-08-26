@@ -44,7 +44,9 @@ function buildCozeaDockviewTheme(
     className: `${baseTheme.className} cozea-workbench-dockview-theme cozea-workbench-dockview-theme--${themeScheme}`,
     colorScheme: themeScheme,
     tabAnimation: "smooth",
-    tabGroupIndicator: "wrap",
+    // "none" is dockview's flat underline mode (not off). We hide the line in
+    // CSS; chips/grouping stay.
+    tabGroupIndicator: "none",
     // Tighter inter-tile gap than the Spaced theme default (10px) so adjacent
     // tiles sit closer while still reading as separate cards.
     gap: 6,
