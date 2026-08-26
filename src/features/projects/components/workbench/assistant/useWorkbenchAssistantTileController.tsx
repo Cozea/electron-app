@@ -112,6 +112,7 @@ interface WorkbenchAssistantTileControllerResult {
   showTitleSpinner: boolean
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
+  handleDeleteThread: () => Promise<boolean>
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
 }
 
