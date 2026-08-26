@@ -571,10 +571,10 @@ export const WorkspaceCatalogLive = Layer.effect(
 
           const existingRoot = yield* sql`
             SELECT * FROM local_roots WHERE real_path = ${realPath} LIMIT 1
-          `.pipe(Effect.map((rows) => rows[0] as { root_id: string } | undefined))
+          `.pipe(Effect.map((rows) => rows[0] as { rootId: string } | undefined))
 
           if (existingRoot) {
-            return { rootId: existingRoot.root_id, realPath }
+            return { rootId: existingRoot.rootId, realPath }
           }
 
           const newRootId = newId("lwr")
@@ -589,9 +589,9 @@ export const WorkspaceCatalogLive = Layer.effect(
         if (rootId) {
           const rootRow = yield* sql`
             SELECT real_path FROM local_roots WHERE root_id = ${rootId} LIMIT 1
-          `.pipe(Effect.map((rows) => rows[0] as { real_path: string } | undefined))
+          `.pipe(Effect.map((rows) => rows[0] as { realPath: string } | undefined))
           if (rootRow) {
-            return { rootId, realPath: rootRow.real_path }
+            return { rootId, realPath: rootRow.realPath }
           }
           throw new Error(`Root ${rootId} not found`)
         }
@@ -622,10 +622,10 @@ export const WorkspaceCatalogLive = Layer.effect(
 
         const existingRoot = yield* sql`
             SELECT * FROM local_roots WHERE real_path = ${realPath} LIMIT 1
-          `.pipe(Effect.map((rows) => rows[0] as { root_id: string } | undefined))
+          `.pipe(Effect.map((rows) => rows[0] as { rootId: string } | undefined))
 
         if (existingRoot) {
-          return { rootId: existingRoot.root_id, realPath }
+          return { rootId: existingRoot.rootId, realPath }
         }
 
         const newRootId = newId("lwr")
@@ -651,8 +651,8 @@ export const WorkspaceCatalogLive = Layer.effect(
         }
 
         const localRootRows = yield* sql`SELECT real_path FROM local_roots`
-        for (const row of localRootRows as Array<{ real_path?: string }>) {
-          if (row.real_path) roots.add(row.real_path)
+        for (const row of localRootRows as Array<{ realPath?: string }>) {
+          if (row.realPath) roots.add(row.realPath)
         }
 
         if (roots.size === 0) {
@@ -871,12 +871,12 @@ export const WorkspaceCatalogLive = Layer.effect(
           WHERE real_path = ${realPath}
             AND project_root_relative_path = ${projectRootRelativePath}
           LIMIT 1
-        `.pipe(Effect.map((rows) => rows[0] as { workspace_id: string; project_id: string } | undefined))
+        `.pipe(Effect.map((rows) => rows[0] as { workspaceId: string; projectId: string } | undefined))
 
         if (existing) {
-          if (existing.project_id !== projectId) {
+          if (existing.projectId !== projectId) {
             if (forceBind) {
-              yield* forgetWorkspaceBinding(existing.workspace_id, {
+              yield* forgetWorkspaceBinding(existing.workspaceId, {
                 reason: "force_rebind",
                 replacementProjectId: projectId,
               })
@@ -886,8 +886,8 @@ export const WorkspaceCatalogLive = Layer.effect(
                 null,
                 folderPath,
                 realPath,
-                existing.workspace_id,
-                existing.project_id,
+                existing.workspaceId,
+                existing.projectId,
                 "duplicate_path",
               )
 
@@ -897,8 +897,8 @@ export const WorkspaceCatalogLive = Layer.effect(
                 workspaceId: null,
                 candidatePath: folderPath,
                 candidateRealPath: realPath,
-                existingWorkspaceId: existing.workspace_id,
-                existingProjectId: existing.project_id,
+                existingWorkspaceId: existing.workspaceId,
+                existingProjectId: existing.projectId,
                 reason: "duplicate_path",
                 status: "open",
                 createdAt: now(),
@@ -910,9 +910,24 @@ export const WorkspaceCatalogLive = Layer.effect(
           } else {
             // P1-08: Same project duplicate bind. Return existing workspace.
             if (setActive) {
-              yield* doSetActive(existing.workspace_id, projectId)
+              yield* doSetActive(existing.workspaceId, projectId)
             }
-            const record = yield* queryWorkspaceById(existing.workspace_id)
+            const record = yield* queryWorkspaceById(existing.workspaceId)
+            // A marker that drifted away from its row makes every later verify
+            // report a mismatch, so rewrite it to the row we just confirmed.
+            if (shouldWriteMarker && record) {
+              yield* Effect.tryPromise({
+                try: () =>
+                  writeWorkspaceMarker(record.projectRootPath, {
+                    version: 1,
+                    workspaceId: record.workspaceId,
+                    projectId,
+                    createdBy: "cozea",
+                    createdAt: now(),
+                  }),
+                catch: () => new Error("Failed to write marker"),
+              }).pipe(Effect.catch(() => Effect.void))
+            }
             return { success: true, workspace: record ? recordToDTO(record) : undefined }
           }
         }
@@ -962,6 +977,12 @@ export const WorkspaceCatalogLive = Layer.effect(
             }
           } else if (existingMarker.marker.workspaceId !== undefined) {
             if (forceBind || !markerIsTracked) {
+              // The marker names this project but no catalog row claims it, so
+              // the catalog was reset or moved. Reuse the id the folder already
+              // carries instead of re-identifying the workspace.
+              if (!forceBind && !markerIsTracked) {
+                workspaceId = existingMarker.marker.workspaceId
+              }
               yield* deleteMarkerAtProjectRoot(projectRootPath)
             } else {
               const conflictId = yield* recordConflict(
@@ -1033,10 +1054,13 @@ export const WorkspaceCatalogLive = Layer.effect(
             ${hasGit ? projectRootPath : null}, ${hasGit ? gitDirCandidate : null},
             ${repoIdentity ? repoIdentity.url : null}, ${repoIdentity ? JSON.stringify(repoIdentity) : null},
             ${"untrusted"}, ${source},
-            ${setActive ? 1 : 0}, ${1}, ${ts}, ${ts}
+            ${0}, ${1}, ${ts}, ${ts}
           )
         `
 
+        // local_workspaces_active_unique_idx allows one active row per project,
+        // so the row must land inactive and be promoted by doSetActive, which
+        // deactivates the previous active row first.
         if (setActive) {
           yield* doSetActive(workspaceId, projectId)
         }
