@@ -45,6 +45,28 @@ export interface GitStatusDetails extends Omit<GitStatusResult, "pr"> {
   upstreamRef: string | null;
 }
 
+/**
+ * Options for status reads. Local-first by default (Wave 0 Track F).
+ * Remote upstream fetch is slower / demand-gated — collapses into
+ * VcsStatusBroadcaster in Phase 4c (see docs/git-status-local-remote-prep.md).
+ */
+export interface GitStatusDetailsOptions {
+  /**
+   * When true, await a demand-gated upstream fetch before reading status.
+   * Default false: local porcelain only (ahead/behind from existing tracking refs).
+   */
+  readonly refreshRemote?: boolean;
+  /**
+   * When refreshRemote is true, force fetch even if cadence interval has not elapsed.
+   */
+  readonly forceRemoteRefresh?: boolean;
+}
+
+export interface GitRefreshRemoteStatusOptions {
+  /** Bypass cadence interval (demand-gated refresh). */
+  readonly force?: boolean;
+}
+
 export interface GitPreparedCommitContext {
   stagedSummary: string;
   stagedPatch: string;
@@ -138,14 +160,41 @@ export interface GitCoreShape {
   readonly execute: (input: ExecuteGitInput) => Effect.Effect<ExecuteGitResult, GitCommandError>;
 
   /**
-   * Read Git status for a repository.
+   * Read Git status for a repository (local-first; see statusDetails).
    */
   readonly status: (input: GitStatusInput) => Effect.Effect<GitStatusResult, GitCommandError>;
 
   /**
-   * Read detailed working tree / branch status for a repository.
+   * Read local working-tree / branch status without network fetch.
    */
-  readonly statusDetails: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
+  readonly statusDetailsLocal: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
+
+  /**
+   * Read detailed status. Local-first by default; pass refreshRemote to await
+   * a cadence-gated (or forced) upstream fetch first.
+   */
+  readonly statusDetails: (
+    cwd: string,
+    options?: GitStatusDetailsOptions,
+  ) => Effect.Effect<GitStatusDetails, GitCommandError>;
+
+  /**
+   * Demand-gated / interval-gated upstream fetch for remote ahead-behind.
+   * No-ops when cadence says remote is still fresh (unless force).
+   */
+  readonly refreshRemoteStatus: (
+    cwd: string,
+    options?: GitRefreshRemoteStatusOptions,
+  ) => Effect.Effect<void, GitCommandError>;
+
+  /**
+   * Invalidate status cadence so the next remote refresh is eligible.
+   * Prefer module-level `invalidateGitStatus` from Electron sync/journal callers.
+   */
+  readonly invalidateStatus: (
+    cwd: string,
+    scope?: "local" | "remote" | "all",
+  ) => Effect.Effect<void, never>;
 
   /**
    * Build staged change context for commit generation.

@@ -1,9 +1,6 @@
 import {
-  Cache,
-  Data,
   Duration,
   Effect,
-  Exit,
   FileSystem,
   Layer,
   Option,
@@ -29,25 +26,19 @@ import {
 } from "../Services/GitCore.ts";
 import { ServerConfig } from "../../config.ts";
 import { decodeJsonResult } from "@cozea/assistant-shared/schemaJson";
+import {
+  getGitStatusCadence,
+} from "../status/index.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
-const STATUS_UPSTREAM_REFRESH_INTERVAL = Duration.seconds(15);
 const STATUS_UPSTREAM_REFRESH_TIMEOUT = Duration.seconds(5);
-const STATUS_UPSTREAM_REFRESH_CACHE_CAPACITY = 2_048;
 const DEFAULT_BASE_BRANCH_CANDIDATES = ["main", "master"] as const;
 
 type TraceTailState = {
   processedChars: number;
   remainder: string;
 };
-
-class StatusUpstreamRefreshCacheKey extends Data.Class<{
-  cwd: string;
-  upstreamRef: string;
-  remoteName: string;
-  upstreamBranch: string;
-}> {}
 
 interface ExecuteGitOptions {
   timeoutMs?: number | undefined;
@@ -748,35 +739,35 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
       ).pipe(Effect.asVoid);
     };
 
-    const statusUpstreamRefreshCache = yield* Cache.makeWith({
-      capacity: STATUS_UPSTREAM_REFRESH_CACHE_CAPACITY,
-      lookup: (cacheKey: StatusUpstreamRefreshCacheKey) =>
-        Effect.gen(function* () {
-          yield* fetchUpstreamRefForStatus(cacheKey.cwd, {
-            upstreamRef: cacheKey.upstreamRef,
-            remoteName: cacheKey.remoteName,
-            upstreamBranch: cacheKey.upstreamBranch,
-          });
-          return true as const;
-        }),
-      // Keep successful refreshes warm; drop failures immediately so next request can retry.
-      timeToLive: (exit) =>
-        Exit.isSuccess(exit) ? STATUS_UPSTREAM_REFRESH_INTERVAL : Duration.zero,
-    });
-
-    const refreshStatusUpstreamIfStale = (cwd: string): Effect.Effect<void, GitCommandError> =>
+    /**
+     * Cadence-gated upstream fetch. Local status no longer awaits this on the
+     * hot path (Track F). Pass force for demand-gated refresh.
+     *
+     * ADR: collapses into VcsStatusBroadcaster remote poll in Phase 4c —
+     * do not grow a permanent second broadcaster here.
+     */
+    const refreshStatusUpstreamIfStale = (
+      cwd: string,
+      options?: { force?: boolean },
+    ): Effect.Effect<void, GitCommandError> =>
       Effect.gen(function* () {
+        const cadence = getGitStatusCadence();
+        if (!cadence.shouldRefreshRemote(cwd, { force: options?.force === true })) {
+          return;
+        }
         const upstream = yield* resolveCurrentUpstream(cwd);
-        if (!upstream) return;
-        yield* Cache.get(
-          statusUpstreamRefreshCache,
-          new StatusUpstreamRefreshCacheKey({
-            cwd,
-            upstreamRef: upstream.upstreamRef,
-            remoteName: upstream.remoteName,
-            upstreamBranch: upstream.upstreamBranch,
-          }),
-        );
+        if (!upstream) {
+          cadence.markRemoteRefreshed(cwd);
+          return;
+        }
+        // Fetch directly so invalidateGitStatus always forces a real network
+        // refresh on the next eligible call (no Effect Cache TTL masking).
+        yield* fetchUpstreamRefForStatus(cwd, {
+          upstreamRef: upstream.upstreamRef,
+          remoteName: upstream.remoteName,
+          upstreamBranch: upstream.upstreamBranch,
+        });
+        cadence.markRemoteRefreshed(cwd);
       });
 
     const refreshCheckedOutBranchUpstream = (cwd: string): Effect.Effect<void, GitCommandError> =>
@@ -784,6 +775,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
         const upstream = yield* resolveCurrentUpstream(cwd);
         if (!upstream) return;
         yield* fetchUpstreamRef(cwd, upstream);
+        getGitStatusCadence().markRemoteRefreshed(cwd);
       });
 
     const resolveDefaultBranchName = (
@@ -1023,19 +1015,20 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
         return branchLastCommit;
       });
 
-    const statusDetails: GitCoreShape["statusDetails"] = (cwd) =>
+    const statusDetailsLocal: GitCoreShape["statusDetailsLocal"] = (cwd) =>
       Effect.gen(function* () {
-        yield* refreshStatusUpstreamIfStale(cwd).pipe(Effect.ignoreCause({ log: true }));
+        const cadence = getGitStatusCadence();
+        cadence.clearLocalInvalidation(cwd);
 
         const [statusStdout, unstagedNumstatStdout, stagedNumstatStdout] = yield* Effect.all(
           [
-            runGitStdout("GitCore.statusDetails.status", cwd, [
+            runGitStdout("GitCore.statusDetailsLocal.status", cwd, [
               "status",
               "--porcelain=2",
               "--branch",
             ]),
-            runGitStdout("GitCore.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
-            runGitStdout("GitCore.statusDetails.stagedNumstat", cwd, [
+            runGitStdout("GitCore.statusDetailsLocal.unstagedNumstat", cwd, ["diff", "--numstat"]),
+            runGitStdout("GitCore.statusDetailsLocal.stagedNumstat", cwd, [
               "diff",
               "--cached",
               "--numstat",
@@ -1122,6 +1115,28 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           aheadCount,
           behindCount,
         };
+      });
+
+    const refreshRemoteStatus: GitCoreShape["refreshRemoteStatus"] = (cwd, options) =>
+      refreshStatusUpstreamIfStale(cwd, { force: options?.force === true });
+
+    const invalidateStatus: GitCoreShape["invalidateStatus"] = (cwd, scope = "all") =>
+      Effect.sync(() => {
+        getGitStatusCadence().invalidate(cwd, scope);
+      });
+
+    /**
+     * Local-first status: does not block on upstream fetch unless refreshRemote.
+     * Remote fetch remains cadence-gated (30s) or forceable for demand paths.
+     */
+    const statusDetails: GitCoreShape["statusDetails"] = (cwd, options) =>
+      Effect.gen(function* () {
+        if (options?.refreshRemote === true) {
+          yield* refreshStatusUpstreamIfStale(cwd, {
+            force: options.forceRemoteRefresh === true,
+          }).pipe(Effect.ignoreCause({ log: true }));
+        }
+        return yield* statusDetailsLocal(cwd);
       });
 
     const status: GitCoreShape["status"] = (input) =>
@@ -1796,7 +1811,10 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
     return {
       execute,
       status,
+      statusDetailsLocal,
       statusDetails,
+      refreshRemoteStatus,
+      invalidateStatus,
       prepareCommitContext,
       commit,
       pushCurrentBranch,
