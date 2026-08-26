@@ -38,6 +38,8 @@ export function WorkbenchHeaderBranchControl({
   const {
     branchCwd,
     chromeLabel,
+    branchAriaLabel,
+    branchTooltipDetail,
     isBusy,
     showActionSpinner,
     handleOpenNativeBranchMenu,
@@ -51,6 +53,10 @@ export function WorkbenchHeaderBranchControl({
   })
 
   const { t } = useTranslation()
+  const ariaLabel =
+    branchAriaLabel ?? `${t("workbench.branch.currentBranch")}: ${chromeLabel.replace(/\?$/, "")}`
+  const tooltipText =
+    branchTooltipDetail ?? `${t("workbench.branch.currentBranch")}: ${chromeLabel.replace(/\?$/, "")}`
 
   return (
     <Tooltip>
@@ -66,7 +72,7 @@ export function WorkbenchHeaderBranchControl({
           disabled={!branchCwd}
           aria-busy={isBusy}
           aria-haspopup="menu"
-          aria-label={`${t("workbench.branch.currentBranch")}: ${chromeLabel}`}
+          aria-label={ariaLabel}
           onClick={handleOpenNativeBranchMenu}
         >
           {showActionSpinner ? <div className="loader text-muted-foreground" /> : null}
@@ -78,9 +84,7 @@ export function WorkbenchHeaderBranchControl({
           ) : null}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {t("workbench.branch.currentBranch")}: {chromeLabel}
-      </TooltipContent>
+      <TooltipContent side="bottom">{tooltipText}</TooltipContent>
     </Tooltip>
   )
 }
