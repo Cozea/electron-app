@@ -7,14 +7,21 @@ import { readSubstrateShadowServerFlags } from "../../electron/substrate/flags";
 import { ShadowServerManager } from "../../electron/substrate/ShadowServerManager";
 
 describe("readSubstrateShadowServerFlags", () => {
-  it("defaults to disabled on a dedicated port", () => {
+  it("defaults to enabled on a dedicated port", () => {
     const flags = readSubstrateShadowServerFlags({});
-    expect(flags.enabled).toBe(false);
+    expect(flags.enabled).toBe(true);
     expect(flags.port).toBe(4783);
     expect(flags.flagId).toBe("cozea.substrate.shadowServer");
   });
 
-  it("enables via COZEA_SUBSTRATE_SHADOW_SERVER", () => {
+  it("can disable via COZEA_SUBSTRATE_SHADOW_SERVER=0", () => {
+    const flags = readSubstrateShadowServerFlags({
+      COZEA_SUBSTRATE_SHADOW_SERVER: "0",
+    });
+    expect(flags.enabled).toBe(false);
+  });
+
+  it("respects custom port when enabled", () => {
     const flags = readSubstrateShadowServerFlags({
       COZEA_SUBSTRATE_SHADOW_SERVER: "1",
       COZEA_SUBSTRATE_SHADOW_PORT: "51234",

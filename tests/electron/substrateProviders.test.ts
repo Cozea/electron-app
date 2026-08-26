@@ -19,11 +19,18 @@ import {
 } from "../../electron/substrate/providers";
 
 describe("readSubstrateProvidersFlags", () => {
-  it("defaults to disabled", () => {
+  it("defaults to enabled", () => {
     const flags = readSubstrateProvidersFlags({});
-    expect(flags.enabled).toBe(false);
+    expect(flags.enabled).toBe(true);
     expect(flags.flagId).toBe(SUBSTRATE_PROVIDERS_FLAG);
     expect(flags.flagId).toBe("cozea.substrate.providers");
+  });
+
+  it("can disable via COZEA_SUBSTRATE_PROVIDERS=0", () => {
+    const flags = readSubstrateProvidersFlags({
+      COZEA_SUBSTRATE_PROVIDERS: "0",
+    });
+    expect(flags.enabled).toBe(false);
   });
 
   it("enables via COZEA_SUBSTRATE_PROVIDERS=1", () => {
@@ -204,16 +211,23 @@ describe("SubstrateProviderDriverRegistry", () => {
 });
 
 describe("bootstrapSubstrateProviderRegistry", () => {
-  it("stays empty when the flag is off", () => {
+  it("registers drivers by default when the flag is on", () => {
     const registry = bootstrapSubstrateProviderRegistry({ env: {} });
+    expect(registry.enabled).toBe(true);
+    expect(registry.getStatus().registeredDrivers.length).toBeGreaterThan(0);
+  });
+
+  it("stays empty when the flag is off", () => {
+    const registry = bootstrapSubstrateProviderRegistry({
+      env: { COZEA_SUBSTRATE_PROVIDERS: "0" },
+    });
     expect(registry.enabled).toBe(false);
     expect(registry.getStatus().registeredDrivers).toEqual([]);
   });
 
-  it("registers OpenCode (full) plus legacy adapters when force-enabled", async () => {
+  it("registers OpenCode (full) plus legacy adapters when enabled", async () => {
     const registry = bootstrapSubstrateProviderRegistry({
       env: {},
-      forceEnable: true,
       openCodeHooks: {
         probe: async () => ({
           installed: true,

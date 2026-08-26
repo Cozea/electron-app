@@ -1,9 +1,13 @@
 /**
- * Optional OTLP HTTP export for substrate NDJSON spans (Track E follow-on).
+ * OTLP HTTP export for substrate spans (Track E).
  *
- * When `COZEA_OTLP_ENDPOINT` is set alongside `COZEA_OBS_NDJSON=1`, spans are
- * best-effort POSTed as OTLP JSON logs in addition to the local NDJSON file.
+ * When observability is enabled (`COZEA_OBS_NDJSON=1` by default) spans are
+ * best-effort POSTed as OTLP JSON logs. Set `COZEA_OTLP_ENDPOINT` to override
+ * the default local collector URL, or `COZEA_OTLP_ENDPOINT=0` to disable export.
  */
+
+import { DEFAULT_OTLP_LOGS_ENDPOINT } from "../constants";
+import { readSubstrateObsNdjsonFlags } from "../flags";
 
 import type { SubstrateNdjsonSpan } from "./ndjsonSpanWriter";
 
@@ -13,14 +17,42 @@ export interface OtlpExportResult {
   readonly error?: string;
 }
 
-function isOtlpEnabled(env: NodeJS.ProcessEnv): boolean {
-  const endpoint = env.COZEA_OTLP_ENDPOINT?.trim();
-  return Boolean(endpoint && endpoint.length > 0);
+function isExplicitlyDisabled(env: NodeJS.ProcessEnv): boolean {
+  const raw = env.COZEA_OTLP_ENDPOINT?.trim().toLowerCase();
+  return raw === "0" || raw === "false" || raw === "off" || raw === "no";
 }
 
-function resolveEndpoint(env: NodeJS.ProcessEnv): string | null {
-  const raw = env.COZEA_OTLP_ENDPOINT?.trim();
-  return raw && raw.length > 0 ? raw : null;
+/**
+ * Whether OTLP export should run for the current env.
+ * Enabled when obs NDJSON is on (default) and export is not explicitly disabled.
+ */
+export function isOtlpEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isExplicitlyDisabled(env)) {
+    return false;
+  }
+  const obs = readSubstrateObsNdjsonFlags(env);
+  if (!obs.enabled) {
+    const endpoint = env.COZEA_OTLP_ENDPOINT?.trim();
+    return Boolean(endpoint && endpoint.length > 0 && !isExplicitlyDisabled(env));
+  }
+  return true;
+}
+
+/**
+ * Resolve OTLP HTTP endpoint — explicit env wins, else default when obs is on.
+ */
+export function resolveOtlpEndpoint(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (isExplicitlyDisabled(env)) {
+    return null;
+  }
+  const fromEnv = env.COZEA_OTLP_ENDPOINT?.trim();
+  if (fromEnv && fromEnv.length > 0 && !isExplicitlyDisabled(env)) {
+    return fromEnv;
+  }
+  if (readSubstrateObsNdjsonFlags(env).enabled) {
+    return DEFAULT_OTLP_LOGS_ENDPOINT;
+  }
+  return null;
 }
 
 /**
@@ -33,7 +65,7 @@ export async function exportSubstrateSpanToOtlp(
   if (!isOtlpEnabled(env)) {
     return { exported: false };
   }
-  const endpoint = resolveEndpoint(env);
+  const endpoint = resolveOtlpEndpoint(env);
   if (!endpoint) {
     return { exported: false };
   }
@@ -81,5 +113,3 @@ export async function exportSubstrateSpanToOtlp(
     };
   }
 }
-
-export { isOtlpEnabled, resolveEndpoint as resolveOtlpEndpoint };

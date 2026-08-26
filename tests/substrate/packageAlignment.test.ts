@@ -25,8 +25,8 @@ describe("phase 7 substrate package alignment", () => {
   });
 
   it("re-exports client-runtime surface from @cozea/substrate-client-runtime", () => {
-    expect(substrateClientFlags({}).enabled).toBe(false);
-    expect(clientRuntimeFlags({ COZEA_SUBSTRATE_RPC_CHAT: "1" }).enabled).toBe(true);
+    expect(substrateClientFlags({}).enabled).toBe(true);
+    expect(clientRuntimeFlags({ COZEA_SUBSTRATE_RPC_CHAT: "0" }).enabled).toBe(false);
     expect(typeof SubstrateClientChatClient).toBe("function");
     expect(typeof ClientRuntimeChatClient).toBe("function");
     expect(SubstrateClientChatClient.name).toBe(ClientRuntimeChatClient.name);

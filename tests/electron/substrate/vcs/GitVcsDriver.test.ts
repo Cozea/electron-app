@@ -13,14 +13,14 @@ import { readSubstrateVcsFlags } from "../../../../electron/substrate/flags";
 import { SUBSTRATE_VCS_FLAG } from "../../../../electron/substrate/constants";
 
 describe("readSubstrateVcsFlags", () => {
-  it("defaults off", () => {
+  it("defaults on", () => {
     const flags = readSubstrateVcsFlags({});
-    expect(flags.enabled).toBe(false);
+    expect(flags.enabled).toBe(true);
     expect(flags.flagId).toBe(SUBSTRATE_VCS_FLAG);
   });
 
-  it("enables via COZEA_SUBSTRATE_VCS=1", () => {
-    expect(readSubstrateVcsFlags({ COZEA_SUBSTRATE_VCS: "1" }).enabled).toBe(true);
+  it("can disable via COZEA_SUBSTRATE_VCS=0", () => {
+    expect(readSubstrateVcsFlags({ COZEA_SUBSTRATE_VCS: "0" }).enabled).toBe(false);
   });
 });
 

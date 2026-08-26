@@ -15,7 +15,7 @@ import {
   bootstrapSubstrateProviderRegistry,
   type SubstrateProviderDriverRegistry,
 } from "../substrate/providers";
-import { parseBooleanFlag } from "../substrate/flags";
+import { readSubstratePrimaryFlags } from "../substrate/flags";
 import type { SubstrateDriverKind } from "../substrate/providers/types";
 import { bridgeAssistantTurn } from "./assistantWsBridge";
 
@@ -142,8 +142,7 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
   const env = options.env ?? process.env;
   const providersEnabled = options.providersEnabled === true;
   const primaryEnabled =
-    options.primaryEnabled === true ||
-    parseBooleanFlag(env.COZEA_SUBSTRATE_PRIMARY, false);
+    options.primaryEnabled === true || readSubstratePrimaryFlags(env).enabled;
 
   let providerRegistry: SubstrateProviderDriverRegistry | null = null;
   if (providersEnabled) {

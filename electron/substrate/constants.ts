@@ -5,20 +5,23 @@ export const DEFAULT_SUBSTRATE_SHADOW_PORT = 4783;
 export const SUBSTRATE_SHADOW_READY_PATH = "/.well-known/cozea/substrate/ready";
 export const SUBSTRATE_SHADOW_SERVER_FLAG = "cozea.substrate.shadowServer" as const;
 
-/** Phase 2 — Effect RPC / contracts chat path (default off). */
+/** Phase 2 — Effect RPC / contracts chat path (default on). */
 export const SUBSTRATE_RPC_CHAT_FLAG = "cozea.substrate.rpcChat" as const;
 
-/** Phase 3 — T3-shaped provider driver registry path (default off). */
+/** Phase 3 — T3-shaped provider driver registry path (default on). */
 export const SUBSTRATE_PROVIDERS_FLAG = "cozea.substrate.providers" as const;
 
-/** Phase 4 — VcsDriver path (default off). */
+/** Phase 4 — VcsDriver path (default on). */
 export const SUBSTRATE_VCS_FLAG = "cozea.substrate.vcs" as const;
 
-/** Phase 5 — primary out-of-process substrate (default off). */
+/** Phase 5 — primary out-of-process substrate (default on). */
 export const SUBSTRATE_PRIMARY_FLAG = "cozea.substrate.primary" as const;
 
-/** Phase 6 / Track E — NDJSON spans (default off). */
+/** Phase 6 / Track E — NDJSON spans (default on). */
 export const SUBSTRATE_OBS_NDJSON_FLAG = "cozea.obs.ndjson" as const;
+
+/** Default OTLP HTTP logs endpoint when observability is enabled. */
+export const DEFAULT_OTLP_LOGS_ENDPOINT = "http://127.0.0.1:4318/v1/logs" as const;
 
 /** Upstream pin recorded by Track Inv (Phase 0). */
 export const SUBSTRATE_T3_PIN_SHA = "a3a8cbd60539b4af4de8f96c892dbd07a2b6c041";

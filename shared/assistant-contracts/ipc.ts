@@ -145,8 +145,7 @@ export interface NativeApi {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
     openExternal: (url: string) => Promise<void>;
   };
-  git: {
-    // Existing branch/worktree API
+  vcs: {
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;
     createWorktree: (input: GitCreateWorktreeInput) => Promise<GitCreateWorktreeResult>;
     removeWorktree: (input: GitRemoveWorktreeInput) => Promise<void>;
@@ -157,12 +156,13 @@ export interface NativeApi {
     preparePullRequestThread: (
       input: GitPreparePullRequestThreadInput,
     ) => Promise<GitPreparePullRequestThreadResult>;
-    // Stacked action API
     pull: (input: GitPullInput) => Promise<GitPullResult>;
     status: (input: GitStatusInput) => Promise<GitStatusResult>;
     runStackedAction: (input: GitRunStackedActionInput) => Promise<GitRunStackedActionResult>;
     onActionProgress: (callback: (event: GitActionProgressEvent) => void) => () => void;
   };
+  /** @deprecated Prefer `vcs` — thin aliases over the vcs.* WS methods. */
+  git: NativeApi["vcs"];
   contextMenu: {
     show: <T extends string>(
       items: readonly ContextMenuItem<T>[],

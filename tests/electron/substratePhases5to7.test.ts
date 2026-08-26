@@ -8,15 +8,15 @@ import {
 import { listSubstrateRemoteEnvironmentStubs } from "../../electron/substrate/remoteEnvironments";
 
 describe("substrate feature flags (phases 5–6)", () => {
-  it("defaults all spine flags off", () => {
+  it("defaults all spine flags on", () => {
     const flags = readSubstrateFeatureFlags({});
-    expect(flags.shadowServer.enabled).toBe(false);
-    expect(flags.rpcChat).toBe(false);
-    expect(flags.providers).toBe(false);
-    expect(flags.vcs).toBe(false);
-    expect(flags.primary).toBe(false);
-    expect(flags.obsNdjson).toBe(false);
-    expect(shouldStartInProcessAssistantRuntime(flags)).toBe(true);
+    expect(flags.shadowServer.enabled).toBe(true);
+    expect(flags.rpcChat).toBe(true);
+    expect(flags.providers).toBe(true);
+    expect(flags.vcs).toBe(true);
+    expect(flags.primary).toBe(true);
+    expect(flags.obsNdjson).toBe(true);
+    expect(shouldStartInProcessAssistantRuntime(flags)).toBe(false);
   });
 
   it("skips in-process runtime when primary + shadow are enabled", () => {
@@ -54,6 +54,7 @@ describe("substrate feature flags (phases 5–6)", () => {
   it("keeps in-process runtime if primary is on but shadow is off", () => {
     const flags = readSubstrateFeatureFlags({
       COZEA_SUBSTRATE_PRIMARY: "1",
+      COZEA_SUBSTRATE_SHADOW_SERVER: "0",
     });
     expect(shouldStartInProcessAssistantRuntime(flags)).toBe(true);
   });

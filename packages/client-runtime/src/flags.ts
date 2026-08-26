@@ -21,8 +21,8 @@ export interface SubstrateRpcChatFlags {
 }
 
 /**
- * Phase 2 flag — default **off**.
- * Enable with `COZEA_SUBSTRATE_RPC_CHAT=1`.
+ * Phase 2 flag — default **on**.
+ * Disable with `COZEA_SUBSTRATE_RPC_CHAT=0`.
  */
 export function readSubstrateRpcChatFlags(
   env: Record<string, string | undefined> =
@@ -30,6 +30,6 @@ export function readSubstrateRpcChatFlags(
 ): SubstrateRpcChatFlags {
   return {
     flagId: SUBSTRATE_RPC_CHAT_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_RPC_CHAT, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_RPC_CHAT, true),
   };
 }
