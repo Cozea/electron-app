@@ -128,6 +128,12 @@
   min-width: 2.5rem;
 }
 
+/* dockview's `tabGroupIndicator: "none"` still draws a flat accent bar
+   (`.dv-tab-group-underline`). Kill it — we keep chips/grouping without lines. */
+.cozea-workbench-dockview-theme .dv-tab-group-underline {
+  display: none !important;
+}
+
 /* Basic tab overflow control (OSS list — not enterprise search). */
 .cozea-workbench-dockview-theme .dv-tabs-overflow-container,
 .cozea-workbench-dockview-theme .dv-tabs-overflow-dropdown-default {
