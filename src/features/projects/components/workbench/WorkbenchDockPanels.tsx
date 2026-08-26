@@ -14,7 +14,7 @@ import type {
   IDockviewPanelHeaderProps,
   IDockviewPanelProps,
   IWatermarkPanelProps,
-} from "dockview"
+} from "dockview-react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import { Button } from "@/components/ui/button"

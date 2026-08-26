@@ -5,7 +5,7 @@ import type {
   RuntimeMode,
 } from "@cozea/assistant-contracts"
 import type { BrowserStorageScope } from "@shared/browserHostTypes"
-import type { SerializedDockview } from "dockview"
+import type { SerializedDockview } from "dockview-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"

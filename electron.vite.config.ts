@@ -95,7 +95,11 @@ function rendererManualChunks(id: string): string | undefined {
   if (normalizedId.includes('/node_modules/@xterm/')) {
     return 'vendor-terminal'
   }
-  if (normalizedId.includes('/node_modules/dockview/')) {
+  if (
+    normalizedId.includes('/node_modules/dockview/') ||
+    normalizedId.includes('/node_modules/dockview-core/') ||
+    normalizedId.includes('/node_modules/dockview-react/')
+  ) {
     return 'vendor-workbench-dockview'
   }
   if (

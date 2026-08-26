@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview"
+import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import type { ContextMenuItem, ProviderKind } from "@cozea/assistant-contracts"
 
 import { Button } from "@/components/ui/button"

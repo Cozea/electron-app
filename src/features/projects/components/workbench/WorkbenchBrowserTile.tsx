@@ -9,7 +9,7 @@ import {
   type MouseEvent,
 } from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-import type { DockviewApi, DockviewPanelApi } from "dockview"
+import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
 import {
