@@ -559,6 +559,51 @@ const CLAUDE_SETTING_SOURCES = [
   "local",
 ] as const satisfies ReadonlyArray<SettingSource>;
 
+type ClaudeSystemMessage = Extract<SDKMessage, { readonly type: "system" }>;
+
+/**
+ * System subtypes the runtime deliberately consumes without emitting a canonical
+ * event. They stay in the native NDJSON log; surfacing them as runtime warnings
+ * would fill the chat timeline with per-token and per-poll chatter.
+ */
+const SILENT_CLAUDE_SYSTEM_SUBTYPES: ReadonlySet<string> = new Set([
+  "background_tasks_changed",
+  "commands_changed",
+  "control_request_progress",
+  "memory_recall",
+  "notification",
+  "plugin_install",
+  "task_updated",
+  "thinking_tokens",
+]);
+
+/**
+ * System subtypes that carry an operator-relevant message but have no canonical
+ * event yet. They are surfaced as runtime warnings using the SDK's own text
+ * instead of the generic "unhandled subtype" placeholder.
+ */
+function claudeSystemDiagnosticText(message: ClaudeSystemMessage): string | undefined {
+  switch (message.subtype) {
+    case "informational":
+      return message.level === "warning" ? trimOrNull(message.content) ?? undefined : undefined;
+    case "mirror_error":
+      return `Claude session mirror error: ${message.error}`;
+    case "model_refusal_fallback":
+      return (
+        trimOrNull(message.content) ??
+        `Claude fell back from ${message.original_model} to ${message.fallback_model}.`
+      );
+    case "model_refusal_no_fallback":
+      return trimOrNull(message.content) ?? `Claude refused the request on ${message.original_model}.`;
+    case "permission_denied":
+      return trimOrNull(message.message) ?? `Claude denied ${message.tool_name}.`;
+    case "worker_shutting_down":
+      return `Claude worker shutting down: ${message.reason}`;
+    default:
+      return undefined;
+  }
+}
+
 function buildPromptText(input: ProviderSendTurnInput): string {
   const rawEffort =
     input.modelSelection?.provider === "claudeAgent"
@@ -2296,13 +2341,22 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               },
             });
             return;
-          default:
+          default: {
+            const diagnostic = claudeSystemDiagnosticText(message);
+            if (diagnostic) {
+              yield* emitRuntimeWarning(context, diagnostic, message);
+              return;
+            }
+            if (SILENT_CLAUDE_SYSTEM_SUBTYPES.has(message.subtype)) {
+              return;
+            }
             yield* emitRuntimeWarning(
               context,
               `Unhandled Claude system message subtype '${message.subtype}'.`,
               message,
             );
             return;
+          }
         }
       });
 
@@ -2412,6 +2466,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           case "auth_status":
           case "rate_limit_event":
             yield* handleSdkTelemetryMessage(context, message);
+            return;
+          case "conversation_reset":
+            // CLI-side `/clear`; Cozea drives its own thread lifecycle and keeps
+            // the existing resume cursor, so there is nothing to reconcile here.
             return;
           default:
             yield* emitRuntimeWarning(
