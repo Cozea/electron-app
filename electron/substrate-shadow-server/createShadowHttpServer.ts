@@ -19,6 +19,7 @@ export interface ShadowServerReadyPayload {
   readonly pid: number;
   readonly rpcChat: boolean;
   readonly providers: boolean;
+  readonly t3Server: boolean;
   readonly rpcPath: "/rpc" | null;
 }
 
@@ -33,6 +34,9 @@ export interface CreateShadowHttpServerOptions {
   readonly providersEnabled?: boolean;
   /** Phase 5 — when true, bridge chat to assistant runtime in shadow process. */
   readonly primaryEnabled?: boolean;
+  /** Phase T1 — vendored T3 server orchestration backend when dual-run is active. */
+  readonly t3ServerEnabled?: boolean;
+  readonly orchestrationBackend?: import("./rpcOrchestrationHandlers.ts").OrchestrationRpcBackend;
   readonly onListening?: (info: { readonly host: string; readonly port: number }) => void;
   readonly onRequestLog?: (line: string) => void;
 }
@@ -57,6 +61,7 @@ export function createShadowHttpServer(
   const rpcChatEnabled = options.rpcChatEnabled === true;
   const providersEnabled = options.providersEnabled === true && rpcChatEnabled;
   const primaryEnabled = options.primaryEnabled === true;
+  const t3ServerEnabled = options.t3ServerEnabled === true;
   const phase: 1 | 2 | 3 = providersEnabled ? 3 : rpcChatEnabled ? 2 : 1;
 
   const readyPayload: ShadowServerReadyPayload = {
@@ -71,6 +76,7 @@ export function createShadowHttpServer(
     pid,
     rpcChat: rpcChatEnabled,
     providers: providersEnabled,
+    t3Server: t3ServerEnabled,
     rpcPath: rpcChatEnabled ? "/rpc" : null,
   };
 
@@ -139,6 +145,7 @@ export function createShadowHttpServer(
             rpcChatEnabled,
             providersEnabled,
             primaryEnabled,
+            orchestrationBackend: options.orchestrationBackend,
             onLog: (line) => options.onRequestLog?.(line),
           });
           options.onListening?.({ host, port });

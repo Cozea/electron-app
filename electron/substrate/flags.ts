@@ -6,6 +6,7 @@ import {
   SUBSTRATE_PROVIDERS_FLAG,
   SUBSTRATE_RPC_CHAT_FLAG,
   SUBSTRATE_SHADOW_SERVER_FLAG,
+  SUBSTRATE_T3_SERVER_FLAG,
   SUBSTRATE_VCS_FLAG,
 } from "./constants";
 
@@ -153,6 +154,12 @@ export interface SubstrateObsNdjsonFlags {
   readonly enabled: boolean;
 }
 
+export interface SubstrateT3ServerFlags {
+  readonly flagId: typeof SUBSTRATE_T3_SERVER_FLAG;
+  /** When true, shadow child also boots vendored T3 apps/server for orchestration RPC. */
+  readonly enabled: boolean;
+}
+
 /**
  * Phase 6 / Track E flag — default **on**.
  * Disable with `COZEA_OBS_NDJSON=0` or `COZEA_SUBSTRATE_OBS_NDJSON=0`.
@@ -166,6 +173,19 @@ export function readSubstrateObsNdjsonFlags(
   };
 }
 
+/**
+ * Phase T1 flag — default **off**.
+ * Enable with `COZEA_T3_SERVER=1`.
+ */
+export function readSubstrateT3ServerFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstrateT3ServerFlags {
+  return {
+    flagId: SUBSTRATE_T3_SERVER_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_T3_SERVER, false),
+  };
+}
+
 export interface SubstrateFeatureFlags {
   readonly shadowServer: SubstrateShadowServerFlags;
   readonly rpcChat: boolean;
@@ -173,6 +193,7 @@ export interface SubstrateFeatureFlags {
   readonly vcs: boolean;
   readonly primary: boolean;
   readonly obsNdjson: boolean;
+  readonly t3Server: boolean;
 }
 
 /**
@@ -189,6 +210,7 @@ export function readSubstrateFeatureFlags(
     vcs: readSubstrateVcsFlags(env).enabled,
     primary: readSubstratePrimaryFlags(env).enabled,
     obsNdjson: readSubstrateObsNdjsonFlags(env).enabled,
+    t3Server: readSubstrateT3ServerFlags(env).enabled,
   };
 }
 
@@ -208,5 +230,6 @@ export {
   SUBSTRATE_PROVIDERS_FLAG,
   SUBSTRATE_RPC_CHAT_FLAG,
   SUBSTRATE_SHADOW_SERVER_FLAG,
+  SUBSTRATE_T3_SERVER_FLAG,
   SUBSTRATE_VCS_FLAG,
 };

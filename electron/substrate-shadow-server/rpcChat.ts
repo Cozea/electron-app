@@ -54,6 +54,8 @@ export interface AttachRpcChatOptions {
   readonly providersEnabled?: boolean;
   /** When true, prefer assistant WS bridge over echo when reachable. */
   readonly primaryEnabled?: boolean;
+  /** When set, orchestration.* RPC methods route to this backend (T3 dual-run). */
+  readonly orchestrationBackend?: import("./rpcOrchestrationHandlers.ts").OrchestrationRpcBackend;
   readonly assistantHttpOrigin?: string;
   readonly onLog?: (line: string) => void;
   /** Override env for provider bootstrap (tests). */
@@ -331,7 +333,10 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
           id: request.id,
           method: request.method,
           payload: request.payload,
-          options: { onLog: options.onLog },
+          options: {
+            onLog: options.onLog,
+            proxy: options.orchestrationBackend,
+          },
         });
         return;
       }

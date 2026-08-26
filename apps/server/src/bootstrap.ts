@@ -10,6 +10,8 @@ import {
 import { readSubstrateFeatureFlags } from "../../../electron/substrate/flags";
 import { getSharedSubstrateNdjsonWriter } from "../../../electron/substrate/obs";
 import { createShadowHttpServer } from "../../../electron/substrate-shadow-server/createShadowHttpServer";
+import type { OrchestrationRpcBackend } from "../../../electron/substrate-shadow-server/rpcOrchestrationHandlers";
+import { bootstrapT3Server, type T3ServerBootstrapHandle } from "./t3Bootstrap.ts";
 
 export interface BootstrapCozeaSubstrateServerOptions {
   readonly host?: string;
@@ -66,13 +68,35 @@ export async function bootstrapCozeaSubstrateServer(
       rpcChat: substrateFlags.rpcChat,
       providers: substrateFlags.providers,
       primary: substrateFlags.primary,
+      t3Server: substrateFlags.t3Server,
     },
   });
+
+  let t3Handle: T3ServerBootstrapHandle | null = null;
+  let orchestrationBackend: OrchestrationRpcBackend | undefined;
+
+  if (substrateFlags.t3Server) {
+    try {
+      t3Handle = await bootstrapT3Server({
+        onLog: (line) => appendLog(`[t3] ${line}`),
+      });
+      orchestrationBackend = t3Handle.proxy;
+      appendLog(`T3 server ready at ${t3Handle.process.baseUrl}`);
+    } catch (error) {
+      appendLog(
+        `T3 server boot failed (legacy orchestration fallback): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
 
   const handle = createShadowHttpServer({
     rpcChatEnabled: substrateFlags.rpcChat,
     providersEnabled: substrateFlags.providers,
     primaryEnabled: substrateFlags.primary,
+    t3ServerEnabled: orchestrationBackend !== undefined,
+    orchestrationBackend,
     host,
     port,
     pin: process.env.COZEA_SUBSTRATE_T3_PIN?.trim() || SUBSTRATE_T3_PIN_SHA,
@@ -100,6 +124,8 @@ export async function bootstrapCozeaSubstrateServer(
           host: info.host,
           port: info.port,
           readyPath: SUBSTRATE_SHADOW_READY_PATH,
+          t3Server: orchestrationBackend !== undefined,
+          t3ServerUrl: t3Handle?.process.baseUrl ?? null,
         });
       }
     },
@@ -107,6 +133,12 @@ export async function bootstrapCozeaSubstrateServer(
 
   await handle.start();
   return {
-    stop: () => handle.stop(),
+    stop: async () => {
+      await handle.stop();
+      if (t3Handle) {
+        await t3Handle.stop();
+        t3Handle = null;
+      }
+    },
   };
 }
