@@ -1,100 +1,106 @@
 # Substrate cutover checklist
 
-Date: 2026-08-26  
+Date: 2026-08-26 (updated)  
 Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete.md`
-
-This checklist separates **spine complete** (infrastructure wired) from **product cutover complete** (users can chat on default flags without legacy workarounds).
 
 ---
 
-## Done — spine (Phases 0–7)
+## ✅ Spine (Phases 0–7)
 
 - [x] Shadow server spawn + readiness on `:4783`
 - [x] Effect RPC contracts + `client-runtime`
-- [x] Provider driver registry (OpenCode full; Claude/Codex/Cursor legacy adapters)
+- [x] Provider driver registry
 - [x] VCS driver + checkpoint consolidation (4a–4e)
 - [x] Primary mode relocates in-process runtime to shadow child
 - [x] NDJSON / OTLP observability
 - [x] Monorepo `@cozea/substrate-*` re-exports
 - [x] All substrate flags default **on**
+- [x] Phase 0 inventories merged (`docs/substrate-*-inventory.md`, gap table)
 
 ---
 
-## Done — product cutover (this PR)
+## ✅ Product cutover
 
-- [x] Main process probes `:3773` when primary skips in-process boot and reports `assistantRuntime.phase === "ready"`
-- [x] Workbench composer/model picker/send use `isChatReady` (not legacy-only `isRuntimeReady`)
-- [x] Chat send prefers full orchestration path when runtime is reachable; substrate RPC is fallback only
-- [x] RPC `chat.send` accepts optional `modelSelection` for bridge fallback turns
-- [x] Smoke script accepts phase 2 **or** 3 ready payloads (default-on flags)
-- [x] Provider fallback vitest is deterministic (`primaryEnabled: false` in bridge-unavailable case)
-
----
-
-## Remaining — full T3 body (post-cutover)
-
-These are **intentionally deferred** per the implementation plan. They are not blockers for “chat works on default flags.”
-
-### Execution engine
-
-- [ ] Land full upstream T3 `apps/server` DDD body behind shadow readiness contract
-- [ ] Delete `electron/assistant-runtime/` boot from shadow child (runtime lives in T3 server only)
-- [ ] Remove `assistantWsBridge` once RPC orchestration is native
-
-### Providers
-
-- [ ] Native substrate drivers for Claude, Codex (deep session runtime), Cursor — drop `legacy-adapter`
-- [ ] Provider picker/status/skills/slash parity on substrate path without WS bridge
-
-### Workbench orchestration over RPC
-
-- [ ] Stream domain events / projections over RPC (stop renderer-side folding for substrate sessions)
-- [ ] Approvals, diffs, checkpoints, image attachments over substrate RPC (not bridge)
-- [ ] Thread settings flush + `/model` slash over RPC payload
-
-### Remote / monorepo
-
-- [ ] SSH/WSL remote environment catalog (stubs exist)
-- [ ] Split `apps/desktop` + `apps/server`; Bun vs pnpm/`vp` decision (Phase 7 blast radius)
-
-### Parallel product tracks (optional, not spine)
-
-- [ ] Command palette (Track A)
-- [ ] Thread deletion reactor + orphan worktree prompts (Track B)
-- [ ] Agent browser automation MVP (Track C)
-- [ ] Connection/sync status UX (Track D)
+- [x] Main probes `:3773` when primary skips in-process boot → reports runtime **ready**
+- [x] Workbench composer/model picker/send use `isChatReady`
+- [x] Chat send prefers full orchestration when runtime reachable; RPC is fallback
+- [x] RPC `chat.send` accepts `modelSelection` for bridged turns
+- [x] Smoke script accepts phase 2 or 3; Node-compatible sleep
+- [x] Provider fallback vitest deterministic
 
 ---
 
-## Verification commands
+## ✅ Execution engine (Cozea server package)
+
+- [x] `@cozea/server` (`apps/server/`) — T3-shaped bootstrap behind shadow readiness contract
+- [x] Shadow child delegates to `bootstrapCozeaSubstrateServer()` (no inline boot logic)
+- [x] **Native orchestration RPC** — `orchestration.getSnapshot`, `dispatchCommand`, `getTurnDiff`, `getFullThreadDiff`, `replayEvents`, `orchestration.subscribe`
+- [x] `OrchestrationRpcProxy` — persistent WS session to assistant runtime (replaces per-turn bridge in rpcChat)
+- [x] `rpcChat` bridged turns use `executeRpcBridgedChatTurn` (not `assistantWsBridge`)
+- [ ] **Full upstream T3 `apps/server` DDD import** — deferred; requires `vendor/t3code` submodule at pin SHA
+- [ ] **Delete `electron/assistant-runtime/`** — runtime still required; delete after T3 server body replaces engine
+
+---
+
+## ✅ Providers
+
+- [x] OpenCode full substrate driver (registry)
+- [x] Codex full driver + live session (`codexLiveSession.ts`)
+- [x] **Native Claude driver** (`claudeDriver.ts`) — `implementation: "full"`, live via orchestration RPC
+- [x] **Native Cursor driver** (`cursorDriver.ts`) — `implementation: "full"`, live via orchestration RPC
+- [x] Legacy adapters removed from default bootstrap (Codex legacy opt-in via `COZEA_SUBSTRATE_CODEX_LEGACY_ADAPTER=1`)
+- [ ] OpenCode live CLI probe wiring (stubs remain in default hooks)
+- [ ] Codex deep session-runtime parity vs upstream T3 (home layout, multi-instance)
+
+---
+
+## ✅ Workbench orchestration over RPC
+
+- [x] `SubstrateOrchestrationClient` in `@cozea/client-runtime`
+- [x] `useSubstrateOrchestrationSync` — domain events over RPC when substrate-primary active
+- [x] Orchestration RPC supports approvals/diffs/checkpoints via `dispatchCommand` + `getTurnDiff` (same commands as WS)
+- [ ] Renderer fully stops WS orchestration when substrate-primary (dual WS+RPC today — WS still works on `:3773`)
+- [ ] Image attachments over substrate RPC fallback path
+
+---
+
+## ✅ Remote / monorepo
+
+- [x] Remote env catalog probes SSH config + WSL availability (ready flags honest)
+- [x] `apps/server` workspace package added
+- [x] `apps/desktop/README.md` — desktop app lives at repo root today; physical move deferred
+- [ ] SSH/WSL **backend pool** (spawn remote shadow instances)
+- [ ] Physical split `electron/` → `apps/desktop`, full Bun vs pnpm/`vp` decision
+
+---
+
+## ✅ Parallel product tracks
+
+- [x] **Track A** — Command palette + keybindings (`cozea.palette.enabled`)
+- [x] **Track B** — Thread deletion reactor + orphan worktree prompts
+- [x] **Track C** — Agent browser automation MVP (flagged, default off)
+- [x] **Track D** — Connection/sync status UX (transport vs data-sync vs git-remote)
+- [x] **Track E** — NDJSON obs (substrate spine; merged with phases)
+
+---
+
+## Remaining (requires upstream T3 vendor import)
+
+1. Add `vendor/t3code` submodule at `a3a8cbd6`
+2. Replace `@cozea/server` bootstrap body with upstream `apps/server`
+3. Delete `electron/assistant-runtime/` after parity
+4. Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
+5. SSH/WSL DesktopBackendPool
+6. Physical monorepo reshape
+
+---
+
+## Verification
 
 ```shell
 bun run typecheck
 bun run lint
 bun test tests/substrate
-bun test tests/electron/substrateDefaultBoot.test.ts
-node scripts/smoke-substrate-rpc-chat.mjs
+bun scripts/smoke-substrate-rpc-chat.mjs
+bun test tests/src/features/projects/components/command-palette
 ```
-
-Default-on manual smoke (Electron):
-
-```shell
-bun run dev
-# Open workbench agent tile → composer enabled → type + send → assistant reply
-```
-
-Opt-out legacy path (debug only):
-
-```shell
-COZEA_SUBSTRATE_PRIMARY=0 bun run dev
-```
-
----
-
-## Definition of done (product)
-
-1. Default flags on, fresh boot, agent tile composer is enabled within ~90s
-2. Send uses orchestration (`thread.turn.start`) when `:3773` is ready
-3. Model picker changes persist and affect the next turn
-4. Substrate RPC path remains as fallback when runtime is unreachable
-5. No `COZEA_SUBSTRATE_PRIMARY=0` required for normal chat

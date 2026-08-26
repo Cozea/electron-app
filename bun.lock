@@ -160,6 +160,70 @@
         "vitest": "^4.0.18",
       },
     },
+    "apps/server": {
+      "name": "@cozea/server",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cozea/contracts": "workspace:*",
+      },
+    },
+    "packages/client-runtime": {
+      "name": "@cozea/client-runtime",
+      "dependencies": {
+        "@cozea/contracts": "file:../contracts",
+      },
+    },
+    "packages/contracts": {
+      "name": "@cozea/contracts",
+      "dependencies": {
+        "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b",
+      },
+    },
+    "packages/effect-acp": {
+      "name": "@cozea/effect-acp",
+      "dependencies": {
+        "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b",
+        "@effect/vitest": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/vitest@8881a9b",
+        "typescript": "~5.9.3",
+        "vitest": "^4.0.18",
+      },
+    },
+    "packages/effect-sql": {
+      "name": "@effect/sql",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "effect": "^4.0.0-beta.25",
+      },
+    },
+    "packages/pty": {
+      "name": "@cozea/pty",
+      "version": "0.1.0",
+      "dependencies": {
+        "@node-rs/helper": "^1.6.0",
+      },
+      "devDependencies": {
+        "@napi-rs/cli": "^2.14.7",
+        "typescript": "^5.3.3",
+      },
+    },
+    "packages/substrate-client-runtime": {
+      "name": "@cozea/substrate-client-runtime",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cozea/client-runtime": "file:../client-runtime",
+        "@cozea/substrate-contracts": "file:../substrate-contracts",
+      },
+    },
+    "packages/substrate-contracts": {
+      "name": "@cozea/substrate-contracts",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cozea/contracts": "file:../contracts",
+      },
+    },
   },
   "packages": {
     "7zip-bin": ["7zip-bin@5.2.0", "", {}, "sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A=="],
@@ -284,15 +348,29 @@
 
     "@codemirror/view": ["@codemirror/view@6.41.0", "", { "dependencies": { "@codemirror/state": "^6.6.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-6H/qadXsVuDY219Yljhohglve8xf4B8xJkVOEWfA5uiYKiTFppjqsvsfR5iPA0RbvRBoOyTZpbLIxe9+0UR8xA=="],
 
+    "@cozea/client-runtime": ["@cozea/client-runtime@workspace:packages/client-runtime"],
+
     "@cozea/client-runtime": ["@cozea/client-runtime@file:packages/client-runtime", { "dependencies": { "@cozea/contracts": "file:../contracts" } }],
+
+    "@cozea/contracts": ["@cozea/contracts@workspace:packages/contracts"],
 
     "@cozea/contracts": ["@cozea/contracts@file:packages/contracts", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" } }],
 
+    "@cozea/effect-acp": ["@cozea/effect-acp@workspace:packages/effect-acp"],
+
     "@cozea/effect-acp": ["@cozea/effect-acp@file:packages/effect-acp", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" }, "devDependencies": { "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b", "@effect/vitest": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/vitest@8881a9b", "typescript": "~5.9.3", "vitest": "^4.0.18" } }],
+
+    "@cozea/pty": ["@cozea/pty@workspace:packages/pty"],
 
     "@cozea/pty": ["@cozea/pty@file:packages/pty", { "dependencies": { "@node-rs/helper": "^1.6.0" }, "devDependencies": { "@napi-rs/cli": "^2.14.7", "typescript": "^5.3.3" } }],
 
+    "@cozea/server": ["@cozea/server@workspace:apps/server"],
+
+    "@cozea/substrate-client-runtime": ["@cozea/substrate-client-runtime@workspace:packages/substrate-client-runtime"],
+
     "@cozea/substrate-client-runtime": ["@cozea/substrate-client-runtime@file:packages/substrate-client-runtime", { "dependencies": { "@cozea/client-runtime": "file:../client-runtime", "@cozea/substrate-contracts": "file:../substrate-contracts" } }],
+
+    "@cozea/substrate-contracts": ["@cozea/substrate-contracts@workspace:packages/substrate-contracts"],
 
     "@cozea/substrate-contracts": ["@cozea/substrate-contracts@file:packages/substrate-contracts", { "dependencies": { "@cozea/contracts": "file:../contracts" } }],
 
@@ -303,6 +381,8 @@
     "@effect/platform-node": ["@effect/platform-node@https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b", { "dependencies": { "@effect/platform-node-shared": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node-shared@8881a9b606d84a6f5eb6615279138322984f5368", "mime": "^4.1.0", "undici": "^7.20.0" }, "peerDependencies": { "effect": "^4.0.0-beta.25", "ioredis": "^5.7.0" } }, "sha512-lOVb9aLpFnbkG4dWxY8lSTXihldd6kbcFI936X5UMvHz0HAYGrxsu1a+kHt/rYjiw1gjCmmnU6pE2pwKfO9erg=="],
 
     "@effect/platform-node-shared": ["@effect/platform-node-shared@https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node-shared@8881a9b606d84a6f5eb6615279138322984f5368", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.19.0" }, "peerDependencies": { "effect": "^4.0.0-beta.25" } }, "sha512-73FDHSTVLh/ZHeWrHFEbnCbjFE9gKi1YdJ9LEatDj0doZ8ouuTJW2BbqLDwMEfSf4zNQrxMEg+Jj/pb612HyWg=="],
+
+    "@effect/sql": ["@effect/sql@workspace:packages/effect-sql"],
 
     "@effect/sql": ["@effect/sql@file:packages/effect-sql", { "peerDependencies": { "effect": "^4.0.0-beta.25" } }],
 
@@ -2484,11 +2564,11 @@
 
     "@cozea/client-runtime/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" } }],
 
-    "@cozea/substrate-client-runtime/@cozea/client-runtime": ["@cozea/client-runtime@file:packages/client-runtime", {}],
+    "@cozea/substrate-client-runtime/@cozea/client-runtime": ["@cozea/client-runtime@file:packages/client-runtime", { "dependencies": { "@cozea/contracts": "file:../contracts" } }],
 
-    "@cozea/substrate-client-runtime/@cozea/substrate-contracts": ["@cozea/substrate-contracts@file:packages/substrate-contracts", {}],
+    "@cozea/substrate-client-runtime/@cozea/substrate-contracts": ["@cozea/substrate-contracts@file:packages/substrate-contracts", { "dependencies": { "@cozea/contracts": "file:../contracts" } }],
 
-    "@cozea/substrate-contracts/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", {}],
+    "@cozea/substrate-contracts/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" } }],
 
     "@develar/schema-utils/ajv": ["ajv@6.14.0", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "fast-json-stable-stringify": "^2.0.0", "json-schema-traverse": "^0.4.1", "uri-js": "^4.2.2" } }, "sha512-IWrosm/yrn43eiKqkfkHis7QioDleaXQHdDVPKg0FSwwd/DuvyX79TZnFOnYpB7dcsFAMmtFztZuXPDvSePkFw=="],
 
@@ -2713,6 +2793,10 @@
     "vite/esbuild": ["esbuild@0.27.4", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.4", "@esbuild/android-arm": "0.27.4", "@esbuild/android-arm64": "0.27.4", "@esbuild/android-x64": "0.27.4", "@esbuild/darwin-arm64": "0.27.4", "@esbuild/darwin-x64": "0.27.4", "@esbuild/freebsd-arm64": "0.27.4", "@esbuild/freebsd-x64": "0.27.4", "@esbuild/linux-arm": "0.27.4", "@esbuild/linux-arm64": "0.27.4", "@esbuild/linux-ia32": "0.27.4", "@esbuild/linux-loong64": "0.27.4", "@esbuild/linux-mips64el": "0.27.4", "@esbuild/linux-ppc64": "0.27.4", "@esbuild/linux-riscv64": "0.27.4", "@esbuild/linux-s390x": "0.27.4", "@esbuild/linux-x64": "0.27.4", "@esbuild/netbsd-arm64": "0.27.4", "@esbuild/netbsd-x64": "0.27.4", "@esbuild/openbsd-arm64": "0.27.4", "@esbuild/openbsd-x64": "0.27.4", "@esbuild/openharmony-arm64": "0.27.4", "@esbuild/sunos-x64": "0.27.4", "@esbuild/win32-arm64": "0.27.4", "@esbuild/win32-ia32": "0.27.4", "@esbuild/win32-x64": "0.27.4" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-Rq4vbHnYkK5fws5NF7MYTU68FPRE1ajX7heQ/8QXXWqNgqqJ/GkmmyxIzUnf2Sr/bakf8l54716CcMGHYhMrrQ=="],
 
     "@babel/helper-compilation-targets/lru-cache/yallist": ["yallist@3.1.1", "", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
+
+    "@cozea/substrate-client-runtime/@cozea/client-runtime/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" } }],
+
+    "@cozea/substrate-client-runtime/@cozea/substrate-contracts/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" } }],
 
     "@develar/schema-utils/ajv/json-schema-traverse": ["json-schema-traverse@0.4.1", "", {}, "sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg=="],
 

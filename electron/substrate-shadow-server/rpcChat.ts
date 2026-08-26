@@ -17,7 +17,11 @@ import {
 } from "../substrate/providers";
 import { readSubstratePrimaryFlags } from "../substrate/flags";
 import type { SubstrateDriverKind } from "../substrate/providers/types";
-import { bridgeAssistantTurn, type BridgeAssistantTurnInput } from "./assistantWsBridge";
+import { executeRpcBridgedChatTurn } from "./rpcOrchestrationChat";
+import {
+  handleOrchestrationRpcRequest,
+  isOrchestrationRpcMethod,
+} from "./rpcOrchestrationHandlers";
 
 export const SUBSTRATE_RPC_WS_PATH = "/rpc";
 
@@ -117,7 +121,11 @@ function resolveDriverKind(raw: unknown): SubstrateDriverKind {
 
 function readBridgeModelSelection(
   payload: Record<string, unknown>,
-): BridgeAssistantTurnInput["modelSelection"] | undefined {
+): {
+  readonly provider: "codex" | "opencode" | "claudeAgent" | "cursor";
+  readonly model: string;
+  readonly instanceId?: string;
+} | undefined {
   const raw = asRecord(payload.modelSelection);
   if (!raw) {
     return undefined;
@@ -317,6 +325,17 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
     }
     const request = record as unknown as RpcRequest;
     try {
+      if (isOrchestrationRpcMethod(request.method)) {
+        await handleOrchestrationRpcRequest({
+          ws,
+          id: request.id,
+          method: request.method,
+          payload: request.payload,
+          options: { onLog: options.onLog },
+        });
+        return;
+      }
+
       if (request.method === SUBSTRATE_RPC_METHODS.health) {
         const bridge = await probeAssistantBridge(assistantHttpOrigin);
         sendJson(ws, {
@@ -372,12 +391,11 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
             try {
               const threadId =
                 typeof payload.threadId === "string" ? payload.threadId.trim() : undefined;
-              const bridged = await bridgeAssistantTurn({
+              const bridged = await executeRpcBridgedChatTurn({
                 text,
                 threadId,
                 providerId: typeof payload.providerId === "string" ? payload.providerId : undefined,
                 modelSelection: readBridgeModelSelection(payload),
-                assistantOrigin: assistantHttpOrigin,
               });
               const turnId = randomUUID();
               turn = {

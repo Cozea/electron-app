@@ -50,13 +50,11 @@ import {
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
-<<<<<<< HEAD
 import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
+import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
-=======
 import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
->>>>>>> origin/cursor/thread-deletion-cleanup-a002
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
@@ -153,6 +151,10 @@ export function useWorkbenchAssistantTileController(
   // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
+  useSubstrateOrchestrationSync({
+    active: substrateTransport.active,
+    shadowBaseUrl: substrateTransport.shadowBaseUrl,
+  })
   useEffect(() => {
     if (substrateTransport.active) {
       console.info("[substrate] primary chat transport active", {
