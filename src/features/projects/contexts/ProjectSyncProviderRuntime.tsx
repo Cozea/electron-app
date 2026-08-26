@@ -103,6 +103,7 @@ export function ProjectSyncProviderRuntime({
   const {
     status: collabSessionStatus,
     session: collabSession,
+    error: collabSessionError,
     refresh: refreshCollabSession,
   } = useCollabSession({
     projectId: String(resolvedProjectId),
@@ -219,6 +220,9 @@ export function ProjectSyncProviderRuntime({
             collaborationMode,
             activeBranch,
             sharedBranch,
+            collabSessionStatus,
+            collabSessionError,
+            collabEncryptionStatus: collabSession?.encryption?.status ?? null,
             triggerSync,
             syncProgress: progress,
           }
@@ -232,6 +236,9 @@ export function ProjectSyncProviderRuntime({
       collaborationMode,
       activeBranch,
       sharedBranch,
+      collabSessionStatus,
+      collabSessionError,
+      collabSession?.encryption?.status,
       triggerSync,
       progress,
     ],
