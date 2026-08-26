@@ -19,7 +19,7 @@ Living table of **capabilities / contracts / reactors** Cozea must gain or rebas
 
 | Area | T3 reference | Cozea today | Status | Target phase |
 | --- | --- | --- | --- | --- |
-| Spawned Node server | `apps/desktop` `DesktopBackendPool` | In-process `electron/assistant-runtime` | missing | Phase 1 |
+| Spawned Node server | `apps/desktop` `DesktopBackendPool` | In-process `electron/assistant-runtime` + `@cozea/server` scaffold | in progress | Phase T0/T1 |
 | Effect RPC `/ws` | `packages/contracts` + server rpc | Custom WS push bus + ~215 IPC | thin | Phase 2 |
 | `client-runtime` supervisor | `packages/client-runtime` | `assistant-wsTransport` + Zustand projectors | thin | Phase 2 |
 | Per-method RPC auth | contracts auth scopes | Desktop trust / ad-hoc | thin | Phase 2–5 |
