@@ -43,14 +43,17 @@ WebSocket: `ws://127.0.0.1:4783/rpc`
 { "type": "done", "id": "3" }
 ```
 
-## Bridge behavior
+## Bridge / provider behavior
 
-`health` and `chat.send` probe `GET {assistantOrigin}/__cozea/ready`.
+`health` and `chat.send` probe `GET {assistantOrigin}/__cozea/ready` when the
+Phase 3 providers flag is **off** (or materialize fails):
 
-- If reachable → `mode: "bridged"` (still echoes text; **TODO(phase3): real providers**)
+- If reachable → `mode: "bridged"` (still echoes text)
 - If unreachable → `mode: "echo"` stub
 
-This is intentionally a thin bridge, not a rewrite of Claude/Codex/OpenCode/Cursor drivers.
+When `COZEA_SUBSTRATE_PROVIDERS=1` is also set, `chat.send` materializes a
+substrate provider (default `opencode`, or `providerId` in the payload) and
+returns `mode: "provider"`. Materialize failure falls back to echo/bridge.
 
 ## Workbench adapter
 
@@ -62,6 +65,13 @@ controller. When the flag is off, behavior is unchanged.
 ```bash
 COZEA_SUBSTRATE_SHADOW_SERVER=1 COZEA_SUBSTRATE_RPC_CHAT=1 \
   bun run scripts/smoke-substrate-rpc-chat.mjs
+```
+
+Provider-backed:
+
+```bash
+COZEA_SUBSTRATE_SHADOW_SERVER=1 COZEA_SUBSTRATE_RPC_CHAT=1 \
+COZEA_SUBSTRATE_PROVIDERS=1 bun run scripts/smoke-substrate-rpc-chat.mjs
 ```
 
 Or with the app:
@@ -77,13 +87,14 @@ COZEA_SUBSTRATE_SHADOW_SERVER=1 COZEA_SUBSTRATE_RPC_CHAT=1 bun run dev
 - [x] Shadow server `/rpc` WS (flagged)
 - [x] Flag default off; workbench adapter gated
 - [x] Connect + ready smoke tests
-- [ ] Competitive provider chat (Phase 3)
+- [x] Provider-backed chat when Phase 3 flag on (OpenCode + legacy adapters; echo fallback)
 
 ## Layout
 
-- `packages/contracts/`
-- `packages/client-runtime/`
+- `packages/contracts/` (+ `@cozea/substrate-contracts` re-export)
+- `packages/client-runtime/` (+ `@cozea/substrate-client-runtime` re-export)
 - `electron/substrate-shadow-server/rpcChat.ts`
 - `src/substrate/`
 - Upstream pin: `docs/substrate-t3-pin.md`
 - Phase 1: `docs/substrate-shadow-server.md`
+- Completion: `docs/substrate-phases-complete.md`

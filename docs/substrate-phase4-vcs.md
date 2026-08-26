@@ -22,7 +22,7 @@ Companion plans: `docs/t3code-upgrade-path.md` §3.8, `docs/t3code-implementatio
 | Checkpoint facade | `electron/substrate/vcs/checkpointsFacade.ts` | One Changes read entry; driver stubs delegate (no third stack) |
 | Push safety | `electron/substrate/vcs/pushSafety.ts` | Refuse mismatched feature→upstream |
 | Worktree orphan hooks | `electron/substrate/vcs/worktreeOrphanCleanup.ts` | Track B–aligned detection + prune hook surface |
-| Bootstrap | `electron/substrate/vcs/bootstrap.ts` | Registers facade + broadcaster subscription on IPC boot |
+| Bootstrap | `electron/substrate/vcs/bootstrap.ts` | Registers facade + broadcaster subscription on **Electron main boot** and workspace sync IPC (`registerWorkspaceSyncHandlers`) — idempotent |
 
 ## Exit criteria status
 

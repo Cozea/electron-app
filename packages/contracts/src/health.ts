@@ -16,9 +16,11 @@ export type BridgeStatus = typeof BridgeStatus.Type;
 export const HealthResult = Schema.Struct({
   ok: Schema.Literal(true),
   role: Schema.Literal("shadow"),
-  phase: Schema.Literals([1, 2]),
+  phase: Schema.Literals([1, 2, 3]),
   pin: TrimmedNonEmptyString,
   rpcChat: Schema.Boolean,
+  /** Phase 3: provider registry is active on this shadow process. */
+  providers: Schema.optionalKey(Schema.Boolean),
   bridge: Schema.Struct({
     status: BridgeStatus,
     assistantHttpUrl: TrimmedString,

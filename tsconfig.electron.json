@@ -56,6 +56,12 @@
       ],
       "@cozea/client-runtime/*": [
         "./packages/client-runtime/src/*"
+      ],
+      "@cozea/substrate-contracts": [
+        "./packages/substrate-contracts/src/index.ts"
+      ],
+      "@cozea/substrate-client-runtime": [
+        "./packages/substrate-client-runtime/src/index.ts"
       ]
     }
   },

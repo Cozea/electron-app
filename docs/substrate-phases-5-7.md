@@ -12,20 +12,25 @@ IPC allowlist helper: `electron/substrate/ipcAllowlist.ts` (`PHASE5_IPC_ALLOWLIS
 
 ## Phase 6 — Observability & remote readiness
 
-- NDJSON flag: `cozea.obs.ndjson` (`COZEA_OBS_NDJSON` / `COZEA_SUBSTRATE_OBS_NDJSON`) — Track E PR continues the writer.
-- Remote env catalog stubs: `electron/substrate/remoteEnvironments.ts` (local ready; SSH/WSL placeholders).
-- Exposed on `substrateShadow:getStatus` as `remoteEnvironments` + `features`.
+- NDJSON flag: `cozea.obs.ndjson` (`COZEA_OBS_NDJSON` / `COZEA_SUBSTRATE_OBS_NDJSON`)
+- Writer: `electron/substrate/obs/` — spans for shadow start/ready, rpc `chat.send` accepted, provider materialize
+- Optional path: `COZEA_OBS_NDJSON_PATH`
+- Remote env catalog stubs: `electron/substrate/remoteEnvironments.ts` (local ready; SSH/WSL placeholders)
+- Exposed on `substrateShadow:getStatus` as `remoteEnvironments` + `features.obsNdjson`
 
-## Phase 7 — Monorepo reshape (scaffolding)
+## Phase 7 — Monorepo reshape (aligned)
 
-New workspace packages (types-first stubs):
+Canonical package names re-export the Phase 2 implementations (least-breaking):
 
-| Package | Role |
+| Canonical | Implementation |
 | --- | --- |
-| `@cozea/substrate-contracts` | RPC method names + request/response types |
-| `@cozea/substrate-client-runtime` | Connection supervisor stub for flagged chat |
+| `@cozea/substrate-contracts` | re-exports `@cozea/contracts` |
+| `@cozea/substrate-client-runtime` | re-exports `@cozea/client-runtime` |
 
-Target end-state (not fully moved yet):
+Existing app imports of `@cozea/contracts` / `@cozea/client-runtime` remain valid.
+New code should prefer the `substrate-*` names.
+
+Target end-state layout:
 
 ```text
 apps/desktop   ← electron shell
@@ -48,4 +53,4 @@ Bun vs pnpm/`vp` decision remains deferred (high blast radius).
 | `cozea.substrate.primary` | `COZEA_SUBSTRATE_PRIMARY` | 5 |
 | `cozea.obs.ndjson` | `COZEA_OBS_NDJSON` | 6 |
 
-All default **off**.
+All default **off**. Full-stack enable recipe: `docs/substrate-phases-complete.md`.

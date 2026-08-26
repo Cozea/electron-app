@@ -6,7 +6,12 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": []
+    "types": [],
+    "paths": {
+      "@cozea/client-runtime": ["../client-runtime/src/index.ts"],
+      "@cozea/substrate-contracts": ["../substrate-contracts/src/index.ts"],
+      "@cozea/contracts": ["../contracts/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

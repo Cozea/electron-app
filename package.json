@@ -159,7 +159,9 @@
     "zod": "^4.3.6",
     "zustand": "^5.0.10",
     "@cozea/contracts": "file:packages/contracts",
-    "@cozea/client-runtime": "file:packages/client-runtime"
+    "@cozea/client-runtime": "file:packages/client-runtime",
+    "@cozea/substrate-contracts": "file:packages/substrate-contracts",
+    "@cozea/substrate-client-runtime": "file:packages/substrate-client-runtime"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.12",
