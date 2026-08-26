@@ -1,0 +1,11 @@
+{
+  "name": "cozea/electron-app",
+  "install": "curl -fsSL https://bun.sh/install | bash && export PATH=\"$HOME/.bun/bin:$PATH\" && bun install && { test -f .env.local || printf 'VITE_CONVEX_URL=https://knowing-finch-546.convex.cloud\\n' > .env.local; }",
+  "terminals": [
+    {
+      "name": "app-dev",
+      "command": "export PATH=\"$HOME/.bun/bin:$PATH\"; export DISPLAY=:1; export ELECTRON_DISABLE_SANDBOX=1; export COZEA_ALLOW_INSECURE_DEVICE_IDENTITY=1; bun run dev",
+      "description": "Electron + Vite dev app (electron-vite dev). Renders on the Cloud Agent display :1. ELECTRON_DISABLE_SANDBOX is required because the headless VM has no SUID chrome-sandbox; COZEA_ALLOW_INSECURE_DEVICE_IDENTITY lets the collab device identity initialize without an OS keyring."
+    }
+  ]
+}
