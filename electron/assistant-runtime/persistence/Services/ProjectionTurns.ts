@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionTurnRepository - Projection repository interface for unified turn state.
  *

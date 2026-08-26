@@ -13,6 +13,47 @@ import type {
 import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
+const RUNTIME_PANEL_CONSTRAINTS = {
+  minimumWidth: 280,
+  minimumHeight: 180,
+} as const
+
+const ASSISTANT_PANEL_CONSTRAINTS = {
+  minimumWidth: 320,
+  minimumHeight: 240,
+} as const
+
+const SELECTION_PANEL_CONSTRAINTS = {
+  minimumWidth: 260,
+  minimumHeight: 180,
+} as const
+
+const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])
+
+function getPanelPlacementReference(api: DockviewApi): IDockviewPanel | undefined {
+  if (api.activePanel && !RESERVED_DOCKVIEW_PANEL_IDS.has(api.activePanel.id)) {
+    return api.activePanel
+  }
+
+  return api.panels.find((panel) => !RESERVED_DOCKVIEW_PANEL_IDS.has(panel.id))
+}
+
+function placePanelLeftOfChanges(
+  base: AddPanelOptions<WorkbenchDockPanelParams>,
+  changesPanel: IDockviewPanel | undefined,
+): AddPanelOptions<WorkbenchDockPanelParams> {
+  if (!changesPanel) return base
+
+  return {
+    ...base,
+    floating: false,
+    position: {
+      referencePanel: changesPanel.id,
+      direction: "left",
+    },
+  }
+}
+
 export function getDockComponentName(
   type: WorkbenchTileType,
 ): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" {
@@ -37,6 +78,41 @@ export function getPanelParams(
   return { projectId, laneId, tileId }
 }
 
+export function getPanelRendererForTile(
+  type: WorkbenchTileType,
+): "always" | "onlyWhenVisible" {
+  switch (type) {
+    case "browser":
+    case "devServer":
+    case "mobileSimulator":
+    case "terminal":
+      return "always"
+    case "assistantChat":
+    case "selection":
+    case "tasks":
+    default:
+      return "onlyWhenVisible"
+  }
+}
+
+export function getPanelConstraintsForTile(
+  type: WorkbenchTileType,
+): Pick<AddPanelOptions<WorkbenchDockPanelParams>, "minimumWidth" | "minimumHeight"> {
+  switch (type) {
+    case "browser":
+    case "terminal":
+    case "devServer":
+    case "mobileSimulator":
+      return RUNTIME_PANEL_CONSTRAINTS
+    case "assistantChat":
+      return ASSISTANT_PANEL_CONSTRAINTS
+    case "selection":
+    case "tasks":
+    default:
+      return SELECTION_PANEL_CONSTRAINTS
+  }
+}
+
 export function isObsoleteWorkbenchTile(tile: WorkbenchTile | undefined | null): boolean {
   return !tile || tile.type === "tasks"
 }
@@ -58,36 +134,40 @@ export function buildAddPanelOptions(
     title: tile.title,
     component: getDockComponentName(tile.type),
     params: getPanelParams(projectId, laneId, tile.id),
+    renderer: getPanelRendererForTile(tile.type),
+    ...getPanelConstraintsForTile(tile.type),
   }
 
   if (api.totalPanels === 0) {
     return base
   }
 
-  const activePanel = api.activePanel
+  const referencePanel = getPanelPlacementReference(api)
+  const changesPanel = api.getPanel("cozea-changes-panel")
+
   switch (tile.type) {
     case "browser":
     case "devServer":
     case "mobileSimulator":
     case "terminal":
-      if (activePanel) {
+      if (referencePanel) {
         return {
           ...base,
           floating: false,
           position: {
-            referencePanel: activePanel.id,
+            referencePanel: referencePanel.id,
             direction: "right",
           },
         }
       }
-      return base
+      return placePanelLeftOfChanges(base, changesPanel)
     case "assistantChat":
-      if (activePanel) {
+      if (referencePanel) {
         return {
           ...base,
           floating: false,
           position: {
-            referencePanel: activePanel.id,
+            referencePanel: referencePanel.id,
             direction: "right",
           },
         }
@@ -97,18 +177,18 @@ export function buildAddPanelOptions(
       break
   }
 
-  if (activePanel) {
+  if (referencePanel) {
     return {
       ...base,
       floating: false,
       position: {
-        referencePanel: activePanel.id,
+        referencePanel: referencePanel.id,
         direction: "right",
       },
     }
   }
 
-  return base
+  return placePanelLeftOfChanges(base, changesPanel)
 }
 
 export function buildDefaultDockview(

@@ -3,7 +3,6 @@ import * as Http from "node:http";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, vi } from "@effect/vitest";
 import type { OrchestrationReadModel } from "@cozea/assistant-contracts";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -60,22 +59,32 @@ const testLayer = Layer.mergeAll(
   NodeServices.layer,
 );
 
+// The CLI reads env fallbacks straight from process.env (see firstDefinedEnv in
+// electron/assistant-runtime/main.ts), so inject real env vars and restore after.
 const runCli = (
   args: ReadonlyArray<string>,
   env: Record<string, string> = { COZEA_ASSISTANT_NO_BROWSER: "true" },
-) => {
-  return Command.runWith(assistantRuntimeCli, { version: "0.0.0-test" })(args).pipe(
-    Effect.provide(
-      ConfigProvider.layer(
-        ConfigProvider.fromEnv({
-          env: {
-            ...env,
-          },
+) =>
+  Effect.suspend(() => {
+    const saved = new Map<string, string | undefined>();
+    for (const [key, value] of Object.entries(env)) {
+      saved.set(key, process.env[key]);
+      process.env[key] = value;
+    }
+    return Command.runWith(assistantRuntimeCli, { version: "0.0.0-test" })(args).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const [key, previous] of saved) {
+            if (previous === undefined) {
+              delete process.env[key];
+            } else {
+              process.env[key] = previous;
+            }
+          }
         }),
       ),
-    ),
-  );
-};
+    );
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -31,7 +31,6 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
   const [transparencyOff, setTransparencyOff] = useState(false);
-  const [pendingRestart, setPendingRestart] = useState(false);
 
   const themes: {
     value: Theme;
@@ -84,8 +83,8 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
   const handleTransparencyToggle = useCallback(
     async (checked: boolean) => {
       setTransparencyOff(checked);
+      // Applied live by the main process (vibrancy + backing color swap).
       await window.electronAPI.settings.set({ deactivateTransparency: checked });
-      setPendingRestart(true);
     },
     [],
   );
@@ -163,11 +162,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
           <SettingsRow isFirst>
             <SettingsRowLabel
               title={t("settings.appearance.deactivateTransparency")}
-              description={
-                pendingRestart
-                  ? t("settings.appearance.deactivateTransparencyDescRestart")
-                  : t("settings.appearance.deactivateTransparencyDescDefault")
-              }
+              description={t("settings.appearance.deactivateTransparencyDescDefault")}
             />
             <SettingsRowControl>
               <Switch

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { ServerProvider } from "@cozea/assistant-contracts";
 import type { Effect, Stream } from "effect";
 

@@ -5,12 +5,10 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-
-import "@/features/projects/components/workbench/workbench.css";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/hooks/useProjectHeader";
 import {
@@ -34,6 +32,13 @@ import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSync
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime";
 import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
+import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
+import {
+  markWorkbenchIntentApplied,
+  readWorkbenchIntentFromState,
+  wasWorkbenchIntentApplied,
+} from "@/features/projects/lib/workbenchIntent";
+import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore";
 import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import {
   ensureWorkbenchLayoutPersistenceReady,
@@ -46,6 +51,7 @@ import {
   useWorkspaceRuntimeStore,
 } from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
 import { useActiveWorkspaceOrNull } from "@/features/projects/workspaces/ActiveWorkspaceContext";
+import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
 
 const LazyProjectSettingsPage = lazy(() =>
@@ -61,11 +67,6 @@ const LazyTaskFocusOverlay = lazy(() =>
 const LazyWorkbenchDockviewCanvas = lazy(() =>
   import("@/features/projects/components/workbench/WorkbenchDockviewCanvas").then((module) => ({
     default: module.WorkbenchDockviewCanvas,
-  })),
-);
-const LazyChangesSidebar = lazy(() =>
-  import("@/features/projects/components/changes/ChangesSidebar").then((module) => ({
-    default: module.ChangesSidebar,
   })),
 );
 
@@ -89,17 +90,22 @@ export function ProjectWorkbenchSurface() {
   const { t } = useTranslation();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project, projectIdParam } = useAccessibleProject();
-  const syncContext = useOptionalProjectSyncContext();
-  const workspaceId = syncContext?.workspaceId ?? projectRouteContext?.workspaceId ?? projectRouteContext?.localPath ?? null;
+  const activeWorkspace = useActiveWorkspaceOrNull();
+  const {
+    workspaceId,
+    projectRootPath: identityProjectRootPath,
+    gitRootPath: identityGitRootPath,
+  } = useWorkspaceIdentity();
   const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
-  const location = useLocation();
+  const taskOverlayState = useLocation({
+    select: (location) => (location.state as TaskOverlayLocationState | null)?.taskOverlay ?? null,
+  });
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = project?._id ? String(project._id) : projectIdParam ?? null;
-  const locationState = (location.state as TaskOverlayLocationState | null) ?? null;
   const { theme } = useTheme();
   const { user } = useAuth();
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
-    locationState?.taskOverlay ? [locationState.taskOverlay] : [],
+    taskOverlayState ? [taskOverlayState] : [],
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false);
@@ -113,6 +119,13 @@ export function ProjectWorkbenchSurface() {
     laneState?.collabLaneId ??
     DEFAULT_WORKBENCH_LANE_ID;
   const activeWorkbenchId = activeLane?.workspaceId ?? workspaceId;
+  // Until lane state resolves, activeLaneId is the "collab" placeholder, NOT a
+  // real lane. Keying or ensuring a bench from it created (and switched to) an
+  // empty sibling bench whenever resolution was slow — the "came back to an
+  // empty workspace" bug. While pending: render a holding state, write nothing.
+  const laneResolutionPending = Boolean(activeWorkbenchId) && !activeLane && !laneState;
+  const projectRootPath = identityProjectRootPath;
+  const gitRootPath = identityGitRootPath;
   const workbenchScopeKey = projectId
     ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchId)
     : null;
@@ -127,7 +140,6 @@ export function ProjectWorkbenchSurface() {
   );
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
   const workspaceSelectionId = user?.id ?? "local-device";
-  const activeWorkspace = useActiveWorkspaceOrNull();
   const currentWorkspaceRuntimeId = useMemo(
     () =>
       resolveWorkspaceRuntimeId({
@@ -155,6 +167,14 @@ export function ProjectWorkbenchSurface() {
     enabled: Boolean(projectId),
   });
   const bindWorkspaceSessionSnapshot = useWorkspaceRuntimeStore((state) => state.actions.bindSessionSnapshot);
+  // The dock runtime context renders on sessionKey only; tiles read snapshot
+  // content (e.g. devServer initial state) through this getter on demand, so
+  // lifecycle/binding broadcasts never re-render the dockview portal roots
+  // and reads are never stale.
+  const workbenchSessionKey = workbenchSession?.sessionKey ?? null;
+  const workbenchSessionRef = useRef(workbenchSession);
+  workbenchSessionRef.current = workbenchSession;
+  const getWorkbenchSession = useCallback(() => workbenchSessionRef.current, []);
   const persistedLayout = useMemo(() => {
     if (!workbenchScopeKey || !projectWorkbench) {
       return null;
@@ -223,16 +243,10 @@ export function ProjectWorkbenchSurface() {
             <span className="truncate">{projectName}</span>
           </div>
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-            <div className="inline-flex h-6 items-center rounded-md bg-sidebar px-0.5 text-muted-foreground/85 transition-colors hover:bg-[var(--sidebar-pill-hover-bg)]">
+            <div className="inline-flex h-6 items-center rounded-md bg-secondary px-0.5 text-muted-foreground/85 transition-colors hover:bg-accent/80">
+              {/* Lane/branch state is read from context inside the control so
+                  this element stays identity-stable while lanes settle. */}
               <WorkbenchHeaderBranchControl
-                projectId={projectId}
-                workspaceId={workspaceId}
-                collabBranch={collabBranch}
-                laneState={laneState}
-                activeLane={activeLane}
-                onLaneStateChange={() => {
-                  void refreshLaneState?.();
-                }}
                 triggerClassName="h-6 min-h-6 gap-px rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
                 trailing={
                   project?._id ? (
@@ -249,17 +263,7 @@ export function ProjectWorkbenchSurface() {
         </div>
       </div>
     ),
-    [
-      activeLane,
-      collabBranch,
-      laneState,
-      project,
-      project?._id,
-      projectName,
-      projectId,
-      workspaceId,
-      refreshLaneState,
-    ],
+    [project?._id, projectName],
   );
 
   useProjectHeader(headerWorkbench, null);
@@ -307,6 +311,77 @@ export function ProjectWorkbenchSurface() {
     focusWorkbenchTile,
   });
 
+  // In-app intents arrive via navigation state (see lib/workbenchIntent.ts) —
+  // no URL params, no cleanup replace-navigation. Each navigation produces a
+  // fresh intent object; the ref makes application one-shot.
+  const workbenchIntent = useLocation({
+    select: (location) => readWorkbenchIntentFromState(location.state),
+  });
+  useEffect(() => {
+    if (!projectId || !workbenchIntent || laneResolutionPending) return;
+    if (wasWorkbenchIntentApplied(workbenchIntent)) return;
+
+    if (workbenchIntent.laneId && workbenchIntent.laneId !== activeLaneId) {
+      // Activate the requested lane; the effect re-runs once activeLaneId
+      // converges and then applies the tile part of the intent.
+      activateProjectBranchLane({
+        projectId,
+        laneId: workbenchIntent.laneId,
+        collabBranch,
+        workspaceId: activeWorkbenchId,
+      });
+      void refreshLaneState?.();
+      return;
+    }
+
+    markWorkbenchIntentApplied(workbenchIntent);
+    if (workbenchIntent.focusTileId) {
+      const liveWorkbench = selectProjectWorkbench(
+        projectId,
+        activeLaneId,
+        activeWorkbenchId,
+      )(useProjectWorkbenchStore.getState());
+      if (liveWorkbench?.tiles[workbenchIntent.focusTileId]) {
+        focusWorkbenchTile(workbenchIntent.focusTileId);
+      }
+      return;
+    }
+    if (workbenchIntent.projectDevApp) {
+      if (workbenchIntent.projectDevApp.projectId !== projectId) {
+        return;
+      }
+      const launch = resolveWorkbenchSelectionLaunchRequest({
+        appId: `project-devapp:${workbenchIntent.projectDevApp.publicationId}`,
+        projectDevApp: workbenchIntent.projectDevApp,
+      });
+      if (launch.action !== "openSingletonTile" || launch.tileType !== "devServer") {
+        return;
+      }
+      workbenchActions.openSingletonTile(
+        projectId,
+        activeLaneId,
+        launch.tileType,
+        launch.options,
+        activeWorkbenchId,
+      );
+      return;
+    }
+    if (workbenchIntent.openTile) {
+      openWorkbenchTarget(workbenchIntent.openTile);
+    }
+  }, [
+    activeLaneId,
+    activeWorkbenchId,
+    collabBranch,
+    focusWorkbenchTile,
+    laneResolutionPending,
+    openWorkbenchTarget,
+    projectId,
+    refreshLaneState,
+    workbenchIntent,
+    workbenchActions,
+  ]);
+
   const closeSettingsOverlay = () => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("settings");
@@ -314,12 +389,12 @@ export function ProjectWorkbenchSurface() {
   };
 
   useLayoutEffect(() => {
-    if (!projectId) return;
+    if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
-  }, [activeLaneId, activeWorkbenchId, projectId, workbenchActions]);
+  }, [activeLaneId, activeWorkbenchId, laneResolutionPending, projectId, workbenchActions]);
 
   useEffect(() => {
-    if (!projectId || !workspaceSelectionId) {
+    if (!projectId || !workspaceSelectionId || laneResolutionPending) {
       return;
     }
 
@@ -330,14 +405,14 @@ export function ProjectWorkbenchSurface() {
       focusTileId: projectWorkbench?.activeTileId ?? null,
       updatedAt: Date.now(),
     });
-  }, [activeLaneId, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
+  }, [activeLaneId, laneResolutionPending, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
 
   useEffect(() => {
     setIsSettingsOpen(searchParams.get("settings") === "1");
   }, [searchParams]);
 
   useEffect(() => {
-    const nextTask = locationState?.taskOverlay;
+    const nextTask = taskOverlayState;
     if (!nextTask) return;
 
     setTaskCards((current) => {
@@ -345,7 +420,7 @@ export function ProjectWorkbenchSurface() {
       const remaining = current.filter((task) => getTaskOverlayKey(task) !== nextKey);
       return [nextTask, ...remaining].slice(0, 3);
     });
-  }, [locationState?.taskOverlay]);
+  }, [taskOverlayState]);
 
   useEffect(() => {
     if (!projectId) {
@@ -369,12 +444,12 @@ export function ProjectWorkbenchSurface() {
     };
   }, [isSettingsOpen]);
 
-  const resolvedDockviewThemeClass =
+  const resolvedDockviewThemeScheme =
     theme === "dark" || (theme === "system" && document.documentElement.classList.contains("dark"))
-      ? "dockview-theme-dark"
-      : "dockview-theme-light";
+      ? "dark"
+      : "light";
 
-  if (!projectId) {
+  if (!projectId || laneResolutionPending) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         {t('workbench.surface.loadingWorkbench')}
@@ -386,42 +461,40 @@ export function ProjectWorkbenchSurface() {
     <WorkbenchDockRuntimeProvider
       projectId={projectId}
       laneId={activeLaneId}
-      projectPath={null}
+      projectRootPath={projectRootPath}
+      gitRootPath={gitRootPath}
       projectName={projectName}
       workspaceId={activeWorkbenchId}
       framework={project?.frameworkInfo?.framework ?? null}
       storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
       storedDevPort={project?.frameworkInfo?.devPort ?? null}
-      workbenchSession={workbenchSession}
+      workbenchSessionKey={workbenchSessionKey}
+      getWorkbenchSession={getWorkbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
       onResolveSelectionTile={handleResolveSelectionTile}
       onSplitTile={handleSplitTile}
     >
       <div
-        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
         data-workbench-session-key={workbenchSession?.sessionKey ?? ""}
         data-workbench-lifecycle={workbenchSession?.lifecycle ?? "loading"}
       >
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <div className="relative flex h-full min-h-0 min-w-0">
             <div
-              className="relative min-w-0 flex-1 overflow-hidden bg-content-surface"
+              className="relative min-w-0 flex-1 overflow-hidden bg-transparent"
             >
               <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">
                 <Suspense fallback={<WorkbenchOverlayLoading />}>
                   <LazyWorkbenchDockviewCanvas
                     dockviewKey={workbenchScopeKey ?? "workbench"}
-                    className={resolvedDockviewThemeClass}
+                    themeScheme={resolvedDockviewThemeScheme}
                     onReady={handleDockviewReady}
                   />
                 </Suspense>
               </div>
             </div>
-
-            <Suspense fallback={null}>
-              <LazyChangesSidebar workspaceId={activeWorkbenchId} />
-            </Suspense>
 
             {isSettingsOpen ? (
               <>

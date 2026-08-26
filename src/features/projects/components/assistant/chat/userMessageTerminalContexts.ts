@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { formatInlineTerminalContextLabel as formatInlineTerminalContextSelectionLabel } from "@/stores/terminalContext";
 
 const TERMINAL_CONTEXT_HEADER_PATTERN = /^(.*?)\s+line(?:s)?\s+(\d+)(?:-(\d+))?$/i;

@@ -1,112 +1,78 @@
-// @ts-nocheck
 /**
- * RoutingTextGeneration – Dispatches text generation requests to the concrete
- * provider-specific implementation based on the provider in each request input.
- *
- * Known providers map to Codex, Claude, Cursor, or OpenCode. Unknown or
- * absent providers fall back to Codex.
+ * RoutingTextGeneration – Dispatches text generation requests to the provider
+ * instance selected by each model selection.
  *
  * @module RoutingTextGeneration
  */
-import { Effect, Layer, ServiceMap } from "effect";
+import { Effect, Layer } from "effect";
 
+import type { ProviderInstanceId } from "@cozea/assistant-contracts";
+
+import { TextGeneration, type TextGenerationShape } from "../Services/TextGeneration.ts";
+import { TextGenerationError } from "../Errors.ts";
 import {
-  TextGeneration,
-  type TextGenerationProvider,
-  type TextGenerationShape,
-} from "../Services/TextGeneration.ts";
-import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
-import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
-import { CursorTextGenerationLive } from "./CursorTextGeneration.ts";
-import { OpenCodeTextGenerationLive } from "./OpenCodeTextGeneration.ts";
+  ProviderInstanceRegistry,
+  type ProviderInstanceRegistryShape,
+} from "../../provider/Services/ProviderInstanceRegistry.ts";
+import type { ProviderInstance } from "../../provider/ProviderDriver.ts";
 
-// ---------------------------------------------------------------------------
-// Internal service tags so both concrete layers can coexist.
-// ---------------------------------------------------------------------------
+type TextGenerationOp =
+  | "generateCommitMessage"
+  | "generatePrContent"
+  | "generateBranchName"
+  | "generateThreadTitle";
 
-class CodexTextGen extends ServiceMap.Service<CodexTextGen, TextGenerationShape>()(
-  "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/CodexTextGen",
-) {}
+const resolveInstanceTextGeneration = (
+  registry: ProviderInstanceRegistryShape,
+  operation: TextGenerationOp,
+  instanceId: ProviderInstanceId,
+): Effect.Effect<ProviderInstance["textGeneration"], TextGenerationError> =>
+  registry.getInstance(instanceId).pipe(
+    Effect.flatMap((instance) =>
+      instance
+        ? Effect.succeed(instance.textGeneration)
+        : Effect.fail(
+            new TextGenerationError({
+              operation,
+              detail: `No provider instance registered for id '${instanceId}'.`,
+            }),
+          ),
+    ),
+  );
 
-class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShape>()(
-  "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/ClaudeTextGen",
-) {}
-
-class CursorTextGen extends ServiceMap.Service<CursorTextGen, TextGenerationShape>()(
-  "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/CursorTextGen",
-) {}
-
-class OpenCodeTextGen extends ServiceMap.Service<OpenCodeTextGen, TextGenerationShape>()(
-  "cozea/assistant-runtime/git/Layers/RoutingTextGeneration/OpenCodeTextGen",
-) {}
-
-// ---------------------------------------------------------------------------
-// Routing implementation
-// ---------------------------------------------------------------------------
-
-const makeRoutingTextGeneration = Effect.gen(function* () {
-  const codex = yield* CodexTextGen;
-  const claude = yield* ClaudeTextGen;
-  const cursor = yield* CursorTextGen;
-  const openCode = yield* OpenCodeTextGen;
-
-  const route = (provider?: TextGenerationProvider): TextGenerationShape =>
-    provider === "claudeAgent"
-      ? claude
-      : provider === "opencode"
-        ? openCode
-        : provider === "cursor"
-          ? cursor
-          : codex;
-
-  return {
-    generateCommitMessage: (input) =>
-      route(input.modelSelection.provider).generateCommitMessage(input),
-    generatePrContent: (input) => route(input.modelSelection.provider).generatePrContent(input),
-    generateBranchName: (input) => route(input.modelSelection.provider).generateBranchName(input),
-    generateThreadTitle: (input) =>
-      route(input.modelSelection.provider).generateThreadTitle(input),
-  } satisfies TextGenerationShape;
+export const makeTextGenerationFromRegistry = (
+  registry: ProviderInstanceRegistryShape,
+): TextGenerationShape => ({
+  generateCommitMessage: (input) =>
+    resolveInstanceTextGeneration(
+      registry,
+      "generateCommitMessage",
+      input.modelSelection.instanceId,
+    ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input))),
+  generatePrContent: (input) =>
+    resolveInstanceTextGeneration(
+      registry,
+      "generatePrContent",
+      input.modelSelection.instanceId,
+    ).pipe(Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input))),
+  generateBranchName: (input) =>
+    resolveInstanceTextGeneration(
+      registry,
+      "generateBranchName",
+      input.modelSelection.instanceId,
+    ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input))),
+  generateThreadTitle: (input) =>
+    resolveInstanceTextGeneration(
+      registry,
+      "generateThreadTitle",
+      input.modelSelection.instanceId,
+    ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input))),
 });
-
-const InternalCodexLayer = Layer.effect(
-  CodexTextGen,
-  Effect.gen(function* () {
-    const svc = yield* TextGeneration;
-    return svc;
-  }),
-).pipe(Layer.provide(CodexTextGenerationLive));
-
-const InternalClaudeLayer = Layer.effect(
-  ClaudeTextGen,
-  Effect.gen(function* () {
-    const svc = yield* TextGeneration;
-    return svc;
-  }),
-).pipe(Layer.provide(ClaudeTextGenerationLive));
-
-const InternalCursorLayer = Layer.effect(
-  CursorTextGen,
-  Effect.gen(function* () {
-    const svc = yield* TextGeneration;
-    return svc;
-  }),
-).pipe(Layer.provide(CursorTextGenerationLive));
-
-const InternalOpenCodeLayer = Layer.effect(
-  OpenCodeTextGen,
-  Effect.gen(function* () {
-    const svc = yield* TextGeneration;
-    return svc;
-  }),
-).pipe(Layer.provide(OpenCodeTextGenerationLive));
 
 export const RoutingTextGenerationLive = Layer.effect(
   TextGeneration,
-  makeRoutingTextGeneration,
-).pipe(
-  Layer.provide(InternalCodexLayer),
-  Layer.provide(InternalClaudeLayer),
-  Layer.provide(InternalCursorLayer),
-  Layer.provide(InternalOpenCodeLayer),
+  Effect.gen(function* () {
+    const registry = yield* ProviderInstanceRegistry;
+    return makeTextGenerationFromRegistry(registry);
+  }),
 );

@@ -5,6 +5,7 @@ import type {
 } from "@shared/electronApiTypes"
 
 import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenTypes"
+import { isProjectDevAppLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration"
 import { cn } from "@/lib/utils"
 
@@ -74,10 +75,29 @@ export interface SidebarProjectTreeItemSelection {
   activeTileId: string | null
 }
 
+export type SidebarDevAppPublicationState = "unpublished" | "published" | "publishing"
+
+export type SidebarDevAppPublishMode = "launch" | "update"
+
+export interface SidebarDevAppMenuState {
+  devAppPublicationState: SidebarDevAppPublicationState
+  devAppPublishingMode: SidebarDevAppPublishMode | null
+  canPublishDevApp: boolean
+}
+
+export interface SidebarDevAppMenuAction {
+  label: "Launch as DevApp" | "Launching DevApp…" | "Update DevApp" | "Updating DevApp…"
+  mode: SidebarDevAppPublishMode
+  enabled: boolean
+}
+
 export interface SidebarProjectTreeItemContext {
   isCurrentProject: boolean
   currentWorkspaceId: string | null
   isSyncingProject: boolean
+  devAppPublicationState: SidebarDevAppPublicationState
+  devAppPublishingMode: SidebarDevAppPublishMode | null
+  canPublishDevApp: boolean
   prefetchedLaneState?: ProjectLaneState | null
   prefetchedActiveLane?: ProjectLaneDescriptor | null
 }
@@ -89,6 +109,11 @@ export interface SidebarProjectTreeItemActions {
   closeProjectWorkspace: (project: SidebarProjectItem, workspaceId: string | null) => Promise<void>
   openProjectFolder: (project: SidebarProjectItem, workspaceId: string | null) => Promise<void>
   openProjectSettings: (project: SidebarProjectItem) => void
+  publishDevApp: (
+    project: SidebarProjectItem,
+    workspaceId: string | null,
+    mode: SidebarDevAppPublishMode,
+  ) => Promise<void>
   renameProject: (project: SidebarProjectItem) => void
   archiveProject: (project: SidebarProjectItem) => Promise<void>
   restoreProject: (project: SidebarProjectItem) => Promise<void>
@@ -113,6 +138,35 @@ export interface SidebarProjectTreeItemProps {
   selection: SidebarProjectTreeItemSelection
   context: SidebarProjectTreeItemContext
   actions: SidebarProjectTreeItemActions
+}
+
+export function resolveSidebarDevAppMenuAction({
+  devAppPublicationState,
+  devAppPublishingMode,
+  canPublishDevApp,
+}: SidebarDevAppMenuState): SidebarDevAppMenuAction {
+  if (devAppPublicationState === "publishing") {
+    const mode = devAppPublishingMode ?? "launch"
+    return {
+      label: mode === "update" ? "Updating DevApp…" : "Launching DevApp…",
+      mode,
+      enabled: false,
+    }
+  }
+
+  const mode = devAppPublicationState === "published" ? "update" : "launch"
+  return {
+    label: mode === "update" ? "Update DevApp" : "Launch as DevApp",
+    mode,
+    enabled: canPublishDevApp,
+  }
+}
+
+export function canReuseProjectDevAppLogo(
+  mode: SidebarDevAppPublishMode,
+  logoDataUrl: unknown,
+): logoDataUrl is string {
+  return mode === "update" && isProjectDevAppLogoDataUrl(logoDataUrl)
 }
 
 export function resolveProjectCollabBranch(project: SidebarProjectItem): string {

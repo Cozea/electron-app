@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { collectSourceFiles } from '../helpers/scan'
 import { extractStringArgCalls } from '../helpers/tsAst'
 
-const REPO_ROOT = path.resolve(__dirname, '..')
+const REPO_ROOT = path.resolve(__dirname, '..', '..')
 
 function collectAllStrings(sets: Array<Set<string>>): Set<string> {
   const out = new Set<string>()

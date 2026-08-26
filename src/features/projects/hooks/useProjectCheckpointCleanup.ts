@@ -24,13 +24,32 @@ export function useProjectCheckpointCleanup(
     }
 
     let cancelled = false;
+    let timer: number | null = null;
+    // Each poll spawns a `git status` subprocess in the main process, and the
+    // hook runs for every retained workspace runtime. Repos poll at 2s (commit
+    // detection drives ephemeral-change cleanup); non-repos back off to 30s —
+    // the answer only changes if someone runs `git init` in the folder.
+    const REPO_POLL_MS = 2000;
+    const NON_REPO_POLL_MS = 30_000;
+
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      timer = window.setTimeout(() => {
+        void pollStatus();
+      }, delay);
+    };
 
     const pollStatus = async () => {
+      let nextDelay = REPO_POLL_MS;
       try {
         const statusResult = await window.electronAPI.workspaceSync.gitStatus({
           workspaceId,
         });
-        if (cancelled || !statusResult.success || !statusResult.isRepo) {
+        if (cancelled) {
+          return;
+        }
+        if (!statusResult.success || !statusResult.isRepo) {
+          nextDelay = NON_REPO_POLL_MS;
           return;
         }
 
@@ -70,17 +89,18 @@ export function useProjectCheckpointCleanup(
         }
       } catch {
         // Ignore transient git-status failures; the next poll will retry.
+      } finally {
+        schedule(nextDelay);
       }
     };
 
     void pollStatus();
-    const interval = window.setInterval(() => {
-      void pollStatus();
-    }, 2000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
     };
   }, [clearEphemeralChanges, workspaceId, projectId]);
 }

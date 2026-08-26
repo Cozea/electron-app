@@ -25,7 +25,7 @@ function HeaderShareButtonFallback() {
   return (
     <div
       aria-hidden="true"
-      className="h-7 w-8 rounded-lg bg-sidebar transition-colors"
+      className="h-7 w-7 rounded-md bg-sidebar transition-colors"
     />
   );
 }
@@ -79,7 +79,9 @@ export function UnifiedHeader({
     sidebar != null &&
     !sidebar.isMobile &&
     sidebar.state === "expanded";
-  const headerSurfaceClassName = "border-b border-border/60 bg-background";
+  // Transparent surface: the header sits above the content area in a flex
+  // column (nothing scrolls beneath it), and a distinct tint/border made it
+  // read as a separate bar from the tile canvas behind it.
   const headerLayoutClassName =
     layoutMode === "inset"
       ? "relative z-10 w-full shrink-0"
@@ -152,7 +154,6 @@ export function UnifiedHeader({
         className={cn(
           headerLayoutClassName,
           "h-10 flex items-center px-2 titlebar-drag-region transition-[padding] duration-200 ease-out",
-          headerSurfaceClassName,
           className,
         )}
       >
@@ -217,7 +218,6 @@ export function UnifiedHeader({
         headerLayoutClassName,
         "h-10 flex items-center titlebar-drag-region transition-[padding] duration-200 ease-out",
         shellHorizontalPadding,
-        headerSurfaceClassName,
         className,
       )}
     >

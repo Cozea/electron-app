@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { Effect, Layer } from "effect";
+import { defaultInstanceIdForDriver } from "@cozea/assistant-contracts";
 
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
@@ -27,8 +28,12 @@ export const ProviderSessionReaperLive = Layer.effectDiscard(
     const analytics = yield* AnalyticsService
 
     const reapOnce = Effect.gen(function* () {
-      const providers = yield* registry.listProviders()
-      const adapters = yield* Effect.forEach(providers, (provider) => registry.getByProvider(provider))
+      const instanceIds = yield* registry.listInstances()
+      const adapters = yield* Effect.forEach(instanceIds, (instanceId) =>
+        registry.getByInstance(instanceId).pipe(
+          Effect.map((adapter) => ({ instanceId, adapter })),
+        ),
+      )
 
       const bindings = yield* directory.listBindings().pipe(
         Effect.orElseSucceed(() => []),
@@ -50,14 +55,14 @@ export const ProviderSessionReaperLive = Layer.effectDiscard(
 
       const sessionsByAdapter = yield* Effect.forEach(
         adapters,
-        (adapter) =>
+        ({ instanceId, adapter }) =>
           adapter.listSessions().pipe(
-            Effect.map((sessions) => sessions.map((session) => ({ adapter, session }))),
+            Effect.map((sessions) => sessions.map((session) => ({ instanceId, adapter, session }))),
             Effect.orElseSucceed(() => []),
           ),
       )
 
-      for (const { adapter, session } of sessionsByAdapter.flatMap((entries) => entries)) {
+      for (const { instanceId, adapter, session } of sessionsByAdapter.flatMap((entries) => entries)) {
         if (session.status === "running" || session.activeTurnId) {
           continue
         }
@@ -70,6 +75,8 @@ export const ProviderSessionReaperLive = Layer.effectDiscard(
         yield* directory.upsert({
           threadId: session.threadId,
           provider: adapter.provider,
+          providerInstanceId:
+            session.providerInstanceId ?? instanceId ?? defaultInstanceIdForDriver(adapter.provider),
           status: "stopped",
           runtimePayload: {
             activeTurnId: null,

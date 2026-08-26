@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   GitCheckoutInput,
   GitActionProgressEvent,

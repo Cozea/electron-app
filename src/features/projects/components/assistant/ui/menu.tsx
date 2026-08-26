@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import type * as React from "react";

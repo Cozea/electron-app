@@ -11,7 +11,7 @@ function buildGenericContextMenuTemplate(
   resolve: (result: { action: string | null }) => void,
   state: { resolved: boolean },
 ): Electron.MenuItemConstructorOptions[] {
-  return items.flatMap((item) => {
+  return items.flatMap((item): Electron.MenuItemConstructorOptions[] => {
     if (item.type === 'separator') {
       return [{ type: 'separator' }]
     }

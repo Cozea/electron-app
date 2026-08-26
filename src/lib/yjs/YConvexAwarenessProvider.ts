@@ -86,6 +86,13 @@ export class YConvexAwarenessProvider {
     this.isPublishing = true
     this.pendingPublish = false
 
+    // A publish queued before teardown can run after the local awareness
+    // state was removed; encodeAwarenessUpdate throws on missing states.
+    if (!this.awareness.getStates().has(this.doc.clientID)) {
+      this.isPublishing = false
+      return
+    }
+
     try {
       const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
 

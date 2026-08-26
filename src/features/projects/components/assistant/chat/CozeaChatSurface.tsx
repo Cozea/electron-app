@@ -8,6 +8,7 @@ import {
   type ProviderOptionDescriptor,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
+  type ProviderInstanceId,
   type ProviderKind,
   type RuntimeMode,
   type ServerProvider,
@@ -45,6 +46,7 @@ import { ProviderOptionControls } from "@/features/projects/components/assistant
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
 import { ModelPickerContent } from "@/features/projects/components/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
+import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
 import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
 import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
 import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
@@ -210,6 +212,13 @@ interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
   runtimeErrorMessage: string | null
   workspaceId: string | null
+  /**
+   * Absolute filesystem root of the bound workspace. Used only to trim
+   * absolute tool/changedFiles paths down to a `projectName/relative/path`
+   * label in the timeline. This is the real path, NOT the opaque
+   * `workspaceId` catalog id (which only resolves file opens in main).
+   */
+  workspaceRoot?: string | null
   thread: Thread | null
   providerSnapshot: ServerProvider | null
   isRunning: boolean
@@ -240,7 +249,7 @@ interface CozeaChatSurfaceProps {
   providers: ReadonlyArray<ServerProvider>
   modelOptionsByProvider: ProviderModelOptionsByProvider
   modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>
-  onProviderModelChange: (provider: ProviderKind, model: string) => void | Promise<void>
+  onProviderModelChange: (provider: ProviderKind, model: string, instanceId?: ProviderInstanceId) => void | Promise<void>
   onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>
   onToggleInteractionMode: () => void | Promise<void>
   onToggleRuntimeMode: () => void | Promise<void>
@@ -629,10 +638,23 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isSending ||
     props.isInterrupting
 
-  const showComposerDockChrome = !dockComposerOnHover || dockComposerChromeReasons
+  // No workspace / provider unavailable: the banner replaces the timeline and
+  // sending is impossible — hide the composer entirely (hover included).
+  const composerSuppressed =
+    !props.workspaceId ||
+    Boolean(
+      props.providerSnapshot &&
+        props.providerSnapshot.status !== "ready" &&
+        props.providerSnapshot.status !== "disabled",
+    )
+
+  // Empty thread: keep the composer visible so new sessions have an obvious input.
+  const showComposerDockChrome =
+    !composerSuppressed &&
+    (!dockComposerOnHover || dockComposerChromeReasons || timelineEntries.length === 0)
 
   const reserveScrollSpaceForDockedComposer =
-    dockComposerOnHover && dockComposerChromeReasons
+    dockComposerOnHover && dockComposerChromeReasons && !composerSuppressed
 
   useLayoutEffect(() => {
     if (!dockComposerOnHover || !reserveScrollSpaceForDockedComposer) {
@@ -1115,7 +1137,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       <div
         className={cn(
-          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-sidebar-border/50 bg-secondary transition-colors",
+          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl bg-surface-raised transition-colors",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
         onBlurCapture={handleComposerShellBlurCapture}
@@ -1128,6 +1150,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             state={threadRuntimeBannerState}
             detail={threadRuntimeDetail}
             isForceStopAvailable={props.isForceStopAvailable}
+            action={
+              <ProviderRemediationAction
+                provider={props.selectedProvider}
+                message={threadRuntimeDetail}
+              />
+            }
           />
         ) : null}
         {activePendingApproval ? (
@@ -1261,14 +1289,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <div className="h-72 p-1.5">
               <ModelPickerContent
                 provider={props.selectedProvider}
+                activeInstanceId={props.selectedModelSelection.instanceId}
                 model={props.selectedModelSelection.model}
                 lockedProvider={props.selectedProvider}
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
                 terminalOpen={false}
                 onRequestClose={() => setIsModelPickerOpen(false)}
-                onProviderModelChange={(provider, model) => {
-                  void props.onProviderModelChange(provider, model)
+                onProviderModelChange={(provider, model, instanceId) => {
+                  void props.onProviderModelChange(provider, model, instanceId)
                   setIsModelPickerOpen(false)
                 }}
               />
@@ -1334,6 +1363,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             onChange={handleComposerFileInputChange}
             tabIndex={-1}
           />
+          <div
+            className={cn(
+              "px-3 py-2",
+              composerDisabled && "opacity-70",
+            )}
+          >
           <ComposerPromptEditor
             value={composerValue}
             cursor={props.composerCursor}
@@ -1369,6 +1404,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
             disabled={composerDisabled}
           />
+          </div>
         </div>
 
         {activePendingApproval ? (
@@ -1422,6 +1458,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               </Button>
               <ProviderModelPicker
                 provider={props.selectedProvider}
+                activeInstanceId={props.selectedModelSelection.instanceId}
                 model={props.selectedModelSelection.model}
                 lockedProvider={props.selectedProvider}
                 providers={props.providers}
@@ -1550,7 +1587,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-x-hidden bg-background relative"
+      className="flex h-full min-h-0 flex-col overflow-x-hidden bg-content-surface relative"
       onDragEnter={handleSurfaceDragEnter}
       onDragOver={handleSurfaceDragOver}
       onDragLeave={handleSurfaceDragLeave}
@@ -1592,7 +1629,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             </div>
           </div>
         ) : hasProviderBanner ? (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8">
+          <div
+            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8"
+            // Keep the banner centered in the area above the docked composer
+            // overlay instead of the full tile height (which hides its lower
+            // half behind the composer).
+            style={{ paddingBottom: dockedComposerScrollInsetPx ? dockedComposerScrollInsetPx + 32 : undefined }}
+          >
             <ProviderStatusBanner status={props.providerSnapshot} />
           </div>
         ) : (
@@ -1624,11 +1667,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               dockedComposerScrollInsetPx={dockedComposerScrollInsetPx}
               resolvedTheme={resolvedTheme}
               workspaceId={workspaceIdForFileActions}
-              workspaceRoot={undefined}
+              workspaceRoot={props.workspaceRoot ?? undefined}
             />
           </div>
         )}
-        {dockComposerOnHover ? (
+        {dockComposerOnHover && !composerSuppressed ? (
           <div
             ref={dockedComposerFrameRef}
             className={cn(
@@ -1642,7 +1685,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             >
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-background via-background/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
+                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-content-surface via-content-surface/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
                   showComposerDockChrome ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden
@@ -1667,7 +1710,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : null}
       </div>
 
-      {!dockComposerOnHover ? (
+      {!dockComposerOnHover && !composerSuppressed ? (
         <div className="px-3 pt-1.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5">{composerForm}</div>
       ) : null}
 

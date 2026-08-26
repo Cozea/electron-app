@@ -1,71 +1,81 @@
-.cozea-workbench-dockview {
-  --dv-border-radius: 0px;
+.cozea-workbench-dockview-host {
+  background: transparent;
+}
+
+/* Breathing room so terminal output doesn't sit flush against the tile
+   header or side edges. */
+.workbench-terminal-instance {
+  padding-top: 8px;
+  padding-left: 14px;
+  padding-right: 10px;
+}
+
+.cozea-workbench-dockview-theme {
   --dv-floating-box-shadow: none;
-  --dv-sash-color: color-mix(in oklch, var(--foreground) 8%, transparent);
-  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 24%, transparent);
-  --dv-active-sash-transition-duration: 0.08s;
-  --dv-active-sash-transition-delay: 0s;
-  --dv-tabs-and-actions-container-height: 0px;
   --dv-tabs-and-actions-container-font-size: 12px;
   --dv-tab-font-size: 12px;
-  --dv-tab-margin: 0;
+  --dv-spacing-padding: 8px;
+  --dv-border-radius: 12px;
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
-  --dv-drag-over-background-color: color-mix(in oklch, var(--primary) 12%, transparent);
-  --dv-drag-over-border-color: color-mix(in oklch, var(--primary) 42%, transparent);
+  /* Resize sash + drop-target hint. dockview ties BOTH the active resize sash
+     (the line you see hovering between two tiles to widen one) and the drag-over
+     outline to --dv-active-sash-color — it sets
+     `--dv-drag-over-border: 2px solid var(--dv-active-sash-color)` inline — so this
+     single var drives both. dockview's default here is a saturated accent; we make
+     it a neutral foreground tint so it reads as a quiet guide, not an alert.
+     Built from --foreground so it auto-inverts per theme; dark scheme below. */
+  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  --dv-drag-over-background-color: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --dv-drag-over-border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
   --dv-tabs-container-scrollbar-color: color-mix(in oklch, var(--foreground) 20%, transparent);
   --dv-scrollbar-background-color: transparent;
-}
-
-.cozea-workbench-dockview.dockview-theme-light,
-.cozea-workbench-dockview.dockview-theme-dark {
+  --dv-background-color: transparent;
+  /* Paint the whole group (header + content) as one card so the surface
+     clips to the dockview border radius instead of square inner panels. */
   --dv-group-view-background-color: var(--content-surface);
   --dv-tabs-and-actions-container-background-color: var(--content-surface);
-  --dv-activegroup-visiblepanel-tab-background-color: transparent;
-  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: color-mix(
+    in oklch,
+    var(--foreground) 8%,
+    transparent
+  );
+  --dv-activegroup-hiddenpanel-tab-background-color: color-mix(
+    in oklch,
+    var(--foreground) 4%,
+    transparent
+  );
+  --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(
+    in oklch,
+    var(--foreground) 5%,
+    transparent
+  );
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-tab-divider-color: transparent;
-  /* Match `UnifiedHeader` / project strip: `border-border/60` */
-  --dv-separator-border: color-mix(in oklch, var(--border) 60%, transparent);
-  --dv-paneview-header-border-color: color-mix(in oklch, var(--border) 60%, transparent);
-}
-
-.cozea-workbench-dockview.dockview-theme-light {
   --dv-activegroup-visiblepanel-tab-color: var(--foreground);
   --dv-activegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
   --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
   --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: transparent;
+  --dv-floating-group-border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  background-color: transparent;
 }
 
-.cozea-workbench-dockview.dockview-theme-dark {
-  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
-  --dv-activegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
-  --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklch, var(--foreground) 72%, transparent);
-  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklch, var(--foreground) 48%, transparent);
+/* Dark scheme: --foreground is near-white here, so nudge the alphas up a touch
+   to keep the neutral sash + drop hint legible against the dark surface. */
+.cozea-workbench-dockview-theme--dark {
+  --dv-active-sash-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  --dv-drag-over-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --dv-drag-over-border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 
-.cozea-workbench-dockview .dv-groupview,
-.cozea-workbench-dockview .dv-groupview-content-container,
-.cozea-workbench-dockview .dv-content-container,
-.cozea-workbench-dockview .dv-watermark-container {
-  background: var(--content-surface);
-}
-
-/* Keep panel borders clipped to their own tile during split/open animations. */
-.cozea-workbench-dockview .dv-view,
-.cozea-workbench-dockview .dv-groupview-content,
-.cozea-workbench-dockview .dv-groupview-content-container,
-.cozea-workbench-dockview .dv-content-container {
-  overflow: hidden;
-}
-
-.cozea-workbench-dockview .dv-groupview {
-  border: 0;
-  transition:
-    top 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    left 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 160ms cubic-bezier(0.22, 1, 0.36, 1);
+.cozea-workbench-dockview-theme .cozea-workbench-dockview,
+.cozea-workbench-dockview-theme .dv-dockview,
+.cozea-workbench-dockview-theme .dv-resize-container,
+.cozea-workbench-dockview-theme .dv-groupview-content-container,
+.cozea-workbench-dockview-theme .dv-groupview .dv-content-container,
+.cozea-workbench-dockview-theme .dv-watermark-container {
+  background-color: transparent;
 }
 
 .cozea-workbench-dockview .dv-groupview.dv-active-group {
@@ -73,17 +83,152 @@
   outline-offset: 0;
 }
 
-.cozea-workbench-dockview .dv-tabs-and-actions-container {
-  display: none;
-  height: 0;
-  min-height: 0;
-  border-bottom: 0;
+/* Light mode: hairline + soft ambient glow so tiles read as floating cards
+   against the dark canvas. (Beats the spaced theme's `border: none` on
+   specificity; radius comes from the theme's rounded resize containers.) */
+:root.light .cozea-workbench-dockview .dv-resize-container:has(> .dv-groupview) {
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 6px 20px rgb(0 0 0 / 0.07);
 }
 
 .cozea-workbench-dockview .dv-tab {
   letter-spacing: 0;
+  min-width: 7rem;
+  max-width: 13rem;
 }
 
-.cozea-workbench-dockview .dv-tab-close {
-  border-radius: 0;
+.cozea-workbench-dockview .dv-tab:has(.cozea-workbench-tab--chrome-owned) {
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+}
+
+.cozea-workbench-dockview .cozea-workbench-tab {
+  letter-spacing: 0;
+}
+
+.cozea-workbench-dockview .dv-left-actions-container {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+/* The void container (flex-grow: 1) normally absorbs spare header width;
+   out-grow it so the URL bar/controls stretch up to the right actions. */
+.cozea-workbench-dockview .dv-left-actions-container:has(.cozea-workbench-header-controls) {
+  flex: 999 1 18rem;
+}
+
+.cozea-workbench-dockview .cozea-workbench-header-controls > * {
+  min-width: 0;
+  width: 100%;
+}
+
+.cozea-workbench-dockview .dv-tabs-container {
+  min-width: 2.5rem;
+}
+
+.cozea-workbench-dockview .cozea-workbench-header-actions button,
+.cozea-workbench-dockview .cozea-workbench-header-actions [role="button"] {
+  flex-shrink: 0;
+}
+
+.cozea-workbench-dockview .dv-groupview:has([data-workbench-changes-panel="true"]),
+.cozea-workbench-dockview
+  .dv-groupview:has([data-workbench-changes-panel="true"])
+  > .dv-content-container {
+  overflow: hidden;
+}
+
+/* ── Tab context menu ─────────────────────────────────────────────────────────
+ * dockview renders its tab context menu as in-DOM `.dv-context-menu` (it has no
+ * native-menu hook), so we restyle it to match the app's popover/dropdown
+ * surface instead of dockview's flat default. Scoped under the theme class so
+ * it outranks the library rule (0,2,0 vs 0,1,0) regardless of import order; the
+ * popup mounts inside the themed dockview root, and the app tokens it uses
+ * (--popover/--accent/--border) already flip for dark mode. */
+.cozea-workbench-dockview-theme .dv-context-menu {
+  min-width: 12rem;
+  padding: 4px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+  border-radius: var(--radius);
+  box-shadow:
+    0 12px 32px -12px rgb(0 0 0 / 0.28),
+    0 4px 12px -6px rgb(0 0 0 / 0.16),
+    0 0 0 0.5px rgb(0 0 0 / 0.04);
+  font-size: 13px;
+  line-height: 1.2;
+  transform-origin: top left;
+  animation: cozea-context-menu-in 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark .cozea-workbench-dockview-theme .dv-context-menu,
+.cozea-workbench-dockview-theme--dark .dv-context-menu {
+  border-color: color-mix(in oklch, var(--border) 90%, transparent);
+  box-shadow:
+    0 16px 40px -12px rgb(0 0 0 / 0.6),
+    0 4px 14px -6px rgb(0 0 0 / 0.45),
+    0 0 0 0.5px rgb(255 255 255 / 0.04);
+}
+
+@keyframes cozea-context-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cozea-workbench-dockview-theme .dv-context-menu {
+    animation: none;
+  }
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-item {
+  height: 28px;
+  gap: 8px;
+  padding: 0 8px;
+  margin: 1px 0;
+  border-radius: 6px;
+  color: var(--popover-foreground);
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-item:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-item.dv-context-menu-item--disabled {
+  opacity: 0.5;
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in oklch, var(--border) 60%, transparent);
+}
+
+/* Inline rename + color picker (tab-group chip menu) tracked to the same tokens. */
+.cozea-workbench-dockview-theme .dv-context-menu-rename-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: var(--popover-foreground);
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-rename-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+.cozea-workbench-dockview-theme .dv-context-menu-color-swatch.dv-context-menu-color-swatch--selected {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }

@@ -93,7 +93,7 @@ async function handleRequest(request: WorkbenchRuntimeRequest): Promise<Workbenc
           type: 'response',
           id: request.id,
           ok: true,
-          result: host.listTerminalIds(params.projectPath),
+          result: host.listTerminalIds(params.workspaceId),
         }
       }
       case 'terminal.getInfo': {

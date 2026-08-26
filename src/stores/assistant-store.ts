@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Fragment, type ReactNode, createElement, useEffect } from "react";
 import type {
   MessageId,
@@ -40,13 +39,6 @@ export interface ThreadTurnState {
 }
 
 export interface AppState {
-  /**
-   * Compatibility collections for existing callers. New hot-path selectors
-   * should prefer the normalized records below so unrelated thread changes do
-   * not fan out through every assistant tile.
-   */
-  projects: Project[];
-  threads: Thread[];
   projectIds: ProjectId[];
   projectById: Record<ProjectId, Project>;
   projectIdByCwd: Record<string, ProjectId>;
@@ -81,8 +73,6 @@ const EMPTY_TURN_DIFF_MAP: Record<TurnId, TurnDiffSummary> = {};
 const EMPTY_THREAD_IDS: ThreadId[] = [];
 
 const initialState: AppState = {
-  projects: [],
-  threads: [],
   projectIds: [],
   projectById: {},
   projectIdByCwd: {},
@@ -154,10 +144,6 @@ function persistState(state: AppState): void {
 const debouncedPersistState = new Debouncer(persistState, { wait: 500 });
 
 // ── Identity and equality helpers ────────────────────────────────────
-
-function shallowRefArrayEqual<T>(left: readonly T[], right: readonly T[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
 
 function scalarArrayEqual<T extends string>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
@@ -312,7 +298,7 @@ function mapProjectsFromReadModel(
     .map((entry) => {
       const existing =
         previousById.get(entry.project.id) ?? previousByCwd.get(entry.project.cwd);
-      return projectsEqual(existing, entry.project) ? existing : entry.project;
+      return existing && projectsEqual(existing, entry.project) ? existing : entry.project;
     });
 }
 
@@ -328,7 +314,12 @@ function attachmentPreviewRoutePath(attachmentId: string): string {
 }
 
 function mapMessage(message: OrchestrationReadModel["threads"][number]["messages"][number]): ChatMessage {
-  const attachments = message.attachments?.map((attachment) => ({
+  const attachments = message.attachments?.map((attachment: {
+    id: string;
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+  }) => ({
     type: "image" as const,
     id: attachment.id,
     name: attachment.name,
@@ -571,7 +562,7 @@ export function selectAssistantProjectById(
   state: AppState,
   projectId: ProjectId | string | null | undefined,
 ): Project | null {
-  return projectId ? (state.projectById[projectId] ?? null) : null;
+  return projectId ? (state.projectById[projectId as ProjectId] ?? null) : null;
 }
 
 export function selectAssistantProjectByCwd(
@@ -617,22 +608,23 @@ export function createAssistantThreadSelectorById(
 
   return (state) => {
     if (!threadId) return null;
-    const shell = state.threadShellById[threadId];
+    const id = threadId as ThreadId;
+    const shell = state.threadShellById[id];
     if (!shell) {
       previousShell = undefined;
       previousThread = null;
       return null;
     }
-    const session = state.threadSessionById[threadId] ?? null;
-    const turnState = state.threadTurnStateById[threadId];
-    const messageIds = state.messageIdsByThreadId[threadId];
-    const messagesById = state.messageByThreadId[threadId];
-    const activityIds = state.activityIdsByThreadId[threadId];
-    const activitiesById = state.activityByThreadId[threadId];
-    const proposedPlanIds = state.proposedPlanIdsByThreadId[threadId];
-    const proposedPlansById = state.proposedPlanByThreadId[threadId];
-    const turnDiffIds = state.turnDiffIdsByThreadId[threadId];
-    const turnDiffsById = state.turnDiffSummaryByThreadId[threadId];
+    const session = state.threadSessionById[id] ?? null;
+    const turnState = state.threadTurnStateById[id];
+    const messageIds = state.messageIdsByThreadId[id];
+    const messagesById = state.messageByThreadId[id];
+    const activityIds = state.activityIdsByThreadId[id];
+    const activitiesById = state.activityByThreadId[id];
+    const proposedPlanIds = state.proposedPlanIdsByThreadId[id];
+    const proposedPlansById = state.proposedPlanByThreadId[id];
+    const turnDiffIds = state.turnDiffIdsByThreadId[id];
+    const turnDiffsById = state.turnDiffSummaryByThreadId[id];
 
     if (
       previousThread &&
@@ -680,19 +672,6 @@ export function createAssistantProjectSelectorForTile(input: {
       { assistantProjectId: input.assistantProjectId ?? null },
       cwd,
     );
-}
-
-function materializeLegacyCollections(state: AppState): AppState {
-  const projects = selectAssistantProjects(state);
-  const threads = selectAssistantThreads(state);
-  let nextState = state;
-  if (!shallowRefArrayEqual(state.projects, projects)) {
-    nextState = { ...nextState, projects };
-  }
-  if (!shallowRefArrayEqual(state.threads, threads)) {
-    nextState = { ...nextState, threads };
-  }
-  return nextState;
 }
 
 // ── Pure state transition functions ────────────────────────────────────
@@ -777,69 +756,149 @@ function writeThreadFromReadModel(
   }
 
   if (previousRawThread?.messages !== thread.messages || !nextState.messageIdsByThreadId[thread.id]) {
-    const messageSlice = buildMessageSlice(thread);
-    nextState = {
-      ...nextState,
-      messageIdsByThreadId: {
-        ...nextState.messageIdsByThreadId,
-        [thread.id]: messageSlice.ids,
-      },
-      messageByThreadId: {
-        ...nextState.messageByThreadId,
-        [thread.id]: messageSlice.byId,
-      },
-    };
+    // Snapshot resyncs deserialize fresh objects, so raw identity always
+    // differs even when nothing changed — and rebuilding every thread's
+    // message slice froze the renderer for seconds on cold project switches.
+    // A cheap content fingerprint detects the identical case and keeps the
+    // existing slice. We compare EVERY message (id + text length + streaming
+    // flag), not just the last one, because the projector edits messages in
+    // place by id — an in-place edit to a non-last message with an unchanged
+    // text length would otherwise slip past a last-message-only fingerprint.
+    const existingIds = nextState.messageIdsByThreadId[thread.id];
+    const existingById = nextState.messageByThreadId[thread.id];
+    const sliceLooksCurrent =
+      existingIds !== undefined &&
+      existingById !== undefined &&
+      existingIds.length === thread.messages.length &&
+      thread.messages.every((raw, index) => {
+        if (existingIds[index] !== raw.id) return false;
+        const existing = existingById[raw.id];
+        return (
+          existing !== undefined &&
+          (raw.text?.length ?? 0) === (existing.text?.length ?? 0) &&
+          Boolean(raw.streaming) === Boolean(existing.streaming)
+        );
+      });
+    if (!sliceLooksCurrent) {
+      const messageSlice = buildMessageSlice(thread);
+      nextState = {
+        ...nextState,
+        messageIdsByThreadId: {
+          ...nextState.messageIdsByThreadId,
+          [thread.id]: messageSlice.ids,
+        },
+        messageByThreadId: {
+          ...nextState.messageByThreadId,
+          [thread.id]: messageSlice.byId,
+        },
+      };
+    }
   }
 
   if (previousRawThread?.activities !== thread.activities || !nextState.activityIdsByThreadId[thread.id]) {
-    const activitySlice = buildActivitySlice(thread);
-    nextState = {
-      ...nextState,
-      activityIdsByThreadId: {
-        ...nextState.activityIdsByThreadId,
-        [thread.id]: activitySlice.ids,
-      },
-      activityByThreadId: {
-        ...nextState.activityByThreadId,
-        [thread.id]: activitySlice.byId,
-      },
-    };
+    const existingActivityIds = nextState.activityIdsByThreadId[thread.id];
+    const activitySliceLooksCurrent =
+      existingActivityIds !== undefined &&
+      existingActivityIds.length === thread.activities.length &&
+      existingActivityIds.at(-1) === thread.activities.at(-1)?.id;
+    if (!activitySliceLooksCurrent) {
+      const activitySlice = buildActivitySlice(thread);
+      nextState = {
+        ...nextState,
+        activityIdsByThreadId: {
+          ...nextState.activityIdsByThreadId,
+          [thread.id]: activitySlice.ids,
+        },
+        activityByThreadId: {
+          ...nextState.activityByThreadId,
+          [thread.id]: activitySlice.byId,
+        },
+      };
+    }
   }
 
   if (
     previousRawThread?.proposedPlans !== thread.proposedPlans ||
     !nextState.proposedPlanIdsByThreadId[thread.id]
   ) {
-    const proposedPlanSlice = buildProposedPlanSlice(thread);
-    nextState = {
-      ...nextState,
-      proposedPlanIdsByThreadId: {
-        ...nextState.proposedPlanIdsByThreadId,
-        [thread.id]: proposedPlanSlice.ids,
-      },
-      proposedPlanByThreadId: {
-        ...nextState.proposedPlanByThreadId,
-        [thread.id]: proposedPlanSlice.byId,
-      },
-    };
+    // Same snapshot-resync identity problem as messages above: fingerprint by
+    // id + updatedAt (mutations bump updatedAt) before rebuilding the slice.
+    const existingPlanIds = nextState.proposedPlanIdsByThreadId[thread.id];
+    const existingPlanById = nextState.proposedPlanByThreadId[thread.id];
+    const planSliceLooksCurrent =
+      existingPlanIds !== undefined &&
+      existingPlanById !== undefined &&
+      existingPlanIds.length === thread.proposedPlans.length &&
+      thread.proposedPlans.every((raw) => {
+        const existing = existingPlanById[raw.id];
+        return existing !== undefined && existing.updatedAt === raw.updatedAt;
+      });
+    if (!planSliceLooksCurrent) {
+      const proposedPlanSlice = buildProposedPlanSlice(thread);
+      nextState = {
+        ...nextState,
+        proposedPlanIdsByThreadId: {
+          ...nextState.proposedPlanIdsByThreadId,
+          [thread.id]: proposedPlanSlice.ids,
+        },
+        proposedPlanByThreadId: {
+          ...nextState.proposedPlanByThreadId,
+          [thread.id]: proposedPlanSlice.byId,
+        },
+      };
+    }
   }
 
   if (
     previousRawThread?.checkpoints !== thread.checkpoints ||
     !nextState.turnDiffIdsByThreadId[thread.id]
   ) {
-    const turnDiffSlice = buildTurnDiffSlice(thread);
-    nextState = {
-      ...nextState,
-      turnDiffIdsByThreadId: {
-        ...nextState.turnDiffIdsByThreadId,
-        [thread.id]: turnDiffSlice.ids,
-      },
-      turnDiffSummaryByThreadId: {
-        ...nextState.turnDiffSummaryByThreadId,
-        [thread.id]: turnDiffSlice.byId,
-      },
-    };
+    // Fingerprint per checkpoint on the fields the summary derives from;
+    // checkpointRef/completedAt/status change whenever a checkpoint is
+    // rewritten, so equal values mean the slice is already current.
+    const existingDiffIds = nextState.turnDiffIdsByThreadId[thread.id];
+    const existingDiffById = nextState.turnDiffSummaryByThreadId[thread.id];
+    const diffSliceLooksCurrent =
+      existingDiffIds !== undefined &&
+      existingDiffById !== undefined &&
+      existingDiffIds.length === thread.checkpoints.length &&
+      thread.checkpoints.every((raw) => {
+        const existing = existingDiffById[raw.turnId];
+        return (
+          existing !== undefined &&
+          existing.completedAt === raw.completedAt &&
+          existing.status === raw.status &&
+          existing.checkpointTurnCount === raw.checkpointTurnCount &&
+          existing.checkpointRef === raw.checkpointRef &&
+          (existing.assistantMessageId ?? undefined) ===
+            (raw.assistantMessageId ?? undefined) &&
+          existing.files.length === raw.files.length &&
+          existing.files.every((existingFile, index) => {
+            const rawFile = raw.files[index];
+            return (
+              rawFile !== undefined &&
+              existingFile.path === rawFile.path &&
+              existingFile.kind === rawFile.kind &&
+              existingFile.additions === rawFile.additions &&
+              existingFile.deletions === rawFile.deletions
+            );
+          })
+        );
+      });
+    if (!diffSliceLooksCurrent) {
+      const turnDiffSlice = buildTurnDiffSlice(thread);
+      nextState = {
+        ...nextState,
+        turnDiffIdsByThreadId: {
+          ...nextState.turnDiffIdsByThreadId,
+          [thread.id]: turnDiffSlice.ids,
+        },
+        turnDiffSummaryByThreadId: {
+          ...nextState.turnDiffSummaryByThreadId,
+          [thread.id]: turnDiffSlice.byId,
+        },
+      };
+    }
   }
 
   return nextState;
@@ -909,7 +968,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
     readModel.projects.filter((project) => project.deletedAt === null),
   );
   nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
-  return materializeLegacyCollections(nextState);
+  return nextState;
 }
 
 /**
@@ -977,7 +1036,7 @@ export function applyOrchestrationDomainEventsToState(
     readModel.projects.filter((project) => project.deletedAt === null),
   );
   nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
-  return materializeLegacyCollections(nextState);
+  return nextState;
 }
 
 export function markThreadVisited(
@@ -998,7 +1057,7 @@ export function markThreadVisited(
     return state;
   }
 
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
@@ -1018,7 +1077,7 @@ export function markThreadUnread(state: AppState, threadId: ThreadId): AppState 
   if (Number.isNaN(latestTurnCompletedAtMs)) return state;
   const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
   if (shell.lastVisitedAt === unreadVisitedAt) return state;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
@@ -1043,7 +1102,7 @@ export function setProjectExpanded(
 ): AppState {
   const project = state.projectById[projectId];
   if (!project || project.expanded === expanded) return state;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     projectById: {
       ...state.projectById,
@@ -1068,7 +1127,7 @@ export function reorderProjects(
   const [draggedProject] = projectIds.splice(draggedIndex, 1);
   if (!draggedProject) return state;
   projectIds.splice(targetIndex, 0, draggedProject);
-  return materializeLegacyCollections({
+  return ({
     ...state,
     projectIds,
   });
@@ -1077,7 +1136,7 @@ export function reorderProjects(
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
   const shell = state.threadShellById[threadId];
   if (!shell || shell.error === error) return state;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,
@@ -1099,7 +1158,7 @@ export function setThreadBranch(
   if (!shell) return state;
   if (shell.branch === branch && shell.worktreePath === worktreePath) return state;
   const cwdChanged = shell.worktreePath !== worktreePath;
-  return materializeLegacyCollections({
+  return ({
     ...state,
     threadShellById: {
       ...state.threadShellById,

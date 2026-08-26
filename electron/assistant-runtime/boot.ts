@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";

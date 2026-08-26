@@ -4,7 +4,7 @@ import type { ResponseBodyData, InternalResponseBodyData } from "./types";
  * Maximum memory size (in bytes) to store buffered text and image request
  * bodies.
  */
-const REQUEST_BUFFER_MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
+export const REQUEST_BUFFER_MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
 
 /**
  * An asynchronous buffer to store network response previews keyed by requestId,

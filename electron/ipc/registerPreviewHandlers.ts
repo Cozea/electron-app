@@ -153,7 +153,11 @@ class PreviewInspectorService {
   private debuggerMessageHandler?: (event: Electron.Event, method: string, params: unknown, sessionId: string) => void
   private debuggerDetachHandler?: (event: Electron.Event, reason: string) => void
 
-  constructor(private readonly deps: RegisterPreviewHandlersDeps) {}
+  private readonly deps: RegisterPreviewHandlersDeps
+
+  constructor(deps: RegisterPreviewHandlersDeps) {
+    this.deps = deps
+  }
 
   private log(event: string, details?: Record<string, unknown>): void {
     if (typeof details === 'undefined') {

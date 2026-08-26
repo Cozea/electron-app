@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview"
 
 import { Button } from "@/components/ui/button"
-import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
-import { useTerminalStore } from "@/stores/useTerminalStore"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
+import { useWorkbenchSessionTerminal } from "@/features/projects/terminals/useWorkbenchSessionTerminal"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon } from '@hugeicons/core-free-icons'
@@ -16,7 +15,7 @@ interface WorkbenchTerminalTileProps {
   laneId: string
   tileId: string
   workspaceId: string | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  workbenchSessionKey: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
 }
@@ -26,154 +25,29 @@ export function WorkbenchTerminalTile({
   laneId,
   tileId,
   workspaceId,
-  workbenchSession,
+  workbenchSessionKey,
   panelApi,
   containerApi,
 }: WorkbenchTerminalTileProps) {
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
-  const [terminalId, setTerminalId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
-  const registerTerminal = useTerminalStore((state) => state.actions.registerTerminal)
-  const setTerminalUiAttached = useTerminalStore((state) => state.actions.setTerminalUiAttached)
-  const terminalIdRef = useRef<string | null>(null)
+  const { terminalId, error } = useWorkbenchSessionTerminal({
+    workspaceId,
+    workbenchSessionKey,
+    projectId,
+    laneId,
+    tileId,
+    terminalKind: "shell",
+    visible: panelActivity.visible,
+    retryKey,
+  })
 
   const terminalShell = (
-    <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
-      <div
-        className="h-full w-full rounded-[4px]"
-        style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
-      />
-    </div>
+    <div
+      className="h-full min-h-0 w-full"
+      style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
+    />
   )
-
-  useEffect(() => {
-    if (!terminalId) {
-      return
-    }
-
-    setTerminalUiAttached(terminalId, panelActivity.visible)
-  }, [panelActivity.visible, setTerminalUiAttached, terminalId])
-
-  useEffect(() => {
-    if (!workspaceId || !workbenchSession?.sessionKey) {
-      const activeTerminalId = terminalIdRef.current
-      if (activeTerminalId) {
-        setTerminalUiAttached(activeTerminalId, false)
-      }
-      terminalIdRef.current = null
-      setTerminalId(null)
-      setError(null)
-      return
-    }
-
-    let cancelled = false
-
-    void (async () => {
-      setError(null)
-      setTerminalId(null)
-
-      let nextTerminalId = await window.electronAPI.workbenchSession.getTerminalBinding({
-        sessionKey: workbenchSession.sessionKey,
-        projectId,
-        laneId,
-        tileId,
-      })
-
-      let snapshot =
-        nextTerminalId
-          ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })
-          : null
-
-      if (!snapshot || !nextTerminalId) {
-        const result = await window.electronAPI.terminal.create({
-          workspaceId,
-          cwd: { kind: "projectRoot" },
-          gitCwd: { kind: "projectRoot" },
-          sessionKey: workbenchSession.sessionKey,
-          laneId,
-          terminalKind: "shell",
-          activityTracking: "off",
-        })
-
-        if (cancelled) {
-          return
-        }
-
-        if (!result.success || !result.terminalId) {
-          setError(result.error ?? "Failed to prepare the terminal session")
-          return
-        }
-
-        nextTerminalId = result.terminalId
-        await window.electronAPI.workbenchSession.bindTerminal({
-          sessionKey: workbenchSession.sessionKey,
-          projectId,
-          laneId,
-          tileId,
-          terminalId: result.terminalId,
-          workspaceId,
-        })
-        snapshot = await window.electronAPI.terminal.getSnapshot({
-          terminalId: result.terminalId,
-        })
-      }
-
-      if (cancelled || !nextTerminalId) {
-        return
-      }
-
-      const info = await window.electronAPI.terminal.getInfo({ terminalId: nextTerminalId })
-      if (cancelled) {
-        return
-      }
-      const isVisible = panelApi.isVisible
-
-      registerTerminal({
-        id: nextTerminalId,
-        profileId: info?.profileId ?? "default",
-        profileName: info?.profileName ?? "Shell",
-        title: info?.title ?? "Shell",
-        workspaceId,
-        kind: "shell",
-        surface: "panel",
-        status: snapshot?.running === false ? "exited" : "running",
-        exitCode: snapshot?.exitCode ?? null,
-        hasOutput: Boolean(snapshot?.stdout?.length),
-        uiAttached: isVisible,
-      })
-      setTerminalUiAttached(nextTerminalId, isVisible)
-      terminalIdRef.current = nextTerminalId
-      setTerminalId(nextTerminalId)
-    })().catch((nextError) => {
-      if (cancelled) {
-        return
-      }
-      const message =
-        nextError instanceof Error
-          ? nextError.message
-          : "Failed to prepare the terminal session"
-      setError(message)
-    })
-
-    return () => {
-      cancelled = true
-      const activeTerminalId = terminalIdRef.current
-      if (!activeTerminalId) return
-      setTerminalUiAttached(activeTerminalId, false)
-      terminalIdRef.current = null
-    }
-  }, [
-    laneId,
-    panelApi,
-    projectId,
-    workspaceId,
-    registerTerminal,
-    retryKey,
-    setTerminalUiAttached,
-    tileId,
-    workbenchSession?.sessionKey,
-  ])
 
   let body: ReactNode
 
@@ -193,9 +67,6 @@ export function WorkbenchTerminalTile({
           size="sm"
           variant="secondary"
           onClick={() => {
-            setError(null)
-            setTerminalId(null)
-            terminalIdRef.current = null
             setRetryKey((current) => current + 1)
           }}
         >
@@ -207,16 +78,11 @@ export function WorkbenchTerminalTile({
     body = terminalShell
   } else {
     body = (
-      <div className="h-full min-h-0 pt-1.5 pr-1.5 pb-1.5 pl-2.5">
-        <TerminalInstance
-          terminalId={terminalId}
-          onTerminalError={setError}
-          workspaceId={workspaceId}
-          className="h-full workbench-terminal-instance"
-          shouldAutoFocus={panelActivity.focused}
-          gpuActive={panelActivity.visible}
-        />
-      </div>
+      <KeepAliveTerminalView
+        terminalId={terminalId}
+        workspaceId={workspaceId}
+        focused={panelActivity.focused}
+      />
     )
   }
 

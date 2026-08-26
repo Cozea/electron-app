@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as SqlClient from "@effect/sql/SqlClient";
 import * as Effect from "effect/Effect";
 
@@ -64,6 +63,7 @@ export default Effect.gen(function* () {
       thread_id TEXT PRIMARY KEY,
       status TEXT NOT NULL,
       provider_name TEXT,
+      provider_instance_id TEXT,
       provider_session_id TEXT,
       provider_thread_id TEXT,
       active_turn_id TEXT,
@@ -135,6 +135,11 @@ export default Effect.gen(function* () {
   yield* sql`
     CREATE INDEX IF NOT EXISTS idx_projection_thread_sessions_provider_session
     ON projection_thread_sessions(provider_session_id)
+  `;
+
+  yield* sql`
+    CREATE INDEX IF NOT EXISTS idx_projection_thread_sessions_instance
+    ON projection_thread_sessions(provider_instance_id)
   `;
 
   yield* sql`

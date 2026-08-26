@@ -13,6 +13,7 @@ import type {
   TerminalOutputEvent,
   UpdateState,
 } from '../shared/electronApiTypes'
+import type { WorkspaceCatalogSnapshot } from '../shared/workspaceTypes'
 import type { MessageBoxOptions } from 'electron'
 import type { ContextMenuItem } from '../shared/assistant-contracts/ipc'
 
@@ -201,17 +202,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       wrapAlgorithm?: string
     }) => ipcRenderer.invoke('collab:unwrapRecoveryKit', options),
     deleteDeviceIdentity: () => ipcRenderer.invoke('collab:deleteDeviceIdentity'),
-  },
-  tools: {
-    run: (request: {
-      name: string
-      input: Record<string, unknown>
-      workspaceId?: string
-      runId?: string
-      toolCallId?: string
-    }) =>
-      ipcRenderer.invoke('tools:run', request),
-    cancel: (request: { runId: string }) => ipcRenderer.invoke('tools:cancel', request),
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
@@ -507,6 +497,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exists: (options: string | { slug: string; projectId?: string }) =>
       ipcRenderer.invoke('project:exists', options),
     pathExists: (workspaceId: string) => ipcRenderer.invoke('project:pathExists', { workspaceId }),
+    resolveRoot: (workspaceId: string) => ipcRenderer.invoke('project:resolveRoot', { workspaceId }),
     writeFile: (options: {
       workspaceId: string
       filePath: string
@@ -927,6 +918,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('devServer:resize', options),
     isRunning: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:isRunning', options),
+    getState: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('devServer:getState', options),
     onOutput: (callback: (data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:output', handler)
@@ -936,11 +929,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; code: number | null; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:exit', handler)
       return () => ipcRenderer.removeListener('devServer:exit', handler)
-    },
-    onError: (callback: (data: { workspaceId: string; error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; error: string }) => callback(data)
-      ipcRenderer.on('devServer:error', handler)
-      return () => ipcRenderer.removeListener('devServer:error', handler)
     },
   },
   terminal: {
@@ -988,6 +976,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('agentTools:getStatus', options),
     prepare: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:prepare', options),
+    loginStart: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+      ipcRenderer.invoke('agentTools:loginStart', options),
+    loginInput: (options: { sessionId: string; value: string }) =>
+      ipcRenderer.invoke('agentTools:loginInput', options),
+    loginCancel: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('agentTools:loginCancel', options),
+    onLoginEvent: (
+      callback: (event: import('../shared/electronApiTypes').AgentToolLoginEvent) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: import('../shared/electronApiTypes').AgentToolLoginEvent,
+      ) => callback(payload)
+      ipcRenderer.on('agentTools:login-event', handler)
+      return () => ipcRenderer.removeListener('agentTools:login-event', handler)
+    },
   },
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>
@@ -1034,6 +1038,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     forget: (workspaceId: string) => ipcRenderer.invoke('workspace:forget', workspaceId),
     listCandidates: (req: unknown) => ipcRenderer.invoke('workspace:listCandidates', req),
     openInFinder: (folderPath: string) => ipcRenderer.invoke('workspace:openInFinder', folderPath),
+    getCatalogSnapshot: () => ipcRenderer.invoke('workspace:getCatalogSnapshot'),
+    onCatalogSnapshotChanged: (callback: (snapshot: WorkspaceCatalogSnapshot) => void) => {
+      const handler = (_event: unknown, snapshot: unknown) =>
+        callback(snapshot as WorkspaceCatalogSnapshot)
+      ipcRenderer.on('workspace:catalogSnapshotChanged', handler)
+      return () => {
+        ipcRenderer.removeListener('workspace:catalogSnapshotChanged', handler)
+      }
+    },
   },
 } satisfies ElectronAPI)
 

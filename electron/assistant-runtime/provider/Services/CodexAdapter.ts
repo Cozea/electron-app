@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CodexAdapter - Codex implementation of the generic provider adapter contract.
  *

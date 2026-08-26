@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client"
 
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
@@ -68,7 +67,7 @@ function SheetOverlay({
       data-native-surface-overlay-reason="Sheet backdrop"
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50",
+        "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm",
         !disableAnimation &&
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
@@ -96,27 +95,27 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "bg-background fixed z-50 flex flex-col gap-4 shadow-lg",
+          "bg-popover text-popover-foreground fixed z-50 flex flex-col gap-4 shadow-lg/5",
           !disableAnimation &&
             "data-[state=open]:animate-in data-[state=closed]:animate-out transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
           side === "right" &&
             cn(
-              "inset-y-0 right-0 h-full w-3/4 sm:max-w-sm",
+              "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
               !disableAnimation && "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
             ),
           side === "left" &&
             cn(
-              "inset-y-0 left-0 h-full w-3/4 sm:max-w-sm",
+              "inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm",
               !disableAnimation && "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
             ),
           side === "top" &&
             cn(
-              "inset-x-0 top-0 h-auto",
+              "inset-x-0 top-0 h-auto border-b",
               !disableAnimation && "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top"
             ),
           side === "bottom" &&
             cn(
-              "inset-x-0 bottom-0 h-auto",
+              "inset-x-0 bottom-0 h-auto border-t",
               !disableAnimation && "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom"
             ),
           className

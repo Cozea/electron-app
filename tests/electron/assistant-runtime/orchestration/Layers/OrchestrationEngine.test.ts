@@ -75,6 +75,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-1",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -89,6 +90,7 @@ describe("OrchestrationEngine", () => {
         title: "Thread",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -135,6 +137,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-replay",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -149,6 +152,7 @@ describe("OrchestrationEngine", () => {
         title: "replay",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -193,6 +197,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-stream",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -217,6 +222,7 @@ describe("OrchestrationEngine", () => {
           title: "domain-stream",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -254,6 +260,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-turn-diff",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -268,6 +275,7 @@ describe("OrchestrationEngine", () => {
         title: "Turn diff thread",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -371,6 +379,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-flaky",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -387,6 +396,7 @@ describe("OrchestrationEngine", () => {
           title: "flaky-fail",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -407,6 +417,7 @@ describe("OrchestrationEngine", () => {
         title: "flaky-ok",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -464,6 +475,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-atomic",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -478,6 +490,7 @@ describe("OrchestrationEngine", () => {
         title: "atomic",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -605,6 +618,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-sync",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -619,6 +633,7 @@ describe("OrchestrationEngine", () => {
         title: "sync-before",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -690,6 +705,7 @@ describe("OrchestrationEngine", () => {
         workspaceRoot: "/tmp/project-duplicate",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -705,6 +721,7 @@ describe("OrchestrationEngine", () => {
         title: "duplicate",
         modelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -725,6 +742,7 @@ describe("OrchestrationEngine", () => {
           title: "duplicate",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,

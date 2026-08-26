@@ -28,6 +28,8 @@ import {
   resolveTrustedProjectRouteNavigationState,
 } from "@/features/projects/lib/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
+import { appToast } from "@/lib/appToast";
+import { useTranslation } from "@/lib/i18n";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import { useDeferredActivation } from "@/hooks/useDeferredActivation";
 import {
@@ -79,16 +81,199 @@ interface ProjectLayoutLocationState {
   }>;
 }
 
+/**
+ * Null-rendering sibling that owns the deferred team-setup flow. It subscribes
+ * to `location.href` and navigation state, which change on every navigation —
+ * isolating those subscriptions here keeps ProjectLayout (and the whole route
+ * tree under it) from re-rendering when only the URL or state changed.
+ */
+function PendingTeamSetupEffect({
+  projectId,
+  convexUserId,
+  projectSlug,
+  projectName,
+  runtimeWorkspaceId,
+  routeProjectId,
+}: {
+  projectId: Id<"projects">;
+  convexUserId: Id<"users">;
+  projectSlug: string | null;
+  projectName: string | null;
+  runtimeWorkspaceId: string | null;
+  routeProjectId: string | null;
+}) {
+  const navigate = useViewTransitionNavigate();
+  const locationHref = useLocation({ select: (location) => location.href });
+  const statePendingTeamSetup = useLocation({
+    select: (location) =>
+      (location.state as ProjectLayoutLocationState | null)?.pendingTeamSetup ?? null,
+  });
+  const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
+  const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
+
+  const pendingTeamSetup = useMemo(
+    () => statePendingTeamSetup ?? [],
+    [statePendingTeamSetup],
+  );
+
+  useEffect(() => {
+    if (pendingTeamSetup.length === 0) {
+      return;
+    }
+
+    const pendingKey = `${String(projectId)}:${pendingTeamSetup
+      .map((member) => `${member.email}:${member.role}`)
+      .sort()
+      .join("|")}`;
+
+    if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
+      return;
+    }
+    appliedInitialTeamSetupKeysRef.current.add(pendingKey);
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await applyInitialTeamSetup({
+          projectId,
+          actorUserId: convexUserId,
+          team: pendingTeamSetup,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextState =
+          runtimeWorkspaceId
+            ? buildProjectRouteNavigationState({
+                projectId: String(projectId) || (routeProjectId ?? null),
+                projectSlug,
+                projectName,
+                preferredWorkspaceId: runtimeWorkspaceId,
+              })
+            : null;
+        navigate(locationHref, {
+          replace: true,
+          state: nextState,
+        });
+      } catch (error) {
+        console.warn("[ProjectLayout] Failed to apply deferred initial team setup:", error);
+        appliedInitialTeamSetupKeysRef.current.delete(pendingKey);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyInitialTeamSetup,
+    convexUserId,
+    locationHref,
+    runtimeWorkspaceId,
+    navigate,
+    pendingTeamSetup,
+    projectSlug,
+    projectId,
+    routeProjectId,
+    projectName,
+  ]);
+
+  return null;
+}
+
+/**
+ * Presence subscription isolated from the layout: heartbeats from other users
+ * arrive frequently, and subscribing in ProjectLayout re-rendered the entire
+ * project surface per update. This renders only the avatar group.
+ */
+function ProjectPresenceHeaderAddon({
+  projectId,
+  convexUserId,
+  userName,
+  userEmail,
+  userAvatarUrl,
+  isWorkbenchView,
+  projectBasePath,
+}: {
+  projectId: Id<"projects"> | null;
+  convexUserId: Id<"users"> | null;
+  userName: string | null;
+  userEmail: string | null;
+  userAvatarUrl: string | null;
+  isWorkbenchView: boolean;
+  projectBasePath: string | null;
+}) {
+  const navigate = useViewTransitionNavigate();
+  const presenceActiveFile = usePageContextStore((state) =>
+    isWorkbenchView ? (state.currentPage?.filePath ?? null) : null,
+  );
+  const presenceActiveRoute = usePageContextStore((state) =>
+    isWorkbenchView ? (state.currentPage?.route ?? null) : null,
+  );
+
+  const { otherUsers: presenceUsers } = useProjectPresence({
+    projectId,
+    userId: convexUserId,
+    userName,
+    userEmail,
+    userAvatarUrl,
+    activeFile: presenceActiveFile,
+    activeRoute: presenceActiveRoute,
+  });
+
+  const handlePresenceUserClick = useCallback(
+    (presenceUser: PresenceUser) => {
+      if (!projectBasePath) return;
+      navigate(
+        `${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`,
+      );
+    },
+    [navigate, projectBasePath],
+  );
+
+  if (presenceUsers.length === 0) {
+    return null;
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <LazyPresenceAvatarGroup
+        users={presenceUsers}
+        maxVisible={4}
+        onUserClick={handlePresenceUserClick}
+      />
+    </Suspense>
+  );
+}
+
 
 
 export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
+  const { t } = useTranslation();
   const { convexUserId, user } = useAuth();
-  const location = useLocation();
+  // Narrow location subscriptions: subscribing to the whole location object
+  // re-renders this layout (and everything under it) on every navigation,
+  // including no-op clicks to the current URL.
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const stateProjectId = useLocation({
+    select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectId ?? null,
+  });
+  const stateProjectSlug = useLocation({
+    select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectSlug ?? null,
+  });
+  const stateProjectName = useLocation({
+    select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectName ?? null,
+  });
+  const statePreferredWorkspaceId = useLocation({
+    select: (location) =>
+      (location.state as ProjectLayoutLocationState | null)?.preferredWorkspaceId ?? null,
+  });
   const navigate = useViewTransitionNavigate();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
-  const locationState = (location.state as ProjectLayoutLocationState | null) ?? null;
 
   // Get project data (with caching)
   const freshProjectById = useQuery(
@@ -116,13 +301,27 @@ export function ProjectLayout({
   const trustedNavigationState = useMemo(
     () =>
       resolveTrustedProjectRouteNavigationState({
-        state: location.state,
+        state: {
+          projectId: stateProjectId,
+          projectSlug: stateProjectSlug,
+          projectName: stateProjectName,
+          preferredWorkspaceId: statePreferredWorkspaceId,
+        },
         routeProjectId: routeProjectId ?? null,
         routeProjectSlug: routeSlug ?? null,
         resolvedProjectId: project?._id ? String(project._id) : null,
         resolvedProjectSlug: project?.slug ?? null,
       }),
-    [location.state, project?._id, project?.slug, routeProjectId, routeSlug],
+    [
+      stateProjectId,
+      stateProjectSlug,
+      stateProjectName,
+      statePreferredWorkspaceId,
+      project?._id,
+      project?.slug,
+      routeProjectId,
+      routeSlug,
+    ],
   );
   const effectiveProjectName = project?.name ?? trustedNavigationState?.projectName ?? null;
   const projectBasePath = routeProjectId
@@ -133,106 +332,39 @@ export function ProjectLayout({
         ? buildLegacyProjectPath(projectSlug)
         : null;
 
-  const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
-  const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
-  const { result: workspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
+  const { result: rawWorkspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
     featureFlags.localWorkspaceCatalog && project?._id ? String(project._id) : null,
     projectSlug,
     null,
     trustedNavigationState?.preferredWorkspaceId ?? null,
+    { allowCandidateScan: true },
   );
+  // Never act on a resolution for a different project. A stale window here
+  // once created workbenches for project B keyed with project A's workspace
+  // id; the hook is now render-time key-scoped, this is cheap insurance.
+  const workspaceResolution =
+    rawWorkspaceResolution && project?._id && rawWorkspaceResolution.projectId !== String(project._id)
+      ? null
+      : rawWorkspaceResolution;
 
   const activeWorkspaceId = workspaceResolution?.status === "ready"
     ? workspaceResolution.workspace.workspaceId
     : null;
-  const legacyLocalPath = featureFlags.localWorkspaceCatalog
-    ? null
-    : (trustedNavigationState?.preferredWorkspaceId ?? null);
-  const runtimeWorkspaceId = featureFlags.localWorkspaceCatalog
-    ? activeWorkspaceId
-    : legacyLocalPath;
+  const activeProjectRootPath = workspaceResolution?.status === "ready"
+    ? workspaceResolution.workspace.projectRootPath
+    : null;
+  const activeGitRootPath = workspaceResolution?.status === "ready"
+    ? (workspaceResolution.lane.gitRootPath ?? workspaceResolution.workspace.gitRootPath)
+    : null;
+  const runtimeWorkspaceId = activeWorkspaceId;
 
-  const pendingTeamSetup = useMemo(
-    () => locationState?.pendingTeamSetup ?? [],
-    [locationState?.pendingTeamSetup],
-  );
-  const pendingTeamSetupReady = pendingTeamSetup.length > 0 && project?._id && convexUserId;
-
-  useEffect(() => {
-    if (!pendingTeamSetupReady || !project?._id || !convexUserId) {
-      return;
-    }
-
-    const pendingKey = `${String(project._id)}:${pendingTeamSetup
-      .map((member) => `${member.email}:${member.role}`)
-      .sort()
-      .join("|")}`;
-
-    if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
-      return;
-    }
-    appliedInitialTeamSetupKeysRef.current.add(pendingKey);
-
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        await applyInitialTeamSetup({
-          projectId: project._id,
-          actorUserId: convexUserId,
-          team: pendingTeamSetup,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextState =
-          runtimeWorkspaceId
-            ? buildProjectRouteNavigationState({
-                projectId: project?._id ? String(project._id) : routeProjectId ?? null,
-                projectSlug,
-                projectName: effectiveProjectName,
-                preferredWorkspaceId: runtimeWorkspaceId,
-              })
-            : null;
-        navigate(`${location.pathname}${location.search}${location.hash}`, {
-          replace: true,
-          state: nextState,
-        });
-      } catch (error) {
-        console.warn("[ProjectLayout] Failed to apply deferred initial team setup:", error);
-        appliedInitialTeamSetupKeysRef.current.delete(pendingKey);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyInitialTeamSetup,
-    convexUserId,
-    location.hash,
-    location.pathname,
-    location.search,
-    runtimeWorkspaceId,
-    navigate,
-    pendingTeamSetup,
-    pendingTeamSetupReady,
-    projectSlug,
-    project?._id,
-    routeProjectId,
-    effectiveProjectName,
-  ]);
-
-
-  const isWorkbenchView = location.pathname.endsWith("/workbench");
-  const isChangesView = location.pathname.endsWith("/changes");
-  const isAppStoreRoute = location.pathname.startsWith("/projects/store");
+  const isWorkbenchView = pathname.endsWith("/workbench");
+  const isChangesView = pathname.endsWith("/changes");
+  const isAppStoreRoute = pathname.startsWith("/projects/store");
   const isSettingsModeRoute =
-    location.pathname.startsWith("/projects/settings/") ||
-    location.pathname.startsWith("/projects/workspace/") ||
-    location.pathname.startsWith("/projects/teams");
+    pathname.startsWith("/projects/settings/") ||
+    pathname.startsWith("/projects/workspace/") ||
+    pathname.startsWith("/projects/teams");
   const shouldEnableProjectRuntime = Boolean(runtimeWorkspaceId);
   const runtimeEffectsReady = useDeferredActivation(shouldEnableProjectRuntime, {
     delayMs: 250,
@@ -288,52 +420,37 @@ export function ProjectLayout({
     };
   }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
 
-  const currentPreviewPage = usePageContextStore((state) => state.currentPage);
-  const presenceActiveFile = isWorkbenchView ? (currentPreviewPage?.filePath ?? null) : null;
-  const presenceActiveRoute = isWorkbenchView ? (currentPreviewPage?.route ?? null) : null;
   const displayUserName = user
     ? formatActorDisplayName(user.firstName || user.email, "User")
     : null;
 
-  // Real-time presence tracking
-  const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId: runtimeEffectsReady && shouldEnableProjectRuntime ? project?._id : null,
-    userId: runtimeEffectsReady && shouldEnableProjectRuntime ? convexUserId : null,
-    userName:
-      runtimeEffectsReady && shouldEnableProjectRuntime
-        ? displayUserName
-        : null,
-    userEmail: runtimeEffectsReady && shouldEnableProjectRuntime ? user?.email || null : null,
-    userAvatarUrl: shouldEnableProjectRuntime ? user?.profileImageUrl || null : null,
-    activeFile: presenceActiveFile,
-    activeRoute: presenceActiveRoute,
-  });
-
-  const handlePresenceUserClick = useCallback(
-    (presenceUser: PresenceUser) => {
-      if (!projectBasePath) return;
-      navigate(
-        `${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`,
-      );
-    },
-    [navigate, projectBasePath],
-  );
-
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding = isWorkbenchView || isChangesView;
 
+  const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime;
   const presenceHeaderAddon = useMemo(
-    () =>
-      presenceUsers.length > 0 ? (
-        <Suspense fallback={null}>
-          <LazyPresenceAvatarGroup
-            users={presenceUsers}
-            maxVisible={4}
-            onUserClick={handlePresenceUserClick}
-          />
-        </Suspense>
-      ) : null,
-    [handlePresenceUserClick, presenceUsers],
+    () => (
+      <ProjectPresenceHeaderAddon
+        projectId={presenceGateOpen ? project?._id ?? null : null}
+        convexUserId={presenceGateOpen ? convexUserId ?? null : null}
+        userName={presenceGateOpen ? displayUserName : null}
+        userEmail={presenceGateOpen ? user?.email || null : null}
+        userAvatarUrl={shouldEnableProjectRuntime ? user?.profileImageUrl || null : null}
+        isWorkbenchView={isWorkbenchView}
+        projectBasePath={projectBasePath}
+      />
+    ),
+    [
+      presenceGateOpen,
+      project?._id,
+      convexUserId,
+      displayUserName,
+      user?.email,
+      user?.profileImageUrl,
+      shouldEnableProjectRuntime,
+      isWorkbenchView,
+      projectBasePath,
+    ],
   );
 
   const workspaceSelectionId = user?.id ?? "local-device";
@@ -347,13 +464,27 @@ export function ProjectLayout({
 
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,
-    pathname: location.pathname,
+    pathname,
     workspaceScoped: false,
     presencePreSearchAddon: presenceHeaderAddon,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,
   });
+
+  // Stable element: layout re-renders bail out of the header subtree unless
+  // the chrome inputs actually changed (chromeHeader is memoized upstream).
+  const headerElement = useMemo(
+    () => (
+      <UnifiedHeader
+        layoutMode="embedded"
+        leftWindowControlsInset
+        compactHeaderActions
+        {...chromeHeader}
+      />
+    ),
+    [chromeHeader],
+  );
 
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
@@ -384,7 +515,10 @@ export function ProjectLayout({
               if (bindResult.success) {
                 refreshWorkspace();
               } else {
-                await window.desktopBridge?.confirm("Failed to bind folder: " + bindResult.error);
+                appToast.error({
+                  title: t("workspace.bindFailed"),
+                  description: bindResult.error ?? undefined,
+                });
               }
             }
             break;
@@ -400,7 +534,10 @@ export function ProjectLayout({
             if (bindResult.success) {
               refreshWorkspace();
             } else {
-              await window.desktopBridge?.confirm("Failed to bind folder: " + (bindResult.error ?? "unknown error"));
+              appToast.error({
+                title: t("workspace.bindFailed"),
+                description: bindResult.error ?? undefined,
+              });
             }
             break;
           }
@@ -414,13 +551,16 @@ export function ProjectLayout({
             if (createResult.success) {
               refreshWorkspace();
             } else {
-              await window.desktopBridge?.confirm("Failed to create workspace: " + (createResult.error ?? "unknown error"));
+              appToast.error({
+                title: t("workspace.createFailed"),
+                description: createResult.error ?? undefined,
+              });
             }
             break;
           }
           case "clone": {
             if (!repoUrl) {
-              await window.desktopBridge?.confirm("This project does not have a repository URL to clone.");
+              appToast.warning({ title: t("workspace.noRepoUrl") });
               break;
             }
             const cloneResult = await window.electronAPI.workspace!.cloneForProject({
@@ -433,7 +573,10 @@ export function ProjectLayout({
             if (cloneResult.success) {
               refreshWorkspace();
             } else {
-              await window.desktopBridge?.confirm("Failed to clone workspace: " + (cloneResult.error ?? "unknown error"));
+              appToast.error({
+                title: t("workspace.cloneFailed"),
+                description: cloneResult.error ?? undefined,
+              });
             }
             break;
           }
@@ -447,9 +590,13 @@ export function ProjectLayout({
         }
       } catch (err) {
         console.error("[ProjectLayout] Repair action failed:", err);
+        appToast.error({
+          title: t("workspace.actionFailed"),
+          description: err instanceof Error ? err.message : undefined,
+        });
       }
     },
-    [project, refreshWorkspace, routeSlug],
+    [project, refreshWorkspace, routeSlug, t],
   );
 
   const layoutContent = (
@@ -459,29 +606,25 @@ export function ProjectLayout({
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {isAppStoreRoute ? (
             <Suspense fallback={<SidebarModeFallback />}>
-              <LazyAppStoreSidebar color="currentColor" user={user} />
+              <LazyAppStoreSidebar user={user} />
             </Suspense>
           ) : isSettingsModeRoute ? (
             <Suspense fallback={<SidebarModeFallback />}>
-              <LazySettingsSidebar color="currentColor" user={user} />
+              <LazySettingsSidebar user={user} />
             </Suspense>
           ) : (
             <ProjectSidebar
-              color="currentColor"
               user={user}
               projectId={project?._id ?? null}
             />
           )}
           <SidebarInset
             color="currentColor"
-            className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
+            // bg-background: keep window vibrancy/transparency confined to the
+            // sidebar — the header + tile canvas stay one opaque surface.
+            className="flex flex-col flex-1 min-w-0 overflow-hidden bg-background md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none md:peer-data-[variant=inset]:bg-transparent"
           >
-            <UnifiedHeader
-              layoutMode="embedded"
-              leftWindowControlsInset
-              compactHeaderActions
-              {...chromeHeader}
-            />
+            {headerElement}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
                 className={cn(
@@ -523,8 +666,9 @@ export function ProjectLayout({
         | ProjectRouteSlugResolutionResult
         | undefined,
       workspaceId: activeWorkspaceId,
-      localPath: legacyLocalPath,
-      gitCwd: null,
+      projectRootPath: activeProjectRootPath,
+      gitRootPath: activeGitRootPath,
+      gitCwd: activeGitRootPath,
       projectBasePath,
       projectName: effectiveProjectName,
       collabBranch,
@@ -540,8 +684,9 @@ export function ProjectLayout({
       collabLane,
       collaborationEnabled,
       effectiveProjectName,
+      activeGitRootPath,
+      activeProjectRootPath,
       activeWorkspaceId,
-      legacyLocalPath,
       freshProjectBySlug,
       laneState,
       project,
@@ -586,7 +731,16 @@ export function ProjectLayout({
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
-      
+      {project?._id && convexUserId ? (
+        <PendingTeamSetupEffect
+          projectId={project._id}
+          convexUserId={convexUserId}
+          projectSlug={projectSlug}
+          projectName={effectiveProjectName}
+          runtimeWorkspaceId={runtimeWorkspaceId}
+          routeProjectId={routeProjectId ?? null}
+        />
+      ) : null}
       {canProvideActiveWorkspace && workspaceResolution?.status === "ready" && project?._id ? (
         <ActiveWorkspaceProvider value={{
           projectId: String(project._id),
@@ -605,7 +759,7 @@ export function ProjectLayout({
             userName={displayUserName ?? "User"}
             laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
             projectSlug={projectSlug}
-            gitCwd={null}
+            gitCwd={activeGitRootPath}
             lastSyncAt={project?.lastSyncAt}
             collaborationEnabled={collaborationEnabled}
             activeBranch={activeBranch}

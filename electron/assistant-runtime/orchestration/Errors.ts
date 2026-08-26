@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { SchemaIssue, Schema } from "effect";
 
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";

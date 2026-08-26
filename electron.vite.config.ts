@@ -118,8 +118,6 @@ function rendererManualChunks(id: string): string | undefined {
     normalizedId.includes('/node_modules/@radix-ui/') ||
     normalizedId.includes('/node_modules/@base-ui/') ||
     normalizedId.includes('/node_modules/cmdk/') ||
-    normalizedId.includes('/node_modules/framer-motion/') ||
-    normalizedId.includes('/node_modules/motion/') ||
     normalizedId.includes('/node_modules/@hugeicons/') ||
     normalizedId.includes('/node_modules/@react-symbols/')
   ) {
@@ -140,6 +138,20 @@ export default defineConfig({
     resolve: {
       alias: sharedAliases,
     },
+    plugins: [
+      {
+        name: 'copy-oauth-callback-logo',
+        closeBundle() {
+          const src = path.join(__dirname, 'src', 'assets', 'logos', 'logo_dark_mode.png')
+          const outDir = path.join(__dirname, 'out', 'assets')
+          const dest = path.join(outDir, 'logo_dark_mode.png')
+          if (fs.existsSync(src)) {
+            fs.mkdirSync(outDir, { recursive: true })
+            fs.copyFileSync(src, dest)
+          }
+        },
+      },
+    ],
     build: {
       externalizeDeps: {
         exclude: ['@pierre/diffs', '@cozea/effect-acp', '@opencode-ai/sdk'],
@@ -158,20 +170,6 @@ export default defineConfig({
           entryFileNames: '[name].js',
         },
       },
-      plugins: [
-        {
-          name: 'copy-oauth-callback-logo',
-          closeBundle() {
-            const src = path.join(__dirname, 'src', 'assets', 'logos', 'logo_dark_mode.png')
-            const outDir = path.join(__dirname, 'out', 'assets')
-            const dest = path.join(outDir, 'logo_dark_mode.png')
-            if (fs.existsSync(src)) {
-              fs.mkdirSync(outDir, { recursive: true })
-              fs.copyFileSync(src, dest)
-            }
-          },
-        },
-      ],
     },
   },
   preload: {
@@ -205,6 +203,7 @@ export default defineConfig({
     ],
     experimental: {
       // Vite 8 beta runs on Rolldown; keep a kill switch for native plugin acceleration.
+      // @ts-expect-error enableNativePlugin is a rolldown-vite flag absent from the stable vite types.
       enableNativePlugin: rolldownBuildEnabled ? true : false,
     },
     builder: {

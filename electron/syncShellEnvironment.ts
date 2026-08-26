@@ -84,7 +84,8 @@ export function syncShellEnvironment(
       platform === "darwin" && !shellEnvironment.PATH
         ? (options.readLaunchctlPath ?? readPathFromLaunchctl)()
         : undefined;
-    const knownCliPath = resolveKnownPosixCliDirs(env, platform).join(platform === "win32" ? ";" : ":");
+    // platform is narrowed to darwin | linux above, so the separator is posix.
+    const knownCliPath = resolveKnownPosixCliDirs(env, platform).join(":");
     const shellPath = mergePathEntries(shellEnvironment.PATH ?? launchctlPath, env.PATH, platform);
     const mergedPath = mergePathEntries(knownCliPath, shellPath, platform);
     if (mergedPath) {

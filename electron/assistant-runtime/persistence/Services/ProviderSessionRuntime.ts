@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProviderSessionRuntimeRepository - Repository interface for provider runtime sessions.
  *
@@ -9,6 +8,7 @@
 import {
   IsoDateTime,
   ModelSelection,
+  ProviderInstanceId,
   ProviderInteractionMode,
   ProviderSessionRuntimeStatus,
   RuntimeMode,
@@ -36,6 +36,7 @@ export type ProviderSessionRuntimePayload = typeof ProviderSessionRuntimePayload
 export const ProviderSessionRuntime = Schema.Struct({
   threadId: ThreadId,
   providerName: Schema.String,
+  providerInstanceId: Schema.NullOr(ProviderInstanceId),
   adapterKey: Schema.String,
   runtimeMode: RuntimeMode,
   status: ProviderSessionRuntimeStatus,

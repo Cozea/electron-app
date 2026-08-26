@@ -214,13 +214,13 @@ export function clearPersistedWorkbenchLayout(scopeKey: string): void {
   })
 }
 
-export function clonePersistedWorkbenchLayoutsForProjectPath(args: {
+export function clonePersistedWorkbenchLayoutsForWorkspace(args: {
   projectId: string
-  fromProjectPath?: string | null
-  toProjectPath?: string | null
+  fromWorkspace?: string | null
+  toWorkspace?: string | null
 }): void {
-  const normalizedTargetScopeProjectPath = args.toProjectPath?.trim()
-  if (!args.projectId || !normalizedTargetScopeProjectPath) {
+  const normalizedTargetScopeWorkspace = args.toWorkspace?.trim()
+  if (!args.projectId || !normalizedTargetScopeWorkspace) {
     return
   }
 
@@ -231,14 +231,25 @@ export function clonePersistedWorkbenchLayoutsForProjectPath(args: {
   let mutated = false
 
   for (const [scopeKey, entry] of Object.entries(state.layouts)) {
-    const [scopeProjectId, scopeLaneId, ...scopeProjectPathParts] = scopeKey.split("::")
-    if (scopeProjectId !== args.projectId || scopeProjectPathParts.length === 0) {
+    const scopeKeyParts = scopeKey.split("::")
+    const [scopeProjectId, scopeLaneId] = scopeKeyParts
+    const revisionPart = scopeKeyParts[scopeKeyParts.length - 1]
+    if (
+      scopeProjectId !== args.projectId ||
+      !scopeLaneId ||
+      scopeKeyParts.length < 4 ||
+      !revisionPart?.startsWith("v")
+    ) {
       continue
     }
 
-    const scopeProjectPath = scopeProjectPathParts.join("::")
-    const isSourceMatch = args.fromProjectPath?.trim()
-      ? scopeProjectPath === args.fromProjectPath.trim()
+    const scopeWorkspace = scopeKeyParts.slice(2, -1).join("::")
+    if (!scopeWorkspace) {
+      continue
+    }
+
+    const isSourceMatch = args.fromWorkspace?.trim()
+      ? scopeWorkspace === args.fromWorkspace.trim()
       : true
 
     if (!isSourceMatch) {
@@ -248,7 +259,7 @@ export function clonePersistedWorkbenchLayoutsForProjectPath(args: {
     const targetScopeKey = buildWorkbenchScopeKey(
       args.projectId,
       scopeLaneId,
-      normalizedTargetScopeProjectPath,
+      normalizedTargetScopeWorkspace,
     )
 
     if (nextLayouts[targetScopeKey]) {

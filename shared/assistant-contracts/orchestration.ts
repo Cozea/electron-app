@@ -1,7 +1,11 @@
-// @ts-nocheck
-import { Option, Schema, SchemaIssue } from "effect";
+import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { ProviderOptionSelections } from "./model";
+import {
+  type ProviderDriverKind,
+  ProviderInstanceId,
+  defaultInstanceIdForDriver,
+} from "./providerInstance";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -46,61 +50,88 @@ export const ProviderSandboxMode = Schema.Literals([
 export type ProviderSandboxMode = typeof ProviderSandboxMode.Type;
 export const DEFAULT_PROVIDER_KIND: ProviderKind = "codex";
 
-export const CodexModelSelection = Schema.Struct({
-  provider: Schema.Literal("codex"),
+const isProviderKind = Schema.is(ProviderKind);
+
+/**
+ * Built-in provider instances use the driver kind as their instance id (see
+ * `defaultInstanceIdForDriver`). When a wire payload carries only an
+ * `instanceId` and no explicit `provider`, the driver can be recovered iff the
+ * instance id is one of the canonical built-in kinds.
+ */
+export function inferProviderFromInstanceId(instanceId: unknown): ProviderKind | undefined {
+  return isProviderKind(instanceId) ? instanceId : undefined;
+}
+
+const ModelSelectionWire = Schema.Struct({
+  provider: ProviderKind,
+  instanceId: ProviderInstanceId,
   model: TrimmedNonEmptyString,
   options: Schema.optional(ProviderOptionSelections),
 });
-export interface CodexModelSelection {
-  provider: "codex";
-  model: string;
-  options?: ProviderOptionSelections;
-}
 
-export const ClaudeModelSelection = Schema.Struct({
-  provider: Schema.Literal("claudeAgent"),
-  model: TrimmedNonEmptyString,
-  options: Schema.optional(ProviderOptionSelections),
+const ModelSelectionSource = Schema.Struct({
+  provider: Schema.optional(Schema.Unknown),
+  instanceId: Schema.optional(Schema.Unknown),
+  model: Schema.Unknown,
+  options: Schema.optional(Schema.Unknown),
 });
-export interface ClaudeModelSelection {
-  provider: "claudeAgent";
-  model: string;
-  options?: ProviderOptionSelections;
-}
 
-export const CursorModelSelection = Schema.Struct({
-  provider: Schema.Literal("cursor"),
-  model: TrimmedNonEmptyString,
-  options: ProviderOptionSelections.pipe(Schema.withDecodingDefault(() => [])),
-});
-export interface CursorModelSelection {
-  provider: "cursor";
-  model: string;
-  options?: ProviderOptionSelections;
-}
+export const ModelSelection = ModelSelectionSource.pipe(
+  Schema.decodeTo(
+    ModelSelectionWire,
+    SchemaTransformation.transformOrFail({
+      decode: (raw) => {
+        const legacyProvider = isProviderKind(raw.provider) ? raw.provider : undefined;
+        const instanceId =
+          raw.instanceId !== undefined
+            ? raw.instanceId
+            : legacyProvider !== undefined
+              ? // Built-in provider kinds are valid driver slugs by construction.
+                defaultInstanceIdForDriver(legacyProvider as ProviderDriverKind)
+              : undefined;
+        // Resolve the driver: an explicit `provider` wins; otherwise it can be
+        // recovered only when the instance id is itself a built-in kind. A
+        // custom instance id with no explicit provider is *not* assumed to be
+        // codex — that would mislabel e.g. a user-created Claude instance and
+        // misfire downstream provider-gated logic — so the decode fails instead.
+        const provider =
+          legacyProvider ??
+          inferProviderFromInstanceId(instanceId) ??
+          (instanceId === undefined ? DEFAULT_PROVIDER_KIND : undefined);
+        if (provider === undefined) {
+          return Effect.fail(
+            new SchemaIssue.InvalidValue(Option.some(raw.instanceId), {
+              message:
+                "ModelSelection with a custom instanceId must specify a provider; cannot infer the driver from a non-built-in instanceId.",
+            }),
+          );
+        }
+        const base: Record<string, unknown> = {
+          instanceId,
+          model: raw.model,
+          provider,
+        };
+        if (raw.options !== undefined) base.options = raw.options;
+        return Effect.succeed(base as typeof ModelSelectionWire.Encoded);
+      },
+      encode: (value) => {
+        const base: Record<string, unknown> = {
+          instanceId: value.instanceId,
+          model: value.model,
+        };
+        if (value.provider !== undefined) base.provider = value.provider;
+        if (value.options !== undefined) base.options = value.options;
+        return Effect.succeed(base as typeof ModelSelectionSource.Encoded);
+      },
+    }),
+  ),
+);
+export type ModelSelection = typeof ModelSelection.Type;
 
-export const OpenCodeModelSelection = Schema.Struct({
-  provider: Schema.Literal("opencode"),
-  model: TrimmedNonEmptyString,
-  options: ProviderOptionSelections.pipe(Schema.withDecodingDefault(() => [])),
-});
-export interface OpenCodeModelSelection {
-  provider: "opencode";
-  model: string;
-  options?: ProviderOptionSelections;
-}
-
-export const ModelSelection = Schema.Union([
-  CodexModelSelection,
-  ClaudeModelSelection,
-  CursorModelSelection,
-  OpenCodeModelSelection,
-]);
-export type ModelSelection =
-  | CodexModelSelection
-  | ClaudeModelSelection
-  | CursorModelSelection
-  | OpenCodeModelSelection;
+export type CodexModelSelection = ModelSelection & { provider: "codex" };
+export type ClaudeModelSelection = ModelSelection & { provider: "claudeAgent" };
+export type CursorModelSelection = ModelSelection & { provider: "cursor" };
+export type OpenCodeModelSelection = ModelSelection & { provider: "opencode" };
 
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
@@ -252,6 +283,7 @@ export const OrchestrationSession = Schema.Struct({
   threadId: ThreadId,
   status: OrchestrationSessionStatus,
   providerName: Schema.NullOr(TrimmedNonEmptyString),
+  providerInstanceId: Schema.optional(ProviderInstanceId),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   activeTurnId: Schema.NullOr(TurnId),
   lastError: Schema.NullOr(TrimmedNonEmptyString),

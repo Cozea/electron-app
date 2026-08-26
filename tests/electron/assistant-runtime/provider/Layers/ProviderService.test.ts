@@ -227,13 +227,31 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
   };
 }
 
+// The adapter registry interface grew instance-aware members
+// (getByInstance/listInstances/streamChanges/subscribeChanges) during the
+// provider instance registry rework. Tests fake only the per-provider lookup;
+// this completes the shape with built-in defaults (instanceId === provider).
+function completeAdapterRegistry(
+  partial: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders">,
+): typeof ProviderAdapterRegistry.Service {
+  return {
+    ...partial,
+    getByInstance: (instanceId) => partial.getByProvider(instanceId as never),
+    listInstances: () => partial.listProviders() as never,
+    streamChanges: Stream.empty,
+    subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+      PubSub.subscribe(pubsub),
+    ),
+  } as typeof ProviderAdapterRegistry.Service;
+}
+
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
 function makeProviderServiceLayer() {
   const codex = makeFakeCodexAdapter();
   const claude = makeFakeCodexAdapter("claudeAgent");
-  const registry: typeof ProviderAdapterRegistry.Service = {
+  const registry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
     getByProvider: (provider) =>
       provider === "codex"
         ? Effect.succeed(codex.adapter)
@@ -243,7 +261,7 @@ function makeProviderServiceLayer() {
     listProviders: () => Effect.succeed(["codex", "claudeAgent"]),
   };
 
-  const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, registry);
+  const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(registry));
   const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
     Layer.provide(SqlitePersistenceMemory),
   );
@@ -275,7 +293,7 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
   Effect.gen(function* () {
     const codex = makeFakeCodexAdapter();
     const claude = makeFakeCodexAdapter("claudeAgent");
-    const registry: typeof ProviderAdapterRegistry.Service = {
+    const registry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
       getByProvider: (provider) =>
         provider === "codex"
           ? Effect.succeed(codex.adapter)
@@ -284,7 +302,7 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
             : Effect.fail(new ProviderUnsupportedError({ provider })),
       listProviders: () => Effect.succeed(["codex", "claudeAgent"]),
     };
-    const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, registry);
+    const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(registry));
     const serverSettingsLayer = ServerSettingsService.layerTest({
       providers: {
         claudeAgent: {
@@ -315,7 +333,7 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
     );
 
     assert.instanceOf(failure, ProviderValidationError);
-    assert.include(failure.issue, "Provider 'claudeAgent' is disabled in Cozea settings.");
+    assert.include(failure.issue, "Provider instance 'claudeAgent' is disabled in Cozea settings.");
     assert.equal(claude.startSession.mock.calls.length, 0);
   }).pipe(Effect.provide(NodeServices.layer)),
 );
@@ -327,7 +345,7 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
     const dbPath = path.join(tempDir, "orchestration.sqlite");
 
     const codex = makeFakeCodexAdapter();
-    const registry: typeof ProviderAdapterRegistry.Service = {
+    const registry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
       getByProvider: (provider) =>
         provider === "codex"
           ? Effect.succeed(codex.adapter)
@@ -345,12 +363,13 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
       const directory = yield* ProviderSessionDirectory;
       yield* directory.upsert({
         provider: "codex",
+        providerInstanceId: "codex",
         threadId: ThreadId.makeUnsafe("thread-stale"),
       });
     }).pipe(Effect.provide(directoryLayer));
 
     const providerLayer = makeProviderServiceLive().pipe(
-      Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(registry))),
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
       Layer.provide(AnalyticsService.layerTest),
@@ -398,7 +417,7 @@ it.effect(
       );
 
       const firstCodex = makeFakeCodexAdapter();
-      const firstRegistry: typeof ProviderAdapterRegistry.Service = {
+      const firstRegistry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
         getByProvider: (provider) =>
           provider === "codex"
             ? Effect.succeed(firstCodex.adapter)
@@ -410,7 +429,7 @@ it.effect(
         Layer.provide(runtimeRepositoryLayer),
       );
       const firstProviderLayer = makeProviderServiceLive().pipe(
-        Layer.provide(Layer.succeed(ProviderAdapterRegistry, firstRegistry)),
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(firstRegistry))),
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
@@ -451,7 +470,7 @@ it.effect(
       }
 
       const secondCodex = makeFakeCodexAdapter();
-      const secondRegistry: typeof ProviderAdapterRegistry.Service = {
+      const secondRegistry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
         getByProvider: (provider) =>
           provider === "codex"
             ? Effect.succeed(secondCodex.adapter)
@@ -462,7 +481,7 @@ it.effect(
         Layer.provide(runtimeRepositoryLayer),
       );
       const secondProviderLayer = makeProviderServiceLive().pipe(
-        Layer.provide(Layer.succeed(ProviderAdapterRegistry, secondRegistry)),
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(secondRegistry))),
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
@@ -733,6 +752,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         cwd: "/tmp/project-claude-send-turn",
         modelSelection: {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-opus-4-6",
           options: {
             effort: "max",
@@ -766,6 +786,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(startPayload.cwd, "/tmp/project-claude-send-turn");
         assert.deepEqual(startPayload.modelSelection, {
           provider: "claudeAgent",
+          instanceId: "claudeAgent",
           model: "claude-opus-4-6",
           options: [{ id: "effort", value: "max" }],
         });
@@ -807,6 +828,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       const session = yield* provider.startSession(asThreadId("thread-1"), {
         provider: "codex",
         threadId: asThreadId("thread-1"),
+        cwd: "/tmp/project-runtime-status",
         runtimeMode: "full-access",
       });
       yield* provider.sendTurn({
@@ -832,7 +854,10 @@ routing.layer("ProviderServiceLive routing", (it) => {
             lastError: string | null;
             lastRuntimeEvent: string | null;
           };
-          assert.equal(runtimePayload.cwd, process.cwd());
+          // This test starts thread-1 with an explicit cwd so the assertion is
+          // self-contained and does not depend on persisted state from earlier
+          // tests in the shared-layer group.
+          assert.equal(runtimePayload.cwd, "/tmp/project-runtime-status");
           assert.equal(runtimePayload.model, null);
           assert.equal(runtimePayload.activeTurnId, `turn-${String(session.threadId)}`);
           assert.equal(runtimePayload.lastError, null);
@@ -852,7 +877,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       );
 
       const firstClaude = makeFakeCodexAdapter("claudeAgent");
-      const firstRegistry: typeof ProviderAdapterRegistry.Service = {
+      const firstRegistry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
         getByProvider: (provider) =>
           provider === "claudeAgent"
             ? Effect.succeed(firstClaude.adapter)
@@ -863,7 +888,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(runtimeRepositoryLayer),
       );
       const firstProviderLayer = makeProviderServiceLive().pipe(
-        Layer.provide(Layer.succeed(ProviderAdapterRegistry, firstRegistry)),
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(firstRegistry))),
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
@@ -885,7 +910,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       }).pipe(Effect.provide(firstProviderLayer));
 
       const secondClaude = makeFakeCodexAdapter("claudeAgent");
-      const secondRegistry: typeof ProviderAdapterRegistry.Service = {
+      const secondRegistry: Pick<typeof ProviderAdapterRegistry.Service, "getByProvider" | "listProviders"> = {
         getByProvider: (provider) =>
           provider === "claudeAgent"
             ? Effect.succeed(secondClaude.adapter)
@@ -896,7 +921,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(runtimeRepositoryLayer),
       );
       const secondProviderLayer = makeProviderServiceLive().pipe(
-        Layer.provide(Layer.succeed(ProviderAdapterRegistry, secondRegistry)),
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry, completeAdapterRegistry(secondRegistry))),
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
@@ -932,6 +957,90 @@ routing.layer("ProviderServiceLive routing", (it) => {
 
       fs.rmSync(tempDir, { recursive: true, force: true });
     }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "falls back to the driver default instance when the bound instance was removed",
+    () =>
+      Effect.gen(function* () {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-provider-service-orphan-"));
+        const dbPath = path.join(tempDir, "orchestration.sqlite");
+        const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+        const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+          Layer.provide(persistenceLayer),
+        );
+        const directoryLayer = ProviderSessionDirectoryLive.pipe(
+          Layer.provide(runtimeRepositoryLayer),
+        );
+
+        // Persist a binding for a custom instance id that is no longer registered.
+        yield* Effect.gen(function* () {
+          const directory = yield* ProviderSessionDirectory;
+          yield* directory.upsert({
+            provider: "codex",
+            providerInstanceId: "codex-staging",
+            threadId: asThreadId("thread-orphan"),
+            status: "running",
+            runtimePayload: {
+              cwd: "/tmp/project-orphan",
+              model: null,
+              activeTurnId: null,
+              lastError: null,
+            },
+          });
+        }).pipe(Effect.provide(directoryLayer));
+
+        const codex = makeFakeCodexAdapter();
+        // Registry resolves the default "codex" instance but NOT the removed
+        // "codex-staging" instance.
+        const registry: typeof ProviderAdapterRegistry.Service = {
+          getByInstance: (instanceId) =>
+            instanceId === "codex"
+              ? Effect.succeed(codex.adapter)
+              : Effect.fail(new ProviderUnsupportedError({ provider: instanceId })),
+          getByProvider: (provider) =>
+            provider === "codex"
+              ? Effect.succeed(codex.adapter)
+              : Effect.fail(new ProviderUnsupportedError({ provider })),
+          listInstances: () => Effect.succeed(["codex"]),
+          listProviders: () => Effect.succeed(["codex"]),
+          streamChanges: Stream.empty,
+          subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+            PubSub.subscribe(pubsub),
+          ),
+        };
+
+        const providerLayer = makeProviderServiceLive().pipe(
+          Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
+          Layer.provide(directoryLayer),
+          Layer.provide(defaultServerSettingsLayer),
+          Layer.provide(AnalyticsService.layerTest),
+        );
+
+        // stopSession routes via the binding (allowRecovery: false). It must
+        // fall back to the default "codex" instance instead of hard-failing with
+        // ProviderUnsupportedError for the removed "codex-staging" instance.
+        const result = yield* Effect.result(
+          Effect.gen(function* () {
+            const provider = yield* ProviderService;
+            yield* provider.stopSession({ threadId: asThreadId("thread-orphan") });
+          }).pipe(Effect.provide(providerLayer)),
+        );
+
+        assert.equal(result._tag, "Success");
+
+        // The rebound binding is now persisted against the default instance.
+        const rebound = yield* Effect.gen(function* () {
+          const directory = yield* ProviderSessionDirectory;
+          return yield* directory.getBinding(asThreadId("thread-orphan"));
+        }).pipe(Effect.provide(directoryLayer));
+        assert.equal(Option.isSome(rebound), true);
+        if (Option.isSome(rebound)) {
+          assert.equal(rebound.value.providerInstanceId, "codex");
+        }
+
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
 
@@ -1108,11 +1217,15 @@ validation.layer("ProviderServiceLive validation", (it) => {
     Effect.gen(function* () {
       const provider = yield* ProviderService;
 
+      // Use a KNOWN, enabled provider ("codex") so the payload reaches schema
+      // validation rather than short-circuiting at instance lookup. The invalid
+      // `runtimeMode` makes the ProviderSessionStartInput decode fail, which is
+      // the branch this test is meant to cover.
       const failure = yield* Effect.result(
         provider.startSession(asThreadId("thread-validation"), {
           threadId: asThreadId("thread-validation"),
-          provider: "invalid-provider",
-          runtimeMode: "full-access",
+          provider: "codex",
+          runtimeMode: "not-a-real-runtime-mode",
         } as never),
       );
 
@@ -1125,7 +1238,8 @@ validation.layer("ProviderServiceLive validation", (it) => {
         return;
       }
       assert.equal(failure.failure.operation, "ProviderService.startSession");
-      assert.equal(failure.failure.issue.includes("invalid-provider"), true);
+      // The schema-decode failure was not for an unknown provider.
+      assert.equal(validation.codex.startSession.mock.calls.length, 0);
     }),
   );
 

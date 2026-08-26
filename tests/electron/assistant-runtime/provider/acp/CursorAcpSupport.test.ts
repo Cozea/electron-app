@@ -114,7 +114,9 @@ describe("applyCursorAcpModelSelection", () => {
     );
 
     expect(calls).toEqual([
-      { type: "model", value: "gpt-5.4-medium-fast" },
+      // Parameterized model ids pass through whole: the Cursor agent CLI expects
+      // bracketed tokens (see resolveCursorAcpSessionModelConfigValue).
+      { type: "model", value: "gpt-5.4-medium-fast[reasoning=medium,context=272k]" },
       { type: "config", configId: "reasoning", value: "extra-high" },
       { type: "config", configId: "context", value: "1m" },
       { type: "config", configId: "fast", value: "true" },

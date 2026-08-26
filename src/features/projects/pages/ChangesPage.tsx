@@ -1292,7 +1292,7 @@ export function ChangesPage(_props: ChangesPageProps) {
 
   return (
     <CheckpointDiffWorkerProvider>
-      <div className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {!project ? (
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
@@ -1301,7 +1301,7 @@ export function ChangesPage(_props: ChangesPageProps) {
           ) : (
             <div className="flex h-full min-h-0 w-full overflow-hidden">
               {viewMode === 'tree' ? (
-                <div className="flex w-full min-w-0 flex-1 flex-col bg-background">
+                <div className="flex w-full min-w-0 flex-1 flex-col">
                   <ChangesTreeView
                     visibleFiles={visibleFiles}
                     activeFilesLoaded={activeFilesLoaded}
@@ -1313,7 +1313,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                   />
                 </div>
               ) : (
-                <div className="flex min-w-0 flex-1 flex-col bg-background">
+                <div className="flex min-w-0 flex-1 flex-col">
 	                {changesScope === 'history' ? (
 	                  filteredGroups.length > 0 ? (
 	                    <HistoryChangesView

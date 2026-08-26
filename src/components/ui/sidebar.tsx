@@ -290,7 +290,7 @@ function Sidebar({
         data-slot="sidebar"
         data-side={side}
         className={cn(
-          "bg-content-surface text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
+          "text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
           sideBoundary,
           rootClassName,
           className
@@ -312,7 +312,7 @@ function Sidebar({
           data-slot="sidebar"
           data-mobile="true"
           className={cn(
-            "bg-content-surface text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden",
+            "text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden",
             sideBoundary
           )}
           style={
@@ -387,7 +387,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
           className={cn(
-            "bg-content-surface flex h-full w-full flex-col relative group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar",
+            "flex h-full w-full flex-col relative group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar",
             side === "left" && "border-r border-border/60",
             side === "right" && "border-l border-border/60"
           )}
@@ -456,7 +456,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "bg-background relative flex w-full flex-1 flex-col min-w-0",
+        "relative flex w-full flex-1 flex-col min-w-0",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:bdry md:peer-data-[variant=inset]:bdry-muted md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}

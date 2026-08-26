@@ -1,5 +1,6 @@
 // @ts-nocheck
 import {
+  inferProviderFromInstanceId,
   ServerSettings,
   type ServerSettingsPatch,
 } from "@cozea/assistant-contracts";
@@ -51,15 +52,39 @@ export function applyServerSettingsPatch(
   patch: ServerSettingsPatch,
 ): ServerSettings {
   const selectionPatch = patch.textGenerationModelSelection;
-  const next = deepMerge(current, patch);
+  const merged = deepMerge(current, patch);
+  const next =
+    patch.providerInstances === undefined
+      ? merged
+      : {
+          ...merged,
+          // Merge per-instance so a partial patch (one edited instance) does not
+          // drop the other configured instances. Each patched instance config
+          // replaces its prior entry wholesale — deepMerge would otherwise
+          // index-merge nested arrays (e.g. `environment`), which is incorrect.
+          providerInstances: {
+            ...current.providerInstances,
+            ...patch.providerInstances,
+          },
+        };
   if (!selectionPatch) {
     return next;
   }
 
-  const provider = selectionPatch.provider ?? current.textGenerationModelSelection.provider;
+  const provider =
+    selectionPatch.provider ??
+    current.textGenerationModelSelection.provider ??
+    inferProviderFromInstanceId(
+      selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId,
+    ) ??
+    "codex";
+  const instanceId =
+    selectionPatch.instanceId ?? current.textGenerationModelSelection.instanceId ?? provider;
   const model = selectionPatch.model ?? current.textGenerationModelSelection.model;
   const shouldReplaceSelection =
-    selectionPatch.provider !== undefined || selectionPatch.model !== undefined;
+    selectionPatch.provider !== undefined ||
+    selectionPatch.instanceId !== undefined ||
+    selectionPatch.model !== undefined;
   if (!shouldReplaceSelection && selectionPatch.options === undefined) {
     return next;
   }
@@ -72,6 +97,6 @@ export function applyServerSettingsPatch(
 
   return {
     ...next,
-    textGenerationModelSelection: createModelSelection(provider, model, nextOptions),
+    textGenerationModelSelection: createModelSelection(provider, model, nextOptions, instanceId),
   };
 }

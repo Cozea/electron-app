@@ -218,7 +218,7 @@ export function WorkbenchHeaderEditorControl({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className={cn("group inline-flex h-6 items-center rounded-md border bg-transparent shadow-none overflow-hidden", adjacentOpenSidebar ? "border-sidebar-foreground/20" : "border-border/60")}>
+        <div className={cn("group inline-flex h-7 items-center rounded-md border bg-transparent shadow-none overflow-hidden", adjacentOpenSidebar ? "border-sidebar-foreground/20" : "border-border/60")}>
           <Button
             variant="ghost"
             className={cn("h-full shrink-0 rounded-none bg-transparent !px-2 shadow-none", chromeButtonClass)}

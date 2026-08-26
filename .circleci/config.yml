@@ -91,10 +91,20 @@ jobs:
             source "$BASH_ENV"
             bun run typecheck:assistant-runtime
       - run:
+          name: Typecheck electron
+          command: |
+            source "$BASH_ENV"
+            bun run typecheck:electron
+      - run:
           name: Lint
           command: |
             source "$BASH_ENV"
             bun run lint
+      - run:
+          name: Test
+          command: |
+            source "$BASH_ENV"
+            bun run test
 
   build_macos_universal:
     macos:

@@ -59,6 +59,22 @@ export interface DevAppDevServerLaunchSpec extends DevAppLaunchBase {
   singleton: true
 }
 
+export interface ProjectDevAppLaunchSpec extends DevAppLaunchBase {
+  kind: "projectDevApp"
+  tileType: "devServer"
+  singleton: true
+  publicationId: string
+  releaseId: string
+  releaseVersion: number
+  projectId: string
+  sourceWorkspaceId?: string
+  sourceLaneId?: string
+  name: string
+  framework: string
+  devCommand: string
+  devPort?: number
+}
+
 export interface DevAppMobileSimulatorLaunchSpec extends DevAppLaunchBase {
   kind: "mobileSimulator"
   tileType: "mobileSimulator"
@@ -76,6 +92,7 @@ export type DevAppLaunchSpec =
   | DevAppBrowserLaunchSpec
   | DevAppDevServerLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
+  | ProjectDevAppLaunchSpec
   | DevAppTerminalLaunchSpec
 
 export interface DevAppManifest {
@@ -91,4 +108,5 @@ export interface DevAppManifest {
 
 export interface DevAppLaunchRequest {
   appId: string
+  projectDevApp?: ProjectDevAppLaunchSpec
 }

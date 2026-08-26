@@ -8,19 +8,21 @@ import {
 } from "@tanstack/react-router";
 
 import { AppRoot } from "@/App";
+import { AppErrorScreen } from "@/components/AppErrorScreen";
+import type { TranslationKey } from "@/lib/i18n/en";
 import { RouteLoading } from "@/router/RouteLoading";
 import { Outlet } from "@/lib/router";
 import { ProjectLayout } from "@/features/projects/layouts/ProjectLayout";
 
 function createLazyRouteComponent(
   loader: () => Promise<{ default: ComponentType }>,
-  label: string,
+  labelKey: TranslationKey,
 ) {
   const LazyComponent = lazy(loader);
 
   function LazyRouteComponent() {
     return (
-      <Suspense fallback={<RouteLoading label={label} />}>
+      <Suspense fallback={<RouteLoading labelKey={labelKey} />}>
         <LazyComponent />
       </Suspense>
     );
@@ -34,91 +36,91 @@ const ProjectJoinPage = createLazyRouteComponent(
     import("@/features/projects/pages/ProjectJoinPage").then((module) => ({
       default: module.ProjectJoinPage,
     })),
-  "Loading project invite…",
+  "routeLoading.projectInvite",
 );
 const ProjectInvitePage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectInvitePage").then((module) => ({
       default: module.ProjectInvitePage,
     })),
-  "Loading project invite…",
+  "routeLoading.projectInvite",
 );
 const LegacyProjectRedirectPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/LegacyProjectRedirectPage").then((module) => ({
       default: module.LegacyProjectRedirectPage,
     })),
-  "Loading project…",
+  "routeLoading.project",
 );
 const ProjectsLaunchPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectsLaunchPage").then((module) => ({
       default: module.ProjectsLaunchPage,
     })),
-  "Loading projects…",
+  "routeLoading.projects",
 );
 const ProjectWorkbenchPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectWorkbenchPage").then((module) => ({
       default: module.ProjectWorkbenchPage,
     })),
-  "Loading workbench…",
+  "routeLoading.workbench",
 );
 const TasksPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/TasksPage").then((module) => ({
       default: module.TasksPage,
     })),
-  "Loading tasks…",
+  "routeLoading.tasks",
 );
 const ProjectConflictsPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectConflictsPage").then((module) => ({
       default: module.ProjectConflictsPage,
     })),
-  "Loading conflicts…",
+  "routeLoading.conflicts",
 );
 const ProjectTeamPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectTeamPage").then((module) => ({
       default: module.ProjectTeamPage,
     })),
-  "Loading team…",
+  "routeLoading.team",
 );
 const AppStorePage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/AppStorePage").then((module) => ({
       default: module.AppStorePage,
     })),
-  "Loading DevApps Store…",
+  "routeLoading.store",
 );
 const NewProject = createLazyRouteComponent(
   () =>
     import("@/pages/NewProject").then((module) => ({
       default: module.default,
     })),
-  "Loading new project…",
+  "routeLoading.newProject",
 );
 const Account = createLazyRouteComponent(
   () =>
     import("@/pages/settings/Account").then((module) => ({
       default: module.Account,
     })),
-  "Loading account…",
+  "routeLoading.account",
 );
 const Appearance = createLazyRouteComponent(
   () =>
     import("@/pages/settings/Appearance").then((module) => ({
       default: module.Appearance,
     })),
-  "Loading appearance…",
+  "routeLoading.appearance",
 );
 const Tooling = createLazyRouteComponent(
   () =>
     import("@/pages/settings/Tooling").then((module) => ({
       default: module.Tooling,
     })),
-  "Loading tooling…",
+  "routeLoading.tooling",
 );
 const WORKSPACE_MEMBERS_ROUTE = "/teams";
 const WORKSPACE_ROLES_ROUTE = "/teams/roles";
@@ -220,6 +222,7 @@ function ProjectSettingsRedirect() {
 export const rootRoute = createRootRoute({
   component: AppRoot,
   notFoundComponent: () => <Navigate to="/projects" replace />,
+  errorComponent: AppErrorScreen,
 });
 
 const indexRoute = createRoute({
@@ -662,7 +665,18 @@ export const routeTree = rootRoute.addChildren([
   inviteRoute,
 ]);
 
-export const appRouter = createRouter({ routeTree });
+export const appRouter = createRouter({
+  routeTree,
+  defaultErrorComponent: AppErrorScreen,
+  // Keep selected router-state slices (search/params projections) identity-
+  // stable across transitions so subscribers only re-render on real changes.
+  defaultStructuralSharing: true,
+});
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  // Exposed for render-performance diagnostics (router state churn analysis).
+  (window as unknown as Record<string, unknown>).__appRouter = appRouter;
+}
 
 declare module "@tanstack/react-router" {
   interface Register {

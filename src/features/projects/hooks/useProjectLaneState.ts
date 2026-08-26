@@ -5,6 +5,7 @@ import {
   buildProjectBranchLaneState,
   readScopedProjectBranchSession,
   rememberProjectBranchSession,
+  resolveLaneBranchKnowledge,
 } from "@/features/projects/lib/projectBranchSessionStore"
 import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"
 
@@ -43,6 +44,16 @@ function buildLaneIdentityKey(
 }
 
 const laneStateCache = new Map<string, ProjectLaneState>()
+
+// The hook polls every 5s; consumers (ProjectLayout among them) re-render on
+// every state identity change. Lane state must therefore keep its object
+// identity for unchanged content or the poll becomes a layout-wide re-render
+// metronome.
+function laneStatesEqual(a: ProjectLaneState | null, b: ProjectLaneState | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return JSON.stringify(a) === JSON.stringify(b)
+}
 
 export function clearCachedProjectLaneState(
   projectId: string | null | undefined,
@@ -107,42 +118,84 @@ export function useProjectLaneState({
     refreshRequestIdRef.current = requestId
 
     if (!projectId || !identityKey) {
-      setScoped({
-        identityKey,
-        laneState: null,
-        isLoading: false,
-      })
+      setScoped((current) =>
+        current.identityKey === identityKey && current.laneState === null && !current.isLoading
+          ? current
+          : { identityKey, laneState: null, isLoading: false },
+      )
       return
     }
 
-    setScoped((current) => ({
-      identityKey,
-      laneState:
+    setScoped((current) => {
+      const carried =
         current.identityKey === identityKey
           ? current.laneState
-          : laneStateCache.get(identityKey) ?? null,
-      isLoading: true,
-    }))
+          : laneStateCache.get(identityKey) ?? null
+      // Background refreshes with data in hand are not "loading": flipping the
+      // flag re-rendered every consumer twice per 5s poll.
+      const nextLoading = carried === null
+      if (
+        current.identityKey === identityKey &&
+        current.laneState === carried &&
+        current.isLoading === nextLoading
+      ) {
+        return current
+      }
+      return { identityKey, laneState: carried, isLoading: nextLoading }
+    })
 
     try {
       const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId)
-      let activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
+      let activeBranch: string
 
       if (normalizedWorkspaceId) {
         const statusResult = await window.electronAPI.workspaceSync.gitStatus({
           workspaceId: normalizedWorkspaceId,
         }).catch(() => null)
 
-        if (statusResult?.success !== false && statusResult?.currentBranch) {
-          activeBranch = statusResult.currentBranch
+        const resolution = resolveLaneBranchKnowledge({
+          statusResult,
+          storedBranch: storedSession?.activeBranch ?? null,
+          collabBranch: normalizedCollabBranch,
+        })
+
+        if (resolution.kind === "unresolved") {
+          if (refreshRequestIdRef.current !== requestId) return
+          // No fresh status, no stored knowledge: building lane state anyway
+          // would fabricate the collab lane, flip the workbench scope key, and
+          // strand open tiles. Hold (the 5s poll retries) and keep whatever
+          // state is already showing.
+          setScoped((current) => {
+            const carried =
+              current.identityKey === identityKey
+                ? current.laneState
+                : laneStateCache.get(identityKey) ?? null
+            const nextLoading = carried === null
+            if (
+              current.identityKey === identityKey &&
+              current.laneState === carried &&
+              current.isLoading === nextLoading
+            ) {
+              return current
+            }
+            return { identityKey, laneState: carried, isLoading: nextLoading }
+          })
+          return
         }
 
-        rememberProjectBranchSession({
-          projectId,
-          branch: activeBranch,
-          collabBranch: normalizedCollabBranch,
-          workspaceId: normalizedWorkspaceId,
-        })
+        activeBranch = resolution.branch
+        if (resolution.remember) {
+          // Persist only fresh git truth — remembering fallback values poisoned
+          // the stored session with the fabricated branch.
+          rememberProjectBranchSession({
+            projectId,
+            branch: activeBranch,
+            collabBranch: normalizedCollabBranch,
+            workspaceId: normalizedWorkspaceId,
+          })
+        }
+      } else {
+        activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
       }
 
       const nextLaneState = buildProjectBranchLaneState({
@@ -154,28 +207,41 @@ export function useProjectLaneState({
 
       if (refreshRequestIdRef.current !== requestId) return
 
-      if (nextLaneState) {
-        laneStateCache.set(identityKey, nextLaneState)
+      // Re-use the cached object when content is unchanged so downstream
+      // identity checks (and React bail-outs) hold across polls.
+      const cached = laneStateCache.get(identityKey) ?? null
+      const stableNext =
+        nextLaneState && laneStatesEqual(cached, nextLaneState) ? cached : nextLaneState
+      if (stableNext) {
+        laneStateCache.set(identityKey, stableNext)
       } else {
         laneStateCache.delete(identityKey)
       }
 
-      setScoped({
-        identityKey,
-        laneState: nextLaneState,
-        isLoading: false,
-      })
+      setScoped((current) =>
+        current.identityKey === identityKey &&
+        current.laneState === stableNext &&
+        !current.isLoading
+          ? current
+          : { identityKey, laneState: stableNext, isLoading: false },
+      )
     } catch (error) {
       if (refreshRequestIdRef.current !== requestId) return
       console.error("[ProjectBranchSession] Failed to load branch session state", error)
-      setScoped((current) => ({
-        identityKey,
-        laneState:
+      setScoped((current) => {
+        const carried =
           current.identityKey === identityKey
             ? current.laneState
-            : laneStateCache.get(identityKey) ?? null,
-        isLoading: false,
-      }))
+            : laneStateCache.get(identityKey) ?? null
+        if (
+          current.identityKey === identityKey &&
+          current.laneState === carried &&
+          !current.isLoading
+        ) {
+          return current
+        }
+        return { identityKey, laneState: carried, isLoading: false }
+      })
     }
   }, [identityKey, normalizedCollabBranch, normalizedWorkspaceId, projectId])
 

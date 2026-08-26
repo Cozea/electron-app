@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Schema } from "effect";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas";
@@ -6,6 +5,7 @@ import { KeybindingRule, ResolvedKeybindingsConfig } from "./keybindings";
 import { EditorId } from "./editor";
 import { ModelCapabilities } from "./model";
 import { ProviderKind } from "./orchestration";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance";
 import { ServerSettings } from "./settings";
 
 const KeybindingsMalformedConfigIssue = Schema.Struct({
@@ -113,6 +113,12 @@ export interface ServerProviderSkill {
 
 export const ServerProvider = Schema.Struct({
   provider: ProviderKind,
+  instanceId: Schema.optional(ProviderInstanceId),
+  driver: Schema.optional(ProviderDriverKind),
+  displayName: Schema.optional(TrimmedNonEmptyString),
+  accentColor: Schema.optional(TrimmedNonEmptyString),
+  availability: Schema.optional(Schema.Literals(["available", "unavailable"])),
+  unavailableReason: Schema.optional(TrimmedNonEmptyString),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
   version: Schema.NullOr(TrimmedNonEmptyString),
@@ -128,6 +134,12 @@ export const ServerProvider = Schema.Struct({
 });
 export interface ServerProvider {
   provider: ProviderKind;
+  instanceId?: ProviderInstanceId;
+  driver?: ProviderDriverKind;
+  displayName?: string;
+  accentColor?: string;
+  availability?: "available" | "unavailable";
+  unavailableReason?: string;
   enabled: boolean;
   installed: boolean;
   version: string | null;

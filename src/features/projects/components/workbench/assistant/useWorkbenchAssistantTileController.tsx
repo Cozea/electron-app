@@ -9,6 +9,7 @@ import {
   type OrchestrationGetTurnDiffResult,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
+  type ProviderInstanceId,
   type ProviderKind,
   type RuntimeMode,
   type TurnId,
@@ -37,6 +38,7 @@ import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
 } from "@/features/projects/components/assistant/chat/composerDraftStore"
+import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
 import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   newCommandId,
@@ -49,6 +51,7 @@ import {
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
 import { ensureNativeApi } from "@/lib/nativeApi"
+import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
 import {
   createAssistantProjectSelectorForTile,
@@ -98,6 +101,7 @@ interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
   laneId: string
   workspaceId: string | null
+  projectRootPath: string | null
   tile: WorkbenchAssistantChatTileRecord
 }
 
@@ -107,14 +111,6 @@ interface WorkbenchAssistantTileControllerResult {
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
-}
-
-async function resolveAssistantWorkspaceRoot(workspaceId: string): Promise<string> {
-  const result = await window.electronAPI.workspace!.verify(workspaceId)
-  if (result.status !== "verified") {
-    throw new Error(`Workspace is not ready for the assistant runtime: ${result.status}`)
-  }
-  return result.workspace.projectRootPath
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -184,9 +180,9 @@ export function useWorkbenchAssistantTileController(
     () =>
       createAssistantProjectSelectorForTile({
         assistantProjectId: input.tile.assistantProjectId,
-        workspaceId: input.workspaceId,
+        projectPath: input.projectRootPath,
       }),
-    [input.workspaceId, input.tile.assistantProjectId],
+    [input.projectRootPath, input.tile.assistantProjectId],
   )
   const threadSelector = useMemo(
     () => createAssistantThreadSelectorById(input.tile.threadId),
@@ -201,6 +197,40 @@ export function useWorkbenchAssistantTileController(
       [draftTargetKey],
     ),
   )
+
+  // Absolute filesystem root of the bound workspace, used to trim absolute
+  // tool/changedFiles/proposed-plan paths down to workspace-relative labels in
+  // the timeline. The runtime context already exposes the real root via
+  // `input.projectRootPath`; only fall back to resolving from the opaque
+  // workspaceId when that is unavailable.
+  const [resolvedWorkspaceRoot, setResolvedWorkspaceRoot] = useState<string | null>(null)
+  useEffect(() => {
+    if (input.projectRootPath) {
+      setResolvedWorkspaceRoot(input.projectRootPath)
+      return
+    }
+    if (!input.workspaceId) {
+      setResolvedWorkspaceRoot(null)
+      return
+    }
+    let cancelled = false
+    const workspaceId = input.workspaceId
+    void projectAnalysisDesktopClient
+      .resolveRoot(workspaceId)
+      .then((root) => {
+        if (!cancelled) {
+          setResolvedWorkspaceRoot(root)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedWorkspaceRoot(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [input.projectRootPath, input.workspaceId])
 
   useEffect(() => {
     if (!thread?.id) {
@@ -278,7 +308,8 @@ export function useWorkbenchAssistantTileController(
   const selectedInteractionMode =
     composerDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
   const selectedProvider = selectedModelSelection.provider
-  const providerSnapshot = getProviderSnapshot(config, selectedProvider)
+  const selectedProviderInstanceId = selectedModelSelection.instanceId
+  const providerSnapshot = getProviderSnapshot(config, selectedProvider, selectedProviderInstanceId)
   const modelOptionsByProvider = useMemo<ProviderModelOptionsByProvider>(
     () => ({
       codex: getProviderModelOptions(config, "codex"),
@@ -289,7 +320,7 @@ export function useWorkbenchAssistantTileController(
     [config],
   )
   const providerModelOptions = useMemo(() => {
-    const options = getProviderModelOptions(config, selectedProvider)
+    const options = getProviderModelOptions(config, selectedProvider, selectedProviderInstanceId)
     if (options.some((option) => option.slug === selectedModelSelection.model)) {
       return options
     }
@@ -300,7 +331,7 @@ export function useWorkbenchAssistantTileController(
       },
       ...options,
     ]
-  }, [config, selectedModelSelection.model, selectedProvider])
+  }, [config, selectedModelSelection.model, selectedProvider, selectedProviderInstanceId])
   const selectedModelCapabilities = useMemo(
     () =>
       getProviderModelCapabilities(
@@ -436,10 +467,10 @@ export function useWorkbenchAssistantTileController(
   ])
 
   useEffect(() => {
-    if (!isRuntimeReady || !input.workspaceId) {
+    if (!isRuntimeReady || !input.workspaceId || !input.projectRootPath) {
       return
     }
-    const workspaceId = input.workspaceId
+    const workspaceRoot = input.projectRootPath
     if (bindingInFlightRef.current) {
       return
     }
@@ -455,7 +486,6 @@ export function useWorkbenchAssistantTileController(
 
     const ensureBinding = async () => {
       try {
-        const workspaceRoot = await resolveAssistantWorkspaceRoot(workspaceId)
         if (cancelled) return
 
         // For fresh tiles (no threadId), only resolve/create the project.
@@ -629,6 +659,7 @@ export function useWorkbenchAssistantTileController(
     input.laneId,
     input.projectId,
     input.workspaceId,
+    input.projectRootPath,
     input.tile,
     isRuntimeReady,
     updateAssistantTile,
@@ -657,12 +688,13 @@ export function useWorkbenchAssistantTileController(
     (selection: ModelSelection) =>
       normalizeModelSelection({
         provider: selection.provider,
+        instanceId: selection.instanceId,
         model: selection.model,
         options: buildProviderOptionSelectionsFromDescriptors(
           getModelSelectionOptionDescriptors(
             selection,
             getProviderModelCapabilities(
-              getProviderSnapshot(config, selection.provider)?.models ?? [],
+              getProviderSnapshot(config, selection.provider, selection.instanceId)?.models ?? [],
               selection.model,
               selection.provider,
             ),
@@ -675,6 +707,7 @@ export function useWorkbenchAssistantTileController(
   const handleProviderChange = async (
     nextProviderValue: string,
     nextModelValue?: string,
+    nextInstanceId?: ProviderInstanceId,
   ) => {
     const nextProvider = nextProviderValue as ProviderKind
     const preferredModelSelection = resolvePreferredModelSelection({
@@ -682,10 +715,12 @@ export function useWorkbenchAssistantTileController(
       tile: {
         ...input.tile,
         provider: nextProvider,
+        providerInstanceId: nextInstanceId,
         model: nextModelValue ?? null,
       },
       projectModelSelection: assistantProject?.defaultModelSelection,
       provider: nextProvider,
+      providerInstanceId: nextInstanceId,
     })
     const nextModelSelection = normalizeDraftModelSelection(
       withModelSelectionModel(
@@ -694,7 +729,7 @@ export function useWorkbenchAssistantTileController(
         ? resolveSelectableModel(
             nextProvider,
             nextModelValue,
-            getProviderModelOptions(config, nextProvider),
+            getProviderModelOptions(config, nextProvider, nextInstanceId),
           ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue)
         : null) ?? preferredModelSelection.model,
       ),
@@ -705,6 +740,7 @@ export function useWorkbenchAssistantTileController(
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
+      providerInstanceId: nextModelSelection.instanceId,
       model: nextModelSelection.model,
     }, input.workspaceId)
 
@@ -737,6 +773,7 @@ export function useWorkbenchAssistantTileController(
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
+      providerInstanceId: nextModelSelection.instanceId,
       model: nextModelSelection.model,
     }, input.workspaceId)
 
@@ -759,6 +796,7 @@ export function useWorkbenchAssistantTileController(
     const nextModelSelection = normalizeDraftModelSelection(
       normalizeModelSelection({
         provider: selectedProvider,
+        instanceId: selectedProviderInstanceId,
         model: selectedModelSelection.model,
         options: setProviderOptionSelectionValue(selectedModelSelection.options, optionId, value),
       }),
@@ -981,7 +1019,7 @@ export function useWorkbenchAssistantTileController(
     // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
     let resolvedThread = thread
     if (!resolvedThread) {
-      if (!input.workspaceId) {
+      if (!input.workspaceId || !input.projectRootPath) {
         return
       }
       try {
@@ -992,7 +1030,7 @@ export function useWorkbenchAssistantTileController(
 
         // Resolve the project
         const currentAssistantState = useStore.getState()
-        const workspaceRoot = await resolveAssistantWorkspaceRoot(input.workspaceId)
+        const workspaceRoot = input.projectRootPath
         const currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
@@ -1491,6 +1529,11 @@ export function useWorkbenchAssistantTileController(
         <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
           <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1">{sendError ?? requestError}</span>
+          <ProviderRemediationAction
+            provider={selectedProvider}
+            message={sendError ?? requestError}
+            onResolved={() => setSendError(null)}
+          />
         </div>
       )
     }
@@ -1519,6 +1562,7 @@ export function useWorkbenchAssistantTileController(
       isRuntimeReady,
       runtimeErrorMessage,
       workspaceId: input.workspaceId,
+      workspaceRoot: resolvedWorkspaceRoot,
       thread: visibleThread,
       providerSnapshot,
       isRunning,
@@ -1549,9 +1593,9 @@ export function useWorkbenchAssistantTileController(
       providers: config?.providers ?? [],
       modelOptionsByProvider,
       modelOptionDescriptors: selectedModelOptionDescriptors,
-      onProviderModelChange: (provider, model) => {
-        if (provider !== selectedProvider) {
-          void handleProviderChange(provider, model)
+      onProviderModelChange: (provider, model, instanceId) => {
+        if (provider !== selectedProvider || (instanceId && instanceId !== selectedProviderInstanceId)) {
+          void handleProviderChange(provider, model, instanceId)
           return
         }
         void handleModelChange(model)

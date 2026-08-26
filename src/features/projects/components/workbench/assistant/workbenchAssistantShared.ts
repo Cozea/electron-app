@@ -1,6 +1,8 @@
 import type {
   ClientOrchestrationCommand,
   ModelSelection,
+  ProviderDriverKind,
+  ProviderInstanceId,
   ProviderInteractionMode,
   ProviderKind,
   RuntimeMode,
@@ -11,6 +13,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  defaultInstanceIdForDriver,
 } from "@cozea/assistant-contracts"
 
 import { formatTerminalContextLabel } from "@/features/projects/components/assistant/lib/terminalContext"
@@ -73,16 +76,23 @@ export function truncateTitle(text: string, maxLength = 50): string {
 export function getProviderSnapshot(
   config: ServerConfig | null,
   provider: ProviderKind,
+  instanceId?: ProviderInstanceId,
 ): ServerProvider | null {
-  return config?.providers.find((entry) => entry.provider === provider) ?? null
+  const defaultInstanceId = instanceId ?? defaultInstanceIdForDriver(provider as ProviderDriverKind)
+  return (
+    config?.providers.find((entry) => entry.instanceId === defaultInstanceId) ??
+    config?.providers.find((entry) => entry.provider === provider) ??
+    null
+  )
 }
 
 export function getProviderModelOptions(
   config: ServerConfig | null,
   provider: ProviderKind,
+  instanceId?: ProviderInstanceId,
 ): ReadonlyArray<{ slug: string; name: string; shortName?: string; subProvider?: string }> {
   return (
-    getProviderSnapshot(config, provider)?.models.map((model) => ({
+    getProviderSnapshot(config, provider, instanceId)?.models.map((model) => ({
       slug: model.slug,
       name: model.name,
       ...(model.shortName ? { shortName: model.shortName } : {}),
@@ -157,6 +167,7 @@ export function resolvePreferredModelSelection(input: {
   tile: WorkbenchAssistantChatTileRecord
   projectModelSelection: ModelSelection | null | undefined
   provider?: ProviderKind
+  providerInstanceId?: ProviderInstanceId
 }): StrictModelSelection {
   const defaultModelSelection = input.config?.settings.textGenerationModelSelection
   const provider =
@@ -166,7 +177,17 @@ export function resolvePreferredModelSelection(input: {
       tile: input.tile,
       projectModelSelection: input.projectModelSelection,
     })
-  const providerModelOptions = getProviderModelOptions(input.config, provider)
+  const providerInstanceId =
+    input.providerInstanceId ??
+    (input.tile.provider === provider ? input.tile.providerInstanceId : undefined) ??
+    (input.projectModelSelection?.provider === provider
+      ? input.projectModelSelection.instanceId
+      : undefined) ??
+    (defaultModelSelection?.provider === provider
+      ? defaultModelSelection.instanceId
+      : undefined) ??
+    defaultInstanceIdForDriver(provider as ProviderDriverKind)
+  const providerModelOptions = getProviderModelOptions(input.config, provider, providerInstanceId)
   const candidateModel =
     (input.tile.provider === provider ? input.tile.model : null) ??
     (input.projectModelSelection?.provider === provider
@@ -185,6 +206,7 @@ export function resolvePreferredModelSelection(input: {
     case "codex":
       return normalizeModelSelection({
         provider: "codex",
+        instanceId: providerInstanceId,
         model: resolvedModel,
         options:
           input.tile.provider === "codex"
@@ -198,6 +220,7 @@ export function resolvePreferredModelSelection(input: {
     case "claudeAgent":
       return normalizeModelSelection({
         provider: "claudeAgent",
+        instanceId: providerInstanceId,
         model: resolvedModel,
         options:
           input.tile.provider === "claudeAgent"
@@ -211,6 +234,7 @@ export function resolvePreferredModelSelection(input: {
     case "cursor":
       return normalizeModelSelection({
         provider: "cursor",
+        instanceId: providerInstanceId,
         model: resolvedModel,
         options:
           input.tile.provider === "cursor"
@@ -224,6 +248,7 @@ export function resolvePreferredModelSelection(input: {
     case "opencode":
       return normalizeModelSelection({
         provider: "opencode",
+        instanceId: providerInstanceId,
         model: resolvedModel,
         options:
           input.tile.provider === "opencode"
@@ -239,10 +264,16 @@ export function resolvePreferredModelSelection(input: {
 
 export function normalizeModelSelection(input: {
   provider: ProviderKind
+  instanceId?: ProviderInstanceId
   model: string
   options?: ModelSelection["options"]
 }): StrictModelSelection {
-  return createModelSelection(input.provider, input.model, input.options) as StrictModelSelection
+  return createModelSelection(
+    input.provider,
+    input.model,
+    input.options,
+    input.instanceId,
+  ) as StrictModelSelection
 }
 
 export function withModelSelectionModel(
@@ -253,24 +284,28 @@ export function withModelSelectionModel(
     case "codex":
       return normalizeModelSelection({
         provider: "codex",
+        instanceId: selection.instanceId,
         model,
         options: selection.options,
       })
     case "claudeAgent":
       return normalizeModelSelection({
         provider: "claudeAgent",
+        instanceId: selection.instanceId,
         model,
         options: selection.options,
       })
     case "cursor":
       return normalizeModelSelection({
         provider: "cursor",
+        instanceId: selection.instanceId,
         model,
         options: selection.options,
       })
     case "opencode":
       return normalizeModelSelection({
         provider: "opencode",
+        instanceId: selection.instanceId,
         model,
         options: selection.options,
       })

@@ -1,18 +1,24 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, shell, type WebContents } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
-import type { AgentToolId, AgentToolPrepareResult, AgentToolSource, AgentToolStatus } from '../../shared/electronApiTypes'
+import type { AgentToolId, AgentToolLoginEvent, AgentToolLoginStartResult, AgentToolPrepareResult, AgentToolSource, AgentToolStatus } from '../../shared/electronApiTypes'
 
 interface AgentToolDefinition {
   id: AgentToolId
   label: string
   packageName?: string
+  /** Shell one-liner for CLIs not distributed via npm (runs in a login shell). */
+  installScript?: string
   binaries: string[]
   args?: string[]
+  /** Fixed argv for the CLI's browser-based login flow (runs headless; any
+   * auth URL printed to stdout/stderr is opened in the default browser, and
+   * device-code prompts are forwarded to the renderer for input). */
+  loginArgs?: string[]
 }
 
 interface PersistedAgentToolState {
@@ -35,6 +41,8 @@ const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = {
     label: 'Claude Code',
     packageName: '@anthropic-ai/claude-code',
     binaries: ['claude', 'claude-code'],
+    // Matches the provider layer's auth probe (`claude auth status`).
+    loginArgs: ['auth', 'login'],
   },
   gemini: {
     id: 'gemini',
@@ -59,11 +67,27 @@ const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = {
     label: 'OpenAI Codex',
     packageName: '@openai/codex',
     binaries: ['codex'],
+    // Matches the provider layer's auth probe (`codex login status`).
+    loginArgs: ['login'],
   },
   shell: {
     id: 'shell',
     label: 'Shell',
     binaries: [],
+  },
+  cursor: {
+    id: 'cursor',
+    label: 'Cursor Agent',
+    // Cursor's CLI ships via its own installer, not npm.
+    installScript: 'curl https://cursor.com/install -fsS | bash',
+    binaries: ['agent', 'cursor-agent'],
+    loginArgs: ['login'],
+  },
+  opencode: {
+    id: 'opencode',
+    label: 'OpenCode',
+    packageName: 'opencode-ai',
+    binaries: ['opencode'],
   },
 }
 
@@ -262,6 +286,10 @@ async function runProcess(command: string, args: string[], options: {
 export class AgentToolService {
   private static instance: AgentToolService
   private pendingPreparations = new Map<AgentToolId, Promise<AgentToolPrepareResult>>()
+  private loginSessions = new Map<string, { child: ReturnType<typeof spawn>; toolId: AgentToolId }>()
+  /** Tools with a login flow currently in flight, to reject concurrent logins
+   * for the same tool (competing CLI auth processes race the credential store). */
+  private activeLoginToolIds = new Set<AgentToolId>()
   private sessionStatusCache = new Map<AgentToolId, AgentToolStatus>()
 
   static getInstance(): AgentToolService {
@@ -278,6 +306,18 @@ export class AgentToolService {
 
     ipcMain.handle('agentTools:prepare', async (_event, options: { toolId: AgentToolId }) => {
       return await this.prepare(options.toolId)
+    })
+
+    ipcMain.handle('agentTools:loginStart', async (event, options: { toolId: AgentToolId }) => {
+      return await this.startLogin(options.toolId, event.sender)
+    })
+
+    ipcMain.handle('agentTools:loginInput', (_event, options: { sessionId: string; value: string }) => {
+      return { success: this.loginInput(options.sessionId, options.value) }
+    })
+
+    ipcMain.handle('agentTools:loginCancel', (_event, options: { sessionId: string }) => {
+      return { success: this.cancelLogin(options.sessionId) }
     })
   }
 
@@ -377,7 +417,7 @@ export class AgentToolService {
   }
 
   private async installSystemTool(definition: AgentToolDefinition): Promise<AgentToolPrepareResult> {
-    if (!definition.packageName) {
+    if (!definition.packageName && !definition.installScript) {
       return {
         success: false,
         ...this.createMissingStatus(definition, 'This agent tool does not support installation.'),
@@ -392,7 +432,8 @@ export class AgentToolService {
       }
     }
 
-    const installScript = `npm install -g --no-fund --no-audit ${shellEscapeForScript(definition.packageName)}`
+    const installScript = definition.installScript
+      ?? `npm install -g --no-fund --no-audit ${shellEscapeForScript(definition.packageName!)}`
     const result = await runProcess(shellPath, getInteractiveLoginShellArgs(installScript), {
       cwd: os.homedir(),
       env: {
@@ -487,4 +528,144 @@ export class AgentToolService {
       this.pendingPreparations.delete(toolId)
     }
   }
+
+  /** Starts the CLI's own browser-based login flow without a terminal and
+   * streams progress to the requesting renderer as `agentTools:login-event`s.
+   * The command set is a fixed per-tool allowlist (never renderer-supplied).
+   * Auth URLs printed by the CLI are opened in the default browser; prompts
+   * that ask for a device/confirmation code surface as `awaiting-code` events
+   * and the renderer answers through `loginInput` (written to stdin). */
+  async startLogin(toolId: AgentToolId, sender: WebContents): Promise<AgentToolLoginStartResult> {
+    const definition = AGENT_TOOL_DEFINITIONS[toolId]
+    if (!definition?.loginArgs?.length) {
+      return { sessionId: null, error: 'This agent CLI has no automated login flow.' }
+    }
+
+    // Re-entrancy guard: a second login for the same tool would spawn a
+    // competing CLI auth process racing on the same on-disk credential store.
+    if (this.activeLoginToolIds.has(toolId)) {
+      return { sessionId: null, error: 'A login for this agent CLI is already in progress.' }
+    }
+    this.activeLoginToolIds.add(toolId)
+
+    const status = await this.getStatus(toolId)
+    if (!status.available || !status.commandPath) {
+      this.activeLoginToolIds.delete(toolId)
+      return { sessionId: null, error: status.error || 'Agent CLI is not installed.' }
+    }
+
+    const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
+    const sessionId = `${toolId}-login-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(status.commandPath, definition.loginArgs, {
+        cwd: os.homedir(),
+        env: { ...runtimeEnv, CI: undefined },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      this.activeLoginToolIds.delete(toolId)
+      return {
+        sessionId: null,
+        error: error instanceof Error ? error.message : 'Login process failed to start',
+      }
+    }
+
+    const emit = (event: Omit<AgentToolLoginEvent, 'sessionId' | 'toolId'>) => {
+      if (sender.isDestroyed()) return
+      sender.send('agentTools:login-event', { sessionId, toolId, ...event } satisfies AgentToolLoginEvent)
+    }
+
+    let combined = ''
+    let openedUrl: string | undefined
+    let promptedCode = false
+    let settled = false
+
+    const settle = (success: boolean, error?: string) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      sender.off('destroyed', onSenderDestroyed)
+      this.loginSessions.delete(sessionId)
+      this.activeLoginToolIds.delete(toolId)
+      if (success) {
+        // Availability/auth state changed under the snapshot caches.
+        this.invalidateCachedStatus(toolId)
+      }
+      emit({ type: 'closed', success, error, data: tailOf(combined) })
+    }
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM')
+      settle(false, 'Login timed out before the flow completed.')
+    }, 10 * 60 * 1000)
+
+    // Reap the long-lived CLI child, its timer, and session bookkeeping if the
+    // requesting renderer is torn down (window closed / reload / crash) before
+    // the flow settles — otherwise the process survives up to the 10-min timeout.
+    const onSenderDestroyed = () => {
+      child.kill('SIGTERM')
+      settle(false, 'Login window was closed before the flow completed.')
+    }
+    sender.once('destroyed', onSenderDestroyed)
+
+    const handleChunk = (chunk: Buffer | string) => {
+      combined = tailOf(combined + chunk.toString(), MAX_LOGIN_BUFFER)
+      if (!openedUrl) {
+        const match = combined.match(/https?:\/\/[^\s"'<>)\]]+/)
+        if (match) {
+          openedUrl = match[0]
+          void shell.openExternal(openedUrl)
+          emit({ type: 'auth-url', data: openedUrl })
+        }
+      }
+      // Device-code flows: the CLI pauses on a line asking for a code.
+      if (!promptedCode && /(enter|paste|input|type)[^\n]{0,60}code|code[:>]\s*$/i.test(tailOf(combined, 200))) {
+        promptedCode = true
+        emit({ type: 'awaiting-code', data: tailOf(combined, 200).trim() })
+      }
+      emit({ type: 'output', data: tailOf(combined) })
+    }
+
+    child.stdout?.on('data', handleChunk)
+    child.stderr?.on('data', handleChunk)
+    child.on('error', (error) => {
+      settle(false, error instanceof Error ? error.message : 'Login process failed to start')
+    })
+    child.on('close', (code) => {
+      if (code === 0) {
+        settle(true)
+        return
+      }
+      settle(false, tailOf(combined, 400).trim() || `Login exited with code ${code}`)
+    })
+
+    this.loginSessions.set(sessionId, { child, toolId })
+    return { sessionId }
+  }
+
+  loginInput(sessionId: string, value: string): boolean {
+    const session = this.loginSessions.get(sessionId)
+    if (!session?.child.stdin?.writable) return false
+    session.child.stdin.write(`${value}\n`)
+    return true
+  }
+
+  cancelLogin(sessionId: string): boolean {
+    const session = this.loginSessions.get(sessionId)
+    if (!session) return false
+    session.child.kill('SIGTERM')
+    return true
+  }
+}
+
+/** Upper bound on the retained per-session login output buffer. Comfortably
+ * larger than any tail emitted to the renderer (max 600), so capping the
+ * retained buffer never changes auth-url / device-code detection, which only
+ * ever inspect the tail. */
+const MAX_LOGIN_BUFFER = 64 * 1024
+
+function tailOf(text: string, maxLength = 600): string {
+  return text.length > maxLength ? text.slice(-maxLength) : text
 }

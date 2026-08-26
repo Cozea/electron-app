@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { UserInputQuestion } from "@cozea/assistant-contracts";
 
 export interface PendingUserInputDraftAnswer {

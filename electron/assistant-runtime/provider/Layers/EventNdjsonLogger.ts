@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Provider event logger helper.
  *

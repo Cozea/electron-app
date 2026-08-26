@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CheckpointStore - Repository interface for filesystem-backed workspace checkpoints.
  *

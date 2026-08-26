@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon, FolderAddIcon as __FolderAddHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
 
-"use client";
 
 import * as React from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -14,32 +13,35 @@ import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import type { AccessibleProjectDevApp } from "@/features/devapps/projectDevAppApi";
+import { useLocalProjectDevAppEntries, publishLocalProjectDevApp } from "@/features/devapps/localProjectDevAppStore";
+import { buildProjectDevAppLaunchSpec } from "@/features/devapps/projectDevAppManifest";
+import { prepareProjectDevApp } from "@/features/devapps/projectDevAppPublishing";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu";
 import {
-  Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarRail,
   SidebarSeparator,
-  SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { useTranslation } from "@/lib/i18n";
+import { featureFlags } from "@/lib/featureFlags";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { buildProjectPath } from "../lib/projectRoutes";
-import { buildWorkbenchHref } from "../lib/lastWorkbenchRoute";
+import { buildWorkbenchIntentState } from "../lib/workbenchIntent";
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
 import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
 import {
   areSidebarProjectItemsEqual,
   resolveProjectCollabBranch,
+  canReuseProjectDevAppLogo,
   SIDEBAR_GROUP_LABEL_CLASS,
   SIDEBAR_NAV_ROW_BUTTON_CLASS,
   SIDEBAR_PILL_ACTIVE_CLASS,
+  type SidebarDevAppPublishMode,
   type SidebarProjectItem,
 } from "@/features/projects/components/sidebar/projectSidebarShared";
 import {
@@ -67,6 +69,7 @@ import {
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
+import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
 
 const LazyProjectDeleteDialog = React.lazy(() =>
@@ -79,8 +82,14 @@ const LazyProjectRenameDialog = React.lazy(() =>
     default: module.ProjectRenameDialog,
   })),
 );
+const LazyProjectDevAppLogoDialog = React.lazy(() =>
+  import("@/features/devapps/components/ProjectDevAppLogoDialog").then((module) => ({
+    default: module.ProjectDevAppLogoDialog,
+  })),
+);
 
-interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
+/** Content-only: renders inside the persistent AppSidebarShell. */
+interface ProjectSidebarProps {
   user?: {
     email: string;
     firstName?: string | null;
@@ -92,17 +101,21 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
   presenceCount?: number;
 }
 
+interface PendingProjectDevAppLogo {
+  project: SidebarProjectItem;
+  workspaceId: string;
+  mode: SidebarDevAppPublishMode;
+}
+
 export function ProjectSidebar({
   user,
   projectId: providedProjectId,
   presenceUsers: _presenceUsers,
   presenceCount: _presenceCount,
-  className,
-  ...props
 }: ProjectSidebarProps) {
   const { t } = useTranslation();
   const navigate = useViewTransitionNavigate();
-  const location = useLocation();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { convexUserId } = useAuth();
   const projectRouteContext = useOptionalProjectRouteContext();
@@ -113,7 +126,7 @@ export function ProjectSidebar({
     : currentProject?._id
       ? String(currentProject._id)
       : projectIdParam;
-  const currentWorkspaceId = projectRouteContext?.workspaceId ?? projectRouteContext?.localPath ?? projectSyncContext?.workspaceId ?? null;
+  const { workspaceId: currentWorkspaceId } = useWorkspaceIdentity();
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
   const stableProjectItemsRef = React.useRef<Map<string, SidebarProjectItem>>(new Map());
   const [expandedProjectIds, setExpandedProjectIds] = React.useState<string[]>(
@@ -134,22 +147,39 @@ export function ProjectSidebar({
   );
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [isDeletingProject, setIsDeletingProject] = React.useState(false);
+  const [devAppPublishing, setDevAppPublishing] = React.useState<{
+    projectId: string;
+    mode: SidebarDevAppPublishMode;
+  } | null>(null);
+  const devAppPublishingRef = React.useRef(false);
+  const [projectPendingDevAppLogo, setProjectPendingDevAppLogo] =
+    React.useState<PendingProjectDevAppLogo | null>(null);
   const updateProject = useMutation(api.projects.update);
   const archiveProject = useMutation(api.projects.archive);
   const restoreProject = useMutation(api.projects.restore);
   const deleteProject = useMutation(api.projects.deleteProject);
+  const localProjectDevApps = useLocalProjectDevAppEntries();
   const {
     relinkProjectWorkspace,
     closeProjectWorkspace,
   } = useProjectWorkspaceActions();
 
+  // Slim projection: the sidebar re-renders on every list push, so it
+  // subscribes only to the fields it renders (no generatedPlan/buildContract).
   const accessibleProjects = useQuery(
-    api.projects.listForCurrentUser,
+    api.projects.listSummariesForCurrentUser,
     convexUserId
       ? {
           userId: convexUserId,
         }
       : "skip",
+  );
+  const projectDevAppStateByProjectId = React.useMemo(
+    () =>
+      new Map(
+        localProjectDevApps.map((entry) => [String(entry.publication.projectId), entry] as const),
+      ),
+    [localProjectDevApps],
   );
 
   const projectItems = React.useMemo<SidebarProjectItem[]>(() => {
@@ -173,8 +203,8 @@ export function ProjectSidebar({
           updatedAt: project.updatedAt,
           createdBy: project.createdBy ?? null,
           localPath: project.localPath ?? null,
-          sourceControl: project.sourceControl,
-          gitRepository: project.gitRepository,
+          sourceControl: project.sourceControl ?? undefined,
+          gitRepository: project.gitRepository ?? undefined,
           importedFrom: project.importedFrom ?? null,
         };
 
@@ -208,6 +238,13 @@ export function ProjectSidebar({
   );
 
   React.useEffect(() => {
+    // Only prune expansion state for projects that actually disappeared. While
+    // the projects query is still loading, projectItems is momentarily empty —
+    // pruning then wiped (and persisted) the expansion list, which made the
+    // sidebar auto-collapse everything on every launch.
+    if (accessibleProjects === undefined) {
+      return;
+    }
     const nextProjectIdSet = new Set(projectItems.map((project) => project.id));
 
     setExpandedProjectIds((current) => {
@@ -215,7 +252,7 @@ export function ProjectSidebar({
       return areStringArraysEqual(current, filtered) ? current : filtered;
     });
 
-  }, [projectItems]);
+  }, [accessibleProjects, projectItems]);
 
   React.useEffect(() => {
     if (currentProjectId) {
@@ -313,43 +350,101 @@ export function ProjectSidebar({
         (project.id === currentProjectId
           ? (displayedCurrentActiveLane?.workspaceId ?? currentWorkspaceId)
           : null);
-      workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchWorkspaceId);
-
-      const ensuredWorkbench = selectProjectWorkbench(
-        project.id,
-        laneId,
-        workbenchWorkspaceId,
-      )(useProjectWorkbenchStore.getState());
 
       let nextOptions = options;
-      if (!options?.openTile && !options?.focusTileId && ensuredWorkbench) {
-        const hasVisibleTiles = ensuredWorkbench.order.some((tileId) => {
-          const tile = ensuredWorkbench.tiles[tileId];
-          return tile && tile.type !== "selection";
-        });
+      if (workbenchWorkspaceId) {
+        // Only touch the store when the workspace scope is known. Ensuring or
+        // writing tiles with a null scope creates orphan `project::lane`
+        // benches whose tiles silently disappear once the real (workspace-
+        // scoped) bench resolves.
+        workbenchStore.actions.ensureWorkbench(project.id, laneId, workbenchWorkspaceId);
 
-        if (!hasVisibleTiles) {
-          const selectionTileId =
-            ensuredWorkbench.order.find(
-              (tileId) => ensuredWorkbench.tiles[tileId]?.type === "selection",
-            ) ?? null;
+        const ensuredWorkbench = selectProjectWorkbench(
+          project.id,
+          laneId,
+          workbenchWorkspaceId,
+        )(useProjectWorkbenchStore.getState());
 
-          if (selectionTileId) {
-            nextOptions = { focusTileId: selectionTileId };
+        if (!options?.openTile && !options?.focusTileId && ensuredWorkbench) {
+          const hasVisibleTiles = ensuredWorkbench.order.some((tileId) => {
+            const tile = ensuredWorkbench.tiles[tileId];
+            return tile && tile.type !== "selection";
+          });
+
+          if (!hasVisibleTiles) {
+            const selectionTileId =
+              ensuredWorkbench.order.find(
+                (tileId) => ensuredWorkbench.tiles[tileId]?.type === "selection",
+              ) ?? null;
+
+            if (selectionTileId) {
+              nextOptions = { focusTileId: selectionTileId };
+            }
           }
         }
       }
 
-      navigate(buildWorkbenchHref(project.id, laneId, nextOptions), {
-        state: buildProjectRouteNavigationState({
-          projectId: project.id,
-          projectSlug: project.slug,
-          projectName: project.name,
-          preferredWorkspaceId: workbenchWorkspaceId,
-        }),
+      // Same project, same lane, already on the workbench route: apply the tile
+      // intent directly on the store. Routing it through the URL would run two
+      // to three router transitions per click (param navigation plus the sync
+      // hook's cleanup replaces) and re-push every dockview portal root. This
+      // mirrors what useProjectWorkbenchSearchParamSync would do with the params.
+      // Requires a known workspace scope; before resolution the intent rides
+      // navigation state instead and applies once the surface has the scope.
+      const isSameWorkbenchView =
+        Boolean(workbenchWorkspaceId) &&
+        project.id === currentProjectId &&
+        displayedCurrentActiveLane?.id === laneId &&
+        pathname === `${buildProjectPath(project.id)}/workbench`;
+      if (isSameWorkbenchView) {
+        if (nextOptions?.focusTileId) {
+          workbenchStore.actions.setActiveTile(
+            project.id,
+            laneId,
+            nextOptions.focusTileId,
+            workbenchWorkspaceId,
+          );
+          return;
+        }
+        if (nextOptions?.openTile) {
+          workbenchStore.actions.addTile(
+            project.id,
+            laneId,
+            nextOptions.openTile,
+            undefined,
+            workbenchWorkspaceId,
+          );
+          return;
+        }
+        return;
+      }
+
+      // Clean URL; the intent rides navigation state. The search-param flow
+      // remains only for external deep links (see lib/workbenchIntent.ts).
+      navigate(`${buildProjectPath(project.id)}/workbench`, {
+        state: {
+          ...buildProjectRouteNavigationState({
+            projectId: project.id,
+            projectSlug: project.slug,
+            projectName: project.name,
+            preferredWorkspaceId: workbenchWorkspaceId,
+          }),
+          ...buildWorkbenchIntentState({
+            laneId,
+            ...(nextOptions?.openTile ? { openTile: nextOptions.openTile } : {}),
+            ...(nextOptions?.focusTileId ? { focusTileId: nextOptions.focusTileId } : {}),
+          }),
+        },
       });
     },
-    [displayedCurrentActiveLane?.workspaceId, currentProjectId, currentWorkspaceId, navigate],
+    [
+      displayedCurrentActiveLane?.id,
+      displayedCurrentActiveLane?.workspaceId,
+      currentProjectId,
+      currentWorkspaceId,
+      navigate,
+      pathname,
+    ],
   );
 
   const handleSyncCurrentProject = React.useCallback(async () => {
@@ -380,7 +475,7 @@ export function ProjectSidebar({
   } = React.useMemo(
     () =>
       getProjectSidebarRouteState({
-        pathname: location.pathname,
+        pathname: pathname,
         currentProjectId,
         currentWorkbenchPath,
         currentProjectSettingsBasePath,
@@ -391,7 +486,7 @@ export function ProjectSidebar({
       currentProjectSettingsBasePath,
       currentVisibleActiveTileId,
       currentWorkbenchPath,
-      location.pathname,
+      pathname,
     ],
   );
 
@@ -406,10 +501,7 @@ export function ProjectSidebar({
     navigate("/projects/store");
   }, [navigate]);
 
-  const isOnAppStore = location.pathname === "/projects/store";
-
-  const { isMobile, state, openMobile } = useSidebar();
-  const showInSidebarSidebarTrigger = isMobile ? openMobile : state === "expanded";
+  const isOnAppStore = pathname === "/projects/store";
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string | null) => {
@@ -455,6 +547,120 @@ export function ProjectSidebar({
       }
     },
     [],
+  );
+
+  const handlePublishDevApp = React.useCallback(
+    async (
+      project: SidebarProjectItem,
+      workspaceId: string,
+      mode: SidebarDevAppPublishMode,
+      logoDataUrl: string,
+    ) => {
+      if (!featureFlags.projectDevApps || !convexUserId || devAppPublishingRef.current) return;
+
+      devAppPublishingRef.current = true;
+      setDevAppPublishing({ projectId: project.id, mode });
+      try {
+        const prepared = await prepareProjectDevApp(workspaceId);
+        const sourceProject: AccessibleProjectDevApp["sourceProject"] = {
+          _id: project._id,
+          name: project.name,
+          slug: project.slug,
+          description: null,
+          previewImageId: null,
+          status: project.status,
+          updatedAt: project.updatedAt,
+        };
+        const result = publishLocalProjectDevApp({
+          projectId: project._id,
+          userId: convexUserId,
+          name: project.name,
+          framework: prepared.framework,
+          devCommand: prepared.devCommand,
+          devPort: prepared.devPort,
+          ...(prepared.sourceRevision ? { sourceRevision: prepared.sourceRevision } : {}),
+          sourceFingerprint: prepared.sourceFingerprint,
+          sourceProject,
+          logoDataUrl,
+        });
+        const entry: AccessibleProjectDevApp = {
+          publication: result.publication,
+          activeRelease: result.release,
+          sourceProject,
+          logoDataUrl,
+        };
+
+        navigate(buildProjectPath(project.id, "workbench"), {
+          state: {
+            ...buildProjectRouteNavigationState({
+              projectId: project.id,
+              projectSlug: project.slug,
+              projectName: project.name,
+              preferredWorkspaceId: workspaceId,
+            }),
+            ...buildWorkbenchIntentState({
+              projectDevApp: buildProjectDevAppLaunchSpec(entry),
+            }),
+          },
+        });
+      } catch (error) {
+        const fallback =
+          mode === "update" ? "Failed to update the DevApp." : "Failed to launch the DevApp.";
+        const detail = (error instanceof Error ? error.message : fallback)
+          .replace(/^\[CONVEX.*?\]\s*/, "")
+          .replace(/\s*Called by client$/, "");
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Launch Failed",
+          message: fallback,
+          detail,
+        });
+      } finally {
+        devAppPublishingRef.current = false;
+        setDevAppPublishing(null);
+      }
+    },
+    [convexUserId, navigate],
+  );
+
+  const handleRequestPublishDevApp = React.useCallback(
+    async (
+      project: SidebarProjectItem,
+      workspaceId: string | null,
+      mode: SidebarDevAppPublishMode,
+    ) => {
+      if (!featureFlags.projectDevApps || !convexUserId || devAppPublishingRef.current) return;
+
+      if (!workspaceId) {
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Launch Failed",
+          message: mode === "update" ? "Failed to update the DevApp." : "Failed to launch the DevApp.",
+          detail: "Relink this project's local folder before launching it as a DevApp on this device.",
+        });
+        return;
+      }
+
+      const existingLogo = projectDevAppStateByProjectId.get(project.id)?.logoDataUrl;
+      if (!canReuseProjectDevAppLogo(mode, existingLogo)) {
+        setProjectPendingDevAppLogo({ project, workspaceId, mode });
+        return;
+      }
+
+      await handlePublishDevApp(project, workspaceId, mode, existingLogo);
+    },
+    [convexUserId, handlePublishDevApp, projectDevAppStateByProjectId],
+  );
+
+  const handleConfirmProjectDevAppLogo = React.useCallback(
+    async (logoDataUrl: string) => {
+      if (!projectPendingDevAppLogo) return;
+
+      const { project, workspaceId, mode } = projectPendingDevAppLogo;
+      setProjectPendingDevAppLogo(null);
+      await handlePublishDevApp(project, workspaceId, mode, logoDataUrl);
+    },
+    [handlePublishDevApp, projectPendingDevAppLogo],
   );
 
   const handleRelinkProjectWorkspace = React.useCallback(
@@ -649,25 +855,7 @@ export function ProjectSidebar({
 
   return (
     <>
-      <Sidebar
-        collapsible="offcanvas"
-        windowChromeAware
-        windowChromeEndAddon={
-          showInSidebarSidebarTrigger ? (
-            <SidebarTrigger
-              className={cn(
-                "h-7 w-7 shrink-0 rounded-md",
-                "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
-              )}
-            />
-          ) : null
-        }
-        rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
-        rootStyle={{ "--sidebar-width": "14rem" } as React.CSSProperties}
-        className="h-full min-w-0 z-20 sidebar-glass"
-        {...props}
-      >
-        <SidebarContent className="gap-0 px-2 py-3">
+      <SidebarContent className="gap-0 px-2 py-3">
           {!isOnCurrentProjectSubMenu && (
             <div className="mb-4 space-y-1">
               <button
@@ -732,46 +920,59 @@ export function ProjectSidebar({
                 {t('projects.createToGetStarted')}
               </div>
             ) : (
-              sortedProjects.map((project, index) => (
-                <ProjectSidebarTreeItem
-                  key={project.id}
-                  project={project}
-                  projectIndex={index}
-                  projectCount={sortedProjects.length}
-                  selection={{
-                    isExpanded: expandedProjectIds.includes(project.id),
-                    activeSelectionLevel:
-                      project.id === currentProjectId ? currentSelectionLevel : "none",
-                    activeTileId:
-                      project.id === currentProjectId ? currentVisibleActiveTileId : null,
-                  }}
-                  context={{
-                    isCurrentProject: project.id === currentProjectId,
-                    currentWorkspaceId:
-                      project.id === currentProjectId ? currentWorkspaceId : null,
-                    isSyncingProject: project.id === currentProjectId && isSyncingProject,
-                    prefetchedLaneState:
-                      project.id === currentProjectId ? displayedCurrentLaneState : undefined,
-                    prefetchedActiveLane:
-                      project.id === currentProjectId ? displayedCurrentActiveLane : undefined,
-                  }}
-                  actions={{
-                    toggleExpanded: toggleExpandedProject,
-                    openProject: handleOpenProject,
-                    openProjectFolder: handleOpenProjectFolder,
-                    openProjectSettings: handleOpenProjectSettings,
-                    renameProject: handleStartRenameProject,
-                    archiveProject: handleArchiveProject,
-                    restoreProject: handleRestoreProject,
-                deleteProject: handleStartDeleteProject,
-                relinkProjectWorkspace: handleRelinkProjectWorkspace,
-                closeProjectWorkspace: handleCloseProjectWorkspace,
-                syncProject: handleSyncProject,
-                moveProject,
-                openLaneWorkbench,
-                  }}
-                />
-              ))
+              sortedProjects.map((project, index) => {
+                const devAppState = projectDevAppStateByProjectId.get(project.id);
+                const isPublishingDevApp = devAppPublishing?.projectId === project.id;
+
+                return (
+                  <ProjectSidebarTreeItem
+                    key={project.id}
+                    project={project}
+                    projectIndex={index}
+                    projectCount={sortedProjects.length}
+                    selection={{
+                      isExpanded: expandedProjectIds.includes(project.id),
+                      activeSelectionLevel:
+                        project.id === currentProjectId ? currentSelectionLevel : "none",
+                      activeTileId:
+                        project.id === currentProjectId ? currentVisibleActiveTileId : null,
+                    }}
+                    context={{
+                      isCurrentProject: project.id === currentProjectId,
+                      currentWorkspaceId:
+                        project.id === currentProjectId ? currentWorkspaceId : null,
+                      isSyncingProject: project.id === currentProjectId && isSyncingProject,
+                      devAppPublicationState: isPublishingDevApp
+                        ? "publishing"
+                        : devAppState?.publication && devAppState.activeRelease
+                          ? "published"
+                          : "unpublished",
+                      devAppPublishingMode: isPublishingDevApp ? devAppPublishing.mode : null,
+                      canPublishDevApp: featureFlags.projectDevApps && Boolean(convexUserId),
+                      prefetchedLaneState:
+                        project.id === currentProjectId ? displayedCurrentLaneState : undefined,
+                      prefetchedActiveLane:
+                        project.id === currentProjectId ? displayedCurrentActiveLane : undefined,
+                    }}
+                    actions={{
+                      toggleExpanded: toggleExpandedProject,
+                      openProject: handleOpenProject,
+                      openProjectFolder: handleOpenProjectFolder,
+                      openProjectSettings: handleOpenProjectSettings,
+                      publishDevApp: handleRequestPublishDevApp,
+                      renameProject: handleStartRenameProject,
+                      archiveProject: handleArchiveProject,
+                      restoreProject: handleRestoreProject,
+                      deleteProject: handleStartDeleteProject,
+                      relinkProjectWorkspace: handleRelinkProjectWorkspace,
+                      closeProjectWorkspace: handleCloseProjectWorkspace,
+                      syncProject: handleSyncProject,
+                      moveProject,
+                      openLaneWorkbench,
+                    }}
+                  />
+                );
+              })
             )}
           </div>
         </SidebarContent>
@@ -795,9 +996,6 @@ export function ProjectSidebar({
             </div>
           )}
         </SidebarFooter>
-
-        <SidebarRail />
-      </Sidebar>
       {projectPendingRename ? (
         <React.Suspense fallback={null}>
           <LazyProjectRenameDialog
@@ -831,6 +1029,24 @@ export function ProjectSidebar({
             onConfirm={handleConfirmDeleteProject}
             isDeleting={isDeletingProject}
             errorMessage={deleteError}
+          />
+        </React.Suspense>
+      ) : null}
+      {projectPendingDevAppLogo ? (
+        <React.Suspense fallback={null}>
+          <LazyProjectDevAppLogoDialog
+            open
+            projectName={projectPendingDevAppLogo.project.name}
+            mode={projectPendingDevAppLogo.mode}
+            initialLogoDataUrl={
+              projectDevAppStateByProjectId.get(projectPendingDevAppLogo.project.id)?.logoDataUrl
+            }
+            onOpenChange={(open) => {
+              if (!open) {
+                setProjectPendingDevAppLogo(null);
+              }
+            }}
+            onConfirm={handleConfirmProjectDevAppLogo}
           />
         </React.Suspense>
       ) : null}

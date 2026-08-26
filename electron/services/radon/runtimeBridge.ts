@@ -38,10 +38,12 @@ export class RadonRuntimeBridgeServer {
   private readonly sockets = new Set<WebSocket>()
   private readonly listeners = new Set<RuntimeEnvelopeListener>()
   private readonly server: WebSocketServer
+  public readonly port: number
   private highestReceivedMessageId = 0
 
-  private constructor(server: WebSocketServer, public readonly port: number) {
+  private constructor(server: WebSocketServer, port: number) {
     this.server = server
+    this.port = port
 
     this.server.on('connection', (socket) => {
       this.sockets.add(socket)

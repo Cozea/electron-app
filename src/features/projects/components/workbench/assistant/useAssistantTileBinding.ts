@@ -30,6 +30,7 @@ interface UseAssistantTileBindingInput {
   projectId: string
   laneId: string
   workspaceId: string | null
+  projectRootPath: string | null
   tile: WorkbenchAssistantChatTileRecord
   config: ServerConfig | null
   isRuntimeReady: boolean
@@ -43,18 +44,11 @@ interface UseAssistantTileBindingInput {
   ) => void
 }
 
-async function resolveAssistantWorkspaceRoot(workspaceId: string): Promise<string> {
-  const result = await window.electronAPI.workspace!.verify(workspaceId)
-  if (result.status !== "verified") {
-    throw new Error(`Workspace is not ready for the assistant runtime: ${result.status}`)
-  }
-  return result.workspace.projectRootPath
-}
-
 export function useAssistantTileBinding({
   projectId,
   laneId,
   workspaceId,
+  projectRootPath,
   tile,
   config,
   isRuntimeReady,
@@ -76,7 +70,7 @@ export function useAssistantTileBinding({
   }, [isRuntimeReady])
 
   useEffect(() => {
-    if (!isRuntimeReady || !workspaceId) {
+    if (!isRuntimeReady || !workspaceId || !projectRootPath) {
       return
     }
     if (bindingInFlightRef.current) {
@@ -101,7 +95,7 @@ export function useAssistantTileBinding({
 
     const ensureBinding = async () => {
       try {
-        const workspaceRoot = await resolveAssistantWorkspaceRoot(workspaceId)
+        const workspaceRoot = projectRootPath
         if (cancelled) return
 
         await withWorkspaceBindingLock(workspaceRoot, async () => {
@@ -202,6 +196,9 @@ export function useAssistantTileBinding({
             if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
               patch.provider = nextThread.modelSelection.provider
             }
+            if (nextThread && latestTile.providerInstanceId !== nextThread.modelSelection.instanceId) {
+              patch.providerInstanceId = nextThread.modelSelection.instanceId
+            }
             if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
               patch.model = nextThread.modelSelection.model
             }
@@ -253,6 +250,7 @@ export function useAssistantTileBinding({
     isRuntimeReady,
     laneId,
     projectId,
+    projectRootPath,
     workspaceId,
     tile,
     updateAssistantTile,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   ApprovalRequestId,
   isToolLifecycleItemType,
@@ -477,6 +476,7 @@ export function deriveWorkLogEntries(
     .filter((activity) => activity.kind !== "tool.started")
     .filter((activity) => activity.kind !== "task.started")
     .filter((activity) => activity.kind !== "context-window.updated")
+    .filter((activity) => activity.kind !== "account.rate-limits.updated")
     .filter((activity) => activity.summary !== "Checkpoint captured")
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry);
@@ -1026,7 +1026,7 @@ function extractToolDetail(
   const rawDetail = asTrimmedString(payload?.detail);
   let detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
 
-  if (detail && /^[\s\[\]\{\}",:]+$/.test(detail)) {
+  if (detail && /^[\s[\]{}",:]+$/.test(detail)) {
     detail = null;
   }
 
@@ -1340,6 +1340,9 @@ function extractRuntimeActivityDetail(
       const message = asTrimmedString(payload?.message);
       const detail = asTrimmedString(payload?.detail);
       return detail ?? message;
+    }
+    case "runtime.error": {
+      return asTrimmedString(payload?.message);
     }
     default:
       return null;
