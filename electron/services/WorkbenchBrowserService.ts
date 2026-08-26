@@ -586,6 +586,26 @@ export class WorkbenchBrowserService {
     return this.emitState(tileId)
   }
 
+  /** Ids of browser tiles currently owned by the host (already open). */
+  listOpenTileIds(): string[] {
+    return Array.from(this.records.keys())
+  }
+
+  /**
+   * Run a script in an already-open tile's main frame.
+   * Used by agent automation (flag-gated at the IPC / adapter layer).
+   */
+  async executeJavaScript(tileId: string, script: string): Promise<unknown> {
+    const record = this.records.get(tileId)
+    if (!record) {
+      throw new Error(`Browser tile "${tileId}" is not open.`)
+    }
+    if (record.view.webContents.isDestroyed()) {
+      throw new Error(`Browser tile "${tileId}" webContents is destroyed.`)
+    }
+    return record.view.webContents.executeJavaScript(script, true)
+  }
+
   /** Actual native view geometry — diagnostic ground truth for bounds-sync issues. */
   getViewBounds(tileId: string): { bounds: Rectangle; visible: boolean } | null {
     const record = this.records.get(tileId)

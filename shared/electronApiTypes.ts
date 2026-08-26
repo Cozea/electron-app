@@ -1462,6 +1462,44 @@ export interface ElectronAPI {
     onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
   }
+  /**
+   * Agent browser automation MVP behind `cozea.browser.agentAutomation`
+   * (env `COZEA_BROWSER_AGENT_AUTOMATION`, default off).
+   */
+  browserAutomation: {
+    status: () => Promise<
+      import('./browserAutomationTypes').BrowserAutomationResult<
+        import('./browserAutomationTypes').BrowserAutomationStatus
+      >
+    >
+    navigate: (
+      options: import('./browserAutomationTypes').BrowserAutomationNavigateInput,
+    ) => Promise<
+      import('./browserAutomationTypes').BrowserAutomationResult<{
+        tileId: string
+        url: string
+        title: string
+        isLoading: boolean
+      }>
+    >
+    snapshot: (
+      options: import('./browserAutomationTypes').BrowserAutomationTileInput,
+    ) => Promise<
+      import('./browserAutomationTypes').BrowserAutomationResult<
+        import('./browserAutomationTypes').BrowserAutomationSnapshot
+      >
+    >
+    click: (
+      options: import('./browserAutomationTypes').BrowserAutomationClickInput,
+    ) => Promise<
+      import('./browserAutomationTypes').BrowserAutomationResult<{ clicked: true }>
+    >
+    type: (
+      options: import('./browserAutomationTypes').BrowserAutomationTypeInput,
+    ) => Promise<
+      import('./browserAutomationTypes').BrowserAutomationResult<{ typed: true }>
+    >
+  }
   workbenchSession: {
     ensureSession: (options: {
       sessionKey?: string | null
