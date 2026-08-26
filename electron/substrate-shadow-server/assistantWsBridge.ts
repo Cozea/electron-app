@@ -410,9 +410,8 @@ async function ensureThreadId(
 }
 
 /**
- * Bridge one user turn through the assistant orchestration WebSocket.
- * Used by shadow `/rpc` when primary mode (or provider materialize failure)
- * needs real assistant replies instead of echo stubs.
+ * @deprecated Prefer `orchestrationRpcProxy` + `executeRpcBridgedChatTurn`.
+ * Kept for unit tests and migration reference until T3 server body lands.
  */
 export async function bridgeAssistantTurn(
   input: BridgeAssistantTurnInput,

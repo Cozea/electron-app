@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { SubstrateChatClient } from "@cozea/client-runtime";
-import * as assistantWsBridge from "../../electron/substrate-shadow-server/assistantWsBridge";
+import * as orchestrationChat from "../../electron/substrate-shadow-server/rpcOrchestrationChat";
 import { attachRpcChat } from "../../electron/substrate-shadow-server/rpcChat";
 
 describe("rpc chat assistant WS bridge (primary mode)", () => {
@@ -17,9 +17,9 @@ describe("rpc chat assistant WS bridge (primary mode)", () => {
   });
 
   it("uses assistant bridge when primary is on and runtime is reachable", async () => {
-    const bridgeSpy = vi.spyOn(assistantWsBridge, "bridgeAssistantTurn").mockResolvedValue({
+    const bridgeSpy = vi.spyOn(orchestrationChat, "executeRpcBridgedChatTurn").mockResolvedValue({
       replyText: "mock-bridged:bridge-me",
-      mode: "bridged",
+      mode: "orchestration-rpc",
     });
     const readinessServer = createServer((_req, res) => {
       res.writeHead(200);
