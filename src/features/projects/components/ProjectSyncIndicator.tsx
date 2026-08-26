@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import type { IconType } from "react-icons"
 import {
-
   MdCloudDone,
   MdCloudDownload,
   MdCloudOff,
@@ -13,6 +12,9 @@ import {
 import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { useAssistantTransportState } from "@/hooks/useAssistantTransportState"
+import { useGitRemoteStatus } from "@/hooks/useGitRemoteStatus"
+import { resolveConnectionStatusPresentation } from "@/features/projects/lib/connectionStatusModel"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
 type ProjectSyncIndicatorVariant = "sidebar" | "compact"
@@ -38,20 +40,11 @@ interface IndicatorState {
   motion?: "spin" | "pulse"
   transfer?: "upload" | "download"
   liveCount?: string
+  layerLines: Array<{ title: string; status: string; detail: string }>
 }
 
 const INDICATOR_HOLD_MS = 350
 const INDICATOR_FADE_MS = 220
-
-function formatPendingCount(count: number): string {
-  if (count <= 0) return "0 pending"
-  return `${count} pending`
-}
-
-function formatProgressCount(current: number, total: number): string {
-  if (total <= 0) return `${current}`
-  return `${Math.min(current, total)}/${total}`
-}
 
 function getIndicatorStateKey(state: IndicatorState): string {
   return [
@@ -61,7 +54,30 @@ function getIndicatorStateKey(state: IndicatorState): string {
     state.liveCount ?? "",
     state.motion ?? "",
     state.filled ? "1" : "0",
+    ...state.layerLines.map((line) => `${line.title}:${line.status}:${line.detail}`),
   ].join("|")
+}
+
+function pickIcon(presentation: {
+  primaryLabel: string
+  motion?: "spin" | "pulse"
+  transfer?: "upload" | "download"
+  severity: string
+}): IconType {
+  if (presentation.severity === "error") return MdWarning
+  if (presentation.transfer === "upload") return MdCloudUpload
+  if (presentation.transfer === "download") return MdCloudDownload
+  if (
+    presentation.severity === "unavailable" ||
+    presentation.severity === "local" ||
+    presentation.primaryLabel === "Offline"
+  ) {
+    return MdCloudOff
+  }
+  if (presentation.motion === "spin" || presentation.motion === "pulse") {
+    return MdCloudSync
+  }
+  return MdCloudDone
 }
 
 export function ProjectSyncIndicator({
@@ -71,8 +87,10 @@ export function ProjectSyncIndicator({
 }: ProjectSyncIndicatorProps) {
   const syncContext = useOptionalProjectSyncContext()
   const { isConnected } = useYjsProject()
+  const assistantTransport = useAssistantTransportState()
+  const gitRemote = useGitRemoteStatus(syncContext?.workspaceId ?? null)
   const [isOnline, setIsOnline] = useState(
-    typeof navigator !== "undefined" ? navigator.onLine : true
+    typeof navigator !== "undefined" ? navigator.onLine : true,
   )
 
   useEffect(() => {
@@ -88,133 +106,47 @@ export function ProjectSyncIndicator({
     }
   }, [])
 
-  const syncProgress = syncContext?.syncProgress
-  const hasSyncProgress = syncProgress !== undefined
-  const syncStatus = syncProgress?.status
-  const syncMessage = syncProgress?.message ?? ""
-  const syncCurrent = syncProgress?.current ?? 0
-  const syncTotal = syncProgress?.total ?? 0
-  const pendingCount = Math.max(
-    0,
-    syncTotal - syncCurrent
+  // Data-sync progress comes from the journal / collab sync coordinator — not
+  // Convex `projects.syncStatus`, and not assistant WebSocket transport.
+  const presentation = useMemo(
+    () =>
+      resolveConnectionStatusPresentation({
+        assistantTransport,
+        syncProgress: syncContext?.syncProgress,
+        collabConnected: isConnected,
+        isOnline,
+        collaborationMode: syncContext?.collaborationMode,
+        sharedBranch: syncContext?.sharedBranch,
+        gitRemote,
+      }),
+    [
+      assistantTransport,
+      gitRemote,
+      isConnected,
+      isOnline,
+      syncContext?.collaborationMode,
+      syncContext?.sharedBranch,
+      syncContext?.syncProgress,
+    ],
   )
-  const isUploading =
-    syncStatus === "syncing" && syncMessage.startsWith("Uploading")
-  const isDownloading =
-    syncStatus === "syncing" && syncMessage.startsWith("Downloading")
 
-  const computedState = useMemo<IndicatorState>(() => {
-    if (!syncContext || !hasSyncProgress) {
-      return {
-        icon: MdCloudOff,
-        label: "Unavailable",
-        detail: "Project collaboration is not active here",
-        filled: true,
-      }
-    }
-
-    if (syncContext.collaborationMode === "local") {
-      return {
-        icon: MdCloudOff,
-        label: "Local Branch",
-        detail: syncContext.sharedBranch
-          ? `Switch back to ${syncContext.sharedBranch} to collaborate live`
-          : "Live collaboration is paused on this branch",
-        filled: true,
-      }
-    }
-
-    if (!isOnline) {
-      return {
-        icon: MdCloudOff,
-        label: "Offline",
-        detail: "Waiting to reconnect live collaboration",
-        filled: true,
-      }
-    }
-
-    if (syncStatus === "error") {
-      return {
-        icon: MdWarning,
-        label: "Collab Error",
-        detail: syncMessage || "Failed to refresh live collaboration.",
-        filled: true,
-      }
-    }
-
-    if (syncStatus === "checking") {
-      return {
-        icon: MdCloudSync,
-        label: "Checking",
-        detail: "Checking collaboration session",
-        filled: true,
-        motion: "spin",
-      }
-    }
-
-    if (syncStatus === "planning") {
-      return {
-        icon: MdCloudSync,
-        label: "Planning",
-        detail: "Preparing collaboration state",
-        filled: true,
-        motion: "spin",
-      }
-    }
-
-    if (syncStatus === "syncing") {
-      const liveCount = isDownloading
-        ? String(pendingCount)
-        : formatProgressCount(syncCurrent, syncTotal)
-
-      const transferIcon = isDownloading
-        ? MdCloudDownload
-        : isUploading
-          ? MdCloudUpload
-          : MdCloudSync
-
-      return {
-        icon: transferIcon,
-        label: isUploading ? "Uploading" : isDownloading ? "Downloading" : "Refreshing",
-        detail: formatPendingCount(pendingCount),
-        filled: true,
-        motion: "pulse",
-        transfer: isUploading ? "upload" : isDownloading ? "download" : undefined,
-        liveCount,
-      }
-    }
-
-    if (!isConnected) {
-      return {
-        icon: MdCloudSync,
-        label: "Reconnecting",
-        detail: "Trying to reach live collaboration",
-        filled: true,
-        motion: "spin",
-      }
-    }
-
-      return {
-        icon: MdCloudDone,
-        label: "Live",
-        detail: syncContext.sharedBranch
-          ? `Collaborating on ${syncContext.sharedBranch}`
-          : "Connected to live collaboration",
-        filled: true,
-      }
-  }, [
-    isConnected,
-    isDownloading,
-    isOnline,
-    isUploading,
-    pendingCount,
-    hasSyncProgress,
-    syncContext,
-    syncCurrent,
-    syncMessage,
-    syncStatus,
-    syncTotal,
-  ])
+  const computedState = useMemo<IndicatorState>(
+    () => ({
+      icon: pickIcon(presentation),
+      label: presentation.primaryLabel,
+      detail: presentation.primaryDetail,
+      filled: true,
+      motion: presentation.motion,
+      transfer: presentation.transfer,
+      liveCount: presentation.liveCount,
+      layerLines: presentation.layers.map((layer) => ({
+        title: layer.title,
+        status: layer.status,
+        detail: layer.detail,
+      })),
+    }),
+    [presentation],
+  )
 
   const [displayState, setDisplayState] = useState<IndicatorState>(computedState)
   const [isContentVisible, setIsContentVisible] = useState(true)
@@ -251,6 +183,25 @@ export function ProjectSyncIndicator({
     displayState.filled && "fill-current",
   )
 
+  const tooltipBody = (
+    <div className="flex min-w-[14rem] flex-col gap-1.5">
+      <div className="flex flex-col gap-0.5">
+        <span className="font-medium">{displayState.label}</span>
+        <span className="text-muted-foreground">{displayState.detail}</span>
+      </div>
+      <div className="border-t border-border/60 pt-1.5">
+        {displayState.layerLines.map((line) => (
+          <div key={line.title} className="flex flex-col gap-0.5 py-0.5">
+            <span className="text-[11px] font-medium leading-none">
+              {line.title}: {line.status}
+            </span>
+            <span className="text-[11px] leading-snug text-muted-foreground">{line.detail}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
   if (variant === "compact") {
     const showCompactSpinner = displayState.motion === "spin" || displayState.motion === "pulse"
     return (
@@ -259,21 +210,23 @@ export function ProjectSyncIndicator({
           <div
             className={cn(
               "group relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
-              className
+              className,
             )}
             aria-label={`${displayState.label} - ${displayState.detail}`}
           >
             <div
               className={cn(
                 "flex h-4 w-4 items-center justify-center transition-[opacity,transform] duration-200 ease-out",
-                isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
+                isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5",
               )}
             >
               {showCompactSpinner ? (
                 <div
                   className={cn(
                     "loader",
-                    inheritPillTextColor ? "text-current" : "text-muted-foreground group-hover:text-foreground",
+                    inheritPillTextColor
+                      ? "text-current"
+                      : "text-muted-foreground group-hover:text-foreground",
                   )}
                 />
               ) : (
@@ -283,54 +236,58 @@ export function ProjectSyncIndicator({
           </div>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          <div className="flex flex-col gap-0.5">
-            <span className="font-medium">{displayState.label}</span>
-            <span className="text-muted-foreground">{displayState.detail}</span>
-          </div>
+          {tooltipBody}
         </TooltipContent>
       </Tooltip>
     )
   }
 
   return (
-    <div
-      className={cn(
-        "group flex items-center gap-2 px-1 py-1 transition-colors duration-200 ease-out",
-        className
-      )}
-      title={displayState.detail}
-    >
-      <div
-        className={cn(
-          "relative flex h-4 w-4 items-center justify-center transition-[opacity,transform] duration-200 ease-out",
-          isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
-        )}
-      >
-        <Icon className={iconClassName} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
           className={cn(
-            "text-xs font-medium leading-none transition-[color,opacity,transform] duration-200 ease-out",
-            INDICATOR_TEXT_CLASS,
-            isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
+            "group flex items-center gap-2 px-1 py-1 transition-colors duration-200 ease-out",
+            className,
           )}
+          aria-label={`${displayState.label} - ${displayState.detail}`}
         >
-          {displayState.label}
-        </p>
-      </div>
-      <div
-        className={cn(
-          "shrink-0 min-w-[2.5rem] text-right text-xs tabular-nums transition-[opacity,transform] duration-200 ease-out",
-          INDICATOR_TEXT_CLASS,
-          displayState.liveCount && isContentVisible
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 translate-y-0.5"
-        )}
-        aria-hidden={!displayState.liveCount}
-      >
-        {displayState.liveCount ?? "00"}
-      </div>
-    </div>
+          <div
+            className={cn(
+              "relative flex h-4 w-4 items-center justify-center transition-[opacity,transform] duration-200 ease-out",
+              isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5",
+            )}
+          >
+            <Icon className={iconClassName} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p
+              className={cn(
+                "text-xs font-medium leading-none transition-[color,opacity,transform] duration-200 ease-out",
+                INDICATOR_TEXT_CLASS,
+                isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5",
+              )}
+            >
+              {displayState.label}
+            </p>
+          </div>
+          <div
+            className={cn(
+              "shrink-0 min-w-[2.5rem] text-right text-xs tabular-nums transition-[opacity,transform] duration-200 ease-out",
+              INDICATOR_TEXT_CLASS,
+              displayState.liveCount && isContentVisible
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 translate-y-0.5",
+            )}
+            aria-hidden={!displayState.liveCount}
+          >
+            {displayState.liveCount ?? "00"}
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>
+        {tooltipBody}
+      </TooltipContent>
+    </Tooltip>
   )
 }
