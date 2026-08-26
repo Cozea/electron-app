@@ -28,9 +28,9 @@ export async function exchangeBootstrapAccessToken(
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
   });
-  const json = (await response.json()) as { access_token?: string; reason?: string };
+  const json = (await response.json()) as { access_token?: string };
   if (!response.ok || !json.access_token) {
-    throw new Error(`T3 oauth/token failed: ${response.status} ${JSON.stringify(json)}`);
+    throw new Error(`T3 oauth/token failed: ${response.status}`);
   }
   return json.access_token;
 }
@@ -42,7 +42,7 @@ export async function issueWebSocketTicket(baseUrl: string, accessToken: string)
   });
   const json = (await response.json()) as { ticket?: string };
   if (!response.ok || !json.ticket) {
-    throw new Error(`T3 websocket-ticket failed: ${response.status} ${JSON.stringify(json)}`);
+    throw new Error(`T3 websocket-ticket failed: ${response.status}`);
   }
   return json.ticket;
 }

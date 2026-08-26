@@ -179,7 +179,7 @@ export function useWorkbenchAssistantTileController(
       ? assistantRuntime.lastError?.trim() || "Local chat runtime is unavailable."
       : null
 
-  useAssistantRuntimeSync(isChatReady)
+  useAssistantRuntimeSync(isChatReady && !substrateTransport.active)
 
   const {
     config,

@@ -11,7 +11,7 @@ import {
   assertNodeVersionForT3Server,
   vendorT3ServerBinExists,
 } from "./paths.ts";
-import { extractPairingToken } from "./auth.ts";
+import { extractPairingToken, authenticateT3Server } from "@cozea/client-runtime";
 
 export interface StartT3ServerProcessOptions {
   readonly host?: string;

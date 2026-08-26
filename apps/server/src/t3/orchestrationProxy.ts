@@ -1,7 +1,7 @@
 import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 
-import { authenticateT3Server } from "./auth.ts";
-import { T3EffectRpcClient } from "./rpcClient.ts";
+import { authenticateT3Server, T3EffectRpcClient } from "@cozea/client-runtime";
+import { ORCHESTRATION_WS_METHODS } from "@cozea/contracts";
 
 /** Minimal orchestration proxy surface shared by legacy WS and T3 RPC backends. */
 export interface OrchestrationBackendProxy {
@@ -14,13 +14,7 @@ export interface OrchestrationBackendProxy {
   close(): Promise<void>;
 }
 
-const T3_ORCHESTRATION = {
-  getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
-  dispatchCommand: "orchestration.dispatchCommand",
-  getTurnDiff: "orchestration.getTurnDiff",
-  getFullThreadDiff: "orchestration.getFullThreadDiff",
-  subscribeShell: "orchestration.subscribeShell",
-} as const;
+const T3_ORCHESTRATION = ORCHESTRATION_WS_METHODS;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

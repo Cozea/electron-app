@@ -11,6 +11,7 @@ This document describes how Cozea runs upstream [pingdotgg/t3code](https://githu
 | --- | --- |
 | `vendor/t3code` | Git submodule @ pinned SHA |
 | `scripts/vendor/sync-t3code-pin.mjs` | Detach-checkout vendor at pin |
+| `scripts/vendor/sync-t3-contracts.mjs` | Sync T3 contract groups → `packages/contracts/src/t3/` |
 | `scripts/spike-t3-server-boot.mjs` | Phase T0 boot spike (no Electron) |
 | `scripts/spike-t3-rpc-get-config.ts` | Effect RPC probe (copied into vendor during spike) |
 | `apps/server/` | Cozea wrapper (shadow child bootstrap today; T3 body in T1+) |
@@ -60,5 +61,6 @@ CircleCI job `t3_vendor_spike` runs the spike on Linux after submodule checkout.
 1. Choose upstream SHA on `pingdotgg/t3code`
 2. Update `docs/substrate-t3-pin.md` and `electron/substrate/constants.ts` (`SUBSTRATE_T3_PIN_SHA`)
 3. Run `node scripts/vendor/sync-t3code-pin.mjs`
-4. Re-run `node scripts/spike-t3-server-boot.mjs`
-5. Commit `.gitmodules`, submodule gitlink, pin docs, and any wrapper changes
+4. Run `node scripts/vendor/sync-t3-contracts.mjs`
+5. Re-run `node scripts/spike-t3-server-boot.mjs` and `bun scripts/smoke-t3-server.mjs`
+6. Commit `.gitmodules`, submodule gitlink, pin docs, synced contracts, and any wrapper changes

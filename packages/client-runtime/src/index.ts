@@ -16,3 +16,11 @@ export {
   readSubstrateRpcChatFlags,
   type SubstrateRpcChatFlags,
 } from "./flags";
+export {
+  T3EffectRpcClient,
+  T3OrchestrationClient,
+  authenticateT3Server,
+  extractPairingToken,
+  type T3EffectRpcClientOptions,
+  type T3OrchestrationClientOptions,
+} from "./t3";

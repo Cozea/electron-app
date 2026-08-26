@@ -12,6 +12,8 @@ export default defineConfig({
       ),
       '@cozea/assistant-shared': path.resolve(__dirname, './shared/assistant-shared'),
       '@cozea/contracts': path.resolve(__dirname, './packages/contracts/src/index.ts'),
+      '@cozea/contracts/t3/rpc': path.resolve(__dirname, './packages/contracts/src/t3/rpc.ts'),
+      '@cozea/contracts/collab': path.resolve(__dirname, './packages/contracts/src/collab.ts'),
       '@cozea/client-runtime': path.resolve(__dirname, './packages/client-runtime/src/index.ts'),
       '@cozea/substrate-contracts': path.resolve(
         __dirname,

@@ -11,6 +11,7 @@ import { readSubstrateFeatureFlags } from "../../../electron/substrate/flags";
 import { getSharedSubstrateNdjsonWriter } from "../../../electron/substrate/obs";
 import { createShadowHttpServer } from "../../../electron/substrate-shadow-server/createShadowHttpServer";
 import type { OrchestrationRpcBackend } from "../../../electron/substrate-shadow-server/rpcOrchestrationHandlers";
+import { authenticateT3Server } from "@cozea/client-runtime";
 import { bootstrapT3Server, type T3ServerBootstrapHandle } from "./t3Bootstrap.ts";
 
 export interface BootstrapCozeaSubstrateServerOptions {
@@ -97,6 +98,14 @@ export async function bootstrapCozeaSubstrateServer(
     primaryEnabled: substrateFlags.primary,
     t3ServerEnabled: orchestrationBackend !== undefined,
     orchestrationBackend,
+    t3RpcSession:
+      t3Handle !== null
+        ? {
+            baseUrl: t3Handle.process.baseUrl,
+            issueWsTicket: () =>
+              authenticateT3Server(t3Handle!.process.baseUrl, t3Handle!.process.pairingToken),
+          }
+        : undefined,
     host,
     port,
     pin: process.env.COZEA_SUBSTRATE_T3_PIN?.trim() || SUBSTRATE_T3_PIN_SHA,
