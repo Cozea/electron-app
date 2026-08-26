@@ -63,6 +63,14 @@ function buildFileUrl(filePath: string): string {
   return `file://${encodeURI(filePath)}`;
 }
 
+// dockview drop events carry either a native OS drag or a pointer-based drag;
+// only the former has a dataTransfer to read an external URL/file from.
+function readNativeDataTransfer(
+  nativeEvent: DragEvent | PointerEvent,
+): DataTransfer | null {
+  return "dataTransfer" in nativeEvent ? nativeEvent.dataTransfer : null;
+}
+
 function readDroppedBrowserTarget(dataTransfer: DataTransfer | null): {
   title: string;
   url: string;
@@ -329,16 +337,6 @@ export function useWorkbenchDockviewRuntime(
       dockviewReadyScopeKey !== input.workbenchScopeKey
     ) {
       return;
-    }
-
-    const legacyEdgeGroup = api.getEdgeGroup("right");
-    if (legacyEdgeGroup) {
-      isMigratingChangesPanelRef.current = true;
-      try {
-        api.removeEdgeGroup("right");
-      } finally {
-        isMigratingChangesPanelRef.current = false;
-      }
     }
 
     let changesPanel = api.getPanel(CHANGES_PANEL_ID);
@@ -736,7 +734,7 @@ export function useWorkbenchDockviewRuntime(
       });
 
       event.api.onUnhandledDragOverEvent((dragEvent) => {
-        const dataTransfer = dragEvent.nativeEvent.dataTransfer;
+        const dataTransfer = readNativeDataTransfer(dragEvent.nativeEvent);
         if (
           !dataTransfer?.types.includes("Files") &&
           !dataTransfer?.types.includes("text/uri-list") &&
@@ -749,7 +747,9 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onDidDrop((dropEvent) => {
         if (!input.projectId) return;
-        const droppedTarget = readDroppedBrowserTarget(dropEvent.nativeEvent.dataTransfer);
+        const droppedTarget = readDroppedBrowserTarget(
+          readNativeDataTransfer(dropEvent.nativeEvent),
+        );
         if (!droppedTarget) return;
 
         const nextTileId = workbenchActions.addTile(

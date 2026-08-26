@@ -8,6 +8,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
+import { AppSidebarShell } from "../components/sidebar/AppSidebarShell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
@@ -60,7 +61,8 @@ const LazyPresenceAvatarGroup = lazy(() =>
 
 
 function SidebarModeFallback() {
-  return <div className="w-56 shrink-0 bg-sidebar" />;
+  // Content-only: the persistent AppSidebarShell already paints the surface.
+  return <div className="min-h-0 flex-1" />;
 }
 
 interface ProjectLayoutProps {
@@ -604,20 +606,25 @@ export function ProjectLayout({
       <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
-          {isAppStoreRoute ? (
-            <Suspense fallback={<SidebarModeFallback />}>
-              <LazyAppStoreSidebar user={user} />
-            </Suspense>
-          ) : isSettingsModeRoute ? (
-            <Suspense fallback={<SidebarModeFallback />}>
-              <LazySettingsSidebar user={user} />
-            </Suspense>
-          ) : (
-            <ProjectSidebar
-              user={user}
-              projectId={project?._id ?? null}
-            />
-          )}
+          {/* Persistent shell: route-mode switches swap only the content. */}
+          <AppSidebarShell
+            surface={isAppStoreRoute ? "appStore" : isSettingsModeRoute ? "settings" : "project"}
+          >
+            {isAppStoreRoute ? (
+              <Suspense fallback={<SidebarModeFallback />}>
+                <LazyAppStoreSidebar user={user} />
+              </Suspense>
+            ) : isSettingsModeRoute ? (
+              <Suspense fallback={<SidebarModeFallback />}>
+                <LazySettingsSidebar user={user} />
+              </Suspense>
+            ) : (
+              <ProjectSidebar
+                user={user}
+                projectId={project?._id ?? null}
+              />
+            )}
+          </AppSidebarShell>
           <SidebarInset
             color="currentColor"
             // bg-background: keep window vibrancy/transparency confined to the
