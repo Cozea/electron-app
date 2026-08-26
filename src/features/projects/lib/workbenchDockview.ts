@@ -33,9 +33,6 @@ const CHANGES_PANEL_CONSTRAINTS = {
   minimumHeight: 260,
 } as const
 
-/** Groups with these components reject inbound tab drops (still allow edge splits). */
-const DROP_LOCKED_COMPONENTS = new Set(["assistantChat", "devServer"])
-
 const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])
 
 export interface WorkbenchTabGroupPreset {
@@ -168,55 +165,44 @@ export function applyWorkbenchPanelConstraints(api: DockviewApi): void {
   }
 }
 
+const AUTO_PRESET_TAB_GROUP_LABELS = new Set([
+  "Agent",
+  "Preview",
+  "Runtime",
+  "Utility",
+])
+
 /**
- * Lock Agent / Dev Server groups against inbound tab drops so critical tiles
- * are not casually tab-stacked. Edge splits remain allowed (`locked: true`).
+ * Drop leftover single-panel preset chips from when we auto-assigned tab
+ * groups. Real groupings (2+ panels) and custom labels stay; tab context-menu
+ * "Group as…" remains the only way to create groups.
  */
-export function applyWorkbenchGroupLocks(api: DockviewApi): void {
+export function dissolveOrphanPresetTabGroups(api: DockviewApi): void {
   for (const group of api.groups) {
-    const shouldLock = group.panels.some((panel) =>
-      DROP_LOCKED_COMPONENTS.has(panel.api.component),
-    )
-    if (group.api.locked !== shouldLock) {
-      group.api.locked = shouldLock
+    // Clear any drop-locks left over from an earlier experiment — dockview's
+    // `locked` disables inbound drop overlays and made tile rearranging feel
+    // broken on Agent/Dev Server headers.
+    if (group.api.locked) {
+      group.api.locked = false
     }
-  }
-}
 
-/**
- * Ensure every panel belongs to a labeled/colored tab group matching its
- * component preset. Round-trips through layout serialization.
- */
-export function ensureDefaultTabGroups(api: DockviewApi): void {
-  for (const panel of api.panels) {
-    const groupId = panel.group.id
-    const existing = api.getTabGroupForPanel({
-      groupId,
-      panelId: panel.id,
-    })
-    if (existing) continue
-
-    const preset = resolveTabGroupPreset(panel.api.component)
-    const tabGroup =
-      api.getTabGroups({ groupId }).find((group) => group.label === preset.label) ??
-      api.createTabGroup({
-        groupId,
-        label: preset.label,
-        color: preset.color,
-      })
-
-    api.addPanelToTabGroup({
-      groupId,
-      tabGroupId: tabGroup.id,
-      panelId: panel.id,
-    })
+    for (const tabGroup of [...api.getTabGroups({ groupId: group.id })]) {
+      if (
+        tabGroup.panelIds.length <= 1 &&
+        AUTO_PRESET_TAB_GROUP_LABELS.has(tabGroup.label)
+      ) {
+        api.dissolveTabGroup({
+          groupId: group.id,
+          tabGroupId: tabGroup.id,
+        })
+      }
+    }
   }
 }
 
 export function applyWorkbenchDockviewPolicies(api: DockviewApi): void {
   applyWorkbenchPanelConstraints(api)
-  applyWorkbenchGroupLocks(api)
-  ensureDefaultTabGroups(api)
+  dissolveOrphanPresetTabGroups(api)
 }
 
 export function isObsoleteWorkbenchTile(tile: WorkbenchTile | undefined | null): boolean {
