@@ -4,7 +4,7 @@ import {
   buildOrphanWorktreePromptMessage,
   formatWorktreePathForDisplay,
   getOrphanedWorktreePathForThread,
-} from "../../../../src/features/projects/lib/worktreeCleanup";
+} from "@/features/projects/lib/worktreeCleanup";
 
 describe("worktreeCleanup", () => {
   it("returns null when the target thread has no worktree", () => {
