@@ -42,6 +42,7 @@ interface IndicatorState {
 
 const INDICATOR_HOLD_MS = 350
 const INDICATOR_FADE_MS = 220
+const RECONNECT_CAP_MS = 15_000
 
 function formatPendingCount(count: number): string {
   if (count <= 0) return "0 pending"
@@ -74,6 +75,27 @@ export function ProjectSyncIndicator({
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   )
+  const [reconnectTimedOut, setReconnectTimedOut] = useState(false)
+
+  const collabSessionStatus = syncContext?.collabSessionStatus ?? "idle"
+  const collabSessionError = syncContext?.collabSessionError ?? null
+  const collabEncryptionStatus = syncContext?.collabEncryptionStatus ?? null
+  const collabSessionReady = collabSessionStatus === "ready"
+
+  useEffect(() => {
+    if (!collabSessionReady || isConnected) {
+      setReconnectTimedOut(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setReconnectTimedOut(true)
+    }, RECONNECT_CAP_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [collabSessionReady, isConnected])
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -133,6 +155,35 @@ export function ProjectSyncIndicator({
       }
     }
 
+    if (collabSessionStatus === "idle" || collabSessionStatus === "loading") {
+      return {
+        icon: MdCloudSync,
+        label: "Starting collaboration",
+        detail: "Connecting to the collaboration gateway",
+        filled: true,
+        motion: "spin",
+      }
+    }
+
+    if (collabSessionStatus === "error") {
+      return {
+        icon: MdWarning,
+        label: "Collab unavailable",
+        detail: collabSessionError || "Failed to start live collaboration",
+        filled: true,
+      }
+    }
+
+    if (collabEncryptionStatus === "missing_for_device") {
+      return {
+        icon: MdCloudOff,
+        label: "Awaiting device approval",
+        detail: "Approve this device to unlock encrypted collaboration",
+        filled: true,
+        motion: "pulse",
+      }
+    }
+
     if (syncStatus === "error") {
       return {
         icon: MdWarning,
@@ -185,6 +236,15 @@ export function ProjectSyncIndicator({
     }
 
     if (!isConnected) {
+      if (reconnectTimedOut) {
+        return {
+          icon: MdWarning,
+          label: "Collaboration unavailable",
+          detail: "Could not restore the live collaboration connection",
+          filled: true,
+        }
+      }
+
       return {
         icon: MdCloudSync,
         label: "Reconnecting",
@@ -203,12 +263,16 @@ export function ProjectSyncIndicator({
         filled: true,
       }
   }, [
+    collabEncryptionStatus,
+    collabSessionError,
+    collabSessionStatus,
     isConnected,
     isDownloading,
     isOnline,
     isUploading,
     pendingCount,
     hasSyncProgress,
+    reconnectTimedOut,
     syncContext,
     syncCurrent,
     syncMessage,

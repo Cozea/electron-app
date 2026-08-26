@@ -1,7 +1,11 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { Id } from "../../../../convex/_generated/dataModel";
+import type { CollabEncryptionBootstrap } from "@/hooks/useCollabSession";
 import type { SyncProgress } from "@/lib/sync/types";
+
+export type CollabSessionStatus = "idle" | "loading" | "ready" | "error";
+export type CollabEncryptionStatus = CollabEncryptionBootstrap["status"];
 
 export interface ProjectSyncContextValue {
   isSynced: boolean;
@@ -13,6 +17,9 @@ export interface ProjectSyncContextValue {
   collaborationMode: "shared" | "local";
   activeBranch: string | null;
   sharedBranch: string | null;
+  collabSessionStatus: CollabSessionStatus;
+  collabSessionError: string | null;
+  collabEncryptionStatus: CollabEncryptionStatus | null;
   triggerSync: () => Promise<void>;
   syncProgress: SyncProgress;
 }

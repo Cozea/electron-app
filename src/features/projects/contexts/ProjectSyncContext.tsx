@@ -5,6 +5,8 @@ export {
   ProjectSyncContext,
   useOptionalProjectSyncContext,
   useProjectSyncContext,
+  type CollabEncryptionStatus,
+  type CollabSessionStatus,
   type ProjectSyncContextValue,
   type ProjectSyncProviderProps,
 } from "@/features/projects/contexts/projectSyncShared"

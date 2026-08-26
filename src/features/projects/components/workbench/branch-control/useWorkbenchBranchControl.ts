@@ -14,6 +14,12 @@ import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import { rememberProjectBranchSession } from "@/features/projects/lib/projectBranchSessionStore"
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+import { useYjsProject } from "@/contexts/YjsProjectContextValue"
+import {
+  useOptionalProjectSyncContext,
+  type CollabEncryptionStatus,
+  type CollabSessionStatus,
+} from "@/features/projects/contexts/ProjectSyncContext"
 
 interface UseWorkbenchBranchControlInput {
   projectId: string | null
@@ -33,20 +39,39 @@ interface GitToolbarSnapshot {
   hasVerifiedGitStatus: boolean
 }
 
+function isCollabLiveAvailable(input: {
+  sessionStatus: CollabSessionStatus
+  isTransportConnected: boolean
+  encryptionStatus: CollabEncryptionStatus | null
+}): boolean {
+  if (input.sessionStatus !== "ready") return false
+  if (!input.isTransportConnected) return false
+  if (
+    input.encryptionStatus === "missing_for_device" ||
+    input.encryptionStatus === "device_revoked"
+  ) {
+    return false
+  }
+  return true
+}
+
 function buildMenuItems(input: {
   snapshot: GitToolbarSnapshot
   collabBranch: string
   activeLane: ProjectLaneDescriptor | null
   priorPanelError?: string | null
+  collabLiveAvailable?: boolean
 }): ContextMenuItem<string>[] {
-  const { snapshot, collabBranch, activeLane, priorPanelError } = input
+  const { snapshot, collabBranch, activeLane, priorPanelError, collabLiveAvailable = false } = input
   const footerMessage = snapshot.loadError ?? priorPanelError ?? null
   const currentBranch = activeLane?.branch ?? snapshot.currentGitBranch ?? collabBranch
   const modeLabel = activeLane?.isCollab === false ? "Local Branch Mode" : "Shared Branch Mode"
   const modeDetail =
     activeLane?.isCollab === false
       ? "Live collaboration is paused on this branch."
-      : "Live collaboration is active."
+      : collabLiveAvailable
+        ? "Live collaboration is active."
+        : "Live collaboration unavailable"
 
   const statusSummary = getWorkspaceGitStatusSummary(snapshot.gitStatus)
 
@@ -156,6 +181,18 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(null)
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
   const [hasVerifiedGitStatus, setHasVerifiedGitStatus] = useState(false)
+  const syncContext = useOptionalProjectSyncContext()
+  const { isConnected } = useYjsProject()
+
+  const collabLiveAvailable = useMemo(
+    () =>
+      isCollabLiveAvailable({
+        sessionStatus: syncContext?.collabSessionStatus ?? "idle",
+        isTransportConnected: isConnected,
+        encryptionStatus: syncContext?.collabEncryptionStatus ?? null,
+      }),
+    [isConnected, syncContext?.collabEncryptionStatus, syncContext?.collabSessionStatus],
+  )
 
   const branchCwd = input.workspaceId
   const displayedBranch = resolveDisplayedWorkbenchBranch({
@@ -302,6 +339,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
         collabBranch: input.collabBranch,
         activeLane: input.activeLane,
         priorPanelError,
+        collabLiveAvailable,
       })
       const action = await showDesktopContextMenu(items, menuPosition)
       if (!action) return
@@ -317,6 +355,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
     [
       applyGitToolbarSnapshot,
       branchCwd,
+      collabLiveAvailable,
       handleBranchSelect,
       input.activeLane,
       input.collabBranch,
