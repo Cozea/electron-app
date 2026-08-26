@@ -217,6 +217,9 @@ export function readSubstrateFeatureFlags(
 export function shouldStartInProcessAssistantRuntime(
   flags: SubstrateFeatureFlags = readSubstrateFeatureFlags(),
 ): boolean {
+  if (flags.t3Server) {
+    return false;
+  }
   // Phase 5: primary mode requires shadow server and skips in-process runtime.
   if (flags.primary && flags.shadowServer.enabled) {
     return false;

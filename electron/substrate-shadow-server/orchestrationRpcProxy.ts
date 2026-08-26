@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy :3773 WebSocket orchestration bridge. Production paths require
+ * the vendored T3 server backend (`T3OrchestrationRpcProxy`). Kept for unit tests.
+ */
 import { randomUUID } from "node:crypto";
 
 import {

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 export interface T3OrchestrationUserdataMigrationOptions {
@@ -12,14 +13,34 @@ export interface T3OrchestrationUserdataMigrationResult {
   readonly reason: string;
 }
 
+const SQLITE_SIDEcars = ["-wal", "-shm"] as const;
+
+function copySqliteBundle(sourcePath: string, targetPath: string): void {
+  fs.copyFileSync(sourcePath, targetPath);
+  for (const suffix of SQLITE_SIDEcars) {
+    const sidecar = `${sourcePath}${suffix}`;
+    if (fs.existsSync(sidecar)) {
+      fs.copyFileSync(sidecar, `${targetPath}${suffix}`);
+    }
+  }
+}
+
 /**
- * Phase T3 scaffold — migrate Cozea legacy assistant SQLite userdata into T3 persistence.
+ * Resolve legacy Cozea/T3 assistant SQLite path (`{baseDir}/userdata/state.sqlite`).
+ * Matches `electron/assistant-runtime/os-jank.ts` default base `~/.t3`.
+ */
+export function resolveLegacyAssistantSqlitePath(env: NodeJS.ProcessEnv = process.env): string {
+  const rawHome = env.COZEA_ASSISTANT_HOME?.trim();
+  const baseDir =
+    rawHome && rawHome.length > 0 ? path.resolve(rawHome.replace(/^~(?=$|\/)/, os.homedir())) : path.join(os.homedir(), ".t3");
+  return path.join(baseDir, "userdata", "state.sqlite");
+}
+
+/**
+ * Migrate Cozea legacy assistant SQLite userdata into T3 persistence.
  *
- * Legacy store: `{assistantBaseDir}/userdata/state.sqlite`
- * T3 store: `{t3BaseDir}/userdata/state.sqlite`
- *
- * Full migration (projects, threads, messages, checkpoints) is deferred until
- * projection parity tests pass. This entrypoint validates paths and no-ops safely.
+ * Phase T6 copies the legacy `state.sqlite` bundle when T3 has no database yet.
+ * Event-level projection replay remains a follow-up once parity tests land.
  */
 export async function migrateCozeaAssistantUserdataToT3(
   options: T3OrchestrationUserdataMigrationOptions,
@@ -40,6 +61,6 @@ export async function migrateCozeaAssistantUserdataToT3(
   }
 
   fs.mkdirSync(t3UserdataDir, { recursive: true });
-  // TODO(T3+): stream legacy orchestration events into T3 command log + projections.
-  return { migrated: false, reason: "not_implemented" };
+  copySqliteBundle(options.legacySqlitePath, t3SqlitePath);
+  return { migrated: true, reason: "copied_legacy_sqlite_bundle" };
 }

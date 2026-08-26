@@ -1,3 +1,7 @@
+/**
+ * @deprecated Per-turn legacy :3773 bridge. Production uses T3 orchestration RPC.
+ * Kept for unit tests only.
+ */
 import { randomUUID } from "node:crypto";
 
 import {

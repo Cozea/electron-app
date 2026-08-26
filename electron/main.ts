@@ -818,8 +818,9 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
 
 function ensureAssistantRuntimeStarted(): void {
   const substrateFlags = readSubstrateFeatureFlags()
-  if (!shouldStartInProcessAssistantRuntime(substrateFlags)) {
-    logAssistantBridge('runtime-start-skipped-primary-substrate', {
+  if (substrateFlags.t3Server || !shouldStartInProcessAssistantRuntime(substrateFlags)) {
+    logAssistantBridge('runtime-start-skipped-t3-or-primary-substrate', {
+      t3Server: substrateFlags.t3Server,
       primary: substrateFlags.primary,
       shadowServer: substrateFlags.shadowServer.enabled,
     })
@@ -1838,15 +1839,15 @@ app.whenReady().then(() => {
   bootstrapSubstrateVcs()
   registerSubstrateVcsIpcHandlers()
 
-  scheduleBootWork('assistant-runtime-started', () => {
-    ensureAssistantRuntimeStarted()
-  }, 250)
   scheduleBootWork('substrate-shadow-server-started', () => {
     void ensureSubstrateShadowServerStarted().catch((error) => {
       logSubstrateShadow('start-failed', {
         error: error instanceof Error ? error.message : String(error),
       })
     })
+  }, 250)
+  scheduleBootWork('assistant-runtime-started', () => {
+    ensureAssistantRuntimeStarted()
   }, 300)
   scheduleBootWork('update-checks-started', () => {
     startUpdateChecks()

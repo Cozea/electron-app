@@ -35,7 +35,7 @@ function readPort(raw: string | undefined, fallback: number): number {
   return value;
 }
 
-function resolveDefaultT3BaseDir(): string {
+export function resolveDefaultT3BaseDir(): string {
   const fromEnv = process.env.COZEA_T3_SERVER_BASE_DIR?.trim();
   if (fromEnv) {
     return fromEnv;

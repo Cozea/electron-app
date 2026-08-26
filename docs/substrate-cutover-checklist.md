@@ -92,9 +92,9 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 4. [x] Phase T3 orchestration cutover — T3 owns commands when flagged; skip legacy `:3773` boot in shadow child
 5. [x] Phase T4 provider config cutover — `T3ServerConfigClient`, workbench model picker via T3 when `t3Server: true`; gate substrate provider registry
 6. [x] Phase T5 VCS + terminals cutover — `T3VcsClient`, `T3TerminalClient`, unified `useT3Cutover` NativeApi overlay; `COZEA_T3_SERVER` default **on**
-7. [ ] Delete `electron/assistant-runtime/` after parity
-8. [ ] Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
-9. [ ] SQLite userdata migration (`electron/substrate/migrations/t3-orchestration-userdata.ts` — scaffold only)
+7. [x] Phase T6 assistant-runtime decommission — legacy `:3773` boot removed; T3 required; SQLite userdata copy migration; orchestration RPC requires T3 backend
+8. [ ] Delete `electron/assistant-runtime/` tree (codex substrate drivers + tests still reference it)
+9. [ ] Delete `assistantWsBridge.ts` / `orchestrationRpcProxy.ts` (kept for unit tests)
 10. [ ] SSH/WSL DesktopBackendPool
 11. [ ] Physical monorepo reshape
 
@@ -115,5 +115,6 @@ bun scripts/smoke-t3-server.mjs         # Phase T1 — T3 dual-run orchestration
 bun scripts/smoke-t3-providers.mjs      # Phase T4 — T3 server.getConfig + provider registry gate
 bun scripts/smoke-t3-vcs.mjs            # Phase T5 — T3 vcs.refreshStatus
 bunx vitest run tests/substrate/t3OrchestrationCutover.test.ts  # Phase T3 — command API surface
-bunx vitest run tests/substrate/t3ServerConfigCutover.test.ts   # Phase T4/T5 — config + VCS API surface
+bunx vitest run tests/substrate/t3UserdataMigration.test.ts          # Phase T6 — sqlite userdata copy
+bunx vitest run tests/substrate/rpcOrchestrationHandlers.test.ts     # Phase T6 — T3 backend required
 ```
