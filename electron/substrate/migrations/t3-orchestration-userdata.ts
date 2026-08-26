@@ -2,6 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  resetOrchestrationProjectionsForEventReplay,
+} from "./t3-orchestration-projection-replay.ts";
+
 export interface T3OrchestrationUserdataMigrationOptions {
   readonly legacySqlitePath: string;
   readonly t3BaseDir: string;
@@ -11,6 +15,8 @@ export interface T3OrchestrationUserdataMigrationOptions {
 export interface T3OrchestrationUserdataMigrationResult {
   readonly migrated: boolean;
   readonly reason: string;
+  readonly eventCount?: number;
+  readonly projectionTablesReset?: ReadonlyArray<string>;
 }
 
 const SQLITE_SIDEcars = ["-wal", "-shm"] as const;
@@ -40,7 +46,8 @@ export function resolveLegacyAssistantSqlitePath(env: NodeJS.ProcessEnv = proces
  * Migrate Cozea legacy assistant SQLite userdata into T3 persistence.
  *
  * Phase T6 copies the legacy `state.sqlite` bundle when T3 has no database yet.
- * Event-level projection replay remains a follow-up once parity tests land.
+ * Phase T6c clears projection tables/cursors so T3 replays `orchestration_events`
+ * on first boot after the copy.
  */
 export async function migrateCozeaAssistantUserdataToT3(
   options: T3OrchestrationUserdataMigrationOptions,
@@ -62,5 +69,14 @@ export async function migrateCozeaAssistantUserdataToT3(
 
   fs.mkdirSync(t3UserdataDir, { recursive: true });
   copySqliteBundle(options.legacySqlitePath, t3SqlitePath);
-  return { migrated: true, reason: "copied_legacy_sqlite_bundle" };
+  const replay = resetOrchestrationProjectionsForEventReplay(t3SqlitePath);
+  return {
+    migrated: true,
+    reason:
+      replay.eventCount > 0
+        ? "copied_legacy_sqlite_and_reset_projections"
+        : "copied_legacy_sqlite_bundle",
+    eventCount: replay.eventCount,
+    projectionTablesReset: replay.resetTables,
+  };
 }

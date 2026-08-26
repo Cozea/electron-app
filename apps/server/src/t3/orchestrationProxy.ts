@@ -3,6 +3,11 @@ import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 import { authenticateT3Server, T3EffectRpcClient } from "@cozea/client-runtime";
 import { ORCHESTRATION_WS_METHODS } from "@cozea/contracts";
 
+import {
+  mapSqliteRowToOrchestrationEvent,
+  readOrchestrationEventsFromSqlite,
+} from "../../../../electron/substrate/migrations/t3-orchestration-projection-replay.ts";
+
 /** Minimal orchestration proxy surface shared by legacy WS and T3 RPC backends. */
 export interface OrchestrationBackendProxy {
   getSnapshot(): Promise<unknown>;
@@ -36,11 +41,13 @@ function shellEventToDomainEvent(value: unknown): OrchestrationEvent | null {
 
 export class T3OrchestrationRpcProxy implements OrchestrationBackendProxy {
   private readonly client: T3EffectRpcClient;
+  private readonly userdataSqlitePath?: string;
   private readonly shellListeners = new Set<(event: OrchestrationEvent) => void>();
   private shellUnsubscribe: (() => Promise<void>) | null = null;
 
-  constructor(client: T3EffectRpcClient) {
+  constructor(client: T3EffectRpcClient, options: { readonly userdataSqlitePath?: string } = {}) {
     this.client = client;
+    this.userdataSqlitePath = options.userdataSqlitePath;
   }
 
   static async connect(input: {
@@ -78,9 +85,15 @@ export class T3OrchestrationRpcProxy implements OrchestrationBackendProxy {
     return this.client.callUnary(T3_ORCHESTRATION.getFullThreadDiff, params);
   }
 
-  async replayEvents(_params: unknown): Promise<unknown> {
-    // T1: T3 uses shell streams instead of legacy replayEvents; return empty until T3 cutover maps sequences.
-    return { events: [] };
+  async replayEvents(params: unknown): Promise<unknown> {
+    if (!this.userdataSqlitePath) {
+      return [];
+    }
+    const record = asRecord(params);
+    const fromSequenceExclusive =
+      typeof record?.fromSequenceExclusive === "number" ? record.fromSequenceExclusive : 0;
+    const rows = readOrchestrationEventsFromSqlite(this.userdataSqlitePath, fromSequenceExclusive);
+    return rows.map(mapSqliteRowToOrchestrationEvent);
   }
 
   private async ensureShellSubscription(): Promise<void> {

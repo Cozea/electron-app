@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -31,18 +32,27 @@ describe("T3 orchestration userdata migration", () => {
     const t3BaseDir = path.join(root, "t3");
     fs.mkdirSync(legacyDir, { recursive: true });
     const legacySqlite = path.join(legacyDir, "state.sqlite");
-    fs.writeFileSync(legacySqlite, "legacy-db");
-    fs.writeFileSync(`${legacySqlite}-wal`, "wal");
+    const legacyDb = new DatabaseSync(legacySqlite);
+    legacyDb.exec("CREATE TABLE migration_probe (value TEXT NOT NULL)");
+    legacyDb.prepare("INSERT INTO migration_probe (value) VALUES (?)").run("legacy-db");
+    legacyDb.close();
 
     const result = await migrateCozeaAssistantUserdataToT3({
       legacySqlitePath: legacySqlite,
       t3BaseDir,
     });
 
-    expect(result).toEqual({ migrated: true, reason: "copied_legacy_sqlite_bundle" });
+    expect(result).toEqual({
+      migrated: true,
+      reason: "copied_legacy_sqlite_bundle",
+      eventCount: 0,
+      projectionTablesReset: [],
+    });
     const t3Sqlite = path.join(t3BaseDir, "userdata", "state.sqlite");
-    expect(fs.readFileSync(t3Sqlite, "utf8")).toBe("legacy-db");
-    expect(fs.readFileSync(`${t3Sqlite}-wal`, "utf8")).toBe("wal");
+    const t3Db = new DatabaseSync(t3Sqlite, { readonly: true });
+    const row = t3Db.prepare("SELECT value FROM migration_probe").get() as { value: string };
+    t3Db.close();
+    expect(row.value).toBe("legacy-db");
   });
 
   it("skips when T3 sqlite already exists", async () => {

@@ -3,6 +3,7 @@ import {
   issueWebSocketTicket,
   T3EffectRpcClient,
 } from "@cozea/client-runtime";
+import path from "node:path";
 import type { OrchestrationBackendProxy } from "./t3/orchestrationProxy.ts";
 import { T3OrchestrationRpcProxy } from "./t3/orchestrationProxy.ts";
 import {
@@ -39,7 +40,9 @@ export async function bootstrapT3Server(
   });
   options.onLog?.(
     migration.migrated
-      ? `userdata migration: copied legacy sqlite → ${baseDir}`
+      ? migration.eventCount && migration.eventCount > 0
+        ? `userdata migration: copied legacy sqlite (${migration.eventCount} events) and reset projections → ${baseDir}`
+        : `userdata migration: copied legacy sqlite → ${baseDir}`
       : `userdata migration skipped: ${migration.reason}`,
   );
 
@@ -49,9 +52,9 @@ export async function bootstrapT3Server(
     processHandle.pairingToken,
   );
   const wsTicket = await issueWebSocketTicket(processHandle.baseUrl, accessToken);
-  const proxy = new T3OrchestrationRpcProxy(
-    new T3EffectRpcClient({ baseUrl: processHandle.baseUrl, wsTicket }),
-  );
+  const proxy = new T3OrchestrationRpcProxy(new T3EffectRpcClient({ baseUrl: processHandle.baseUrl, wsTicket }), {
+    userdataSqlitePath: path.join(baseDir, "userdata", "state.sqlite"),
+  });
 
   return {
     process: processHandle,
