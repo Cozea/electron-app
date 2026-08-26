@@ -54,9 +54,9 @@ Cozea violates that by design today:
 - Assistant runtime in-process in Electron main (`electron/assistant-runtime/boot.ts`)
 - Workbench terminals via IPC `TerminalService`
 - Assistant PTY stack also inside the runtime
-- Git split across runtime layers **and** Electron `gitRuntime` / sync services
+- Git split across **~5 owners** (see §3.8) — not just “runtime + Electron”
 
-**Why it feels clunky:** two owners for the same nouns (terminal, git, cwd), crash domains coupled (runtime fault can take the whole desktop), remote/mobile impossible without a rewrite.
+**Why it feels clunky:** two (really many) owners for the same nouns (terminal, git, cwd), crash domains coupled (runtime fault can take the whole desktop), remote/mobile impossible without a rewrite.
 
 ### 3.2 Typed Effect RPC streams vs push bus + IPC
 
@@ -103,6 +103,57 @@ Cozea desktop: large imperative `main.ts`, in-process runtime fiber, product ser
 T3: Effect spans, NDJSON traces, OTLP export, resource telemetry.
 
 Cozea: mostly stubs/ad-hoc logs — harder to debug “why is this turn stuck?”
+
+### 3.8 Git / VCS — where T3 is much cleaner
+
+This is one of the largest practical clunk gaps. Cozea’s git story is **several parallel stacks**; T3’s is **one server VCS driver + streamed status + thin workflow façade**.
+
+#### Cozea today (multiple owners for the same repo)
+
+| Stack | Key paths | Owns |
+| --- | --- | --- |
+| Agent `GitCore` / `GitManager` | `electron/assistant-runtime/git/**` | Agent WS: status, pull, stacked actions, branches, worktrees, PR prepare |
+| Orchestration checkpoints | `…/checkpointing/**`, `CheckpointReactor` | Turn capture/restore/diff via `GitCore` |
+| Desktop git IPC | `projectGitDesktopService.ts`, `registerProjectHandlers.ts` | Sidebar branch/worktree/lane-merge ops |
+| Collab sync | `gitSyncService.ts`, `gitRemoteSync.ts`, heuristics/auth/replay | Shared-main pull/replay/salvage/conflict resolve |
+| Sync journal | `syncJournalStore.ts` + `workspaceSync:*` IPC | Durable local write queue for collab |
+| Changes UI checkpoints | `gitCheckpoints.ts`, `checkpoint-worker/**`, `GitChangesBroadcaster.ts` | **Second** checkpoint implementation + IPC poll for Changes page |
+| Merge tooling | `gitRuntime.ts` | Binary health + 3-way merge-tree for conflict UI |
+
+Same nouns (`status`, `checkpoint`, `worktree`, `push`) appear on both assistant WS **and** Electron IPC, with **two** checkpoint implementations and no shared invalidation bus after collab mutations.
+
+#### T3 today (single ownership)
+
+| Piece | Path | Role |
+| --- | --- | --- |
+| `VcsDriver` + `GitVcsDriver` | `apps/server/src/vcs/**` | Capability-shaped driver (status, refs, worktrees, checkpoints, push, ignore, init) |
+| `VcsStatusBroadcaster` | `…/VcsStatusBroadcaster.ts` | Split **local vs remote** status; `streamStatus` with snapshot/local/remote events + remote poll backoff |
+| `GitWorkflowService` / `GitManager` | `apps/server/src/git/**` | Façade for stacked actions, PR resolve/prepare, invalidation hooks |
+| Checkpoints | driver `checkpoints.*` + `checkpointing/CheckpointStore.ts` | **One** capture path used by orchestration |
+| RPC | `packages/contracts` `vcs.*` / `git.*` / `sourceControl.*` / `review.*` | `subscribeVcsStatus` stream; paginated `listRefs`; streamed `git.runStackedAction` |
+| Client | `packages/client-runtime` `state/vcs*.ts` | Atoms + action scheduler + refs cache invalidation |
+
+#### Concrete ways T3 is less clunky / more efficient
+
+1. **Single owner** — one process mutates a cwd; every client refreshes through the same broadcaster.
+2. **Status model** — local/remote split + stream events vs Cozea’s monolithic agent status **and** a separate Changes broadcaster that debounce-polls over IPC.
+3. **Checkpoints as a driver capability** — no forked worker duplicate of capture/diff for UI.
+4. **Refs efficiency** — paginated `vcs.listRefs` + cache by git-common-dir vs full branch dumps.
+5. **Push safety** — T3 refuses mismatched feature→upstream pushes and records merge-base metadata; Cozea `GitCore.pushCurrentBranch` still has the unsafe `push HEAD:<upstream>` pattern in places.
+6. **Worktrees** — first-class create/prune + PR-head awareness + client orphan cleanup vs thinner create/remove plus separate desktop IPC.
+7. **Stacked actions** — RPC **progress stream** vs unary call + side-channel push events.
+8. **Process hygiene** — shared `VcsProcess` timeouts/truncation/errors vs mixed Effect + ad-hoc `runGit` + worker protocol.
+
+#### What Cozea must keep as an overlay (T3 has no equivalent)
+
+- Sync journal (`syncJournalStore`) and collab `GitSyncService` (shared-main health/replay/salvage)
+- Conflict UI + `gitRuntime` merge-tree previews
+- Changes page scopes (`current` vs `branch`) if product still wants them — but **not** a second capture implementation
+- Lane → collab merge (`project:mergeLaneIntoCollab`)
+- Dirty-state attribution (agent vs remote vs sync origins)
+- Convex/Yjs collab truth (orthogonal to VCS substrate)
+
+**Upgrade framing for git:** T3 VCS becomes the **agent/runtime substrate**; journal + collab sync + conflict/Changes UI remain a **Cozea overlay**, but they must call into that substrate for cwd mutations and status invalidation — otherwise the dual-owner clunk returns immediately after cutover.
 
 ---
 
@@ -197,15 +248,56 @@ These are product differentiators, not legacy:
 
 ---
 
-### Phase 4 — Terminals & git-agent consolidation
+### Phase 4 — Terminals & git/VCS consolidation
 
-**Do:**
+This phase is larger than “move agent git.” See §3.8. Split it:
 
-- Agent/workbench terminals that belong to turns move to server `terminal.attach` RPC.
-- Keep a **product terminal tile** path only if it still needs Electron-specific PTY provenance — but prefer one PTY owner.
-- Git operations used by agents/checkpoints use server VCS; keep Cozea collab git sync / journal as overlay services.
+#### Phase 4a — Agent VCS cutover
 
-**Exit:** no dual PTY stacks for the same tile; project switch keep-alive still works (port T3 patterns or keep Cozea keep-alive host, but one backend).
+- Replace `assistant-runtime/git/GitCore` + WS `git.*` with T3 `VcsDriver` / `GitWorkflowService` / RPC `vcs.*` + `git.*`.
+- Port push-safety, paginated `listRefs`, local/remote status, worktree prune, PR-head awareness.
+- Point orchestration `CheckpointStore` at `VcsDriver.checkpoints.*` (delete duplicate capture logic in the runtime layers).
+- Agent/workbench terminals that belong to turns move to server `terminal.attach` RPC (prefer one PTY owner).
+
+**Exit:** no `GitCore` on agent paths; `subscribeVcsStatus` drives agent status UI; no dual PTY stacks for the same tile.
+
+#### Phase 4b — Dual checkpoint / Changes consolidation
+
+- Changes UI must **not** keep a second capture implementation (`gitCheckpoints` + `checkpoint-worker`).
+- Either serve Changes from server checkpoint/diff/review APIs, or wrap the overlay behind the same driver.
+- Map `scope: current|branch` onto T3 review/diff APIs or keep as overlay-only methods with shared driver.
+
+**Exit:** one checkpoint owner in the process; Changes page still works.
+
+#### Phase 4c — Status broadcasting unification
+
+- Replace `GitChangesBroadcaster` IPC poll with T3 `VcsStatusBroadcaster.streamStatus` (or an adapter that fans the server stream into product tiles).
+- After `GitSyncService` pull/replay/conflict resolve, overlay **must** invalidate substrate status (shared refresh hook).
+
+**Exit:** one status stream; collab mutations refresh the same subscribers agents use.
+
+#### Phase 4d — Collab overlay boundary (keep, but contract it)
+
+Keep as Cozea IPC/overlay (T3 has no equivalent):
+
+- sync journal enqueue/ack
+- conflict read/resolve + merge-tree preview
+- salvage/reclone / shared-main health
+- lane → collab merge
+
+Delete/move once `vcs.*` exists: duplicate branch list/checkout/worktree IPC.
+
+Document that overlay services must not call raw git in ways that bypass push-safety / status cache.
+
+**Exit:** conflict page + journal still green after agent cutover; inventory of keep-IPC vs delete-IPC written.
+
+#### Phase 4e — Push / worktree safety acceptance
+
+- Explicit tests for T3 mismatched-upstream push behavior on Cozea paths.
+- Port orphan worktree cleanup on thread deletion.
+- Align stacked-action set with upstream where product needs it.
+
+**Exit:** push-safety + worktree cleanup gated in CI; project-switch keep-alive still works.
 
 ---
 
@@ -251,7 +343,11 @@ Phase 2  Flagged chat via Effect RPC + client-runtime
    │
 Phase 3  Provider rebase (Claude/Codex parity)
    │
-Phase 4  Terminal/git-agent single ownership
+Phase 4a Agent VCS + terminal single ownership
+Phase 4b One checkpoint owner (Changes UI)
+Phase 4c One status stream (+ collab invalidation)
+Phase 4d Collab overlay contract (journal/conflicts/lanes)
+Phase 4e Push/worktree safety gates
    │
 Phase 5  Remove in-process runtime; narrow IPC
    │
@@ -288,7 +384,11 @@ Cozea overlays (Convex, DevApps, workspace catalog, dockview) ride along from Ph
 | Phase 1 | Can we run two processes stably without UX change? |
 | Phase 2 | Is flagged chat competitive with old path on Cursor/OpenCode? |
 | Phase 3 | Are Claude/Codex regressions gone without Cozea UI rewrites? |
-| Phase 4 | Did terminal ownership reduce project-switch bugs? |
+| Phase 4a | Is agent git/terminal on the server driver with no `GitCore` dual path? |
+| Phase 4b | Is there exactly one checkpoint capture implementation? |
+| Phase 4c | Do collab sync mutations refresh the same status stream agents use? |
+| Phase 4d | Do conflict UI + journal still work with the new substrate boundary? |
+| Phase 4e | Do push-safety + worktree cleanup gates pass in CI? |
 | Phase 5 | Did desktop crash rate / memory drop with out-of-process runtime? |
 
 If Phase 2 fails product-wise, stop and reassess before Phase 3–5 burn.
@@ -305,14 +405,16 @@ If Phase 2 fails product-wise, stop and reassess before Phase 3–5 burn.
 - Renderer transport/stores: `src/stores/assistant-wsTransport.ts`, `src/stores/assistant-store.ts`
 - IPC: `electron/ipc/**`
 - Product overlays: `convex/**`, `electron/workspaces/**`, `src/features/devapps/**`, workbench dockview under `src/features/projects/**`
+- Git (multi-owner today): `electron/assistant-runtime/git/**`, `electron/gitRuntime.ts`, `electron/gitCheckpoints.ts`, `electron/services/gitSyncService.ts`, `electron/services/GitChangesBroadcaster.ts`, `electron/services/syncJournalStore.ts`
 
 ### T3
 
 - Internals: `docs/internals/overview.md`, `connection-runtime.md`
 - Server: `apps/server/src/**`
-- Contracts/RPC: `packages/contracts/src/rpc.ts`, `server.ts`
-- Client runtime: `packages/client-runtime/**`
+- Contracts/RPC: `packages/contracts/src/rpc.ts`, `server.ts`, `vcs.ts`, `git.ts`
+- Client runtime: `packages/client-runtime/**` (incl. `state/vcs*.ts`)
 - Desktop pool: `apps/desktop/src/backend/**`
+- Git/VCS: `apps/server/src/vcs/**`, `apps/server/src/git/**`, `apps/server/src/checkpointing/**`
 
 ---
 
