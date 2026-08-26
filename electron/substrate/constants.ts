@@ -25,3 +25,35 @@ export const SUBSTRATE_T3_PIN_SHA = "a3a8cbd60539b4af4de8f96c892dbd07a2b6c041";
 
 export const DEFAULT_ASSISTANT_RUNTIME_HTTP_ORIGIN = "http://127.0.0.1:3773";
 export const ASSISTANT_RUNTIME_READINESS_PATH = "/__cozea/ready";
+
+export type SubstrateFlagId =
+  | typeof SUBSTRATE_SHADOW_SERVER_FLAG
+  | typeof SUBSTRATE_RPC_CHAT_FLAG
+  | typeof SUBSTRATE_PROVIDERS_FLAG
+  | typeof SUBSTRATE_VCS_FLAG
+  | typeof SUBSTRATE_PRIMARY_FLAG
+  | typeof SUBSTRATE_OBS_NDJSON_FLAG;
+
+/** IPC channel prefixes that remain after Phase 5 shrink (allowlist). */
+export const PHASE5_IPC_ALLOWLIST_PREFIXES = [
+  "window:",
+  "app:",
+  "menu:",
+  "updater:",
+  "shell:",
+  "dialog:",
+  "nativeTheme:",
+  "workspaceCatalog:",
+  "workspace:",
+  "yjs:",
+  "devApps:",
+  "nativePreview:",
+  "preview:",
+  "collab:",
+  "syncJournal:",
+  "conflict:",
+  "substrateShadow:",
+  "substrate:",
+  "settings:",
+  "storage:",
+] as const;
