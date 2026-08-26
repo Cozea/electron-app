@@ -557,17 +557,24 @@ export function ProjectLayout({
   // Only block on project loading when we're actually on a project-specific
   // route. Routes like /projects/ (launch page) have no routeProjectId or
   // routeSlug, so project is always null there — don't block them.
-  if (!project && (routeProjectId || routeSlug)) {
-    // freshProject === undefined means Convex hasn't responded yet (still loading).
-    // freshProject === null means Convex responded: project not found / deleted.
-    // Distinguish so we don't spin forever on a deleted project.
-    const convexResolved = freshProject !== undefined;
-    const projectDefinitelyMissing = convexResolved && freshProject === null;
+  const projectRoutePending = !project && Boolean(routeProjectId || routeSlug);
+  // freshProject === undefined means Convex hasn't responded yet (still loading).
+  // freshProject === null means Convex responded: project not found / deleted.
+  const projectDefinitelyMissing =
+    projectRoutePending && freshProject !== undefined && freshProject === null;
 
+  // Navigate in an effect — never during render. Calling navigate while rendering
+  // races with brand-new imports (query can briefly miss) and bounces the user
+  // back to /projects so it looks like the project was only added to the sidebar.
+  useEffect(() => {
+    if (!projectDefinitelyMissing) {
+      return;
+    }
+    navigate("/projects", { replace: true });
+  }, [navigate, projectDefinitelyMissing]);
+
+  if (projectRoutePending) {
     if (projectDefinitelyMissing) {
-      // Project was deleted or is not accessible. Redirect to the launch page
-      // so the user isn't stuck on a dead URL.
-      navigate("/projects", { replace: true });
       return null;
     }
 
