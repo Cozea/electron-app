@@ -73,7 +73,8 @@ export function fixPath(
       platform === "darwin" && !shellPath
         ? (options.readLaunchctlPath ?? readPathFromLaunchctl)()
         : undefined;
-    const knownCliPath = resolveKnownPosixCliDirs(env, platform).join(platform === "win32" ? ";" : ":");
+    // This branch only runs for darwin/linux (posix PATH separator).
+    const knownCliPath = resolveKnownPosixCliDirs(env, platform).join(":");
     const hydratedPath = mergePathEntries(shellPath ?? launchctlPath, env.PATH, platform);
     const mergedPath = mergePathEntries(knownCliPath, hydratedPath, platform);
     if (mergedPath) {
