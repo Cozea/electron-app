@@ -206,6 +206,49 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
         },
       });
       const state = await instance.snapshot.run();
+      if (
+        instance.live &&
+        state.phase === "ready" &&
+        state.snapshot.availability === "available"
+      ) {
+        try {
+          const liveResult = await instance.live.sendTurn({ text: input.text });
+          obs.writeSpan({
+            name: "substrate.provider.live_turn",
+            attrs: {
+              driverKind: instance.driverKind,
+              instanceId: instance.instanceId,
+              status: liveResult.status,
+            },
+          });
+          const replyPreview =
+            liveResult.replyText.trim().length > 0
+              ? liveResult.replyText
+              : `[substrate-provider:${instance.driverKind}] status=${liveResult.status}`;
+          return {
+            turnId: liveResult.turnId,
+            text: input.text,
+            mode: "provider",
+            replyPreview,
+            createdAtMs: Date.now(),
+            providerId: instance.driverKind,
+          };
+        } catch (error) {
+          options.onLog?.(
+            `provider live turn failed; falling back to snapshot stub: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          obs.writeSpan({
+            name: "substrate.provider.live_turn_failed",
+            attrs: {
+              driverKind: instance.driverKind,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      }
+
       const turnId = randomUUID();
       const replyPreview = `[substrate-provider:${instance.driverKind}] phase=${state.phase} ${input.text}`;
       return {

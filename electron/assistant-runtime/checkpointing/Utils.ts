@@ -1,13 +1,14 @@
-import { Encoding } from "effect";
-import { CheckpointRef, ProjectId, type ThreadId } from "@cozea/assistant-contracts";
+import { type ProjectId } from "@cozea/assistant-contracts";
 
-export const CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
-
-export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number): CheckpointRef {
-  return CheckpointRef.makeUnsafe(
-    `${CHECKPOINT_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/turn/${turnCount}`,
-  );
-}
+export {
+  CHECKPOINT_REFS_PREFIX,
+  LEGACY_T3_CHECKPOINT_REFS_PREFIX,
+  checkpointRefForGroupId,
+  checkpointRefForThreadTurn,
+  isLegacyT3CheckpointRef,
+  migrateLegacyT3CheckpointRefs,
+  normalizeCheckpointRef,
+} from "../../substrate/vcs/checkpointRefs";
 
 export function resolveThreadWorkspaceCwd(input: {
   readonly thread: {

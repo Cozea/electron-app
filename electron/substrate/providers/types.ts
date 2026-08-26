@@ -113,6 +113,25 @@ export interface SubstrateManagedSnapshotHandle {
   readonly refresh: () => Promise<ManagedSnapshotState>;
 }
 
+export interface SubstrateLiveTurnInput {
+  readonly text: string;
+  readonly threadId?: string;
+  readonly cwd?: string;
+  readonly model?: string;
+}
+
+export interface SubstrateLiveTurnResult {
+  readonly turnId: string;
+  readonly replyText: string;
+  readonly status: "completed" | "failed" | "timeout";
+  readonly error?: string;
+}
+
+export interface SubstrateLiveTurnHandle {
+  readonly sendTurn: (input: SubstrateLiveTurnInput) => Promise<SubstrateLiveTurnResult>;
+  readonly dispose: () => Promise<void>;
+}
+
 export interface SubstrateProviderInstance {
   readonly instanceId: SubstrateInstanceId;
   readonly driverKind: SubstrateDriverKind;
@@ -120,6 +139,8 @@ export interface SubstrateProviderInstance {
   readonly enabled: boolean;
   readonly implementation: SubstrateDriverMetadata["implementation"];
   readonly snapshot: SubstrateManagedSnapshotHandle;
+  /** Optional live turn runtime (Codex app-server, etc.). */
+  readonly live?: SubstrateLiveTurnHandle;
   /** Tear down any per-instance resources. */
   readonly dispose: () => Promise<void>;
 }

@@ -18,6 +18,8 @@ import {
 import type {
   ManagedSnapshotState,
   SubstrateDriverCreateInput,
+  SubstrateLiveTurnInput,
+  SubstrateLiveTurnResult,
   SubstrateManagedSnapshotHandle,
   SubstrateProviderDriver,
   SubstrateProviderInstance,
@@ -25,6 +27,7 @@ import type {
   SubstrateProviderSkill,
   SubstrateProviderSlashCommand,
 } from "../types";
+import { createCodexLiveSession } from "./codexLiveSession";
 
 export interface CodexProbeResult {
   readonly installed: boolean;
@@ -49,6 +52,8 @@ export interface CodexDriverHooks {
   readonly deepProbe?: (
     config: Readonly<Record<string, unknown>>,
   ) => Promise<CodexDiscoverySnapshot | null>;
+  /** Optional live turn hook (tests). When unset, uses Codex app-server. */
+  readonly liveSendTurn?: (input: SubstrateLiveTurnInput) => Promise<SubstrateLiveTurnResult>;
 }
 
 interface CodexDiscoverySnapshot {
@@ -307,9 +312,8 @@ function createSnapshotHandle(
 }
 
 /**
- * Full substrate Codex ProviderDriver — managed snapshot lifecycle with CLI probe
- * and model inventory. Live app-server sessions remain on assistant-runtime until
- * primary cutover; substrate RPC uses snapshot state for routing metadata.
+ * Full substrate Codex ProviderDriver — managed snapshot lifecycle with CLI probe,
+ * model inventory, and live app-server turns for substrate RPC chat.
  */
 export function createCodexSubstrateDriver(
   hooks: CodexDriverHooks = defaultCodexDriverHooks,
@@ -334,6 +338,19 @@ export function createCodexSubstrateDriver(
         createManagedSnapshotState(pending),
         buildEnrichers(input.config, hooks),
       );
+      const live = createCodexLiveSession(
+        {
+          binaryPath: resolveBinaryPath(input.config),
+          cwd: resolveDeepProbeCwd(input.config),
+          ...(typeof input.config.homePath === "string" && input.config.homePath.trim().length > 0
+            ? { homePath: input.config.homePath.trim() }
+            : {}),
+          ...(typeof input.config.model === "string" && input.config.model.trim().length > 0
+            ? { model: input.config.model.trim() }
+            : {}),
+        },
+        hooks.liveSendTurn ? { sendTurn: hooks.liveSendTurn } : {},
+      );
 
       return {
         instanceId: input.instanceId,
@@ -342,7 +359,10 @@ export function createCodexSubstrateDriver(
         enabled: input.enabled,
         implementation: "full",
         snapshot: handle,
-        dispose: async () => undefined,
+        live,
+        dispose: async () => {
+          await live.dispose();
+        },
       };
     },
   };

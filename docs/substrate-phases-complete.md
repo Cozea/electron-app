@@ -25,10 +25,12 @@ Opt out with `COZEA_SUBSTRATE_*=0`.
 | **4a** Agent `vcs.*` | WS + `NativeApi.vcs`; agent git ops route through `GitVcsDriver` when VCS on |
 | **4b** One checkpoint owner | Forked `checkpoint-worker` **removed**; in-process ops via `inProcessCheckpointOps.ts` |
 | **4c** One status stream | `VcsStatusBroadcaster` replaces 10s poll; event-driven invalidation |
-| **4d** Collab overlay | All cwd-mutating `workspaceSync:git*` handlers invalidate status |
+| **4d** Collab overlay | All cwd-mutating `workspaceSync:git*` handlers invalidate status; collab push uses push-safety |
 | **4e** Worktree orphan | IPC `substrate:vcs:detectOrphanWorktree` + `pruneOrphanWorktree` wired on boot |
 
-GitCore remains the git execution layer behind `GitVcsDriver`. Orchestration `CheckpointStore` (`refs/t3/...`) and Changes (`refs/cozea/...`) ref namespaces are retained until explicit ref migration.
+Checkpoint refs are unified under `refs/cozea/checkpoints` (legacy `refs/t3/checkpoints` migrated lazily). Changes capture lives in `electron/substrate/vcs/checkpointOps.ts` (replaces `gitCheckpoints.ts`). Codex substrate driver exposes live app-server turns for RPC chat.
+
+GitCore remains the git execution layer behind `GitVcsDriver`.
 
 ## Observability
 
@@ -36,8 +38,5 @@ NDJSON + OTLP export (default `http://127.0.0.1:4318/v1/logs`). Disable collecto
 
 ## Remaining follow-ons
 
-- Unify checkpoint ref namespaces (`refs/t3` vs `refs/cozea`)
-- Route collab push through `GitVcsDriver.pushCurrentBranch` + push-safety
-- Codex live session runtime on substrate driver (beyond managed snapshot probe)
 - Remote environment stubs (SSH) — placeholders only
 - Bun vs pnpm/`vp` monorepo tooling

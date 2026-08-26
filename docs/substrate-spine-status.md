@@ -17,7 +17,4 @@ PR: **#90** on `cursor/substrate-phases-complete-a002`.
 
 ### Remaining follow-ons
 
-- Checkpoint ref namespace unification (`refs/t3` vs `refs/cozea`)
-- Collab push → `GitVcsDriver` push-safety
-- Codex live session on substrate driver
 - Remote env stubs (SSH)

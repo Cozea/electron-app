@@ -37,6 +37,7 @@ import {
   DEFAULT_REMOTE,
   isEmptyCherryPickError,
   isMissingRemoteBranchError,
+  isShallowUpdateRejected,
   normalizeGitBranch,
   normalizeGitRemote,
   normalizeGitRemoteUrl,
@@ -44,6 +45,8 @@ import {
   type RepoMetadata,
 } from './gitSyncShared'
 import { runGitCommand } from '../gitRuntime'
+import { isSubstrateVcsEnabled } from '../substrate/flags'
+import { pushWithSafety } from '../substrate/vcs/collabPush'
 
 interface GitCommandOptions {
   cwd: string
@@ -1267,6 +1270,92 @@ export class GitSyncService {
     keyId?: string
     debug?: boolean
   }): Promise<GitSyncPushResult> {
+    if (isSubstrateVcsEnabled()) {
+      const remote = normalizeGitRemote(options.remote)
+      const branch = normalizeGitBranch(options.branch)
+      const projectPath = path.resolve(options.projectPath)
+
+      const metadata = await this.getRepoMetadata(projectPath)
+      if (!metadata.isRepo) {
+        return {
+          success: false,
+          error: 'Project path is not a git repository',
+        }
+      }
+
+      if (options.repoUrl?.trim()) {
+        const remoteResult = await this.setRemoteUrl(projectPath, options.repoUrl)
+        if (!remoteResult.success) {
+          return {
+            success: false,
+            error: remoteResult.error,
+          }
+        }
+      }
+
+      const extraHeader = this.resolveExtraHeader(options)
+      const runner = {
+        runGit: async (
+          args: string[],
+          runOptions: { cwd: string; extraHeader?: string; timeoutMs?: number },
+        ) =>
+          this.runGit(args, {
+            cwd: runOptions.cwd,
+            extraHeader: runOptions.extraHeader,
+            timeoutMs: runOptions.timeoutMs,
+          }),
+        getCurrentBranch: (cwd: string) => this.getCurrentBranch(cwd),
+        getUpstreamRef: async (cwd: string) => {
+          const status = await this.getStatus({
+            projectPath: cwd,
+            remote,
+            branch,
+            debug: options.debug,
+          })
+          return status.upstreamBranch ?? null
+        },
+      }
+
+      let result = await pushWithSafety({
+        projectPath,
+        remote,
+        branch,
+        extraHeader,
+        runner,
+      })
+
+      if (!result.success && isShallowUpdateRejected(result.error ?? '')) {
+        this.debug(options.debug, 'push:shallow_rejected', {
+          projectPath,
+          remote,
+          branch,
+        })
+        const adopt = await this.adoptWorkspace({
+          projectPath,
+          branch,
+          repoUrl: options.repoUrl,
+          debug: options.debug,
+        })
+        if (adopt.success) {
+          result = await pushWithSafety({
+            projectPath,
+            remote,
+            branch,
+            extraHeader,
+            runner,
+          })
+        }
+      }
+
+      if (result.success) {
+        return {
+          ...result,
+          headCommit: (await this.getRevision(projectPath, 'HEAD')) ?? undefined,
+        }
+      }
+      return result
+    }
+
     return runPushMainWorkflow(options, {
       debug: this.debug.bind(this),
       getRepoMetadata: this.getRepoMetadata.bind(this),
