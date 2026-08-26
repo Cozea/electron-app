@@ -17,6 +17,9 @@ import {
   WorkbenchDockTab,
   WorkbenchDockWatermark,
 } from "@/features/projects/components/workbench/WorkbenchDockPanels"
+import {
+  resolveTabGroupPreset,
+} from "@/features/projects/lib/workbenchDockview"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import {
   selectProjectWorkbench,
@@ -45,24 +48,6 @@ function buildCozeaDockviewTheme(
     // Tighter inter-tile gap than the Spaced theme default (10px) so adjacent
     // tiles sit closer while still reading as separate cards.
     gap: 6,
-  }
-}
-
-function resolveTabGroupPreset(component: string): {
-  label: string
-  color: string
-} {
-  switch (component) {
-    case "assistantChat":
-      return { label: "Agent", color: "agent" }
-    case "browser":
-    case "devServer":
-    case "mobileSimulator":
-      return { label: "Preview", color: "preview" }
-    case "terminal":
-      return { label: "Runtime", color: "runtime" }
-    default:
-      return { label: "Utility", color: "utility" }
   }
 }
 
@@ -264,6 +249,9 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         tabGroupAccent="palette"
         theme={dockviewTheme}
         floatingGroupBounds="boundedWithinViewport"
+        // Basic OSS overflow list (not enterprise search/MRU). Explicit so a
+        // future theme/option churn cannot silently disable it.
+        disableTabsOverflowList={false}
         hideBorders
         noPanelsOverlay="watermark"
         singleTabMode="default"
