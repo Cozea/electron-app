@@ -14,7 +14,8 @@ describe('Cozea local chat runtime wiring', () => {
     const bootSource = readRepoFile('electron/assistant-runtime/boot.ts')
 
     expect(bootSource).toContain('Layer.provideMerge(CliConfig.layer)')
-    expect(bootSource).toContain('makeServerRuntimeProgram(input)')
+    // makeServerProgram is the wrapper that scopes makeServerRuntimeProgram.
+    expect(bootSource).toContain('makeServerProgram(input)')
     expect(bootSource).toContain('Effect.provide(RuntimeLayer)')
   })
 
