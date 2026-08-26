@@ -1,8 +1,8 @@
 /**
  * Effect wiring: adapt assistant-runtime `GitCore` into substrate `GitVcsDriver`.
  *
- * GitCore is **not** deleted — this is the Phase 4a adapter path behind
- * `cozea.substrate.vcs`. Full WS/RPC cutover lands in later 4a work.
+ * Agent WS `vcs.*` routes through this adapter; GitCore remains the implementation
+ * layer until Phase 4b checkpoint consolidation deletes the duplicate stack.
  */
 
 import { Effect } from "effect";
@@ -72,7 +72,7 @@ function createGitCorePort(git: GitCoreShape): GitCorePort {
 
 /**
  * Build a `GitVcsDriver` from the live Effect `GitCore` service.
- * Returns null when the Phase 4 flag is off.
+ * Returns null when the Phase 4 flag is explicitly disabled.
  */
 export function createGitVcsDriverFromGitCore(
   git: GitCoreShape,

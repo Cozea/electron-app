@@ -43,8 +43,8 @@ export interface SubstrateShadowServerFlags {
 }
 
 /**
- * Phase 1 flag — default **off**.
- * Enable with `COZEA_SUBSTRATE_SHADOW_SERVER=1`.
+ * Phase 1 flag — default **on**.
+ * Disable with `COZEA_SUBSTRATE_SHADOW_SERVER=0`.
  * Optional: `COZEA_SUBSTRATE_SHADOW_HOST`, `COZEA_SUBSTRATE_SHADOW_PORT`.
  */
 export function readSubstrateShadowServerFlags(
@@ -52,7 +52,7 @@ export function readSubstrateShadowServerFlags(
 ): SubstrateShadowServerFlags {
   return {
     flagId: SUBSTRATE_SHADOW_SERVER_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_SHADOW_SERVER, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_SHADOW_SERVER, true),
     host: env.COZEA_SUBSTRATE_SHADOW_HOST?.trim() || DEFAULT_SUBSTRATE_SHADOW_HOST,
     port: parsePort(env.COZEA_SUBSTRATE_SHADOW_PORT, DEFAULT_SUBSTRATE_SHADOW_PORT),
   };
@@ -65,16 +65,16 @@ export interface SubstrateRpcChatFlags {
 }
 
 /**
- * Phase 2 flag — default **off**.
- * Enable with `COZEA_SUBSTRATE_RPC_CHAT=1`.
- * Requires `COZEA_SUBSTRATE_SHADOW_SERVER=1` for the workbench path.
+ * Phase 2 flag — default **on**.
+ * Disable with `COZEA_SUBSTRATE_RPC_CHAT=0`.
+ * Requires shadow server for the workbench path.
  */
 export function readSubstrateRpcChatFlags(
   env: NodeJS.ProcessEnv = process.env,
 ): SubstrateRpcChatFlags {
   return {
     flagId: SUBSTRATE_RPC_CHAT_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_RPC_CHAT, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_RPC_CHAT, true),
   };
 }
 
@@ -89,15 +89,15 @@ export interface SubstrateProvidersFlags {
 }
 
 /**
- * Phase 3 flag — default **off**.
- * Enable with `COZEA_SUBSTRATE_PROVIDERS=1`.
+ * Phase 3 flag — default **on**.
+ * Disable with `COZEA_SUBSTRATE_PROVIDERS=0`.
  */
 export function readSubstrateProvidersFlags(
   env: NodeJS.ProcessEnv = process.env,
 ): SubstrateProvidersFlags {
   return {
     flagId: SUBSTRATE_PROVIDERS_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PROVIDERS, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PROVIDERS, true),
   };
 }
 
@@ -111,13 +111,13 @@ export interface SubstrateVcsFlags {
 }
 
 /**
- * Phase 4 flag — default **off**.
- * Enable with `COZEA_SUBSTRATE_VCS=1`.
+ * Phase 4 flag — default **on**.
+ * Disable with `COZEA_SUBSTRATE_VCS=0`.
  */
 export function readSubstrateVcsFlags(env: NodeJS.ProcessEnv = process.env): SubstrateVcsFlags {
   return {
     flagId: SUBSTRATE_VCS_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_VCS, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_VCS, true),
   };
 }
 
@@ -136,15 +136,15 @@ export interface SubstratePrimaryFlags {
 }
 
 /**
- * Phase 5 flag — default **off**.
- * Enable with `COZEA_SUBSTRATE_PRIMARY=1`.
+ * Phase 5 flag — default **on**.
+ * Disable with `COZEA_SUBSTRATE_PRIMARY=0`.
  */
 export function readSubstratePrimaryFlags(
   env: NodeJS.ProcessEnv = process.env,
 ): SubstratePrimaryFlags {
   return {
     flagId: SUBSTRATE_PRIMARY_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PRIMARY, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PRIMARY, true),
   };
 }
 
@@ -154,15 +154,15 @@ export interface SubstrateObsNdjsonFlags {
 }
 
 /**
- * Phase 6 / Track E flag — default **off**.
- * Enable with `COZEA_OBS_NDJSON=1` or `COZEA_SUBSTRATE_OBS_NDJSON=1`.
+ * Phase 6 / Track E flag — default **on**.
+ * Disable with `COZEA_OBS_NDJSON=0` or `COZEA_SUBSTRATE_OBS_NDJSON=0`.
  */
 export function readSubstrateObsNdjsonFlags(
   env: NodeJS.ProcessEnv = process.env,
 ): SubstrateObsNdjsonFlags {
   return {
     flagId: SUBSTRATE_OBS_NDJSON_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_OBS_NDJSON ?? env.COZEA_OBS_NDJSON, false),
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_OBS_NDJSON ?? env.COZEA_OBS_NDJSON, true),
   };
 }
 
@@ -176,7 +176,7 @@ export interface SubstrateFeatureFlags {
 }
 
 /**
- * Full substrate flag bundle (Phases 1–6). All default **off**.
+ * Full substrate flag bundle (Phases 1–6). All default **on**.
  */
 export function readSubstrateFeatureFlags(
   env: NodeJS.ProcessEnv = process.env,

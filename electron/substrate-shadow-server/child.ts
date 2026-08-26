@@ -14,7 +14,7 @@ import {
   SUBSTRATE_SHADOW_READY_PATH,
   SUBSTRATE_T3_PIN_SHA,
 } from "../substrate/constants";
-import { parseBooleanFlag } from "../substrate/flags";
+import { readSubstrateFeatureFlags } from "../substrate/flags";
 import { getSharedSubstrateNdjsonWriter } from "../substrate/obs";
 import { createShadowHttpServer } from "./createShadowHttpServer";
 
@@ -50,9 +50,10 @@ function appendLog(line: string): void {
   }
 }
 
-const rpcChatEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_RPC_CHAT, false);
-const providersEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_PROVIDERS, false);
-const primaryEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_PRIMARY, false);
+const substrateFlags = readSubstrateFeatureFlags();
+const rpcChatEnabled = substrateFlags.rpcChat;
+const providersEnabled = substrateFlags.providers;
+const primaryEnabled = substrateFlags.primary;
 
 const obs = getSharedSubstrateNdjsonWriter();
 obs.writeSpan({

@@ -19,9 +19,16 @@ describe("substrate NDJSON obs (phase 6)", () => {
     }
   });
 
-  it("defaults off", () => {
-    expect(readSubstrateObsNdjsonFlags({}).enabled).toBe(false);
+  it("defaults on", () => {
+    expect(readSubstrateObsNdjsonFlags({}).enabled).toBe(true);
     const writer = createSubstrateNdjsonWriter({ env: {} });
+    expect(writer.enabled).toBe(true);
+    expect(writer.filePath).not.toBeNull();
+    writer.dispose();
+  });
+
+  it("can opt out", () => {
+    const writer = createSubstrateNdjsonWriter({ env: { COZEA_OBS_NDJSON: "0" } });
     expect(writer.enabled).toBe(false);
     expect(writer.filePath).toBeNull();
     writer.writeSpan({ name: "should.not.write" });

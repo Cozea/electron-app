@@ -5,9 +5,27 @@ import {
   shouldStartInProcessAssistantRuntime,
 } from "../../electron/substrate/flags";
 
-describe("default boot (flags off)", () => {
-  it("keeps all substrate spine flags disabled with empty env", () => {
+describe("default boot (flags on)", () => {
+  it("enables all substrate spine flags with empty env", () => {
     const flags = readSubstrateFeatureFlags({});
+    expect(flags.shadowServer.enabled).toBe(true);
+    expect(flags.rpcChat).toBe(true);
+    expect(flags.providers).toBe(true);
+    expect(flags.vcs).toBe(true);
+    expect(flags.primary).toBe(true);
+    expect(flags.obsNdjson).toBe(true);
+    expect(shouldStartInProcessAssistantRuntime(flags)).toBe(false);
+  });
+
+  it("allows opt-out via explicit env overrides", () => {
+    const flags = readSubstrateFeatureFlags({
+      COZEA_SUBSTRATE_SHADOW_SERVER: "0",
+      COZEA_SUBSTRATE_RPC_CHAT: "0",
+      COZEA_SUBSTRATE_PROVIDERS: "0",
+      COZEA_SUBSTRATE_VCS: "0",
+      COZEA_SUBSTRATE_PRIMARY: "0",
+      COZEA_OBS_NDJSON: "0",
+    });
     expect(flags.shadowServer.enabled).toBe(false);
     expect(flags.rpcChat).toBe(false);
     expect(flags.providers).toBe(false);

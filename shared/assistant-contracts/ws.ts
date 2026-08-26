@@ -54,7 +54,7 @@ export const WS_METHODS = {
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
-  // Git methods
+  // Git methods (deprecated — prefer vcs.*)
   gitPull: "git.pull",
   gitStatus: "git.status",
   gitRunStackedAction: "git.runStackedAction",
@@ -66,6 +66,19 @@ export const WS_METHODS = {
   gitInit: "git.init",
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
+
+  // VCS methods (Phase 4 agent cutover — prefer over git.*)
+  vcsPull: "vcs.pull",
+  vcsStatus: "vcs.status",
+  vcsRunStackedAction: "vcs.runStackedAction",
+  vcsListBranches: "vcs.listBranches",
+  vcsCreateWorktree: "vcs.createWorktree",
+  vcsRemoveWorktree: "vcs.removeWorktree",
+  vcsCreateBranch: "vcs.createBranch",
+  vcsCheckout: "vcs.checkout",
+  vcsInit: "vcs.init",
+  vcsResolvePullRequest: "vcs.resolvePullRequest",
+  vcsPreparePullRequestThread: "vcs.preparePullRequestThread",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -87,6 +100,7 @@ export const WS_METHODS = {
 
 export const WS_CHANNELS = {
   gitActionProgress: "git.actionProgress",
+  vcsActionProgress: "vcs.actionProgress",
   terminalEvent: "terminal.event",
   serverWelcome: "server.welcome",
   serverConfigUpdated: "server.configUpdated",
@@ -123,7 +137,7 @@ const WebSocketRequestBody = Schema.Union([
   // Shell methods
   tagRequestBody(WS_METHODS.shellOpenInEditor, OpenInEditorInput),
 
-  // Git methods
+  // Git methods (deprecated aliases)
   tagRequestBody(WS_METHODS.gitPull, GitPullInput),
   tagRequestBody(WS_METHODS.gitStatus, GitStatusInput),
   tagRequestBody(WS_METHODS.gitRunStackedAction, GitRunStackedActionInput),
@@ -135,6 +149,19 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.gitInit, GitInitInput),
   tagRequestBody(WS_METHODS.gitResolvePullRequest, GitPullRequestRefInput),
   tagRequestBody(WS_METHODS.gitPreparePullRequestThread, GitPreparePullRequestThreadInput),
+
+  // VCS methods (Phase 4 agent cutover)
+  tagRequestBody(WS_METHODS.vcsPull, GitPullInput),
+  tagRequestBody(WS_METHODS.vcsStatus, GitStatusInput),
+  tagRequestBody(WS_METHODS.vcsRunStackedAction, GitRunStackedActionInput),
+  tagRequestBody(WS_METHODS.vcsListBranches, GitListBranchesInput),
+  tagRequestBody(WS_METHODS.vcsCreateWorktree, GitCreateWorktreeInput),
+  tagRequestBody(WS_METHODS.vcsRemoveWorktree, GitRemoveWorktreeInput),
+  tagRequestBody(WS_METHODS.vcsCreateBranch, GitCreateBranchInput),
+  tagRequestBody(WS_METHODS.vcsCheckout, GitCheckoutInput),
+  tagRequestBody(WS_METHODS.vcsInit, GitInitInput),
+  tagRequestBody(WS_METHODS.vcsResolvePullRequest, GitPullRequestRefInput),
+  tagRequestBody(WS_METHODS.vcsPreparePullRequestThread, GitPreparePullRequestThreadInput),
 
   // Terminal methods
   tagRequestBody(WS_METHODS.terminalOpen, TerminalOpenInput),
@@ -185,6 +212,7 @@ export interface WsPushPayloadByChannel {
   readonly [WS_CHANNELS.serverConfigUpdated]: typeof ServerConfigUpdatedPayload.Type;
   readonly [WS_CHANNELS.serverProvidersUpdated]: typeof ServerProviderUpdatedPayload.Type;
   readonly [WS_CHANNELS.gitActionProgress]: typeof GitActionProgressEvent.Type;
+  readonly [WS_CHANNELS.vcsActionProgress]: typeof GitActionProgressEvent.Type;
   readonly [WS_CHANNELS.terminalEvent]: typeof TerminalEvent.Type;
   readonly [ORCHESTRATION_WS_CHANNELS.domainEvent]: OrchestrationEvent;
 }
@@ -216,6 +244,10 @@ export const WsPushGitActionProgress = makeWsPushSchema(
   WS_CHANNELS.gitActionProgress,
   GitActionProgressEvent,
 );
+export const WsPushVcsActionProgress = makeWsPushSchema(
+  WS_CHANNELS.vcsActionProgress,
+  GitActionProgressEvent,
+);
 export const WsPushTerminalEvent = makeWsPushSchema(WS_CHANNELS.terminalEvent, TerminalEvent);
 export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   ORCHESTRATION_WS_CHANNELS.domainEvent,
@@ -224,6 +256,7 @@ export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
 
 export const WsPushChannelSchema = Schema.Literals([
   WS_CHANNELS.gitActionProgress,
+  WS_CHANNELS.vcsActionProgress,
   WS_CHANNELS.serverWelcome,
   WS_CHANNELS.serverConfigUpdated,
   WS_CHANNELS.serverProvidersUpdated,
@@ -237,6 +270,7 @@ export const WsPush = Schema.Union([
   WsPushServerConfigUpdated,
   WsPushServerProvidersUpdated,
   WsPushGitActionProgress,
+  WsPushVcsActionProgress,
   WsPushTerminalEvent,
   WsPushOrchestrationDomainEvent,
 ]);

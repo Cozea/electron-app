@@ -2,7 +2,7 @@
  * Phase 6 / Track E — small NDJSON span writer for substrate spine events.
  *
  * Gated by `cozea.obs.ndjson` (`COZEA_OBS_NDJSON` / `COZEA_SUBSTRATE_OBS_NDJSON`).
- * Default off; failures never throw into product paths.
+ * Default on; OTLP export uses `COZEA_OTLP_ENDPOINT` or http://127.0.0.1:4318/v1/logs.
  */
 
 import fs from "node:fs";
@@ -137,6 +137,18 @@ export function createSubstrateNdjsonWriter(
       }
     },
   };
+}
+
+/** Export a span to OTLP without requiring the NDJSON file writer. */
+export function writeSubstrateObsSpan(
+  span: SubstrateNdjsonSpan,
+  options: CreateSubstrateNdjsonWriterOptions = {},
+): void {
+  const env = options.env ?? process.env;
+  getSharedSubstrateNdjsonWriter(options).writeSpan(span);
+  if (!readSubstrateObsNdjsonFlags(env).enabled && isOtlpEnabled(env)) {
+    void exportSubstrateSpanToOtlp(span, env);
+  }
 }
 
 let sharedWriter: SubstrateNdjsonWriter | null = null;
