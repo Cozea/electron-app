@@ -2,7 +2,7 @@ import type {
   AddPanelOptions,
   DockviewApi,
   IDockviewPanel,
-} from "dockview"
+} from "dockview-react"
 
 import type {
   WorkbenchProjectState,

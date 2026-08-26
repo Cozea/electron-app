@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import type { DockviewPanelApi } from "dockview"
+import type { DockviewPanelApi } from "dockview-react"
 
 export interface WorkbenchPanelActivityState {
   mode: "visible" | "hidden"
