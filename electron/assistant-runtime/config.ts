@@ -25,6 +25,8 @@ export interface ServerDerivedPaths {
   readonly attachmentsDir: string;
   readonly logsDir: string;
   readonly serverLogPath: string;
+  /** NDJSON span traces when `cozea.obs.ndjson` is enabled. */
+  readonly serverTracePath: string;
   readonly providerLogsDir: string;
   readonly providerEventLogPath: string;
   readonly terminalLogsDir: string;
@@ -68,6 +70,7 @@ export const deriveServerPaths = Effect.fn(function* (
     attachmentsDir,
     logsDir,
     serverLogPath: join(logsDir, "server.log"),
+    serverTracePath: join(logsDir, "server.trace.ndjson"),
     providerLogsDir,
     providerEventLogPath: join(providerLogsDir, "events.log"),
     terminalLogsDir: join(logsDir, "terminals"),

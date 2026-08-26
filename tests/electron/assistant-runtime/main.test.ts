@@ -16,6 +16,7 @@ import { ServerConfig, type ServerConfigShape } from "../../../electron/assistan
 import { Open, type OpenShape } from "../../../electron/assistant-runtime/open";
 import { ProjectionSnapshotQuery } from "../../../electron/assistant-runtime/orchestration/Services/ProjectionSnapshotQuery";
 import { AnalyticsService } from "../../../electron/assistant-runtime/telemetry/Services/AnalyticsService";
+import { ObservabilityService } from "../../../electron/assistant-runtime/observability/Services/Observability";
 import { Server, type ServerShape } from "../../../electron/assistant-runtime/wsServer";
 import { ServerSettingsService } from "../../../electron/assistant-runtime/serverSettings";
 
@@ -55,6 +56,7 @@ const testLayer = Layer.mergeAll(
   } satisfies OpenShape),
   ServerSettingsService.layerTest(),
   AnalyticsService.layerTest,
+  ObservabilityService.layerTest,
   FetchHttpClient.layer,
   NodeServices.layer,
 );

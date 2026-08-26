@@ -20,6 +20,7 @@ import { GitCore } from "../Services/GitCore.ts";
 import { GitHubCli } from "../Services/GitHubCli.ts";
 import { TextGeneration } from "../Services/TextGeneration.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { ObservabilityService } from "../../observability/Services/Observability.ts";
 
 const COMMIT_TIMEOUT_MS = 10 * 60_000;
 const MAX_PROGRESS_TEXT_LENGTH = 500;
@@ -360,6 +361,7 @@ export const makeGitManager = Effect.gen(function* () {
   const gitHubCli = yield* GitHubCli;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const observability = yield* ObservabilityService;
 
   const createProgressEmitter = (
     input: { cwd: string; action: "commit" | "commit_push" | "commit_push_pr" },
@@ -925,28 +927,36 @@ export const makeGitManager = Effect.gen(function* () {
     });
 
   const status: GitManagerShape["status"] = Effect.fnUntraced(function* (input) {
-    const details = yield* gitCore.statusDetails(input.cwd);
+    return yield* observability.withSpan(
+      "git.status",
+      {
+        cwd: input.cwd,
+      },
+      Effect.gen(function* () {
+        const details = yield* gitCore.statusDetails(input.cwd);
 
-    const pr =
-      details.branch !== null
-        ? yield* findLatestPr(input.cwd, {
-            branch: details.branch,
-            upstreamRef: details.upstreamRef,
-          }).pipe(
-            Effect.map((latest) => (latest ? toStatusPr(latest) : null)),
-            Effect.catch(() => Effect.succeed(null)),
-          )
-        : null;
+        const pr =
+          details.branch !== null
+            ? yield* findLatestPr(input.cwd, {
+                branch: details.branch,
+                upstreamRef: details.upstreamRef,
+              }).pipe(
+                Effect.map((latest) => (latest ? toStatusPr(latest) : null)),
+                Effect.catch(() => Effect.succeed(null)),
+              )
+            : null;
 
-    return {
-      branch: details.branch,
-      hasWorkingTreeChanges: details.hasWorkingTreeChanges,
-      workingTree: details.workingTree,
-      hasUpstream: details.hasUpstream,
-      aheadCount: details.aheadCount,
-      behindCount: details.behindCount,
-      pr,
-    };
+        return {
+          branch: details.branch,
+          hasWorkingTreeChanges: details.hasWorkingTreeChanges,
+          workingTree: details.workingTree,
+          hasUpstream: details.hasUpstream,
+          aheadCount: details.aheadCount,
+          behindCount: details.behindCount,
+          pr,
+        };
+      }),
+    );
   });
 
   const resolvePullRequest: GitManagerShape["resolvePullRequest"] = Effect.fnUntraced(

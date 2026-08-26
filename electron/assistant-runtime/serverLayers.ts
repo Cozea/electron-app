@@ -39,6 +39,7 @@ import { GitHubCliLive } from "./git/Layers/GitHubCli";
 import { RoutingTextGenerationLive } from "./git/Layers/RoutingTextGeneration";
 import { PtyAdapter } from "./terminal/Services/PTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
+import { ObservabilityService } from "./observability/Services/Observability";
 
 type RuntimePtyAdapterLoader = {
   layer: Layer.Layer<PtyAdapter, never, FileSystem.FileSystem | Path.Path>;
@@ -65,6 +66,7 @@ export function makeServerProviderLayer(): Layer.Layer<
   | ServerSettingsService
   | ChildProcessSpawner.ChildProcessSpawner
   | AnalyticsService
+  | ObservabilityService
 > {
   return Effect.gen(function* () {
     const { providerEventLogPath } = yield* ServerConfig;
@@ -97,7 +99,7 @@ export function makeServerProviderLayer(): Layer.Layer<
     ) as Layer.Layer<
       ProviderService,
       never,
-      ProviderAdapterRegistry | ProviderSessionDirectory | ServerSettingsService | AnalyticsService
+      ProviderAdapterRegistry | ProviderSessionDirectory | ServerSettingsService | AnalyticsService | ObservabilityService
     >;
     const providerServiceLayer = providerServiceBaseLayer.pipe(
       Layer.provide(adapterRegistryLayer),

@@ -31,6 +31,7 @@ import {
   ProviderService,
   type ProviderServiceShape,
 } from "../../../../../electron/assistant-runtime/provider/Services/ProviderService.ts";
+import { ObservabilityService } from "../../../../../electron/assistant-runtime/observability/Services/Observability.ts";
 import { OrchestrationEngineLive } from "../../../../../electron/assistant-runtime/orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../../../../../electron/assistant-runtime/orchestration/Layers/ProjectionPipeline.ts";
 import { ProviderRuntimeIngestionLive } from "../../../../../electron/assistant-runtime/orchestration/Layers/ProviderRuntimeIngestion.ts";
@@ -177,6 +178,7 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
+      Layer.provideMerge(ObservabilityService.layerTest),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(NodeServices.layer),
     );
