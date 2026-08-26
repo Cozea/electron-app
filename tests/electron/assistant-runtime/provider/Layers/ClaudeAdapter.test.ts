@@ -1289,6 +1289,58 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("keeps informational Claude system subtypes out of the runtime warning stream", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 4).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+      });
+
+      harness.query.emit({
+        type: "system",
+        subtype: "thinking_tokens",
+        estimated_tokens: 512,
+        estimated_tokens_delta: 64,
+        uuid: "thinking-tokens-1",
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "permission_denied",
+        tool_name: "Bash",
+        tool_use_id: "toolu_denied_1",
+        message: "Permission to run Bash was denied by a project rule.",
+        uuid: "permission-denied-1",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      assert.deepEqual(
+        runtimeEvents.map((event) => event.type),
+        ["session.started", "session.configured", "session.state.changed", "runtime.warning"],
+      );
+
+      const warning = runtimeEvents[3];
+      if (warning?.type === "runtime.warning") {
+        assert.equal(
+          warning.payload.message,
+          "Permission to run Bash was denied by a project rule.",
+        );
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("emits thread token usage updates from Claude task progress", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
