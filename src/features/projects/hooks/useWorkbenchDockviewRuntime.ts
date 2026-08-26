@@ -11,7 +11,7 @@ import type {
   DockviewApi,
   DockviewReadyEvent,
   SerializedDockview,
-} from "dockview";
+} from "dockview-react";
 
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectWorkbenchStore";
 import {
@@ -733,7 +733,7 @@ export function useWorkbenchDockviewRuntime(
         }
       });
 
-      event.api.onUnhandledDragOverEvent((dragEvent) => {
+      event.api.onUnhandledDragOver((dragEvent) => {
         const dataTransfer = readNativeDataTransfer(dragEvent.nativeEvent);
         if (
           !dataTransfer?.types.includes("Files") &&
@@ -821,12 +821,12 @@ export function useWorkbenchDockviewRuntime(
         window.removeEventListener("keydown", handleWorkbenchKeyDown);
       };
 
-      event.api.onDidActivePanelChange((activePanel) => {
+      event.api.onDidActivePanelChange((activePanelEvent) => {
         if (!input.projectId) {
           return;
         }
 
-        const activeId = activePanel?.id ?? null;
+        const activeId = activePanelEvent.panel?.id ?? null;
         if (activeId && selectionPreviewTilesRef.current[activeId]) {
           return;
         }

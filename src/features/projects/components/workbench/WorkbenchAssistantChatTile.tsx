@@ -1,4 +1,4 @@
-import type { DockviewApi, DockviewPanelApi } from "dockview"
+import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { CozeaChatSurface } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
 import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog"
