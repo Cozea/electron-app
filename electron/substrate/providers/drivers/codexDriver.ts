@@ -84,7 +84,7 @@ function shouldRunDeepProbe(
   if (config.deepProbe === true) {
     return true;
   }
-  return parseBooleanFlag(env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE, false);
+  return parseBooleanFlag(env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE, true);
 }
 
 function resolveDeepProbeCwd(config: Readonly<Record<string, unknown>>): string {

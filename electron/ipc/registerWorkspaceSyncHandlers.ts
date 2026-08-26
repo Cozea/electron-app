@@ -311,7 +311,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return gitSyncService.ensureRepo({ ...options, projectPath })
+      try {
+        return await gitSyncService.ensureRepo({ ...options, projectPath })
+      } finally {
+        invalidateAfterCollabMutation(projectPath)
+      }
     }
   )
 
@@ -338,7 +342,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return gitSyncService.cloneIfMissing({ ...options, projectPath })
+      try {
+        return await gitSyncService.cloneIfMissing({ ...options, projectPath })
+      } finally {
+        invalidateAfterCollabMutation(projectPath)
+      }
     }
   )
 
@@ -365,7 +373,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return gitSyncService.fetchMain({ ...options, projectPath })
+      try {
+        return await gitSyncService.fetchMain({ ...options, projectPath })
+      } finally {
+        invalidateAfterCollabMutation(projectPath)
+      }
     }
   )
 
@@ -501,7 +513,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return gitSyncService.salvageReclone({ ...options, projectPath })
+      try {
+        return await gitSyncService.salvageReclone({ ...options, projectPath })
+      } finally {
+        invalidateAfterCollabMutation(projectPath)
+      }
     }
   )
 
@@ -542,7 +558,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return gitSyncService.resolveConflictFile({ ...options, projectPath })
+      try {
+        return await gitSyncService.resolveConflictFile({ ...options, projectPath })
+      } finally {
+        invalidateAfterCollabMutation(projectPath)
+      }
     }
   )
 
@@ -651,7 +671,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return gitSyncService.pushMain({ ...options, projectPath })
+      try {
+        return await gitSyncService.pushMain({ ...options, projectPath })
+      } finally {
+        invalidateAfterCollabMutation(projectPath)
+      }
     }
   )
 

@@ -166,4 +166,18 @@ export interface VcsDriver {
   readonly checkpoints?: VcsCheckpointOps;
 
   readonly removeWorktree?: (input: VcsRemoveWorktreeInput) => Promise<void>;
+
+  /** Pull current branch (local-first). */
+  readonly pullCurrentBranch?: (cwd: string) => Promise<{ readonly status: string; readonly branch?: string }>;
+
+  /** List branches in repo. */
+  readonly listBranches?: (input: {
+    readonly cwd: string;
+    readonly includeRemote?: boolean;
+  }) => Promise<unknown>;
+
+  readonly createWorktree?: (input: unknown) => Promise<unknown>;
+  readonly createBranch?: (input: unknown) => Promise<unknown>;
+  readonly checkoutBranch?: (input: unknown) => Promise<unknown>;
+  readonly initRepo?: (input: unknown) => Promise<unknown>;
 }

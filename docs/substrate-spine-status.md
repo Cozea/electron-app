@@ -1,24 +1,23 @@
 # Substrate spine status (Phases 0–7)
 
-Last updated: 2026-08-26 (completion branch — **DONE**)
+Last updated: 2026-08-26 — **consolidation complete**
 
-| Phase | Status | Branch / PR | Notes |
-| --- | --- | --- | --- |
-| 0 Inventories | Done (docs) | #74 / #78 | IPC/store/gap inventories + pin |
-| 1 Shadow server | **Done** | #85 / this branch | Default-on spawn on :4783; obs start/ready spans |
-| 2 RPC chat | **Done** | #89 / this branch | `/rpc` + assistant WS bridge (`assistantWsBridge.ts`) |
-| 3 Providers | **Done** | #88 / this branch | Codex CLI + optional deep probe; RPC provider routing |
-| 4 VCS 4a–4e | **Done** | #87 / this branch | Agent `vcs.*` WS + GitVcsDriver; collab invalidate wired |
-| 5 Shrink main | **Done** | this branch | Primary shadow runs assistant runtime; workbench RPC transport |
-| 6 Obs / remote | **Done** | this branch | NDJSON + OTLP export (default collector URL) |
-| 7 Monorepo | **Done** | this branch | `@cozea/substrate-*` re-exports; `apps/desktop/README.md` |
-
-All substrate flags default **on**. Opt out with `COZEA_SUBSTRATE_*=0` — see `docs/substrate-phases-complete.md`.
+| Phase | Status | Notes |
+| --- | --- | --- |
+| 0 Inventories | Done | IPC/store/gap inventories + pin |
+| 1 Shadow server | Done | Default-on on :4783 |
+| 2 RPC chat | Done | `/rpc` + assistant WS bridge |
+| 3 Providers | Done | OpenCode full + Codex deep probe default-on |
+| 4 VCS 4a–4e | **Done** | In-process checkpoints, status stream, vcs.* agent path |
+| 5 Shrink main | Done | Primary shadow runs assistant runtime |
+| 6 Obs | Done | NDJSON + OTLP |
+| 7 Monorepo | Done | `@cozea/substrate-*` re-exports |
 
 PR: **#90** on `cursor/substrate-phases-complete-a002`.
 
-### Remaining follow-ons (not blocking spine)
+### Remaining follow-ons
 
-- `VcsStatusBroadcaster.streamStatus` (replace GitChangesBroadcaster poll)
-- Checkpoint stack consolidation / delete `gitCheckpoints` worker (4b)
-- Bun vs pnpm/`vp` monorepo tooling decision
+- Checkpoint ref namespace unification (`refs/t3` vs `refs/cozea`)
+- Collab push → `GitVcsDriver` push-safety
+- Codex live session on substrate driver
+- Remote env stubs (SSH)

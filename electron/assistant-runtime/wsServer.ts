@@ -830,6 +830,15 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.vcsPull:
       case WS_METHODS.gitPull: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.pullCurrentBranch) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.pullCurrentBranch!(body.cwd),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         const result = yield* git.pullCurrentBranch(body.cwd);
         invalidateVcsStatus(body.cwd, "remote");
         return result;
@@ -868,12 +877,30 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.vcsListBranches:
       case WS_METHODS.gitListBranches: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.listBranches) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.listBranches!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         return yield* git.listBranches(body);
       }
 
       case WS_METHODS.vcsCreateWorktree:
       case WS_METHODS.gitCreateWorktree: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.createWorktree) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.createWorktree!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         const result = yield* git.createWorktree(body);
         invalidateVcsStatus(body.cwd);
         return result;
@@ -882,7 +909,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.vcsRemoveWorktree:
       case WS_METHODS.gitRemoveWorktree: {
         const body = stripRequestTag(request.body);
-        if (request.body._tag === WS_METHODS.vcsRemoveWorktree && vcsDriver?.removeWorktree) {
+        if (vcsDriver?.removeWorktree) {
           yield* Effect.tryPromise({
             try: () =>
               vcsDriver.removeWorktree!({
@@ -895,7 +922,6 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
                 message: cause instanceof Error ? cause.message : String(cause),
               }),
           });
-          invalidateVcsStatus(body.cwd);
           return;
         }
         const result = yield* git.removeWorktree(body);
@@ -906,6 +932,15 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.vcsCreateBranch:
       case WS_METHODS.gitCreateBranch: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.createBranch) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.createBranch!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         const result = yield* git.createBranch(body);
         invalidateVcsStatus(body.cwd);
         return result;
@@ -914,6 +949,15 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.vcsCheckout:
       case WS_METHODS.gitCheckout: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.checkoutBranch) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.checkoutBranch!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         const result = yield* Effect.scoped(git.checkoutBranch(body));
         invalidateVcsStatus(body.cwd);
         return result;
@@ -922,6 +966,15 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.vcsInit:
       case WS_METHODS.gitInit: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.initRepo) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.initRepo!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         const result = yield* git.initRepo(body);
         invalidateVcsStatus(body.cwd);
         return result;

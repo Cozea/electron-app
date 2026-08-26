@@ -71,7 +71,7 @@ export function registerSubstrateVcsIpcHandlers(
         checkpoints: enabled,
         push: enabled,
         ignore: false,
-        init: false,
+        init: enabled,
       },
     };
   });

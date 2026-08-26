@@ -179,7 +179,6 @@ export default defineConfig({
       lib: {
         entry: {
           index: 'electron/main.ts',
-          'checkpoint-worker': 'electron/checkpoint-worker/child.ts',
           'workbench-runtime': 'electron/workbench-runtime/child.ts',
           'substrate-shadow-server': 'electron/substrate-shadow-server/child.ts',
         },
