@@ -90,11 +90,12 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 2. [x] Phase T1 dual-run — spawn vendored T3 `apps/server` when `COZEA_T3_SERVER=1` (`bun scripts/smoke-t3-server.mjs`)
 3. [x] Phase T2 contracts + client-runtime — sync T3 contract groups, `T3OrchestrationClient`, native shell sync when `t3Server: true`
 4. [x] Phase T3 orchestration cutover — T3 owns commands when flagged; skip legacy `:3773` boot in shadow child
-5. [ ] Delete `electron/assistant-runtime/` after parity
-5. [ ] Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
-6. [ ] SQLite userdata migration (`electron/substrate/migrations/t3-orchestration-userdata.ts` — scaffold only)
-7. [ ] SSH/WSL DesktopBackendPool
-8. [ ] Physical monorepo reshape
+5. [x] Phase T4 provider config cutover — `T3ServerConfigClient`, workbench model picker via T3 when `t3Server: true`; gate substrate provider registry
+6. [ ] Delete `electron/assistant-runtime/` after parity
+6. [ ] Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
+7. [ ] SQLite userdata migration (`electron/substrate/migrations/t3-orchestration-userdata.ts` — scaffold only)
+8. [ ] SSH/WSL DesktopBackendPool
+9. [ ] Physical monorepo reshape
 
 See `docs/substrate-t3-server-import-plan.md` (swarm map) and `docs/substrate-t3-build.md`.
 
@@ -110,5 +111,7 @@ bun scripts/smoke-substrate-rpc-chat.mjs
 bun test tests/src/features/projects/components/command-palette
 node scripts/spike-t3-server-boot.mjs   # Phase T0 — vendor T3 server boot (Node >= 22.16)
 bun scripts/smoke-t3-server.mjs         # Phase T1 — T3 dual-run orchestration RPC
+bun scripts/smoke-t3-providers.mjs      # Phase T4 — T3 server.getConfig + provider registry gate
 bunx vitest run tests/substrate/t3OrchestrationCutover.test.ts  # Phase T3 — command API surface
+bunx vitest run tests/substrate/t3ServerConfigCutover.test.ts   # Phase T4 — config API surface
 ```

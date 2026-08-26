@@ -37,8 +37,16 @@ let subscriberCount = 0
 let runtimeStatusUnsubscribe: (() => void) | null = null
 let serverConfigUnsubscribe: (() => void) | null = null
 let serverProvidersUnsubscribe: (() => void) | null = null
+let t3ConfigBridgeUnsubscribe: (() => void) | null = null
+let t3ConfigBridge: T3ServerConfigBridge | null = null
 let activeConfigLoad: Promise<void> | null = null
 let hasLoadedConfig = false
+
+export interface T3ServerConfigBridge {
+  getConfig(): Promise<ServerConfig>
+  subscribe(listener: (config: ServerConfig) => void): () => void
+  refreshProviders?(): Promise<void>
+}
 
 function createFallbackStatus(): AssistantRuntimeStatus {
   return createFallbackAssistantRuntimeStatus()
@@ -113,86 +121,22 @@ function updateSnapshot(
   emitSnapshot(updater(snapshot))
 }
 
-function maybeLoadServerConfig(options?: { showLoading?: boolean }) {
-  if (activeConfigLoad) {
-    return activeConfigLoad
-  }
-
-  if (options?.showLoading ?? !hasLoadedConfig) {
-    updateSnapshot((current) => ({
-      ...current,
-      isConfigLoading: true,
-    }))
-  }
-
-  activeConfigLoad = (async () => {
-    try {
-      const api = ensureNativeApi()
-      const nextConfig = await api.server.getConfig()
-      hasLoadedConfig = true
-      updateSnapshot((current) => ({
-        ...current,
-        config: nextConfig,
-        configError: null,
-        isConfigLoading: false,
-      }))
-    } catch (error) {
-      updateSnapshot((current) => ({
-        ...current,
-        configError: toErrorMessage(error),
-        isConfigLoading: false,
-      }))
-    } finally {
-      activeConfigLoad = null
-    }
-  })()
-
-  return activeConfigLoad
+function releaseLegacyServerConfigSubscriptions() {
+  serverConfigUnsubscribe?.()
+  serverConfigUnsubscribe = null
+  serverProvidersUnsubscribe?.()
+  serverProvidersUnsubscribe = null
 }
 
-function maybeRefreshConfigForStatus(status: AssistantRuntimeStatus) {
-  if (status.phase !== "ready") {
-    return
-  }
-
-  if (hasLoadedConfig && snapshot.config) {
-    return
-  }
-
-  void maybeLoadServerConfig({ showLoading: !hasLoadedConfig }).catch(() => undefined)
+function releaseT3ServerConfigBridge() {
+  t3ConfigBridgeUnsubscribe?.()
+  t3ConfigBridgeUnsubscribe = null
+  t3ConfigBridge = null
 }
 
-function applyRuntimeStatus(nextStatus: Partial<AssistantRuntimeStatus> | null | undefined) {
-  const normalized = normalizeStatus(nextStatus)
-  emitSnapshot({
-    ...snapshot,
-    status: normalized,
-  })
-  maybeRefreshConfigForStatus(normalized)
-}
-
-function ensureSharedSubscriptions() {
-  if (runtimeStatusUnsubscribe || serverConfigUnsubscribe || serverProvidersUnsubscribe) {
+function ensureLegacyServerConfigSubscriptions() {
+  if (t3ConfigBridge || serverConfigUnsubscribe || serverProvidersUnsubscribe) {
     return
-  }
-
-  runtimeStatusUnsubscribe = subscribeToAssistantRuntimeBridgeStatus((nextStatus) => {
-    applyRuntimeStatus(nextStatus)
-  })
-
-  if (!runtimeStatusUnsubscribe) {
-    applyRuntimeStatus({
-      phase: "ready",
-      wsUrl: null,
-      lastError: null,
-      updatedAt: Date.now(),
-    })
-  } else {
-    void readAssistantRuntimeBridgeStatus()
-      .then((status) => {
-        applyRuntimeStatus(status)
-      })
-      .catch(() => undefined)
   }
 
   serverConfigUnsubscribe = onServerConfigUpdated((payload) => {
@@ -249,6 +193,133 @@ function ensureSharedSubscriptions() {
   })
 }
 
+export function connectT3ServerConfigBridge(bridge: T3ServerConfigBridge): void {
+  releaseT3ServerConfigBridge()
+  releaseLegacyServerConfigSubscriptions()
+  t3ConfigBridge = bridge
+  t3ConfigBridgeUnsubscribe = bridge.subscribe((config) => {
+    hasLoadedConfig = true
+    updateSnapshot((current) => ({
+      ...current,
+      config,
+      configError: null,
+      isConfigLoading: false,
+    }))
+  })
+  void maybeLoadServerConfig({ showLoading: !hasLoadedConfig }).catch(() => undefined)
+}
+
+export function disconnectT3ServerConfigBridge(): void {
+  const hadBridge = t3ConfigBridge !== null
+  releaseT3ServerConfigBridge()
+  if (!hadBridge) {
+    return
+  }
+  if (subscriberCount > 0) {
+    ensureLegacyServerConfigSubscriptions()
+    void maybeLoadServerConfig({ showLoading: false }).catch(() => undefined)
+  }
+}
+
+function maybeLoadServerConfig(options?: { showLoading?: boolean }) {
+  if (activeConfigLoad) {
+    return activeConfigLoad
+  }
+
+  if (options?.showLoading ?? !hasLoadedConfig) {
+    updateSnapshot((current) => ({
+      ...current,
+      isConfigLoading: true,
+    }))
+  }
+
+  activeConfigLoad = (async () => {
+    try {
+      const nextConfig = t3ConfigBridge
+        ? await t3ConfigBridge.getConfig()
+        : await ensureNativeApi().server.getConfig()
+      hasLoadedConfig = true
+      updateSnapshot((current) => ({
+        ...current,
+        config: nextConfig,
+        configError: null,
+        isConfigLoading: false,
+      }))
+    } catch (error) {
+      updateSnapshot((current) => ({
+        ...current,
+        configError: toErrorMessage(error),
+        isConfigLoading: false,
+      }))
+    } finally {
+      activeConfigLoad = null
+    }
+  })()
+
+  return activeConfigLoad
+}
+
+function maybeRefreshConfigForStatus(status: AssistantRuntimeStatus) {
+  if (t3ConfigBridge) {
+    if (hasLoadedConfig && snapshot.config) {
+      return
+    }
+    void maybeLoadServerConfig({ showLoading: !hasLoadedConfig }).catch(() => undefined)
+    return
+  }
+
+  if (status.phase !== "ready") {
+    return
+  }
+
+  if (hasLoadedConfig && snapshot.config) {
+    return
+  }
+
+  void maybeLoadServerConfig({ showLoading: !hasLoadedConfig }).catch(() => undefined)
+}
+
+function applyRuntimeStatus(nextStatus: Partial<AssistantRuntimeStatus> | null | undefined) {
+  const normalized = normalizeStatus(nextStatus)
+  emitSnapshot({
+    ...snapshot,
+    status: normalized,
+  })
+  maybeRefreshConfigForStatus(normalized)
+}
+
+function ensureSharedSubscriptions() {
+  if (runtimeStatusUnsubscribe) {
+    if (!t3ConfigBridge) {
+      ensureLegacyServerConfigSubscriptions()
+    }
+    return
+  }
+
+  runtimeStatusUnsubscribe = subscribeToAssistantRuntimeBridgeStatus((nextStatus) => {
+    applyRuntimeStatus(nextStatus)
+  })
+
+  if (!runtimeStatusUnsubscribe) {
+    applyRuntimeStatus({
+      phase: "ready",
+      wsUrl: null,
+      lastError: null,
+      updatedAt: Date.now(),
+    })
+  } else {
+    void readAssistantRuntimeBridgeStatus()
+      .then((status) => {
+        applyRuntimeStatus(status)
+      })
+      .catch(() => undefined)
+  }
+
+  if (!t3ConfigBridge) {
+    ensureLegacyServerConfigSubscriptions()
+  }
+}
+
 function releaseSharedSubscriptions() {
   if (subscriberCount > 0) {
     return
@@ -256,10 +327,8 @@ function releaseSharedSubscriptions() {
 
   runtimeStatusUnsubscribe?.()
   runtimeStatusUnsubscribe = null
-  serverConfigUnsubscribe?.()
-  serverConfigUnsubscribe = null
-  serverProvidersUnsubscribe?.()
-  serverProvidersUnsubscribe = null
+  releaseLegacyServerConfigSubscriptions()
+  releaseT3ServerConfigBridge()
   activeConfigLoad = null
 }
 
@@ -296,10 +365,8 @@ export function resetAssistantRuntimeMetadataForTests() {
   subscriberCount = 0
   runtimeStatusUnsubscribe?.()
   runtimeStatusUnsubscribe = null
-  serverConfigUnsubscribe?.()
-  serverConfigUnsubscribe = null
-  serverProvidersUnsubscribe?.()
-  serverProvidersUnsubscribe = null
+  releaseLegacyServerConfigSubscriptions()
+  releaseT3ServerConfigBridge()
   activeConfigLoad = null
   hasLoadedConfig = false
   snapshot = createInitialSnapshot()

@@ -19,10 +19,14 @@ export {
 export {
   T3EffectRpcClient,
   T3OrchestrationClient,
+  T3ServerConfigClient,
+  applyServerConfigProjection,
   authenticateT3Server,
   exchangeBootstrapAccessToken,
   extractPairingToken,
   issueWebSocketTicket,
+  type ServerConfigStreamEvent,
   type T3EffectRpcClientOptions,
   type T3OrchestrationClientOptions,
+  type T3ServerConfigClientOptions,
 } from "./t3";
