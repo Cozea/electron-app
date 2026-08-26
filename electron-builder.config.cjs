@@ -5,7 +5,9 @@ const githubReleaseType =
 const updateProvider = process.env.COZEA_UPDATE_PROVIDER ?? "github"
 const updateBaseUrl = process.env.COZEA_UPDATE_BASE_URL ?? ""
 const macUniversalX64ArchFilePackages = [
-  "@anthropic-ai/claude-agent-sdk/vendor",
+  // 0.3.x replaced the vendored `cli.js` + `vendor/` payload with per-platform
+  // native binary packages.
+  "@anthropic-ai/claude-agent-sdk-darwin-*",
   "@cozea/pty",
   "@esbuild/darwin-*",
   "@img/sharp-darwin-*",
