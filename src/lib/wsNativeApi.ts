@@ -34,7 +34,7 @@ function writeSingleton(value: WsNativeApiSingleton | null): void {
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
 const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
 const providersUpdatedListeners = new Set<(payload: ServerProviderUpdatedPayload) => void>();
-const gitActionProgressListeners = new Set<(payload: GitActionProgressEvent) => void>();
+const vcsActionProgressListeners = new Set<(payload: GitActionProgressEvent) => void>();
 
 function logChatBridge(event: string, details?: Record<string, unknown>): void {
   if (details && Object.keys(details).length > 0) {
@@ -156,9 +156,9 @@ export function createWsNativeApi(url?: string): NativeApi {
       }
     }
   });
-  transport.subscribe(WS_CHANNELS.gitActionProgress, (message) => {
+  transport.subscribe(WS_CHANNELS.vcsActionProgress, (message) => {
     const payload = message.data;
-    for (const listener of gitActionProgressListeners) {
+    for (const listener of vcsActionProgressListeners) {
       try {
         listener(payload);
       } catch {
@@ -166,6 +166,38 @@ export function createWsNativeApi(url?: string): NativeApi {
       }
     }
   });
+  transport.subscribe(WS_CHANNELS.gitActionProgress, (message) => {
+    const payload = message.data;
+    for (const listener of vcsActionProgressListeners) {
+      try {
+        listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+
+  const vcs: NativeApi["vcs"] = {
+    pull: (input) => transport.request(WS_METHODS.vcsPull, input),
+    status: (input) => transport.request(WS_METHODS.vcsStatus, input),
+    runStackedAction: (input) =>
+      transport.request(WS_METHODS.vcsRunStackedAction, input, { timeoutMs: null }),
+    listBranches: (input) => transport.request(WS_METHODS.vcsListBranches, input),
+    createWorktree: (input) => transport.request(WS_METHODS.vcsCreateWorktree, input),
+    removeWorktree: (input) => transport.request(WS_METHODS.vcsRemoveWorktree, input),
+    createBranch: (input) => transport.request(WS_METHODS.vcsCreateBranch, input),
+    checkout: (input) => transport.request(WS_METHODS.vcsCheckout, input),
+    init: (input) => transport.request(WS_METHODS.vcsInit, input),
+    resolvePullRequest: (input) => transport.request(WS_METHODS.vcsResolvePullRequest, input),
+    preparePullRequestThread: (input) =>
+      transport.request(WS_METHODS.vcsPreparePullRequestThread, input),
+    onActionProgress: (callback) => {
+      vcsActionProgressListeners.add(callback);
+      return () => {
+        vcsActionProgressListeners.delete(callback);
+      };
+    },
+  };
 
   const api: NativeApi = {
     dialogs: {
@@ -211,27 +243,8 @@ export function createWsNativeApi(url?: string): NativeApi {
         window.open(url, "_blank", "noopener,noreferrer");
       },
     },
-    git: {
-      pull: (input) => transport.request(WS_METHODS.gitPull, input),
-      status: (input) => transport.request(WS_METHODS.gitStatus, input),
-      runStackedAction: (input) =>
-        transport.request(WS_METHODS.gitRunStackedAction, input, { timeoutMs: null }),
-      listBranches: (input) => transport.request(WS_METHODS.gitListBranches, input),
-      createWorktree: (input) => transport.request(WS_METHODS.gitCreateWorktree, input),
-      removeWorktree: (input) => transport.request(WS_METHODS.gitRemoveWorktree, input),
-      createBranch: (input) => transport.request(WS_METHODS.gitCreateBranch, input),
-      checkout: (input) => transport.request(WS_METHODS.gitCheckout, input),
-      init: (input) => transport.request(WS_METHODS.gitInit, input),
-      resolvePullRequest: (input) => transport.request(WS_METHODS.gitResolvePullRequest, input),
-      preparePullRequestThread: (input) =>
-        transport.request(WS_METHODS.gitPreparePullRequestThread, input),
-      onActionProgress: (callback) => {
-        gitActionProgressListeners.add(callback);
-        return () => {
-          gitActionProgressListeners.delete(callback);
-        };
-      },
-    },
+    vcs,
+    git: vcs,
     contextMenu: {
       show: async <T extends string>(
         items: readonly ContextMenuItem<T>[],

@@ -3,12 +3,16 @@ import path from 'node:path'
 import type { WebContents } from 'electron'
 
 import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '../../shared/electronApiTypes'
-import { CheckpointWorkerClient } from './CheckpointWorkerClient'
+import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
+import { VcsStatusBroadcaster } from '../substrate/vcs/VcsStatusBroadcaster'
+
+/**
+ * IPC fan-out for Changes UI subscriptions. Refresh logic lives in
+ * {@link VcsStatusBroadcaster} (Phase 4c — no background poll).
+ */
 
 const GIT_CHANGES_UPDATED_CHANNEL = 'workspaceSync:gitChangesUpdated'
 const GIT_DIRTY_STATE_CHANGED_CHANNEL = 'workspaceSync:gitDirtyStateChanged'
-const INVALIDATION_DEBOUNCE_MS = 250
-const FALLBACK_REFRESH_MS = 10_000
 
 interface GitChangesSubscription {
   sender: WebContents
@@ -46,15 +50,11 @@ export class GitChangesBroadcaster {
   private static instance: GitChangesBroadcaster | null = null
 
   private readonly subscriptionsByKey = new Map<string, Map<number, GitChangesSubscription>>()
-  private readonly snapshotsByKey = new Map<string, GitChangesSnapshot>()
-  private readonly pendingRefreshTimers = new Map<string, NodeJS.Timeout>()
-  private readonly inflightRefreshes = new Map<string, Promise<GitChangesSnapshot>>()
   private readonly destroyedListenerSenders = new Set<number>()
-  private fallbackRefreshTimer: NodeJS.Timeout | null = null
+  private readonly statusBroadcaster = VcsStatusBroadcaster.getInstance()
+  private unsubscribeStatusStream: (() => void) | null = null
 
-  // Dirty state subscriptions (keyed by projectPath)
   private readonly dirtyStateSubsByPath = new Map<string, Map<number, GitDirtyStateSubscription>>()
-  // Reverse mapping: projectPath → workspaceId (set on first subscribe; one workspace per path)
   private readonly workspaceIdByPath = new Map<string, string>()
 
   static getInstance(): GitChangesBroadcaster {
@@ -64,6 +64,16 @@ export class GitChangesBroadcaster {
     return GitChangesBroadcaster.instance
   }
 
+  private constructor() {
+    this.unsubscribeStatusStream = this.statusBroadcaster.subscribe((projectPath, scope, snapshot) => {
+      const key = buildCacheKey(projectPath, scope)
+      this.publishSnapshot(key, snapshot)
+      if (scope === 'current') {
+        this.publishDirtyStateForPath(projectPath, snapshot)
+      }
+    })
+  }
+
   async subscribe(
     sender: WebContents,
     options: { projectPath: string; scope: GitChangesScope; workspaceId?: string },
@@ -71,6 +81,7 @@ export class GitChangesBroadcaster {
     const projectPath = normalizeProjectPath(options.projectPath)
     if (options.workspaceId) {
       this.workspaceIdByPath.set(projectPath, options.workspaceId)
+      this.statusBroadcaster.registerWorkspaceId(projectPath, options.workspaceId)
     }
     const key = buildCacheKey(projectPath, options.scope)
     let subscribers = this.subscriptionsByKey.get(key)
@@ -93,9 +104,7 @@ export class GitChangesBroadcaster {
       })
     }
 
-    this.ensureFallbackRefreshTimer()
-
-    const snapshot = await this.refreshKey(projectPath, options.scope)
+    const snapshot = await this.statusBroadcaster.refresh(projectPath, options.scope)
     this.publishSnapshot(key, snapshot)
     return snapshot
   }
@@ -105,107 +114,42 @@ export class GitChangesBroadcaster {
     const key = buildCacheKey(normalizedProjectPath, scope)
     const subscribers = this.subscriptionsByKey.get(key)
     if (!subscribers) {
-      this.maybeStopFallbackRefreshTimer()
       return
     }
 
     subscribers.delete(sender.id)
     if (subscribers.size === 0) {
       this.subscriptionsByKey.delete(key)
-      this.snapshotsByKey.delete(key)
-      const pendingTimer = this.pendingRefreshTimers.get(key)
-      if (pendingTimer) {
-        clearTimeout(pendingTimer)
-        this.pendingRefreshTimers.delete(key)
-      }
     }
-
-    this.maybeStopFallbackRefreshTimer()
   }
 
   invalidateProjectPath(projectPath: string): void {
-    const normalizedProjectPath = normalizeProjectPath(projectPath)
-    for (const scope of ['current', 'branch'] as const) {
-      const key = buildCacheKey(normalizedProjectPath, scope)
-      if (!this.subscriptionsByKey.has(key)) {
-        continue
-      }
-      this.scheduleRefresh(normalizedProjectPath, scope, INVALIDATION_DEBOUNCE_MS)
-    }
+    this.statusBroadcaster.invalidateProjectPath(normalizeProjectPath(projectPath))
+  }
+
+  invalidateViaSubstrateBus(projectPath: string): void {
+    invalidateVcsStatus(normalizeProjectPath(projectPath), 'all')
   }
 
   invalidateFilePath(filePath: string): void {
-    // Project paths are embedded in keys
     for (const key of this.subscriptionsByKey.keys()) {
       const projectPath = key.split('\0')[0]
       const scope = key.split('\0')[1] as GitChangesScope
       if (!pathIsWithinRoot(filePath, projectPath)) {
         continue
       }
-      this.scheduleRefresh(projectPath, scope, INVALIDATION_DEBOUNCE_MS)
+      this.statusBroadcaster.invalidateProjectPath(projectPath)
+      void scope
     }
   }
 
   private unsubscribeSender(senderId: number): void {
     for (const [key, subscribers] of this.subscriptionsByKey.entries()) {
       subscribers.delete(senderId)
-      if (subscribers.size > 0) {
-        continue
-      }
-
-      this.subscriptionsByKey.delete(key)
-      this.snapshotsByKey.delete(key)
-      const pendingTimer = this.pendingRefreshTimers.get(key)
-      if (pendingTimer) {
-        clearTimeout(pendingTimer)
-        this.pendingRefreshTimers.delete(key)
+      if (subscribers.size === 0) {
+        this.subscriptionsByKey.delete(key)
       }
     }
-
-    this.maybeStopFallbackRefreshTimer()
-  }
-
-  private ensureFallbackRefreshTimer(): void {
-    if (this.fallbackRefreshTimer) {
-      return
-    }
-
-    this.fallbackRefreshTimer = setInterval(() => {
-      for (const key of this.subscriptionsByKey.keys()) {
-        const projectPath = key.split('\0')[0]
-        const scope = key.split('\0')[1] as GitChangesScope
-        this.scheduleRefresh(projectPath, scope, 0)
-      }
-    }, FALLBACK_REFRESH_MS)
-  }
-
-  private maybeStopFallbackRefreshTimer(): void {
-    if (this.subscriptionsByKey.size > 0 || !this.fallbackRefreshTimer) {
-      return
-    }
-    clearInterval(this.fallbackRefreshTimer)
-    this.fallbackRefreshTimer = null
-  }
-
-  private scheduleRefresh(projectPath: string, scope: GitChangesScope, delayMs: number): void {
-    const key = buildCacheKey(projectPath, scope)
-    const existingTimer = this.pendingRefreshTimers.get(key)
-    if (existingTimer) {
-      clearTimeout(existingTimer)
-    }
-
-    const timer = setTimeout(() => {
-      this.pendingRefreshTimers.delete(key)
-      void this.refreshKey(projectPath, scope)
-        .then((snapshot) => {
-          this.publishSnapshot(key, snapshot)
-        })
-        .catch(() => {
-          // Ignore background refresh errors. The last published snapshot remains valid.
-        })
-    }, delayMs)
-
-    this.pendingRefreshTimers.set(key, timer)
   }
 
   private publishSnapshot(key: string, snapshot: GitChangesSnapshot): void {
@@ -225,12 +169,8 @@ export class GitChangesBroadcaster {
 
     if (subscribers.size === 0) {
       this.subscriptionsByKey.delete(key)
-      this.snapshotsByKey.delete(key)
-      this.maybeStopFallbackRefreshTimer()
     }
   }
-
-  // ── Dirty state subscriptions ────────────────────────────────────────────────
 
   async subscribeGitDirtyState(
     sender: WebContents,
@@ -248,8 +188,7 @@ export class GitChangesBroadcaster {
       authorName: options.authorName,
     })
 
-    // Reuse the current-scope changes snapshot for dirty state
-    const snapshot = await this.refreshKey(projectPath, 'current')
+    const snapshot = await this.statusBroadcaster.refresh(projectPath, 'current')
     return this.buildDirtyStateSnapshot(workspaceId, snapshot)
   }
 
@@ -287,88 +226,9 @@ export class GitChangesBroadcaster {
     }
   }
 
-  private async refreshKey(projectPath: string, scope: GitChangesScope): Promise<GitChangesSnapshot> {
-    const key = buildCacheKey(projectPath, scope)
-    const inflight = this.inflightRefreshes.get(key)
-    if (inflight) {
-      return await inflight
-    }
-
-    // Use the stored workspaceId if available; fall back to projectPath
-    const workspaceId = this.workspaceIdByPath.get(projectPath) ?? projectPath
-
-    const refreshPromise = (async () => {
-      try {
-        const [result, statsResult] = await Promise.all([
-          CheckpointWorkerClient.getInstance().readChanges({
-            cwd: projectPath,
-            scope,
-            authorName: 'Cozea', // Assuming Cozea for now, we can pass it later if needed
-          }),
-          scope === 'current'
-            ? CheckpointWorkerClient.getInstance().getHeadDiffStats({ cwd: projectPath, authorName: 'Cozea' })
-            : Promise.resolve({ success: true as const, additions: 0, deletions: 0, changedFiles: 0, error: undefined })
-        ])
-
-        const cacheKey = `${key}:${Date.now()}` // Uniqueish cacheKey
-
-        const snapshot: GitChangesSnapshot = {
-          workspaceId,
-          scope,
-          cacheKey,
-          files: result.success ? result.files : [],
-          patch: result.success ? (result.diff ?? '') : '',
-          loaded: true,
-          error: result.success ? null : (result.error ?? 'Failed to compute git changes'),
-          baseRef: result.baseRef,
-          headRef: result.headRef,
-          additions: statsResult.success ? statsResult.additions : 0,
-          deletions: statsResult.success ? statsResult.deletions : 0,
-        }
-
-        const existing = this.snapshotsByKey.get(key)
-        if (existing && existing.patch === snapshot.patch && existing.error === snapshot.error && existing.additions === snapshot.additions && existing.deletions === snapshot.deletions) {
-           // No actual changes, keep previous cacheKey so React doesn't re-render
-           snapshot.cacheKey = existing.cacheKey
-        }
-
-        this.snapshotsByKey.set(key, snapshot)
-
-        // Also publish dirty state if there are dirty-state subscribers for this path
-        if (scope === 'current') {
-          this.publishDirtyStateForPath(projectPath, snapshot)
-        }
-
-        return snapshot
-      } catch (error) {
-        const snapshot: GitChangesSnapshot = {
-          workspaceId,
-          scope,
-          cacheKey: `${key}:${Date.now()}`,
-          files: [],
-          patch: '',
-          loaded: true,
-          error: error instanceof Error ? error.message : 'Failed to compute git changes',
-          additions: 0,
-          deletions: 0,
-        }
-        const existing = this.snapshotsByKey.get(key)
-        if (existing && existing.patch === snapshot.patch && existing.error === snapshot.error && existing.additions === snapshot.additions && existing.deletions === snapshot.deletions) {
-           snapshot.cacheKey = existing.cacheKey
-        }
-        this.snapshotsByKey.set(key, snapshot)
-
-        if (scope === 'current') {
-          this.publishDirtyStateForPath(projectPath, snapshot)
-        }
-
-        return snapshot
-      } finally {
-        this.inflightRefreshes.delete(key)
-      }
-    })()
-
-    this.inflightRefreshes.set(key, refreshPromise)
-    return await refreshPromise
+  /** @internal test helper */
+  disposeForTests(): void {
+    this.unsubscribeStatusStream?.()
+    this.unsubscribeStatusStream = null
   }
 }

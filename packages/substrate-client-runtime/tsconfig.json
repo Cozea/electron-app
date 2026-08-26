@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": [],
+    "paths": {
+      "@cozea/client-runtime": ["../client-runtime/src/index.ts"],
+      "@cozea/substrate-contracts": ["../substrate-contracts/src/index.ts"],
+      "@cozea/contracts": ["../contracts/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

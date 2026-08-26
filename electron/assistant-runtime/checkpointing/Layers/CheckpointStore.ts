@@ -18,6 +18,10 @@ import { GitCommandError } from "../../git/Errors.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { CheckpointStore, type CheckpointStoreShape } from "../Services/CheckpointStore.ts";
 import { CheckpointRef } from "@cozea/assistant-contracts";
+import {
+  migrateLegacyT3CheckpointRefs,
+  normalizeCheckpointRef,
+} from "../../../substrate/vcs/checkpointRefs.ts";
 
 const makeCheckpointStore = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -55,23 +59,43 @@ const makeCheckpointStore = Effect.gen(function* () {
   const resolveCheckpointCommit = (
     cwd: string,
     checkpointRef: CheckpointRef,
-  ): Effect.Effect<string | null, GitCommandError> =>
-    git
+  ): Effect.Effect<string | null, GitCommandError> => {
+    const normalizedRef = CheckpointRef.makeUnsafe(normalizeCheckpointRef(String(checkpointRef)));
+    return git
       .execute({
         operation: "CheckpointStore.resolveCheckpointCommit",
         cwd,
-        args: ["rev-parse", "--verify", "--quiet", `${checkpointRef}^{commit}`],
+        args: ["rev-parse", "--verify", "--quiet", `${normalizedRef}^{commit}`],
         allowNonZeroExit: true,
       })
       .pipe(
-        Effect.map((result) => {
-          if (result.code !== 0) {
-            return null;
+        Effect.flatMap((result) => {
+          if (result.code === 0) {
+            const commit = result.stdout.trim();
+            return Effect.succeed(commit.length > 0 ? commit : null);
           }
-          const commit = result.stdout.trim();
-          return commit.length > 0 ? commit : null;
+          if (normalizedRef !== checkpointRef) {
+            return git
+              .execute({
+                operation: "CheckpointStore.resolveCheckpointCommit",
+                cwd,
+                args: ["rev-parse", "--verify", "--quiet", `${checkpointRef}^{commit}`],
+                allowNonZeroExit: true,
+              })
+              .pipe(
+                Effect.map((legacyResult) => {
+                  if (legacyResult.code !== 0) {
+                    return null;
+                  }
+                  const commit = legacyResult.stdout.trim();
+                  return commit.length > 0 ? commit : null;
+                }),
+              );
+          }
+          return Effect.succeed(null);
         }),
       );
+  };
 
   const isGitRepository: CheckpointStoreShape["isGitRepository"] = (cwd) =>
     git
@@ -89,6 +113,8 @@ const makeCheckpointStore = Effect.gen(function* () {
   const captureCheckpoint: CheckpointStoreShape["captureCheckpoint"] = (input) =>
     Effect.gen(function* () {
       const operation = "CheckpointStore.captureCheckpoint";
+
+      yield* Effect.promise(() => migrateLegacyT3CheckpointRefs(input.cwd));
 
       yield* Effect.acquireUseRelease(
         fs.makeTempDirectory({ prefix: "cozea-fs-checkpoint-" }),
@@ -137,7 +163,7 @@ const makeCheckpointStore = Effect.gen(function* () {
               });
             }
 
-            const message = `t3 checkpoint ref=${input.checkpointRef}`;
+            const message = `cozea checkpoint ref=${input.checkpointRef}`;
             const commitTreeResult = yield* git.execute({
               operation,
               cwd: input.cwd,
@@ -157,7 +183,7 @@ const makeCheckpointStore = Effect.gen(function* () {
             yield* git.execute({
               operation,
               cwd: input.cwd,
-              args: ["update-ref", input.checkpointRef, commitOid],
+              args: ["update-ref", normalizeCheckpointRef(String(input.checkpointRef)), commitOid],
             });
           }),
         (tempDir) => fs.remove(tempDir, { recursive: true }),

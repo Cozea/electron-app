@@ -80,6 +80,8 @@ import { ASSISTANT_RUNTIME_READINESS_PATH } from "./readiness";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@cozea/assistant-shared/schemaJson";
+import { createGitVcsDriverFromGitCore } from "./vcs/makeGitVcsDriverFromGitCore.ts";
+import { invalidateVcsStatus } from "../substrate/vcs/statusInvalidation.ts";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -259,6 +261,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const serverSettingsManager = yield* ServerSettingsService;
   const providerRegistry = yield* ProviderRegistry;
   const git = yield* GitCore;
+  const vcsDriver = createGitVcsDriverFromGitCore(git);
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
@@ -818,65 +821,163 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return yield* openInEditor(body);
       }
 
+      case WS_METHODS.vcsStatus:
       case WS_METHODS.gitStatus: {
         const body = stripRequestTag(request.body);
         return yield* gitManager.status(body);
       }
 
+      case WS_METHODS.vcsPull:
       case WS_METHODS.gitPull: {
         const body = stripRequestTag(request.body);
-        return yield* git.pullCurrentBranch(body.cwd);
+        if (vcsDriver?.pullCurrentBranch) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.pullCurrentBranch!(body.cwd),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
+        const result = yield* git.pullCurrentBranch(body.cwd);
+        invalidateVcsStatus(body.cwd, "remote");
+        return result;
       }
 
+      case WS_METHODS.vcsRunStackedAction:
       case WS_METHODS.gitRunStackedAction: {
         const body = stripRequestTag(request.body);
-        return yield* gitManager.runStackedAction(body, {
+        const progressChannel =
+          request.body._tag === WS_METHODS.vcsRunStackedAction
+            ? WS_CHANNELS.vcsActionProgress
+            : WS_CHANNELS.gitActionProgress;
+        const result = yield* gitManager.runStackedAction(body, {
           actionId: body.actionId,
           progressReporter: {
             publish: (event) =>
-              pushBus.publishClient(ws, WS_CHANNELS.gitActionProgress, event).pipe(Effect.asVoid),
+              pushBus.publishClient(ws, progressChannel, event).pipe(Effect.asVoid),
           },
         });
+        invalidateVcsStatus(body.cwd);
+        return result;
       }
 
+      case WS_METHODS.vcsResolvePullRequest:
       case WS_METHODS.gitResolvePullRequest: {
         const body = stripRequestTag(request.body);
         return yield* gitManager.resolvePullRequest(body);
       }
 
+      case WS_METHODS.vcsPreparePullRequestThread:
       case WS_METHODS.gitPreparePullRequestThread: {
         const body = stripRequestTag(request.body);
         return yield* gitManager.preparePullRequestThread(body);
       }
 
+      case WS_METHODS.vcsListBranches:
       case WS_METHODS.gitListBranches: {
         const body = stripRequestTag(request.body);
+        if (vcsDriver?.listBranches) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.listBranches!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
         return yield* git.listBranches(body);
       }
 
+      case WS_METHODS.vcsCreateWorktree:
       case WS_METHODS.gitCreateWorktree: {
         const body = stripRequestTag(request.body);
-        return yield* git.createWorktree(body);
+        if (vcsDriver?.createWorktree) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.createWorktree!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
+        const result = yield* git.createWorktree(body);
+        invalidateVcsStatus(body.cwd);
+        return result;
       }
 
+      case WS_METHODS.vcsRemoveWorktree:
       case WS_METHODS.gitRemoveWorktree: {
         const body = stripRequestTag(request.body);
-        return yield* git.removeWorktree(body);
+        if (vcsDriver?.removeWorktree) {
+          yield* Effect.tryPromise({
+            try: () =>
+              vcsDriver.removeWorktree!({
+                cwd: body.cwd,
+                worktreePath: body.path,
+                force: body.force,
+              }),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+          return;
+        }
+        const result = yield* git.removeWorktree(body);
+        invalidateVcsStatus(body.cwd);
+        return result;
       }
 
+      case WS_METHODS.vcsCreateBranch:
       case WS_METHODS.gitCreateBranch: {
         const body = stripRequestTag(request.body);
-        return yield* git.createBranch(body);
+        if (vcsDriver?.createBranch) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.createBranch!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
+        const result = yield* git.createBranch(body);
+        invalidateVcsStatus(body.cwd);
+        return result;
       }
 
+      case WS_METHODS.vcsCheckout:
       case WS_METHODS.gitCheckout: {
         const body = stripRequestTag(request.body);
-        return yield* Effect.scoped(git.checkoutBranch(body));
+        if (vcsDriver?.checkoutBranch) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.checkoutBranch!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
+        const result = yield* Effect.scoped(git.checkoutBranch(body));
+        invalidateVcsStatus(body.cwd);
+        return result;
       }
 
+      case WS_METHODS.vcsInit:
       case WS_METHODS.gitInit: {
         const body = stripRequestTag(request.body);
-        return yield* git.initRepo(body);
+        if (vcsDriver?.initRepo) {
+          return yield* Effect.tryPromise({
+            try: () => vcsDriver.initRepo!(body),
+            catch: (cause) =>
+              new RouteRequestError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        }
+        const result = yield* git.initRepo(body);
+        invalidateVcsStatus(body.cwd);
+        return result;
       }
 
       case WS_METHODS.terminalOpen: {
