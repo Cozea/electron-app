@@ -58,6 +58,8 @@ import {
   formatProjectRenameError,
 } from "../lib/projectMutationPresentation";
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup";
+import { detachDeletedProjectFromUi } from "@/features/projects/lib/detachDeletedProjectFromUi";
+import type { ProjectDeleteConfirmOptions } from "@/features/projects/components/ProjectDeleteDialog";
 import { withProjectMutationTimeout } from "@/features/projects/lib/projectMutationTimeout";
 import {
   selectProjectWorkbench,
@@ -589,34 +591,38 @@ export function ProjectSidebar({
   }, []);
 
   const handleConfirmDeleteProject = React.useCallback(
-    async (confirmName: string) => {
-      if (
-        !projectPendingDelete ||
-        !convexUserId ||
-        isDeletingProject ||
-        confirmName !== projectPendingDelete.name
-      ) {
+    async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
+      if (!projectPendingDelete || !convexUserId || isDeletingProject) {
         return;
       }
 
       setIsDeletingProject(true);
       setDeleteError(null);
+      const deletedProject = projectPendingDelete;
+      const deletedProjectId = String(deletedProject._id);
       try {
-        const deletedProjectId = String(projectPendingDelete._id);
         await withProjectMutationTimeout(
           deleteProject({
-            projectId: projectPendingDelete._id,
+            projectId: deletedProject._id,
             userId: convexUserId,
-            confirmName,
+            // Server still validates the name; UI no longer requires retyping it.
+            confirmName: deletedProject.name,
           }),
           "Deleting this project is taking longer than expected. Check your connection and try again.",
         );
-        await cleanupDeletedProjectLocally(deletedProjectId, {
-          projectName: projectPendingDelete.name,
-          projectSlug: projectPendingDelete.slug,
-          managedProjectPaths: [projectPendingDelete.localPath],
-        });
+
+        // Detach + leave the dead route before local disk cleanup so the
+        // workbench cannot keep hosting a deleted project.
+        detachDeletedProjectFromUi(deletedProjectId);
         setProjectPendingDelete(null);
+        navigate("/projects", { replace: true });
+
+        await cleanupDeletedProjectLocally(deletedProjectId, {
+          projectName: deletedProject.name,
+          projectSlug: deletedProject.slug,
+          managedProjectPaths: [deletedProject.localPath],
+          keepLocalFiles,
+        });
       } catch (error) {
         const presentation = formatProjectDeleteError(error);
         setDeleteError(
@@ -628,7 +634,7 @@ export function ProjectSidebar({
         setIsDeletingProject(false);
       }
     },
-    [convexUserId, deleteProject, isDeletingProject, projectPendingDelete],
+    [convexUserId, deleteProject, isDeletingProject, navigate, projectPendingDelete],
   );
 
   const handleSyncProject = React.useCallback(

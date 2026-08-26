@@ -11,6 +11,8 @@ export interface DeletedProjectLocalCleanupOptions {
   projectName?: string | null
   projectSlug?: string | null
   managedProjectPaths?: Array<string | null | undefined>
+  /** When true (default for UI), skip trashing local folders. */
+  keepLocalFiles?: boolean
 }
 
 function normalizeId(value: string | null | undefined): string | null {
@@ -251,10 +253,20 @@ export async function cleanupDeletedProjectLocally(
     clearCachedProjectLaneState(normalizedProjectId, workspaceId)
   }
 
-  const workspaceIdsToForget = await deleteManagedProjectPaths(projectPathsByWorkspaceId)
+  const keepLocalFiles = options.keepLocalFiles === true
+  const workspaceIdsToForget = keepLocalFiles
+    ? new Set<string>()
+    : await deleteManagedProjectPaths(projectPathsByWorkspaceId)
   for (const workspaceId of workspaceIds) {
-    if (!projectPathsByWorkspaceId.has(workspaceId)) {
-      workspaceIdsToForget.add(workspaceId)
+    // Always forget workspace bindings so Cozea stops hosting the deleted project,
+    // even when the on-disk folder is intentionally preserved.
+    workspaceIdsToForget.add(workspaceId)
+  }
+  if (keepLocalFiles) {
+    for (const workspaceId of projectPathsByWorkspaceId.keys()) {
+      if (!workspaceId.startsWith(FALLBACK_PROJECT_PATH_ID_PREFIX)) {
+        workspaceIdsToForget.add(workspaceId)
+      }
     }
   }
 
