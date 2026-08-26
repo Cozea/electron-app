@@ -190,14 +190,7 @@ export function ProjectsLaunchPage() {
                 {t("projects.selectProjectDesc")}
               </EmptyDescription>
             </EmptyHeader>
-          ) : (
-            <EmptyHeader>
-              <EmptyTitle>{t("projects.welcomeToCozea")}</EmptyTitle>
-              <EmptyDescription>
-                {t("projects.createProjectDesc")}
-              </EmptyDescription>
-            </EmptyHeader>
-          )}
+          ) : null}
           <EmptyContent className="w-full max-w-md">
             <div
               role="button"
@@ -223,10 +216,10 @@ export function ProjectsLaunchPage() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               className={cn(
-                "flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-10 text-center transition-colors",
+                "flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl px-6 py-10 text-center transition-colors",
                 isDragActive
-                  ? "border-primary bg-primary/5"
-                  : "border-border/80 bg-secondary/20 hover:border-border hover:bg-secondary/30",
+                  ? "bg-primary/5"
+                  : "bg-secondary/20 hover:bg-secondary/30",
                 isImporting && "pointer-events-none opacity-70",
               )}
             >
