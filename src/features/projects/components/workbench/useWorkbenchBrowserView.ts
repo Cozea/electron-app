@@ -412,6 +412,7 @@ export function useWorkbenchBrowserView(
 
     window.addEventListener("resize", schedule)
     window.addEventListener("cozea:sidebar-layout-change", schedule as EventListener)
+    window.addEventListener("cozea:dock-layout-change", schedule as EventListener)
     window.addEventListener("scroll", schedule, true)
     schedule()
 
@@ -421,6 +422,7 @@ export function useWorkbenchBrowserView(
       resizeObserver.disconnect()
       window.removeEventListener("resize", schedule)
       window.removeEventListener("cozea:sidebar-layout-change", schedule as EventListener)
+      window.removeEventListener("cozea:dock-layout-change", schedule as EventListener)
       window.removeEventListener("scroll", schedule, true)
       lastSentBoundsRef.current = null
       void model.setVisible(false)

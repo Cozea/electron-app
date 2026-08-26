@@ -71,6 +71,13 @@ export function registerWorkbenchBrowserHandlers(
   )
 
   ipcMain.handle(
+    'workbenchBrowser:getViewBounds',
+    (_event, options: { tileId: string }): { bounds: Rectangle; visible: boolean } | null => {
+      return service.getViewBounds(options.tileId)
+    },
+  )
+
+  ipcMain.handle(
     'workbenchBrowser:goBack',
     (_event, options: { tileId: string }): WorkbenchBrowserViewState | null => {
       return service.goBack(options.tileId)

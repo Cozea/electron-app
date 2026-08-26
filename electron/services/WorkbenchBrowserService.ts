@@ -13,6 +13,8 @@ interface WorkbenchBrowserRecord {
   state: WorkbenchBrowserViewState
   storageScope: BrowserStorageScope
   workspaceId: string | null
+  /** Monotonic per-record navigation counter; see loadUrlIntoRecord. */
+  navigationId: number
 }
 
 interface WorkbenchBrowserServiceOptions {
@@ -442,6 +444,8 @@ export class WorkbenchBrowserService {
     record: WorkbenchBrowserRecord,
     url: string,
   ): Promise<WorkbenchBrowserViewState> {
+    const navigationId = record.navigationId + 1
+    record.navigationId = navigationId
     record.state = {
       ...record.state,
       url,
@@ -460,11 +464,21 @@ export class WorkbenchBrowserService {
       await record.view.webContents.loadURL(url)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load page.'
-      record.state = {
-        ...record.state,
-        url,
-        isLoading: false,
-        loadError: message,
+      // A rejection from a navigation that was superseded by a newer one must
+      // not clobber the newer navigation's state — that poisoned the record
+      // with a stale loadError (which also gates the view's visibility in the
+      // renderer). ERR_ABORTED is likewise not a user-facing failure: it is
+      // how Chromium reports a load replaced by another load; the did-fail-load
+      // handler already ignores errorCode -3 for the same reason.
+      const superseded = record.navigationId !== navigationId
+      const aborted = message.includes('ERR_ABORTED')
+      if (!superseded && !aborted) {
+        record.state = {
+          ...record.state,
+          url,
+          isLoading: false,
+          loadError: message,
+        }
       }
     }
 
@@ -501,6 +515,7 @@ export class WorkbenchBrowserService {
       state: this.createInitialState(tileId, initialUrl, storageScope),
       storageScope,
       workspaceId: workspaceId ?? null,
+      navigationId: 0,
     }
 
     this.records.set(tileId, record)
@@ -539,6 +554,13 @@ export class WorkbenchBrowserService {
 
   getState(tileId: string): WorkbenchBrowserViewState | null {
     return this.emitState(tileId)
+  }
+
+  /** Actual native view geometry — diagnostic ground truth for bounds-sync issues. */
+  getViewBounds(tileId: string): { bounds: Rectangle; visible: boolean } | null {
+    const record = this.records.get(tileId)
+    if (!record) return null
+    return { bounds: record.view.getBounds(), visible: record.view.getVisible() }
   }
 
   private applyZoomFactor(tileId: string, nextZoomFactor: number): WorkbenchBrowserViewState | null {
