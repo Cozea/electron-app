@@ -7,10 +7,9 @@ export interface WorkbenchPanelActivityState {
   focused: boolean
 }
 
-function getPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
+function readPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
   const visible = panelApi.isVisible
-  const focused = panelApi.isVisible && panelApi.isActive
-
+  const focused = visible && panelApi.isActive
   return {
     mode: visible ? "visible" : "hidden",
     visible,
@@ -18,23 +17,47 @@ function getPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActivi
   }
 }
 
-export function useWorkbenchPanelActivityMode(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
-  const [state, setState] = useState<WorkbenchPanelActivityState>(() => getPanelActivityState(panelApi))
+function subscribePanelActivity(
+  panelApi: DockviewPanelApi,
+  onChange: () => void,
+): () => void {
+  const activeDisposable = panelApi.onDidActiveChange(onChange)
+  const visibilityDisposable = panelApi.onDidVisibilityChange(onChange)
+  return () => {
+    activeDisposable.dispose()
+    visibilityDisposable.dispose()
+  }
+}
+
+/**
+ * Bridges dockview panel visibility/active events into React state.
+ * dockview-react still exposes only imperative `api` on panel props — no
+ * equivalent hook — so this stays the shared subscription seam.
+ */
+export function useWorkbenchPanelActivityMode(
+  panelApi: DockviewPanelApi,
+): WorkbenchPanelActivityState {
+  const [state, setState] = useState<WorkbenchPanelActivityState>(() =>
+    readPanelActivityState(panelApi),
+  )
 
   useEffect(() => {
-    setState(getPanelActivityState(panelApi))
-
-    const activeDisposable = panelApi.onDidActiveChange(() => {
-      setState(getPanelActivityState(panelApi))
-    })
-    const visibilityDisposable = panelApi.onDidVisibilityChange(() => {
-      setState(getPanelActivityState(panelApi))
-    })
-
-    return () => {
-      activeDisposable.dispose()
-      visibilityDisposable.dispose()
+    const sync = () => {
+      setState((previous) => {
+        const next = readPanelActivityState(panelApi)
+        if (
+          previous.visible === next.visible &&
+          previous.focused === next.focused &&
+          previous.mode === next.mode
+        ) {
+          return previous
+        }
+        return next
+      })
     }
+
+    sync()
+    return subscribePanelActivity(panelApi, sync)
   }, [panelApi])
 
   return state
