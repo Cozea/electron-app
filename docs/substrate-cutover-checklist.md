@@ -95,8 +95,9 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 7. [x] Phase T6 assistant-runtime decommission — legacy `:3773` boot removed; T3 required; SQLite userdata copy migration; orchestration RPC requires T3 backend
 8. [x] Phase T6b delete `electron/assistant-runtime/` — Codex moved to substrate; in-process boot removed from `main.ts`
 9. [x] Delete `assistantWsBridge.ts` / `orchestrationRpcProxy.ts` (legacy `:3773` bridges)
-10. [ ] SSH/WSL DesktopBackendPool
-11. [ ] Physical monorepo reshape
+10. [x] Phase T6c event-level userdata migration — reset projection tables after legacy sqlite copy; sqlite-backed `replayEvents` on T3 proxy
+11. [ ] SSH/WSL DesktopBackendPool
+12. [ ] Physical monorepo reshape
 
 See `docs/substrate-t3-server-import-plan.md` (swarm map) and `docs/substrate-t3-build.md`.
 
