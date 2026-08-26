@@ -40,6 +40,8 @@ export interface ShadowServerManagerOptions {
   readonly flags?: SubstrateShadowServerFlags;
   readonly readinessTimeoutMs?: number;
   readonly stopGraceMs?: number;
+  readonly instanceId?: string;
+  readonly t3BaseDir?: string;
   readonly forkImpl?: typeof fork;
   readonly waitForReady?: typeof waitForHttpReady;
   readonly now?: () => number;
@@ -62,6 +64,8 @@ export class ShadowServerManager {
   private readonly flags: SubstrateShadowServerFlags;
   private readonly readinessTimeoutMs: number;
   private readonly stopGraceMs: number;
+  private readonly instanceId: string;
+  private readonly t3BaseDir: string | null;
   private readonly forkImpl: typeof fork;
   private readonly waitForReady: typeof waitForHttpReady;
   private readonly now: () => number;
@@ -78,6 +82,8 @@ export class ShadowServerManager {
     this.entryPath = options.entryPath;
     this.logDirectory = options.logDirectory;
     this.flags = options.flags ?? readSubstrateShadowServerFlags();
+    this.instanceId = options.instanceId?.trim() || "primary";
+    this.t3BaseDir = options.t3BaseDir?.trim() || null;
     this.readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000;
     this.stopGraceMs = options.stopGraceMs ?? 5_000;
     this.forkImpl = options.forkImpl ?? fork;
@@ -128,6 +134,12 @@ export class ShadowServerManager {
     this.startedAtMs = this.now();
     this.readyAtMs = null;
 
+    if (!fs.existsSync(this.entryPath)) {
+      this.phase = "error";
+      this.lastError = `Shadow server entry not found: ${this.entryPath}`;
+      throw new Error(this.lastError);
+    }
+
     fs.mkdirSync(this.logDirectory, { recursive: true });
     this.logStream?.end();
     this.logStream = fs.createWriteStream(
@@ -136,21 +148,16 @@ export class ShadowServerManager {
     );
     this.appendManagerLog(`starting generation=${generation} entry=${this.entryPath}`);
 
-    if (!fs.existsSync(this.entryPath)) {
-      this.phase = "error";
-      this.lastError = `Shadow server entry not found: ${this.entryPath}`;
-      this.appendManagerLog(this.lastError);
-      throw new Error(this.lastError);
-    }
-
     const child = this.forkImpl(this.entryPath, [], {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       env: {
         ...process.env,
+        COZEA_BACKEND_INSTANCE_ID: this.instanceId,
         COZEA_SUBSTRATE_SHADOW_HOST: this.flags.host,
         COZEA_SUBSTRATE_SHADOW_PORT: String(this.flags.port),
         COZEA_SUBSTRATE_SHADOW_LOG_DIR: this.logDirectory,
         COZEA_SUBSTRATE_T3_PIN: SUBSTRATE_T3_PIN_SHA,
+        ...(this.t3BaseDir ? { COZEA_T3_SERVER_BASE_DIR: this.t3BaseDir } : {}),
         ...(process.env.COZEA_OBS_NDJSON_PATH
           ? { COZEA_OBS_NDJSON_PATH: process.env.COZEA_OBS_NDJSON_PATH }
           : {}),

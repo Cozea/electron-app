@@ -13,3 +13,11 @@ export * from "./devapps";
 
 /** Upstream T3 RPC method tags (runtime-safe — no heavy Schema graph). */
 export { ORCHESTRATION_WS_METHODS, WS_METHODS } from "./t3/methodTags";
+
+/** Desktop remote / backend pool IPC types (T3 ipc.ts). */
+export type {
+  DesktopDiscoveredSshHost,
+  DesktopEnvironmentBootstrap,
+  DesktopSshEnvironmentTarget,
+  DesktopWslState,
+} from "./t3/ipc";
