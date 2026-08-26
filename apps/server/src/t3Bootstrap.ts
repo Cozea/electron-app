@@ -5,7 +5,11 @@ import {
 } from "@cozea/client-runtime";
 import type { OrchestrationBackendProxy } from "./t3/orchestrationProxy.ts";
 import { T3OrchestrationRpcProxy } from "./t3/orchestrationProxy.ts";
-import { startT3ServerProcess, type T3ServerProcessHandle } from "./t3/process.ts";
+import {
+  migrateCozeaAssistantUserdataToT3,
+  resolveLegacyAssistantSqlitePath,
+} from "../../../electron/substrate/migrations/t3-orchestration-userdata.ts";
+import { resolveDefaultT3BaseDir, startT3ServerProcess, type T3ServerProcessHandle } from "./t3/process.ts";
 
 export interface BootstrapT3ServerOptions {
   readonly host?: string;
@@ -24,7 +28,22 @@ export interface T3ServerBootstrapHandle {
 export async function bootstrapT3Server(
   options: BootstrapT3ServerOptions = {},
 ): Promise<T3ServerBootstrapHandle> {
-  const processHandle = await startT3ServerProcess(options);
+  const baseDir =
+    options.baseDir?.trim() ||
+    process.env.COZEA_T3_SERVER_BASE_DIR?.trim() ||
+    resolveDefaultT3BaseDir();
+
+  const migration = await migrateCozeaAssistantUserdataToT3({
+    legacySqlitePath: resolveLegacyAssistantSqlitePath(),
+    t3BaseDir: baseDir,
+  });
+  options.onLog?.(
+    migration.migrated
+      ? `userdata migration: copied legacy sqlite → ${baseDir}`
+      : `userdata migration skipped: ${migration.reason}`,
+  );
+
+  const processHandle = await startT3ServerProcess({ ...options, baseDir });
   const accessToken = await exchangeBootstrapAccessToken(
     processHandle.baseUrl,
     processHandle.pairingToken,

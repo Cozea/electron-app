@@ -6,10 +6,7 @@ import {
   type OrchestrationEvent,
 } from "@cozea/assistant-contracts";
 
-import {
-  getSharedOrchestrationRpcProxy,
-  type OrchestrationRpcProxy,
-} from "./orchestrationRpcProxy";
+import type { OrchestrationRpcProxy } from "./orchestrationRpcProxy";
 
 export interface RpcBridgedChatTurnInput {
   readonly text: string;
@@ -81,7 +78,10 @@ export async function executeRpcBridgedChatTurn(
   input: RpcBridgedChatTurnInput,
 ): Promise<RpcBridgedChatTurnResult> {
   const timeoutMs = input.timeoutMs ?? 60_000;
-  const proxy = input.proxy ?? getSharedOrchestrationRpcProxy();
+  const proxy = input.proxy;
+  if (!proxy) {
+    throw new Error("orchestration RPC proxy required (T3 backend unavailable)");
+  }
   const threadId = input.threadId?.trim();
   if (!threadId) {
     throw new Error("threadId is required for orchestration RPC chat turns");

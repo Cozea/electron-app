@@ -401,6 +401,7 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
                 threadId,
                 providerId: typeof payload.providerId === "string" ? payload.providerId : undefined,
                 modelSelection: readBridgeModelSelection(payload),
+                proxy: options.orchestrationBackend,
               });
               const turnId = randomUUID();
               turn = {

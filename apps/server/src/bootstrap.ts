@@ -76,19 +76,15 @@ export async function bootstrapCozeaSubstrateServer(
   let orchestrationBackend: OrchestrationRpcBackend | undefined;
 
   if (substrateFlags.t3Server) {
-    try {
-      t3Handle = await bootstrapT3Server({
-        onLog: (line) => appendLog(`[t3] ${line}`),
-      });
-      orchestrationBackend = t3Handle.proxy;
-      appendLog(`T3 server ready at ${t3Handle.process.baseUrl}`);
-    } catch (error) {
-      appendLog(
-        `T3 server boot failed (legacy orchestration fallback): ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+    t3Handle = await bootstrapT3Server({
+      onLog: (line) => appendLog(`[t3] ${line}`),
+    });
+    orchestrationBackend = t3Handle.proxy;
+    appendLog(`T3 server ready at ${t3Handle.process.baseUrl}`);
+  } else {
+    appendLog(
+      "COZEA_T3_SERVER=0: legacy assistant runtime boot removed; enable T3 for orchestration",
+    );
   }
 
   const handle = createShadowHttpServer({
@@ -110,22 +106,8 @@ export async function bootstrapCozeaSubstrateServer(
     onRequestLog: (line) => appendLog(line),
     onListening: (info) => {
       appendLog(`listening on http://${info.host}:${info.port}`);
-      if (substrateFlags.primary && orchestrationBackend === undefined) {
-        void (async () => {
-          try {
-            const { startAssistantRuntime } = await import(
-              "../../../electron/assistant-runtime/boot.ts"
-            );
-            startAssistantRuntime();
-            appendLog("assistant runtime started (ws://127.0.0.1:3773)");
-          } catch (error) {
-            appendLog(
-              `assistant runtime start failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        })();
-      } else if (substrateFlags.primary && orchestrationBackend !== undefined) {
-        appendLog("skipping legacy assistant runtime (T3 orchestration owner active)");
+      if (substrateFlags.t3Server && orchestrationBackend !== undefined) {
+        appendLog("T3 orchestration owner active (legacy :3773 boot removed)");
       }
       if (typeof process.send === "function") {
         process.send({

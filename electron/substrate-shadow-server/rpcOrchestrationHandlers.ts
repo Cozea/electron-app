@@ -3,8 +3,6 @@ import type { WebSocket } from "ws";
 
 import { ORCHESTRATION_RPC_METHODS } from "@cozea/contracts";
 
-import { getSharedOrchestrationRpcProxy } from "./orchestrationRpcProxy";
-
 export interface OrchestrationRpcBackend {
   getSnapshot(): Promise<unknown>;
   dispatchCommand(command: unknown): Promise<unknown>;
@@ -45,7 +43,19 @@ export async function handleOrchestrationRpcRequest(input: {
   readonly payload: unknown;
   readonly options?: OrchestrationRpcHandlerOptions;
 }): Promise<boolean> {
-  const proxy = input.options?.proxy ?? getSharedOrchestrationRpcProxy();
+  const proxy = input.options?.proxy;
+  if (!proxy) {
+    sendJson(input.ws, {
+      type: "res",
+      id: input.id,
+      ok: false,
+      error: {
+        message: "orchestration backend unavailable (T3 server required)",
+        code: "orchestration_unavailable",
+      },
+    });
+    return true;
+  }
   const payload = asRecord(input.payload) ?? {};
 
   switch (input.method) {
