@@ -2,6 +2,7 @@ import {
   DEFAULT_SUBSTRATE_SHADOW_HOST,
   DEFAULT_SUBSTRATE_SHADOW_PORT,
   SUBSTRATE_SHADOW_SERVER_FLAG,
+  SUBSTRATE_VCS_FLAG,
 } from "./constants";
 
 function parseBooleanFlag(raw: string | undefined, fallback: boolean): boolean {
@@ -37,6 +38,15 @@ export interface SubstrateShadowServerFlags {
   readonly port: number;
 }
 
+export interface SubstrateVcsFlags {
+  readonly flagId: typeof SUBSTRATE_VCS_FLAG;
+  /**
+   * When true, agent/overlay VCS should prefer the `VcsDriver` adapter path
+   * (status invalidate, push-safety, checkpoint facade stubs).
+   */
+  readonly enabled: boolean;
+}
+
 /**
  * Phase 1 flag — default **off**.
  * Enable with `COZEA_SUBSTRATE_SHADOW_SERVER=1`.
@@ -51,4 +61,20 @@ export function readSubstrateShadowServerFlags(
     host: env.COZEA_SUBSTRATE_SHADOW_HOST?.trim() || DEFAULT_SUBSTRATE_SHADOW_HOST,
     port: parsePort(env.COZEA_SUBSTRATE_SHADOW_PORT, DEFAULT_SUBSTRATE_SHADOW_PORT),
   };
+}
+
+/**
+ * Phase 4 flag — default **off**.
+ * Enable with `COZEA_SUBSTRATE_VCS=1`.
+ */
+export function readSubstrateVcsFlags(env: NodeJS.ProcessEnv = process.env): SubstrateVcsFlags {
+  return {
+    flagId: SUBSTRATE_VCS_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_VCS, false),
+  };
+}
+
+/** Convenience: whether the Phase 4 VcsDriver path is enabled. */
+export function isSubstrateVcsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return readSubstrateVcsFlags(env).enabled;
 }

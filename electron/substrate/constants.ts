@@ -8,5 +8,8 @@ export const SUBSTRATE_SHADOW_READY_PATH = "/.well-known/cozea/substrate/ready";
 /** Feature flag id from the implementation plan. */
 export const SUBSTRATE_SHADOW_SERVER_FLAG = "cozea.substrate.shadowServer" as const;
 
+/** Phase 4 VCS substrate flag — agent VcsDriver path (default off). */
+export const SUBSTRATE_VCS_FLAG = "cozea.substrate.vcs" as const;
+
 /** Upstream pin recorded by Track Inv (Phase 0). */
 export const SUBSTRATE_T3_PIN_SHA = "a3a8cbd60539b4af4de8f96c892dbd07a2b6c041";

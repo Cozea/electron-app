@@ -23,6 +23,8 @@ import { GitSyncService } from '../services/gitSyncService'
 import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 import type { GitChangesScope } from '../../shared/electronApiTypes'
+import { bootstrapSubstrateVcs } from '../substrate/vcs/bootstrap'
+import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
 
 function sha256Hex(content: Buffer | Uint8Array): string {
   return createHash('sha256').update(content).digest('hex')
@@ -62,10 +64,17 @@ async function resolveWorkspaceGitPathForCleanup(
 
 
 export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
+  // Phase 4: register Changes checkpoint facade + shared status invalidation bus.
+  bootstrapSubstrateVcs()
+
   const gitSyncService = GitSyncService.getInstance()
   const gitDirtyStateService = GitChangesBroadcaster.getInstance()
   const checkpointWorkerClient = CheckpointWorkerClient.getInstance()
 
+  /** Collab overlay → substrate status bus (4c/4d). Keeps Changes + agent on one invalidate path. */
+  const invalidateAfterCollabMutation = (projectPath: string): void => {
+    invalidateVcsStatus(projectPath, 'all')
+  }
   ipcMain.handle(
     'workspaceSync:hashFile',
     async (_event, { workspaceId, laneId, path }: { workspaceId: string; laneId?: string; path: string }): Promise<{ hash: string; size: number } | { success: false; error: string }> => {
@@ -410,7 +419,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         return await gitSyncService.pullMain({ ...options, projectPath })
       } finally {
-        gitDirtyStateService.invalidateProjectPath(projectPath)
+        invalidateAfterCollabMutation(projectPath)
       }
     }
   )
@@ -442,7 +451,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         return await gitSyncService.replayLocalCommits({ ...options, projectPath })
       } finally {
-        gitDirtyStateService.invalidateProjectPath(projectPath)
+        invalidateAfterCollabMutation(projectPath)
       }
     }
   )
@@ -564,7 +573,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         return await gitSyncService.restoreMain({ ...options, projectPath })
       } finally {
-        gitDirtyStateService.invalidateProjectPath(projectPath)
+        invalidateAfterCollabMutation(projectPath)
       }
     }
   )
@@ -590,7 +599,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         return await gitSyncService.adoptWorkspace({ ...options, projectPath })
       } finally {
-        gitDirtyStateService.invalidateProjectPath(projectPath)
+        invalidateAfterCollabMutation(projectPath)
       }
     }
   )
@@ -615,7 +624,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         return await gitSyncService.commitAll({ ...options, projectPath })
       } finally {
-        gitDirtyStateService.invalidateProjectPath(projectPath)
+        invalidateAfterCollabMutation(projectPath)
       }
     }
   )
@@ -673,7 +682,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         return await gitSyncService.commitAndPush({ ...options, projectPath })
       } finally {
-        gitDirtyStateService.invalidateProjectPath(projectPath)
+        invalidateAfterCollabMutation(projectPath)
       }
     }
   )
