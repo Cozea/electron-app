@@ -83,8 +83,7 @@ export interface SubstrateProvidersFlags {
   readonly flagId: typeof SUBSTRATE_PROVIDERS_FLAG;
   /**
    * When true, the substrate ProviderDriver registry + managed snapshot
-   * lifecycle is available. Default product chat still uses the in-process
-   * assistant-runtime providers until a later cutover phase.
+   * lifecycle is available. Production chat uses the T3 server backend.
    */
   readonly enabled: boolean;
 }
@@ -130,8 +129,7 @@ export function isSubstrateVcsEnabled(env: NodeJS.ProcessEnv = process.env): boo
 export interface SubstratePrimaryFlags {
   readonly flagId: typeof SUBSTRATE_PRIMARY_FLAG;
   /**
-   * When true with shadow server, prefer out-of-process substrate and skip
-   * starting the in-process assistant runtime.
+   * When true with shadow server, prefer out-of-process substrate (T3 server).
    */
   readonly enabled: boolean;
 }
@@ -212,19 +210,6 @@ export function readSubstrateFeatureFlags(
     obsNdjson: readSubstrateObsNdjsonFlags(env).enabled,
     t3Server: readSubstrateT3ServerFlags(env).enabled,
   };
-}
-
-export function shouldStartInProcessAssistantRuntime(
-  flags: SubstrateFeatureFlags = readSubstrateFeatureFlags(),
-): boolean {
-  if (flags.t3Server) {
-    return false;
-  }
-  // Phase 5: primary mode requires shadow server and skips in-process runtime.
-  if (flags.primary && flags.shadowServer.enabled) {
-    return false;
-  }
-  return true;
 }
 
 export {

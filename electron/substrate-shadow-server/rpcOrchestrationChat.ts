@@ -6,7 +6,7 @@ import {
   type OrchestrationEvent,
 } from "@cozea/assistant-contracts";
 
-import type { OrchestrationRpcProxy } from "./orchestrationRpcProxy";
+import type { OrchestrationRpcBackend } from "./rpcOrchestrationHandlers";
 
 export interface RpcBridgedChatTurnInput {
   readonly text: string;
@@ -18,7 +18,7 @@ export interface RpcBridgedChatTurnInput {
     readonly instanceId?: string;
   };
   readonly timeoutMs?: number;
-  readonly proxy?: OrchestrationRpcProxy;
+  readonly proxy?: OrchestrationRpcBackend;
 }
 
 export interface RpcBridgedChatTurnResult {

@@ -26,7 +26,7 @@ import {
   formatCodexCliUpgradeMessage,
   isCodexCliVersionSupported,
   parseCodexCliVersion,
-} from "./provider/codexCliVersion";
+} from "./codexCliVersion.ts";
 
 type PendingRequestKey = string;
 

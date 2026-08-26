@@ -4,8 +4,8 @@ import {
   formatCodexCliUpgradeMessage,
   isCodexCliVersionSupported,
   parseCodexCliVersion,
-} from "../../../assistant-runtime/provider/codexCliVersion.ts";
-import { probeCodexDiscovery } from "../../../assistant-runtime/provider/codexAppServer.ts";
+} from "../codex/codexCliVersion.ts";
+import { probeCodexDiscovery } from "../codex/codexAppServer.ts";
 import { parseBooleanFlag } from "../../flags";
 import {
   beginManagedSnapshotRefresh,

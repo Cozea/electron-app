@@ -104,11 +104,6 @@ jobs:
             source "$BASH_ENV"
             bun run typecheck
       - run:
-          name: Typecheck assistant runtime
-          command: |
-            source "$BASH_ENV"
-            bun run typecheck:assistant-runtime
-      - run:
           name: Typecheck electron
           command: |
             source "$BASH_ENV"

@@ -28,7 +28,6 @@
     "snapshot:generate": "bun run scripts/generate-v8-snapshot.mjs",
     "build:snapshot": "bun run snapshot:generate && bun run build",
     "typecheck": "tsc --project tsconfig.app.json",
-    "typecheck:assistant-runtime": "tsc --project tsconfig.assistant-runtime.json",
     "typecheck:electron": "tsc --project tsconfig.electron.json",
     "lint": "bunx --bun oxlint src electron convex shared tests electron.vite.config.ts vitest.config.ts",
     "test": "bunx vitest run",

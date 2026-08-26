@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { ThreadId, type ProviderEvent } from "@cozea/assistant-contracts";
 
-import { CodexAppServerManager } from "../../../assistant-runtime/codexAppServerManager.ts";
+import { CodexAppServerManager } from "../codex/codexAppServerManager.ts";
 import type {
   SubstrateLiveTurnHandle,
   SubstrateLiveTurnInput,
