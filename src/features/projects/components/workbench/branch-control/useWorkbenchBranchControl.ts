@@ -2,7 +2,13 @@ import type { GitBranch as NativeGitBranch } from "@cozea/assistant-contracts"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react"
 
-import { getWorkspaceGitStatusSummary } from "./workbenchBranchDisplay"
+import {
+  getWorkspaceGitStatusSummary,
+  resolveDisplayedWorkbenchBranch,
+  resolveWorkbenchBranchAriaLabel,
+  resolveWorkbenchBranchChromeLabel,
+  resolveWorkbenchBranchTooltipDetail,
+} from "./workbenchBranchDisplay"
 import { checkoutGitBranchCompat, loadGitBranchesCompat } from "./workbenchBranchCompat"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
@@ -24,6 +30,7 @@ interface GitToolbarSnapshot {
   currentGitBranch: string | null
   gitStatus: Awaited<ReturnType<typeof window.electronAPI.workspaceSync.gitStatus>> | null
   loadError: string | null
+  hasVerifiedGitStatus: boolean
 }
 
 function buildMenuItems(input: {
@@ -147,9 +154,15 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const [isSwitching, setIsSwitching] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
   const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(null)
+  const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
+  const [hasVerifiedGitStatus, setHasVerifiedGitStatus] = useState(false)
 
   const branchCwd = input.workspaceId
-  const displayedBranch = input.activeLane?.branch ?? currentGitBranch ?? input.collabBranch
+  const displayedBranch = resolveDisplayedWorkbenchBranch({
+    activeLaneBranch: input.activeLane?.branch,
+    currentGitBranch,
+    collabBranch: input.collabBranch,
+  })
 
   const loadGitToolbarSnapshot = useCallback(async (): Promise<GitToolbarSnapshot | null> => {
     if (!branchCwd) {
@@ -159,6 +172,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
         currentGitBranch: null,
         gitStatus: null,
         loadError: null,
+        hasVerifiedGitStatus: false,
       }
     }
 
@@ -169,6 +183,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
       ])
 
       const nextIsRepo = Boolean(branchResult.isRepo || statusResult.isRepo)
+      const hasVerifiedGitStatus = statusResult.success === true
       return {
         isRepo: nextIsRepo,
         branches: [...branchResult.branches],
@@ -178,6 +193,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
           null,
         gitStatus: statusResult.success === false ? null : statusResult,
         loadError: branchResult.error ?? (statusResult.success === false ? statusResult.error ?? null : null),
+        hasVerifiedGitStatus,
       }
     } catch (error) {
       return {
@@ -186,6 +202,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
         currentGitBranch: null,
         gitStatus: null,
         loadError: error instanceof Error ? error.message : "Failed to inspect the local git repository.",
+        hasVerifiedGitStatus: false,
       }
     }
   }, [branchCwd])
@@ -193,12 +210,16 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const applyGitToolbarSnapshot = useCallback((snapshot: GitToolbarSnapshot) => {
     setCurrentGitBranch(snapshot.currentGitBranch)
     setLastError(snapshot.loadError)
+    setIsGitRepo(snapshot.isRepo)
+    setHasVerifiedGitStatus(snapshot.hasVerifiedGitStatus)
   }, [])
 
   const refreshGitState = useCallback(async () => {
     if (!branchCwd) {
       setCurrentGitBranch(null)
       setLastError(null)
+      setIsGitRepo(null)
+      setHasVerifiedGitStatus(false)
       return
     }
 
@@ -304,11 +325,53 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
     ],
   )
 
-  const chromeLabel = useMemo(() => displayedBranch || "Select branch", [displayedBranch])
+  const chromeLabel = useMemo(
+    () =>
+      resolveWorkbenchBranchChromeLabel({
+        isRepo: isGitRepo,
+        collabBranch: input.collabBranch,
+        activeLaneBranch: input.activeLane?.branch,
+        currentGitBranch,
+        gitStatusFresh: hasVerifiedGitStatus,
+        isLoading,
+      }),
+    [
+      currentGitBranch,
+      hasVerifiedGitStatus,
+      input.activeLane?.branch,
+      input.collabBranch,
+      isGitRepo,
+      isLoading,
+    ],
+  )
+
+  const branchAriaLabel = useMemo(
+    () =>
+      resolveWorkbenchBranchAriaLabel({
+        isRepo: isGitRepo,
+        displayedBranch,
+        gitStatusFresh: hasVerifiedGitStatus,
+        isLoading,
+      }),
+    [displayedBranch, hasVerifiedGitStatus, isGitRepo, isLoading],
+  )
+
+  const branchTooltipDetail = useMemo(
+    () =>
+      resolveWorkbenchBranchTooltipDetail({
+        isRepo: isGitRepo,
+        gitStatusFresh: hasVerifiedGitStatus,
+        isLoading,
+        displayedBranch,
+      }),
+    [displayedBranch, hasVerifiedGitStatus, isGitRepo, isLoading],
+  )
 
   return {
     branchCwd,
     chromeLabel,
+    branchAriaLabel,
+    branchTooltipDetail,
     isBusy: isLoading || isSwitching,
     showActionSpinner: isSwitching,
     handleOpenNativeBranchMenu,
