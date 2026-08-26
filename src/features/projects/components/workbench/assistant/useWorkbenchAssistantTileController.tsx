@@ -50,6 +50,9 @@ import {
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
+import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
+import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
+import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
@@ -141,7 +144,28 @@ export function useWorkbenchAssistantTileController(
   input: UseWorkbenchAssistantTileControllerInput,
 ): WorkbenchAssistantTileControllerResult {
   const assistantRuntime = useAssistantRuntimeStatus()
+  // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
+  const substrateRpcChat = useSubstrateRpcChat()
+  const substrateTransport = useSubstrateChatTransport()
+  useEffect(() => {
+    if (substrateTransport.active) {
+      console.info("[substrate] primary chat transport active", {
+        shadowBaseUrl: substrateTransport.shadowBaseUrl,
+        rpcChat: substrateTransport.shadowStatus?.features.rpcChat ?? false,
+        providers: substrateTransport.shadowStatus?.features.providers ?? false,
+      })
+    }
+  }, [
+    substrateTransport.active,
+    substrateTransport.shadowBaseUrl,
+    substrateTransport.shadowStatus?.features.providers,
+    substrateTransport.shadowStatus?.features.rpcChat,
+  ])
+  if (substrateRpcChat.enabled && substrateRpcChat.lastError) {
+    console.warn("[substrate.rpcChat]", substrateRpcChat.lastError)
+  }
   const isRuntimeReady = assistantRuntime.phase === "ready"
+  const isChatReady = isRuntimeReady || substrateTransport.active
   const runtimeErrorMessage =
     assistantRuntime.phase === "error"
       ? assistantRuntime.lastError?.trim() || "Local chat runtime is unavailable."
@@ -1011,8 +1035,12 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    if (!isRuntimeReady) {
-      setSendError(runtimeErrorMessage ?? "Local chat runtime is still starting.")
+    if (!isChatReady) {
+      setSendError(
+        substrateTransport.loading
+          ? "Substrate chat is still starting."
+          : runtimeErrorMessage ?? "Local chat runtime is still starting.",
+      )
       return
     }
 
@@ -1153,6 +1181,31 @@ export function useWorkbenchAssistantTileController(
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
 
     try {
+      if (substrateTransport.active) {
+        if (hasImages) {
+          throw new Error("Substrate primary chat does not support image attachments yet.")
+        }
+        const turn = await sendSubstrateRpcTurn({
+          threadId: resolvedThread.id,
+          text: nextPrompt,
+          shadowBaseUrl: substrateTransport.shadowBaseUrl ?? undefined,
+          providerId: selectedDispatchModelSelection?.provider,
+        })
+        if (turn.assistantText.trim().length > 0) {
+          setOptimisticUserMessages((current) => [
+            ...current,
+            {
+              id: newMessageId(),
+              role: "assistant",
+              text: turn.assistantText,
+              createdAt: new Date().toISOString(),
+              streaming: false,
+            },
+          ])
+        }
+        return
+      }
+
       const api = ensureNativeApi()
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {

@@ -1,11 +1,23 @@
+/**
+ * Checkpoint operations for Changes UI and collab activity timeline.
+ *
+ * Single implementation owner under `refs/cozea/checkpoints`. Orchestration
+ * turn refs use `checkpointRefs.checkpointRefForThreadTurn`.
+ */
+
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
+import {
+  CHECKPOINT_REFS_PREFIX,
+  checkpointRefForGroupId,
+  migrateLegacyT3CheckpointRefs,
+} from './checkpointRefs'
+
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
-const CHECKPOINT_REF_PREFIX = 'refs/cozea/checkpoints'
 const DEFAULT_AUTHOR_EMAIL = 'cozea@users.noreply.github.com'
 const GIT_EXECUTE_TIMEOUT_MS = 30_000
 const MAX_UNTRACKED_DIFF_FILES = 50
@@ -143,7 +155,7 @@ async function executeGit(options: GitExecuteOptions): Promise<GitExecuteResult>
 }
 
 function checkpointRefForId(checkpointId: string): string {
-  return `${CHECKPOINT_REF_PREFIX}/${checkpointId}`
+  return checkpointRefForGroupId(checkpointId)
 }
 
 async function assertGitSuccess(
@@ -448,6 +460,7 @@ export async function captureCheckpoint(
   authorEmail = DEFAULT_AUTHOR_EMAIL,
 ): Promise<GitCheckpointCaptureResult> {
   try {
+    await migrateLegacyT3CheckpointRefs(cwd)
     const commitOid = await createSyntheticCommit({
       cwd,
       authorName,
@@ -580,7 +593,7 @@ export async function deleteAllCheckpointRefs(cwd: string): Promise<GitCheckpoin
     const refsResult = await assertGitSuccess(
       {
         cwd,
-        args: ['for-each-ref', '--format=%(refname)', CHECKPOINT_REF_PREFIX],
+        args: ['for-each-ref', '--format=%(refname)', CHECKPOINT_REFS_PREFIX],
       },
       'Failed to enumerate checkpoint refs.',
     )

@@ -777,6 +777,9 @@ export interface GitSyncPushResult {
   headCommit?: string
   pushed?: boolean
   error?: string
+  refused?: boolean
+  refusalReason?: string
+  suggestedPublishBranch?: string
 }
 
 export interface GitSyncCommitPushResult {
