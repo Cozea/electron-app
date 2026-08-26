@@ -4,6 +4,15 @@ import type { WebContents } from 'electron'
 
 import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '../../shared/electronApiTypes'
 import { CheckpointWorkerClient } from './CheckpointWorkerClient'
+import { getChangesCheckpointReads } from '../substrate/vcs/checkpointsFacade'
+import { isSubstrateVcsEnabled } from '../substrate/flags'
+import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
+
+/**
+ * @deprecated Expanding this class into a permanent dual agent-status owner is
+ * forbidden — Phase 4c collapses into substrate `invalidateVcsStatus` /
+ * `VcsStatusBroadcaster`. Prefer `invalidateVcsStatus(cwd)` from overlay code.
+ */
 
 const GIT_CHANGES_UPDATED_CHANNEL = 'workspaceSync:gitChangesUpdated'
 const GIT_DIRTY_STATE_CHANGED_CHANNEL = 'workspaceSync:gitDirtyStateChanged'
@@ -132,6 +141,14 @@ export class GitChangesBroadcaster {
       }
       this.scheduleRefresh(normalizedProjectPath, scope, INVALIDATION_DEBOUNCE_MS)
     }
+  }
+
+  /**
+   * Prefer this from collab/agent callers so agent + Changes share one bus (4c).
+   * Fans into {@link invalidateProjectPath} via `subscribeVcsStatusInvalidation`.
+   */
+  invalidateViaSubstrateBus(projectPath: string): void {
+    invalidateVcsStatus(normalizeProjectPath(projectPath), 'all')
   }
 
   invalidateFilePath(filePath: string): void {
@@ -299,15 +316,34 @@ export class GitChangesBroadcaster {
 
     const refreshPromise = (async () => {
       try {
+        // Phase 4b: when substrate VCS flag is on, route Changes reads through
+        // the checkpoint facade / driver stubs (same underlying worker — no third stack).
+        const useFacade = isSubstrateVcsEnabled()
         const [result, statsResult] = await Promise.all([
-          CheckpointWorkerClient.getInstance().readChanges({
-            cwd: projectPath,
-            scope,
-            authorName: 'Cozea', // Assuming Cozea for now, we can pass it later if needed
-          }),
+          useFacade
+            ? getChangesCheckpointReads().readChanges({ cwd: projectPath, scope })
+            : CheckpointWorkerClient.getInstance().readChanges({
+                cwd: projectPath,
+                scope,
+                authorName: 'Cozea',
+              }),
           scope === 'current'
-            ? CheckpointWorkerClient.getInstance().getHeadDiffStats({ cwd: projectPath, authorName: 'Cozea' })
-            : Promise.resolve({ success: true as const, additions: 0, deletions: 0, changedFiles: 0, error: undefined })
+            ? useFacade
+              ? getChangesCheckpointReads().getHeadDiffStats({
+                  cwd: projectPath,
+                  authorName: 'Cozea',
+                })
+              : CheckpointWorkerClient.getInstance().getHeadDiffStats({
+                  cwd: projectPath,
+                  authorName: 'Cozea',
+                })
+            : Promise.resolve({
+                success: true as const,
+                additions: 0,
+                deletions: 0,
+                changedFiles: 0,
+                error: undefined as string | undefined,
+              }),
         ])
 
         const cacheKey = `${key}:${Date.now()}` // Uniqueish cacheKey
@@ -316,7 +352,7 @@ export class GitChangesBroadcaster {
           workspaceId,
           scope,
           cacheKey,
-          files: result.success ? result.files : [],
+          files: result.success ? [...result.files] : [],
           patch: result.success ? (result.diff ?? '') : '',
           loaded: true,
           error: result.success ? null : (result.error ?? 'Failed to compute git changes'),

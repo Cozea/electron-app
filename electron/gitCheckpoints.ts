@@ -1,3 +1,15 @@
+/**
+ * Local Git checkpoint helpers for the Changes UI / activity timeline.
+ *
+ * @deprecated Phase 4b — do not add a third capture stack. Prefer
+ * `electron/substrate/vcs/checkpointsFacade.ts` / `VcsDriver.checkpoints` as
+ * the single owner. This module remains the underlying implementation until
+ * Changes + orchestration fully cut over; new call sites should go through the
+ * facade.
+ *
+ * Refs are stored under `refs/cozea/checkpoints/<checkpointId>`.
+ */
+
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
