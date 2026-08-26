@@ -23,6 +23,12 @@ export const SUBSTRATE_OBS_NDJSON_FLAG = "cozea.obs.ndjson" as const;
 /** Default OTLP HTTP logs endpoint when observability is enabled. */
 export const DEFAULT_OTLP_LOGS_ENDPOINT = "http://127.0.0.1:4318/v1/logs" as const;
 
+/** Phase T1 — upstream T3 apps/server dual-run (default off). */
+export const SUBSTRATE_T3_SERVER_FLAG = "cozea.t3.server" as const;
+
+/** Default port for vendored T3 server child (separate from shadow :4783). */
+export const DEFAULT_T3_SERVER_PORT = 13_773;
+
 /** Upstream pin recorded by Track Inv (Phase 0). */
 export const SUBSTRATE_T3_PIN_SHA = "a3a8cbd60539b4af4de8f96c892dbd07a2b6c041";
 
@@ -35,7 +41,8 @@ export type SubstrateFlagId =
   | typeof SUBSTRATE_PROVIDERS_FLAG
   | typeof SUBSTRATE_VCS_FLAG
   | typeof SUBSTRATE_PRIMARY_FLAG
-  | typeof SUBSTRATE_OBS_NDJSON_FLAG;
+  | typeof SUBSTRATE_OBS_NDJSON_FLAG
+  | typeof SUBSTRATE_T3_SERVER_FLAG;
 
 /** IPC channel prefixes that remain after Phase 5 shrink (allowlist). */
 export const PHASE5_IPC_ALLOWLIST_PREFIXES = [

@@ -3,10 +3,16 @@ import type { WebSocket } from "ws";
 
 import { ORCHESTRATION_RPC_METHODS } from "@cozea/contracts";
 
-import {
-  getSharedOrchestrationRpcProxy,
-  type OrchestrationRpcProxy,
-} from "./orchestrationRpcProxy";
+import { getSharedOrchestrationRpcProxy } from "./orchestrationRpcProxy";
+
+export interface OrchestrationRpcBackend {
+  getSnapshot(): Promise<unknown>;
+  dispatchCommand(command: unknown): Promise<unknown>;
+  getTurnDiff(params: unknown): Promise<unknown>;
+  getFullThreadDiff(params: unknown): Promise<unknown>;
+  replayEvents(params: unknown): Promise<unknown>;
+  subscribeDomainEvents(listener: (event: import("@cozea/assistant-contracts").OrchestrationEvent) => void): Promise<() => void>;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -24,7 +30,7 @@ function sendJson(ws: WebSocket, payload: unknown): void {
 }
 
 export interface OrchestrationRpcHandlerOptions {
-  readonly proxy?: OrchestrationRpcProxy;
+  readonly proxy?: OrchestrationRpcBackend;
   readonly onLog?: (line: string) => void;
 }
 
