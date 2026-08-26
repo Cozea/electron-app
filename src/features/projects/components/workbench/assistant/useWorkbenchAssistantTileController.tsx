@@ -52,7 +52,9 @@ import {
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
 import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
+import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
+import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
@@ -62,6 +64,7 @@ import {
   selectAssistantProjectByCwd,
   selectAssistantProjectById,
   selectAssistantThreadById,
+  selectAssistantThreads,
   useStore,
 } from "@/stores/assistant-store"
 import type { ChatMessage } from "@/stores/types"
@@ -113,6 +116,7 @@ interface WorkbenchAssistantTileControllerResult {
   showTitleSpinner: boolean
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
+  handleDeleteThread: () => Promise<boolean>
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
 }
 
@@ -147,6 +151,10 @@ export function useWorkbenchAssistantTileController(
   // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
+  useSubstrateOrchestrationSync({
+    active: substrateTransport.active,
+    shadowBaseUrl: substrateTransport.shadowBaseUrl,
+  })
   useEffect(() => {
     if (substrateTransport.active) {
       console.info("[substrate] primary chat transport active", {
@@ -171,13 +179,13 @@ export function useWorkbenchAssistantTileController(
       ? assistantRuntime.lastError?.trim() || "Local chat runtime is unavailable."
       : null
 
-  useAssistantRuntimeSync(isRuntimeReady)
+  useAssistantRuntimeSync(isChatReady)
 
   const {
     config,
     error: configError,
     isLoading: isConfigLoading,
-  } = useAssistantServerConfig(isRuntimeReady)
+  } = useAssistantServerConfig(isChatReady)
   const [composer, setComposer] = useState("")
   const [composerCursor, setComposerCursor] = useState(0)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -1181,15 +1189,17 @@ export function useWorkbenchAssistantTileController(
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
 
     try {
-      if (substrateTransport.active) {
+      const useSubstrateRpcFallback = substrateTransport.active && !isRuntimeReady
+      if (useSubstrateRpcFallback) {
         if (hasImages) {
-          throw new Error("Substrate primary chat does not support image attachments yet.")
+          throw new Error("Substrate RPC chat fallback does not support image attachments yet.")
         }
         const turn = await sendSubstrateRpcTurn({
           threadId: resolvedThread.id,
           text: nextPrompt,
           shadowBaseUrl: substrateTransport.shadowBaseUrl ?? undefined,
           providerId: selectedDispatchModelSelection?.provider,
+          modelSelection: selectedDispatchModelSelection,
         })
         if (turn.assistantText.trim().length > 0) {
           setOptimisticUserMessages((current) => [
@@ -1527,6 +1537,65 @@ export function useWorkbenchAssistantTileController(
     setThreadError(thread.id, null)
   }
 
+  const handleDeleteThread = async (): Promise<boolean> => {
+    if (!thread) {
+      return false
+    }
+
+    const api = ensureNativeApi()
+    const confirmed = await api.dialogs.confirm(
+      `Delete thread "${thread.title}"? Provider sessions and terminals for this thread will be cleaned up.`,
+    )
+    if (!confirmed) {
+      return false
+    }
+
+    const assistantState = useStore.getState()
+    const threads = selectAssistantThreads(assistantState).map((entry) => ({
+      id: entry.id,
+      worktreePath: entry.worktreePath,
+    }))
+    const project =
+      selectAssistantProjectById(assistantState, thread.projectId) ??
+      selectAssistantProjectByCwd(assistantState, input.projectRootPath)
+
+    setSendError(null)
+    try {
+      const result = await deleteAssistantThread({
+        threadId: thread.id,
+        threads,
+        project: project ? { workspaceRoot: project.cwd } : null,
+        deps: {
+          confirm: (message) => api.dialogs.confirm(message),
+          dispatchDelete: ({ threadId, commandId }) =>
+            api.orchestration.dispatchCommand({
+              type: "thread.delete",
+              commandId,
+              threadId,
+            }),
+          removeWorktree: (worktreeInput) => api.git.removeWorktree(worktreeInput),
+          newCommandId,
+          closeTerminals: (threadId) =>
+            api.terminal.close({ threadId, deleteHistory: true }),
+        },
+      })
+
+      if (result.status === "deleted_worktree_failed") {
+        const detail =
+          result.error instanceof Error ? result.error.message : "Unknown worktree removal error."
+        setSendError(
+          `Thread deleted, but worktree removal failed (${result.worktreePath}): ${detail}`,
+        )
+        return true
+      }
+
+      return result.status === "deleted"
+    } catch (error) {
+      setSendError(toErrorMessage(error))
+      return false
+    }
+  }
+
   const handleRevertToTurnCount = async (turnCount: number) => {
     if (!thread) {
       return
@@ -1610,9 +1679,11 @@ export function useWorkbenchAssistantTileController(
     closeDiffDialog: () => {
       setDiffDialog(null)
     },
+    handleDeleteThread,
     surfaceProps: {
       dockComposerOnHover: true,
       isRuntimeReady,
+      isChatReady,
       runtimeErrorMessage,
       workspaceId: input.workspaceId,
       workspaceRoot: resolvedWorkspaceRoot,

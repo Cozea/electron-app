@@ -163,6 +163,7 @@ describe("rpc chat provider-backed mode (phase 2+3)", () => {
       pin: "testpin",
       rpcChatEnabled: true,
       providersEnabled: true,
+      primaryEnabled: false,
       providerRegistry: bare,
     });
     cleanup.push(async () => {

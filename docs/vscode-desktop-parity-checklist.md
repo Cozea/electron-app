@@ -79,13 +79,15 @@ Acceptance checks:
 ## Phase 5: Native Desktop Interaction Parity
 
 - [ ] Expand app menu + context menus + command palette parity.
+- [x] Ship workbench command palette + keybindings discovery (`cozea.palette.enabled` / `VITE_FF_COZEA_PALETTE_ENABLED`, default ON). Track A in `docs/t3code-implementation-plan.md`.
 - [ ] Add Recent Projects, Reopen Closed Window, Reveal/Open externally.
 - [ ] Centralize command IDs and bind them to menu + keyboard + command palette.
 
 Files:
 - `electron/menu.ts`
 - `electron/ipc/registerContextMenuHandlers.ts`
-- `src/components/CommandSearch.tsx`
+- `src/features/projects/components/command-palette/`
+- `src/components/CommandSearch.tsx` (legacy checklist path; palette lives under command-palette/)
 
 Acceptance checks:
 - commands available from keyboard, menu, and command palette consistently

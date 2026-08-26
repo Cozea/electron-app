@@ -3,14 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { SubstrateChatClient } from "@cozea/client-runtime";
+import * as orchestrationChat from "../../electron/substrate-shadow-server/rpcOrchestrationChat";
 import { attachRpcChat } from "../../electron/substrate-shadow-server/rpcChat";
-
-vi.mock("../../electron/substrate-shadow-server/assistantWsBridge", () => ({
-  bridgeAssistantTurn: vi.fn(async ({ text }: { text: string }) => ({
-    replyText: `mock-bridged:${text}`,
-    mode: "bridged" as const,
-  })),
-}));
 
 describe("rpc chat assistant WS bridge (primary mode)", () => {
   const cleanup: Array<() => Promise<void>> = [];
@@ -23,6 +17,10 @@ describe("rpc chat assistant WS bridge (primary mode)", () => {
   });
 
   it("uses assistant bridge when primary is on and runtime is reachable", async () => {
+    const bridgeSpy = vi.spyOn(orchestrationChat, "executeRpcBridgedChatTurn").mockResolvedValue({
+      replyText: "mock-bridged:bridge-me",
+      mode: "orchestration-rpc",
+    });
     const readinessServer = createServer((_req, res) => {
       res.writeHead(200);
       res.end("ok");
@@ -82,5 +80,6 @@ describe("rpc chat assistant WS bridge (primary mode)", () => {
     const smoke = await client.smokeRoundtrip("bridge-me");
     expect(smoke.send.mode).toBe("bridged");
     expect(smoke.send.replyPreview).toBe("mock-bridged:bridge-me");
+    bridgeSpy.mockRestore();
   });
 });

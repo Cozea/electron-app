@@ -17,7 +17,11 @@ import {
 } from "../substrate/providers";
 import { readSubstratePrimaryFlags } from "../substrate/flags";
 import type { SubstrateDriverKind } from "../substrate/providers/types";
-import { bridgeAssistantTurn } from "./assistantWsBridge";
+import { executeRpcBridgedChatTurn } from "./rpcOrchestrationChat";
+import {
+  handleOrchestrationRpcRequest,
+  isOrchestrationRpcMethod,
+} from "./rpcOrchestrationHandlers";
 
 export const SUBSTRATE_RPC_WS_PATH = "/rpc";
 
@@ -113,6 +117,38 @@ function resolveDriverKind(raw: unknown): SubstrateDriverKind {
     return raw.trim() as SubstrateDriverKind;
   }
   return "opencode";
+}
+
+function readBridgeModelSelection(
+  payload: Record<string, unknown>,
+): {
+  readonly provider: "codex" | "opencode" | "claudeAgent" | "cursor";
+  readonly model: string;
+  readonly instanceId?: string;
+} | undefined {
+  const raw = asRecord(payload.modelSelection);
+  if (!raw) {
+    return undefined;
+  }
+  const provider = typeof raw.provider === "string" ? raw.provider.trim() : "";
+  const model = typeof raw.model === "string" ? raw.model.trim() : "";
+  if (!provider || !model) {
+    return undefined;
+  }
+  if (
+    provider !== "codex" &&
+    provider !== "opencode" &&
+    provider !== "claudeAgent" &&
+    provider !== "cursor"
+  ) {
+    return undefined;
+  }
+  const instanceId = typeof raw.instanceId === "string" ? raw.instanceId.trim() : "";
+  return {
+    provider,
+    model,
+    ...(instanceId ? { instanceId } : {}),
+  };
 }
 
 /**
@@ -289,6 +325,17 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
     }
     const request = record as unknown as RpcRequest;
     try {
+      if (isOrchestrationRpcMethod(request.method)) {
+        await handleOrchestrationRpcRequest({
+          ws,
+          id: request.id,
+          method: request.method,
+          payload: request.payload,
+          options: { onLog: options.onLog },
+        });
+        return;
+      }
+
       if (request.method === SUBSTRATE_RPC_METHODS.health) {
         const bridge = await probeAssistantBridge(assistantHttpOrigin);
         sendJson(ws, {
@@ -344,11 +391,11 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
             try {
               const threadId =
                 typeof payload.threadId === "string" ? payload.threadId.trim() : undefined;
-              const bridged = await bridgeAssistantTurn({
+              const bridged = await executeRpcBridgedChatTurn({
                 text,
                 threadId,
                 providerId: typeof payload.providerId === "string" ? payload.providerId : undefined,
-                assistantOrigin: assistantHttpOrigin,
+                modelSelection: readBridgeModelSelection(payload),
               });
               const turnId = randomUUID();
               turn = {

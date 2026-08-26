@@ -17,6 +17,7 @@ import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/Proj
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
+import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor";
 import { ProviderUnsupportedError } from "./provider/Errors";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { ProviderEventLoggersLive } from "./provider/Layers/ProviderEventLoggers";
@@ -148,13 +149,17 @@ export function makeServerRuntimeServicesLayer() {
   const checkpointReactorLayer = CheckpointReactorLive.pipe(
     Layer.provideMerge(runtimeServicesLayer),
   );
+  const terminalLayer = TerminalManagerLive.pipe(Layer.provide(makeRuntimePtyAdapterLayer()));
+  const threadDeletionReactorLayer = ThreadDeletionReactorLive.pipe(
+    Layer.provideMerge(runtimeServicesLayer),
+    Layer.provideMerge(terminalLayer),
+  );
   const orchestrationReactorLayer = OrchestrationReactorLive.pipe(
     Layer.provideMerge(runtimeIngestionLayer),
     Layer.provideMerge(providerCommandReactorLayer),
     Layer.provideMerge(checkpointReactorLayer),
+    Layer.provideMerge(threadDeletionReactorLayer),
   );
-
-  const terminalLayer = TerminalManagerLive.pipe(Layer.provide(makeRuntimePtyAdapterLayer()));
 
   const gitManagerLayer = GitManagerLive.pipe(
     Layer.provideMerge(GitCoreLive),
@@ -170,3 +175,4 @@ export function makeServerRuntimeServicesLayer() {
     KeybindingsLive,
   ).pipe(Layer.provideMerge(NodeServices.layer));
 }
+
