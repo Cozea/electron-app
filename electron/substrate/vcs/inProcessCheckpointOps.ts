@@ -2,7 +2,7 @@
  * Phase 4b — in-process checkpoint ops (replaces forked checkpoint-worker).
  *
  * Single owner entrypoint for Changes UI capture/read/delete. Delegates to
- * `gitCheckpoints.ts` until ref-namespace unification lands.
+ * `checkpointOps.ts` — unified ref namespace under `refs/cozea/checkpoints`.
  */
 
 import {
@@ -15,7 +15,7 @@ import {
   readChanges,
   readChangesPatch,
   readCheckpointFilePair,
-} from "../../gitCheckpoints";
+} from "./checkpointOps";
 
 import type {
   CheckpointWorkerMethod,

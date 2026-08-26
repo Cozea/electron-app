@@ -3,14 +3,14 @@
  *
  * Cozea today has two capture stacks:
  * 1. Orchestration `CheckpointStore` (via GitCore execute)
- * 2. Changes UI `gitCheckpoints.ts` (in-process via facade; worker removed in 4b)
+ * 2. Changes UI `checkpointOps.ts` (in-process via facade; worker removed in 4b)
  *
  * This facade is the **single entry** Changes UI should use for reads while
  * 4b completes. When `cozea.substrate.vcs` is on, reads go through driver
  * checkpoint capability stubs (same underlying capture implementation —
  * no third stack). Prefer deprecation + facade over big-bang delete.
  *
- * @deprecated Direct `CheckpointWorkerClient` / `gitCheckpoints` imports from
+ * @deprecated Direct `CheckpointWorkerClient` / `checkpointOps` imports from
  * product UI paths — route through `getChangesCheckpointReads()` instead.
  */
 
@@ -40,7 +40,7 @@ let legacyBackend: ChangesCheckpointBackend | null = null;
 let driverCheckpointOps: VcsCheckpointOps | null = null;
 
 /**
- * Register the legacy Changes worker/gitCheckpoints backend (called once from Electron main).
+ * Register the legacy Changes checkpoint backend (called once from Electron main).
  */
 export function registerLegacyChangesCheckpointBackend(
   backend: ChangesCheckpointBackend,

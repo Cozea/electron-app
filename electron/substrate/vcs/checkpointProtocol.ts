@@ -8,7 +8,7 @@ import type {
   GitChangesListResult,
   GitChangesPatchResult,
   GitChangesScope,
-} from "../../gitCheckpoints";
+} from "./checkpointOps";
 
 export interface CheckpointWorkerCaptureParams {
   cwd: string;

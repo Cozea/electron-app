@@ -2,7 +2,7 @@
  * In-process checkpoint client (Phase 4b).
  *
  * Replaces the forked `checkpoint-worker` child — same API, direct calls into
- * `gitCheckpoints.ts` via `inProcessCheckpointOps`.
+ * `checkpointOps.ts` via `inProcessCheckpointOps`.
  */
 
 import type {
