@@ -12,7 +12,7 @@ import {
 } from "@cozea/assistant-contracts";
 
 import { showContextMenuFallback } from "./contextMenuFallback";
-import { WsTransport } from "@/stores/assistant-wsTransport";
+import { WsTransport, type TransportState } from "@/stores/assistant-wsTransport";
 
 type WsNativeApiSingleton = { api: NativeApi; transport: WsTransport; url: string | null };
 
@@ -107,6 +107,59 @@ export function onServerProvidersUpdated(
 
   return () => {
     providersUpdatedListeners.delete(listener);
+  };
+}
+
+
+
+const assistantTransportStateListeners = new Set<(state: TransportState) => void>();
+let assistantTransportStateUnsubscribe: (() => void) | null = null;
+
+function attachAssistantTransportStateBridge(transport: WsTransport): void {
+  assistantTransportStateUnsubscribe?.();
+  assistantTransportStateUnsubscribe = transport.subscribeState((state) => {
+    for (const listener of assistantTransportStateListeners) {
+      try {
+        listener(state);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+}
+
+export function getAssistantWsTransport(): WsTransport | null {
+  return readSingleton()?.transport ?? null;
+}
+
+export function getAssistantTransportState(): TransportState | null {
+  return readSingleton()?.transport.getState() ?? null;
+}
+
+/**
+ * Subscribe to assistant runtime WebSocket transport state. Replays the current
+ * state synchronously. Independent of Yjs/collab and Convex project.syncStatus.
+ */
+export function onAssistantTransportState(
+  listener: (state: TransportState) => void,
+): () => void {
+  assistantTransportStateListeners.add(listener);
+  const existing = readSingleton()?.transport;
+  if (existing) {
+    try {
+      listener(existing.getState());
+    } catch {
+      // Swallow listener errors
+    }
+  } else {
+    try {
+      listener("closed");
+    } catch {
+      // Swallow listener errors
+    }
+  }
+  return () => {
+    assistantTransportStateListeners.delete(listener);
   };
 }
 
@@ -266,6 +319,7 @@ export function createWsNativeApi(url?: string): NativeApi {
     },
   };
 
+  attachAssistantTransportStateBridge(transport);
   writeSingleton({ api, transport, url: resolvedUrl });
   return api;
 }

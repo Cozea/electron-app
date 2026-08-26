@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { useDemandGatedInterval } from "@/hooks/useDemandGatedInterval"
+import { publishGitRemoteStatus } from "@/features/projects/lib/gitRemoteStatusCache"
+
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
 import {
   buildProjectBranchLaneState,
@@ -153,6 +156,20 @@ export function useProjectLaneState({
           workspaceId: normalizedWorkspaceId,
         }).catch(() => null)
 
+        if (statusResult?.success) {
+          publishGitRemoteStatus(normalizedWorkspaceId, {
+            ahead: statusResult.ahead ?? 0,
+            behind: statusResult.behind ?? 0,
+            error: statusResult.error ?? null,
+          })
+        } else if (statusResult && statusResult.success === false) {
+          publishGitRemoteStatus(normalizedWorkspaceId, {
+            ahead: 0,
+            behind: 0,
+            error: statusResult.error ?? "Failed to read git remote status",
+          })
+        }
+
         const resolution = resolveLaneBranchKnowledge({
           statusResult,
           storedBranch: storedSession?.activeBranch ?? null,
@@ -249,19 +266,19 @@ export function useProjectLaneState({
     void refreshLaneState()
   }, [refreshLaneState])
 
-  useEffect(() => {
-    if (!projectId || !normalizedWorkspaceId) {
-      return
-    }
-
-    const interval = window.setInterval(() => {
+  // Demand-gated (BackgroundPolicy-lite): pause expensive gitStatus polling
+  // while the window is hidden; resume (and refresh once) when visible again.
+  useDemandGatedInterval(
+    () => {
       void refreshLaneState()
-    }, 5000)
-
-    return () => {
-      window.clearInterval(interval)
-    }
-  }, [normalizedWorkspaceId, projectId, refreshLaneState])
+    },
+    5000,
+    {
+      enabled: Boolean(projectId && normalizedWorkspaceId),
+      pauseWhenDocumentHidden: true,
+      runOnResume: true,
+    },
+  )
 
   const laneState = useMemo(() => {
     if (scoped.identityKey === identityKey) {
