@@ -29,6 +29,28 @@ describe("substrate feature flags (phases 5–6)", () => {
     expect(shouldStartInProcessAssistantRuntime(flags)).toBe(false);
   });
 
+  it("status features report inProcessAssistant false under primary+shadow", () => {
+    const flags = readSubstrateFeatureFlags({
+      COZEA_SUBSTRATE_SHADOW_SERVER: "1",
+      COZEA_SUBSTRATE_PRIMARY: "1",
+      COZEA_SUBSTRATE_RPC_CHAT: "1",
+      COZEA_SUBSTRATE_PROVIDERS: "1",
+      COZEA_OBS_NDJSON: "1",
+    });
+    const features = {
+      rpcChat: flags.rpcChat,
+      providers: flags.providers,
+      vcs: flags.vcs,
+      primary: flags.primary,
+      obsNdjson: flags.obsNdjson,
+      inProcessAssistant: shouldStartInProcessAssistantRuntime(flags),
+    };
+    expect(features.inProcessAssistant).toBe(false);
+    expect(features.primary).toBe(true);
+    expect(features.obsNdjson).toBe(true);
+    expect(flags.shadowServer.enabled).toBe(true);
+  });
+
   it("keeps in-process runtime if primary is on but shadow is off", () => {
     const flags = readSubstrateFeatureFlags({
       COZEA_SUBSTRATE_PRIMARY: "1",

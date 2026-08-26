@@ -14,6 +14,8 @@ import {
   SUBSTRATE_SHADOW_READY_PATH,
   SUBSTRATE_T3_PIN_SHA,
 } from "../substrate/constants";
+import { parseBooleanFlag } from "../substrate/flags";
+import { getSharedSubstrateNdjsonWriter } from "../substrate/obs";
 import { createShadowHttpServer } from "./createShadowHttpServer";
 
 function readPort(raw: string | undefined, fallback: number): number {
@@ -48,18 +50,39 @@ function appendLog(line: string): void {
   }
 }
 
-const rpcChatEnabled =
-  process.env.COZEA_SUBSTRATE_RPC_CHAT === "1" ||
-  process.env.COZEA_SUBSTRATE_RPC_CHAT?.trim().toLowerCase() === "true";
+const rpcChatEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_RPC_CHAT, false);
+const providersEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_PROVIDERS, false);
+
+const obs = getSharedSubstrateNdjsonWriter();
+obs.writeSpan({
+  name: "substrate.shadow.start",
+  attrs: {
+    host,
+    port,
+    rpcChatEnabled,
+    providersEnabled,
+  },
+});
 
 const handle = createShadowHttpServer({
   rpcChatEnabled,
+  providersEnabled,
   host,
   port,
   pin: process.env.COZEA_SUBSTRATE_T3_PIN?.trim() || SUBSTRATE_T3_PIN_SHA,
   onRequestLog: (line) => appendLog(line),
   onListening: (info) => {
     appendLog(`listening on http://${info.host}:${info.port}`);
+    obs.writeSpan({
+      name: "substrate.shadow.ready",
+      attrs: {
+        host: info.host,
+        port: info.port,
+        readyPath: SUBSTRATE_SHADOW_READY_PATH,
+        rpcChatEnabled,
+        providersEnabled,
+      },
+    });
     if (typeof process.send === "function") {
       process.send({
         type: "substrate-shadow.listening",

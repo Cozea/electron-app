@@ -40,7 +40,9 @@ import { startAssistantRuntime } from './assistant-runtime/boot'
 import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
 import { waitForHttpReady } from './backendReadiness'
 import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags, shouldStartInProcessAssistantRuntime } from './substrate/flags'
+import { getSharedSubstrateNdjsonWriter } from './substrate/obs'
 import { listSubstrateRemoteEnvironmentStubs } from './substrate/remoteEnvironments'
+import { bootstrapSubstrateVcs } from './substrate/vcs/bootstrap'
 import {
   createShadowServerManager,
   getShadowServerManager,
@@ -636,6 +638,7 @@ function logSubstrateShadow(event: string, details?: Record<string, unknown>): v
 
 async function ensureSubstrateShadowServerStarted(): Promise<void> {
   const flags = readSubstrateShadowServerFlags()
+  const obs = getSharedSubstrateNdjsonWriter()
   if (!flags.enabled) {
     logSubstrateShadow('skip-disabled', { flagId: flags.flagId })
     return
@@ -662,12 +665,25 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
       entryPath: resolveShadowServerEntryPath(__dirname),
       logsDirectory,
     })
+    obs.writeSpan({
+      name: 'substrate.shadow.start',
+      attrs: { host: flags.host, port: flags.port, logsDirectory },
+    })
     const status = await manager.start()
     logSubstrateShadow('started', {
       phase: status.phase,
       baseUrl: status.baseUrl,
       readyPath: status.readyPath,
       pid: status.pid,
+    })
+    obs.writeSpan({
+      name: 'substrate.shadow.ready',
+      attrs: {
+        phase: status.phase,
+        baseUrl: status.baseUrl,
+        readyPath: status.readyPath,
+        pid: status.pid,
+      },
     })
   })()
 
@@ -1753,6 +1769,10 @@ app.whenReady().then(() => {
       syncShellEnvironment()
     }
   }, 0)
+  // Phase 4: VCS facade + status invalidation (idempotent; also called from
+  // registerWorkspaceSyncHandlers). Safe no-op registration when flag is off.
+  bootstrapSubstrateVcs()
+
   scheduleBootWork('assistant-runtime-started', () => {
     ensureAssistantRuntimeStarted()
   }, 250)

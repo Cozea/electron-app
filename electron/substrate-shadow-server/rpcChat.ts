@@ -10,6 +10,12 @@ import {
   SUBSTRATE_RPC_CHAT_FLAG,
   SUBSTRATE_T3_PIN_SHA,
 } from "../substrate/constants";
+import { getSharedSubstrateNdjsonWriter } from "../substrate/obs";
+import {
+  bootstrapSubstrateProviderRegistry,
+  type SubstrateProviderDriverRegistry,
+} from "../substrate/providers";
+import type { SubstrateDriverKind } from "../substrate/providers/types";
 
 export const SUBSTRATE_RPC_WS_PATH = "/rpc";
 
@@ -19,25 +25,39 @@ export const SUBSTRATE_RPC_METHODS = {
   chatSubscribe: "chat.subscribe",
 } as const;
 
+export type RpcChatTurnMode = "echo" | "bridged" | "provider";
+
 export interface RpcChatTurn {
   readonly turnId: string;
   readonly text: string;
-  readonly mode: "echo" | "bridged";
+  readonly mode: RpcChatTurnMode;
   readonly replyPreview: string;
   readonly createdAtMs: number;
+  readonly providerId?: string;
 }
 
 export interface AttachRpcChatOptions {
   readonly server: import("node:http").Server;
   readonly pin?: string;
   readonly rpcChatEnabled: boolean;
+  /**
+   * When true, `chat.send` / subscribe prefer the Phase 3 provider registry
+   * (OpenCode full driver or legacy adapters). Falls back to echo/bridge on
+   * materialize failure or when the registry is disabled.
+   */
+  readonly providersEnabled?: boolean;
   readonly assistantHttpOrigin?: string;
   readonly onLog?: (line: string) => void;
+  /** Override env for provider bootstrap (tests). */
+  readonly env?: NodeJS.ProcessEnv;
+  /** Inject a registry (tests). When unset, bootstraps from flag/env. */
+  readonly providerRegistry?: SubstrateProviderDriverRegistry | null;
 }
 
 export interface RpcChatHandle {
   readonly enabled: boolean;
   readonly path: typeof SUBSTRATE_RPC_WS_PATH;
+  readonly providersEnabled: boolean;
   dispose(): void;
 }
 
@@ -84,17 +104,26 @@ async function probeAssistantBridge(
   }
 }
 
+function resolveDriverKind(raw: unknown): SubstrateDriverKind {
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw.trim() as SubstrateDriverKind;
+  }
+  return "opencode";
+}
+
 /**
  * Attach a minimal JSON RPC WebSocket at `/rpc` for Phase 2 flagged chat.
  *
- * `chat.send` / `chat.subscribe` currently echo with a thin readiness bridge probe
- * against the in-process assistant runtime (:3773). Real provider drivers land in Phase 3.
+ * When `providersEnabled` (Phase 3) is on, `chat.send` materializes a substrate
+ * provider driver and replies with `mode: "provider"`. Otherwise (or on
+ * materialize failure) falls back to the Phase 2 echo/bridge path.
  */
 export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
   if (!options.rpcChatEnabled) {
     return {
       enabled: false,
       path: SUBSTRATE_RPC_WS_PATH,
+      providersEnabled: false,
       dispose() {
         // no-op
       },
@@ -106,6 +135,21 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
     options.assistantHttpOrigin?.trim() ||
     process.env.COZEA_ASSISTANT_RUNTIME_HTTP_ORIGIN?.trim() ||
     DEFAULT_ASSISTANT_RUNTIME_HTTP_ORIGIN;
+  const env = options.env ?? process.env;
+  const providersEnabled = options.providersEnabled === true;
+
+  let providerRegistry: SubstrateProviderDriverRegistry | null = null;
+  if (providersEnabled) {
+    if (options.providerRegistry !== undefined) {
+      providerRegistry = options.providerRegistry;
+    } else {
+      providerRegistry = bootstrapSubstrateProviderRegistry({
+        env: { ...env, COZEA_SUBSTRATE_PROVIDERS: "1" },
+      });
+    }
+  }
+
+  const obs = getSharedSubstrateNdjsonWriter({ env });
   const turns = new Map<string, RpcChatTurn>();
   const wss = new WebSocketServer({ noServer: true });
 
@@ -122,7 +166,7 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
 
   options.server.on("upgrade", onUpgrade);
   options.onLog?.(
-    `rpc chat enabled path=${SUBSTRATE_RPC_WS_PATH} flag=${SUBSTRATE_RPC_CHAT_FLAG} bridge=${assistantHttpOrigin}`,
+    `rpc chat enabled path=${SUBSTRATE_RPC_WS_PATH} flag=${SUBSTRATE_RPC_CHAT_FLAG} bridge=${assistantHttpOrigin} providers=${providersEnabled}`,
   );
 
   wss.on("connection", (ws) => {
@@ -135,6 +179,53 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
       });
     });
   });
+
+  async function tryProviderTurn(input: {
+    readonly text: string;
+    readonly providerId: SubstrateDriverKind;
+  }): Promise<RpcChatTurn | null> {
+    if (!providerRegistry?.enabled) {
+      return null;
+    }
+    try {
+      const instance = await providerRegistry.materialize({
+        driverKind: input.providerId,
+      });
+      obs.writeSpan({
+        name: "substrate.provider.materialize",
+        attrs: {
+          driverKind: instance.driverKind,
+          instanceId: instance.instanceId,
+          implementation: instance.implementation,
+        },
+      });
+      const state = await instance.snapshot.run();
+      const turnId = randomUUID();
+      const replyPreview = `[substrate-provider:${instance.driverKind}] phase=${state.phase} ${input.text}`;
+      return {
+        turnId,
+        text: input.text,
+        mode: "provider",
+        replyPreview,
+        createdAtMs: Date.now(),
+        providerId: instance.driverKind,
+      };
+    } catch (error) {
+      options.onLog?.(
+        `provider materialize failed; falling back to echo/bridge: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      obs.writeSpan({
+        name: "substrate.provider.materialize_failed",
+        attrs: {
+          driverKind: input.providerId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
+    }
+  }
 
   async function handleMessage(ws: WebSocket, data: RawData): Promise<void> {
     let parsed: unknown;
@@ -158,9 +249,10 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
           result: {
             ok: true,
             role: "shadow",
-            phase: 2,
+            phase: providersEnabled ? 3 : 2,
             pin,
             rpcChat: true,
+            providers: providersEnabled,
             bridge: {
               status: bridge.status,
               assistantHttpUrl: assistantHttpOrigin,
@@ -185,32 +277,59 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
           return;
         }
 
-        const bridge = await probeAssistantBridge(assistantHttpOrigin);
-        const mode: "echo" | "bridged" = bridge.status === "reachable" ? "bridged" : "echo";
-        const turnId = randomUUID();
-        const replyPreview =
-          mode === "bridged"
-            ? `[substrate-bridge] assistant runtime reachable; echo for now: ${text}`
-            : `[substrate-echo] ${text}`;
-        const turn: RpcChatTurn = {
-          turnId,
-          text,
-          mode,
-          replyPreview,
-          createdAtMs: Date.now(),
-        };
-        turns.set(turnId, turn);
+        const providerId = resolveDriverKind(payload.providerId);
+        let turn: RpcChatTurn | null = null;
+        if (providersEnabled) {
+          turn = await tryProviderTurn({ text, providerId });
+        }
+
+        if (!turn) {
+          const bridge = await probeAssistantBridge(assistantHttpOrigin);
+          const mode: "echo" | "bridged" =
+            bridge.status === "reachable" ? "bridged" : "echo";
+          const turnId = randomUUID();
+          const replyPreview =
+            mode === "bridged"
+              ? `[substrate-bridge] assistant runtime reachable; echo for now: ${text}`
+              : `[substrate-echo] ${text}`;
+          turn = {
+            turnId,
+            text,
+            mode,
+            replyPreview,
+            createdAtMs: Date.now(),
+          };
+        }
+
+        turns.set(turn.turnId, turn);
+
+        obs.writeSpan({
+          name: "substrate.rpc.chat.send_accepted",
+          attrs: {
+            turnId: turn.turnId,
+            mode: turn.mode,
+            providersEnabled,
+            ...(turn.providerId ? { providerId: turn.providerId } : {}),
+          },
+        });
 
         sendJson(ws, {
           type: "res",
           id: request.id,
           ok: true,
           result: {
-            turnId,
+            turnId: turn.turnId,
             accepted: true,
-            mode,
-            replyPreview,
-            todo: "Phase 3: replace echo/bridge with provider drivers over substrate RPC",
+            mode: turn.mode,
+            replyPreview: turn.replyPreview,
+            ...(turn.providerId ? { providerId: turn.providerId } : {}),
+            ...(turn.mode !== "provider"
+              ? {
+                  todo: providersEnabled
+                    ? "Provider materialize failed; used echo/bridge fallback"
+                    : "Enable COZEA_SUBSTRATE_PROVIDERS=1 for provider-backed chat",
+                }
+              : {}),
           },
         });
         return;
@@ -279,12 +398,14 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
   return {
     enabled: true,
     path: SUBSTRATE_RPC_WS_PATH,
+    providersEnabled,
     dispose() {
       options.server.off("upgrade", onUpgrade);
       for (const client of wss.clients) {
         client.close();
       }
       wss.close();
+      void providerRegistry?.disposeAll();
     },
   };
 }

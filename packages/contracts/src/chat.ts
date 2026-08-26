@@ -6,10 +6,12 @@ export const ChatSendInput = Schema.Struct({
   text: TrimmedNonEmptyString,
   threadId: Schema.optionalKey(TrimmedNonEmptyString),
   projectId: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Substrate driver kind when Phase 3 providers are enabled (default: opencode). */
+  providerId: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type ChatSendInput = typeof ChatSendInput.Type;
 
-export const ChatSendMode = Schema.Literals(["echo", "bridged"]);
+export const ChatSendMode = Schema.Literals(["echo", "bridged", "provider"]);
 export type ChatSendMode = typeof ChatSendMode.Type;
 
 export const ChatSendResult = Schema.Struct({
@@ -17,7 +19,9 @@ export const ChatSendResult = Schema.Struct({
   accepted: Schema.Literal(true),
   mode: ChatSendMode,
   replyPreview: TrimmedString,
-  /** TODO(phase3): replace echo/bridge with real provider drivers. */
+  /** Present when mode is `provider`. */
+  providerId: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Fallback note when providers were requested but echo/bridge was used. */
   todo: Schema.optionalKey(TrimmedString),
 });
 export type ChatSendResult = typeof ChatSendResult.Type;

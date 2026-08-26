@@ -24,6 +24,8 @@
         "@cozea/contracts": "file:packages/contracts",
         "@cozea/effect-acp": "file:packages/effect-acp",
         "@cozea/pty": "file:packages/pty",
+        "@cozea/substrate-client-runtime": "file:packages/substrate-client-runtime",
+        "@cozea/substrate-contracts": "file:packages/substrate-contracts",
         "@cyanheads/git-mcp-server": "^2.8.5",
         "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b",
         "@effect/sql": "file:packages/effect-sql",
@@ -289,6 +291,10 @@
     "@cozea/effect-acp": ["@cozea/effect-acp@file:packages/effect-acp", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" }, "devDependencies": { "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b", "@effect/vitest": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/vitest@8881a9b", "typescript": "~5.9.3", "vitest": "^4.0.18" } }],
 
     "@cozea/pty": ["@cozea/pty@file:packages/pty", { "dependencies": { "@node-rs/helper": "^1.6.0" }, "devDependencies": { "@napi-rs/cli": "^2.14.7", "typescript": "^5.3.3" } }],
+
+    "@cozea/substrate-client-runtime": ["@cozea/substrate-client-runtime@file:packages/substrate-client-runtime", { "dependencies": { "@cozea/client-runtime": "file:../client-runtime", "@cozea/substrate-contracts": "file:../substrate-contracts" } }],
+
+    "@cozea/substrate-contracts": ["@cozea/substrate-contracts@file:packages/substrate-contracts", { "dependencies": { "@cozea/contracts": "file:../contracts" } }],
 
     "@cyanheads/git-mcp-server": ["@cyanheads/git-mcp-server@2.10.5", "", { "dependencies": { "cross-spawn": "^7.0.6", "pino": "^10.3.1", "pino-pretty": "^13.1.3" }, "bin": { "git-mcp-server": "dist/index.js" } }, "sha512-F8RMXhz2Gr0JfX0EbSLlOhKFO7T8SwqZh+qu6lYBH/24rpGJvD/KExnseSQdLbhb1LuPsUxUFQnd0x8adeQ/XA=="],
 
@@ -2476,7 +2482,13 @@
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
-    "@cozea/client-runtime/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", {}],
+    "@cozea/client-runtime/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", { "dependencies": { "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b" } }],
+
+    "@cozea/substrate-client-runtime/@cozea/client-runtime": ["@cozea/client-runtime@file:packages/client-runtime", {}],
+
+    "@cozea/substrate-client-runtime/@cozea/substrate-contracts": ["@cozea/substrate-contracts@file:packages/substrate-contracts", {}],
+
+    "@cozea/substrate-contracts/@cozea/contracts": ["@cozea/contracts@file:packages/contracts", {}],
 
     "@develar/schema-utils/ajv": ["ajv@6.14.0", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "fast-json-stable-stringify": "^2.0.0", "json-schema-traverse": "^0.4.1", "uri-js": "^4.2.2" } }, "sha512-IWrosm/yrn43eiKqkfkHis7QioDleaXQHdDVPKg0FSwwd/DuvyX79TZnFOnYpB7dcsFAMmtFztZuXPDvSePkFw=="],
 

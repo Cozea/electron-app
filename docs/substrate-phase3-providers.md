@@ -63,6 +63,11 @@ const snapshot = await instance.snapshot.run();
 // snapshot.phase === "ready" after enrichment
 ```
 
+When both `COZEA_SUBSTRATE_RPC_CHAT=1` and `COZEA_SUBSTRATE_PROVIDERS=1` are set,
+the shadow `/rpc` `chat.send` path materializes through this registry (default
+driver `opencode`) and returns `mode: "provider"`. Echo/bridge remains the
+fallback when the flag is off or materialize fails.
+
 ## Codex deep-parity gaps
 
 Codex remains a **legacy adapter** on this flagged path. Closing parity with
@@ -89,6 +94,7 @@ upstream T3 is the deepest Phase 3 follow-on. Current gaps:
 - [x] Claude / Codex / Cursor register as legacy adapters
 - [x] Tests for registry + snapshot state machine
 - [x] Docs for Codex deep-parity gaps
+- [x] Flagged RPC chat routes through registry when providers on
 - [ ] Default product provider path flipped (later phase)
 - [ ] Codex full substrate driver + session-runtime parity (follow-on)
 
