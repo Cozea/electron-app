@@ -416,4 +416,67 @@ describe("local project DevApp catalog", () => {
     ).toThrow("source project must match");
     expect(catalog.getLocalProjectDevAppEntries()).toEqual([]);
   });
+
+  it("reports a clear failure when the browser rejects the write for quota", async () => {
+    const storage = new MemoryStorage();
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
+      const error = new Error("exceeded the quota");
+      error.name = "QuotaExceededError";
+      throw error;
+    });
+    vi.stubGlobal("window", { localStorage: storage });
+
+    const catalog = await import("@/features/devapps/localProjectDevAppStore");
+
+    expect(() => catalog.publishLocalProjectDevApp(createPublishArgs())).toThrow(
+      catalog.PROJECT_DEVAPP_STORAGE_FULL_MESSAGE,
+    );
+    // Memory must not drift ahead of a catalog that was never persisted.
+    expect(catalog.getLocalProjectDevAppEntries()).toEqual([]);
+  });
+
+  it("refuses a logo large enough to blow the storage budget", async () => {
+    const catalog = await import("@/features/devapps/localProjectDevAppStore");
+    const logo = await import("@/features/devapps/projectDevAppLogo");
+    const base64 = "UklGRjEyMzRXRUJQ".padEnd(
+      logo.PROJECT_DEVAPP_LOGO_MAX_DATA_URL_LENGTH,
+      "A",
+    );
+
+    expect(() =>
+      catalog.publishLocalProjectDevApp(
+        createPublishArgs({ logoDataUrl: `data:image/webp;base64,${base64}` }),
+      ),
+    ).toThrow("must be a valid optimized");
+    expect(catalog.getLocalProjectDevAppEntries()).toEqual([]);
+  });
+
+  it("keeps the newest releases when an entry exceeds the release cap", async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal("window", { localStorage: storage });
+    const firstModule = await import("@/features/devapps/localProjectDevAppStore");
+    firstModule.publishLocalProjectDevApp(createPublishArgs());
+
+    const persisted = JSON.parse(
+      storage.getItem(firstModule.LOCAL_PROJECT_DEVAPP_STORAGE_KEY) ?? "{}",
+    );
+    const template = persisted.state.entries[0].releases[0];
+    persisted.state.entries[0].releases = Array.from({ length: 60 }, (_unused, index) => ({
+      ...template,
+      _id: `local-devapp-release:v${index + 1}`,
+      version: index + 1,
+    }));
+    storage.setItem(
+      firstModule.LOCAL_PROJECT_DEVAPP_STORAGE_KEY,
+      JSON.stringify(persisted),
+    );
+
+    vi.resetModules();
+    const reloaded = await import("@/features/devapps/localProjectDevAppStore");
+    const entry = reloaded.getLocalProjectDevAppEntry(projectId);
+
+    expect(entry?.releases.length).toBe(25);
+    expect(entry?.releases.at(-1)?.version).toBe(60);
+    expect(entry?.activeRelease.version).toBe(60);
+  });
 });
