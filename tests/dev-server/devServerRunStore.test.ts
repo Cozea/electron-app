@@ -7,6 +7,8 @@ vi.mock('@/utils/projectDetector', () => ({
     label: 'npm run dev',
     suggestions: [],
     requiresUserSelection: false,
+    packageDirectory: null,
+    commandVerified: true,
   })),
   hasPackageJson: vi.fn(async () => false),
   detectPackageManager: vi.fn(async () => 'npm'),

@@ -15,6 +15,7 @@ import type {
 } from "@/features/devapps/registry/types"
 
 export interface ListLauncherAppsOptions {
+  additionalApps?: ReadonlyArray<DevAppManifest>
   enabledAssistantProviders?: ReadonlyArray<ProviderKind> | null
   group?: DevAppLauncherGroup
   query?: string
@@ -101,7 +102,7 @@ export function listLauncherApps(options: ListLauncherAppsOptions = {}): DevAppM
       ? new Set(options.enabledAssistantProviders)
       : null
 
-  return BUILTIN_DEV_APPS
+  return [...(options.additionalApps ?? []), ...BUILTIN_DEV_APPS]
     .filter((manifest) => manifest.launcher.enabled)
     .filter((manifest) => !options.group || manifest.launcher.group === options.group)
     .filter((manifest) => {

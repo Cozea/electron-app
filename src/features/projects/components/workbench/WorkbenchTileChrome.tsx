@@ -4,6 +4,7 @@ import type { ContextMenuItem, ProviderKind } from "@cozea/assistant-contracts"
 
 import { Button } from "@/components/ui/button"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -43,6 +44,7 @@ interface WorkbenchTileChromeProps {
   hideTitlePill?: boolean
   hideWindowActions?: boolean
   tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
+  devAppId?: string | null
   assistantProvider?: string | null
   titleContent?: ReactNode
   titlePillClassName?: string
@@ -133,6 +135,8 @@ function resolveTileFallbackIcon(
 interface WorkbenchTileGlyphProps {
   tileType: WorkbenchTileChromeProps["tileType"]
   assistantProvider?: string | null
+  devAppId?: string | null
+  title: string
   appWrapperClassName: string
   fallbackClassName: string
 }
@@ -140,9 +144,19 @@ interface WorkbenchTileGlyphProps {
 function WorkbenchTileGlyph({
   tileType,
   assistantProvider,
+  devAppId,
+  title,
   appWrapperClassName,
   fallbackClassName,
 }: WorkbenchTileGlyphProps) {
+  if (tileType === "devServer" && devAppId) {
+    return (
+      <span className={appWrapperClassName}>
+        <ProjectDevAppIcon publicationId={devAppId} name={title} />
+      </span>
+    )
+  }
+
   const devApp = resolveTileDevApp(tileType, assistantProvider)
 
   if (devApp) {
@@ -166,6 +180,7 @@ export function WorkbenchTileChrome({
   hideTitlePill = false,
   hideWindowActions = false,
   tileType,
+  devAppId,
   assistantProvider,
   titleContent,
   titlePillClassName,
@@ -341,6 +356,8 @@ export function WorkbenchTileChrome({
                   <WorkbenchTileGlyph
                     tileType={tileType}
                     assistantProvider={assistantProvider}
+                    devAppId={devAppId}
+                    title={title}
                     appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
                     fallbackClassName={tileFallbackIconClassName}
                   />
@@ -501,6 +518,8 @@ export function WorkbenchTileChrome({
               <WorkbenchTileGlyph
                 tileType={tileType}
                 assistantProvider={assistantProvider}
+                devAppId={devAppId}
+                title={title}
                 appWrapperClassName={WORKBENCH_OVERLAY_APP_ICON_CLASS}
                 fallbackClassName="h-6 w-6 shrink-0"
               />

@@ -8,14 +8,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const resolveRoot = vi.fn<(workspaceId: string) => Promise<string | null>>()
 const readDir = vi.fn<(path: string) => Promise<Array<{ name: string; type: string }>>>()
 const readAbsoluteFile = vi.fn<(path: string) => Promise<string | null>>()
+const readFile = vi.fn<
+  (options: { workspaceId: string; filePath: string }) => Promise<{
+    success: boolean
+    content?: string
+  }>
+>()
+const listFiles = vi.fn<
+  (options: { workspaceId: string }) => Promise<{
+    success: boolean
+    files?: Array<{ path: string; sizeBytes: number }>
+  }>
+>()
 
 vi.mock('@/lib/projectAnalysis/projectAnalysisDesktopClient', () => ({
   projectAnalysisDesktopClient: {
     resolveRoot: (workspaceId: string) => resolveRoot(workspaceId),
     readDir: (path: string) => readDir(path),
     readAbsoluteFile: (path: string) => readAbsoluteFile(path),
-    readFile: vi.fn(async () => ({ success: false })),
-    listFiles: vi.fn(async () => ({ success: false })),
+    readFile: (options: { workspaceId: string; filePath: string }) => readFile(options),
+    listFiles: (options: { workspaceId: string }) => listFiles(options),
+    getProjectCapabilities: vi.fn(async () => ({
+      runtimes: [],
+      devServer: { suggestions: [], requiresUserSelection: true },
+      evidence: { files: [], packageScripts: {}, nativeTargets: [] },
+    })),
   },
 }))
 
@@ -25,7 +42,13 @@ vi.mock('@/lib/settings/settingsDesktopClient', () => ({
   },
 }))
 
-import { checkDependenciesInstalled, detectPackageManager } from '@/utils/projectDetector'
+import {
+  checkDependenciesInstalled,
+  detectPackageManager,
+  getDevServerConfig,
+  getInstallCommand,
+  hasPackageJson,
+} from '@/utils/projectDetector'
 
 const WORKSPACE_ID = 'lws_3f2a1b00-0000-4000-8000-000000000000'
 
@@ -33,7 +56,11 @@ beforeEach(() => {
   resolveRoot.mockReset()
   readDir.mockReset()
   readAbsoluteFile.mockReset()
+  readFile.mockReset()
+  listFiles.mockReset()
   readAbsoluteFile.mockResolvedValue(null)
+  readFile.mockResolvedValue({ success: false })
+  listFiles.mockResolvedValue({ success: false })
 })
 
 describe('detectPackageManager (workspace id resolution)', () => {
@@ -84,5 +111,135 @@ describe('checkDependenciesInstalled (workspace id resolution)', () => {
     resolveRoot.mockResolvedValue(null)
     expect(await checkDependenciesInstalled(WORKSPACE_ID, 'pnpm')).toBe(false)
     expect(readDir).not.toHaveBeenCalled()
+  })
+})
+
+describe('nested runnable package detection', () => {
+  it('launches the only runnable nested package from its own directory', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockImplementation(async (path) => {
+      if (path === '/repo/frontend') {
+        return [
+          { name: 'package-lock.json', type: 'file' },
+          { name: 'node_modules', type: 'directory' },
+        ]
+      }
+      return [{ name: 'frontend', type: 'directory' }]
+    })
+    listFiles.mockResolvedValue({
+      success: true,
+      files: [
+        { path: 'frontend/package.json', sizeBytes: 256 },
+        { path: 'frontend/package-lock.json', sizeBytes: 1024 },
+      ],
+    })
+    readFile.mockImplementation(async ({ filePath }) => {
+      if (filePath !== 'frontend/package.json') return { success: false }
+      return {
+        success: true,
+        content: JSON.stringify({
+          scripts: { dev: 'vite --host 127.0.0.1 --port 5173' },
+          dependencies: { react: '^19.0.0' },
+          devDependencies: { vite: '^7.0.0' },
+        }),
+      }
+    })
+
+    const config = await getDevServerConfig(
+      WORKSPACE_ID,
+      null,
+      null,
+      { previewMode: 'web', nativePlatform: null },
+    )
+
+    expect(config).toMatchObject({
+      command: 'npm --prefix frontend run dev',
+      port: 5173,
+      label: 'Vite Dev',
+      requiresUserSelection: false,
+      packageDirectory: 'frontend',
+      commandVerified: true,
+    })
+    expect(await hasPackageJson(WORKSPACE_ID, 'frontend')).toBe(true)
+    expect(await checkDependenciesInstalled(WORKSPACE_ID, 'npm', 'frontend')).toBe(true)
+    expect(getInstallCommand('npm', 'frontend')).toBe('npm --prefix frontend install')
+    expect(readDir).toHaveBeenCalledWith('/repo/frontend')
+  })
+
+  it('validates a stored nested DevApp command against its local package script', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockImplementation(async (path) => {
+      if (path === '/repo/frontend') {
+        return [{ name: 'package-lock.json', type: 'file' }]
+      }
+      return [{ name: 'frontend', type: 'directory' }]
+    })
+    readFile.mockImplementation(async ({ filePath }) => {
+      if (filePath !== 'frontend/package.json') return { success: false }
+      return {
+        success: true,
+        content: JSON.stringify({ scripts: { dev: 'vite --port 4321' } }),
+      }
+    })
+
+    const config = await getDevServerConfig(
+      WORKSPACE_ID,
+      'npm --prefix frontend run dev',
+      5173,
+    )
+
+    expect(config).toMatchObject({
+      command: 'npm --prefix frontend run dev',
+      port: 4321,
+      packageDirectory: 'frontend',
+      requiresUserSelection: false,
+      commandVerified: true,
+    })
+  })
+
+  it('never accepts shell syntax from a stored DevApp command', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    readFile.mockImplementation(async ({ filePath }) => {
+      if (filePath !== 'package.json') return { success: false }
+      return {
+        success: true,
+        content: JSON.stringify({
+          scripts: { dev: 'vite' },
+          devDependencies: { vite: '^7.0.0' },
+        }),
+      }
+    })
+
+    const config = await getDevServerConfig(
+      WORKSPACE_ID,
+      'npm run dev && touch /tmp/pwned',
+      5173,
+    )
+
+    expect(config.command).toBe('npm run dev')
+    expect(config.command).not.toContain('touch')
+    expect(config.packageDirectory).toBeNull()
+    expect(config.commandVerified).toBe(true)
+  })
+
+  it('marks a framework fallback command unverified when package.json has no runnable script', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    readFile.mockImplementation(async ({ filePath }) => {
+      if (filePath !== 'package.json') return { success: false }
+      return {
+        success: true,
+        content: JSON.stringify({
+          scripts: { build: 'vite build' },
+          devDependencies: { vite: '^7.0.0' },
+        }),
+      }
+    })
+
+    const config = await getDevServerConfig(WORKSPACE_ID)
+
+    expect(config.command).toMatch(/run dev$/)
+    expect(config.commandVerified).toBe(false)
   })
 })

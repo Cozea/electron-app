@@ -8,6 +8,16 @@ export type WorkbenchSelectionLaunchRequest = DevAppLaunchRequest
 export interface WorkbenchSelectionCreateOptions {
   title?: string
   provider?: ProviderKind
+  devAppId?: string | null
+  devAppReleaseId?: string | null
+  devAppReleaseVersion?: number | null
+  devAppProjectId?: string | null
+  devAppWorkspaceId?: string | null
+  devAppLaneId?: string | null
+  devAppFramework?: string | null
+  devAppCommand?: string | null
+  devAppPort?: number | null
+  autoStart?: boolean
 }
 
 export interface ResolvedWorkbenchSelectionAddTileAction {
@@ -29,6 +39,31 @@ export type ResolvedWorkbenchSelectionLaunchAction =
 export function resolveWorkbenchSelectionLaunchRequest(
   request: WorkbenchSelectionLaunchRequest,
 ): ResolvedWorkbenchSelectionLaunchAction {
+  if (request.projectDevApp) {
+    const devApp = request.projectDevApp
+    if (request.appId !== `project-devapp:${devApp.publicationId}`) {
+      throw new Error(`Invalid project DevApp launch request for "${request.appId}"`)
+    }
+
+    return {
+      action: "openSingletonTile",
+      tileType: "devServer",
+      options: {
+        title: devApp.name,
+        devAppId: devApp.publicationId,
+        devAppReleaseId: devApp.releaseId,
+        devAppReleaseVersion: devApp.releaseVersion,
+        devAppProjectId: devApp.projectId,
+        devAppWorkspaceId: devApp.sourceWorkspaceId ?? null,
+        devAppLaneId: devApp.sourceLaneId ?? null,
+        devAppFramework: devApp.framework,
+        devAppCommand: devApp.devCommand,
+        devAppPort: devApp.devPort ?? null,
+        autoStart: true,
+      },
+    }
+  }
+
   const manifest = getDevAppById(request.appId)
   if (!manifest || !manifest.launcher.enabled) {
     throw new Error(`Unknown DevApp "${request.appId}"`)
