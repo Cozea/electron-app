@@ -93,7 +93,7 @@ export async function bootstrapCozeaSubstrateServer(
 
   const handle = createShadowHttpServer({
     rpcChatEnabled: substrateFlags.rpcChat,
-    providersEnabled: substrateFlags.providers,
+    providersEnabled: substrateFlags.providers && orchestrationBackend === undefined,
     primaryEnabled: substrateFlags.primary,
     t3ServerEnabled: orchestrationBackend !== undefined,
     orchestrationBackend,
