@@ -1,7 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import {
-
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -11,17 +10,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Alert01Icon as __AlertTriangleHugeIcon } from '@hugeicons/core-free-icons'
 
+export interface ProjectDeleteConfirmOptions {
+  keepLocalFiles: boolean
+}
+
 interface ProjectDeleteDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectName: string
-  onConfirm: (confirmName: string) => void | Promise<void>
+  onConfirm: (options: ProjectDeleteConfirmOptions) => void | Promise<void>
   isDeleting?: boolean
   errorMessage?: string | null
   title?: string
@@ -40,7 +43,14 @@ export function ProjectDeleteDialog({
   description,
   confirmLabel = 'Delete Project',
 }: ProjectDeleteDialogProps) {
-  const [confirmName, setConfirmName] = useState('')
+  // Keep local files by default; user must opt out to send the folder to Trash.
+  const [keepLocalFiles, setKeepLocalFiles] = useState(true)
+
+  useEffect(() => {
+    if (open) {
+      setKeepLocalFiles(true)
+    }
+  }, [open])
 
   return (
     <AlertDialog
@@ -48,9 +58,6 @@ export function ProjectDeleteDialog({
       onOpenChange={(nextOpen) => {
         if (!nextOpen && isDeleting) {
           return
-        }
-        if (!nextOpen) {
-          setConfirmName('')
         }
         onOpenChange(nextOpen)
       }}
@@ -61,28 +68,32 @@ export function ProjectDeleteDialog({
           <AlertDialogDescription>
             {description ?? (
               <>
-                Delete {projectName}? This action cannot be undone. This will{' '}
-                <span className="font-semibold">permanently delete</span> the project and all
-                associated data.
+                Delete {projectName} from Cozea? This removes the project from your account and
+                sync. Local files are kept by default.
               </>
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="space-y-2">
-          <Label htmlFor="confirm-delete-project">Confirm project name</Label>
-          <Input
-            id="confirm-delete-project"
-            value={confirmName}
-            onChange={(event) => {
-              setConfirmName(event.target.value)
+        <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-3">
+          <Checkbox
+            id="keep-local-files"
+            checked={keepLocalFiles}
+            disabled={isDeleting}
+            onCheckedChange={(checked) => {
+              setKeepLocalFiles(checked === true)
             }}
-            placeholder={projectName}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
           />
+          <div className="space-y-1">
+            <Label htmlFor="keep-local-files" className="text-sm font-medium leading-none">
+              Keep local files
+            </Label>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {keepLocalFiles
+                ? 'The project folder stays on disk. Only Cozea cloud data and local app bindings are removed.'
+                : 'Also move the local project folder to Trash after deleting from Cozea.'}
+            </p>
+          </div>
         </div>
 
         {errorMessage ? (
@@ -97,9 +108,9 @@ export function ProjectDeleteDialog({
           <AlertDialogAction
             onClick={(event) => {
               event.preventDefault()
-              void onConfirm(confirmName)
+              void onConfirm({ keepLocalFiles })
             }}
-            disabled={isDeleting || confirmName !== projectName}
+            disabled={isDeleting}
             className="bg-destructive text-white hover:bg-destructive/90 disabled:bg-destructive/70 disabled:text-white disabled:opacity-100"
           >
             {isDeleting ? 'Deleting...' : confirmLabel}
@@ -109,4 +120,3 @@ export function ProjectDeleteDialog({
     </AlertDialog>
   )
 }
-
