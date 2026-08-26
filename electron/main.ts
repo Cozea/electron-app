@@ -39,6 +39,13 @@ import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
 import { startAssistantRuntime } from './assistant-runtime/boot'
 import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
 import { waitForHttpReady } from './backendReadiness'
+import { readSubstrateShadowServerFlags } from './substrate/flags'
+import {
+  createShadowServerManager,
+  getShadowServerManager,
+  resolveShadowServerEntryPath,
+  type ShadowServerManager,
+} from './substrate/ShadowServerManager'
 
 import { DevServerService } from './services/DevServerService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
@@ -466,6 +473,7 @@ const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
 const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
 const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
 const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
+const SUBSTRATE_SHADOW_STATUS_HANDLE = 'substrateShadow:getStatus'
 const ASSISTANT_RUNTIME_READY_TIMEOUT_MS = 60_000
 const ASSISTANT_RUNTIME_RESTART_DELAY_MS = 2_000
 
@@ -612,6 +620,101 @@ function scheduleAssistantRuntimeRestart(): void {
     logAssistantBridge('runtime-restart-triggered')
     ensureAssistantRuntimeStarted()
   }, ASSISTANT_RUNTIME_RESTART_DELAY_MS)
+}
+
+let shadowServerManager: ShadowServerManager | null = null
+let shadowServerStartInFlight: Promise<void> | null = null
+
+function logSubstrateShadow(event: string, details?: Record<string, unknown>): void {
+  if (details) {
+    console.info(`[SubstrateShadow] ${event}`, details)
+    return
+  }
+  console.info(`[SubstrateShadow] ${event}`)
+}
+
+async function ensureSubstrateShadowServerStarted(): Promise<void> {
+  const flags = readSubstrateShadowServerFlags()
+  if (!flags.enabled) {
+    logSubstrateShadow('skip-disabled', { flagId: flags.flagId })
+    return
+  }
+
+  if (shadowServerStartInFlight) {
+    await shadowServerStartInFlight
+    return
+  }
+
+  shadowServerStartInFlight = (async () => {
+    const logsDirectory = path.join(app.getPath('logs'), 'substrate-shadow')
+    const manager =
+      getShadowServerManager() ??
+      createShadowServerManager({
+        entryPath: resolveShadowServerEntryPath(__dirname),
+        logDirectory: logsDirectory,
+        flags,
+      })
+    shadowServerManager = manager
+    logSubstrateShadow('starting', {
+      host: flags.host,
+      port: flags.port,
+      entryPath: resolveShadowServerEntryPath(__dirname),
+      logsDirectory,
+    })
+    const status = await manager.start()
+    logSubstrateShadow('started', {
+      phase: status.phase,
+      baseUrl: status.baseUrl,
+      readyPath: status.readyPath,
+      pid: status.pid,
+    })
+  })()
+
+  try {
+    await shadowServerStartInFlight
+  } finally {
+    shadowServerStartInFlight = null
+  }
+}
+
+async function stopSubstrateShadowServer(): Promise<void> {
+  const manager = shadowServerManager ?? getShadowServerManager()
+  if (!manager) {
+    return
+  }
+  try {
+    await manager.stop()
+    logSubstrateShadow('stopped')
+  } catch (error) {
+    logSubstrateShadow('stop-failed', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+function registerSubstrateShadowBridgeHandlers(): void {
+  ipcMain.removeHandler(SUBSTRATE_SHADOW_STATUS_HANDLE)
+  ipcMain.handle(SUBSTRATE_SHADOW_STATUS_HANDLE, () => {
+    const manager = shadowServerManager ?? getShadowServerManager()
+    if (!manager) {
+      const flags = readSubstrateShadowServerFlags()
+      return {
+        phase: flags.enabled ? 'stopped' : 'stopped',
+        enabled: flags.enabled,
+        flagId: flags.flagId,
+        host: flags.host,
+        port: flags.port,
+        baseUrl: `http://${flags.host}:${flags.port}`,
+        readyPath: '/.well-known/cozea/substrate/ready',
+        pin: null,
+        pid: null,
+        lastError: null,
+        startedAtMs: null,
+        readyAtMs: null,
+      }
+    }
+    return manager.getStatus()
+  })
 }
 
 function ensureAssistantRuntimeStarted(): void {
@@ -1572,6 +1675,7 @@ app.on('before-quit', () => {
   PreviewSnapshotService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
+  void stopSubstrateShadowServer()
 })
 
 app.on('activate', () => {
@@ -1581,6 +1685,7 @@ app.on('activate', () => {
 })
 
 registerAssistantRuntimeBridgeHandlers()
+registerSubstrateShadowBridgeHandlers()
 app.on('gpu-info-update', refreshGpuDiagnostics)
 
 app.whenReady().then(() => {
@@ -1615,6 +1720,13 @@ app.whenReady().then(() => {
   scheduleBootWork('assistant-runtime-started', () => {
     ensureAssistantRuntimeStarted()
   }, 250)
+  scheduleBootWork('substrate-shadow-server-started', () => {
+    void ensureSubstrateShadowServerStarted().catch((error) => {
+      logSubstrateShadow('start-failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  }, 300)
   scheduleBootWork('update-checks-started', () => {
     startUpdateChecks()
   }, 1_000)
