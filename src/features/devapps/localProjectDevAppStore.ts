@@ -17,9 +17,37 @@ import type {
 export const LOCAL_PROJECT_DEVAPP_STORAGE_KEY = "cozea:project-devapps:local:v1";
 const LOCAL_PUBLICATION_ID_PREFIX = "local-devapp-publication:";
 const LOCAL_RELEASE_ID_PREFIX = "local-devapp-release:";
-const MAX_LOCAL_ENTRIES = 500;
-const MAX_RELEASES_PER_ENTRY = 1_000;
+const MAX_LOCAL_ENTRIES = 48;
+const MAX_RELEASES_PER_ENTRY = 25;
+/** Upper bound on release rows inspected before the newest are kept. */
+const MAX_RELEASES_SCANNED = MAX_RELEASES_PER_ENTRY * 8;
 const MAX_IDENTITY_NAME_LENGTH = 80;
+/**
+ * localStorage gives an origin roughly 5 MB of UTF-16 characters, shared with
+ * every other Cozea key. Cap this catalog well below that and fail loudly
+ * rather than letting a write blow the quota and silently lose the catalog.
+ */
+const MAX_PERSISTED_CATALOG_CHARACTERS = 2_500_000;
+
+export const PROJECT_DEVAPP_STORAGE_FULL_MESSAGE =
+  "This Mac has no room left to store local DevApps. Remove a Local DevApp or choose a smaller logo, then try again.";
+
+/** Thrown when the local catalog cannot be persisted within the browser quota. */
+export class ProjectDevAppStorageFullError extends Error {
+  constructor() {
+    super(PROJECT_DEVAPP_STORAGE_FULL_MESSAGE);
+    this.name = "ProjectDevAppStorageFullError";
+  }
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return (
+      error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED"
+    );
+  }
+  return error instanceof Error && error.name === "QuotaExceededError";
+}
 
 export interface LocalProjectDevAppCatalogEntry extends AccessibleProjectDevApp {
   releases: ProjectDevAppRelease[];
@@ -59,8 +87,36 @@ function createMemoryStorage(): StateStorage {
   };
 }
 
-const localProjectDevAppStorage =
-  typeof window === "undefined" ? createMemoryStorage() : window.localStorage;
+/**
+ * Translates the browser's opaque quota rejection into an error the publish and
+ * identity flows can show verbatim.
+ */
+function withQuotaReporting(storage: StateStorage): StateStorage {
+  return {
+    getItem: (name) => storage.getItem(name),
+    setItem: (name, value) => {
+      try {
+        return storage.setItem(name, value);
+      } catch (error) {
+        if (isQuotaExceededError(error)) {
+          throw new ProjectDevAppStorageFullError();
+        }
+        throw error;
+      }
+    },
+    removeItem: (name) => storage.removeItem(name),
+  };
+}
+
+const localProjectDevAppStorage = withQuotaReporting(
+  typeof window === "undefined" ? createMemoryStorage() : window.localStorage,
+);
+
+function assertPersistableEntries(entries: LocalProjectDevAppCatalogEntry[]): void {
+  if (JSON.stringify({ entries }).length > MAX_PERSISTED_CATALOG_CHARACTERS) {
+    throw new ProjectDevAppStorageFullError();
+  }
+}
 
 function createPublicationId(): Id<"devAppPublications"> {
   return `${LOCAL_PUBLICATION_ID_PREFIX}${nanoid()}` as Id<"devAppPublications">;
@@ -179,8 +235,10 @@ function sanitizeEntry(value: unknown): LocalProjectDevAppCatalogEntry | null {
 
   const releaseIds = new Set<string>();
   const releaseVersions = new Set<number>();
+  // Releases are append-only, so the tail holds the newest. Trim after sorting
+  // so the active release is always the highest surviving version.
   const releases = value.releases
-    .slice(0, MAX_RELEASES_PER_ENTRY)
+    .slice(-MAX_RELEASES_SCANNED)
     .map((release) => sanitizeRelease(release, publicationId, projectId))
     .filter((release): release is ProjectDevAppRelease => {
       if (!release || releaseIds.has(String(release._id)) || releaseVersions.has(release.version)) {
@@ -190,7 +248,8 @@ function sanitizeEntry(value: unknown): LocalProjectDevAppCatalogEntry | null {
       releaseVersions.add(release.version);
       return true;
     })
-    .sort((left, right) => left.version - right.version);
+    .sort((left, right) => left.version - right.version)
+    .slice(-MAX_RELEASES_PER_ENTRY);
   const activeRelease = releases.at(-1);
   if (!activeRelease) return null;
 
@@ -328,13 +387,20 @@ function publishLocalEntry(
     activeRelease: release,
     sourceProject: { ...args.sourceProject },
     ...(logoDataUrl ? { logoDataUrl } : {}),
-    releases: existing ? [...existing.releases, release] : [release],
+    releases: (existing ? [...existing.releases, release] : [release]).slice(
+      -MAX_RELEASES_PER_ENTRY,
+    ),
   };
   const nextEntries = [...entries];
 
   if (existingIndex >= 0) {
     nextEntries[existingIndex] = entry;
   } else {
+    if (nextEntries.length >= MAX_LOCAL_ENTRIES) {
+      throw new Error(
+        `This Mac already holds ${MAX_LOCAL_ENTRIES} local DevApps. Remove one before publishing another.`,
+      );
+    }
     nextEntries.push(entry);
   }
 
@@ -416,28 +482,43 @@ function updateLocalEntryLogo(
 
 export const useLocalProjectDevAppStore = create<LocalProjectDevAppCatalogState>()(
   persist(
-    (set, get) => ({
-      entries: [],
-      publish: (args) => {
-        const published = publishLocalEntry(get().entries, args);
-        set({ entries: published.entries });
-        return published.result;
-      },
-      updateIdentity: (args) => {
-        const entries = get().entries;
-        const nextEntries = updateLocalEntryIdentity(entries, args);
-        if (nextEntries !== entries) {
+    (set, get) => {
+      /**
+       * Persistence happens inside `set`, so a quota rejection would otherwise
+       * leave memory ahead of storage. Check the budget first, then roll memory
+       * back if the write still fails.
+       */
+      const commitEntries = (nextEntries: LocalProjectDevAppCatalogEntry[]) => {
+        const previousEntries = get().entries;
+        if (nextEntries === previousEntries) return;
+        assertPersistableEntries(nextEntries);
+        try {
           set({ entries: nextEntries });
+        } catch (error) {
+          try {
+            set({ entries: previousEntries });
+          } catch {
+            // The rollback write is known to have fit before; ignore a second failure.
+          }
+          throw error;
         }
-      },
-      updateLogo: (args) => {
-        const entries = get().entries;
-        const nextEntries = updateLocalEntryLogo(entries, args);
-        if (nextEntries !== entries) {
-          set({ entries: nextEntries });
-        }
-      },
-    }),
+      };
+
+      return {
+        entries: [],
+        publish: (args) => {
+          const published = publishLocalEntry(get().entries, args);
+          commitEntries(published.entries);
+          return published.result;
+        },
+        updateIdentity: (args) => {
+          commitEntries(updateLocalEntryIdentity(get().entries, args));
+        },
+        updateLogo: (args) => {
+          commitEntries(updateLocalEntryLogo(get().entries, args));
+        },
+      };
+    },
     {
       name: LOCAL_PROJECT_DEVAPP_STORAGE_KEY,
       version: 1,

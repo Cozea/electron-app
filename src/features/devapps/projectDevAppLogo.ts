@@ -1,6 +1,12 @@
 export const PROJECT_DEVAPP_LOGO_ACCEPT = "image/png,image/jpeg,image/webp";
 export const PROJECT_DEVAPP_LOGO_MAX_INPUT_BYTES = 8 * 1024 * 1024;
-export const PROJECT_DEVAPP_LOGO_MAX_DATA_URL_LENGTH = 384 * 1024;
+/**
+ * Every logo is re-encoded to a 256px WebP, which lands well under 40 KB of
+ * base64 in practice. The ceiling is deliberately close to that reality: the
+ * catalog lives in localStorage, so a generous per-logo allowance multiplied
+ * by the entry cap would exceed the origin quota on its own.
+ */
+export const PROJECT_DEVAPP_LOGO_MAX_DATA_URL_LENGTH = 128 * 1024;
 export const PROJECT_DEVAPP_LOGO_SIZE = 256;
 export const PROJECT_DEVAPP_LOGO_MAX_EDGE = 4_096;
 export const PROJECT_DEVAPP_LOGO_MAX_PIXELS = 16_000_000;
