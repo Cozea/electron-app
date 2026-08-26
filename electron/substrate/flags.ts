@@ -1,11 +1,15 @@
 import {
   DEFAULT_SUBSTRATE_SHADOW_HOST,
   DEFAULT_SUBSTRATE_SHADOW_PORT,
+  SUBSTRATE_OBS_NDJSON_FLAG,
+  SUBSTRATE_PRIMARY_FLAG,
+  SUBSTRATE_PROVIDERS_FLAG,
   SUBSTRATE_RPC_CHAT_FLAG,
   SUBSTRATE_SHADOW_SERVER_FLAG,
+  SUBSTRATE_VCS_FLAG,
 } from "./constants";
 
-function parseBooleanFlag(raw: string | undefined, fallback: boolean): boolean {
+export function parseBooleanFlag(raw: string | undefined, fallback: boolean): boolean {
   if (raw === undefined) {
     return fallback;
   }
@@ -73,3 +77,136 @@ export function readSubstrateRpcChatFlags(
     enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_RPC_CHAT, false),
   };
 }
+
+export interface SubstrateProvidersFlags {
+  readonly flagId: typeof SUBSTRATE_PROVIDERS_FLAG;
+  /**
+   * When true, the substrate ProviderDriver registry + managed snapshot
+   * lifecycle is available. Default product chat still uses the in-process
+   * assistant-runtime providers until a later cutover phase.
+   */
+  readonly enabled: boolean;
+}
+
+/**
+ * Phase 3 flag — default **off**.
+ * Enable with `COZEA_SUBSTRATE_PROVIDERS=1`.
+ */
+export function readSubstrateProvidersFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstrateProvidersFlags {
+  return {
+    flagId: SUBSTRATE_PROVIDERS_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PROVIDERS, false),
+  };
+}
+
+export interface SubstrateVcsFlags {
+  readonly flagId: typeof SUBSTRATE_VCS_FLAG;
+  /**
+   * When true, agent/overlay VCS should prefer the `VcsDriver` adapter path
+   * (status invalidate, push-safety, checkpoint facade).
+   */
+  readonly enabled: boolean;
+}
+
+/**
+ * Phase 4 flag — default **off**.
+ * Enable with `COZEA_SUBSTRATE_VCS=1`.
+ */
+export function readSubstrateVcsFlags(env: NodeJS.ProcessEnv = process.env): SubstrateVcsFlags {
+  return {
+    flagId: SUBSTRATE_VCS_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_VCS, false),
+  };
+}
+
+/** Convenience: whether the Phase 4 VcsDriver path is enabled. */
+export function isSubstrateVcsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return readSubstrateVcsFlags(env).enabled;
+}
+
+export interface SubstratePrimaryFlags {
+  readonly flagId: typeof SUBSTRATE_PRIMARY_FLAG;
+  /**
+   * When true with shadow server, prefer out-of-process substrate and skip
+   * starting the in-process assistant runtime.
+   */
+  readonly enabled: boolean;
+}
+
+/**
+ * Phase 5 flag — default **off**.
+ * Enable with `COZEA_SUBSTRATE_PRIMARY=1`.
+ */
+export function readSubstratePrimaryFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstratePrimaryFlags {
+  return {
+    flagId: SUBSTRATE_PRIMARY_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PRIMARY, false),
+  };
+}
+
+export interface SubstrateObsNdjsonFlags {
+  readonly flagId: typeof SUBSTRATE_OBS_NDJSON_FLAG;
+  readonly enabled: boolean;
+}
+
+/**
+ * Phase 6 / Track E flag — default **off**.
+ * Enable with `COZEA_OBS_NDJSON=1` or `COZEA_SUBSTRATE_OBS_NDJSON=1`.
+ */
+export function readSubstrateObsNdjsonFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstrateObsNdjsonFlags {
+  return {
+    flagId: SUBSTRATE_OBS_NDJSON_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_OBS_NDJSON ?? env.COZEA_OBS_NDJSON, false),
+  };
+}
+
+export interface SubstrateFeatureFlags {
+  readonly shadowServer: SubstrateShadowServerFlags;
+  readonly rpcChat: boolean;
+  readonly providers: boolean;
+  readonly vcs: boolean;
+  readonly primary: boolean;
+  readonly obsNdjson: boolean;
+}
+
+/**
+ * Full substrate flag bundle (Phases 1–6). All default **off**.
+ */
+export function readSubstrateFeatureFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstrateFeatureFlags {
+  const shadowServer = readSubstrateShadowServerFlags(env);
+  return {
+    shadowServer,
+    rpcChat: readSubstrateRpcChatFlags(env).enabled,
+    providers: readSubstrateProvidersFlags(env).enabled,
+    vcs: readSubstrateVcsFlags(env).enabled,
+    primary: readSubstratePrimaryFlags(env).enabled,
+    obsNdjson: readSubstrateObsNdjsonFlags(env).enabled,
+  };
+}
+
+export function shouldStartInProcessAssistantRuntime(
+  flags: SubstrateFeatureFlags = readSubstrateFeatureFlags(),
+): boolean {
+  // Phase 5: primary mode requires shadow server and skips in-process runtime.
+  if (flags.primary && flags.shadowServer.enabled) {
+    return false;
+  }
+  return true;
+}
+
+export {
+  SUBSTRATE_OBS_NDJSON_FLAG,
+  SUBSTRATE_PRIMARY_FLAG,
+  SUBSTRATE_PROVIDERS_FLAG,
+  SUBSTRATE_RPC_CHAT_FLAG,
+  SUBSTRATE_SHADOW_SERVER_FLAG,
+  SUBSTRATE_VCS_FLAG,
+};
