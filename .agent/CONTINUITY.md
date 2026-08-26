@@ -102,6 +102,7 @@
 - 2026-06-10T08:58Z [TOOL] Runtime verification: stopped duplicate stale dev processes, started one fresh `bun run dev` instance; renderer listened on `http://localhost:5183/`, assistant runtime on `127.0.0.1:3773`, app reached `main-window-ready-to-show`, and fresh `.agent/dev-current.log` had no `Unable to retrieve system memory information` or `UnhandledPromiseRejectionWarning` matches.
 
 ## [OUTCOMES]
+- 2026-08-26T13:55Z [TOOL] Pushed the latest application snapshot to `origin/codex/local-devapps-latest` without modifying `main`; the feature commit is `130af97a` (`feat: add machine-local project DevApps`). Unrelated local investor-deck artifacts remain untracked and were not pushed.
 - 2026-08-26T04:05Z [TOOL] Redesigned `Cozea-Investor-Read-Deck.pptx` completed at 37 MB; all 21 exported slides were rendered at 1600x900, reviewed as a montage and at full size for corrected slides, and passed the presentation overflow test with no detected overflow.
 - 2026-08-26T03:44Z [TOOL] `Cozea-Investor-Read-Deck.pptx` completed at 6.5 MB; the actual 21-slide PowerPoint was rendered at 1600x900, reviewed slide by slide and as a montage, and passed the presentation overflow test with no detected overflow.
 - 2026-07-16T21:11:45Z [TOOL] Local DevApp card/identity settings redesign completed: typecheck and lint pass with zero errors/warnings, production build passes, 10 focused files / 99 tests pass, targeted formatting and `git diff --check` pass, and the live renderer/runtime remain on ports 5183/3773. No Convex deployment occurred.
