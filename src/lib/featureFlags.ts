@@ -10,6 +10,8 @@ const DEFINITIONS = {
   contentVisibility: { key: 'VITE_FF_CONTENT_VISIBILITY', defaultValue: true },
   localWorkspaceCatalog: { key: 'VITE_FF_LOCAL_WORKSPACE_CATALOG', defaultValue: true },
   projectDevApps: { key: 'VITE_FF_PROJECT_DEVAPPS', defaultValue: true },
+  /** Mirror of main-process `cozea.browser.agentAutomation` (default off). */
+  browserAgentAutomation: { key: 'VITE_FF_BROWSER_AGENT_AUTOMATION', defaultValue: false },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {
@@ -45,5 +47,9 @@ export const featureFlags = {
   projectDevApps: parseBoolean(
     import.meta.env[DEFINITIONS.projectDevApps.key],
     DEFINITIONS.projectDevApps.defaultValue
+  ),
+  browserAgentAutomation: parseBoolean(
+    import.meta.env[DEFINITIONS.browserAgentAutomation.key],
+    DEFINITIONS.browserAgentAutomation.defaultValue
   ),
 } as const

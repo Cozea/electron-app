@@ -29,6 +29,7 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { registerBrowserAutomationHandlers } from './ipc/registerBrowserAutomationHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
@@ -1531,6 +1532,10 @@ registerWorkspaceSyncHandlers(ipcMain)
 registerYjsHandlers(ipcMain)
 
 registerWorkbenchBrowserHandlers(ipcMain, {
+  service: workbenchBrowserService,
+})
+
+registerBrowserAutomationHandlers(ipcMain, {
   service: workbenchBrowserService,
 })
 
