@@ -151,11 +151,6 @@ export class ShadowServerManager {
         COZEA_SUBSTRATE_SHADOW_PORT: String(this.flags.port),
         COZEA_SUBSTRATE_SHADOW_LOG_DIR: this.logDirectory,
         COZEA_SUBSTRATE_T3_PIN: SUBSTRATE_T3_PIN_SHA,
-        COZEA_SUBSTRATE_RPC_CHAT: process.env.COZEA_SUBSTRATE_RPC_CHAT ?? "0",
-        COZEA_SUBSTRATE_PROVIDERS: process.env.COZEA_SUBSTRATE_PROVIDERS ?? "0",
-        COZEA_SUBSTRATE_PRIMARY: process.env.COZEA_SUBSTRATE_PRIMARY ?? "0",
-        COZEA_OBS_NDJSON: process.env.COZEA_OBS_NDJSON ?? "0",
-        COZEA_SUBSTRATE_OBS_NDJSON: process.env.COZEA_SUBSTRATE_OBS_NDJSON ?? "0",
         ...(process.env.COZEA_OBS_NDJSON_PATH
           ? { COZEA_OBS_NDJSON_PATH: process.env.COZEA_OBS_NDJSON_PATH }
           : {}),
