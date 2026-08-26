@@ -451,7 +451,11 @@ it.layer(TestLayer)("git integration", (it) => {
         const core = yield* GitCore;
         yield* Effect.promise(() =>
           vi.waitFor(async () => {
-            const details = await Effect.runPromise(core.statusDetails(source));
+            // Demand-gated remote refresh: local-first statusDetails no longer
+            // fetches on every poll (Track F).
+            const details = await Effect.runPromise(
+              core.statusDetails(source, { refreshRemote: true, forceRemoteRefresh: true }),
+            );
             expect(details.branch).toBe(featureBranch);
             expect(details.aheadCount).toBe(0);
             expect(details.behindCount).toBe(1);
