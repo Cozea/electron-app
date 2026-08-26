@@ -26,6 +26,7 @@ interface UseDevServerManagerOptions {
   autoStart?: boolean
   storedDevCommand?: string | null
   storedDevPort?: number | null
+  storedCommandSource?: DevServerLaunchContext['storedCommandSource']
   previewMode?: DevServerLaunchContext['previewMode']
   nativePlatform?: DevServerLaunchContext['nativePlatform']
 }
@@ -46,6 +47,7 @@ export function useDevServerManager({
   autoStart = false,
   storedDevCommand = null,
   storedDevPort = null,
+  storedCommandSource = 'detected',
   previewMode = 'web',
   nativePlatform = null,
 }: UseDevServerManagerOptions) {
@@ -66,6 +68,7 @@ export function useDevServerManager({
       terminalId,
       storedDevCommand,
       storedDevPort,
+      storedCommandSource,
       previewMode,
       nativePlatform,
     })
@@ -78,6 +81,7 @@ export function useDevServerManager({
     terminalId,
     storedDevCommand,
     storedDevPort,
+    storedCommandSource,
     previewMode,
     nativePlatform,
   ])

@@ -67,6 +67,7 @@ export interface DevServerRunContext {
   terminalId: string | null
   storedDevCommand: string | null
   storedDevPort: number | null
+  storedCommandSource: DevServerLaunchContext['storedCommandSource']
   previewMode: DevServerLaunchContext['previewMode']
   nativePlatform: DevServerLaunchContext['nativePlatform']
 }
@@ -197,6 +198,7 @@ export function registerDevServerRunContext(key: string, context: DevServerRunCo
       prev.terminalId === context.terminalId &&
       prev.storedDevCommand === context.storedDevCommand &&
       prev.storedDevPort === context.storedDevPort &&
+      prev.storedCommandSource === context.storedCommandSource &&
       prev.previewMode === context.previewMode &&
       prev.nativePlatform === context.nativePlatform
     ) {
@@ -395,7 +397,11 @@ export async function startDevServerRun(key: string): Promise<void> {
       context.workspaceId,
       context.storedDevCommand,
       context.storedDevPort,
-      { previewMode: context.previewMode, nativePlatform: context.nativePlatform },
+      {
+        previewMode: context.previewMode,
+        nativePlatform: context.nativePlatform,
+        storedCommandSource: context.storedCommandSource,
+      },
     )
     if (config.requiresUserSelection) {
       throw new Error(

@@ -230,6 +230,10 @@ function WorkbenchRuntimePreviewTile({
     tile.type === "devServer" ? tile.devAppPort ?? projectDevPort : projectDevPort
   const autoStart = tile.type === "devServer" ? tile.autoStart ?? false : false
   const devAppReleaseId = tile.type === "devServer" ? tile.devAppReleaseId ?? null : null
+  const storedCommandSource =
+    tile.type === "devServer" && tile.devAppId && tile.devAppCommand
+      ? "devAppRelease"
+      : "detected"
   const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
     storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
   )
@@ -298,6 +302,7 @@ function WorkbenchRuntimePreviewTile({
     autoStart,
     storedDevCommand,
     storedDevPort,
+    storedCommandSource,
     previewMode: usesNativePreview ? "native" : "web",
     nativePlatform: usesNativePreview ? nativePreviewPlatform : null,
   })
