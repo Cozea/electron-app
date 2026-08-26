@@ -170,13 +170,16 @@ const es: Record<TranslationKey, string> = {
   // ── Página de lanzamiento de proyectos ──────────────────────────────
   "projects.selectProject": "Selecciona un proyecto",
   "projects.selectProjectDesc":
-    "Elige un proyecto de la barra lateral para continuar en su espacio de trabajo.",
+    "Elige un proyecto de la barra lateral, o suelta otro repositorio local aquí para importarlo.",
   "projects.welcomeToCozea": "Bienvenido a Cozea",
   "projects.createProjectDesc":
-    "Crea un nuevo proyecto desde la barra lateral para comenzar.",
-  "projects.shortcutOpenChat": "Abrir chat",
-  "projects.shortcutShowCommands": "Mostrar todos los comandos",
-  "projects.shortcutToggleTerminal": "Alternar terminal",
+    "Suelta una carpeta de repositorio local aquí para importarla — igual que Importar carpeta local.",
+  "projects.dropRepoTitle": "Suelta una carpeta de repositorio",
+  "projects.dropRepoActive": "Suelta para importar",
+  "projects.dropRepoHint": "Importa la carpeta igual que Importar carpeta local. Haz clic para explorar.",
+  "projects.dropRepoBrowse": "Explorar carpeta",
+  "projects.dropRepoImporting": "Importando proyecto…",
+  "projects.dropRepoAriaLabel": "Suelta una carpeta de repositorio para importar, o haz clic para explorar",
 
   // ── Menú de actualización ───────────────────────────────────────────
   "update.title": "Actualización de Cozea",
