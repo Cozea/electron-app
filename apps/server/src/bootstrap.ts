@@ -11,7 +11,6 @@ import { readSubstrateFeatureFlags } from "../../../electron/substrate/flags";
 import { getSharedSubstrateNdjsonWriter } from "../../../electron/substrate/obs";
 import { createShadowHttpServer } from "../../../electron/substrate-shadow-server/createShadowHttpServer";
 import type { OrchestrationRpcBackend } from "../../../electron/substrate-shadow-server/rpcOrchestrationHandlers";
-import { authenticateT3Server } from "@cozea/client-runtime";
 import { bootstrapT3Server, type T3ServerBootstrapHandle } from "./t3Bootstrap.ts";
 
 export interface BootstrapCozeaSubstrateServerOptions {
@@ -102,8 +101,7 @@ export async function bootstrapCozeaSubstrateServer(
       t3Handle !== null
         ? {
             baseUrl: t3Handle.process.baseUrl,
-            issueWsTicket: () =>
-              authenticateT3Server(t3Handle!.process.baseUrl, t3Handle!.process.pairingToken),
+            issueWsTicket: () => t3Handle!.issueWsTicket(),
           }
         : undefined,
     host,
@@ -112,7 +110,7 @@ export async function bootstrapCozeaSubstrateServer(
     onRequestLog: (line) => appendLog(line),
     onListening: (info) => {
       appendLog(`listening on http://${info.host}:${info.port}`);
-      if (substrateFlags.primary) {
+      if (substrateFlags.primary && orchestrationBackend === undefined) {
         void (async () => {
           try {
             const { startAssistantRuntime } = await import(
@@ -126,6 +124,8 @@ export async function bootstrapCozeaSubstrateServer(
             );
           }
         })();
+      } else if (substrateFlags.primary && orchestrationBackend !== undefined) {
+        appendLog("skipping legacy assistant runtime (T3 orchestration owner active)");
       }
       if (typeof process.send === "function") {
         process.send({
