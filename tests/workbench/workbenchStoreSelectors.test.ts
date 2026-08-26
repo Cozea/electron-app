@@ -221,4 +221,37 @@ describe('workbench store selectors', () => {
     expect(builtInTile).not.toHaveProperty('devAppPort')
     expect(builtInTile).not.toHaveProperty('autoStart')
   })
+
+  it('clears a consumed auto-start flag so a remount cannot restart a stopped server', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    actions.ensureWorkbench('project-1', 'collab', 'workspace-1')
+    const tileId = actions.addTile(
+      'project-1',
+      'collab',
+      'devServer',
+      {
+        devAppId: 'local-devapp-publication:one',
+        devAppCommand: 'bun run dev',
+        autoStart: true,
+      },
+      'workspace-1',
+    )
+
+    const readTile = () =>
+      selectProjectWorkbench('project-1', 'collab', 'workspace-1')(
+        useProjectWorkbenchStore.getState(),
+      )?.tiles[tileId]
+
+    expect(readTile()).toMatchObject({ autoStart: true })
+
+    actions.updateRuntimePreviewTile(
+      'project-1',
+      'collab',
+      tileId,
+      { autoStart: false },
+      'workspace-1',
+    )
+
+    expect(readTile()).not.toHaveProperty('autoStart')
+  })
 })

@@ -223,6 +223,47 @@ describe('nested runnable package detection', () => {
     expect(config.commandVerified).toBe(true)
   })
 
+  it('hard fails a pinned DevApp command when the project changed package manager', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    readFile.mockImplementation(async ({ filePath }) => {
+      if (filePath !== 'package.json') return { success: false }
+      return {
+        success: true,
+        content: JSON.stringify({
+          scripts: { dev: 'vite' },
+          devDependencies: { vite: '^7.0.0' },
+        }),
+      }
+    })
+
+    await expect(
+      getDevServerConfig(WORKSPACE_ID, 'pnpm run dev', 5173, {
+        storedCommandSource: 'devAppRelease',
+      }),
+    ).rejects.toThrow(/pinned to pnpm.*now uses npm.*Update DevApp/s)
+  })
+
+  it('still falls back to detection for a merely detected stored command', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    readFile.mockImplementation(async ({ filePath }) => {
+      if (filePath !== 'package.json') return { success: false }
+      return {
+        success: true,
+        content: JSON.stringify({
+          scripts: { dev: 'vite' },
+          devDependencies: { vite: '^7.0.0' },
+        }),
+      }
+    })
+
+    const config = await getDevServerConfig(WORKSPACE_ID, 'pnpm run dev', 5173)
+
+    expect(config.command).toBe('npm run dev')
+    expect(config.commandVerified).toBe(true)
+  })
+
   it('marks a framework fallback command unverified when package.json has no runnable script', async () => {
     resolveRoot.mockResolvedValue('/repo')
     readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
