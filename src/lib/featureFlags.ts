@@ -15,6 +15,8 @@ const DEFINITIONS = {
    * Override with `VITE_FF_COZEA_PALETTE_ENABLED=0` to disable.
    */
   paletteEnabled: { key: 'VITE_FF_COZEA_PALETTE_ENABLED', defaultValue: true },
+  /** Mirror of main-process `cozea.browser.agentAutomation` (default off). */
+  browserAgentAutomation: { key: 'VITE_FF_BROWSER_AGENT_AUTOMATION', defaultValue: false },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {
@@ -55,5 +57,9 @@ export const featureFlags = {
   paletteEnabled: parseBoolean(
     import.meta.env[DEFINITIONS.paletteEnabled.key],
     DEFINITIONS.paletteEnabled.defaultValue
+  ),
+  browserAgentAutomation: parseBoolean(
+    import.meta.env[DEFINITIONS.browserAgentAutomation.key],
+    DEFINITIONS.browserAgentAutomation.defaultValue
   ),
 } as const

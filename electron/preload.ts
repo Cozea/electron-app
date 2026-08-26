@@ -347,6 +347,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
     },
   },
+  /** Agent browser automation MVP (flag `cozea.browser.agentAutomation`, default off). */
+  browserAutomation: {
+    status: () => ipcRenderer.invoke('browserAutomation:status'),
+    navigate: (options: import('../shared/browserAutomationTypes').BrowserAutomationNavigateInput) =>
+      ipcRenderer.invoke('browserAutomation:navigate', options),
+    snapshot: (options: import('../shared/browserAutomationTypes').BrowserAutomationTileInput) =>
+      ipcRenderer.invoke('browserAutomation:snapshot', options),
+    click: (options: import('../shared/browserAutomationTypes').BrowserAutomationClickInput) =>
+      ipcRenderer.invoke('browserAutomation:click', options),
+    type: (options: import('../shared/browserAutomationTypes').BrowserAutomationTypeInput) =>
+      ipcRenderer.invoke('browserAutomation:type', options),
+  },
   workbenchSession: {
     ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:ensureSession', options),
