@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 import type {
   AppSettings,
@@ -125,6 +125,7 @@ const terminalOutputBridge = createTerminalOutputBridge()
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   windowContext,
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
     generateKey: () => ipcRenderer.invoke('integrations:generateKey'),

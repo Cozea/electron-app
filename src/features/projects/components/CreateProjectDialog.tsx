@@ -27,7 +27,7 @@ import {
   settingsInlineInputClass,
   settingsInlineInputWidth,
 } from "@/components/settings/SettingsChrome"
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   browseForDirectory,
@@ -38,6 +38,10 @@ import {
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+import {
+  DEFAULT_WORKBENCH_LANE_ID,
+  useProjectWorkbenchStore,
+} from "@/stores/useProjectWorkbenchStore"
 import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -217,14 +221,22 @@ export function CreateProjectDialog({
   const navigateToProjectWorkbench = useCallback(
     (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
       onOpenChange(false)
-      navigate(buildProjectPath(projectId, "workbench"), {
-        state: buildProjectRouteNavigationState({
-          projectId,
-          projectSlug,
-          projectName,
-          preferredWorkspaceId: workspaceId,
+      useProjectWorkbenchStore
+        .getState()
+        .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
+      navigate(
+        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID, {
+          openTile: "assistantChat",
         }),
-      })
+        {
+          state: buildProjectRouteNavigationState({
+            projectId,
+            projectSlug,
+            projectName,
+            preferredWorkspaceId: workspaceId,
+          }),
+        },
+      )
     },
     [navigate, onOpenChange],
   )

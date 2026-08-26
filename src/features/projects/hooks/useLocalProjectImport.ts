@@ -5,7 +5,7 @@ import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   browseForDirectory,
@@ -15,6 +15,10 @@ import {
   detectCurrentBranch,
   inspectLocalGitState,
 } from "@/features/projects/lib/localProjectImport"
+import {
+  DEFAULT_WORKBENCH_LANE_ID,
+  useProjectWorkbenchStore,
+} from "@/stores/useProjectWorkbenchStore"
 
 export type LocalProjectImportOutcome =
   | "cancelled"
@@ -67,14 +71,25 @@ export function useLocalProjectImport() {
 
   const navigateToProjectWorkbench = useCallback(
     (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
-      navigate(buildProjectPath(projectId, "workbench"), {
-        state: buildProjectRouteNavigationState({
-          projectId,
-          projectSlug,
-          projectName,
-          preferredWorkspaceId: workspaceId,
+      // Ensure a workbench shell exists, then open the assistant tile so import
+      // lands in an active workbench instead of only adding the project to the sidebar.
+      useProjectWorkbenchStore
+        .getState()
+        .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
+
+      navigate(
+        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID, {
+          openTile: "assistantChat",
         }),
-      })
+        {
+          state: buildProjectRouteNavigationState({
+            projectId,
+            projectSlug,
+            projectName,
+            preferredWorkspaceId: workspaceId,
+          }),
+        },
+      )
     },
     [navigate],
   )

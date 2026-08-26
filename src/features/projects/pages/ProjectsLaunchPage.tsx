@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type DragEvent } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
+import { FolderLibraryIcon as __FolderLibraryHugeIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { Button } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -18,13 +20,19 @@ import {
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/projects/lib/lastWorkbenchRoute"
+import { resolveDroppedLocalFolderPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
+import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { useTranslation } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()
   const { t } = useTranslation()
+  const { importLocalFolder, importPickedLocalFolder } = useLocalProjectImport()
   const workspaceSelectionId = user?.id ?? "local-device"
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const lastWorkbenchRoute =
     ignoredWorkspaceSelectionId === workspaceSelectionId
       ? null
@@ -65,6 +73,95 @@ export function ProjectsLaunchPage() {
     setIgnoredWorkspaceSelectionId(workspaceSelectionId)
   }, [lastWorkbenchRoute, restoredProject, workspaceSelectionId])
 
+  const showDropError = useCallback(async (detail: string) => {
+    await window.electronAPI.dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      defaultId: 0,
+      title: "Could not import folder",
+      message: "Cozea couldn't import that local folder.",
+      detail,
+      noLink: true,
+    })
+  }, [])
+
+  const beginImport = useCallback(
+    async (run: () => Promise<"cancelled" | "imported" | "error">) => {
+      if (isImporting) {
+        return
+      }
+      setIsImporting(true)
+      try {
+        await run()
+      } finally {
+        setIsImporting(false)
+      }
+    },
+    [isImporting],
+  )
+
+  const handleBrowse = useCallback(() => {
+    void beginImport(() => importLocalFolder())
+  }, [beginImport, importLocalFolder])
+
+  const handleDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer.types.includes("Files")) {
+      setIsDragActive(true)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer.types.includes("Files")) {
+      event.dataTransfer.dropEffect = "copy"
+      setIsDragActive(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const nextTarget = event.relatedTarget
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return
+    }
+    setIsDragActive(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      setIsDragActive(false)
+
+      if (isImporting) {
+        return
+      }
+
+      const resolved = resolveDroppedLocalFolderPath(
+        event.dataTransfer,
+        window.electronAPI.getPathForFile,
+      )
+
+      if (!resolved.ok) {
+        const detail =
+          resolved.reason === "multiple"
+            ? "Drop a single repository folder at a time."
+            : resolved.reason === "not_folder"
+              ? "Drop a folder (repository), not a file."
+              : "Cozea couldn't read a local path from that drop."
+        void showDropError(detail)
+        return
+      }
+
+      void beginImport(() => importPickedLocalFolder(resolved.path))
+    },
+    [beginImport, importPickedLocalFolder, isImporting, showDropError],
+  )
+
   if (lastWorkbenchRoute) {
     if (restoredProject) {
       return (
@@ -81,26 +178,10 @@ export function ProjectsLaunchPage() {
   const fallbackProject = projectsPage?.items?.[0] ?? null
 
   const hasProjects = Boolean(fallbackProject?._id)
-  const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac")
-
-  const shortcutRows = [
-    {
-      label: t("projects.shortcutOpenChat"),
-      keys: isMac ? ["⌃", "⌘", "I"] : ["Ctrl", "Alt", "I"],
-    },
-    {
-      label: t("projects.shortcutShowCommands"),
-      keys: isMac ? ["⇧", "⌘", "P"] : ["Ctrl", "Shift", "P"],
-    },
-    {
-      label: t("projects.shortcutToggleTerminal"),
-      keys: isMac ? ["⌃", "`"] : ["Ctrl", "`"],
-    },
-  ] as const
 
   return (
     <div className="flex min-h-full flex-1 items-center justify-center">
-      <div className="w-full p-6 md:p-10">
+      <div className="w-full max-w-xl p-6 md:p-10">
         <Empty className="py-6">
           {hasProjects ? (
             <EmptyHeader>
@@ -117,25 +198,75 @@ export function ProjectsLaunchPage() {
               </EmptyDescription>
             </EmptyHeader>
           )}
-          <EmptyContent className="w-full max-w-xs">
-            <div className="w-full space-y-2 rounded-lg p-3">
-              {shortcutRows.map((row) => (
-                <div key={row.label} className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-muted-foreground">{row.label}</span>
-                    <KbdGroup className="gap-1">
-                      {row.keys.map((key) => (
-                        <Kbd
-                          key={`${row.label}-${key}`}
-                          className="h-6 min-w-6 rounded-md border border-border border-b-[2px] bg-background px-1.5 text-foreground shadow-sm"
-                        >
-                          {key}
-                        </Kbd>
-                      ))}
-                    </KbdGroup>
-                  </div>
-                ))}
+          <EmptyContent className="w-full max-w-md">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-disabled={isImporting}
+              aria-label={t("projects.dropRepoAriaLabel")}
+              onClick={() => {
+                if (!isImporting) {
+                  handleBrowse()
+                }
+              }}
+              onKeyDown={(event) => {
+                if (isImporting) {
+                  return
+                }
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault()
+                  handleBrowse()
+                }
+              }}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={cn(
+                "flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-10 text-center transition-colors",
+                isDragActive
+                  ? "border-primary bg-primary/5"
+                  : "border-border/80 bg-secondary/20 hover:border-border hover:bg-secondary/30",
+                isImporting && "pointer-events-none opacity-70",
+              )}
+            >
+              {isImporting ? (
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              ) : (
+                <HugeiconsIcon
+                  icon={__FolderLibraryHugeIcon}
+                  className={cn(
+                    "size-8",
+                    isDragActive ? "text-primary" : "text-muted-foreground",
+                  )}
+                />
+              )}
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {isImporting
+                    ? t("projects.dropRepoImporting")
+                    : isDragActive
+                      ? t("projects.dropRepoActive")
+                      : t("projects.dropRepoTitle")}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t("projects.dropRepoHint")}
+                </p>
               </div>
-            </EmptyContent>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isImporting}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleBrowse()
+                }}
+              >
+                {t("projects.dropRepoBrowse")}
+              </Button>
+            </div>
+          </EmptyContent>
         </Empty>
       </div>
     </div>
