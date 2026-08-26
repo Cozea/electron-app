@@ -50,6 +50,31 @@ export interface ProjectPreviewExperience {
 export interface DevServerLaunchContext {
   previewMode?: 'web' | 'native'
   nativePlatform?: 'ios' | 'android' | null
+  /**
+   * Set when `storedDevCommand` is the immutable command pinned by a DevApp
+   * release rather than a detected default. A pinned command must never be
+   * silently replaced by fresh detection — see `getDevServerConfig`.
+   */
+  storedCommandSource?: 'devAppRelease' | 'detected'
+}
+
+/**
+ * Raised when a DevApp release pins a package manager that no longer matches
+ * the project's lockfile. Callers surface the message verbatim.
+ */
+export class ProjectDevAppCommandStaleError extends Error {
+  readonly pinnedPackageManager: PackageManager
+  readonly detectedPackageManager: PackageManager
+
+  constructor(pinned: PackageManager, detected: PackageManager) {
+    super(
+      `This DevApp is pinned to ${pinned}, but the project now uses ${detected}. ` +
+        'Choose "Update DevApp" on the source project to publish a new release with the current package manager.',
+    )
+    this.name = 'ProjectDevAppCommandStaleError'
+    this.pinnedPackageManager = pinned
+    this.detectedPackageManager = detected
+  }
 }
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
@@ -615,31 +640,48 @@ function commandExistsInScripts(command: string | null | undefined, scripts: Rec
   return Boolean(scripts[invocation.scriptName]?.trim())
 }
 
+type StoredPackageScriptResolution =
+  | {
+      outcome: 'resolved'
+      command: string
+      packageDirectory: string | null
+      packageScript: string
+    }
+  | { outcome: 'unusable' }
+  | {
+      outcome: 'package_manager_changed'
+      pinnedPackageManager: PackageManager
+      detectedPackageManager: PackageManager
+    }
+
 async function resolveStoredPackageScriptCommand(
   workspaceId: string,
   command: string,
-): Promise<{
-  command: string
-  packageDirectory: string | null
-  packageScript: string
-} | null> {
+): Promise<StoredPackageScriptResolution> {
   const invocation = parseProjectDevAppCommand(command)
-  if (!invocation) return null
+  if (!invocation) return { outcome: 'unusable' }
 
   const packageJson = await readPackageJsonAtPath(
     workspaceId,
     joinRelativeProjectPath(invocation.packageDirectory, 'package.json'),
   )
   const packageScript = packageJson?.scripts?.[invocation.scriptName]?.trim()
-  if (!packageScript) return null
+  if (!packageScript) return { outcome: 'unusable' }
 
   const detectedPackageManager = await detectPackageManagerFromRoot(
     workspaceId,
     invocation.packageDirectory,
   )
-  if (detectedPackageManager !== invocation.packageManager) return null
+  if (detectedPackageManager !== invocation.packageManager) {
+    return {
+      outcome: 'package_manager_changed',
+      pinnedPackageManager: invocation.packageManager,
+      detectedPackageManager,
+    }
+  }
 
   return {
+    outcome: 'resolved',
     command: command.trim(),
     packageDirectory: invocation.packageDirectory,
     packageScript,
@@ -905,7 +947,7 @@ export async function getDevServerConfig(
   const resolvedStoredCommand = storedDevCommand
     ? await resolveStoredPackageScriptCommand(workspaceId, storedDevCommand)
     : null
-  if (resolvedStoredCommand) {
+  if (resolvedStoredCommand?.outcome === 'resolved') {
     return {
       command: resolvedStoredCommand.command,
       port: inferPortFromCommand(
@@ -918,6 +960,19 @@ export async function getDevServerConfig(
       packageDirectory: resolvedStoredCommand.packageDirectory,
       commandVerified: true,
     }
+  }
+
+  // A DevApp release pins its package manager. Falling through to detection
+  // here would silently run a different tool than the one the release was
+  // published and tested against, so stop and tell the user to republish.
+  if (
+    resolvedStoredCommand?.outcome === 'package_manager_changed' &&
+    context?.storedCommandSource === 'devAppRelease'
+  ) {
+    throw new ProjectDevAppCommandStaleError(
+      resolvedStoredCommand.pinnedPackageManager,
+      resolvedStoredCommand.detectedPackageManager,
+    )
   }
 
   const persistedCommand = getPersistedDevCommand(workspaceId)
