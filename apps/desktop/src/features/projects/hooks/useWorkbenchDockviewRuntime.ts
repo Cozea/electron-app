@@ -112,6 +112,7 @@ interface UseWorkbenchDockviewRuntimeInput {
   workbenchScopeKey: string | null;
   isLayoutPersistenceReady: boolean;
   persistedLayout: SerializedDockview | null;
+  isActive: boolean;
 }
 
 interface UseWorkbenchDockviewRuntimeResult {
@@ -154,6 +155,9 @@ export function useWorkbenchDockviewRuntime(
   const keyboardNavigationCleanupRef = useRef<(() => void) | null>(null);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
+  const isActiveRef = useRef(input.isActive);
+  const wasActiveRef = useRef(input.isActive);
+  const captureAndPersistLayoutRef = useRef<() => void>(() => {});
   const selectionPreviewTilesRef = useRef<Record<string, WorkbenchSelectionTile>>({});
   const [dockviewReadyScopeKey, setDockviewReadyScopeKey] = useState<string | null>(null);
   const [selectionPreviewTiles, setSelectionPreviewTiles] = useState<
@@ -198,6 +202,22 @@ export function useWorkbenchDockviewRuntime(
     return selectionPreviewTilesRef.current[tileId] ?? null;
   }, []);
 
+  captureAndPersistLayoutRef.current = () => {
+    const api = dockviewApiRef.current;
+    const scopeKey = workbenchScopeKeyRef.current;
+    if (!api || !scopeKey || isHydratingRef.current) {
+      return;
+    }
+    if (Object.keys(selectionPreviewTilesRef.current).length > 0) {
+      return;
+    }
+    writePersistedWorkbenchLayout(
+      scopeKey,
+      layoutResetKeyRef.current,
+      api.toJSON() as SerializedDockview,
+    );
+  };
+
   const hydrateDockviewPanels = useCallback(
     (api: DockviewApi) => {
       if (!input.projectId || !input.projectWorkbench) {
@@ -206,6 +226,19 @@ export function useWorkbenchDockviewRuntime(
 
       isHydratingRef.current = true;
       try {
+        // Keep-alive can re-enter hydration (store identity churn, hide/show)
+        // with a live dock that already has the user's split tree. Clearing
+        // here would rebuild from persisted JSON or `buildDefaultDockview`
+        // (every tile `direction: "right"` → a row of columns).
+        if (api.totalPanels > 0) {
+          applyWorkbenchDockviewPolicies(api);
+          if (input.projectWorkbench.activeTileId) {
+            api.getPanel(input.projectWorkbench.activeTileId)?.api.setActive();
+          }
+          syncPanelTitles(api, input.projectWorkbench);
+          return;
+        }
+
         api.clear();
 
         if (input.persistedLayout) {
@@ -247,6 +280,12 @@ export function useWorkbenchDockviewRuntime(
 
   const saveLayout = useCallback(() => {
     if (!input.projectId) return;
+    if (!isActiveRef.current) {
+      // Hidden keep-alive sessions still receive dockview layout events.
+      // Persisting those would overwrite the user's split with a degenerate
+      // equal-column snapshot.
+      return;
+    }
     if (isHydratingRef.current) {
       // Mid-rebuild layouts are transient (possibly empty); persisting one
       // overwrites the user's real layout.
@@ -273,7 +312,21 @@ export function useWorkbenchDockviewRuntime(
   useEffect(() => {
     layoutResetKeyRef.current = input.projectWorkbench?.layoutResetKey ?? 0;
     workbenchScopeKeyRef.current = input.workbenchScopeKey;
-  }, [input.projectWorkbench?.layoutResetKey, input.workbenchScopeKey]);
+    isActiveRef.current = input.isActive;
+  }, [input.isActive, input.projectWorkbench?.layoutResetKey, input.workbenchScopeKey]);
+
+  useLayoutEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = input.isActive;
+    isActiveRef.current = input.isActive;
+    if (wasActive && !input.isActive) {
+      if (layoutSaveFrameRef.current !== null) {
+        cancelAnimationFrame(layoutSaveFrameRef.current);
+        layoutSaveFrameRef.current = null;
+      }
+      captureAndPersistLayoutRef.current();
+    }
+  }, [input.isActive]);
 
   useEffect(() => {
     isDestroyingRef.current = false;
@@ -284,6 +337,9 @@ export function useWorkbenchDockviewRuntime(
 
   useLayoutEffect(() => {
     return () => {
+      // Persist before dropping the API — the passive unmount flush otherwise
+      // runs after this ref is already null, so the latest split is lost.
+      captureAndPersistLayoutRef.current();
       // Reset runtime refs during the previous scope's cleanup so a newly-mounted
       // Dockview instance can't be clobbered by a late passive effect from the old one.
       dockviewApiRef.current = null;
@@ -499,7 +555,9 @@ export function useWorkbenchDockviewRuntime(
     return () => {
       if (layoutSaveFrameRef.current !== null) {
         cancelAnimationFrame(layoutSaveFrameRef.current);
+        layoutSaveFrameRef.current = null;
       }
+      captureAndPersistLayoutRef.current();
       layoutSnapshotDebouncerRef.current?.flush();
     };
   }, []);

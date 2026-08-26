@@ -47,6 +47,7 @@ function buildLaneIdentityKey(
 }
 
 const laneStateCache = new Map<string, ProjectLaneState>()
+const laneLoadInflight = new Map<string, Promise<ProjectLaneState | null>>()
 
 // The hook polls every 5s; consumers (ProjectLayout among them) re-render on
 // every state identity change. Lane state must therefore keep its object
@@ -56,6 +57,117 @@ function laneStatesEqual(a: ProjectLaneState | null, b: ProjectLaneState | null)
   if (a === b) return true
   if (!a || !b) return false
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+async function loadProjectLaneStateUncached(input: {
+  projectId: string
+  identityKey: string
+  normalizedCollabBranch: string
+  normalizedWorkspaceId: string | null
+}): Promise<ProjectLaneState | null> {
+  const storedSession = readScopedProjectBranchSession(input.projectId, input.normalizedWorkspaceId)
+  let activeBranch: string
+
+  if (input.normalizedWorkspaceId) {
+    const statusResult = await window.electronAPI.workspaceSync.gitStatus({
+      workspaceId: input.normalizedWorkspaceId,
+    }).catch(() => null)
+
+    if (statusResult?.success) {
+      publishGitRemoteStatus(input.normalizedWorkspaceId, {
+        ahead: statusResult.ahead ?? 0,
+        behind: statusResult.behind ?? 0,
+        error: statusResult.error ?? null,
+      })
+    } else if (statusResult && statusResult.success === false) {
+      publishGitRemoteStatus(input.normalizedWorkspaceId, {
+        ahead: 0,
+        behind: 0,
+        error: statusResult.error ?? "Failed to read git remote status",
+      })
+    }
+
+    const resolution = resolveLaneBranchKnowledge({
+      statusResult,
+      storedBranch: storedSession?.activeBranch ?? null,
+      collabBranch: input.normalizedCollabBranch,
+    })
+
+    if (resolution.kind === "unresolved") {
+      // No fresh status, no stored knowledge: building lane state anyway
+      // would fabricate the collab lane, flip the workbench scope key, and
+      // strand open tiles. Hold (the 5s poll retries) and keep whatever
+      // state is already showing.
+      return laneStateCache.get(input.identityKey) ?? null
+    }
+
+    activeBranch = resolution.branch
+    if (resolution.remember) {
+      rememberProjectBranchSession({
+        projectId: input.projectId,
+        branch: activeBranch,
+        collabBranch: input.normalizedCollabBranch,
+        workspaceId: input.normalizedWorkspaceId,
+      })
+    }
+  } else {
+    activeBranch = storedSession?.activeBranch ?? input.normalizedCollabBranch
+  }
+
+  const nextLaneState = buildProjectBranchLaneState({
+    projectId: input.projectId,
+    workspaceId: input.normalizedWorkspaceId ?? storedSession?.workspaceId ?? null,
+    collabBranch: input.normalizedCollabBranch,
+    activeBranch,
+  })
+
+  const cached = laneStateCache.get(input.identityKey) ?? null
+  const stableNext =
+    nextLaneState && laneStatesEqual(cached, nextLaneState) ? cached : nextLaneState
+  if (stableNext) {
+    laneStateCache.set(input.identityKey, stableNext)
+  } else {
+    laneStateCache.delete(input.identityKey)
+  }
+  return stableNext
+}
+
+export async function prefetchProjectLaneState(input: {
+  projectId: string
+  workspaceId: string | null
+  collabBranch: string | null
+}): Promise<ProjectLaneState | null> {
+  const normalizedCollabBranch = normalizeBranch(input.collabBranch)
+  const normalizedWorkspaceId = normalizeWorkspaceProjectPath(input.workspaceId)
+  const identityKey = buildLaneIdentityKey(
+    input.projectId,
+    normalizedCollabBranch,
+    normalizedWorkspaceId,
+  )
+  if (!identityKey) {
+    return null
+  }
+
+  const cached = laneStateCache.get(identityKey)
+  if (cached) {
+    return cached
+  }
+
+  const pending = laneLoadInflight.get(identityKey)
+  if (pending) {
+    return pending
+  }
+
+  const promise = loadProjectLaneStateUncached({
+    projectId: input.projectId,
+    identityKey,
+    normalizedCollabBranch,
+    normalizedWorkspaceId,
+  }).finally(() => {
+    laneLoadInflight.delete(identityKey)
+  })
+  laneLoadInflight.set(identityKey, promise)
+  return promise
 }
 
 export function clearCachedProjectLaneState(
@@ -148,99 +260,21 @@ export function useProjectLaneState({
     })
 
     try {
-      const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId)
-      let activeBranch: string
-
-      if (normalizedWorkspaceId) {
-        const statusResult = await window.electronAPI.workspaceSync.gitStatus({
-          workspaceId: normalizedWorkspaceId,
-        }).catch(() => null)
-
-        if (statusResult?.success) {
-          publishGitRemoteStatus(normalizedWorkspaceId, {
-            ahead: statusResult.ahead ?? 0,
-            behind: statusResult.behind ?? 0,
-            error: statusResult.error ?? null,
-          })
-        } else if (statusResult && statusResult.success === false) {
-          publishGitRemoteStatus(normalizedWorkspaceId, {
-            ahead: 0,
-            behind: 0,
-            error: statusResult.error ?? "Failed to read git remote status",
-          })
-        }
-
-        const resolution = resolveLaneBranchKnowledge({
-          statusResult,
-          storedBranch: storedSession?.activeBranch ?? null,
-          collabBranch: normalizedCollabBranch,
-        })
-
-        if (resolution.kind === "unresolved") {
-          if (refreshRequestIdRef.current !== requestId) return
-          // No fresh status, no stored knowledge: building lane state anyway
-          // would fabricate the collab lane, flip the workbench scope key, and
-          // strand open tiles. Hold (the 5s poll retries) and keep whatever
-          // state is already showing.
-          setScoped((current) => {
-            const carried =
-              current.identityKey === identityKey
-                ? current.laneState
-                : laneStateCache.get(identityKey) ?? null
-            const nextLoading = carried === null
-            if (
-              current.identityKey === identityKey &&
-              current.laneState === carried &&
-              current.isLoading === nextLoading
-            ) {
-              return current
-            }
-            return { identityKey, laneState: carried, isLoading: nextLoading }
-          })
-          return
-        }
-
-        activeBranch = resolution.branch
-        if (resolution.remember) {
-          // Persist only fresh git truth — remembering fallback values poisoned
-          // the stored session with the fabricated branch.
-          rememberProjectBranchSession({
-            projectId,
-            branch: activeBranch,
-            collabBranch: normalizedCollabBranch,
-            workspaceId: normalizedWorkspaceId,
-          })
-        }
-      } else {
-        activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch
-      }
-
-      const nextLaneState = buildProjectBranchLaneState({
+      const nextLaneState = await loadProjectLaneStateUncached({
         projectId,
-        workspaceId: normalizedWorkspaceId ?? storedSession?.workspaceId ?? null,
-        collabBranch: normalizedCollabBranch,
-        activeBranch,
+        identityKey,
+        normalizedCollabBranch,
+        normalizedWorkspaceId,
       })
 
       if (refreshRequestIdRef.current !== requestId) return
 
-      // Re-use the cached object when content is unchanged so downstream
-      // identity checks (and React bail-outs) hold across polls.
-      const cached = laneStateCache.get(identityKey) ?? null
-      const stableNext =
-        nextLaneState && laneStatesEqual(cached, nextLaneState) ? cached : nextLaneState
-      if (stableNext) {
-        laneStateCache.set(identityKey, stableNext)
-      } else {
-        laneStateCache.delete(identityKey)
-      }
-
       setScoped((current) =>
         current.identityKey === identityKey &&
-        current.laneState === stableNext &&
-        !current.isLoading
+        current.laneState === nextLaneState &&
+        current.isLoading === (nextLaneState === null)
           ? current
-          : { identityKey, laneState: stableNext, isLoading: false },
+          : { identityKey, laneState: nextLaneState, isLoading: nextLaneState === null },
       )
     } catch (error) {
       if (refreshRequestIdRef.current !== requestId) return

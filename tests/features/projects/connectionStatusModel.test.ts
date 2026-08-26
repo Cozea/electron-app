@@ -51,6 +51,28 @@ describe("connectionStatusModel", () => {
     expect(
       mapDataSyncStatus({
         syncProgressStatus: "idle",
+        collabConnected: false,
+        isOnline: true,
+        collaborationMode: "shared",
+        hasSyncContext: true,
+        collabReconnectTimedOut: true,
+      }),
+    ).toBe("error")
+
+    expect(
+      mapDataSyncStatus({
+        syncProgressStatus: "idle",
+        collabConnected: false,
+        isOnline: true,
+        collaborationMode: "shared",
+        hasSyncContext: true,
+        collabSessionStatus: "error",
+      }),
+    ).toBe("error")
+
+    expect(
+      mapDataSyncStatus({
+        syncProgressStatus: "idle",
         collabConnected: true,
         isOnline: true,
         collaborationMode: "shared",
@@ -119,6 +141,125 @@ describe("connectionStatusModel", () => {
     expect(presentation.transport).toBe("connected")
     expect(presentation.dataSync).toBe("syncing")
     expect(presentation.primaryLabel).toBe("Collab Reconnecting")
+    expect(presentation.motion).toBe("spin")
+  })
+
+  it("stops spinning after collab reconnect times out", () => {
+    const presentation = resolveConnectionStatusPresentation({
+      assistantTransport: "open",
+      syncProgress: {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      },
+      collabConnected: false,
+      isOnline: true,
+      collaborationMode: "shared",
+      sharedBranch: "main",
+      gitRemote: null,
+      collabSessionStatus: "ready",
+      collabReconnectTimedOut: true,
+    })
+
+    expect(presentation.transport).toBe("connected")
+    expect(presentation.dataSync).toBe("error")
+    expect(presentation.primaryLabel).toBe("Collaboration unavailable")
+    expect(presentation.motion).toBeUndefined()
+    expect(presentation.severity).toBe("error")
+  })
+
+  it("caps a session that never leaves loading", () => {
+    const spinning = resolveConnectionStatusPresentation({
+      assistantTransport: "open",
+      syncProgress: {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      },
+      collabConnected: false,
+      isOnline: true,
+      collaborationMode: "shared",
+      sharedBranch: "main",
+      gitRemote: null,
+      collabSessionStatus: "loading",
+    })
+
+    expect(spinning.primaryLabel).toBe("Starting collaboration")
+    expect(spinning.motion).toBe("spin")
+
+    const timedOut = resolveConnectionStatusPresentation({
+      assistantTransport: "open",
+      syncProgress: {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      },
+      collabConnected: false,
+      isOnline: true,
+      collaborationMode: "shared",
+      sharedBranch: "main",
+      gitRemote: null,
+      collabSessionStatus: "loading",
+      collabReconnectTimedOut: true,
+    })
+
+    expect(timedOut.primaryLabel).toBe("Collaboration unavailable")
+    expect(timedOut.motion).toBeUndefined()
+  })
+
+  it("surfaces collab session errors without spinning", () => {
+    const presentation = resolveConnectionStatusPresentation({
+      assistantTransport: "open",
+      syncProgress: {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      },
+      collabConnected: false,
+      isOnline: true,
+      collaborationMode: "shared",
+      sharedBranch: "main",
+      gitRemote: null,
+      collabSessionStatus: "error",
+      collabSessionError: "gateway refused",
+    })
+
+    expect(presentation.primaryLabel).toBe("Collab unavailable")
+    expect(presentation.primaryDetail).toBe("gateway refused")
+    expect(presentation.motion).toBeUndefined()
+    expect(presentation.severity).toBe("error")
+  })
+
+  it("does not treat missing device encryption as reconnecting", () => {
+    const presentation = resolveConnectionStatusPresentation({
+      assistantTransport: "open",
+      syncProgress: {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      },
+      collabConnected: false,
+      isOnline: true,
+      collaborationMode: "shared",
+      sharedBranch: "main",
+      gitRemote: null,
+      collabSessionStatus: "ready",
+      collabEncryptionStatus: "missing_for_device",
+    })
+
+    expect(presentation.primaryLabel).toBe("Awaiting device approval")
+    expect(presentation.dataSync).toBe("idle")
+    expect(presentation.motion).toBe("pulse")
   })
 })
 
