@@ -29,11 +29,10 @@ function findActiveTileOfType(
   type: WorkbenchTileType,
 ) {
   const workbench = selectProjectWorkbench(
-    useProjectWorkbenchStore.getState(),
     projectId,
     laneId,
     workspaceId,
-  )
+  )(useProjectWorkbenchStore.getState())
   if (!workbench) return null
   const activeId = workbench.activeTileId
   if (activeId && workbench.tiles[activeId]?.type === type) {
@@ -74,11 +73,10 @@ export function useWorkbenchCommandRegistry(
 
     const closeActiveOfType = (type: WorkbenchTileType) => {
       const workbench = selectProjectWorkbench(
-        useProjectWorkbenchStore.getState(),
         projectId,
         laneId,
         workspaceId,
-      )
+      )(useProjectWorkbenchStore.getState())
       if (!workbench) return
       const activeId = workbench.activeTileId
       const active = activeId ? workbench.tiles[activeId] : null
@@ -109,11 +107,10 @@ export function useWorkbenchCommandRegistry(
         const existing = findActiveTileOfType(projectId, laneId, workspaceId, "terminal")
         if (existing) {
           const workbench = selectProjectWorkbench(
-            useProjectWorkbenchStore.getState(),
             projectId,
             laneId,
             workspaceId,
-          )
+          )(useProjectWorkbenchStore.getState())
           if (workbench?.activeTileId === existing.id) {
             workbenchActions.removeTile(projectId, laneId, existing.id, workspaceId)
           } else {

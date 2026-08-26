@@ -123,7 +123,6 @@ export function findShortcutForCommand(
   command: KeybindingCommand,
   options?: ShortcutMatchOptions,
 ): KeybindingShortcut | null {
-  const platform = resolvePlatform(options)
   const context = resolveContext(options)
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
