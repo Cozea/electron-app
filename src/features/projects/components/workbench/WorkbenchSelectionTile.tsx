@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { useLocalProjectDevAppEntries } from "@/features/devapps/localProjectDevAppStore"
+import { buildProjectDevAppManifest } from "@/features/devapps/projectDevAppManifest"
 import { listLauncherApps } from "@/features/devapps/registry"
-import type { DevAppLauncherGroup, DevAppManifest } from "@/features/devapps/registry/types"
+import { featureFlags } from "@/lib/featureFlags"
+import type { DevAppManifest, ProjectDevAppLaunchSpec } from "@/features/devapps/registry/types"
 import type {
   WorkbenchSelectionTile,
 } from "@/stores/useProjectWorkbenchStore"
@@ -17,11 +20,19 @@ import {
   type WorkbenchSelectionLauncherLayout,
 } from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
 import { useTranslation } from "@/lib/i18n"
+import { appToast } from "@/lib/appToast"
+import { useWorkspaceCatalogSnapshot } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
+import {
+  filterWorkbenchSelectionApps,
+  getWorkbenchSelectionCategories,
+  resolveWorkbenchSelectionCategory,
+  type WorkbenchSelectionCategory,
+} from "@/features/projects/lib/workbenchSelectionCategories"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon as __SearchHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
 
-type CategoryTab = "All" | DevAppLauncherGroup | "Explore DevApps Store"
+type CategoryTab = WorkbenchSelectionCategory
 
 const SPACIOUS_MIN_W = 720
 const SPACIOUS_MIN_H = 480
@@ -47,6 +58,7 @@ interface WorkbenchSelectionTileProps {
   tile: WorkbenchSelectionTile
   /** True when this is the only tile and the workbench is in empty state (no tools opened yet). */
   singletonEmptyWorkbench?: boolean
+  projectId?: string | null
   projectName?: string | null
   workspaceId?: string | null
   onChoose: (request: WorkbenchSelectionLaunchRequest) => void
@@ -57,12 +69,6 @@ interface WorkbenchSelectionTileProps {
    * of as a square-cornered opaque panel.
    */
   className?: string
-}
-
-const CATEGORY_TABS: CategoryTab[] = ["All", "Development", "Assistant", "Explore DevApps Store"]
-
-function isLauncherGroup(category: CategoryTab): category is DevAppLauncherGroup {
-  return category === "Development" || category === "Assistant"
 }
 
 function WelcomeHero({
@@ -101,6 +107,7 @@ function SelectionFilterBar({
   searchQuery,
   onSearchQueryChange,
   searchInputRef,
+  categories,
   contentWidth,
   flush = false,
 }: {
@@ -110,6 +117,7 @@ function SelectionFilterBar({
   searchQuery: string
   onSearchQueryChange: (query: string) => void
   searchInputRef: RefObject<HTMLInputElement | null>
+  categories: CategoryTab[]
   contentWidth?: number
   flush?: boolean
 }) {
@@ -130,7 +138,7 @@ function SelectionFilterBar({
         <div
           className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {CATEGORY_TABS.map((cat, index, array) => (
+          {categories.map((cat, index, array) => (
             <div key={cat} className="flex shrink-0 items-stretch">
               <button
                 type="button"
@@ -264,10 +272,10 @@ function useLauncherGridLayout(
 
 function SelectionLauncherButton({
   option,
-  onChoose,
+  onSelect,
 }: {
   option: DevAppManifest
-  onChoose: WorkbenchSelectionTileProps["onChoose"]
+  onSelect: (option: DevAppManifest) => void
 }) {
 
   const localizedName = option.name
@@ -281,7 +289,7 @@ function SelectionLauncherButton({
       )}
       style={{ width: `${LAUNCHER_CONFIG.tileWidth}px` }}
       title={option.description}
-      onClick={() => onChoose({ appId: option.id })}
+      onClick={() => onSelect(option)}
     >
       <div
         className="shrink-0 overflow-hidden ring-1 ring-black/5 transition-transform group-hover:scale-[1.03]"
@@ -307,10 +315,10 @@ function SelectionLauncherButton({
 
 function SelectionListButton({
   option,
-  onChoose,
+  onSelect,
 }: {
   option: DevAppManifest
-  onChoose: WorkbenchSelectionTileProps["onChoose"]
+  onSelect: (option: DevAppManifest) => void
 }) {
 
   const iconSize = 42
@@ -326,7 +334,7 @@ function SelectionListButton({
         "hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
       title={option.description}
-      onClick={() => onChoose({ appId: option.id })}
+      onClick={() => onSelect(option)}
     >
       <div
         className="shrink-0 overflow-hidden ring-1 ring-black/5"
@@ -349,6 +357,7 @@ function SelectionListButton({
 export function WorkbenchSelectionTile({
   tile: _tile,
   singletonEmptyWorkbench = false,
+  projectId,
   projectName,
   workspaceId,
   onChoose,
@@ -364,6 +373,41 @@ export function WorkbenchSelectionTile({
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const localProjectDevApps = useLocalProjectDevAppEntries()
+  const workspaceCatalog = useWorkspaceCatalogSnapshot()
+
+  const projectDevAppOptions = useMemo(
+    () =>
+      (featureFlags.projectDevApps ? localProjectDevApps : [])
+        .map((entry) => {
+          const sourceProjectId = String(entry.sourceProject._id)
+          const sourceRuntime = workspaceCatalog?.entries[sourceProjectId]
+          const runtimeLocation =
+            sourceRuntime?.status === "ready" && sourceRuntime.lane
+              ? {
+                  workspaceId: sourceRuntime.workspace.workspaceId,
+                  laneId: sourceRuntime.lane.laneId,
+                }
+              : null
+
+          return buildProjectDevAppManifest(entry, runtimeLocation)
+        }),
+    [localProjectDevApps, workspaceCatalog],
+  )
+  const hasLocalDevApps = projectDevAppOptions.length > 0
+  const categories = useMemo(
+    () => getWorkbenchSelectionCategories(hasLocalDevApps),
+    [hasLocalDevApps],
+  )
+  const resolvedActiveCategory = resolveWorkbenchSelectionCategory(
+    activeCategory,
+    hasLocalDevApps,
+  )
+
+  useEffect(() => {
+    if (activeCategory === resolvedActiveCategory) return
+    setActiveCategory(resolvedActiveCategory)
+  }, [activeCategory, resolvedActiveCategory])
 
   const enabledAssistantProviders = useMemo(() => {
     const providers =
@@ -375,32 +419,28 @@ export function WorkbenchSelectionTile({
   }, [config])
 
   const allOptions = useMemo(
-    () => listLauncherApps({ enabledAssistantProviders }),
-    [enabledAssistantProviders],
-  )
-  const categoryOptions = useMemo(() => {
-    if (!isLauncherGroup(activeCategory)) return allOptions
-    return listLauncherApps({
-      enabledAssistantProviders,
-      group: activeCategory,
-    })
-  }, [activeCategory, allOptions, enabledAssistantProviders])
-  const filteredOptions = useMemo(() => {
-    if (!searchQuery.trim()) return categoryOptions
-
-    if (!isLauncherGroup(activeCategory)) {
-      return listLauncherApps({
+    () =>
+      listLauncherApps({
+        additionalApps: projectDevAppOptions,
         enabledAssistantProviders,
-        query: searchQuery,
-      })
-    }
-
-    return listLauncherApps({
-      enabledAssistantProviders,
-      group: activeCategory,
-      query: searchQuery,
-    })
-  }, [activeCategory, categoryOptions, enabledAssistantProviders, searchQuery])
+      }),
+    [enabledAssistantProviders, projectDevAppOptions],
+  )
+  const searchedOptions = useMemo(
+    () =>
+      searchQuery.trim()
+        ? listLauncherApps({
+            additionalApps: projectDevAppOptions,
+            enabledAssistantProviders,
+            query: searchQuery,
+          })
+        : allOptions,
+    [allOptions, enabledAssistantProviders, projectDevAppOptions, searchQuery],
+  )
+  const filteredOptions = useMemo(
+    () => filterWorkbenchSelectionApps(searchedOptions, resolvedActiveCategory),
+    [resolvedActiveCategory, searchedOptions],
+  )
   const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
@@ -433,7 +473,7 @@ export function WorkbenchSelectionTile({
     const pager = launcherPagerRef.current
     if (!pager) return
     pager.scrollTo({ left: 0, top: 0, behavior: "auto" })
-  }, [activeCategory, launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows, searchQuery, useListView])
+  }, [launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows, resolvedActiveCategory, searchQuery, useListView])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -491,14 +531,63 @@ export function WorkbenchSelectionTile({
     },
     [navigate],
   )
+  const handleChooseOption = useCallback(
+    (option: DevAppManifest) => {
+      void (async () => {
+        let projectDevApp: ProjectDevAppLaunchSpec | undefined
+
+        if (option.launch.kind === "projectDevApp") {
+          projectDevApp = option.launch
+          const isCrossProject = projectDevApp.projectId !== projectId
+
+          if (isCrossProject && (!projectDevApp.sourceWorkspaceId || !projectDevApp.sourceLaneId)) {
+            const workspaceApi = window.electronAPI.workspace
+            if (!workspaceApi) {
+              throw new Error(t("workbench.selection.localDevAppUnavailableDescription"))
+            }
+
+            const resolution = await workspaceApi.resolveProject({
+              projectId: projectDevApp.projectId,
+              allowCandidateScan: false,
+            })
+
+            if (resolution.status !== "ready") {
+              throw new Error(t("workbench.selection.localDevAppUnavailableDescription"))
+            }
+
+            projectDevApp = {
+              ...projectDevApp,
+              sourceWorkspaceId: resolution.workspace.workspaceId,
+              sourceLaneId: resolution.lane.laneId,
+            }
+          }
+        }
+
+        onChoose({
+          appId: option.id,
+          ...(projectDevApp ? { projectDevApp } : {}),
+        })
+      })().catch((error) => {
+        appToast.error({
+          title: t("workbench.selection.localDevAppUnavailable"),
+          description:
+            error instanceof Error
+              ? error.message
+              : t("workbench.selection.localDevAppUnavailableDescription"),
+        })
+      })
+    },
+    [onChoose, projectId, t],
+  )
   const sharedFilterBar = (
     <SelectionFilterBar
       isMac={isMac}
-      activeCategory={activeCategory}
+      activeCategory={resolvedActiveCategory}
       onCategoryChange={handleCategoryChange}
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
       searchInputRef={searchInputRef}
+      categories={categories}
       contentWidth={useListView ? undefined : filterContentWidth}
       flush={useListView}
     />
@@ -546,7 +635,7 @@ export function WorkbenchSelectionTile({
                     <SelectionListButton
                       key={option.id}
                       option={option}
-                      onChoose={onChoose}
+                      onSelect={handleChooseOption}
                     />
                   ))
                 ) : (
@@ -586,7 +675,7 @@ export function WorkbenchSelectionTile({
                                 <SelectionLauncherButton
                                   key={option.id}
                                   option={option}
-                                  onChoose={onChoose}
+                                  onSelect={handleChooseOption}
                                 />
                               ))}
                             </div>

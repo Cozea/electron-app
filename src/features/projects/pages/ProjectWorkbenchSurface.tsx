@@ -32,6 +32,7 @@ import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSync
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime";
 import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
+import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import {
   markWorkbenchIntentApplied,
   readWorkbenchIntentFromState,
@@ -345,6 +346,26 @@ export function ProjectWorkbenchSurface() {
       }
       return;
     }
+    if (workbenchIntent.projectDevApp) {
+      if (workbenchIntent.projectDevApp.projectId !== projectId) {
+        return;
+      }
+      const launch = resolveWorkbenchSelectionLaunchRequest({
+        appId: `project-devapp:${workbenchIntent.projectDevApp.publicationId}`,
+        projectDevApp: workbenchIntent.projectDevApp,
+      });
+      if (launch.action !== "openSingletonTile" || launch.tileType !== "devServer") {
+        return;
+      }
+      workbenchActions.openSingletonTile(
+        projectId,
+        activeLaneId,
+        launch.tileType,
+        launch.options,
+        activeWorkbenchId,
+      );
+      return;
+    }
     if (workbenchIntent.openTile) {
       openWorkbenchTarget(workbenchIntent.openTile);
     }
@@ -358,6 +379,7 @@ export function ProjectWorkbenchSurface() {
     projectId,
     refreshLaneState,
     workbenchIntent,
+    workbenchActions,
   ]);
 
   const closeSettingsOverlay = () => {

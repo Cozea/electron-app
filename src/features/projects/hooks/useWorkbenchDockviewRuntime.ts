@@ -40,6 +40,8 @@ import {
 import {
   CHANGES_TILE_MIN_WIDTH_COLLAPSED,
 } from "@/features/projects/lib/changesTileSizing";
+import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime";
+import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle";
 
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
@@ -907,16 +909,47 @@ export function useWorkbenchDockviewRuntime(
             });
         }
         if (removedTile?.type === "devServer" || removedTile?.type === "mobileSimulator") {
-          void window.electronAPI.workbenchSession
-            .releaseBrowser({
-              sessionKey: input.workbenchSessionKey,
-              projectId: input.projectId,
-              laneId: input.activeLaneId,
-              tileId: panel.id,
-            })
-            .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release runtime browser surface", error);
+          const projectDevAppRuntime =
+            removedTile.type === "devServer"
+              ? resolveProjectDevAppRuntimeTarget(removedTile, {
+                  projectId: input.projectId,
+                  laneId: input.activeLaneId,
+                  workspaceId: input.workspaceId,
+                })
+              : null;
+
+          if (projectDevAppRuntime?.usesProjectDevAppSource) {
+            void releaseProjectDevAppRuntimeTarget(projectDevAppRuntime, panel.id).catch((error) => {
+              console.warn("[ProjectDevApp] Failed to release removed source runtime", error);
             });
+          } else {
+            void window.electronAPI.workbenchSession
+              .releaseBrowser({
+                sessionKey: input.workbenchSessionKey,
+                projectId: input.projectId,
+                laneId: input.activeLaneId,
+                tileId: panel.id,
+              })
+              .catch((error) => {
+                console.warn("[WorkbenchSession] Failed to release runtime browser surface", error);
+              });
+            void window.electronAPI.workbenchSession
+              .releaseTerminal({
+                sessionKey: input.workbenchSessionKey,
+                projectId: input.projectId,
+                laneId: input.activeLaneId,
+                tileId: panel.id,
+                close: true,
+              })
+              .then((result) => {
+                if (result.terminalId) {
+                  useTerminalStore.getState().actions.removeTerminal(result.terminalId);
+                }
+              })
+              .catch((error) => {
+                console.warn("[WorkbenchSession] Failed to release runtime terminal", error);
+              });
+          }
           void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
             console.warn("[WorkbenchBrowser] Failed to dispose runtime browser model", error);
           });
@@ -933,22 +966,6 @@ export function useWorkbenchDockviewRuntime(
                 console.warn("[WorkbenchSession] Failed to stop native preview for removed panel", error);
               });
           }
-          void window.electronAPI.workbenchSession
-            .releaseTerminal({
-              sessionKey: input.workbenchSessionKey,
-              projectId: input.projectId,
-              laneId: input.activeLaneId,
-              tileId: panel.id,
-              close: true,
-            })
-            .then((result) => {
-              if (result.terminalId) {
-                useTerminalStore.getState().actions.removeTerminal(result.terminalId);
-              }
-            })
-            .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release runtime terminal for removed panel", error);
-            });
         }
 
         workbenchActions.removeTile(

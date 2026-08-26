@@ -12,11 +12,13 @@
  * this module instead.
  */
 import type { WorkbenchTileType } from "@/stores/useProjectWorkbenchStore"
+import type { ProjectDevAppLaunchSpec } from "@/features/devapps/registry/types"
 
 export interface WorkbenchIntent {
   laneId?: string | null
   openTile?: Extract<WorkbenchTileType, "assistantChat" | "terminal">
   focusTileId?: string | null
+  projectDevApp?: ProjectDevAppLaunchSpec
 }
 
 export interface WorkbenchIntentNavigationState {

@@ -359,6 +359,42 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
 
+  // Private DevApps promoted from projects. There is one logical publication
+  // per source project; each update points it at a new immutable release.
+  devAppPublications: defineTable({
+    projectId: v.id("projects"),
+    activeReleaseId: v.optional(v.id("devAppReleases")),
+    visibility: v.literal("project"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_status", ["status"])
+    .index("by_status_and_updated_at", ["status", "updatedAt"]),
+
+  // Append-only DevApp launch configuration. Published versions remain
+  // available for audit/history even after a newer release becomes active.
+  devAppReleases: defineTable({
+    publicationId: v.id("devAppPublications"),
+    projectId: v.id("projects"),
+    version: v.number(),
+    framework: v.string(),
+    devCommand: v.string(),
+    devPort: v.optional(v.number()),
+    sourceRevision: v.optional(v.string()),
+    sourceFingerprint: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_publication", ["publicationId"])
+    .index("by_publication_and_version", ["publicationId", "version"])
+    .index("by_project", ["projectId"]),
+
   projectTrustedDevices: defineTable({
     projectId: v.id("projects"),
     userId: v.optional(v.id("users")),

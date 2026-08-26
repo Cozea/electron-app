@@ -120,6 +120,19 @@ export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
    * explicitly ("back to server URL") or by navigating back to the base.
    */
   previewOverrideUrl?: string | null
+  /** Private project DevApp identity and immutable release snapshot. */
+  devAppId?: string
+  devAppReleaseId?: string
+  devAppReleaseVersion?: number
+  /** Source runtime retained when this local DevApp is opened from another project. */
+  devAppProjectId?: string
+  devAppWorkspaceId?: string
+  devAppLaneId?: string
+  /** Launch-context overrides captured when the DevApp release was created. */
+  devAppFramework?: string
+  devAppCommand?: string
+  devAppPort?: number
+  autoStart?: boolean
 }
 
 export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
@@ -188,6 +201,7 @@ export interface WorkbenchSidebarSurfaceTileSummary {
   type: Exclude<WorkbenchTileType, "assistantChat" | "selection" | "tasks">
   title: string
   favicon?: string | null
+  devAppId?: string
 }
 
 export interface WorkbenchLaneSidebarSummary {
@@ -197,10 +211,20 @@ export interface WorkbenchLaneSidebarSummary {
   surfaces: WorkbenchSidebarSurfaceTileSummary[]
 }
 
-interface CreateTileOptions {
+export interface CreateTileOptions {
   title?: string
   url?: string
   storageScope?: BrowserStorageScope
+  devAppId?: string | null
+  devAppReleaseId?: string | null
+  devAppReleaseVersion?: number | null
+  devAppProjectId?: string | null
+  devAppWorkspaceId?: string | null
+  devAppLaneId?: string | null
+  devAppFramework?: string | null
+  devAppCommand?: string | null
+  devAppPort?: number | null
+  autoStart?: boolean
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
   selectionReferenceTileId?: string | null
@@ -506,6 +530,62 @@ function isSerializedDockview(value: unknown): value is SerializedDockview {
   return "grid" in value && "panels" in value
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizeDevAppReleaseVersion(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : undefined
+}
+
+function normalizeDevAppPort(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65_535
+    ? value
+    : undefined
+}
+
+function applyDevAppMetadata(
+  tile: WorkbenchDevServerTile,
+  options: CreateTileOptions,
+): void {
+  const devAppId = normalizeOptionalString(options.devAppId)
+
+  if (!devAppId) {
+    delete tile.devAppId
+    delete tile.devAppReleaseId
+    delete tile.devAppReleaseVersion
+    delete tile.devAppProjectId
+    delete tile.devAppWorkspaceId
+    delete tile.devAppLaneId
+    delete tile.devAppFramework
+    delete tile.devAppCommand
+    delete tile.devAppPort
+    delete tile.autoStart
+    tile.title = normalizeOptionalString(options.title) ?? TILE_TITLES.devServer
+    return
+  }
+
+  tile.devAppId = devAppId
+  tile.devAppReleaseId = normalizeOptionalString(options.devAppReleaseId)
+  tile.devAppReleaseVersion = normalizeDevAppReleaseVersion(options.devAppReleaseVersion)
+  tile.devAppProjectId = normalizeOptionalString(options.devAppProjectId)
+  tile.devAppWorkspaceId = normalizeOptionalString(options.devAppWorkspaceId)
+  tile.devAppLaneId = normalizeOptionalString(options.devAppLaneId)
+  tile.devAppFramework = normalizeOptionalString(options.devAppFramework)
+  tile.devAppCommand = normalizeOptionalString(options.devAppCommand)
+  tile.devAppPort = normalizeDevAppPort(options.devAppPort)
+  tile.autoStart = typeof options.autoStart === "boolean" ? options.autoStart : undefined
+
+  const title = normalizeOptionalString(options.title)
+  if (title) {
+    tile.title = title
+  }
+}
+
 function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): WorkbenchTile {
   const createdAt = Date.now()
   const id = createTileId(type)
@@ -524,8 +604,11 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
       }
     case "terminal":
       return { id, type, title, createdAt }
-    case "devServer":
-      return { id, type, title, createdAt }
+    case "devServer": {
+      const tile: WorkbenchDevServerTile = { id, type, title, createdAt }
+      applyDevAppMetadata(tile, options)
+      return tile
+    }
     case "mobileSimulator":
       return { id, type, title, createdAt }
     case "selection":
@@ -655,6 +738,65 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
         agentLabel: tile.agentLabel ?? null,
         laneBinding: normalizedLaneBinding,
       }
+      continue
+    }
+
+    if (tile.type === "devServer") {
+      const devAppId = normalizeOptionalString(tile.devAppId)
+      const sanitizedTile: WorkbenchDevServerTile = {
+        ...tile,
+        viewMode: tile.viewMode === "code" ? "code" : "preview",
+        previewOverrideUrl:
+          typeof tile.previewOverrideUrl === "string"
+            ? normalizeOptionalString(tile.previewOverrideUrl) ?? null
+            : null,
+        devAppId,
+        devAppReleaseId: devAppId
+          ? normalizeOptionalString(tile.devAppReleaseId)
+          : undefined,
+        devAppReleaseVersion: devAppId
+          ? normalizeDevAppReleaseVersion(tile.devAppReleaseVersion)
+          : undefined,
+        devAppProjectId: devAppId
+          ? normalizeOptionalString(tile.devAppProjectId)
+          : undefined,
+        devAppWorkspaceId: devAppId
+          ? normalizeOptionalString(tile.devAppWorkspaceId)
+          : undefined,
+        devAppLaneId: devAppId
+          ? normalizeOptionalString(tile.devAppLaneId)
+          : undefined,
+        devAppFramework: devAppId
+          ? normalizeOptionalString(tile.devAppFramework)
+          : undefined,
+        devAppCommand: devAppId
+          ? normalizeOptionalString(tile.devAppCommand)
+          : undefined,
+        devAppPort: devAppId ? normalizeDevAppPort(tile.devAppPort) : undefined,
+        autoStart:
+          devAppId && typeof tile.autoStart === "boolean"
+            ? tile.autoStart
+            : undefined,
+      }
+
+      for (const key of [
+        "devAppId",
+        "devAppReleaseId",
+        "devAppReleaseVersion",
+        "devAppProjectId",
+        "devAppWorkspaceId",
+        "devAppLaneId",
+        "devAppFramework",
+        "devAppCommand",
+        "devAppPort",
+        "autoStart",
+      ] as const) {
+        if (sanitizedTile[key] === undefined) {
+          delete sanitizedTile[key]
+        }
+      }
+
+      sanitizedTiles[tileId] = sanitizedTile
       continue
     }
 
@@ -902,6 +1044,9 @@ export function buildWorkbenchLaneSidebarSummary(
       type: tile.type,
       title: tile.title,
       favicon: tile.type === "browser" ? (tile.favicon ?? null) : null,
+      ...(tile.type === "devServer" && tile.devAppId
+        ? { devAppId: tile.devAppId }
+        : {}),
     })
   }
 
@@ -1074,6 +1219,9 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             if (existingTile) {
               resolvedTileId = existingTile.id
               reusedExistingTile = true
+              if (existingTile.type === "devServer") {
+                applyDevAppMetadata(existingTile, options)
+              }
               workbench.activeTileId = existingTile.id
               state.workbenches[scopeKey] = workbench
               return
@@ -1264,7 +1412,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     })),
     {
       name: "cozea:project-workbench",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => workbenchStorage),
       migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
       partialize: (state) => ({
