@@ -1,5 +1,5 @@
 import { Activity, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview"
+import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,

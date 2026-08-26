@@ -5,9 +5,9 @@ import {
   themeLightSpaced,
   type DockviewTheme,
   type GetTabContextMenuItemsParams,
-} from "dockview"
+} from "dockview-react"
 
-import "dockview/dist/styles/dockview.css"
+import "dockview-react/dist/styles/dockview.css"
 import "@/features/projects/components/workbench/workbench.css"
 
 import {

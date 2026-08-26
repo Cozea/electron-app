@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview"
+import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
