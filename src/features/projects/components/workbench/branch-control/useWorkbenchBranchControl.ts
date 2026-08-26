@@ -2,6 +2,7 @@ import type { GitBranch as NativeGitBranch } from "@cozea/assistant-contracts"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react"
 
+import { getWorkspaceGitStatusSummary } from "./workbenchBranchDisplay"
 import { checkoutGitBranchCompat, loadGitBranchesCompat } from "./workbenchBranchCompat"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
@@ -25,25 +26,6 @@ interface GitToolbarSnapshot {
   loadError: string | null
 }
 
-function getStatusSummary(
-  status: Awaited<ReturnType<typeof window.electronAPI.workspaceSync.gitStatus>> | null,
-): string | null {
-  if (!status || !status.success) return null
-
-  const parts: string[] = []
-  if ((status.behind ?? 0) > 0) {
-    parts.push(`${status.behind ?? 0} behind`)
-  }
-  if ((status.ahead ?? 0) > 0) {
-    parts.push(`${status.ahead ?? 0} ahead`)
-  }
-  if (status.clean === false) {
-    parts.push("local changes")
-  }
-
-  return parts.length > 0 ? parts.join(" · ") : "Up to date"
-}
-
 function buildMenuItems(input: {
   snapshot: GitToolbarSnapshot
   collabBranch: string
@@ -59,7 +41,7 @@ function buildMenuItems(input: {
       ? "Live collaboration is paused on this branch."
       : "Live collaboration is active."
 
-  const statusSummary = getStatusSummary(snapshot.gitStatus)
+  const statusSummary = getWorkspaceGitStatusSummary(snapshot.gitStatus)
 
   const items: ContextMenuItem<string>[] = [
     {

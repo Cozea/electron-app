@@ -4,9 +4,12 @@ import type {
   GitStatusResult,
 } from "@cozea/assistant-contracts"
 
+import { getStatusSummary } from "@/features/projects/components/workbench/branch-control/workbenchBranchDisplay"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import type { ProjectLaneDescriptor } from "@shared/electronApiTypes"
+
+export { getStatusSummary } from "@/features/projects/components/workbench/branch-control/workbenchBranchDisplay"
 
 export type LaneAction =
   | "pull"
@@ -236,27 +239,6 @@ export function buildLaneId(branch: string): string {
     .replace(/^-+|-+$/g, "")
 
   return `lane:${sanitized || "branch"}`
-}
-
-export function getStatusSummary(status: GitStatusResult | null): string | null {
-  if (!status) return null
-
-  const parts: string[] = []
-
-  if (status.behindCount > 0) {
-    parts.push(`${status.behindCount} behind`)
-  }
-  if (status.aheadCount > 0) {
-    parts.push(`${status.aheadCount} ahead`)
-  }
-  if (status.pr?.number) {
-    parts.push(`PR #${status.pr.number}`)
-  }
-  if (status.hasWorkingTreeChanges) {
-    parts.push("local changes")
-  }
-
-  return parts.length > 0 ? parts.join(" · ") : "Up to date"
 }
 
 export function toToolbarGitStatus(
