@@ -127,13 +127,18 @@ describe('NativePreviewManager', () => {
 
     const result = await manager.startSession(REQUEST)
     expect(result.success).toBe(true)
-    expect(result.state?.status).toBe('starting')
-    expect(result.state?.streamUrl).toBeNull()
+    // startSession resolves on helper `ready`; `stream_ready` may already be
+    // applied by the time the caller observes the returned state on a fast
+    // machine, so assert the transition via the event stream instead.
+    expect(events.some((event) => event.state?.status === 'starting' && event.state.streamUrl === null)).toBe(
+      true,
+    )
 
     await waitForRunning(manager, REQUEST)
 
-    expect(events.some((event) => event.state?.status === 'starting')).toBe(true)
-    expect(events.some((event) => event.state?.status === 'running')).toBe(true)
+    expect(events.some((event) => event.state?.status === 'running' && Boolean(event.state.streamUrl))).toBe(
+      true,
+    )
 
     unsubscribe()
     await manager.stopSession(REQUEST)
