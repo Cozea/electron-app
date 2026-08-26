@@ -2,7 +2,8 @@
  * OrchestrationReactor - Composite orchestration reactor service interface.
  *
  * Coordinates startup of orchestration runtime reactors that translate domain
- * events into downstream side effects.
+ * events into downstream side effects (provider commands, checkpoints, and
+ * thread-deletion cleanup).
  *
  * @module OrchestrationReactor
  */

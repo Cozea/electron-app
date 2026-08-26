@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CheckpointReactor } from "../../../../../electron/assistant-runtime/orchestration/Services/CheckpointReactor.ts";
 import { ProviderCommandReactor } from "../../../../../electron/assistant-runtime/orchestration/Services/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionService } from "../../../../../electron/assistant-runtime/orchestration/Services/ProviderRuntimeIngestion.ts";
+import { ThreadDeletionReactor } from "../../../../../electron/assistant-runtime/orchestration/Services/ThreadDeletionReactor.ts";
 import { OrchestrationReactor } from "../../../../../electron/assistant-runtime/orchestration/Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "../../../../../electron/assistant-runtime/orchestration/Layers/OrchestrationReactor.ts";
 
@@ -18,7 +19,7 @@ describe("OrchestrationReactor", () => {
     runtime = null;
   });
 
-  it("starts provider ingestion, provider command, and checkpoint reactors", async () => {
+  it("starts provider ingestion, provider command, checkpoint, and thread deletion reactors", async () => {
     const started: string[] = [];
 
     runtime = ManagedRuntime.make(
@@ -47,6 +48,14 @@ describe("OrchestrationReactor", () => {
             drain: Effect.void,
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(ThreadDeletionReactor, {
+            start: Effect.sync(() => {
+              started.push("thread-deletion-reactor");
+            }),
+            drain: Effect.void,
+          }),
+        ),
       ),
     );
 
@@ -58,6 +67,7 @@ describe("OrchestrationReactor", () => {
       "provider-runtime-ingestion",
       "provider-command-reactor",
       "checkpoint-reactor",
+      "thread-deletion-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));
