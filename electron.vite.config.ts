@@ -80,6 +80,22 @@ const sharedAliases: Alias[] = [
     find: '@cozea/effect-acp',
     replacement: path.resolve(__dirname, './packages/effect-acp/src/client.ts'),
   },
+  {
+    find: /^@cozea\/contracts\/(.*)$/,
+    replacement: `${path.resolve(__dirname, './packages/contracts/src')}/$1`,
+  },
+  {
+    find: '@cozea/contracts',
+    replacement: path.resolve(__dirname, './packages/contracts/src/index.ts'),
+  },
+  {
+    find: /^@cozea\/client-runtime\/(.*)$/,
+    replacement: `${path.resolve(__dirname, './packages/client-runtime/src')}/$1`,
+  },
+  {
+    find: '@cozea/client-runtime',
+    replacement: path.resolve(__dirname, './packages/client-runtime/src/index.ts'),
+  },
 ]
 
 function normalizeModuleId(id: string): string {

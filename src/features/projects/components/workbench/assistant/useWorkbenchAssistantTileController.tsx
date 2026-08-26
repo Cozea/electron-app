@@ -50,6 +50,7 @@ import {
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
+import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
@@ -141,6 +142,11 @@ export function useWorkbenchAssistantTileController(
   input: UseWorkbenchAssistantTileControllerInput,
 ): WorkbenchAssistantTileControllerResult {
   const assistantRuntime = useAssistantRuntimeStatus()
+  // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
+  const substrateRpcChat = useSubstrateRpcChat()
+  if (substrateRpcChat.enabled && substrateRpcChat.lastError) {
+    console.warn("[substrate.rpcChat]", substrateRpcChat.lastError)
+  }
   const isRuntimeReady = assistantRuntime.phase === "ready"
   const runtimeErrorMessage =
     assistantRuntime.phase === "error"
