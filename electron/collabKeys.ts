@@ -73,6 +73,14 @@ function getDeviceIdentityPath(): string {
   return path.join(getCollabKeysDirectory(), DEVICE_IDENTITY_FILE)
 }
 
+function getInsecureDeviceIdentityPath(): string {
+  return path.join(getCollabKeysDirectory(), 'device-identity.insecure.json')
+}
+
+function allowInsecureDeviceIdentity(): boolean {
+  return process.env.COZEA_ALLOW_INSECURE_DEVICE_IDENTITY === '1'
+}
+
 function ensureCollabKeysDirectory(): void {
   const directory = getCollabKeysDirectory()
   if (!fs.existsSync(directory)) {
@@ -107,22 +115,39 @@ function normalizeRecoveryCode(value: string): string {
 
 function readStoredIdentity(): StoredCollabDeviceIdentity | null {
   try {
-    const filePath = getDeviceIdentityPath()
-    if (!fs.existsSync(filePath)) {
+    const encryptedPath = getDeviceIdentityPath()
+    const insecurePath = getInsecureDeviceIdentityPath()
+
+    if (safeStorage.isEncryptionAvailable() && fs.existsSync(encryptedPath)) {
+      const encrypted = fs.readFileSync(encryptedPath)
+      const json = safeStorage.decryptString(encrypted)
+      const parsed = JSON.parse(json) as StoredCollabDeviceIdentity
+      if (!parsed?.deviceId || !parsed?.publicKeyJwk || !parsed?.privateKeyJwk) {
+        return null
+      }
+      return parsed
+    }
+
+    if (allowInsecureDeviceIdentity() && fs.existsSync(insecurePath)) {
+      console.warn(
+        '[collabKeys] Reading insecure plaintext device identity. Set only for local/cloud agent testing.',
+      )
+      const parsed = JSON.parse(fs.readFileSync(insecurePath, 'utf8')) as StoredCollabDeviceIdentity
+      if (!parsed?.deviceId || !parsed?.publicKeyJwk || !parsed?.privateKeyJwk) {
+        return null
+      }
+      return parsed
+    }
+
+    if (!fs.existsSync(encryptedPath) && !fs.existsSync(insecurePath)) {
       return null
     }
 
-    if (!safeStorage.isEncryptionAvailable()) {
+    if (!safeStorage.isEncryptionAvailable() && !allowInsecureDeviceIdentity()) {
       throw new Error('Encryption is not available on this system.')
     }
 
-    const encrypted = fs.readFileSync(filePath)
-    const json = safeStorage.decryptString(encrypted)
-    const parsed = JSON.parse(json) as StoredCollabDeviceIdentity
-    if (!parsed?.deviceId || !parsed?.publicKeyJwk || !parsed?.privateKeyJwk) {
-      return null
-    }
-    return parsed
+    return null
   } catch (error) {
     console.error('[collabKeys] Failed to read stored device identity:', error)
     return null
@@ -130,13 +155,26 @@ function readStoredIdentity(): StoredCollabDeviceIdentity | null {
 }
 
 function writeStoredIdentity(identity: StoredCollabDeviceIdentity): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('Encryption is not available on this system.')
+  ensureCollabKeysDirectory()
+
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(JSON.stringify(identity))
+    fs.writeFileSync(getDeviceIdentityPath(), encrypted)
+    return
   }
 
-  ensureCollabKeysDirectory()
-  const encrypted = safeStorage.encryptString(JSON.stringify(identity))
-  fs.writeFileSync(getDeviceIdentityPath(), encrypted)
+  if (allowInsecureDeviceIdentity()) {
+    console.warn(
+      '[collabKeys] Writing insecure plaintext device identity because OS encryption is unavailable. For testing only.',
+    )
+    fs.writeFileSync(getInsecureDeviceIdentityPath(), `${JSON.stringify(identity, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    })
+    return
+  }
+
+  throw new Error('Encryption is not available on this system.')
 }
 
 async function generateStoredIdentity(): Promise<StoredCollabDeviceIdentity> {
