@@ -39,7 +39,15 @@ import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime, waitForWor
 import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
 import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags } from './substrate/flags'
 import { getSharedSubstrateNdjsonWriter } from './substrate/obs'
-import { listSubstrateRemoteEnvironmentStubs } from './substrate/remoteEnvironments'
+import { listSubstrateRemoteEnvironments } from './substrate/remoteEnvironments'
+import {
+  createDesktopBackendPool,
+  getDesktopBackendPool,
+  getPrimaryShadowServerManager,
+} from './substrate/backend/DesktopBackendPool'
+import { PRIMARY_BACKEND_INSTANCE_ID } from './substrate/backend/types'
+import { reconcileWslBackend } from './substrate/wsl/wslBackend'
+import { registerSubstrateRemoteHandlers } from './ipc/registerSubstrateRemoteHandlers'
 import { bootstrapSubstrateVcs } from './substrate/vcs/bootstrap'
 import { registerSubstrateVcsIpcHandlers } from './substrate/vcs/registerIpcHandlers'
 import {
@@ -556,6 +564,14 @@ function ensureAssistantRuntimeStarted(): void {
 
 let shadowServerManager: ShadowServerManager | null = null
 let shadowServerStartInFlight: Promise<void> | null = null
+let substrateWslSettingsPath: string | null = null
+
+function resolveSubstrateWslSettingsPath(): string {
+  if (!substrateWslSettingsPath) {
+    substrateWslSettingsPath = path.join(app.getPath('userData'), 'substrate-wsl-backend.json')
+  }
+  return substrateWslSettingsPath
+}
 
 function logSubstrateShadow(event: string, details?: Record<string, unknown>): void {
   if (details) {
@@ -579,26 +595,35 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
   }
 
   shadowServerStartInFlight = (async () => {
-    const logsDirectory = path.join(app.getPath('logs'), 'substrate-shadow')
-    const manager =
-      getShadowServerManager() ??
-      createShadowServerManager({
-        entryPath: resolveShadowServerEntryPath(__dirname),
-        logDirectory: logsDirectory,
-        flags,
+    const logsRootDirectory = path.join(app.getPath('logs'), 'substrate-shadow')
+    const entryPath = resolveShadowServerEntryPath(__dirname)
+    const pool =
+      getDesktopBackendPool() ??
+      createDesktopBackendPool({
+        entryPath,
+        logsRootDirectory,
       })
-    shadowServerManager = manager
     logSubstrateShadow('starting', {
       host: flags.host,
       port: flags.port,
-      entryPath: resolveShadowServerEntryPath(__dirname),
-      logsDirectory,
+      entryPath,
+      logsRootDirectory,
+      pool: true,
     })
     obs.writeSpan({
       name: 'substrate.shadow.start',
-      attrs: { host: flags.host, port: flags.port, logsDirectory },
+      attrs: { host: flags.host, port: flags.port, logsRootDirectory, pool: true },
     })
-    const status = await manager.start()
+    const status = await pool.register({
+      id: PRIMARY_BACKEND_INSTANCE_ID,
+      kind: 'local',
+      label: process.platform === 'darwin' ? 'This Mac / local' : 'Local machine',
+      host: flags.host,
+      port: flags.port,
+      logDirectory: pool.resolvePrimaryLogDirectory(),
+      t3BaseDir: pool.resolveInstanceT3BaseDir(PRIMARY_BACKEND_INSTANCE_ID),
+    })
+    shadowServerManager = pool.getPrimaryManager()
     logSubstrateShadow('started', {
       phase: status.phase,
       baseUrl: status.baseUrl,
@@ -618,6 +643,16 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
     if (status.phase === 'ready' && featureFlags.primary) {
       assistantRuntimeGeneration += 1
       beginShadowHostedRuntimeMonitor(assistantRuntimeGeneration)
+      try {
+        await reconcileWslBackend({
+          pool,
+          settingsPath: resolveSubstrateWslSettingsPath(),
+        })
+      } catch (error) {
+        logSubstrateShadow('wsl-reconcile-failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
   })()
 
@@ -629,6 +664,19 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
 }
 
 async function stopSubstrateShadowServer(): Promise<void> {
+  const pool = getDesktopBackendPool()
+  if (pool) {
+    try {
+      await pool.stopAll()
+      shadowServerManager = null
+      logSubstrateShadow('stopped')
+    } catch (error) {
+      logSubstrateShadow('stop-failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    return
+  }
   const manager = shadowServerManager ?? getShadowServerManager()
   if (!manager) {
     return
@@ -647,8 +695,10 @@ function registerSubstrateShadowBridgeHandlers(): void {
   ipcMain.removeHandler(SUBSTRATE_SHADOW_STATUS_HANDLE)
   ipcMain.handle(SUBSTRATE_SHADOW_STATUS_HANDLE, () => {
     const featureFlags = readSubstrateFeatureFlags()
-    const manager = shadowServerManager ?? getShadowServerManager()
-    const remoteEnvironments = listSubstrateRemoteEnvironmentStubs()
+    const manager = shadowServerManager ?? getPrimaryShadowServerManager() ?? getShadowServerManager()
+    const remoteEnvironments = listSubstrateRemoteEnvironments({
+      wslSettingsPath: resolveSubstrateWslSettingsPath(),
+    })
     if (!manager) {
       const flags = featureFlags.shadowServer
       return {
@@ -698,7 +748,7 @@ function stopShadowHostedRuntimeMonitor(): void {
 function beginShadowHostedRuntimeMonitor(generation: number): void {
   stopShadowHostedRuntimeMonitor()
   const featureFlags = readSubstrateFeatureFlags()
-  const shadowManager = shadowServerManager ?? getShadowServerManager()
+  const shadowManager = shadowServerManager ?? getPrimaryShadowServerManager() ?? getShadowServerManager()
   const shadowBaseUrl = shadowManager?.baseUrl ?? `http://${featureFlags.shadowServer.host}:${featureFlags.shadowServer.port}`
   shadowHostedRuntimeMonitor = startShadowHostedRuntimeMonitor({
     generation,
@@ -1687,6 +1737,8 @@ app.whenReady().then(() => {
     createWindow()
     logBootTiming('main-window-created')
   }
+
+  registerSubstrateRemoteHandlers({ wslSettingsPath: resolveSubstrateWslSettingsPath() })
 
   scheduleBootWork('shell-environment-synced', () => {
     if (process.platform === 'darwin') {

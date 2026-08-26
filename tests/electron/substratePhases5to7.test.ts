@@ -54,9 +54,10 @@ describe("phase 5 ipc allowlist", () => {
 });
 
 describe("phase 6 remote environment stubs", () => {
-  it("lists local as ready and remotes as placeholders", () => {
+  it("lists local primary and non-ready SSH/WSL catalog entries", () => {
     const envs = listSubstrateRemoteEnvironmentStubs();
-    expect(envs.some((env) => env.kind === "local" && env.ready)).toBe(true);
+    expect(envs.some((env) => env.kind === "local")).toBe(true);
     expect(envs.some((env) => env.kind === "ssh" && !env.ready)).toBe(true);
+    expect(envs.some((env) => env.kind === "wsl")).toBe(true);
   });
 });

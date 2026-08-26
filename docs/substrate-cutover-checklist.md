@@ -69,7 +69,7 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 - [x] Remote env catalog probes SSH config + WSL availability (ready flags honest)
 - [x] `apps/server` workspace package added
 - [x] `apps/desktop/README.md` — desktop app lives at repo root today; physical move deferred
-- [ ] SSH/WSL **backend pool** (spawn remote shadow instances)
+- [x] SSH/WSL **backend pool** — `DesktopBackendPool`, WSL reconcile IPC, SSH config discovery (Phase T7)
 - [ ] Physical split `electron/` → `apps/desktop`, full Bun vs pnpm/`vp` decision
 
 ---
@@ -96,7 +96,7 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 8. [x] Phase T6b delete `electron/assistant-runtime/` — Codex moved to substrate; in-process boot removed from `main.ts`
 9. [x] Delete `assistantWsBridge.ts` / `orchestrationRpcProxy.ts` (legacy `:3773` bridges)
 10. [x] Phase T6c event-level userdata migration — reset projection tables after legacy sqlite copy; sqlite-backed `replayEvents` on T3 proxy
-11. [ ] SSH/WSL DesktopBackendPool
+11. [x] SSH/WSL DesktopBackendPool — `DesktopBackendPool`, WSL settings IPC, SSH host discovery
 12. [ ] Physical monorepo reshape
 
 See `docs/substrate-t3-server-import-plan.md` (swarm map) and `docs/substrate-t3-build.md`.
