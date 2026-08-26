@@ -4,8 +4,7 @@
   "version": "0.2.0",
   "workspaces": [
     "packages/*",
-    "packages/substrate-*",
-    "server"
+    "packages/substrate-*"
   ],
   "main": "out/main/index.js",
   "scripts": {
@@ -30,7 +29,7 @@
     "typecheck": "tsc --project tsconfig.app.json",
     "typecheck:assistant-runtime": "tsc --project tsconfig.assistant-runtime.json",
     "typecheck:electron": "tsc --project tsconfig.electron.json",
-    "lint": "bunx --bun oxlint src electron convex shared server/src server/scripts tests electron.vite.config.ts vitest.config.ts",
+    "lint": "bunx --bun oxlint src electron convex shared tests electron.vite.config.ts vitest.config.ts",
     "test": "bunx vitest run",
     "models:sync": "bun run scripts/sync-model-picker.mjs",
     "check:effect-schema": "node scripts/check-effect-schema-standardization.mjs",
