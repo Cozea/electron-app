@@ -78,6 +78,15 @@ const YJS_UPDATE_PAGE_SIZE = 8
 // threshold-gated (interval/byte), so off-threshold nudges are cheap and this
 // bounds the yjsUpdates table instead of letting it grow forever.
 const YJS_COMPACT_EVERY_N_UPDATES = 128
+// OFF by default and must stay off until maybeCompactProject is made
+// encryption-aware. Stored updates are A256GCM cipher envelopes, but
+// maybeCompactProject feeds them straight to Y.applyUpdate, writes the
+// resulting plaintext Y.encodeStateAsUpdate blob into yjsDocuments (bypassing
+// the yjs_snapshot envelope check saveSnapshot enforces), and then deletes
+// every yjsUpdates row at or below the snapshot seq. Clients already snapshot
+// and prune correctly via saveSnapshot + cleanupOldUpdates, so this path buys
+// nothing and risks unrecoverable collaboration history loss.
+const YJS_SERVER_SIDE_COMPACTION_ENABLED: boolean = false
 const YJS_TAIL_READ_LIMIT = 128
 const YJS_CLEANUP_PAGE_SIZE = 64
 const YJS_SNAPSHOT_CLEANUP_PAGE_SIZE = 2
@@ -471,7 +480,10 @@ async function insertSequencedUpdate(
 
   // Periodically attempt compaction (snapshot + prune). Scheduled async so the
   // write returns immediately; the compaction itself no-ops under threshold.
-  if (nextSeq % YJS_COMPACT_EVERY_N_UPDATES === 0) {
+  if (
+    YJS_SERVER_SIDE_COMPACTION_ENABLED &&
+    nextSeq % YJS_COMPACT_EVERY_N_UPDATES === 0
+  ) {
     await ctx.scheduler.runAfter(0, api.yjs.maybeCompactProject, {
       projectId: args.projectId,
     })
