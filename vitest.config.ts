@@ -28,12 +28,16 @@ export default defineConfig({
     // `server/` is gitignored and absent from CI checkouts. These suites import
     // modules that only exist when a local server tree is present; keep the
     // files for optional local runs, but do not fail verify on collect errors.
+    //
+    // `workbenchRuntimeTerminalHost` pulls in `@cozea/pty`, which has no Linux
+    // native binary in this repo — CircleCI's Linux executor cannot collect it.
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
       'tests/auth/authCallbackState.test.ts',
       'tests/git/gitRouteAccess.test.ts',
       'tests/providers/googleReasoningCapabilities.test.ts',
+      'tests/electron/workbenchRuntimeTerminalHost.test.ts',
     ],
   },
 })
