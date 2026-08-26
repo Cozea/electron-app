@@ -925,7 +925,14 @@ export const makeGitManager = Effect.gen(function* () {
     });
 
   const status: GitManagerShape["status"] = Effect.fnUntraced(function* (input) {
-    const details = yield* gitCore.statusDetails(input.cwd);
+    // Local-first (Track F): agent status UI must not block on upstream fetch.
+    // Remote refresh runs in the background on a slower / demand-gated cadence.
+    // Collapses into VcsStatusBroadcaster in Phase 4c — do not grow a permanent fork.
+    const details = yield* gitCore.statusDetailsLocal(input.cwd);
+
+    Effect.runFork(
+      gitCore.refreshRemoteStatus(input.cwd).pipe(Effect.ignoreCause({ log: true })),
+    );
 
     const pr =
       details.branch !== null

@@ -12,6 +12,7 @@ import { GitCore, type GitCoreShape } from "../../../../../electron/assistant-ru
 import { GitCommandError } from "../../../../../electron/assistant-runtime/git/Errors.ts";
 import { type ProcessRunResult, runProcess } from "../../../../../electron/assistant-runtime/processRunner.ts";
 import { ServerConfig } from "../../../../../electron/assistant-runtime/config.ts";
+import { resetGitStatusCadenceForTests } from "../../../../../electron/assistant-runtime/git/status/gitStatusInvalidation.ts";
 
 // ── Helpers ──
 
@@ -1573,7 +1574,7 @@ it.layer(TestLayer)("git integration", (it) => {
     );
 
     it.effect(
-      "refreshes upstream before statusDetails so behind count reflects remote updates",
+      "refreshes upstream on demand so behind count reflects remote updates",
       () =>
         Effect.gen(function* () {
           const remote = yield* makeTmpDir();
@@ -1604,11 +1605,53 @@ it.layer(TestLayer)("git integration", (it) => {
           yield* git(clone, ["push", "origin", initialBranch]);
 
           const core = yield* GitCore;
-          const details = yield* core.statusDetails(source);
+          // Local-first status does not fetch; demand-gated remote refresh does.
+          const localOnly = yield* core.statusDetailsLocal(source);
+          expect(localOnly.behindCount).toBe(0);
+
+          const details = yield* core.statusDetails(source, {
+            refreshRemote: true,
+            forceRemoteRefresh: true,
+          });
           expect(details.branch).toBe(initialBranch);
           expect(details.aheadCount).toBe(0);
           expect(details.behindCount).toBe(1);
         }),
+    );
+
+    it.effect("refreshRemoteStatus respects cadence until invalidate", () =>
+      Effect.gen(function* () {
+        resetGitStatusCadenceForTests();
+        const remote = yield* makeTmpDir();
+        const source = yield* makeTmpDir();
+        yield* git(remote, ["init", "--bare"]);
+        yield* initRepoWithCommit(source);
+        const initialBranch = (yield* (yield* GitCore).listBranches({
+          cwd: source,
+        })).branches.find((branch) => branch.current)!.name;
+        yield* git(source, ["remote", "add", "origin", remote]);
+        yield* git(source, ["push", "-u", "origin", initialBranch]);
+
+        const core = yield* GitCore;
+        let fetchCount = 0;
+        const instrumented = yield* makeIsolatedGitCore((input) => {
+          if (input.operation === "GitCore.fetchUpstreamRefForStatus") {
+            fetchCount += 1;
+          }
+          return core.execute(input);
+        });
+
+        yield* instrumented.refreshRemoteStatus(source, { force: true });
+        expect(fetchCount).toBeGreaterThan(0);
+        const afterForce = fetchCount;
+
+        yield* instrumented.refreshRemoteStatus(source);
+        expect(fetchCount).toBe(afterForce);
+
+        yield* instrumented.invalidateStatus(source, "remote");
+        yield* instrumented.refreshRemoteStatus(source);
+        expect(fetchCount).toBeGreaterThan(afterForce);
+      }),
     );
 
     it.effect("prepares commit context by auto-staging and creates commit", () =>
