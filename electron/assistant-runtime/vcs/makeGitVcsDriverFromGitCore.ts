@@ -1,8 +1,5 @@
 /**
  * Effect wiring: adapt assistant-runtime `GitCore` into substrate `GitVcsDriver`.
- *
- * Agent WS `vcs.*` routes through this adapter; GitCore remains the implementation
- * layer until Phase 4b checkpoint consolidation deletes the duplicate stack.
  */
 
 import { Effect } from "effect";
@@ -11,14 +8,20 @@ import { GitCore, type GitCoreShape } from "../git/Services/GitCore.ts";
 import {
   createGitVcsDriver,
   type GitCorePort,
+  type GitVcsCheckpointBackend,
   type GitVcsDriver,
 } from "../../substrate/vcs/GitVcsDriver.ts";
+import { getChangesCheckpointReads } from "../../substrate/vcs/checkpointsFacade.ts";
 import { isSubstrateVcsEnabled } from "../../substrate/flags.ts";
+
+function runGit<T>(effect: Effect.Effect<T, unknown, never>): Promise<T> {
+  return Effect.runPromise(effect as Effect.Effect<T, never, never>);
+}
 
 function createGitCorePort(git: GitCoreShape): GitCorePort {
   return {
     statusDetails: (cwd) =>
-      Effect.runPromise(
+      runGit(
         git.statusDetails(cwd).pipe(
           Effect.map((details) => ({
             branch: details.branch,
@@ -32,11 +35,8 @@ function createGitCorePort(git: GitCoreShape): GitCorePort {
         ),
       ),
     push: (input) =>
-      Effect.runPromise(
+      runGit(
         Effect.gen(function* () {
-          // When the substrate driver already applied push-safety, prefer the
-          // explicit refspec / -u publish path via execute. Fallback: legacy
-          // pushCurrentBranch for unconfigured cases.
           if (input.remoteName && input.refspec) {
             const args = input.setUpstream
               ? ["push", "-u", input.remoteName, input.refspec]
@@ -59,8 +59,22 @@ function createGitCorePort(git: GitCoreShape): GitCorePort {
           return yield* git.pushCurrentBranch(input.cwd, input.branch ?? null);
         }),
       ),
+    pullCurrentBranch: (cwd) =>
+      runGit(
+        git.pullCurrentBranch(cwd).pipe(
+          Effect.map((result) => ({
+            status: result.status,
+            branch: result.branch,
+          })),
+        ),
+      ),
+    listBranches: (input) => runGit(git.listBranches(input)),
+    createWorktree: (input) => runGit(git.createWorktree(input as never)),
+    createBranch: (input) => runGit(git.createBranch(input as never)),
+    checkoutBranch: (input) => runGit(Effect.scoped(git.checkoutBranch(input as never))),
+    initRepo: (input) => runGit(git.initRepo(input as never)),
     removeWorktree: (input) =>
-      Effect.runPromise(
+      runGit(
         git.removeWorktree({
           cwd: input.cwd,
           path: input.worktreePath,
@@ -70,10 +84,54 @@ function createGitCorePort(git: GitCoreShape): GitCorePort {
   };
 }
 
-/**
- * Build a `GitVcsDriver` from the live Effect `GitCore` service.
- * Returns null when the Phase 4 flag is explicitly disabled.
- */
+function createCheckpointBackendFromFacade(): GitVcsCheckpointBackend {
+  const reads = getChangesCheckpointReads();
+  return {
+    readChanges: (input) => reads.readChanges(input),
+    getHeadDiffStats: (input) => reads.getHeadDiffStats(input),
+    captureCheckpoint: async (input) => {
+      const { CheckpointWorkerClient } = await import("../../services/CheckpointWorkerClient.ts");
+      const result = await CheckpointWorkerClient.getInstance().captureCheckpoint({
+        cwd: input.cwd,
+        checkpointId: input.checkpointId,
+        authorName: input.authorName,
+        ...(input.authorEmail !== undefined ? { authorEmail: input.authorEmail } : {}),
+      });
+      return {
+        success: result.success,
+        ...(result.ref !== undefined ? { ref: result.ref } : {}),
+        ...(result.commitOid !== undefined ? { commitOid: result.commitOid } : {}),
+        ...(result.error !== undefined ? { error: result.error } : {}),
+      };
+    },
+    diffCheckpoints: async (input) => {
+      const { CheckpointWorkerClient } = await import("../../services/CheckpointWorkerClient.ts");
+      const result = await CheckpointWorkerClient.getInstance().diffCheckpoints({
+        cwd: input.cwd,
+        fromCheckpointId: input.fromCheckpointId,
+        toCheckpointId: input.toCheckpointId,
+      });
+      return {
+        success: result.success,
+        ...(result.diff !== undefined ? { diff: result.diff } : {}),
+        ...(result.error !== undefined ? { error: result.error } : {}),
+      };
+    },
+    deleteCheckpointRefs: async (input) => {
+      const { CheckpointWorkerClient } = await import("../../services/CheckpointWorkerClient.ts");
+      const result = await CheckpointWorkerClient.getInstance().deleteCheckpointRefs({
+        cwd: input.cwd,
+        checkpointIds: [...input.checkpointIds],
+      });
+      return {
+        success: result.success,
+        ...(result.deletedRefs !== undefined ? { deletedRefs: result.deletedRefs } : {}),
+        ...(result.error !== undefined ? { error: result.error } : {}),
+      };
+    },
+  };
+}
+
 export function createGitVcsDriverFromGitCore(
   git: GitCoreShape,
   env: NodeJS.ProcessEnv = process.env,
@@ -83,21 +141,19 @@ export function createGitVcsDriverFromGitCore(
   }
   return createGitVcsDriver({
     git: createGitCorePort(git),
+    checkpoints: createCheckpointBackendFromFacade(),
     capabilities: {
       status: true,
       push: true,
       worktrees: true,
-      checkpoints: false,
-      refs: false,
+      checkpoints: true,
+      refs: true,
       ignore: false,
-      init: false,
+      init: true,
     },
   });
 }
 
-/**
- * Effect helper: resolve optional flagged driver from the GitCore service tag.
- */
 export const resolveFlaggedGitVcsDriver = Effect.gen(function* () {
   const git = yield* GitCore;
   return createGitVcsDriverFromGitCore(git);

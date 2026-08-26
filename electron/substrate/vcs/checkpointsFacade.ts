@@ -3,7 +3,7 @@
  *
  * Cozea today has two capture stacks:
  * 1. Orchestration `CheckpointStore` (via GitCore execute)
- * 2. Changes UI `gitCheckpoints.ts` + `checkpoint-worker`
+ * 2. Changes UI `gitCheckpoints.ts` (in-process via facade; worker removed in 4b)
  *
  * This facade is the **single entry** Changes UI should use for reads while
  * 4b completes. When `cozea.substrate.vcs` is on, reads go through driver

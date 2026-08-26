@@ -59,6 +59,12 @@ export interface GitCorePort {
   }>;
   readonly removeWorktree?: (input: VcsRemoveWorktreeInput) => Promise<void>;
   readonly resolvePushRemoteName?: (cwd: string, branch: string) => Promise<string | null>;
+  readonly pullCurrentBranch?: (cwd: string) => Promise<{ readonly status: string; readonly branch?: string }>;
+  readonly listBranches?: (input: { readonly cwd: string; readonly includeRemote?: boolean }) => Promise<unknown>;
+  readonly createWorktree?: (input: unknown) => Promise<unknown>;
+  readonly createBranch?: (input: unknown) => Promise<unknown>;
+  readonly checkoutBranch?: (input: unknown) => Promise<unknown>;
+  readonly initRepo?: (input: unknown) => Promise<unknown>;
 }
 
 export interface GitVcsCheckpointBackend {
@@ -238,6 +244,66 @@ export class GitVcsDriver implements VcsDriver {
     }
     await this.git.removeWorktree(input);
     this.invalidateStatus(input.cwd);
+  }
+
+  async pullCurrentBranch(cwd: string): Promise<{ readonly status: string; readonly branch?: string }> {
+    if (!this.git.pullCurrentBranch) {
+      throw new Error("GitVcsDriver.pullCurrentBranch is not wired.");
+    }
+    const result = await this.git.pullCurrentBranch(cwd);
+    invalidateVcsStatus(cwd, "remote");
+    return result;
+  }
+
+  async listBranches(input: { readonly cwd: string; readonly includeRemote?: boolean }): Promise<unknown> {
+    if (!this.git.listBranches) {
+      throw new Error("GitVcsDriver.listBranches is not wired.");
+    }
+    return this.git.listBranches(input);
+  }
+
+  async createWorktree(input: unknown): Promise<unknown> {
+    if (!this.git.createWorktree) {
+      throw new Error("GitVcsDriver.createWorktree is not wired.");
+    }
+    const result = await this.git.createWorktree(input);
+    if (input && typeof input === "object" && "cwd" in input && typeof input.cwd === "string") {
+      this.invalidateStatus(input.cwd);
+    }
+    return result;
+  }
+
+  async createBranch(input: unknown): Promise<unknown> {
+    if (!this.git.createBranch) {
+      throw new Error("GitVcsDriver.createBranch is not wired.");
+    }
+    const result = await this.git.createBranch(input);
+    if (input && typeof input === "object" && "cwd" in input && typeof input.cwd === "string") {
+      this.invalidateStatus(input.cwd);
+    }
+    return result;
+  }
+
+  async checkoutBranch(input: unknown): Promise<unknown> {
+    if (!this.git.checkoutBranch) {
+      throw new Error("GitVcsDriver.checkoutBranch is not wired.");
+    }
+    const result = await this.git.checkoutBranch(input);
+    if (input && typeof input === "object" && "cwd" in input && typeof input.cwd === "string") {
+      this.invalidateStatus(input.cwd);
+    }
+    return result;
+  }
+
+  async initRepo(input: unknown): Promise<unknown> {
+    if (!this.git.initRepo) {
+      throw new Error("GitVcsDriver.initRepo is not wired.");
+    }
+    const result = await this.git.initRepo(input);
+    if (input && typeof input === "object" && "cwd" in input && typeof input.cwd === "string") {
+      this.invalidateStatus(input.cwd);
+    }
+    return result;
   }
 }
 

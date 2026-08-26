@@ -1,5 +1,5 @@
 /**
- * Electron main bootstrap for Phase 4 VCS substrate (flagged, default off).
+ * Electron main bootstrap for Phase 4 VCS substrate (default on).
  *
  * - Registers legacy Changes checkpoint backend (single entry via facade)
  * - When `COZEA_SUBSTRATE_VCS=1`, registers driver checkpoint stubs (delegate, no third stack)
@@ -19,6 +19,7 @@ import {
   type ChangesCheckpointBackend,
 } from "./checkpointsFacade";
 import { subscribeVcsStatusInvalidation } from "./statusInvalidation";
+import { registerThreadDeletionWorktreeHandlers } from "./threadDeletionWorktree";
 let bootstrapped = false;
 let unsubscribeInvalidation: (() => void) | null = null;
 
@@ -118,6 +119,17 @@ export function bootstrapSubstrateVcs(
   const broadcaster = GitChangesBroadcaster.getInstance();
   unsubscribeInvalidation = subscribeVcsStatusInvalidation((cwd) => {
     broadcaster.invalidateProjectPath(cwd);
+  });
+
+  registerThreadDeletionWorktreeHandlers(env, async ({ cwd, worktreePath, force }) => {
+    const { spawnSync } = await import("node:child_process");
+    const args = ["worktree", "remove", ...(force ? ["--force"] : []), worktreePath];
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+    if (result.status !== 0) {
+      throw new Error(result.stderr?.trim() || "git worktree remove failed");
+    }
+    const { invalidateVcsStatus: invalidate } = await import("./statusInvalidation");
+    invalidate(cwd);
   });
 }
 
