@@ -53,6 +53,8 @@ import { useAssistantRuntimeStatus } from "@/features/projects/components/workbe
 import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
 import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync"
+import { useT3OrchestrationCutover } from "@/substrate/useT3OrchestrationCutover"
+import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
 import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
 import { ensureNativeApi } from "@/lib/nativeApi"
@@ -151,6 +153,14 @@ export function useWorkbenchAssistantTileController(
   // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
+  const t3Cutover = useT3OrchestrationCutover({
+    substrateActive: substrateTransport.active,
+    shadowBaseUrl: substrateTransport.shadowBaseUrl,
+  })
+  const getOrchestration = useCallback(
+    () => resolveOrchestrationApi(t3Cutover.orchestration),
+    [t3Cutover.orchestration],
+  )
   useSubstrateOrchestrationSync({
     active: substrateTransport.active,
     shadowBaseUrl: substrateTransport.shadowBaseUrl,
@@ -571,7 +581,7 @@ export function useWorkbenchAssistantTileController(
                   projectModelSelection: null,
                 }),
             )
-            await api.orchestration.dispatchCommand({
+            await getOrchestration().dispatchCommand({
               type: "project.create",
               commandId: newCommandId(),
               projectId,
@@ -610,7 +620,7 @@ export function useWorkbenchAssistantTileController(
                     projectModelSelection: nextProject.defaultModelSelection,
                   }),
               )
-              await api.orchestration.dispatchCommand({
+              await getOrchestration().dispatchCommand({
                 type: "thread.create",
                 commandId: newCommandId(),
                 threadId,
@@ -782,7 +792,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(async () => {
       const api = ensureNativeApi()
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: thread.id,
@@ -815,7 +825,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(async () => {
       const api = ensureNativeApi()
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: thread.id,
@@ -843,7 +853,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(async () => {
       const api = ensureNativeApi()
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: thread.id,
@@ -867,7 +877,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(async () => {
       const api = ensureNativeApi()
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.runtime-mode.set",
         commandId: newCommandId(),
         threadId: thread.id,
@@ -892,7 +902,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(async () => {
       const api = ensureNativeApi()
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.interaction-mode.set",
         commandId: newCommandId(),
         threadId: thread.id,
@@ -916,7 +926,7 @@ export function useWorkbenchAssistantTileController(
       JSON.stringify(selectedModelSelection.options ?? null) !==
         JSON.stringify(threadForSync.modelSelection.options ?? null)
     ) {
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: threadForSync.id,
@@ -926,7 +936,7 @@ export function useWorkbenchAssistantTileController(
 
     // Runtime mode drift
     if (selectedRuntimeMode !== threadForSync.runtimeMode) {
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.runtime-mode.set",
         commandId: newCommandId(),
         threadId: threadForSync.id,
@@ -937,7 +947,7 @@ export function useWorkbenchAssistantTileController(
 
     // Interaction mode drift
     if (selectedInteractionMode !== threadForSync.interactionMode) {
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.interaction-mode.set",
         commandId: newCommandId(),
         threadId: threadForSync.id,
@@ -990,7 +1000,7 @@ export function useWorkbenchAssistantTileController(
           interactionMode: followUp.interactionMode,
         }, input.workspaceId)
 
-        await api.orchestration.dispatchCommand({
+        await getOrchestration().dispatchCommand({
           type: "thread.interaction-mode.set",
           commandId: newCommandId(),
           threadId: thread.id,
@@ -999,7 +1009,7 @@ export function useWorkbenchAssistantTileController(
         })
       }
 
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.turn.start",
         commandId: newCommandId(),
         threadId: thread.id,
@@ -1084,7 +1094,7 @@ export function useWorkbenchAssistantTileController(
         const resolvedInteractionMode = threadDraft?.interactionMode ?? selectedInteractionMode
         const createdAt = new Date().toISOString()
 
-        await api.orchestration.dispatchCommand({
+        await getOrchestration().dispatchCommand({
           type: "thread.create",
           commandId: newCommandId(),
           threadId,
@@ -1189,7 +1199,8 @@ export function useWorkbenchAssistantTileController(
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
 
     try {
-      const useSubstrateRpcFallback = substrateTransport.active && !isRuntimeReady
+      const useSubstrateRpcFallback =
+        substrateTransport.active && !isRuntimeReady && !t3Cutover.active
       if (useSubstrateRpcFallback) {
         if (hasImages) {
           throw new Error("Substrate RPC chat fallback does not support image attachments yet.")
@@ -1222,7 +1233,7 @@ export function useWorkbenchAssistantTileController(
           title: nextThreadTitle,
         }, input.workspaceId)
 
-        await api.orchestration.dispatchCommand({
+        await getOrchestration().dispatchCommand({
           type: "thread.meta.update",
           commandId: newCommandId(),
           threadId: resolvedThread.id,
@@ -1251,7 +1262,7 @@ export function useWorkbenchAssistantTileController(
         }),
       )
 
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.turn.start",
         commandId: newCommandId(),
         threadId: resolvedThread.id,
@@ -1301,7 +1312,7 @@ export function useWorkbenchAssistantTileController(
     await runMetaSync(
       async () => {
         const api = ensureNativeApi()
-        await api.orchestration.dispatchCommand({
+        await getOrchestration().dispatchCommand({
           type: "thread.approval.respond",
           commandId: newCommandId(),
           threadId: thread.id,
@@ -1355,7 +1366,7 @@ export function useWorkbenchAssistantTileController(
     await runMetaSync(
       async () => {
         const api = ensureNativeApi()
-        await api.orchestration.dispatchCommand({
+        await getOrchestration().dispatchCommand({
           type: "thread.user-input.respond",
           commandId: newCommandId(),
           threadId: thread.id,
@@ -1521,7 +1532,7 @@ export function useWorkbenchAssistantTileController(
       title: filePath ? `${chatTitle} turn ${turnNumber} · ${filePath}` : `${chatTitle} turn ${turnNumber}`,
       request: async () => {
         const api = ensureNativeApi()
-        return api.orchestration.getTurnDiff({
+        return getOrchestration().getTurnDiff({
           threadId,
           fromTurnCount: checkpointTurnCount,
           toTurnCount: checkpointTurnCount,
@@ -1568,7 +1579,7 @@ export function useWorkbenchAssistantTileController(
         deps: {
           confirm: (message) => api.dialogs.confirm(message),
           dispatchDelete: ({ threadId, commandId }) =>
-            api.orchestration.dispatchCommand({
+            getOrchestration().dispatchCommand({
               type: "thread.delete",
               commandId,
               threadId,
@@ -1613,7 +1624,7 @@ export function useWorkbenchAssistantTileController(
     setSendError(null)
 
     try {
-      await api.orchestration.dispatchCommand({
+      await getOrchestration().dispatchCommand({
         type: "thread.checkpoint.revert",
         commandId: newCommandId(),
         threadId: thread.id,

@@ -35,6 +35,18 @@ function readPort(raw: string | undefined, fallback: number): number {
   return value;
 }
 
+function resolveDefaultT3BaseDir(): string {
+  const fromEnv = process.env.COZEA_T3_SERVER_BASE_DIR?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const shadowLogDir = process.env.COZEA_SUBSTRATE_SHADOW_LOG_DIR?.trim();
+  if (shadowLogDir) {
+    return path.join(path.dirname(shadowLogDir), "t3-server");
+  }
+  return path.join(os.homedir(), ".cozea", "t3-server");
+}
+
 async function waitForEnvironment(baseUrl: string, deadlineMs = 45_000): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < deadlineMs) {
@@ -68,7 +80,8 @@ export async function startT3ServerProcess(
   const baseDir =
     options.baseDir?.trim() ||
     process.env.COZEA_T3_SERVER_BASE_DIR?.trim() ||
-    fs.mkdtempSync(path.join(os.tmpdir(), "cozea-t3-server-"));
+    resolveDefaultT3BaseDir();
+  fs.mkdirSync(baseDir, { recursive: true });
   const baseUrl = `http://${host}:${port}`;
 
   let log = "";

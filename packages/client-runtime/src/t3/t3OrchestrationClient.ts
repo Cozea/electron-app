@@ -51,8 +51,28 @@ export class T3OrchestrationClient {
     return this.client.callUnary(ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot, {});
   }
 
-  async dispatchCommand(command: unknown): Promise<unknown> {
-    return this.client.callUnary(ORCHESTRATION_WS_METHODS.dispatchCommand, command);
+  async dispatchCommand(command: unknown): Promise<{ sequence: number }> {
+    const result = await this.client.callUnary(ORCHESTRATION_WS_METHODS.dispatchCommand, command);
+    const record = asRecord(result);
+    const sequence =
+      record && typeof record.sequence === "number"
+        ? record.sequence
+        : record && typeof record.receiptSequence === "number"
+          ? record.receiptSequence
+          : 0;
+    return { sequence };
+  }
+
+  async getTurnDiff(params: unknown): Promise<unknown> {
+    return this.client.callUnary(ORCHESTRATION_WS_METHODS.getTurnDiff, params);
+  }
+
+  async getFullThreadDiff(params: unknown): Promise<unknown> {
+    return this.client.callUnary(ORCHESTRATION_WS_METHODS.getFullThreadDiff, params);
+  }
+
+  async getSnapshot(): Promise<unknown> {
+    return this.getArchivedShellSnapshot();
   }
 
   private async ensureShellSubscription(): Promise<void> {

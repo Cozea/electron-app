@@ -27,6 +27,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const host = process.env.COZEA_SUBSTRATE_SHADOW_HOST?.trim() || "127.0.0.1";
 const port = pickEphemeralPort(4783, "COZEA_SUBSTRATE_SHADOW_PORT");
 const readyPath = "/.well-known/cozea/substrate/ready";
+const t3SessionPath = "/.well-known/cozea/substrate/t3-rpc-session";
 const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-t3-server-smoke-"));
 const t3Port = pickEphemeralPort(13_773, "COZEA_T3_SERVER_PORT");
 
@@ -107,6 +108,17 @@ try {
   console.log("[smoke-t3-server] ready payload:", payload);
   if (payload.t3Server !== true) {
     throw new Error("expected ready payload t3Server=true (T3 dual-run did not activate)");
+  }
+
+  const sessionUrl = `http://${host}:${port}${t3SessionPath}`;
+  const sessionResponse = await fetch(sessionUrl);
+  const sessionPayload = await sessionResponse.json();
+  console.log("[smoke-t3-server] t3-rpc-session:", {
+    ok: sessionPayload.ok,
+    baseUrl: sessionPayload.baseUrl,
+  });
+  if (!sessionResponse.ok || sessionPayload.ok !== true || !sessionPayload.wsTicket) {
+    throw new Error("expected t3-rpc-session payload with wsTicket");
   }
 
   const ws = new WebSocket(`ws://${host}:${port}/rpc`);
