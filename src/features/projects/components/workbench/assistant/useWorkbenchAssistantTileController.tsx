@@ -147,6 +147,20 @@ export function useWorkbenchAssistantTileController(
   // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
+  useEffect(() => {
+    if (substrateTransport.active) {
+      console.info("[substrate] primary chat transport active", {
+        shadowBaseUrl: substrateTransport.shadowBaseUrl,
+        rpcChat: substrateTransport.shadowStatus?.features.rpcChat ?? false,
+        providers: substrateTransport.shadowStatus?.features.providers ?? false,
+      })
+    }
+  }, [
+    substrateTransport.active,
+    substrateTransport.shadowBaseUrl,
+    substrateTransport.shadowStatus?.features.providers,
+    substrateTransport.shadowStatus?.features.rpcChat,
+  ])
   if (substrateRpcChat.enabled && substrateRpcChat.lastError) {
     console.warn("[substrate.rpcChat]", substrateRpcChat.lastError)
   }

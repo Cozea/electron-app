@@ -7,6 +7,8 @@ import {
 
 import { isSubstrateRpcChatEnabled } from "./rpcChatFlags";
 
+const SHADOW_STATUS_POLL_MS = 3_000;
+
 export interface SubstrateChatTransportState {
   /** Renderer flag + shadow ready + in-process assistant skipped (primary path). */
   readonly active: boolean;
@@ -35,27 +37,43 @@ export function useSubstrateChatTransport(): SubstrateChatTransportState {
     }
 
     let cancelled = false;
-    void (async () => {
-      setLoading(true);
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const refresh = async (): Promise<void> => {
       try {
         const status = await readSubstrateShadowBridgeStatus();
-        if (!cancelled) {
-          setShadowStatus(status);
-          setError(status?.lastError ?? null);
+        if (cancelled) {
+          return;
+        }
+        setShadowStatus(status);
+        setError(status?.lastError ?? null);
+        const stillStarting =
+          status?.enabled === true &&
+          status.phase !== "ready" &&
+          status.phase !== "error";
+        setLoading(stillStarting);
+        if (!stillStarting && pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
         }
       } catch (readError) {
         if (!cancelled) {
           setError(readError instanceof Error ? readError.message : String(readError));
-        }
-      } finally {
-        if (!cancelled) {
           setLoading(false);
         }
       }
-    })();
+    };
+
+    void refresh();
+    pollTimer = setInterval(() => {
+      void refresh();
+    }, SHADOW_STATUS_POLL_MS);
 
     return () => {
       cancelled = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+      }
     };
   }, [rpcFlag]);
 

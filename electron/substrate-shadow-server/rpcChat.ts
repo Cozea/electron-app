@@ -15,7 +15,9 @@ import {
   bootstrapSubstrateProviderRegistry,
   type SubstrateProviderDriverRegistry,
 } from "../substrate/providers";
+import { parseBooleanFlag } from "../substrate/flags";
 import type { SubstrateDriverKind } from "../substrate/providers/types";
+import { bridgeAssistantTurn } from "./assistantWsBridge";
 
 export const SUBSTRATE_RPC_WS_PATH = "/rpc";
 
@@ -46,6 +48,8 @@ export interface AttachRpcChatOptions {
    * materialize failure or when the registry is disabled.
    */
   readonly providersEnabled?: boolean;
+  /** When true, prefer assistant WS bridge over echo when reachable. */
+  readonly primaryEnabled?: boolean;
   readonly assistantHttpOrigin?: string;
   readonly onLog?: (line: string) => void;
   /** Override env for provider bootstrap (tests). */
@@ -137,6 +141,9 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
     DEFAULT_ASSISTANT_RUNTIME_HTTP_ORIGIN;
   const env = options.env ?? process.env;
   const providersEnabled = options.providersEnabled === true;
+  const primaryEnabled =
+    options.primaryEnabled === true ||
+    parseBooleanFlag(env.COZEA_SUBSTRATE_PRIMARY, false);
 
   let providerRegistry: SubstrateProviderDriverRegistry | null = null;
   if (providersEnabled) {
@@ -279,26 +286,64 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
 
         const providerId = resolveDriverKind(payload.providerId);
         let turn: RpcChatTurn | null = null;
+        let providerAttemptFailed = false;
         if (providersEnabled) {
           turn = await tryProviderTurn({ text, providerId });
+          providerAttemptFailed = turn === null;
         }
 
         if (!turn) {
           const bridge = await probeAssistantBridge(assistantHttpOrigin);
-          const mode: "echo" | "bridged" =
-            bridge.status === "reachable" ? "bridged" : "echo";
-          const turnId = randomUUID();
-          const replyPreview =
-            mode === "bridged"
-              ? `[substrate-bridge] assistant runtime reachable; echo for now: ${text}`
-              : `[substrate-echo] ${text}`;
-          turn = {
-            turnId,
-            text,
-            mode,
-            replyPreview,
-            createdAtMs: Date.now(),
-          };
+          const shouldUseBridge =
+            bridge.status === "reachable" &&
+            (primaryEnabled || providerAttemptFailed);
+
+          if (shouldUseBridge) {
+            try {
+              const threadId =
+                typeof payload.threadId === "string" ? payload.threadId.trim() : undefined;
+              const bridged = await bridgeAssistantTurn({
+                text,
+                threadId,
+                providerId: typeof payload.providerId === "string" ? payload.providerId : undefined,
+                assistantOrigin: assistantHttpOrigin,
+              });
+              const turnId = randomUUID();
+              turn = {
+                turnId,
+                text,
+                mode: "bridged",
+                replyPreview: bridged.replyText,
+                createdAtMs: Date.now(),
+                ...(typeof payload.providerId === "string"
+                  ? { providerId: payload.providerId }
+                  : {}),
+              };
+            } catch (error) {
+              options.onLog?.(
+                `assistant bridge failed; falling back to echo: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+
+          if (!turn) {
+            const mode: "echo" | "bridged" =
+              bridge.status === "reachable" ? "bridged" : "echo";
+            const turnId = randomUUID();
+            const replyPreview =
+              mode === "bridged"
+                ? `[substrate-bridge] assistant runtime reachable; echo for now: ${text}`
+                : `[substrate-echo] ${text}`;
+            turn = {
+              turnId,
+              text,
+              mode,
+              replyPreview,
+              createdAtMs: Date.now(),
+            };
+          }
         }
 
         turns.set(turn.turnId, turn);

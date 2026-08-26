@@ -2,6 +2,11 @@
   "name": "cozea",
   "private": true,
   "version": "0.2.0",
+  "workspaces": [
+    "packages/*",
+    "packages/substrate-*",
+    "server"
+  ],
   "main": "out/main/index.js",
   "scripts": {
     "postinstall": "bun -e \"if(process.platform==='darwin'){const fs=require('fs');const path=require('path');for(const a of ['darwin-arm64','darwin-x64']){const p=path.join('node_modules','node-pty','prebuilds',a,'spawn-helper');try{if(fs.existsSync(p))fs.chmodSync(p,0o755)}catch{}}}\" && bun run scripts/apply-legend-list-patch.mjs && bun run scripts/apply-effect-rpc-jsonrpc-id-patch.mjs",

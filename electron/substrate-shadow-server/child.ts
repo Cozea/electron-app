@@ -52,6 +52,7 @@ function appendLog(line: string): void {
 
 const rpcChatEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_RPC_CHAT, false);
 const providersEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_PROVIDERS, false);
+const primaryEnabled = parseBooleanFlag(process.env.COZEA_SUBSTRATE_PRIMARY, false);
 
 const obs = getSharedSubstrateNdjsonWriter();
 obs.writeSpan({
@@ -61,12 +62,14 @@ obs.writeSpan({
     port,
     rpcChatEnabled,
     providersEnabled,
+    primaryEnabled,
   },
 });
 
 const handle = createShadowHttpServer({
   rpcChatEnabled,
   providersEnabled,
+  primaryEnabled,
   host,
   port,
   pin: process.env.COZEA_SUBSTRATE_T3_PIN?.trim() || SUBSTRATE_T3_PIN_SHA,
@@ -81,8 +84,22 @@ const handle = createShadowHttpServer({
         readyPath: SUBSTRATE_SHADOW_READY_PATH,
         rpcChatEnabled,
         providersEnabled,
+        primaryEnabled,
       },
     });
+    if (primaryEnabled) {
+      void (async () => {
+        try {
+          const { startAssistantRuntime } = await import("../assistant-runtime/boot.ts");
+          startAssistantRuntime();
+          appendLog("assistant runtime started in primary mode (ws://127.0.0.1:3773)");
+        } catch (error) {
+          appendLog(
+            `assistant runtime start failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      })();
+    }
     if (typeof process.send === "function") {
       process.send({
         type: "substrate-shadow.listening",

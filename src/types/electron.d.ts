@@ -10,6 +10,12 @@ interface DesktopBridgeSurface {
     updatedAt: number
   }>
   getSubstrateShadowStatus?: () => Promise<import('@/lib/desktopBridgeClient').SubstrateShadowBridgeStatus>
+  substrateVcs?: {
+    invalidate: (
+      cwd: string,
+    ) => Promise<import('@/substrate/vcsClient').SubstrateVcsInvalidateResult>
+    getCapabilities: () => Promise<import('@/substrate/vcsClient').SubstrateVcsCapabilities>
+  }
   getWsUrl: () => string | null
   pickFolder: () => Promise<string | null>
   confirm: (message: string) => Promise<boolean>
