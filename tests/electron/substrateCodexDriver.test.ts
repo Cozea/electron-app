@@ -45,4 +45,47 @@ describe("createCodexSubstrateDriver", () => {
     const state = await instance.snapshot.run();
     expect(["error", "unavailable", "ready"]).toContain(state.phase);
   });
+
+  it("deepProbe populates skills when COZEA_SUBSTRATE_CODEX_DEEP_PROBE=1", async () => {
+    const previous = process.env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE;
+    process.env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE = "1";
+    try {
+      const driver = createCodexSubstrateDriver({
+        probe: async () => ({
+          installed: true,
+          version: "0.37.0",
+          authenticated: true,
+        }),
+        deepProbe: async () => ({
+          skills: [{ name: "review", path: "/skills/review.md", enabled: true }],
+        }),
+        loadInventory: async (config) => {
+          const discovery = await defaultCodexDriverHooks.deepProbe?.(config);
+          const base = {
+            models: [{ slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" }],
+            skills: [] as Array<{ name: string; path: string; enabled?: boolean }>,
+            slashCommands: [],
+          };
+          if (discovery?.skills.length) {
+            return { ...base, skills: discovery.skills };
+          }
+          return base;
+        },
+      });
+
+      const instance = await driver.create({
+        instanceId: "codex-deep",
+        enabled: true,
+        config: { binaryPath: "codex", deepProbe: true },
+      });
+      const ready = await instance.snapshot.run();
+      expect(ready.snapshot.skills.some((skill) => skill.name === "review")).toBe(true);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE;
+      } else {
+        process.env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE = previous;
+      }
+    }
+  });
 });

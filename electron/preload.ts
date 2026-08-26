@@ -23,6 +23,8 @@ const DEFAULT_ASSISTANT_WS_URL = 'ws://127.0.0.1:3773'
 const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
 const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
 const SUBSTRATE_SHADOW_STATUS_HANDLE = 'substrateShadow:getStatus'
+const SUBSTRATE_VCS_INVALIDATE_HANDLE = 'substrate:vcs:invalidate'
+const SUBSTRATE_VCS_CAPABILITIES_HANDLE = 'substrate:vcs:capabilities'
 const WORKBENCH_SESSION_STATE_CHANGED_CHANNEL = 'workbenchSession:stateChanged'
 
 type AssistantRuntimeBridgeStatus = {
@@ -1056,6 +1058,10 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   getAssistantRuntimeStatus: () =>
     ipcRenderer.invoke(ASSISTANT_RUNTIME_STATUS_HANDLE) as Promise<AssistantRuntimeBridgeStatus>,
   getSubstrateShadowStatus: () => ipcRenderer.invoke(SUBSTRATE_SHADOW_STATUS_HANDLE),
+  substrateVcs: {
+    invalidate: (cwd: string) => ipcRenderer.invoke(SUBSTRATE_VCS_INVALIDATE_HANDLE, cwd),
+    getCapabilities: () => ipcRenderer.invoke(SUBSTRATE_VCS_CAPABILITIES_HANDLE),
+  },
   pickFolder: async () => {
     const res = await ipcRenderer.invoke('dialog:selectDirectory')
     return res.success ? res.path : null

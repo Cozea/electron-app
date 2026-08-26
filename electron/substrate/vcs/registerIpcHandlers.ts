@@ -4,6 +4,7 @@ import { isSubstrateVcsEnabled } from "../flags";
 import { invalidateVcsStatus } from "./statusInvalidation";
 
 const SUBSTRATE_VCS_INVALIDATE_HANDLE = "substrate:vcs:invalidate" as const;
+const SUBSTRATE_VCS_INVALIDATE_STATUS_HANDLE = "substrate:vcs:invalidateStatus" as const;
 const SUBSTRATE_VCS_CAPABILITIES_HANDLE = "substrate:vcs:capabilities" as const;
 
 export interface SubstrateVcsCapabilitiesResponse {
@@ -46,6 +47,18 @@ export function registerSubstrateVcsIpcHandlers(
     return { ok: true as const };
   });
 
+  ipcMain.removeHandler(SUBSTRATE_VCS_INVALIDATE_STATUS_HANDLE);
+  ipcMain.handle(SUBSTRATE_VCS_INVALIDATE_STATUS_HANDLE, (_event, cwd: unknown) => {
+    if (!isSubstrateVcsEnabled(env)) {
+      return { ok: false, reason: "substrate_vcs_disabled" as const };
+    }
+    if (typeof cwd !== "string" || cwd.trim().length === 0) {
+      return { ok: false, reason: "invalid_cwd" as const };
+    }
+    invalidateVcsStatus(cwd.trim());
+    return { ok: true as const };
+  });
+
   ipcMain.removeHandler(SUBSTRATE_VCS_CAPABILITIES_HANDLE);
   ipcMain.handle(SUBSTRATE_VCS_CAPABILITIES_HANDLE, (): SubstrateVcsCapabilitiesResponse => {
     const enabled = isSubstrateVcsEnabled(env);
@@ -67,6 +80,7 @@ export function registerSubstrateVcsIpcHandlers(
 /** @internal test helper */
 export function resetSubstrateVcsIpcHandlersForTests(): void {
   ipcMain.removeHandler(SUBSTRATE_VCS_INVALIDATE_HANDLE);
+  ipcMain.removeHandler(SUBSTRATE_VCS_INVALIDATE_STATUS_HANDLE);
   ipcMain.removeHandler(SUBSTRATE_VCS_CAPABILITIES_HANDLE);
   registered = false;
 }
@@ -74,4 +88,5 @@ export function resetSubstrateVcsIpcHandlersForTests(): void {
 export {
   SUBSTRATE_VCS_CAPABILITIES_HANDLE,
   SUBSTRATE_VCS_INVALIDATE_HANDLE,
+  SUBSTRATE_VCS_INVALIDATE_STATUS_HANDLE,
 };

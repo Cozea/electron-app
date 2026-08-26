@@ -2,8 +2,7 @@
 
 Branch: `cursor/substrate-phases-complete-a002`
 
-This branch deepens the merged Phase 1–7 scaffolding so the spine is wired
-end-to-end while **all flags remain default OFF**.
+This branch completes the substrate spine end-to-end while **all flags remain default OFF**.
 
 ## Flag matrix (full stack)
 
@@ -15,6 +14,7 @@ end-to-end while **all flags remain default OFF**.
 | `cozea.substrate.vcs` | `COZEA_SUBSTRATE_VCS` | off | VcsDriver facade + checkpoint stubs |
 | `cozea.substrate.primary` | `COZEA_SUBSTRATE_PRIMARY` | off | Skip in-process assistant; shadow is primary |
 | `cozea.obs.ndjson` | `COZEA_OBS_NDJSON` / `COZEA_SUBSTRATE_OBS_NDJSON` | off | NDJSON span writer |
+| Codex deep probe | `COZEA_SUBSTRATE_CODEX_DEEP_PROBE` | off | App-server skills discovery on Codex driver |
 
 ### Enable the full stack
 
@@ -36,19 +36,39 @@ span file (otherwise a temp default is used).
 | Phase | Wiring |
 | --- | --- |
 | 1 Shadow | `ShadowServerManager` forks `electron/substrate-shadow-server/child.ts` |
-| 2 RPC chat | `attachRpcChat` on `/rpc`; echo/bridge when providers off |
-| 3 Providers | When `PROVIDERS=1`, `chat.send` materializes OpenCode (or legacy adapters) via `bootstrapSubstrateProviderRegistry`; falls back to echo/bridge on failure |
-| 4 VCS | `bootstrapSubstrateVcs()` from Electron main boot **and** `registerWorkspaceSyncHandlers` (idempotent) |
-| 5 Primary | `shouldStartInProcessAssistantRuntime` → false when primary+shadow; status IPC `features.inProcessAssistant: false`; shadow still starts |
-| 6 Obs | `electron/substrate/obs` NDJSON writer; spans for shadow start/ready, rpc send accepted, provider materialize; `features.obsNdjson` on status |
-| 7 Packages | `@cozea/substrate-contracts` / `@cozea/substrate-client-runtime` re-export `@cozea/contracts` / `@cozea/client-runtime` (canonical names; implementations stay in the older packages) |
+| 2 RPC chat | `attachRpcChat` on `/rpc`; real assistant WS bridge when primary or provider fallback |
+| 3 Providers | When `PROVIDERS=1`, `chat.send` materializes drivers via `bootstrapSubstrateProviderRegistry`; Codex deep probe optional |
+| 4 VCS | `bootstrapSubstrateVcs()` + `registerSubstrateVcsIpcHandlers`; renderer `src/substrate/vcsClient.ts`; collab paths call `invalidateVcsStatus` |
+| 5 Primary | Shadow child starts assistant runtime on `:3773`; main skips in-process runtime; workbench uses shadow RPC |
+| 6 Obs | `electron/substrate/obs` NDJSON writer; spans for shadow, rpc, provider materialize |
+| 7 Monorepo | `@cozea/substrate-contracts` / `@cozea/substrate-client-runtime` re-export canonical packages; `apps/desktop/README.md` |
+
+## Package re-exports (Phase 7)
+
+| Public name | Implementation |
+| --- | --- |
+| `@cozea/substrate-contracts` | Re-exports `@cozea/contracts` (`packages/substrate-contracts`) |
+| `@cozea/substrate-client-runtime` | Re-exports `@cozea/client-runtime` (`packages/substrate-client-runtime`) |
+
+Prefer the `substrate-*` import path in new code; existing `@cozea/contracts` /
+`@cozea/client-runtime` imports remain valid.
+
+Root `package.json` workspaces include `packages/substrate-*` alongside `packages/*`.
+
+## VCS cutover surface
+
+When `COZEA_SUBSTRATE_VCS=1`:
+
+- IPC: `substrate:vcs:invalidate`, alias `substrate:vcs:invalidateStatus`, `substrate:vcs:capabilities`
+- Preload: `desktopBridge.substrateVcs.invalidate` / `getCapabilities`
+- Collab overlay (`registerWorkspaceSyncHandlers`) already calls `invalidateVcsStatus` on cwd mutations
+
+GitCore is retained until agent paths fully migrate to `vcs.*`.
 
 ## Remaining follow-ons
 
-- Codex app-server live session on substrate primary (CLI probe + inventory done; RPC stub for turns)
-- Full GitCore deletion / `vcs.*` agent cutover (flagged `substrate:vcs:*` IPC added)
-- Workbench primary transport via shadow RPC when primary+rpc flags on
 - Default-on product flip (all env flags still off)
+- Full GitCore deletion after agent `vcs.*` cutover
 - Track E OTLP export (`COZEA_OTLP_ENDPOINT` with NDJSON)
 - Bun vs pnpm/`vp` monorepo tooling decision
 

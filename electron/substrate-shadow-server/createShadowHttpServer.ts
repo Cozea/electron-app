@@ -31,6 +31,8 @@ export interface CreateShadowHttpServerOptions {
   readonly rpcChatEnabled?: boolean;
   /** Phase 3 — route flagged RPC chat through the provider registry. */
   readonly providersEnabled?: boolean;
+  /** Phase 5 — when true, bridge chat to assistant runtime in shadow process. */
+  readonly primaryEnabled?: boolean;
   readonly onListening?: (info: { readonly host: string; readonly port: number }) => void;
   readonly onRequestLog?: (line: string) => void;
 }
@@ -54,6 +56,7 @@ export function createShadowHttpServer(
   const pid = options.pid ?? process.pid;
   const rpcChatEnabled = options.rpcChatEnabled === true;
   const providersEnabled = options.providersEnabled === true && rpcChatEnabled;
+  const primaryEnabled = options.primaryEnabled === true;
   const phase: 1 | 2 | 3 = providersEnabled ? 3 : rpcChatEnabled ? 2 : 1;
 
   const readyPayload: ShadowServerReadyPayload = {
@@ -135,6 +138,7 @@ export function createShadowHttpServer(
             pin,
             rpcChatEnabled,
             providersEnabled,
+            primaryEnabled,
             onLog: (line) => options.onRequestLog?.(line),
           });
           options.onListening?.({ host, port });

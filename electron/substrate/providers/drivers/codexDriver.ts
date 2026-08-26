@@ -5,6 +5,8 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "../../../assistant-runtime/provider/codexCliVersion.ts";
+import { probeCodexDiscovery } from "../../../assistant-runtime/provider/codexAppServer.ts";
+import { parseBooleanFlag } from "../../flags";
 import {
   beginManagedSnapshotRefresh,
   createManagedSnapshotState,
@@ -43,6 +45,19 @@ export interface CodexDriverHooks {
   readonly loadInventory: (
     config: Readonly<Record<string, unknown>>,
   ) => Promise<CodexInventoryResult>;
+  /** Optional app-server discovery (skills/account). Gated by config/env. */
+  readonly deepProbe?: (
+    config: Readonly<Record<string, unknown>>,
+  ) => Promise<CodexDiscoverySnapshot | null>;
+}
+
+interface CodexDiscoverySnapshot {
+  readonly skills: ReadonlyArray<{
+    readonly name: string;
+    readonly path: string;
+    readonly description?: string;
+    readonly enabled?: boolean;
+  }>;
 }
 
 const DEFAULT_CODEX_MODELS: ReadonlyArray<SubstrateProviderModel> = [
@@ -60,6 +75,71 @@ function resolveBinaryPath(config: Readonly<Record<string, unknown>>): string {
     return fromConfig.trim();
   }
   return "codex";
+}
+
+function shouldRunDeepProbe(
+  config: Readonly<Record<string, unknown>>,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (config.deepProbe === true) {
+    return true;
+  }
+  return parseBooleanFlag(env.COZEA_SUBSTRATE_CODEX_DEEP_PROBE, false);
+}
+
+function resolveDeepProbeCwd(config: Readonly<Record<string, unknown>>): string {
+  const fromConfig = config.cwd;
+  if (typeof fromConfig === "string" && fromConfig.trim().length > 0) {
+    return fromConfig.trim();
+  }
+  return process.cwd();
+}
+
+async function runCodexDeepProbe(
+  config: Readonly<Record<string, unknown>>,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CodexDiscoverySnapshot | null> {
+  if (!shouldRunDeepProbe(config, env)) {
+    return null;
+  }
+  try {
+    const discovery = await probeCodexDiscovery({
+      binaryPath: resolveBinaryPath(config),
+      cwd: resolveDeepProbeCwd(config),
+      ...(typeof config.homePath === "string" && config.homePath.trim().length > 0
+        ? { homePath: config.homePath.trim() }
+        : {}),
+    });
+    return {
+      skills: discovery.skills.map((skill) => ({
+        name: skill.name,
+        path: skill.path,
+        ...(skill.description ? { description: skill.description } : {}),
+        ...(skill.shortDescription ? { description: skill.shortDescription } : {}),
+        enabled: skill.enabled,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mapDiscoveryToInventory(
+  base: CodexInventoryResult,
+  discovery: CodexDiscoverySnapshot | null,
+): CodexInventoryResult {
+  if (!discovery || discovery.skills.length === 0) {
+    return base;
+  }
+  return {
+    ...base,
+    skills: discovery.skills.map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+      ...(skill.description ? { description: skill.description } : {}),
+      ...(skill.enabled === false ? { enabled: false } : {}),
+    })),
+  };
 }
 
 function probeCodexCli(binaryPath: string): CodexProbeResult {
@@ -105,11 +185,16 @@ function probeCodexCli(binaryPath: string): CodexProbeResult {
 /** Default hooks: CLI version probe + static model inventory (no app-server spawn). */
 export const defaultCodexDriverHooks: CodexDriverHooks = {
   probe: async (config) => probeCodexCli(resolveBinaryPath(config)),
-  loadInventory: async () => ({
-    models: DEFAULT_CODEX_MODELS,
-    skills: [],
-    slashCommands: [],
-  }),
+  deepProbe: async (config) => runCodexDeepProbe(config),
+  loadInventory: async (config) => {
+    const base: CodexInventoryResult = {
+      models: DEFAULT_CODEX_MODELS,
+      skills: [],
+      slashCommands: [],
+    };
+    const discovery = await runCodexDeepProbe(config);
+    return mapDiscoveryToInventory(base, discovery);
+  },
 };
 
 function buildEnrichers(
@@ -121,6 +206,10 @@ function buildEnrichers(
   const ensureInventory = async (): Promise<CodexInventoryResult> => {
     if (!inventory) {
       inventory = await hooks.loadInventory(config);
+      if (hooks.deepProbe && inventory.skills.length === 0) {
+        const discovery = await hooks.deepProbe(config);
+        inventory = mapDiscoveryToInventory(inventory, discovery);
+      }
     }
     return inventory;
   };
