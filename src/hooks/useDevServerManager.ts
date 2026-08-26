@@ -24,6 +24,12 @@ interface UseDevServerManagerOptions {
   framework?: string | null
   terminalId?: string | null
   autoStart?: boolean
+  /**
+   * Persists the one-shot consumption of `autoStart`. Without it the guard
+   * would live on this hook instance and a remount (e.g. project switch)
+   * would restart a server the user had explicitly stopped.
+   */
+  onAutoStartConsumed?: () => void
   storedDevCommand?: string | null
   storedDevPort?: number | null
   storedCommandSource?: DevServerLaunchContext['storedCommandSource']
@@ -45,6 +51,7 @@ export function useDevServerManager({
   framework = null,
   terminalId = null,
   autoStart = false,
+  onAutoStartConsumed,
   storedDevCommand = null,
   storedDevPort = null,
   storedCommandSource = 'detected',
@@ -52,7 +59,9 @@ export function useDevServerManager({
   nativePlatform = null,
 }: UseDevServerManagerOptions) {
   const runKey = workspaceId ? buildDevServerRunKey(workspaceId, laneId) : null
-  const autoStartedRunKeyRef = useRef<string | null>(null)
+  const autoStartAttemptedRunKeyRef = useRef<string | null>(null)
+  const onAutoStartConsumedRef = useRef(onAutoStartConsumed)
+  onAutoStartConsumedRef.current = onAutoStartConsumed
 
   useEffect(() => {
     ensureDevServerEventBridge()
@@ -115,16 +124,18 @@ export function useDevServerManager({
 
   useEffect(() => {
     if (!autoStart || !runKey) {
-      autoStartedRunKeyRef.current = null
+      autoStartAttemptedRunKeyRef.current = null
       return
     }
     if (!launchTerminalReady) return
-    if (autoStartedRunKeyRef.current === runKey) return
+    // Guards a second pass within this mount before the persisted flag lands.
+    if (autoStartAttemptedRunKeyRef.current === runKey) return
 
-    // Auto-start is one-shot per mounted run context. This covers a DevApp
-    // replacing a previously stopped built-in Dev Server without immediately
-    // undoing a later explicit Stop action from the user.
-    autoStartedRunKeyRef.current = runKey
+    // Auto-start is one-shot per launch, recorded on the tile itself rather
+    // than on this hook instance so a remount cannot resurrect a server the
+    // user stopped. The owner clears the persisted flag in the callback.
+    autoStartAttemptedRunKeyRef.current = runKey
+    onAutoStartConsumedRef.current?.()
     if (state.status === 'idle' || state.status === 'stopped' || state.status === 'error') {
       void startDevServerRun(runKey)
     }

@@ -234,6 +234,15 @@ function WorkbenchRuntimePreviewTile({
     tile.type === "devServer" && tile.devAppId && tile.devAppCommand
       ? "devAppRelease"
       : "detected"
+  const markAutoStartConsumed = useCallback(() => {
+    workbenchActions.updateRuntimePreviewTile(
+      projectId,
+      laneId,
+      tile.id,
+      { autoStart: false },
+      workspaceId,
+    )
+  }, [laneId, projectId, tile.id, workbenchActions, workspaceId])
   const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
     storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
   )
@@ -300,6 +309,7 @@ function WorkbenchRuntimePreviewTile({
     framework,
     terminalId,
     autoStart,
+    onAutoStartConsumed: markAutoStartConsumed,
     storedDevCommand,
     storedDevPort,
     storedCommandSource,

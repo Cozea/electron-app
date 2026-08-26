@@ -321,6 +321,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
       patch: Partial<{
         viewMode: WorkbenchRuntimePreviewViewMode
         previewOverrideUrl: string | null
+        autoStart: boolean
       }>,
       workspaceId?: string | null,
     ) => void
@@ -1391,6 +1392,18 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               patch.previewOverrideUrl !== tile.previewOverrideUrl
             ) {
               tile.previewOverrideUrl = patch.previewOverrideUrl
+            }
+
+            if (
+              patch.autoStart !== undefined &&
+              tile.type === "devServer" &&
+              patch.autoStart !== (tile.autoStart ?? false)
+            ) {
+              if (patch.autoStart) {
+                tile.autoStart = true
+              } else {
+                delete tile.autoStart
+              }
             }
           })
         },
