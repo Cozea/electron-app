@@ -171,13 +171,13 @@ export function useWorkbenchAssistantTileController(
       ? assistantRuntime.lastError?.trim() || "Local chat runtime is unavailable."
       : null
 
-  useAssistantRuntimeSync(isRuntimeReady)
+  useAssistantRuntimeSync(isChatReady)
 
   const {
     config,
     error: configError,
     isLoading: isConfigLoading,
-  } = useAssistantServerConfig(isRuntimeReady)
+  } = useAssistantServerConfig(isChatReady)
   const [composer, setComposer] = useState("")
   const [composerCursor, setComposerCursor] = useState(0)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -1181,15 +1181,17 @@ export function useWorkbenchAssistantTileController(
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
 
     try {
-      if (substrateTransport.active) {
+      const useSubstrateRpcFallback = substrateTransport.active && !isRuntimeReady
+      if (useSubstrateRpcFallback) {
         if (hasImages) {
-          throw new Error("Substrate primary chat does not support image attachments yet.")
+          throw new Error("Substrate RPC chat fallback does not support image attachments yet.")
         }
         const turn = await sendSubstrateRpcTurn({
           threadId: resolvedThread.id,
           text: nextPrompt,
           shadowBaseUrl: substrateTransport.shadowBaseUrl ?? undefined,
           providerId: selectedDispatchModelSelection?.provider,
+          modelSelection: selectedDispatchModelSelection,
         })
         if (turn.assistantText.trim().length > 0) {
           setOptimisticUserMessages((current) => [
@@ -1613,6 +1615,7 @@ export function useWorkbenchAssistantTileController(
     surfaceProps: {
       dockComposerOnHover: true,
       isRuntimeReady,
+      isChatReady,
       runtimeErrorMessage,
       workspaceId: input.workspaceId,
       workspaceRoot: resolvedWorkspaceRoot,

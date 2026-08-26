@@ -10,6 +10,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const host = process.env.COZEA_SUBSTRATE_SHADOW_HOST?.trim() || "127.0.0.1";
 const port = Number.parseInt(process.env.COZEA_SUBSTRATE_SHADOW_PORT || "4783", 10);
@@ -54,7 +58,7 @@ async function waitReady() {
     } catch {
       // retry
     }
-    await Bun.sleep(100);
+    await sleep(100);
   }
 }
 
@@ -112,8 +116,8 @@ function rpcSubscribe(ws, id, turnId) {
 try {
   const payload = await waitReady();
   console.log("[smoke] ready payload:", payload);
-  if (payload.rpcChat !== true || payload.phase !== 2) {
-    throw new Error("expected phase 2 ready payload with rpcChat=true");
+  if (payload.rpcChat !== true || (payload.phase !== 2 && payload.phase !== 3)) {
+    throw new Error("expected phase 2 or 3 ready payload with rpcChat=true");
   }
 
   const ws = new WebSocket(`ws://${host}:${port}/rpc`);
@@ -132,7 +136,7 @@ try {
   console.log("[smoke] ok");
 } finally {
   child.kill("SIGTERM");
-  await Bun.sleep(500);
+  await sleep(500);
   if (!child.killed && child.exitCode === null) {
     child.kill("SIGKILL");
   }

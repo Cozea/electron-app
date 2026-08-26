@@ -17,7 +17,7 @@ import {
 } from "../substrate/providers";
 import { readSubstratePrimaryFlags } from "../substrate/flags";
 import type { SubstrateDriverKind } from "../substrate/providers/types";
-import { bridgeAssistantTurn } from "./assistantWsBridge";
+import { bridgeAssistantTurn, type BridgeAssistantTurnInput } from "./assistantWsBridge";
 
 export const SUBSTRATE_RPC_WS_PATH = "/rpc";
 
@@ -113,6 +113,34 @@ function resolveDriverKind(raw: unknown): SubstrateDriverKind {
     return raw.trim() as SubstrateDriverKind;
   }
   return "opencode";
+}
+
+function readBridgeModelSelection(
+  payload: Record<string, unknown>,
+): BridgeAssistantTurnInput["modelSelection"] | undefined {
+  const raw = asRecord(payload.modelSelection);
+  if (!raw) {
+    return undefined;
+  }
+  const provider = typeof raw.provider === "string" ? raw.provider.trim() : "";
+  const model = typeof raw.model === "string" ? raw.model.trim() : "";
+  if (!provider || !model) {
+    return undefined;
+  }
+  if (
+    provider !== "codex" &&
+    provider !== "opencode" &&
+    provider !== "claudeAgent" &&
+    provider !== "cursor"
+  ) {
+    return undefined;
+  }
+  const instanceId = typeof raw.instanceId === "string" ? raw.instanceId.trim() : "";
+  return {
+    provider,
+    model,
+    ...(instanceId ? { instanceId } : {}),
+  };
 }
 
 /**
@@ -348,6 +376,7 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
                 text,
                 threadId,
                 providerId: typeof payload.providerId === "string" ? payload.providerId : undefined,
+                modelSelection: readBridgeModelSelection(payload),
                 assistantOrigin: assistantHttpOrigin,
               });
               const turnId = randomUUID();
