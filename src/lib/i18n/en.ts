@@ -161,9 +161,6 @@ const en = {
   "projects.selectProject": "Select a project",
   "projects.selectProjectDesc":
     "Choose a project from the sidebar, or drop another local repository here to import it.",
-  "projects.welcomeToCozea": "Welcome to Cozea",
-  "projects.createProjectDesc":
-    "Drop a local repository folder here to import it — same as Import local folder.",
   "projects.dropRepoTitle": "Drop a repository folder",
   "projects.dropRepoActive": "Release to import",
   "projects.dropRepoHint": "Imports the folder the same way as Import local folder. Click to browse.",

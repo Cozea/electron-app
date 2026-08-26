@@ -171,9 +171,6 @@ const es: Record<TranslationKey, string> = {
   "projects.selectProject": "Selecciona un proyecto",
   "projects.selectProjectDesc":
     "Elige un proyecto de la barra lateral, o suelta otro repositorio local aquí para importarlo.",
-  "projects.welcomeToCozea": "Bienvenido a Cozea",
-  "projects.createProjectDesc":
-    "Suelta una carpeta de repositorio local aquí para importarla — igual que Importar carpeta local.",
   "projects.dropRepoTitle": "Suelta una carpeta de repositorio",
   "projects.dropRepoActive": "Suelta para importar",
   "projects.dropRepoHint": "Importa la carpeta igual que Importar carpeta local. Haz clic para explorar.",
