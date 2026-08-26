@@ -5,7 +5,8 @@ const githubReleaseType =
 const updateProvider = process.env.COZEA_UPDATE_PROVIDER ?? "github"
 const updateBaseUrl = process.env.COZEA_UPDATE_BASE_URL ?? ""
 const macUniversalX64ArchFilePackages = [
-  "@anthropic-ai/claude-agent-sdk/vendor",
+  // Claude SDK 0.3 platform binaries are excluded via `files` below — we spawn
+  // the user's PATH `claude` via pathToClaudeCodeExecutable, so leave them out.
   "@cozea/pty",
   "@esbuild/darwin-*",
   "@img/sharp-darwin-*",
@@ -61,7 +62,14 @@ module.exports = {
     buildResources: "build",
     output: "dist",
   },
-  files: ["out/**/*", "package.json"],
+  // Keep the JS SDK (`@anthropic-ai/claude-agent-sdk`) but drop the unused
+  // per-platform native CLI binaries (~230 MB on darwin-arm64). Cozea always
+  // passes pathToClaudeCodeExecutable (default: `claude` from PATH).
+  files: [
+    "out/**/*",
+    "package.json",
+    "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+  ],
   extraResources: [
     {
       from: "build/runtime",
