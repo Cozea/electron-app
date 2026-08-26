@@ -86,10 +86,16 @@ export function WorkspaceRuntimeHosts() {
       return
     }
 
-    void yjsApi.setInterestRoots({ roots: [] }).catch((error) => {
+    // Prefer concrete workspace roots. Empty roots clear the interest map and
+    // fall back to broadcasting every file event to the renderer.
+    const roots = hostedRuntimeRecords
+      .map((record) => record.workspaceId)
+      .filter((workspaceId): workspaceId is string => Boolean(workspaceId?.trim()))
+
+    void yjsApi.setInterestRoots({ roots }).catch((error) => {
       console.warn("[WorkspaceRuntimeHosts] Failed to update Yjs interest roots", error)
     })
-  }, [])
+  }, [hostedRuntimeRecords])
 
   useEffect(() => {
     refreshLifecycles()

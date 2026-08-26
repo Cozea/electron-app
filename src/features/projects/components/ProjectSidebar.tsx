@@ -58,6 +58,7 @@ import {
   formatProjectRenameError,
 } from "../lib/projectMutationPresentation";
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup";
+import { detachDeletedProjectFromUi } from "@/features/projects/lib/detachDeletedProjectFromUi";
 import { withProjectMutationTimeout } from "@/features/projects/lib/projectMutationTimeout";
 import {
   selectProjectWorkbench,
@@ -132,6 +133,9 @@ export function ProjectSidebar({
   );
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [isDeletingProject, setIsDeletingProject] = React.useState(false);
+  const [optimisticallyDeletedProjectIds, setOptimisticallyDeletedProjectIds] = React.useState<
+    Set<string>
+  >(() => new Set());
   const updateProject = useMutation(api.projects.update);
   const archiveProject = useMutation(api.projects.archive);
   const restoreProject = useMutation(api.projects.restore);
@@ -160,6 +164,7 @@ export function ProjectSidebar({
 
     const nextItems = source
       .filter((project): project is NonNullable<typeof project> => Boolean(project))
+      .filter((project) => !optimisticallyDeletedProjectIds.has(String(project._id)))
       .map((project) => {
         const nextProjectItem: SidebarProjectItem = {
           _id: project._id,
@@ -188,7 +193,28 @@ export function ProjectSidebar({
 
     stableProjectItemsRef.current = nextStableProjectMap;
     return nextItems;
-  }, [accessibleProjects]);
+  }, [accessibleProjects, optimisticallyDeletedProjectIds]);
+
+  React.useEffect(() => {
+    if (!accessibleProjects || optimisticallyDeletedProjectIds.size === 0) return;
+    const liveIds = new Set(
+      accessibleProjects
+        .filter((project): project is NonNullable<typeof project> => Boolean(project))
+        .map((project) => String(project._id)),
+    );
+    setOptimisticallyDeletedProjectIds((current) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const projectId of current) {
+        if (liveIds.has(projectId)) {
+          next.add(projectId);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [accessibleProjects, optimisticallyDeletedProjectIds.size]);
 
   React.useEffect(() => {
     if (projectItems.length === 0) return;
@@ -589,46 +615,81 @@ export function ProjectSidebar({
   }, []);
 
   const handleConfirmDeleteProject = React.useCallback(
-    async (confirmName: string) => {
-      if (
-        !projectPendingDelete ||
-        !convexUserId ||
-        isDeletingProject ||
-        confirmName !== projectPendingDelete.name
-      ) {
+    async (options: { keepLocalFiles: boolean }) => {
+      if (!projectPendingDelete || !convexUserId || isDeletingProject) {
         return;
       }
 
+      const deletedProject = projectPendingDelete;
+      const deletedProjectId = String(deletedProject._id);
+      const keepLocalFiles = options.keepLocalFiles;
+      const wasCurrentProject = currentProjectId === deletedProjectId;
+
+      // Leave the live workbench immediately — do not wait on Convex or git teardown.
       setIsDeletingProject(true);
       setDeleteError(null);
+      setProjectPendingDelete(null);
+      setOptimisticallyDeletedProjectIds((current) => {
+        const next = new Set(current);
+        next.add(deletedProjectId);
+        return next;
+      });
+
+      // Stop hosting + leave the route without a full reload (reload aborts the Convex mutation).
+      detachDeletedProjectFromUi(deletedProjectId);
+      if (wasCurrentProject) {
+        navigate("/projects", { replace: true });
+      }
+
       try {
-        const deletedProjectId = String(projectPendingDelete._id);
+        console.info("[ProjectDelete] mutation-start", { projectId: deletedProjectId, keepLocalFiles });
+        const mutationStartedAt = performance.now();
         await withProjectMutationTimeout(
           deleteProject({
-            projectId: projectPendingDelete._id,
+            projectId: deletedProject._id,
             userId: convexUserId,
-            confirmName,
+            confirmName: deletedProject.name,
           }),
           "Deleting this project is taking longer than expected. Check your connection and try again.",
         );
-        await cleanupDeletedProjectLocally(deletedProjectId, {
-          projectName: projectPendingDelete.name,
-          projectSlug: projectPendingDelete.slug,
-          managedProjectPaths: [projectPendingDelete.localPath],
+        console.info("[ProjectDelete] mutation-done", {
+          projectId: deletedProjectId,
+          elapsedMs: Math.round(performance.now() - mutationStartedAt),
         });
-        setProjectPendingDelete(null);
+        void cleanupDeletedProjectLocally(deletedProjectId, {
+          projectName: deletedProject.name,
+          projectSlug: deletedProject.slug,
+          managedProjectPaths: [deletedProject.localPath],
+          keepLocalFiles,
+        }).catch((error) => {
+          console.warn("[ProjectDelete] Background local cleanup failed.", error);
+        });
       } catch (error) {
         const presentation = formatProjectDeleteError(error);
+        console.warn("[ProjectDelete] mutation-failed", error);
+        setOptimisticallyDeletedProjectIds((current) => {
+          const next = new Set(current);
+          next.delete(deletedProjectId);
+          return next;
+        });
         setDeleteError(
           presentation.detail
             ? `${presentation.message} ${presentation.detail}`
             : presentation.message,
         );
+        setProjectPendingDelete(deletedProject);
       } finally {
         setIsDeletingProject(false);
       }
     },
-    [convexUserId, deleteProject, isDeletingProject, projectPendingDelete],
+    [
+      convexUserId,
+      currentProjectId,
+      deleteProject,
+      isDeletingProject,
+      navigate,
+      projectPendingDelete,
+    ],
   );
 
   const handleSyncProject = React.useCallback(

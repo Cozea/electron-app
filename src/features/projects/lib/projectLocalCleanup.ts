@@ -11,6 +11,8 @@ export interface DeletedProjectLocalCleanupOptions {
   projectName?: string | null
   projectSlug?: string | null
   managedProjectPaths?: Array<string | null | undefined>
+  /** When true, leave the on-disk folder; still unlink local workspace catalog entries. */
+  keepLocalFiles?: boolean
 }
 
 function normalizeId(value: string | null | undefined): string | null {
@@ -211,6 +213,16 @@ export async function cleanupDeletedProjectLocally(
   const normalizedProjectId = normalizeId(projectId)
   if (!normalizedProjectId) return
 
+  const startedAt = performance.now()
+  const keepLocalFiles = options.keepLocalFiles === true
+  const mark = (label: string) => {
+    console.info(
+      `[ProjectDelete] ${label}`,
+      { keepLocalFiles, elapsedMs: Math.round(performance.now() - startedAt) },
+    )
+  }
+  mark("cleanup-start")
+
   const workspaceIds = new Set<string>()
   const projectPathsByWorkspaceId = new Map<string, string>()
   const workspaceApi = window.electronAPI?.workspace
@@ -234,16 +246,20 @@ export async function cleanupDeletedProjectLocally(
   } catch (error) {
     console.warn("[ProjectDelete] Failed to list local workspaces.", error)
   }
+  mark(`workspaces-listed count=${workspaceIds.size}`)
 
-  const fallbackProjectPaths = await collectFallbackManagedProjectPaths(options)
-  for (const projectPath of fallbackProjectPaths) {
-    const fallbackWorkspaceId = `${FALLBACK_PROJECT_PATH_ID_PREFIX}${projectPath}`
-    if (!projectPathsByWorkspaceId.has(fallbackWorkspaceId)) {
-      projectPathsByWorkspaceId.set(fallbackWorkspaceId, projectPath)
+  // Fallback path guessing is only useful when we intend to trash folders.
+  if (!keepLocalFiles) {
+    const fallbackProjectPaths = await collectFallbackManagedProjectPaths(options)
+    for (const projectPath of fallbackProjectPaths) {
+      const fallbackWorkspaceId = `${FALLBACK_PROJECT_PATH_ID_PREFIX}${projectPath}`
+      if (!projectPathsByWorkspaceId.has(fallbackWorkspaceId)) {
+        projectPathsByWorkspaceId.set(fallbackWorkspaceId, projectPath)
+      }
     }
+    mark(`fallback-paths count=${projectPathsByWorkspaceId.size}`)
   }
 
-  const closeSessionsTask = closeProjectWorkbenchSessions(normalizedProjectId, workspaceIds)
   closeProjectRuntimes(normalizedProjectId, workspaceIds)
 
   for (const workspaceId of workspaceIds) {
@@ -251,24 +267,34 @@ export async function cleanupDeletedProjectLocally(
     clearCachedProjectLaneState(normalizedProjectId, workspaceId)
   }
 
-  const workspaceIdsToForget = await deleteManagedProjectPaths(projectPathsByWorkspaceId)
-  for (const workspaceId of workspaceIds) {
-    if (!projectPathsByWorkspaceId.has(workspaceId)) {
-      workspaceIdsToForget.add(workspaceId)
-    }
-  }
+  const workspaceIdsToForget = new Set<string>(workspaceIds)
+  const closeSessionsTask = closeProjectWorkbenchSessions(normalizedProjectId, workspaceIds)
 
-  await closeSessionsTask
+  const deleteTask = keepLocalFiles
+    ? Promise.resolve()
+    : deleteManagedProjectPaths(projectPathsByWorkspaceId).then((deletedWorkspaceIds) => {
+        for (const workspaceId of deletedWorkspaceIds) {
+          workspaceIdsToForget.add(workspaceId)
+        }
+        mark(`folders-trashed count=${deletedWorkspaceIds.size}`)
+      })
 
-  if (!workspaceApi) return
+  const forgetTask =
+    workspaceApi == null
+      ? Promise.resolve()
+      : Promise.allSettled(
+          Array.from(workspaceIdsToForget).map((workspaceId) =>
+            withTimeout(
+              workspaceApi.forget(workspaceId),
+              WORKSPACE_LOOKUP_TIMEOUT_MS,
+              `Forgetting local workspace ${workspaceId}`,
+            ),
+          ),
+        ).then(() => {
+          mark(`workspaces-forgotten count=${workspaceIdsToForget.size}`)
+        })
 
-  await Promise.allSettled(
-    Array.from(workspaceIdsToForget).map((workspaceId) =>
-      withTimeout(
-        workspaceApi.forget(workspaceId),
-        WORKSPACE_LOOKUP_TIMEOUT_MS,
-        `Forgetting local workspace ${workspaceId}`,
-      ),
-    ),
-  )
+  // Session close can wait on dev-server stop; do not serialize it ahead of forget/trash.
+  await Promise.allSettled([closeSessionsTask, deleteTask, forgetTask])
+  mark("cleanup-done")
 }

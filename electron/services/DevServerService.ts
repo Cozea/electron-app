@@ -362,6 +362,22 @@ export class DevServerService {
     }
   }
 
+  /** Immediately kill a workspace dev-server terminal without waiting for port release. */
+  public forceKill(workspaceId: string, laneId?: string | null): void {
+    const runKey = buildRunKey(workspaceId, laneId)
+    const entry = this.processes.get(runKey)
+    if (!entry) {
+      return
+    }
+    entry.stopping = true
+    try {
+      this.terminalService.killTerminal(entry.terminalId)
+    } catch {
+      // ignore
+    }
+    this.disposeRun(runKey, null)
+  }
+
   public isRunning(workspaceId: string, laneId?: string | null): boolean {
     return this.processes.has(buildRunKey(workspaceId, laneId))
   }

@@ -98,7 +98,7 @@ export function ProjectSyncProviderRuntime({
 
   const canSync = Boolean(projectId && userId && workspaceId)
   const sharedCollaborationEnabled = canSync && collaborationEnabled
-  const collaborationMode = sharedCollaborationEnabled ? "shared" : "local"
+  const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
 
   const {
     status: collabSessionStatus,
@@ -109,19 +109,21 @@ export function ProjectSyncProviderRuntime({
     enabled: sharedCollaborationEnabled,
   })
 
-  const activeCollabSession: CollabSessionDescriptor | null =
-    sharedCollaborationEnabled && collabSessionStatus === "ready" && collabSession
-      ? {
-          projectId: String(resolvedProjectId),
-          roomId: collabSession.roomId,
-          collabWsUrl: collabSession.collabWsUrl,
-          token: collabSession.token,
-          protocolVersion: collabSession.protocolVersion,
-          deviceId: collabSession.deviceId,
-          devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
-          encryption: collabSession.encryption,
-        }
-      : null
+  const activeCollabSession: CollabSessionDescriptor | null = useMemo(() => {
+    if (!sharedCollaborationEnabled || collabSessionStatus !== "ready" || !collabSession) {
+      return null
+    }
+    return {
+      projectId: String(resolvedProjectId),
+      roomId: collabSession.roomId,
+      collabWsUrl: collabSession.collabWsUrl,
+      token: collabSession.token,
+      protocolVersion: collabSession.protocolVersion,
+      deviceId: collabSession.deviceId,
+      devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
+      encryption: collabSession.encryption,
+    }
+  }, [collabSession, collabSessionStatus, resolvedProjectId, sharedCollaborationEnabled])
 
   const refreshActiveCollabSession = useMemo(
     () => async (): Promise<CollabSessionDescriptor | null> => {
@@ -202,26 +204,36 @@ export function ProjectSyncProviderRuntime({
     }
   }, [workspaceId, onFilesChanged, projectId, refreshActiveCollabSession, sharedCollaborationEnabled])
 
+  const syncContextValue = useMemo(() => {
+    if (!canSync) return null
+    return {
+      isSynced: true,
+      cloudSyncBlocked: false,
+      lastSyncAt,
+      workspaceId,
+      gitCwd,
+      collaborationEnabled: sharedCollaborationEnabled,
+      collaborationMode,
+      activeBranch,
+      sharedBranch,
+      triggerSync,
+      syncProgress: progress,
+    }
+  }, [
+    activeBranch,
+    canSync,
+    collaborationMode,
+    gitCwd,
+    lastSyncAt,
+    progress,
+    sharedBranch,
+    sharedCollaborationEnabled,
+    triggerSync,
+    workspaceId,
+  ])
+
   return (
-    <ProjectSyncContext.Provider
-      value={
-        canSync
-          ? {
-              isSynced: true,
-              cloudSyncBlocked: false,
-              lastSyncAt,
-              workspaceId,
-              gitCwd,
-              collaborationEnabled: sharedCollaborationEnabled,
-              collaborationMode,
-              activeBranch,
-              sharedBranch,
-              triggerSync,
-              syncProgress: progress,
-            }
-          : null
-      }
-    >
+    <ProjectSyncContext.Provider value={syncContextValue}>
       <YjsProjectProvider
         projectId={resolvedProjectId}
         userId={resolvedUserId}

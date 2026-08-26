@@ -364,6 +364,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
     closeSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:closeSession', options),
+    teardownProject: (options: { projectId: string }) =>
+      ipcRenderer.invoke('workbenchSession:teardownProject', options),
     getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),
     listSessions: () => ipcRenderer.invoke('workbenchSession:listSessions'),

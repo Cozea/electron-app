@@ -1446,6 +1446,11 @@ export interface ElectronAPI {
       laneId: string
       workspaceId?: string | null
     }) => Promise<{ success: boolean }>
+    teardownProject: (options: { projectId: string }) => Promise<{
+      success: boolean
+      closedSessions: number
+      error?: string
+    }>
     getSession: (options: {
       sessionKey?: string | null
       projectId: string

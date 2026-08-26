@@ -694,16 +694,19 @@ export function YjsProjectProvider({
     canRunCollaborationSync ? yjsDoc : null,
   )
 
+  const yjsProjectContextValue = useMemo(
+    () => ({
+      yjsDoc,
+      awareness: yjsDoc?.awareness ?? null,
+      isConnected,
+      deleteConflicts,
+      resolveDeleteConflict: resolveConflict,
+    }),
+    [deleteConflicts, isConnected, resolveConflict, yjsDoc],
+  )
+
   return (
-    <YjsProjectContext.Provider
-      value={{
-        yjsDoc,
-        awareness: yjsDoc?.awareness ?? null,
-        isConnected,
-        deleteConflicts,
-        resolveDeleteConflict: resolveConflict,
-      }}
-    >
+    <YjsProjectContext.Provider value={yjsProjectContextValue}>
       {children}
     </YjsProjectContext.Provider>
   )

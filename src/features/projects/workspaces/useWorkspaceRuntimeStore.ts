@@ -65,6 +65,7 @@ export interface WorkspaceRuntimeRecord {
 
 interface WorkspaceRuntimeState {
   runtimes: Record<string, WorkspaceRuntimeRecord>
+  suppressedProjectIds: Record<string, true>
   actions: {
     ensureRuntime: (config: WorkspaceRuntimeConfig) => string | null
     attachRuntime: (runtimeId: string) => void
@@ -75,6 +76,8 @@ interface WorkspaceRuntimeState {
     bindSessionSnapshot: (runtimeId: string, snapshot: WorkbenchSessionSnapshot | null) => void
     refreshLifecycles: () => void
     closeRuntime: (runtimeId: string) => void
+    /** Hard-stop hosting for a deleted/removing project. Prevents focused-route revive. */
+    suppressProject: (projectId: string) => void
   }
 }
 
@@ -96,6 +99,7 @@ function readSignalState(
   const hasRunningDevServer = Boolean(record.sessionSnapshot?.devServer.running)
   const hasVisibleBrowserSurface = Boolean(record.sessionSnapshot?.hasBrowserSurface)
   const hasNativePreview = Boolean(record.sessionSnapshot?.hasNativePreviewSession)
+  // Do not stamp `now` for steady-state collab/sync — that forces lifecycle churn every refresh.
   const lastActivityAt = Math.max(
     record.lastAttachedAt ?? 0,
     record.lastDetachedAt ?? 0,
@@ -104,7 +108,6 @@ function readSignalState(
     record.syncContext?.lastSyncAt ?? 0,
     record.config.lastSyncAt ?? 0,
     hasSyncActivity ? now : 0,
-    hasConnectedCollab ? now : 0,
   ) || null
 
   return {
@@ -214,6 +217,10 @@ function createRecord(runtimeId: string, config: WorkspaceRuntimeConfig): Worksp
 }
 
 function applyResolvedLifecycle(record: WorkspaceRuntimeRecord, now = Date.now()): WorkspaceRuntimeRecord {
+  // Explicitly closed runtimes must stay closed until removed/recreated.
+  if (record.lifecycle === "closed") {
+    return record
+  }
   const nextState = resolveLifecycle(record, now)
   return {
     ...record,
@@ -236,10 +243,16 @@ export function resolveWorkspaceRuntimeId(input: {
   )
 }
 
-export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) => ({
+export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set, get) => ({
   runtimes: {},
+  suppressedProjectIds: {},
   actions: {
     ensureRuntime: (config) => {
+      const projectId = config.projectId ? String(config.projectId) : null
+      if (projectId && get().suppressedProjectIds[projectId]) {
+        return null
+      }
+
       const runtimeId = resolveWorkspaceRuntimeId({
         projectId: config.projectId,
         workspaceId: config.workspaceId,
@@ -252,6 +265,10 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
 
       set((state) => {
         const existing = state.runtimes[runtimeId] ?? null
+        if (existing?.lifecycle === "closed") {
+          // Do not revive an explicitly closed runtime via ensure.
+          return state
+        }
         const nextConfig: WorkspaceRuntimeConfig = {
           ...config,
           laneId: normalizeWorkspaceLaneId(config.laneId),
@@ -312,6 +329,7 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
       set((state) => {
         const record = state.runtimes[runtimeId]
         if (!record) return state
+        if (record.syncContext === value) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
           syncContext: value,
@@ -328,6 +346,7 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
       set((state) => {
         const record = state.runtimes[runtimeId]
         if (!record) return state
+        if (record.yjsContext === value) return state
         const nextRecord = applyResolvedLifecycle({
           ...record,
           yjsContext: value,
@@ -409,12 +428,45 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
             [runtimeId]: {
               ...record,
               lifecycle: "closed",
+              routeAttachmentCount: 0,
+              syncContext: null,
+              yjsContext: EMPTY_YJS_PROJECT_CONTEXT_VALUE,
+              sessionKey: null,
+              sessionSnapshot: null,
               signals: {
                 ...record.signals,
+                hasConnectedCollab: false,
+                hasSyncActivity: false,
+                hasRunningTerminals: false,
+                hasRunningDevServer: false,
+                hasVisibleBrowserSurface: false,
+                hasNativePreview: false,
+                pendingSyncStatus: null,
                 lifecycleReason: "closed-explicitly",
               },
             },
           },
+        }
+      })
+    },
+    suppressProject: (projectId) => {
+      const normalizedProjectId = projectId.trim()
+      if (!normalizedProjectId) return
+
+      set((state) => {
+        const nextRuntimes: Record<string, WorkspaceRuntimeRecord> = {}
+        for (const [runtimeId, record] of Object.entries(state.runtimes)) {
+          if (String(record.config.projectId ?? "") === normalizedProjectId) {
+            continue
+          }
+          nextRuntimes[runtimeId] = record
+        }
+        return {
+          suppressedProjectIds: {
+            ...state.suppressedProjectIds,
+            [normalizedProjectId]: true,
+          },
+          runtimes: nextRuntimes,
         }
       })
     },

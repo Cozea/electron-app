@@ -9,6 +9,7 @@ import { useTranslation } from '@/lib/i18n'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
+import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDeletedProjectFromUi'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { Button } from '@/components/ui/button'
@@ -383,34 +384,58 @@ export function ProjectSettingsPage({
     }
   }, [archiveProject, convexUserId, navigate, project])
 
-  const handleDelete = useCallback(async (confirmName: string) => {
-    if (!project || !convexUserId || confirmName !== project.name) return
+  const handleDelete = useCallback(async (
+    options: { keepLocalFiles: boolean },
+  ) => {
+    if (!project || !convexUserId) return
+
+    const deletedProject = project
+    const deletedProjectId = String(deletedProject._id)
+    const keepLocalFiles = options.keepLocalFiles
 
     setIsDeleting(true)
     setDeleteError(null)
+    setShowDeleteDialog(false)
+
+    // Soft navigate so the Convex delete can still complete (full reload aborts it).
+    detachDeletedProjectFromUi(deletedProjectId)
+    navigate('/projects', { replace: true })
+
     try {
+      console.info('[ProjectDelete] mutation-start', {
+        projectId: deletedProjectId,
+        keepLocalFiles,
+      })
+      const mutationStartedAt = performance.now()
       await withProjectMutationTimeout(
         removeProject({
-          projectId: project._id,
+          projectId: deletedProject._id,
           userId: convexUserId,
-          confirmName,
+          confirmName: deletedProject.name,
         }),
         'Deleting this project is taking longer than expected. Check your connection and try again.',
       )
-      await cleanupDeletedProjectLocally(String(project._id), {
-        projectName: project.name,
-        projectSlug: project.slug,
-        managedProjectPaths: [project.localPath],
+      console.info('[ProjectDelete] mutation-done', {
+        projectId: deletedProjectId,
+        elapsedMs: Math.round(performance.now() - mutationStartedAt),
       })
-      setShowDeleteDialog(false)
-      navigate('/projects')
+      void cleanupDeletedProjectLocally(deletedProjectId, {
+        projectName: deletedProject.name,
+        projectSlug: deletedProject.slug,
+        managedProjectPaths: [deletedProject.localPath],
+        keepLocalFiles,
+      }).catch((error) => {
+        console.warn('[ProjectDelete] Background local cleanup failed.', error)
+      })
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
+      console.warn('[ProjectDelete] mutation-failed', error)
       setDeleteError(
         presentation.detail
           ? `${presentation.message} ${presentation.detail}`
           : presentation.message
       )
+      setShowDeleteDialog(true)
     } finally {
       setIsDeleting(false)
     }

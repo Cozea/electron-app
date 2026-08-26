@@ -554,23 +554,32 @@ export function ProjectLayout({
 
   const canProvideActiveWorkspace = Boolean(project?._id && workspaceResolution?.status === "ready");
 
+  const isProjectRoute = Boolean(routeProjectId || routeSlug);
+  // Deleted: soft-deleted projects can briefly remain in the local query cache.
+  // Missing: freshProject === null means Convex responded "not found / not accessible"
+  // (undefined means still loading). Either way the route is dead — leave it.
+  const shouldLeaveDeadProjectRoute =
+    isProjectRoute &&
+    (project?.status === "deleted" || (!project && freshProject === null));
+
+  // IMPORTANT: redirect from an effect, never from the render body. Calling
+  // navigate() during render restarts the router's render synchronously and
+  // loops forever (render -> navigate -> render), pinning the main thread
+  // until the renderer OOMs.
+  useEffect(() => {
+    if (shouldLeaveDeadProjectRoute) {
+      navigate("/projects", { replace: true });
+    }
+  }, [navigate, shouldLeaveDeadProjectRoute]);
+
+  if (shouldLeaveDeadProjectRoute) {
+    return null;
+  }
+
   // Only block on project loading when we're actually on a project-specific
   // route. Routes like /projects/ (launch page) have no routeProjectId or
   // routeSlug, so project is always null there — don't block them.
-  if (!project && (routeProjectId || routeSlug)) {
-    // freshProject === undefined means Convex hasn't responded yet (still loading).
-    // freshProject === null means Convex responded: project not found / deleted.
-    // Distinguish so we don't spin forever on a deleted project.
-    const convexResolved = freshProject !== undefined;
-    const projectDefinitelyMissing = convexResolved && freshProject === null;
-
-    if (projectDefinitelyMissing) {
-      // Project was deleted or is not accessible. Redirect to the launch page
-      // so the user isn't stuck on a dead URL.
-      navigate("/projects", { replace: true });
-      return null;
-    }
-
+  if (!project && isProjectRoute) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Loading project...

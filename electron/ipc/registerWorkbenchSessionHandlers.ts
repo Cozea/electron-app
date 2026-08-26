@@ -69,6 +69,24 @@ export function registerWorkbenchSessionHandlers(
   )
 
   ipcMain.handle(
+    'workbenchSession:teardownProject',
+    async (_event, options: { projectId: string }) => {
+      const projectId = options?.projectId?.trim()
+      if (!projectId) {
+        return { success: false, closedSessions: 0, error: 'projectId required' }
+      }
+
+      // Only stop live sessions here. Workspace forget happens after Convex delete succeeds,
+      // otherwise the cloud project is left behind with no local link.
+      const sessionResult = await service.teardownProject(projectId)
+      return {
+        success: true,
+        closedSessions: sessionResult.closedSessions,
+      }
+    },
+  )
+
+  ipcMain.handle(
     'workbenchSession:getSession',
     (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) => {
       return service.getSession(options)

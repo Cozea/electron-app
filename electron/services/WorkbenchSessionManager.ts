@@ -748,11 +748,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
     record.browserBindings = {}
 
     if (record.workspaceId) {
-      await this.devServerService.stop(record.workspaceId).catch(() => ({ success: false }))
+      this.devServerService.forceKill(record.workspaceId)
     }
 
     if (record.nativePreviewLocator) {
-      await this.nativePreviewManager.stopSession(record.nativePreviewLocator).catch(() => ({ success: false }))
+      void this.nativePreviewManager.stopSession(record.nativePreviewLocator).catch(() => ({ success: false }))
       record.nativePreviewLocator = null
     }
 
@@ -781,6 +781,23 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     this.persist()
     return true
+  }
+
+  async teardownProject(projectId: string): Promise<{ closedSessions: number }> {
+    const normalizedProjectId = projectId.trim()
+    const matching = Array.from(this.sessions.entries()).filter(
+      ([, record]) => record.projectId === normalizedProjectId,
+    )
+
+    for (const [sessionKey] of matching) {
+      await this.closeSessionByKey(sessionKey)
+    }
+
+    if (matching.length > 0) {
+      this.persist()
+    }
+
+    return { closedSessions: matching.length }
   }
 
   getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }): WorkbenchSessionSnapshot | null {
