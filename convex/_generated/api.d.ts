@@ -12,6 +12,7 @@ import type * as activity from "../activity.js";
 import type * as clean from "../clean.js";
 import type * as crons from "../crons.js";
 import type * as deployments from "../deployments.js";
+import type * as devApps from "../devApps.js";
 import type * as fileTombstones from "../fileTombstones.js";
 import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_modelTiers from "../lib/modelTiers.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   clean: typeof clean;
   crons: typeof crons;
   deployments: typeof deployments;
+  devApps: typeof devApps;
   fileTombstones: typeof fileTombstones;
   "lib/encryption": typeof lib_encryption;
   "lib/modelTiers": typeof lib_modelTiers;

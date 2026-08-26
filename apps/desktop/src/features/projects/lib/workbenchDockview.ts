@@ -283,6 +283,12 @@ export function buildAddPanelOptions(
   return placePanelLeftOfChanges(base, changesPanel)
 }
 
+/**
+ * Fallback dock when no serialized split tree exists. Each tile is placed
+ * `direction: "right"` of the last — a row of columns. Split orientation and
+ * sizes live only in persisted dockview JSON / the live API; this rebuild
+ * cannot recover them.
+ */
 export function buildDefaultDockview(
   api: DockviewApi,
   project: WorkbenchProjectState,

@@ -18,9 +18,8 @@ import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore";
-import {
-  WorkbenchDockRuntimeProvider,
-} from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext";
+import { WorkbenchKeepAliveHost } from "@/features/projects/components/workbench/WorkbenchKeepAliveHost";
+import type { WorkbenchKeepAliveSession } from "@/features/projects/components/workbench/workbenchKeepAlive";
 import {
   type TaskOverlayLocationState,
   type TaskOverlayPayload,
@@ -30,7 +29,6 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
-import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime";
 import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
 import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import {
@@ -40,10 +38,6 @@ import {
 } from "@/features/projects/lib/workbenchIntent";
 import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore";
 import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
-import {
-  ensureWorkbenchLayoutPersistenceReady,
-  peekPersistedWorkbenchLayout,
-} from "@/features/projects/lib/workbenchLayoutPersistence";
 import { useWorkbenchSessionLifecycle } from "@/features/projects/hooks/useWorkbenchSessionLifecycle";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 import {
@@ -63,11 +57,6 @@ const LazyProjectSettingsPage = lazy(() =>
 const LazyTaskFocusOverlay = lazy(() =>
   import("@/features/projects/components/TaskFocusOverlay").then((module) => ({
     default: module.TaskFocusOverlay,
-  })),
-);
-const LazyWorkbenchDockviewCanvas = lazy(() =>
-  import("@/features/projects/components/workbench/WorkbenchDockviewCanvas").then((module) => ({
-    default: module.WorkbenchDockviewCanvas,
   })),
 );
 
@@ -109,7 +98,6 @@ export function ProjectWorkbenchSurface() {
     taskOverlayState ? [taskOverlayState] : [],
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false);
   const collabBranch = projectRouteContext?.collabBranch ?? "main";
   const laneState = projectRouteContext?.laneState ?? null;
   const activeLane = projectRouteContext?.activeLane ?? null;
@@ -129,9 +117,6 @@ export function ProjectWorkbenchSurface() {
   const gitRootPath = identityGitRootPath;
   const workbenchScopeKey = projectId
     ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchId)
-    : null;
-  const legacyWorkbenchScopeKey = projectId
-    ? buildWorkbenchScopeKey(projectId, activeLaneId, null)
     : null;
   const projectWorkbench = useProjectWorkbenchStore(
     useMemo(
@@ -176,50 +161,6 @@ export function ProjectWorkbenchSurface() {
   const workbenchSessionRef = useRef(workbenchSession);
   workbenchSessionRef.current = workbenchSession;
   const getWorkbenchSession = useCallback(() => workbenchSessionRef.current, []);
-  const persistedLayout = useMemo(() => {
-    if (!workbenchScopeKey || !projectWorkbench) {
-      return null;
-    }
-
-    const pathAwareLayout = peekPersistedWorkbenchLayout(
-      workbenchScopeKey,
-      projectWorkbench.layoutResetKey,
-    );
-    if (
-      pathAwareLayout ||
-      !legacyWorkbenchScopeKey ||
-      legacyWorkbenchScopeKey === workbenchScopeKey
-    ) {
-      return pathAwareLayout;
-    }
-
-    return peekPersistedWorkbenchLayout(
-      legacyWorkbenchScopeKey,
-      projectWorkbench.layoutResetKey,
-    );
-  }, [legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey]);
-  const {
-    dockviewHostRef,
-    getSelectionPreviewTile,
-    handleResolveSelectionTile,
-    handleDuplicateAssistantTile,
-    handleSplitTile,
-    handleDockviewReady,
-  } = useWorkbenchDockviewRuntime({
-    projectId,
-    activeLaneId,
-    workspaceId: activeWorkbenchId,
-    workbenchSessionKey: workbenchSession?.sessionKey ?? null,
-    projectWorkbench,
-    workbenchScopeKey,
-    isLayoutPersistenceReady,
-    persistedLayout,
-  });
-
-  useEffect(() => {
-    ensureWorkbenchLayoutPersistenceReady();
-    setIsLayoutPersistenceReady(true);
-  }, []);
 
   useEffect(() => {
     if (!currentWorkspaceRuntimeId) {
@@ -456,7 +397,43 @@ export function ProjectWorkbenchSurface() {
       ? "dark"
       : "light";
 
-  if (!projectId || laneResolutionPending) {
+  const currentKeepAliveSession = useMemo<WorkbenchKeepAliveSession | null>(() => {
+    if (!projectId || !workbenchScopeKey || !activeWorkbenchId || laneResolutionPending) {
+      return null;
+    }
+
+    return {
+      scopeKey: workbenchScopeKey,
+      projectId,
+      activeLaneId,
+      workspaceId: activeWorkbenchId,
+      projectRootPath,
+      gitRootPath,
+      projectName,
+      framework: project?.frameworkInfo?.framework ?? null,
+      storedDevCommand: project?.frameworkInfo?.devCommand ?? null,
+      storedDevPort: project?.frameworkInfo?.devPort ?? null,
+      workbenchSessionKey,
+      themeScheme: resolvedDockviewThemeScheme,
+      lastActiveAt: Date.now(),
+    };
+  }, [
+    activeLaneId,
+    activeWorkbenchId,
+    gitRootPath,
+    laneResolutionPending,
+    project?.frameworkInfo?.devCommand,
+    project?.frameworkInfo?.devPort,
+    project?.frameworkInfo?.framework,
+    projectId,
+    projectName,
+    projectRootPath,
+    resolvedDockviewThemeScheme,
+    workbenchScopeKey,
+    workbenchSessionKey,
+  ]);
+
+  if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         {t('workbench.surface.loadingWorkbench')}
@@ -465,103 +442,81 @@ export function ProjectWorkbenchSurface() {
   }
 
   return (
-    <WorkbenchDockRuntimeProvider
-      projectId={projectId}
-      laneId={activeLaneId}
-      projectRootPath={projectRootPath}
-      gitRootPath={gitRootPath}
-      projectName={projectName}
-      workspaceId={activeWorkbenchId}
-      framework={project?.frameworkInfo?.framework ?? null}
-      storedDevCommand={project?.frameworkInfo?.devCommand ?? null}
-      storedDevPort={project?.frameworkInfo?.devPort ?? null}
-      workbenchSessionKey={workbenchSessionKey}
-      getWorkbenchSession={getWorkbenchSession}
-      getSelectionPreviewTile={getSelectionPreviewTile}
-      onDuplicateAssistantTile={handleDuplicateAssistantTile}
-      onResolveSelectionTile={handleResolveSelectionTile}
-      onSplitTile={handleSplitTile}
+    <div
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
+      data-workbench-session-key={workbenchSession?.sessionKey ?? ""}
+      data-workbench-lifecycle={workbenchSession?.lifecycle ?? "loading"}
     >
-      <div
-        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
-        data-workbench-session-key={workbenchSession?.sessionKey ?? ""}
-        data-workbench-lifecycle={workbenchSession?.lifecycle ?? "loading"}
-      >
-        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          <div className="relative flex h-full min-h-0 min-w-0">
-            <div
-              className="relative min-w-0 flex-1 overflow-hidden bg-transparent"
-            >
-              <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">
-                <Suspense fallback={<WorkbenchOverlayLoading />}>
-                  <LazyWorkbenchDockviewCanvas
-                    dockviewKey={workbenchScopeKey ?? "workbench"}
-                    themeScheme={resolvedDockviewThemeScheme}
-                    onReady={handleDockviewReady}
-                  />
-                </Suspense>
-              </div>
-            </div>
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+        <div className="relative flex h-full min-h-0 min-w-0">
+          <div
+            className="relative min-w-0 flex-1 overflow-hidden bg-transparent"
+          >
+            <WorkbenchKeepAliveHost
+              current={currentKeepAliveSession}
+              getWorkbenchSession={getWorkbenchSession}
+              fallback={<WorkbenchOverlayLoading />}
+            />
+          </div>
 
-            {isSettingsOpen ? (
-              <>
-                <button
-                  type="button"
-                  aria-label={t('workbench.surface.closeSettings')}
-                  data-workbench-browser-overlay="true"
-                  data-workbench-browser-overlay-reason="Settings overlay"
-                  className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
-                  onClick={closeSettingsOverlay}
-                />
+          {isSettingsOpen ? (
+            <>
+              <button
+                type="button"
+                aria-label={t('workbench.surface.closeSettings')}
+                data-workbench-browser-overlay="true"
+                data-workbench-browser-overlay-reason="Settings overlay"
+                className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
+                onClick={closeSettingsOverlay}
+              />
 
-                <aside
-                  data-workbench-browser-overlay="true"
-                  data-workbench-browser-overlay-reason="Settings overlay"
-                  className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
-                >
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <Suspense fallback={<WorkbenchOverlayLoading />}>
-                      <LazyProjectSettingsPage presentation="embedded" onRequestClose={closeSettingsOverlay} />
-                    </Suspense>
-                  </div>
-                </aside>
-              </>
-            ) : null}
-
-            {taskCards.length > 0 ? (
-              <aside className="flex w-[320px] shrink-0 flex-col border-l border-border/60">
-                <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{t('workbench.surface.selectedTasks')}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t('workbench.surface.contextCardsDesc')}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{taskCards.length}</span>
-                </div>
-
-                <div className="app-scrollbar flex-1 space-y-3 overflow-auto px-4 py-3">
-                  {taskCards.map((task) => (
-                    <Suspense
-                      fallback={<div className="h-32 rounded-xl bg-muted/50" />}
-                      key={getTaskOverlayKey(task)}
-                    >
-                      <LazyTaskFocusOverlay
-                        task={task}
-                        presentation="docked"
-                        onDismiss={() => {
-                          const taskKey = getTaskOverlayKey(task);
-                          setTaskCards((current) =>
-                            current.filter((card) => getTaskOverlayKey(card) !== taskKey),
-                          );
-                        }}
-                      />
-                    </Suspense>
-                  ))}
+              <aside
+                data-workbench-browser-overlay="true"
+                data-workbench-browser-overlay-reason="Settings overlay"
+                className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
+              >
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <Suspense fallback={<WorkbenchOverlayLoading />}>
+                    <LazyProjectSettingsPage presentation="embedded" onRequestClose={closeSettingsOverlay} />
+                  </Suspense>
                 </div>
               </aside>
-            ) : null}
-          </div>
+            </>
+          ) : null}
+
+          {taskCards.length > 0 ? (
+            <aside className="flex w-[320px] shrink-0 flex-col border-l border-border/60">
+              <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{t('workbench.surface.selectedTasks')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('workbench.surface.contextCardsDesc')}
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground">{taskCards.length}</span>
+              </div>
+
+              <div className="app-scrollbar flex-1 space-y-3 overflow-auto px-4 py-3">
+                {taskCards.map((task) => (
+                  <Suspense
+                    fallback={<div className="h-32 rounded-xl bg-muted/50" />}
+                    key={getTaskOverlayKey(task)}
+                  >
+                    <LazyTaskFocusOverlay
+                      task={task}
+                      presentation="docked"
+                      onDismiss={() => {
+                        const taskKey = getTaskOverlayKey(task);
+                        setTaskCards((current) =>
+                          current.filter((card) => getTaskOverlayKey(card) !== taskKey),
+                        );
+                      }}
+                    />
+                  </Suspense>
+                ))}
+              </div>
+            </aside>
+          ) : null}
         </div>
       </div>
 
@@ -573,6 +528,6 @@ export function ProjectWorkbenchSurface() {
         closeSettings={closeSettingsOverlay}
         isSettingsOpen={isSettingsOpen}
       />
-    </WorkbenchDockRuntimeProvider>
+    </div>
   );
 }

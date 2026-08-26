@@ -251,6 +251,10 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         tabGroupAccent="palette"
         theme={dockviewTheme}
         floatingGroupBounds="boundedWithinViewport"
+        // Electron is an embedded webview: dockview's default `auto` uses HTML5
+        // DnD for mouse, and `dragstart` often never fires. Pointer strategy is
+        // the documented path for that environment (cloud VM smoke needed it).
+        dndStrategy="pointer"
         // Basic OSS overflow list (not enterprise search/MRU). Explicit so a
         // future theme/option churn cannot silently disable it.
         disableTabsOverflowList={false}
