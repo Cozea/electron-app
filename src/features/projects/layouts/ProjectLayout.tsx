@@ -606,15 +606,14 @@ export function ProjectLayout({
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {isAppStoreRoute ? (
             <Suspense fallback={<SidebarModeFallback />}>
-              <LazyAppStoreSidebar color="currentColor" user={user} />
+              <LazyAppStoreSidebar user={user} />
             </Suspense>
           ) : isSettingsModeRoute ? (
             <Suspense fallback={<SidebarModeFallback />}>
-              <LazySettingsSidebar color="currentColor" user={user} />
+              <LazySettingsSidebar user={user} />
             </Suspense>
           ) : (
             <ProjectSidebar
-              color="currentColor"
               user={user}
               projectId={project?._id ?? null}
             />

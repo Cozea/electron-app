@@ -54,7 +54,7 @@ export default function NewProject() {
           return
         }
 
-        void importPickedLocalFolder(selectedPath).then(({ outcome }) => {
+        void importPickedLocalFolder(selectedPath).then((outcome) => {
           if (outcome !== "imported") {
             navigate("/projects", { replace: true })
           }

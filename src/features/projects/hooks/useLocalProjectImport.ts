@@ -12,7 +12,6 @@ import {
   buildFilesystemSlug,
   deriveNameFromPath,
   deriveProviderFromRepoUrl,
-  detectCurrentBranch,
   inspectLocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 import {
@@ -123,10 +122,10 @@ export function useLocalProjectImport() {
 
     try {
       const projectName = deriveNameFromPath(localFolderPath) || "Project"
-      const branch = await detectCurrentBranch(
-        localFolderPath,
-        localGitState.branch || "main",
-      )
+      // The folder is not bound into the workspace catalog yet, so the
+      // catalog-backed git IPC cannot answer here; inspectLocalGitState has
+      // already read the branch straight off `.git/HEAD`.
+      const branch = localGitState.branch || "main"
       const existingRemoteUrl = localGitState.remoteUrl?.trim() || ""
       const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
       const result = await createProject({

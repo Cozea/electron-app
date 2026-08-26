@@ -1310,7 +1310,8 @@ export interface ElectronAPI {
    * or `<input type="file">`. Must be called with File objects from the DOM.
    */
   getPathForFile: (file: File) => string
-  localAiRuntime: {
+  /** Declared ahead of the managed local chat runtime; preload does not expose it yet. */
+  localAiRuntime?: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
   }
   integrations: {
@@ -1591,6 +1592,8 @@ export interface ElectronAPI {
     openFolder: (options: { workspaceId: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (workspaceId: string) => Promise<boolean>
+    /** Resolves an opaque workspace id to its absolute project root path (or null if unauthorized/unknown). */
+    resolveRoot: (workspaceId: string) => Promise<string | null>
     writeFile: (options: {
       workspaceId: string
       filePath: string
@@ -1637,7 +1640,7 @@ export interface ElectronAPI {
       cleanBrokenLocalFiles?: boolean
       forceReinstall?: boolean
     }) => Promise<RuntimeEnsureResult>
-    getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
+    getRuntimeStatus: (options?: { workspaceId?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
   /**
    * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.
