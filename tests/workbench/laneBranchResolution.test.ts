@@ -28,6 +28,16 @@ describe('resolveLaneBranchKnowledge', () => {
     ).toEqual({ kind: 'resolved', branch: 'main', remember: false })
   })
 
+  it('ignores a stale stored branch when git confirms the workspace is not a repo', () => {
+    expect(
+      resolveLaneBranchKnowledge({
+        statusResult: { success: true, isRepo: false, currentBranch: undefined },
+        storedBranch: 'feature/old',
+        collabBranch: 'main',
+      }),
+    ).toEqual({ kind: 'resolved', branch: 'main', remember: false })
+  })
+
   it('keeps the stored branch when git status fails transiently', () => {
     expect(
       resolveLaneBranchKnowledge({
