@@ -14,8 +14,8 @@ import type { WorkbenchDockPanelParams } from "@/features/projects/components/wo
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
 const RUNTIME_PANEL_CONSTRAINTS = {
-  minimumWidth: 280,
-  minimumHeight: 180,
+  minimumWidth: 320,
+  minimumHeight: 220,
 } as const
 
 const ASSISTANT_PANEL_CONSTRAINTS = {
@@ -28,7 +28,55 @@ const SELECTION_PANEL_CONSTRAINTS = {
   minimumHeight: 180,
 } as const
 
+const CHANGES_PANEL_CONSTRAINTS = {
+  minimumWidth: 280,
+  minimumHeight: 260,
+} as const
+
+/** Groups with these components reject inbound tab drops (still allow edge splits). */
+const DROP_LOCKED_COMPONENTS = new Set(["assistantChat", "devServer"])
+
 const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])
+
+export interface WorkbenchTabGroupPreset {
+  label: string
+  color: string
+}
+
+export function resolveTabGroupPreset(component: string): WorkbenchTabGroupPreset {
+  switch (component) {
+    case "assistantChat":
+      return { label: "Agent", color: "agent" }
+    case "browser":
+    case "devServer":
+    case "mobileSimulator":
+      return { label: "Preview", color: "preview" }
+    case "terminal":
+      return { label: "Runtime", color: "runtime" }
+    case "changes":
+      return { label: "Utility", color: "utility" }
+    default:
+      return { label: "Utility", color: "utility" }
+  }
+}
+
+function getPanelConstraintsForComponent(
+  component: string,
+): Pick<AddPanelOptions<WorkbenchDockPanelParams>, "minimumWidth" | "minimumHeight"> {
+  switch (component) {
+    case "browser":
+    case "terminal":
+    case "devServer":
+    case "mobileSimulator":
+      return RUNTIME_PANEL_CONSTRAINTS
+    case "assistantChat":
+      return ASSISTANT_PANEL_CONSTRAINTS
+    case "changes":
+      return CHANGES_PANEL_CONSTRAINTS
+    default:
+      return SELECTION_PANEL_CONSTRAINTS
+  }
+}
 
 function getPanelPlacementReference(api: DockviewApi): IDockviewPanel | undefined {
   if (api.activePanel && !RESERVED_DOCKVIEW_PANEL_IDS.has(api.activePanel.id)) {
@@ -98,19 +146,77 @@ export function getPanelRendererForTile(
 export function getPanelConstraintsForTile(
   type: WorkbenchTileType,
 ): Pick<AddPanelOptions<WorkbenchDockPanelParams>, "minimumWidth" | "minimumHeight"> {
-  switch (type) {
-    case "browser":
-    case "terminal":
-    case "devServer":
-    case "mobileSimulator":
-      return RUNTIME_PANEL_CONSTRAINTS
-    case "assistantChat":
-      return ASSISTANT_PANEL_CONSTRAINTS
-    case "selection":
-    case "tasks":
-    default:
-      return SELECTION_PANEL_CONSTRAINTS
+  return getPanelConstraintsForComponent(getDockComponentName(type))
+}
+
+/**
+ * Re-apply min size after fromJSON / reconcile — serialized layouts can restore
+ * panels without our current constraint floors.
+ */
+export function applyWorkbenchPanelConstraints(api: DockviewApi): void {
+  for (const panel of api.panels) {
+    const constraints = getPanelConstraintsForComponent(panel.api.component)
+    if (panel.api.component === "changes") {
+      // Width is also driven by the Changes sidebar effect; never shrink it.
+      panel.api.setConstraints({
+        minimumWidth: Math.max(panel.minimumWidth ?? 0, constraints.minimumWidth ?? 0),
+        minimumHeight: Math.max(panel.minimumHeight ?? 0, constraints.minimumHeight ?? 0),
+      })
+      continue
+    }
+    panel.api.setConstraints(constraints)
   }
+}
+
+/**
+ * Lock Agent / Dev Server groups against inbound tab drops so critical tiles
+ * are not casually tab-stacked. Edge splits remain allowed (`locked: true`).
+ */
+export function applyWorkbenchGroupLocks(api: DockviewApi): void {
+  for (const group of api.groups) {
+    const shouldLock = group.panels.some((panel) =>
+      DROP_LOCKED_COMPONENTS.has(panel.api.component),
+    )
+    if (group.api.locked !== shouldLock) {
+      group.api.locked = shouldLock
+    }
+  }
+}
+
+/**
+ * Ensure every panel belongs to a labeled/colored tab group matching its
+ * component preset. Round-trips through layout serialization.
+ */
+export function ensureDefaultTabGroups(api: DockviewApi): void {
+  for (const panel of api.panels) {
+    const groupId = panel.group.id
+    const existing = api.getTabGroupForPanel({
+      groupId,
+      panelId: panel.id,
+    })
+    if (existing) continue
+
+    const preset = resolveTabGroupPreset(panel.api.component)
+    const tabGroup =
+      api.getTabGroups({ groupId }).find((group) => group.label === preset.label) ??
+      api.createTabGroup({
+        groupId,
+        label: preset.label,
+        color: preset.color,
+      })
+
+    api.addPanelToTabGroup({
+      groupId,
+      tabGroupId: tabGroup.id,
+      panelId: panel.id,
+    })
+  }
+}
+
+export function applyWorkbenchDockviewPolicies(api: DockviewApi): void {
+  applyWorkbenchPanelConstraints(api)
+  applyWorkbenchGroupLocks(api)
+  ensureDefaultTabGroups(api)
 }
 
 export function isObsoleteWorkbenchTile(tile: WorkbenchTile | undefined | null): boolean {
@@ -211,6 +317,8 @@ export function buildDefaultDockview(
     api.addPanel(buildAddPanelOptions(api, tile, projectId, laneId))
   }
 
+  applyWorkbenchDockviewPolicies(api)
+
   markCozeaInteractionEnd("workbench-restore-tiles", startMark, {
     laneId,
     panelCount: api.totalPanels,
@@ -268,6 +376,7 @@ export function reconcilePanels(
   }
 
   syncPanelTitles(api, project)
+  applyWorkbenchDockviewPolicies(api)
   markCozeaInteractionEnd("workbench-reconcile-panels", startMark, {
     laneId,
     panelCount: api.totalPanels,

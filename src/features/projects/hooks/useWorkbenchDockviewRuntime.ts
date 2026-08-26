@@ -22,6 +22,7 @@ import {
 import { useTerminalStore } from "@/stores/useTerminalStore";
 import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore";
 import {
+  applyWorkbenchDockviewPolicies,
   buildDefaultDockview,
   getDockComponentName,
   getPanelConstraintsForTile,
@@ -222,6 +223,8 @@ export function useWorkbenchDockviewRuntime(
 
         if (api.totalPanels === 0) {
           buildDefaultDockview(api, input.projectWorkbench, input.projectId, input.activeLaneId);
+        } else {
+          applyWorkbenchDockviewPolicies(api);
         }
 
         if (input.projectWorkbench.activeTileId) {
@@ -794,6 +797,11 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onDidOpenPopoutWindowFail(() => {
         console.warn("[WorkbenchDockview] Popout window could not be opened");
+      });
+
+      event.api.onDidAddPanel(() => {
+        if (isHydratingRef.current || isDestroyingRef.current) return;
+        applyWorkbenchDockviewPolicies(event.api);
       });
 
       const handleWorkbenchKeyDown = (keyboardEvent: KeyboardEvent) => {
