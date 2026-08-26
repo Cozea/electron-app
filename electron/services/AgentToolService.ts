@@ -57,7 +57,7 @@ const AGENT_TOOL_DEFINITIONS: Record<AgentToolId, AgentToolDefinition> = {
   codex: {
     id: 'codex',
     label: 'OpenAI Codex',
-    packageName: 'openai-codex-cli',
+    packageName: '@openai/codex',
     binaries: ['codex'],
   },
   shell: {

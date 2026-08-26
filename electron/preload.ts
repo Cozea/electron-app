@@ -296,6 +296,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workbenchBrowser:navigate', options),
     getState: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:getState', options),
+    getViewBounds: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:getViewBounds', options),
     goBack: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:goBack', options),
     goForward: (options: { tileId: string }) =>
