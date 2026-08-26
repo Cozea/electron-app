@@ -77,6 +77,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "mod+o", command: "editor.openFavorite" },
+  // Track A: command palette (Cmd/Ctrl+K). Terminal focus keeps native clear (xterm Cmd+K).
+  { key: "mod+k", command: "commandPalette.toggle", when: "!terminalFocus" },
 ];
 
 function normalizeKeyToken(token: string): string {
