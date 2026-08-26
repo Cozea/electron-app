@@ -5,16 +5,16 @@ import { SubstrateChatClient, readSubstrateRpcChatFlags } from "@cozea/client-ru
 import { createShadowHttpServer } from "../../electron/substrate-shadow-server/createShadowHttpServer";
 
 describe("readSubstrateRpcChatFlags", () => {
-  it("defaults off", () => {
+  it("defaults on", () => {
     const flags = readSubstrateRpcChatFlags({});
-    expect(flags.enabled).toBe(false);
+    expect(flags.enabled).toBe(true);
     expect(flags.flagId).toBe("cozea.substrate.rpcChat");
   });
 
-  it("enables via COZEA_SUBSTRATE_RPC_CHAT=1", () => {
+  it("can disable via COZEA_SUBSTRATE_RPC_CHAT=0", () => {
     expect(
-      readSubstrateRpcChatFlags({ COZEA_SUBSTRATE_RPC_CHAT: "1" }).enabled,
-    ).toBe(true);
+      readSubstrateRpcChatFlags({ COZEA_SUBSTRATE_RPC_CHAT: "0" }).enabled,
+    ).toBe(false);
   });
 });
 
