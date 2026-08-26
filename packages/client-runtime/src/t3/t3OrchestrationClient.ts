@@ -6,6 +6,7 @@ import { T3EffectRpcClient } from "./effectRpcClient";
 export interface T3OrchestrationClientOptions {
   readonly baseUrl: string;
   readonly wsTicket: string;
+  readonly client?: T3EffectRpcClient;
   readonly WebSocketImpl?: typeof WebSocket;
   readonly requestTimeoutMs?: number;
 }
@@ -31,11 +32,23 @@ function shellEventToDomainEvent(value: unknown): OrchestrationEvent | null {
 /** Native T3 Effect RPC orchestration client (Phase T2). */
 export class T3OrchestrationClient {
   private readonly client: T3EffectRpcClient;
+  private readonly ownsClient: boolean;
   private shellUnsubscribe: (() => Promise<void>) | null = null;
   private readonly shellListeners = new Set<(event: OrchestrationEvent) => void>();
 
   constructor(options: T3OrchestrationClientOptions) {
-    this.client = new T3EffectRpcClient(options);
+    if (options.client) {
+      this.client = options.client;
+      this.ownsClient = false;
+    } else {
+      this.client = new T3EffectRpcClient({
+        baseUrl: options.baseUrl,
+        wsTicket: options.wsTicket,
+        WebSocketImpl: options.WebSocketImpl,
+        requestTimeoutMs: options.requestTimeoutMs,
+      });
+      this.ownsClient = true;
+    }
   }
 
   async close(): Promise<void> {
@@ -44,7 +57,9 @@ export class T3OrchestrationClient {
       await this.shellUnsubscribe();
       this.shellUnsubscribe = null;
     }
-    await this.client.close();
+    if (this.ownsClient) {
+      await this.client.close();
+    }
   }
 
   async getArchivedShellSnapshot(): Promise<unknown> {

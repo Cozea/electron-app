@@ -2,11 +2,11 @@ import type { ServerConfig } from "@cozea/assistant-contracts"
 
 import { useAssistantRuntimeMetadata } from "./assistantRuntimeMetadataStore"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
-import { useT3ServerConfigCutover } from "@/substrate/useT3ServerConfigCutover"
+import { useT3Cutover } from "@/substrate/useT3Cutover"
 
 export function useAssistantServerConfig(enabled: boolean) {
   const substrateTransport = useSubstrateChatTransport()
-  useT3ServerConfigCutover({
+  useT3Cutover({
     substrateActive: substrateTransport.active,
     shadowBaseUrl: substrateTransport.shadowBaseUrl,
   })

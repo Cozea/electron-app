@@ -779,6 +779,9 @@ function stopShadowHostedRuntimeMonitor(): void {
 
 function beginShadowHostedRuntimeMonitor(generation: number): void {
   stopShadowHostedRuntimeMonitor()
+  const featureFlags = readSubstrateFeatureFlags()
+  const shadowManager = shadowServerManager ?? getShadowServerManager()
+  const shadowBaseUrl = shadowManager?.baseUrl ?? `http://${featureFlags.shadowServer.host}:${featureFlags.shadowServer.port}`
   shadowHostedRuntimeMonitor = startShadowHostedRuntimeMonitor({
     generation,
     onStarting: () => {
@@ -808,6 +811,8 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
     shouldApply: (activeGeneration) =>
       !appIsQuitting && activeGeneration === assistantRuntimeGeneration,
     httpOrigin: ASSISTANT_RUNTIME_HTTP_URL,
+    shadowBaseUrl,
+    preferT3Server: featureFlags.t3Server,
   })
 }
 

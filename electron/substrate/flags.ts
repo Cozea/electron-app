@@ -174,15 +174,15 @@ export function readSubstrateObsNdjsonFlags(
 }
 
 /**
- * Phase T1 flag — default **off**.
- * Enable with `COZEA_T3_SERVER=1`.
+ * Phase T1 flag — default **on**.
+ * Disable with `COZEA_T3_SERVER=0`.
  */
 export function readSubstrateT3ServerFlags(
   env: NodeJS.ProcessEnv = process.env,
 ): SubstrateT3ServerFlags {
   return {
     flagId: SUBSTRATE_T3_SERVER_FLAG,
-    enabled: parseBooleanFlag(env.COZEA_T3_SERVER, false),
+    enabled: parseBooleanFlag(env.COZEA_T3_SERVER, true),
   };
 }
 
