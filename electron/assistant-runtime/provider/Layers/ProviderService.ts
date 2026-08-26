@@ -35,6 +35,7 @@ import {
 } from "../Services/ProviderSessionDirectory.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
+import { ObservabilityService } from "../../observability/Services/Observability.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type ProviderSessionRuntimePayload } from "../../persistence/Services/ProviderSessionRuntime.ts";
 import { isProviderInstanceEnabled } from "../ProviderInstanceScopedSettings.ts";
@@ -210,6 +211,7 @@ function runtimeStatusFromEvent(
 const makeProviderService = (options?: ProviderServiceLiveOptions) =>
   Effect.gen(function* () {
     const analytics = yield* Effect.service(AnalyticsService);
+    const observability = yield* Effect.service(ObservabilityService);
     const serverSettings = yield* ServerSettingsService;
     const canonicalEventLogger =
       options?.canonicalEventLogger ??
@@ -229,22 +231,29 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       readonly details?: Record<string, unknown>;
       readonly effect: Effect.Effect<A, E>;
     }): Effect.Effect<A, E> =>
-      Effect.gen(function* () {
-        const startedAt = Date.now();
-        const exit = yield* Effect.exit(input.effect);
-        const durationMs = Date.now() - startedAt;
-        const success = exit._tag === "Success";
-        yield* analytics.record("provider.operation", {
+      observability.withSpan(
+        `provider.call.${input.operation}`,
+        {
           operation: input.operation,
-          success,
-          durationMs,
           ...input.details,
-        });
-        if (success) {
-          return exit.value;
-        }
-        return yield* Effect.failCause(exit.cause);
-      });
+        },
+        Effect.gen(function* () {
+          const startedAt = Date.now();
+          const exit = yield* Effect.exit(input.effect);
+          const durationMs = Date.now() - startedAt;
+          const success = exit._tag === "Success";
+          yield* analytics.record("provider.operation", {
+            operation: input.operation,
+            success,
+            durationMs,
+            ...input.details,
+          });
+          if (success) {
+            return exit.value;
+          }
+          return yield* Effect.failCause(exit.cause);
+        }),
+      );
 
     const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
       Effect.succeed(event).pipe(

@@ -29,6 +29,7 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { ObservabilityService } from "../../observability/Services/Observability.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY = 10_000;
@@ -719,6 +720,7 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
+  const observability = yield* ObservabilityService;
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
@@ -1141,6 +1143,22 @@ const make = Effect.gen(function* () {
         event.type === "turn.completed" ||
         event.type === "turn.aborted"
       ) {
+        if (event.type === "turn.started") {
+          yield* observability.recordSpan("turn.start", {
+            threadId: thread.id,
+            turnId: eventTurnId ?? null,
+            provider: event.provider,
+            providerInstanceId: event.providerInstanceId ?? null,
+          });
+        } else if (event.type === "turn.completed" || event.type === "turn.aborted") {
+          yield* observability.recordSpan("turn.end", {
+            threadId: thread.id,
+            turnId: eventTurnId ?? null,
+            provider: event.provider,
+            providerInstanceId: event.providerInstanceId ?? null,
+            outcome: event.type === "turn.aborted" ? "aborted" : runtimeTurnState(event) ?? "completed",
+          });
+        }
         const nextActiveTurnId =
           event.type === "turn.started"
             ? (eventTurnId ?? null)

@@ -58,6 +58,7 @@ import { GitCore } from "../../../electron/assistant-runtime/git/Services/GitCor
 import { GitCommandError, GitManagerError } from "../../../electron/assistant-runtime/git/Errors.ts";
 import { MigrationError } from "@effect/sql-sqlite-bun/SqliteMigrator";
 import { AnalyticsService } from "../../../electron/assistant-runtime/telemetry/Services/AnalyticsService.ts";
+import { ObservabilityService } from "../../../electron/assistant-runtime/observability/Services/Observability.ts";
 import { ServerSettingsService } from "../../../electron/assistant-runtime/serverSettings.ts";
 
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
@@ -564,6 +565,7 @@ describe("WebSocket Server", () => {
       Layer.provideMerge(ServerSettingsService.layerTest(options.serverSettings)),
       Layer.provideMerge(serverConfigLayer),
       Layer.provideMerge(AnalyticsService.layerTest),
+        Layer.provideMerge(ObservabilityService.layerTest),
       Layer.provideMerge(NodeServices.layer),
     );
     const runtimeServices = await Effect.runPromise(

@@ -44,6 +44,7 @@ import {
 } from "../../../../../electron/assistant-runtime/persistence/Layers/Sqlite.ts";
 import { ServerSettingsService } from "../../../../../electron/assistant-runtime/serverSettings.ts";
 import { AnalyticsService } from "../../../../../electron/assistant-runtime/telemetry/Services/AnalyticsService.ts";
+import { ObservabilityService } from "../../../../../electron/assistant-runtime/observability/Services/Observability.ts";
 
 const defaultServerSettingsLayer = ServerSettingsService.layerTest();
 
@@ -274,6 +275,7 @@ function makeProviderServiceLayer() {
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provideMerge(AnalyticsService.layerTest),
+        Layer.provideMerge(ObservabilityService.layerTest),
       ),
       directoryLayer,
 
@@ -319,6 +321,7 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
       Layer.provide(directoryLayer),
       Layer.provide(serverSettingsLayer),
       Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
     );
 
     const failure = yield* Effect.flip(
@@ -373,6 +376,7 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
       Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
     );
 
     yield* Effect.gen(function* () {
@@ -433,6 +437,7 @@ it.effect(
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
       );
       const updatedResumeCursor = {
         threadId: asThreadId("thread-1"),
@@ -485,6 +490,7 @@ it.effect(
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
       );
 
       secondCodex.startSession.mockClear();
@@ -892,6 +898,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
       );
 
       const initial = yield* Effect.gen(function* () {
@@ -925,6 +932,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
       );
 
       secondClaude.startSession.mockClear();
@@ -1015,6 +1023,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
           Layer.provide(directoryLayer),
           Layer.provide(defaultServerSettingsLayer),
           Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(ObservabilityService.layerTest),
         );
 
         // stopSession routes via the binding (allowRecovery: false). It must

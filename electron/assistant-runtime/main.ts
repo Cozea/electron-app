@@ -27,6 +27,8 @@ import { Server } from "./wsServer";
 import { ServerLoggerLive } from "./serverLogger";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
+import { ObservabilityLive } from "./observability/Layers/Observability";
+import { ObservabilityService } from "./observability/Services/Observability";
 import { readBootstrapEnvelope } from "./bootstrap";
 import { ServerSettingsLive } from "./serverSettings";
 
@@ -341,6 +343,7 @@ const LayerLive = (input: CliInput) =>
     Layer.provideMerge(SqlitePersistence.layerConfig),
     Layer.provideMerge(ServerLoggerLive),
     Layer.provideMerge(AnalyticsServiceLayerLive),
+    Layer.provideMerge(ObservabilityLive),
     Layer.provideMerge(ServerSettingsLive),
     Layer.provideMerge(ServerConfigLive(input)),
   );
@@ -353,6 +356,7 @@ const formatHostForUrl = (host: string): string =>
 
 export const recordStartupHeartbeat = Effect.gen(function* () {
   const analytics = yield* AnalyticsService;
+  const observability = yield* ObservabilityService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
 
   const { threadCount, projectCount } = yield* projectionSnapshotQuery.getSnapshot().pipe(
@@ -373,6 +377,11 @@ export const recordStartupHeartbeat = Effect.gen(function* () {
   yield* analytics.record("server.boot.heartbeat", {
     threadCount,
     projectCount,
+  });
+  yield* observability.recordSpan("server.boot", {
+    threadCount,
+    projectCount,
+    ndjsonEnabled: observability.enabled,
   });
 });
 
