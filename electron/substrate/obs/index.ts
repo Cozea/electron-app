@@ -6,3 +6,10 @@ export {
   type SubstrateNdjsonSpan,
   type SubstrateNdjsonWriter,
 } from "./ndjsonSpanWriter";
+
+export {
+  exportSubstrateSpanToOtlp,
+  isOtlpEnabled,
+  resolveOtlpEndpoint,
+  type OtlpExportResult,
+} from "./otlpExporter";

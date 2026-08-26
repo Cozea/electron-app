@@ -9,6 +9,7 @@ interface DesktopBridgeSurface {
     lastError: string | null
     updatedAt: number
   }>
+  getSubstrateShadowStatus?: () => Promise<import('@/lib/desktopBridgeClient').SubstrateShadowBridgeStatus>
   getWsUrl: () => string | null
   pickFolder: () => Promise<string | null>
   confirm: (message: string) => Promise<boolean>

@@ -1,4 +1,5 @@
 import { readSubstrateProvidersFlags } from "../flags";
+import { createCodexSubstrateDriver, type CodexDriverHooks } from "./drivers/codexDriver";
 import {
   createOpenCodeSubstrateDriver,
   type OpenCodeDriverHooks,
@@ -11,6 +12,8 @@ export interface BootstrapSubstrateProvidersOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Override OpenCode hooks (tests / future live probe wiring). */
   readonly openCodeHooks?: OpenCodeDriverHooks;
+  /** Override Codex hooks (tests / future live app-server probe wiring). */
+  readonly codexHooks?: CodexDriverHooks;
   /** Extra drivers beyond the built-in OpenCode + legacy adapters. */
   readonly extraDrivers?: ReadonlyArray<SubstrateProviderDriver>;
   /**
@@ -38,6 +41,7 @@ export function bootstrapSubstrateProviderRegistry(
   }
 
   registry.register(createOpenCodeSubstrateDriver(options.openCodeHooks));
+  registry.register(createCodexSubstrateDriver(options.codexHooks));
   for (const driver of LEGACY_ADAPTER_DRIVERS) {
     registry.register(driver);
   }

@@ -54,6 +54,7 @@ export const PHASE5_IPC_ALLOWLIST_PREFIXES = [
   "conflict:",
   "substrateShadow:",
   "substrate:",
+  "substrate:vcs:",
   "settings:",
   "storage:",
 ] as const;

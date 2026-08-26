@@ -68,3 +68,11 @@ export {
   bootstrapSubstrateVcs,
   resetSubstrateVcsBootstrapForTests,
 } from "./bootstrap";
+
+export {
+  registerSubstrateVcsIpcHandlers,
+  resetSubstrateVcsIpcHandlersForTests,
+  SUBSTRATE_VCS_CAPABILITIES_HANDLE,
+  SUBSTRATE_VCS_INVALIDATE_HANDLE,
+  type SubstrateVcsCapabilitiesResponse,
+} from "./registerIpcHandlers";

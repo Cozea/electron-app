@@ -238,7 +238,7 @@ describe("bootstrapSubstrateProviderRegistry", () => {
     expect(openCode.metadata.implementation).toBe("full");
 
     const codex = registry.resolveDriver("codex");
-    expect(codex.metadata.implementation).toBe("legacy-adapter");
+    expect(codex.metadata.implementation).toBe("full");
 
     const instance = await registry.materialize({ driverKind: "opencode" });
     const ready = await instance.snapshot.run();

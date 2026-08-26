@@ -126,5 +126,4 @@ export const codexLegacyAdapterDriver = createLegacyAdapterDriver({
 export const LEGACY_ADAPTER_DRIVERS: ReadonlyArray<SubstrateProviderDriver> = [
   cursorLegacyAdapterDriver,
   claudeLegacyAdapterDriver,
-  codexLegacyAdapterDriver,
 ];

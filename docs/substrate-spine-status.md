@@ -7,7 +7,7 @@ Last updated: 2026-08-26 (completion branch)
 | 0 Inventories | Done (docs) | #74 / #78 | IPC/store/gap inventories + pin |
 | 1 Shadow server | **Complete** | #85 / this branch | Flagged spawn on :4783; obs start/ready spans |
 | 2 RPC chat | **Complete** | #89 / this branch | Contracts + client-runtime + flagged `/rpc`; provider routing when Phase 3 on |
-| 3 Providers | **Complete** | #88 / this branch | Registry wired into rpc `chat.send` when `COZEA_SUBSTRATE_PROVIDERS=1` |
+| 3 Providers | **Complete** | #88 / this branch | Full Codex driver (CLI probe + enrich); RPC provider routing |
 | 4 VCS 4a–4e | **Complete (scaffold)** | #87 / this branch | Bootstrapped from main + workspace sync IPC; GitCore retained |
 | 5 Shrink main | **Complete (flagged)** | this branch | Primary+shadow skips in-process assistant; status `inProcessAssistant: false` |
 | 6 Obs / remote | **Complete (flagged)** | this branch | NDJSON writer under `electron/substrate/obs/`; remote env stubs |
@@ -19,7 +19,7 @@ All substrate flags default **off**.
 
 ### Follow-ons (not blocking spine)
 
-- Codex deep parity (full driver + session runtime)
+- Codex app-server live session on substrate primary (beyond CLI/inventory probe)
 - Full GitCore deletion after agent `vcs.*` cutover
-- Product chat UI default flip to substrate primary
-- Optional OTLP export for Track E
+- Default-on product flip (env flags remain off)
+- OTLP collector wiring in production ops
