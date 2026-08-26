@@ -22,6 +22,7 @@ import type {
   ResolveProjectWorkspaceResult,
   RuntimeIdentityDTO,
   WorkspaceCandidate,
+  WorkspaceCatalogSnapshotEntry,
   WorkspaceConflictDTO,
   WorkspaceLaneDTO,
   WorkspaceLaneRecord,
@@ -281,6 +282,9 @@ export interface WorkspaceCatalogInterface {
     projectId: string,
     data: { slug?: string; name?: string },
   ) => Effect.Effect<void>
+
+  /** Read-only: one entry per project with an active workspace. */
+  readonly buildSnapshotEntries: () => Effect.Effect<WorkspaceCatalogSnapshotEntry[]>
 
   readonly getSetting: (key: string) => Effect.Effect<string | null>
   readonly setSetting: (key: string, value: string) => Effect.Effect<void>
@@ -687,7 +691,7 @@ export const WorkspaceCatalogLive = Layer.effect(
         if (preferredWorkspaceId) {
           workspace = yield* queryWorkspaceById(preferredWorkspaceId)
           if (workspace && workspace.projectId !== projectId) {
-            return {
+            const result: ResolveProjectWorkspaceResult = {
               status: "broken-binding" as const,
               projectId,
               workspace: recordToDTO(workspace),
@@ -700,6 +704,7 @@ export const WorkspaceCatalogLive = Layer.effect(
                 },
               ],
             }
+            return result
           }
         }
         if (!workspace) {
@@ -814,7 +819,10 @@ export const WorkspaceCatalogLive = Layer.effect(
           runtimeIdentity: buildRuntimeIdentity(finalWorkspace, lane),
           collaborationScopeId: buildCollaborationScopeId(projectId),
         }
-      })
+        // Verification / scan failures are unrecoverable here and the interface
+        // declares this effect infallible; surface them as defects rather than
+        // leaking an Error into the never-typed channel callers rely on.
+      }).pipe(Effect.orDie)
 
     // ── bindExistingFolder ──────────────────────────────────────────────────
 
@@ -1338,6 +1346,49 @@ export const WorkspaceCatalogLive = Layer.effect(
         catch: (e) => new Error(String(e)),
       })
 
+    // ── snapshot ──────────────────────────────────────────────────────────────
+
+    const BROKEN_VERIFICATION_STATUSES: ReadonlySet<string> = new Set([
+      "missing",
+      "not-directory",
+      "unreadable",
+      "marker-mismatched-project",
+      "marker-mismatched-workspace",
+      "repo-mismatched",
+    ])
+
+    const buildSnapshotEntries = (): Effect.Effect<WorkspaceCatalogSnapshotEntry[]> =>
+      Effect.gen(function* () {
+        const workspaces = yield* sql`
+          SELECT * FROM local_workspaces WHERE is_active = 1
+        `.pipe(Effect.map((rows) => rows.map((r) => mapRow(r as Record<string, unknown>))))
+
+        const lanes = yield* sql`
+          SELECT * FROM workspace_lanes WHERE is_active = 1
+        `.pipe(Effect.map((rows) => rows.map((r) => mapLaneRow(r as Record<string, unknown>))))
+
+        const lanesByWorkspaceId = new Map(lanes.map((lane) => [lane.workspaceId, lane] as const))
+
+        return workspaces.map((workspace): WorkspaceCatalogSnapshotEntry => {
+          const lane = lanesByWorkspaceId.get(workspace.workspaceId) ?? null
+          const broken = BROKEN_VERIFICATION_STATUSES.has(workspace.verificationStatus)
+          return {
+            projectId: workspace.projectId,
+            status: broken ? "broken" : "ready",
+            workspace: recordToDTO(workspace),
+            lane: lane ? laneRecordToDTO(lane) : null,
+            runtimeIdentity: lane ? buildRuntimeIdentity(workspace, lane) : null,
+            collaborationScopeId: buildCollaborationScopeId(workspace.projectId),
+            reason: broken
+              ? (workspace.verificationReason ?? workspace.verificationStatus)
+              : null,
+          }
+        })
+        // A failed read of the catalog tables is unrecoverable infrastructure
+        // failure, not a domain outcome; the interface declares this effect
+        // infallible, so surface SqlError as a defect rather than leaking it.
+      }).pipe(Effect.orDie)
+
     // ── settings ──────────────────────────────────────────────────────────────
 
     const getSetting = (key: string) =>
@@ -1371,26 +1422,31 @@ export const WorkspaceCatalogLive = Layer.effect(
       `.pipe(Effect.asVoid)
     }
 
+    // Every member is declared infallible: SQL and filesystem failures here are
+    // unrecoverable infrastructure faults, so they become defects at this
+    // boundary instead of leaking into a never-typed error channel.
     return {
       resolveProject,
-      getActive: queryActiveWorkspace,
+      getActive: (projectId: string) => queryActiveWorkspace(projectId).pipe(Effect.orDie),
       listForProject: (projectId) =>
         sql`SELECT * FROM local_workspaces WHERE project_id = ${projectId}`.pipe(
           Effect.map((rows) => rows.map((r) => mapRow(r as Record<string, unknown>))),
+          Effect.orDie,
         ),
-      bindExistingFolder,
-      createForProject,
-      importExistingFolder,
-      cloneForProject,
-      verify,
-      forget,
-      listCandidates,
-      setActive: doSetActive,
+      bindExistingFolder: (req) => bindExistingFolder(req).pipe(Effect.orDie),
+      createForProject: (req) => createForProject(req).pipe(Effect.orDie),
+      importExistingFolder: (req) => importExistingFolder(req).pipe(Effect.orDie),
+      cloneForProject: (req) => cloneForProject(req).pipe(Effect.orDie),
+      verify: (workspaceId) => verify(workspaceId).pipe(Effect.orDie),
+      forget: (workspaceId) => forget(workspaceId).pipe(Effect.orDie),
+      listCandidates: (projectId, slug, roots, expectedRepo) =>
+        listCandidates(projectId, slug, roots, expectedRepo).pipe(Effect.orDie),
+      setActive: (workspaceId, projectId) => doSetActive(workspaceId, projectId).pipe(Effect.orDie),
       getById: (workspaceId: string) =>
         Effect.gen(function* () {
           const w = yield* queryWorkspaceById(workspaceId)
           return w ? recordToDTO(w) : null
-        }),
+        }).pipe(Effect.orDie),
       getLane: (workspaceId: string, laneId?: string | null) =>
         Effect.gen(function* () {
           let l = laneId ? yield* queryLaneById(laneId) : yield* queryActiveLane(workspaceId)
@@ -1401,10 +1457,11 @@ export const WorkspaceCatalogLive = Layer.effect(
             }
           }
           return l ? laneRecordToDTO(l) : null
-        }),
-      upsertProjectsCache,
-      getSetting,
-      setSetting,
+        }).pipe(Effect.orDie),
+      buildSnapshotEntries,
+      upsertProjectsCache: (projectId, data) => upsertProjectsCache(projectId, data).pipe(Effect.orDie),
+      getSetting: (key) => getSetting(key).pipe(Effect.orDie),
+      setSetting: (key, value) => setSetting(key, value).pipe(Effect.orDie),
     }
   }),
 )
