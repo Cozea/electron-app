@@ -38,7 +38,7 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 - [x] `OrchestrationRpcProxy` — persistent WS session to assistant runtime (replaces per-turn bridge in rpcChat)
 - [x] `rpcChat` bridged turns use `executeRpcBridgedChatTurn` (not `assistantWsBridge`)
 - [ ] **Full upstream T3 `apps/server` DDD import** — deferred; requires `vendor/t3code` submodule at pin SHA
-- [ ] **Delete `electron/assistant-runtime/`** — runtime still required; delete after T3 server body replaces engine
+- [x] **Delete `electron/assistant-runtime/`** — tree removed in Phase T6b; Codex modules live under `electron/substrate/providers/codex/`
 
 ---
 
@@ -93,8 +93,8 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 5. [x] Phase T4 provider config cutover — `T3ServerConfigClient`, workbench model picker via T3 when `t3Server: true`; gate substrate provider registry
 6. [x] Phase T5 VCS + terminals cutover — `T3VcsClient`, `T3TerminalClient`, unified `useT3Cutover` NativeApi overlay; `COZEA_T3_SERVER` default **on**
 7. [x] Phase T6 assistant-runtime decommission — legacy `:3773` boot removed; T3 required; SQLite userdata copy migration; orchestration RPC requires T3 backend
-8. [ ] Delete `electron/assistant-runtime/` tree (codex substrate drivers + tests still reference it)
-9. [ ] Delete `assistantWsBridge.ts` / `orchestrationRpcProxy.ts` (kept for unit tests)
+8. [x] Phase T6b delete `electron/assistant-runtime/` — Codex moved to substrate; in-process boot removed from `main.ts`
+9. [x] Delete `assistantWsBridge.ts` / `orchestrationRpcProxy.ts` (legacy `:3773` bridges)
 10. [ ] SSH/WSL DesktopBackendPool
 11. [ ] Physical monorepo reshape
 

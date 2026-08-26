@@ -45,7 +45,7 @@ const PROVIDERS = [
   {
     key: 'claude',
     label: 'Claude (claudeAgent)',
-    file: 'electron/assistant-runtime/provider/Layers/ClaudeProvider.ts',
+    file: 'vendor/t3code/apps/server/src/provider/Layers/ClaudeProvider.ts',
     modelsDevKey: 'anthropic',
     capabilitiesHelper: 'makeClaudeCapabilities',
     perModelCapabilities: true, // helper takes a config object
@@ -53,7 +53,7 @@ const PROVIDERS = [
   {
     key: 'codex',
     label: 'Codex (OpenAI)',
-    file: 'electron/assistant-runtime/provider/Layers/CodexProvider.ts',
+    file: 'vendor/t3code/apps/server/src/provider/Layers/CodexProvider.ts',
     modelsDevKey: 'openai',
     capabilitiesHelper: 'makeCodexCapabilities',
     perModelCapabilities: false, // helper takes no args (uniform across codex models)

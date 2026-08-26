@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import { performance } from 'node:perf_hooks'
 
 import { autoUpdater } from 'electron-updater'
-import { Cause, Effect, Exit, Fiber } from 'effect'
+import { Effect } from 'effect'
 import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
@@ -37,10 +37,7 @@ import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindo
 import { loadSyncState } from './services/syncJournalStore'
 import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime, waitForWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
 import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
-import { startAssistantRuntime } from './assistant-runtime/boot'
-import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
-import { waitForHttpReady } from './backendReadiness'
-import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags, shouldStartInProcessAssistantRuntime } from './substrate/flags'
+import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags } from './substrate/flags'
 import { getSharedSubstrateNdjsonWriter } from './substrate/obs'
 import { listSubstrateRemoteEnvironmentStubs } from './substrate/remoteEnvironments'
 import { bootstrapSubstrateVcs } from './substrate/vcs/bootstrap'
@@ -483,8 +480,6 @@ const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
 const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
 const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
 const SUBSTRATE_SHADOW_STATUS_HANDLE = 'substrateShadow:getStatus'
-const ASSISTANT_RUNTIME_READY_TIMEOUT_MS = 60_000
-const ASSISTANT_RUNTIME_RESTART_DELAY_MS = 2_000
 
 type AssistantRuntimePhase = 'idle' | 'starting' | 'ready' | 'error'
 
@@ -501,9 +496,7 @@ let assistantRuntimeStatus: AssistantRuntimeStatus = {
   lastError: null,
   updatedAt: Date.now(),
 }
-let assistantRuntimeFiber: unknown | null = null
 let assistantRuntimeGeneration = 0
-let assistantRuntimeRestartTimer: NodeJS.Timeout | null = null
 let shadowHostedRuntimeMonitor: ShadowHostedRuntimeMonitorController | null = null
 let appIsQuitting = false
 let assistantRuntimeBridgeHandlersRegistered = false
@@ -556,80 +549,9 @@ function setAssistantRuntimeStatus(
   broadcastAssistantRuntimeStatus()
 }
 
-function formatAssistantRuntimeExitMessage(exit: unknown): string {
-  if (Exit.isExit(exit) && Exit.isFailure(exit)) {
-    return Cause.pretty(exit.cause).trim()
-  }
-  return 'Local chat runtime stopped.'
-}
-
-async function monitorAssistantRuntimeReadiness(generation: number): Promise<void> {
-  const startedAt = Date.now()
-  logAssistantBridge('runtime-readiness-monitor-started', { generation })
-
-  if (!ASSISTANT_RUNTIME_HTTP_URL) {
-    logAssistantBridge('runtime-ready-timeout', {
-      generation,
-      elapsedMs: Date.now() - startedAt,
-      reason: 'invalid-runtime-url',
-    })
-    if (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
-      setAssistantRuntimeStatus({
-        phase: 'error',
-        lastError: 'Local chat runtime URL is invalid.',
-      })
-    }
-    return
-  }
-
-  try {
-    await waitForHttpReady(ASSISTANT_RUNTIME_HTTP_URL, {
-      path: ASSISTANT_RUNTIME_READINESS_PATH,
-      timeoutMs: ASSISTANT_RUNTIME_READY_TIMEOUT_MS,
-    })
-  } catch {
-    logAssistantBridge('runtime-ready-timeout', {
-      generation,
-      elapsedMs: Date.now() - startedAt,
-    })
-    if (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
-      setAssistantRuntimeStatus({
-        phase: 'error',
-        lastError: 'Local chat runtime is taking longer than expected to start.',
-      })
-    }
-    return
-  }
-
-  if (!appIsQuitting && generation === assistantRuntimeGeneration && assistantRuntimeFiber) {
-    logAssistantBridge('runtime-ready', {
-      generation,
-      elapsedMs: Date.now() - startedAt,
-    })
-    setAssistantRuntimeStatus({
-      phase: 'ready',
-      lastError: null,
-    })
-  }
-}
-
-function scheduleAssistantRuntimeRestart(): void {
-  if (appIsQuitting || assistantRuntimeRestartTimer) {
-    logAssistantBridge('runtime-restart-skipped', {
-      appIsQuitting,
-      restartAlreadyScheduled: Boolean(assistantRuntimeRestartTimer),
-    })
-    return
-  }
-
-  logAssistantBridge('runtime-restart-scheduled', {
-    delayMs: ASSISTANT_RUNTIME_RESTART_DELAY_MS,
-  })
-  assistantRuntimeRestartTimer = setTimeout(() => {
-    assistantRuntimeRestartTimer = null
-    logAssistantBridge('runtime-restart-triggered')
-    ensureAssistantRuntimeStarted()
-  }, ASSISTANT_RUNTIME_RESTART_DELAY_MS)
+function ensureAssistantRuntimeStarted(): void {
+  assistantRuntimeGeneration += 1
+  beginShadowHostedRuntimeMonitor(assistantRuntimeGeneration)
 }
 
 let shadowServerManager: ShadowServerManager | null = null
@@ -693,11 +615,7 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
       },
     })
     const featureFlags = readSubstrateFeatureFlags()
-    if (
-      status.phase === 'ready' &&
-      featureFlags.primary &&
-      !shouldStartInProcessAssistantRuntime(featureFlags)
-    ) {
+    if (status.phase === 'ready' && featureFlags.primary) {
       assistantRuntimeGeneration += 1
       beginShadowHostedRuntimeMonitor(assistantRuntimeGeneration)
     }
@@ -752,7 +670,7 @@ function registerSubstrateShadowBridgeHandlers(): void {
           vcs: featureFlags.vcs,
           primary: featureFlags.primary,
           obsNdjson: featureFlags.obsNdjson,
-          inProcessAssistant: shouldStartInProcessAssistantRuntime(featureFlags),
+          inProcessAssistant: false,
         },
         remoteEnvironments,
       }
@@ -765,7 +683,7 @@ function registerSubstrateShadowBridgeHandlers(): void {
         vcs: featureFlags.vcs,
         primary: featureFlags.primary,
         obsNdjson: featureFlags.obsNdjson,
-        inProcessAssistant: shouldStartInProcessAssistantRuntime(featureFlags),
+        inProcessAssistant: false,
       },
       remoteEnvironments,
     }
@@ -814,65 +732,6 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
     shadowBaseUrl,
     preferT3Server: featureFlags.t3Server,
   })
-}
-
-function ensureAssistantRuntimeStarted(): void {
-  const substrateFlags = readSubstrateFeatureFlags()
-  if (substrateFlags.t3Server || !shouldStartInProcessAssistantRuntime(substrateFlags)) {
-    logAssistantBridge('runtime-start-skipped-t3-or-primary-substrate', {
-      t3Server: substrateFlags.t3Server,
-      primary: substrateFlags.primary,
-      shadowServer: substrateFlags.shadowServer.enabled,
-    })
-    assistantRuntimeGeneration += 1
-    beginShadowHostedRuntimeMonitor(assistantRuntimeGeneration)
-    return
-  }
-
-  stopShadowHostedRuntimeMonitor()
-
-  if (assistantRuntimeFiber) {
-    logAssistantBridge('runtime-start-reused', {
-      generation: assistantRuntimeGeneration,
-    })
-    return
-  }
-
-  assistantRuntimeGeneration += 1
-  const generation = assistantRuntimeGeneration
-  logAssistantBridge('runtime-starting', {
-    generation,
-    wsUrl: ASSISTANT_RUNTIME_WS_URL,
-  })
-  setAssistantRuntimeStatus({
-    phase: 'starting',
-    lastError: null,
-  })
-  const fiber = startAssistantRuntime()
-  assistantRuntimeFiber = fiber
-  Effect.runFork(
-    Effect.flatMap(Fiber.await(fiber), (exit) =>
-      Effect.sync(() => {
-        logAssistantBridge('runtime-exited', {
-          generation,
-          exitMessage: formatAssistantRuntimeExitMessage(exit),
-        })
-        if (assistantRuntimeFiber === fiber) {
-          assistantRuntimeFiber = null
-        }
-        if (appIsQuitting) {
-          return
-        }
-
-        setAssistantRuntimeStatus({
-          phase: 'error',
-          lastError: formatAssistantRuntimeExitMessage(exit),
-        })
-        scheduleAssistantRuntimeRestart()
-      }),
-    ),
-  )
-  void monitorAssistantRuntimeReadiness(generation)
 }
 
 function registerAssistantRuntimeBridgeHandlers(): void {

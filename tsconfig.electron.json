@@ -68,8 +68,5 @@
   "include": [
     "electron/**/*.ts",
     "shared/**/*.ts"
-  ],
-  "exclude": [
-    "electron/assistant-runtime"
   ]
 }

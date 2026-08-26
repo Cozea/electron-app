@@ -25,7 +25,6 @@
   "include": [
     "electron.vite.config.ts",
     "vitest.config.ts",
-    "vitest.assistant-runtime.config.ts",
     "vitest.contracts.config.ts"
   ]
 }

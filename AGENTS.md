@@ -11,7 +11,7 @@ This is an Electron desktop application with a React frontend and Convex backend
 - **Routing**: TanStack Router
 - **Desktop**: Electron 40 + electron-vite
 - **Backend**: Convex (real-time serverless database)
-- **AI Runtime**: Local WebSocket server (`electron/assistant-runtime/`) built with Effect-TS; providers: Claude Agent SDK, OpenAI Codex, opencode, Cursor
+- **AI Runtime**: Vendored T3 server (`apps/server/` + `vendor/t3code`) spawned by shadow child; local Effect-TS substrate in `electron/substrate/`
 - **Auth**: WorkOS (SSO, organizations)
 - **Collab**: Yjs CRDTs with E2E encryption
 - **Package manager**: Bun (always use `bun` instead of npm/yarn/pnpm)
@@ -201,11 +201,7 @@ GH_TOKEN="$(gh auth token)" bun run release
 │   ├── stores/                 # Zustand stores
 │   └── router/                 # TanStack Router route definitions
 ├── electron/                   # Electron main process
-│   ├── assistant-runtime/      # Local WebSocket AI runtime (Effect-TS)
-│   │   ├── orchestration/      # Turn orchestration, session state
-│   │   ├── provider/           # Provider integrations (Claude, Codex, opencode, Cursor)
-│   │   ├── terminal/           # Terminal management
-│   │   └── git/                # Git operations for the runtime
+│   ├── substrate/              # Shadow server helpers, providers, VCS, migrations
 │   ├── ipc/                    # IPC handler registration (sync, project, session, runtime)
 │   ├── workbench-runtime/      # Terminal + dev server child process
 │   ├── runtime/                # Runtime manifest, installer, resolver
@@ -243,8 +239,8 @@ Same flow but skips folder creation. Inspects existing git state (remote URL, br
 
 The AI chat runs **after** project creation, inside the workbench.
 
-- A local WebSocket server starts at `ws://127.0.0.1:3773` via `electron/assistant-runtime/boot.ts` (Effect-TS)
-- The workbench chat tile (`WorkbenchAssistantChatTile`) connects to this runtime
+- The shadow child boots the vendored T3 server when `COZEA_T3_SERVER=1` (default on)
+- The workbench chat tile (`WorkbenchAssistantChatTile`) connects via T3 RPC session (`useT3Cutover`)
 - Four provider kinds are supported: `claudeAgent`, `codex`, `opencode`, `cursor`
 - The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
 - Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
@@ -359,7 +355,7 @@ git commit -m "Updated stuff"
 - Modifying database schema (`convex/schema.ts`)
 - Changes to authentication flow
 - Modifying Electron main process
-- Changes to the assistant runtime (`electron/assistant-runtime/`)
+- Changes to the vendored T3 server bootstrap (`apps/server/src/t3Bootstrap.ts`)
 
 ### 🚫 Never
 - Commit API keys, secrets, or `.env` files
