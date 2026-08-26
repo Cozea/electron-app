@@ -19,7 +19,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-- [~] 2. Write preservation property tests (BEFORE implementing fix)
+- [ ] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Existing Functionality Preserved
   - **IMPORTANT**: Follow observation-first methodology
   - Observe behavior on UNFIXED code for non-buggy inputs (all other functions in affected files)
@@ -36,7 +36,7 @@
   - Mark task complete when tests are written, run, and passing on unfixed code
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [~] 3. Remove dead code functions
+- [ ] 3. Remove dead code functions
 
   - [ ] 3.1 Remove resolveRegisteredWorkspaceId from WorkbenchSessionManager.ts
     - Delete the entire function declaration at lines 169-172
@@ -92,7 +92,7 @@
     - Confirm all tests still pass after fix (no regressions)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [~] 4. Checkpoint - Ensure all tests pass
+- [ ] 4. Checkpoint - Ensure all tests pass
   - Run `bun run typecheck` - should pass with no errors
   - Run `bun run lint` - should pass with no warnings for the removed functions
   - Run `bun run build` - should complete successfully

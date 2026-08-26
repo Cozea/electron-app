@@ -1,6 +1,7 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
 import { useMemo, useEffect, useState } from "react"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -27,6 +28,7 @@ import {
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/components/sidebar/projectSidebarShared"
 import { createAssistantThreadSelectorById, useStore } from "@/stores/assistant-store"
+import type { Thread as AssistantThread } from "@/stores/types"
 import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarSurfaceTileSummary,
@@ -42,11 +44,21 @@ const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 
 function SurfaceTileGlyph(props: {
   favicon?: string | null
+  devAppId?: string | null
+  title: string
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
 }) {
   const className = props.className ?? "size-[18px] shrink-0 text-muted-foreground/75"
   const devApp = getDevAppForSurfaceTileType(props.type)
+
+  if (props.type === "devServer" && props.devAppId) {
+    return (
+      <span className={SIDEBAR_APP_ICON_CLASS}>
+        <ProjectDevAppIcon publicationId={props.devAppId} name={props.title} />
+      </span>
+    )
+  }
 
   switch (props.type) {
     case "browser":
@@ -167,7 +179,7 @@ function providerGlyphColorClass(
 }
 
 function hasUnseenCompletion(
-  thread: NonNullable<ReturnType<typeof useStore.getState>["threads"][number]>,
+  thread: AssistantThread,
 ): boolean {
   if (!thread.latestTurn?.completedAt) return false
   const completedAt = Date.parse(thread.latestTurn.completedAt)
@@ -180,7 +192,7 @@ function hasUnseenCompletion(
 }
 
 function resolveAgentStatusPill(input: {
-  thread: NonNullable<ReturnType<typeof useStore.getState>["threads"][number]>
+  thread: AssistantThread
   hasPendingApprovals: boolean
   hasPendingUserInput: boolean
 }): SidebarAgentStatusPill | null {
@@ -394,6 +406,9 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
         <button
           key={tile.id}
           type="button"
+          data-sidebar-tile-row={tile.id}
+          data-sidebar-tile-type="assistantChat"
+          data-sidebar-tile-active={resolvedActiveTileId === tile.id || undefined}
           className={cn(
             "relative w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
@@ -423,6 +438,9 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
         <button
           key={tile.id}
           type="button"
+          data-sidebar-tile-row={tile.id}
+          data-sidebar-tile-type={tile.type}
+          data-sidebar-tile-active={resolvedActiveTileId === tile.id || undefined}
           className={cn(
             "w-full",
             SIDEBAR_PILL_NESTED_ROW_CLASS,
@@ -433,6 +451,8 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
             <SurfaceTileGlyph
               favicon={tile.favicon}
+              devAppId={tile.devAppId}
+              title={tile.title}
               type={tile.type}
               className={cn(
                 "size-[18px] shrink-0 text-muted-foreground/75",

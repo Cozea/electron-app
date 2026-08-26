@@ -480,6 +480,17 @@ export function TerminalInstance({
     fitAddon.fit()
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+    // Load WebGL before any output paints: the DOM renderer advances text by
+    // the exact measured char width while WebGL floors it to whole device
+    // pixels, so a later swap visibly reflows ("font shrinks") on-screen text.
+    if (wantsGpuRendererRef.current) {
+      syncWebglRendererRef.current()
+    }
+    if (import.meta.env.DEV) {
+      // Buffer handle for CDP diagnostics (keep-alive verification reads the
+      // canvas-rendered buffer, which has no DOM text).
+      ;(container as HTMLElement & { __xterm?: Terminal }).__xterm = term
+    }
 
     let disposed = false
     let hydrated = false
@@ -531,6 +542,9 @@ export function TerminalInstance({
 
       const nextTerminalId = resolution.terminalId
       activeTerminalIdRef.current = nextTerminalId
+      if (import.meta.env.DEV) {
+        ;(container as HTMLElement & { __xtermTerminalId?: string }).__xtermTerminalId = nextTerminalId
+      }
       onTerminalResolvedRef.current?.(resolution)
 
       unsubscribeOutput = window.electronAPI.terminal.onOutputForTerminal(nextTerminalId, (event) => {
@@ -664,7 +678,9 @@ export function TerminalInstance({
     } catch {
       // Ignore refresh errors after disposal or while dimensions settle
     }
-  }, [terminalId, initRetry, theme])
+    // gpuActive: re-resolve on tile re-attach too — the CSS tokens behind the
+    // computed theme can change while a keep-alive terminal is parked.
+  }, [terminalId, initRetry, theme, gpuActive])
 
   useEffect(() => {
     if (!shouldAutoFocus || readOnly) return
@@ -679,13 +695,10 @@ export function TerminalInstance({
       return
     }
 
-    const enableGpuTimeout = window.setTimeout(() => {
-      syncWebglRendererRef.current()
-    }, 96)
-
-    return () => {
-      window.clearTimeout(enableGpuTimeout)
-    }
+    // Re-enable immediately on re-attach (parked terminals render via the DOM
+    // renderer); any delay shows DOM-metric frames that reflow once WebGL
+    // takes over.
+    syncWebglRendererRef.current()
   }, [disposeWebglRenderer, shouldUseGpuRenderer])
 
   const handleResize = useCallback(() => {
@@ -756,7 +769,7 @@ export function TerminalInstance({
   return (
     <div
       className={cn(
-        'relative h-full w-full overflow-hidden rounded-[4px]',
+        'relative h-full min-h-0 w-full overflow-hidden p-1.5 pl-2.5',
         className,
       )}
       style={{ backgroundColor: 'var(--terminal-panel-bg, var(--content-surface))' }}

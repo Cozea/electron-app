@@ -58,6 +58,7 @@ import {
 import { probeCodexDiscovery } from "../codexAppServer.ts";
 import { CodexProvider } from "../Services/CodexProvider.ts";
 import { ServerSettingsError, ServerSettingsService } from "../../serverSettings.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 
 const CODEX_REASONING_OPTIONS = [
   { id: "xhigh", label: "Extra High" },
@@ -297,7 +298,7 @@ const runCodexCommand = Effect.fn("runCodexCommand")(function* (args: ReadonlyAr
   const command = ChildProcess.make(codexSettings.binaryPath, [...args], {
     shell: process.platform === "win32",
     env: {
-      ...process.env,
+      ...mergeProviderInstanceEnvironment(codexSettings.environment, process.env),
       ...(codexSettings.homePath ? { CODEX_HOME: codexSettings.homePath } : {}),
     },
   });

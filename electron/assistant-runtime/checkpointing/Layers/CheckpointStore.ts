@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CheckpointStoreLive - Filesystem checkpoint store adapter layer.
  *

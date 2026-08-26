@@ -1,5 +1,6 @@
-import fs from "node:fs"
+import fs from "node:fs/promises"
 import path from "node:path"
+import type { Dirent } from "node:fs"
 import type {
   RepoIdentity,
   WorkspaceCandidate,
@@ -14,8 +15,6 @@ interface ScanOptions {
   projectId: string
   slug: string
   expectedRepo?: RepoIdentity | null
-  /** workspaceId already bound to projectId on this machine, if any */
-  existingWorkspaceId?: string | null
 }
 
 function slugMatches(basename: string, slug: string): boolean {
@@ -31,11 +30,9 @@ export async function scanForCandidates(
   const candidates: WorkspaceCandidate[] = []
 
   for (const root of roots) {
-    if (!fs.existsSync(root)) continue
-
-    let entries: fs.Dirent[]
+    let entries: Dirent[]
     try {
-      entries = fs.readdirSync(root, { withFileTypes: true })
+      entries = await fs.readdir(root, { withFileTypes: true })
     } catch {
       continue
     }
@@ -69,7 +66,7 @@ async function scoreCandidate(
 
   let realPath = candidatePath
   try {
-    realPath = fs.realpathSync(candidatePath)
+    realPath = await fs.realpath(candidatePath)
   } catch {
     // use original
   }
@@ -111,7 +108,7 @@ async function scoreCandidate(
     if (expectedRepo && repoIdentitiesMatch(repoIdentity, expectedRepo)) {
       score += 80
       reasons.push("git remote origin matches expected repo")
-    } else if (expectedRepo && repoIdentity) {
+    } else if (expectedRepo) {
       score -= 80
       warnings.push("git remote origin does not match expected repo")
       verificationStatus = "repo-mismatched"

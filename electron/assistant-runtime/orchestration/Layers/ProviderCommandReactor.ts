@@ -8,6 +8,7 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadActivity,
   ProviderKind,
+  defaultInstanceIdForDriver,
   type OrchestrationSession,
   ThreadId,
   type ProviderSession,
@@ -369,6 +370,10 @@ const make = Effect.gen(function* () {
           threadId: thread.id,
           status: "interrupted",
           providerName: thread.session?.providerName ?? thread.modelSelection.provider,
+          providerInstanceId:
+            thread.session?.providerInstanceId ??
+            thread.modelSelection.instanceId ??
+            defaultInstanceIdForDriver(thread.modelSelection.provider),
           runtimeMode: thread.session?.runtimeMode ?? thread.runtimeMode,
           activeTurnId: null,
           lastError: STALE_PENDING_REQUEST_SESSION_DETAIL,
@@ -451,6 +456,8 @@ const make = Effect.gen(function* () {
     }
     const preferredProvider: ProviderKind = currentProvider ?? threadProvider;
     const desiredModelSelection = requestedModelSelection ?? thread.modelSelection;
+    const desiredProviderInstanceId =
+      desiredModelSelection.instanceId ?? defaultInstanceIdForDriver(preferredProvider);
     const effectiveCwd = resolveThreadWorkspaceCwd({
       thread,
       projects: readModel.projects,
@@ -468,6 +475,7 @@ const make = Effect.gen(function* () {
       providerService.startSession(threadId, {
         threadId,
         ...(preferredProvider ? { provider: preferredProvider } : {}),
+        providerInstanceId: desiredProviderInstanceId,
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
         modelSelection: desiredModelSelection,
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
@@ -481,6 +489,7 @@ const make = Effect.gen(function* () {
           threadId,
           status: providerSessionStatusToOrchestrationStatus(session.status),
           providerName: session.provider,
+          providerInstanceId: session.providerInstanceId ?? desiredProviderInstanceId,
           runtimeMode: desiredRuntimeMode,
           // Provider turn ids are not orchestration turn ids.
           activeTurnId: null,
@@ -1015,6 +1024,9 @@ const make = Effect.gen(function* () {
         threadId: thread.id,
         status: "stopped",
         providerName: thread.session?.providerName ?? null,
+        ...(thread.session?.providerInstanceId
+          ? { providerInstanceId: thread.session.providerInstanceId }
+          : {}),
         runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
         activeTurnId: null,
         lastError: thread.session?.lastError ?? null,

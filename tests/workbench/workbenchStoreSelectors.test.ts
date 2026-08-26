@@ -49,47 +49,47 @@ describe('workbench store selectors', () => {
     expect(selector(useProjectWorkbenchStore.getState())).toBe(assistantTileId)
   })
 
-  it('falls back to the most recently used path-scoped workbench when no path is available', async () => {
+  it('falls back to the most recently used workspace-scoped workbench when no workspace id is available', async () => {
     const actions = useProjectWorkbenchStore.getState().actions
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-a')
-    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, '/tmp/project-a')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-a')
+    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, 'ws-a')
     await new Promise((resolve) => setTimeout(resolve, 2))
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-b')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-b')
     const latestTileId = actions.addTile(
       'project-1',
       'collab',
       'assistantChat',
       { title: 'Latest agent' },
-      '/tmp/project-b',
+      'ws-b',
     )
 
     const workbench = selectProjectWorkbench('project-1', 'collab')(
       useProjectWorkbenchStore.getState(),
     )
 
-    expect(workbench?.projectPath).toBe('/tmp/project-b')
+    expect(workbench?.workspaceId).toBe('ws-b')
     expect(workbench?.activeTileId).toBe(latestTileId)
   })
 
-  it('uses the most recently used workbench for lane summaries when paths differ', async () => {
+  it('uses the most recently used workbench for lane summaries when workspace ids differ', async () => {
     const actions = useProjectWorkbenchStore.getState().actions
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-a')
-    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, '/tmp/project-a')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-a')
+    actions.addTile('project-1', 'collab', 'terminal', { title: 'Older shell' }, 'ws-a')
     await new Promise((resolve) => setTimeout(resolve, 2))
-    actions.ensureWorkbench('project-1', 'collab', '/tmp/project-b')
+    actions.ensureWorkbench('project-1', 'collab', 'ws-b')
     const latestTileId = actions.addTile(
       'project-1',
       'collab',
       'assistantChat',
       { title: 'Latest agent' },
-      '/tmp/project-b',
+      'ws-b',
     )
 
     const byLane = selectProjectLaneWorkbenches('project-1')(
       useProjectWorkbenchStore.getState(),
     )
 
-    expect(byLane.collab?.projectPath).toBe('/tmp/project-b')
+    expect(byLane.collab?.workspaceId).toBe('ws-b')
     expect(byLane.collab?.activeTileId).toBe(latestTileId)
   })
 
@@ -128,5 +128,130 @@ describe('workbench store selectors', () => {
         },
       ],
     })
+  })
+
+  it('replaces singleton DevApp metadata and clears it when the built-in Dev Server opens', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    const firstTileId = actions.openSingletonTile(
+      'project-1',
+      'collab',
+      'devServer',
+      {
+        title: 'Customer portal',
+        devAppId: 'devapp-1',
+        devAppReleaseId: 'release-1',
+        devAppReleaseVersion: 1,
+        devAppProjectId: 'source-project-1',
+        devAppWorkspaceId: 'source-workspace-1',
+        devAppLaneId: 'source-lane-1',
+        devAppFramework: 'vite-react',
+        devAppCommand: 'bun run dev',
+        devAppPort: 5173,
+        autoStart: true,
+      },
+      'workspace-1',
+    )
+
+    const reusedTileId = actions.openSingletonTile(
+      'project-1',
+      'collab',
+      'devServer',
+      {
+        title: 'Customer portal',
+        devAppId: 'devapp-1',
+        devAppReleaseId: 'release-2',
+        devAppReleaseVersion: 2,
+        devAppProjectId: 'source-project-1',
+        devAppWorkspaceId: 'source-workspace-2',
+        devAppLaneId: 'source-lane-2',
+        devAppFramework: 'nextjs',
+        devAppCommand: 'bun run preview',
+        devAppPort: 4173,
+        autoStart: true,
+      },
+      'workspace-1',
+    )
+
+    expect(reusedTileId).toBe(firstTileId)
+    let workbench = selectProjectWorkbench('project-1', 'collab', 'workspace-1')(
+      useProjectWorkbenchStore.getState(),
+    )
+    expect(workbench?.tiles[firstTileId]).toMatchObject({
+      title: 'Customer portal',
+      devAppId: 'devapp-1',
+      devAppReleaseId: 'release-2',
+      devAppReleaseVersion: 2,
+      devAppProjectId: 'source-project-1',
+      devAppWorkspaceId: 'source-workspace-2',
+      devAppLaneId: 'source-lane-2',
+      devAppFramework: 'nextjs',
+      devAppCommand: 'bun run preview',
+      devAppPort: 4173,
+      autoStart: true,
+    })
+    expect(buildWorkbenchLaneSidebarSummary(workbench!).surfaces).toEqual([
+      expect.objectContaining({
+        id: firstTileId,
+        title: 'Customer portal',
+        devAppId: 'devapp-1',
+      }),
+    ])
+
+    actions.openSingletonTile(
+      'project-1',
+      'collab',
+      'devServer',
+      undefined,
+      'workspace-1',
+    )
+    workbench = selectProjectWorkbench('project-1', 'collab', 'workspace-1')(
+      useProjectWorkbenchStore.getState(),
+    )
+    const builtInTile = workbench?.tiles[firstTileId]
+
+    expect(builtInTile).toMatchObject({ title: 'Dev Server', type: 'devServer' })
+    expect(builtInTile).not.toHaveProperty('devAppId')
+    expect(builtInTile).not.toHaveProperty('devAppReleaseId')
+    expect(builtInTile).not.toHaveProperty('devAppReleaseVersion')
+    expect(builtInTile).not.toHaveProperty('devAppProjectId')
+    expect(builtInTile).not.toHaveProperty('devAppWorkspaceId')
+    expect(builtInTile).not.toHaveProperty('devAppLaneId')
+    expect(builtInTile).not.toHaveProperty('devAppFramework')
+    expect(builtInTile).not.toHaveProperty('devAppCommand')
+    expect(builtInTile).not.toHaveProperty('devAppPort')
+    expect(builtInTile).not.toHaveProperty('autoStart')
+  })
+
+  it('clears a consumed auto-start flag so a remount cannot restart a stopped server', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    actions.ensureWorkbench('project-1', 'collab', 'workspace-1')
+    const tileId = actions.addTile(
+      'project-1',
+      'collab',
+      'devServer',
+      {
+        devAppId: 'local-devapp-publication:one',
+        devAppCommand: 'bun run dev',
+        autoStart: true,
+      },
+      'workspace-1',
+    )
+
+    const readTile = () =>
+      selectProjectWorkbench('project-1', 'collab', 'workspace-1')(
+        useProjectWorkbenchStore.getState(),
+      )?.tiles[tileId]
+
+    expect(readTile()).toMatchObject({ autoStart: true })
+
+    actions.updateRuntimePreviewTile(
+      'project-1',
+      'collab',
+      tileId,
+      { autoStart: false },
+      'workspace-1',
+    )
+
+    expect(readTile()).not.toHaveProperty('autoStart')
   })
 })

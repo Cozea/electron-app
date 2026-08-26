@@ -12,10 +12,43 @@ let queuedRefresh = false
 
 const coordinator = createOrchestrationRecoveryCoordinator()
 
+// First-ever hydration builds every thread's slices from scratch; one
+// synchronous apply blocked the main thread for seconds on large profiles.
+// Applying prefix batches with yields keeps startup interactive — repeat
+// applies of already-built threads are near-free (content fingerprints in
+// writeThreadFromReadModel), and the recovery coordinator defers incoming
+// domain events until completeSnapshotRecovery, so batching stays consistent.
+const FIRST_HYDRATION_THREAD_BATCH = 8
+
+function yieldToMain(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
+  if (typeof scheduler?.yield === "function") {
+    return scheduler.yield()
+  }
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+async function applySnapshotToStore(snapshot: Awaited<ReturnType<ReturnType<typeof ensureNativeApi>["orchestration"]["getSnapshot"]>>) {
+  const alreadyHydrated = useStore.getState().threadsHydrated
+  if (alreadyHydrated || snapshot.threads.length <= FIRST_HYDRATION_THREAD_BATCH) {
+    useStore.getState().syncServerReadModel(snapshot)
+    return
+  }
+
+  for (let end = FIRST_HYDRATION_THREAD_BATCH; ; end += FIRST_HYDRATION_THREAD_BATCH) {
+    const done = end >= snapshot.threads.length
+    useStore.getState().syncServerReadModel(
+      done ? snapshot : { ...snapshot, threads: snapshot.threads.slice(0, end) },
+    )
+    if (done) break
+    await yieldToMain()
+  }
+}
+
 async function performSnapshotSync() {
   const api = ensureNativeApi()
   const snapshot = await api.orchestration.getSnapshot()
-  useStore.getState().syncServerReadModel(snapshot)
+  await applySnapshotToStore(snapshot)
   const shouldReplay = coordinator.completeSnapshotRecovery(snapshot.snapshotSequence)
   if (shouldReplay) {
     const nextEvents = coordinator.markEventBatchApplied(pendingDomainEvents)

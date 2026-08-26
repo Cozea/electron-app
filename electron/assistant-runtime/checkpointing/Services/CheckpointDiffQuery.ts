@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CheckpointDiffQuery - Query interface for computed checkpoint diffs.
  *

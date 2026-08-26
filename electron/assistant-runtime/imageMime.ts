@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Mime from "@effect/platform-node/Mime";
 
 export const IMAGE_EXTENSION_BY_MIME_TYPE: Record<string, string> = {

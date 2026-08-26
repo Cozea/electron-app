@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { afterEach, expect, vi } from "vitest";
 
-vi.mock("../../processRunner", () => ({
+vi.mock("../../../../../electron/assistant-runtime/processRunner", () => ({
   runProcess: vi.fn(),
 }));
 

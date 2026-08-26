@@ -1,6 +1,6 @@
-// @ts-nocheck
 import type {
-  ProviderKind,
+  ProviderDriverKind,
+  ProviderInstanceId,
   ProviderSessionRuntimeStatus,
   RuntimeMode,
   ThreadId,
@@ -16,7 +16,8 @@ import type {
 
 export interface ProviderRuntimeBinding {
   readonly threadId: ThreadId;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderDriverKind;
+  readonly providerInstanceId?: ProviderInstanceId;
   readonly adapterKey?: string;
   readonly status?: ProviderSessionRuntimeStatus;
   readonly resumeCursor?: unknown | null;
@@ -41,7 +42,7 @@ export interface ProviderSessionDirectoryShape {
 
   readonly getProvider: (
     threadId: ThreadId,
-  ) => Effect.Effect<ProviderKind, ProviderSessionDirectoryReadError>;
+  ) => Effect.Effect<ProviderDriverKind, ProviderSessionDirectoryReadError>;
 
   readonly getBinding: (
     threadId: ThreadId,

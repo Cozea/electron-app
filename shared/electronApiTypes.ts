@@ -14,6 +14,7 @@ import type {
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
   WorkspaceCandidate,
+  WorkspaceCatalogSnapshot,
 } from './workspaceTypes'
 import type {
   NativePreviewActionResult,
@@ -48,6 +49,13 @@ export interface AppSettings {
   previewHeaderCompatibilityEnabled: boolean
   approvedExternalReadRoots?: string[]
   deactivateTransparency?: boolean
+  /**
+   * Last theme source the renderer synced via app:setNativeThemeSource.
+   * Restored before window creation so native UI (window background,
+   * titlebar overlay, menus) matches the app theme from the first frame
+   * of a cold start instead of following the OS until React mounts.
+   */
+  nativeThemeSource?: 'system' | 'light' | 'dark'
 }
 
 export type UpdateStatus =
@@ -231,6 +239,7 @@ export interface GhCliStatus {
 export interface CreateGitHubRepoResult {
   success: boolean
   repoUrl?: string
+  defaultBranch?: string
   error?: string
 }
 
@@ -786,6 +795,8 @@ export interface GitCheckpointCaptureResult {
   ref?: string
   commitOid?: string
   error?: string
+  /** Set when capture was a clean no-op (e.g. workspace has no git root). */
+  skipped?: 'no-git-root'
 }
 
 export interface GitCheckpointDiffResult {
@@ -991,6 +1002,14 @@ export interface TerminalCreateOptions {
   terminalKind?: TerminalKind
 }
 
+export interface TerminalCreateResult {
+  success: boolean
+  terminalId?: string
+  error?: string
+  snapshot?: TerminalSnapshot | null
+  info?: TerminalInfo | null
+}
+
 export interface TerminalAttachViewOptions {
   terminalId: string
   cols: number
@@ -1028,7 +1047,7 @@ export interface TerminalExitEvent {
   runId?: string
 }
 
-export type AgentToolId = 'claude' | 'gemini' | 'kilo' | 'shell' | 'copilot' | 'codex'
+export type AgentToolId = 'claude' | 'gemini' | 'kilo' | 'shell' | 'copilot' | 'codex' | 'cursor' | 'opencode'
 
 export type AgentToolSource = 'builtin' | 'system' | 'managed' | 'missing'
 
@@ -1047,6 +1066,23 @@ export interface AgentToolStatus {
 
 export interface AgentToolPrepareResult extends AgentToolStatus {
   success: boolean
+}
+
+export interface AgentToolLoginStartResult {
+  sessionId: string | null
+  error?: string
+}
+
+export interface AgentToolLoginEvent {
+  sessionId: string
+  toolId: AgentToolId
+  type: 'auth-url' | 'awaiting-code' | 'output' | 'closed'
+  /** auth-url: the URL opened in the browser; awaiting-code: the prompt line;
+   * output: latest output tail; closed: final output tail. */
+  data?: string
+  /** Only on 'closed'. */
+  success?: boolean
+  error?: string
 }
 
 export interface DevServerStartOptions {
@@ -1085,6 +1121,14 @@ export interface DevServerExitEvent {
   laneId?: string | null
   code: number | null
   runId?: string
+}
+
+/** Main-process truth about one workspace::lane dev server run. */
+export interface DevServerProcessState {
+  running: boolean
+  ready: boolean
+  port: number | null
+  runId: string | null
 }
 
 export interface IntegrationKeyResult {
@@ -1266,7 +1310,8 @@ export interface ElectronAPI {
    * or `<input type="file">`. Must be called with File objects from the DOM.
    */
   getPathForFile: (file: File) => string
-  localAiRuntime: {
+  /** Declared ahead of the managed local chat runtime; preload does not expose it yet. */
+  localAiRuntime?: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
   }
   integrations: {
@@ -1326,16 +1371,6 @@ export interface ElectronAPI {
       wrapAlgorithm?: string
     }) => Promise<{ roomKeyBase64: string }>
     deleteDeviceIdentity: () => Promise<{ success: boolean; error?: string }>
-  }
-  tools: {
-    run: (request: {
-      name: string
-      input: Record<string, unknown>
-      projectPath?: string
-      runId?: string
-      toolCallId?: string
-    }) => Promise<{ success: boolean; output?: unknown; error?: string }>
-    cancel: (request: { runId: string }) => Promise<{ success: boolean; canceled?: number; error?: string }>
   }
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
@@ -1557,6 +1592,8 @@ export interface ElectronAPI {
     openFolder: (options: { workspaceId: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (workspaceId: string) => Promise<boolean>
+    /** Resolves an opaque workspace id to its absolute project root path (or null if unauthorized/unknown). */
+    resolveRoot: (workspaceId: string) => Promise<string | null>
     writeFile: (options: {
       workspaceId: string
       filePath: string
@@ -1603,7 +1640,7 @@ export interface ElectronAPI {
       cleanBrokenLocalFiles?: boolean
       forceReinstall?: boolean
     }) => Promise<RuntimeEnsureResult>
-    getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
+    getRuntimeStatus: (options?: { workspaceId?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
   /**
    * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.
@@ -1888,12 +1925,12 @@ export interface ElectronAPI {
     stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
     resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) => Promise<{ success: boolean }>
     isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
+    getState: (options: { workspaceId: string; laneId?: string | null }) => Promise<DevServerProcessState>
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
-    onError: (callback: (data: { workspaceId: string; error: string }) => void) => () => void
   }
   terminal: {
-    create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
+    create: (options: TerminalCreateOptions) => Promise<TerminalCreateResult>
     attachView: (options: TerminalAttachViewOptions) => Promise<TerminalAttachViewResult>
     detachView: (options: TerminalDetachViewOptions) => Promise<{ success: boolean }>
     input: (options: { terminalId: string; data: string }) => Promise<boolean>
@@ -1912,6 +1949,10 @@ export interface ElectronAPI {
   agentTools: {
     getStatus: (options: { toolId: AgentToolId }) => Promise<AgentToolStatus>
     prepare: (options: { toolId: AgentToolId }) => Promise<AgentToolPrepareResult>
+    loginStart: (options: { toolId: AgentToolId }) => Promise<AgentToolLoginStartResult>
+    loginInput: (options: { sessionId: string; value: string }) => Promise<{ success: boolean }>
+    loginCancel: (options: { sessionId: string }) => Promise<{ success: boolean }>
+    onLoginEvent: (callback: (event: AgentToolLoginEvent) => void) => () => void
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
@@ -1947,9 +1988,11 @@ export interface ElectronAPI {
     importExistingFolder: (req: ImportExistingFolderRequest) => Promise<ImportExistingFolderResult>
     createForProject: (req: CreateWorkspaceForProjectRequest) => Promise<CreateWorkspaceForProjectResult>
     cloneForProject: (req: CloneWorkspaceForProjectRequest) => Promise<CloneWorkspaceForProjectResult>
-    verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO }>
+    verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO | null }>
     forget: (workspaceId: string) => Promise<void>
     listCandidates: (req: { projectId: string; slug: string; roots: string[]; expectedRepo?: unknown }) => Promise<WorkspaceCandidate[]>
     openInFinder: (folderPath: string) => Promise<void>
+    getCatalogSnapshot: () => Promise<WorkspaceCatalogSnapshot>
+    onCatalogSnapshotChanged: (callback: (snapshot: WorkspaceCatalogSnapshot) => void) => () => void
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { memo, useEffect, useMemo } from "react"
 
 import {
   useYjsProject,
@@ -35,7 +35,9 @@ function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
   return null
 }
 
-function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
+// Memoized so a write to one runtime record does not re-render every other
+// host (records keep identity unless actually touched).
+const WorkspaceRuntimeHost = memo(function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
   const { config, runtimeId, workspaceId } = record
 
   if (!config.projectId || !config.userId || !config.workspaceId) {
@@ -62,7 +64,7 @@ function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
       <WorkspaceRuntimeObserver runtimeId={runtimeId} />
     </ProjectSyncProviderRuntime>
   )
-}
+})
 
 export function WorkspaceRuntimeHosts() {
   const runtimes = useWorkspaceRuntimeStore((state) => state.runtimes)
@@ -80,16 +82,35 @@ export function WorkspaceRuntimeHosts() {
     [runtimeRecords],
   )
 
+  // Per-window file-change interest roots: the workspace git roots this window
+  // hosts. Empty roots make the main process broadcast every external file
+  // change to every window, so keep this populated from the live hosts.
+  const interestRoots = useMemo(() => {
+    const seen = new Set<string>()
+    const roots: string[] = []
+
+    for (const record of hostedRuntimeRecords) {
+      const root = record.config.gitCwd?.trim()
+      if (!root || seen.has(root)) {
+        continue
+      }
+      seen.add(root)
+      roots.push(root)
+    }
+
+    return roots
+  }, [hostedRuntimeRecords])
+
   useEffect(() => {
     const yjsApi = window.electronAPI?.yjs
     if (!yjsApi?.setInterestRoots) {
       return
     }
 
-    void yjsApi.setInterestRoots({ roots: [] }).catch((error) => {
+    void yjsApi.setInterestRoots({ roots: interestRoots }).catch((error) => {
       console.warn("[WorkspaceRuntimeHosts] Failed to update Yjs interest roots", error)
     })
-  }, [])
+  }, [interestRoots])
 
   useEffect(() => {
     refreshLifecycles()

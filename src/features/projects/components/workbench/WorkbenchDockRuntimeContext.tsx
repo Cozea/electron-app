@@ -20,13 +20,22 @@ export interface WorkbenchDockPanelParams {
 export interface WorkbenchDockRuntimeValue {
   projectId: string
   laneId: string
-  projectPath: string | null
+  projectRootPath: string | null
+  gitRootPath: string | null
   projectName: string | null
   workspaceId: string | null
   framework: string | null
   storedDevCommand: string | null
   storedDevPort: number | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  /**
+   * Session identity + on-demand snapshot access. The context deliberately
+   * does NOT carry the snapshot object: its content (terminal bindings, dev
+   * server state, lifecycle) churns without the session changing, and a
+   * snapshot here would re-render every dock tile per churn. Render on the
+   * key; read content through the getter when an effect/handler needs it.
+   */
+  workbenchSessionKey: string | null
+  getWorkbenchSession: () => WorkbenchSessionSnapshot | null
   getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
   onResolveSelectionTile: (
@@ -53,13 +62,15 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
     () => ({
       projectId: props.projectId,
       laneId: props.laneId,
-      projectPath: props.projectPath,
+      projectRootPath: props.projectRootPath,
+      gitRootPath: props.gitRootPath,
       projectName: props.projectName,
       workspaceId: props.workspaceId,
       framework: props.framework,
       storedDevCommand: props.storedDevCommand,
       storedDevPort: props.storedDevPort,
-      workbenchSession: props.workbenchSession,
+      workbenchSessionKey: props.workbenchSessionKey,
+      getWorkbenchSession: props.getWorkbenchSession,
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
       onResolveSelectionTile: props.onResolveSelectionTile,
@@ -68,13 +79,15 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
     [
       props.projectId,
       props.laneId,
-      props.projectPath,
+      props.projectRootPath,
+      props.gitRootPath,
       props.projectName,
       props.workspaceId,
       props.framework,
       props.storedDevCommand,
       props.storedDevPort,
-      props.workbenchSession,
+      props.workbenchSessionKey,
+      props.getWorkbenchSession,
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,
       props.onResolveSelectionTile,

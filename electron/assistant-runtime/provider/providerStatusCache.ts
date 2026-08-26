@@ -1,6 +1,11 @@
 // @ts-nocheck
 import * as nodePath from "node:path";
-import { type ServerProvider, ServerProvider as ServerProviderSchema } from "@cozea/assistant-contracts";
+import {
+  defaultInstanceIdForDriver,
+  type ProviderInstanceId,
+  type ServerProvider,
+  ServerProvider as ServerProviderSchema,
+} from "@cozea/assistant-contracts";
 import { Cause, Effect, FileSystem, Path, Schema } from "effect";
 
 export const PROVIDER_CACHE_IDS = [
@@ -31,7 +36,10 @@ export const orderProviderSnapshots = (
   providers: ReadonlyArray<ServerProvider>,
 ): ReadonlyArray<ServerProvider> =>
   [...providers].toSorted(
-    (left, right) => providerOrderRank(left.provider) - providerOrderRank(right.provider),
+    (left, right) =>
+      providerOrderRank(left.provider) - providerOrderRank(right.provider) ||
+      (left.displayName ?? "").localeCompare(right.displayName ?? "") ||
+      (left.instanceId ?? left.provider).localeCompare(right.instanceId ?? right.provider),
   );
 
 export const hydrateCachedProvider = (input: {
@@ -65,8 +73,14 @@ export const hydrateCachedProvider = (input: {
 
 export const resolveProviderStatusCachePath = (input: {
   readonly cacheDir: string;
-  readonly provider: ServerProvider["provider"];
-}) => nodePath.join(input.cacheDir, `${input.provider}.json`);
+  readonly provider?: ServerProvider["provider"];
+  readonly instanceId?: ProviderInstanceId;
+}) => {
+  const instanceId =
+    input.instanceId ??
+    (input.provider ? defaultInstanceIdForDriver(input.provider) : undefined);
+  return nodePath.join(input.cacheDir, `${instanceId ?? "unknown"}.json`);
+};
 
 export const readProviderStatusCache = (filePath: string) =>
   Effect.gen(function* () {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { memo, useMemo } from "react";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 

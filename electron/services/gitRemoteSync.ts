@@ -146,7 +146,7 @@ export async function fetchMain(
         success: true,
         remote,
         branch,
-        currentBranch: await helpers.getCurrentBranch(projectPath),
+        currentBranch: (await helpers.getCurrentBranch(projectPath)) ?? undefined,
         upstreamRef: `${remote}/${branch}`,
         headCommit: undefined,
       }
@@ -157,7 +157,7 @@ export async function fetchMain(
   const remoteHead =
     (await helpers.getRevision(projectPath, `${remote}/${branch}`)) ??
     (await helpers.getRevision(projectPath, 'FETCH_HEAD'))
-  const currentBranch = await helpers.getCurrentBranch(projectPath)
+  const currentBranch = (await helpers.getCurrentBranch(projectPath)) ?? undefined
   helpers.debug(options.debug, 'fetch:success', {
     projectPath,
     remote,
@@ -467,7 +467,7 @@ export async function commitAndPush(
     success: true,
     remote,
     branch,
-    currentBranch: push.currentBranch ?? (await helpers.getCurrentBranch(projectPath)),
+    currentBranch: push.currentBranch ?? (await helpers.getCurrentBranch(projectPath)) ?? undefined,
     commitCreated: true,
     pushed: true,
     commitSha: commit.commitSha,

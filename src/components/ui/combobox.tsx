@@ -90,16 +90,16 @@ function ComboboxInput({
       <ComboboxPrimitive.Input
         className={cn(
           startAddon &&
-            "data-[size=sm]:*:data-[slot=combobox-input]:ps-[calc(--spacing(7.5)-1px)] *:data-[slot=combobox-input]:ps-[calc(--spacing(8.5)-1px)] sm:data-[size=sm]:*:data-[slot=combobox-input]:ps-[calc(--spacing(7)-1px)] sm:*:data-[slot=combobox-input]:ps-[calc(--spacing(8)-1px)]",
-          sizeValue === "sm"
-            ? "has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:*:data-[slot=combobox-input]:pe-6.5"
-            : "has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:*:data-[slot=combobox-input]:pe-7",
+            (sizeValue === "sm"
+              ? "ps-[calc(--spacing(7.5)-1px)] sm:ps-[calc(--spacing(7)-1px)]"
+              : "ps-[calc(--spacing(8.5)-1px)] sm:ps-[calc(--spacing(8)-1px)]"),
+          (showTrigger || showClear) && (sizeValue === "sm" ? "pe-6.5" : "pe-7"),
           className,
         )}
         data-slot="combobox-input"
         render={
           <Input
-            className={cn("has-disabled:opacity-100", inputClassName)}
+            className={cn("disabled:opacity-100", inputClassName)}
           />
         }
         {...props}

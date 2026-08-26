@@ -212,6 +212,9 @@ jobs:
       - name: Typecheck assistant runtime
         run: bun run typecheck:assistant-runtime
 
+      - name: Typecheck electron
+        run: bun run typecheck:electron
+
       - name: Lint
         run: bun run lint
 

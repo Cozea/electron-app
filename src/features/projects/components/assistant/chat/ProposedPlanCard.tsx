@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlignHorizontalCenterIcon as __EllipsisIconHugeIcon } from '@hugeicons/core-free-icons'
 
-// @ts-nocheck
 import { memo, useState, useId, useMemo } from "react";
 import {
   buildCollapsedProposedPlanPreviewMarkdown,

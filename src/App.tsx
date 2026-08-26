@@ -10,6 +10,7 @@ import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
 import { WorkspaceRuntimeHostsGate } from '@/features/projects/workspaces/WorkspaceRuntimeHostsGate'
+import { TerminalViewHost } from '@/features/projects/terminals/TerminalViewHost'
 
 const LazyLogin = lazy(() =>
   import('./pages/Login').then((module) => ({
@@ -209,18 +210,18 @@ function AppContent() {
     isLoading,
     needsOnboarding,
   } = useAuth()
-  const location = useLocation()
+  const pathname = useLocation({ select: (location) => location.pathname })
   const isSettingsWindow = window.electronAPI?.windowContext === 'settings'
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
 
     const shouldWarmNewProject =
-      location.pathname === "/projects" || location.pathname === "/projects/"
+      pathname === "/projects" || pathname === "/projects/"
     const shouldWarmProjectEditor =
-      location.pathname.startsWith('/projects/') &&
-      !location.pathname.startsWith('/projects/new') &&
-      !location.pathname.endsWith('/workbench')
+      pathname.startsWith('/projects/') &&
+      !pathname.startsWith('/projects/new') &&
+      !pathname.endsWith('/workbench')
 
     if (!shouldWarmNewProject && !shouldWarmProjectEditor) {
       return
@@ -234,14 +235,14 @@ function AppContent() {
         void import('./features/projects/pages/ProjectWorkbenchPage')
       }
     }, { delayMs: 3_500, timeoutMs: 12_000 })
-  }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
+  }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) {
       return
     }
 
-    if (location.pathname.endsWith('/workbench')) {
+    if (pathname.endsWith('/workbench')) {
       return
     }
 
@@ -250,16 +251,16 @@ function AppContent() {
         module.prewarmToolingSettings?.()
       )
     }, { delayMs: 6_000, timeoutMs: 15_000 })
-  }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
+  }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
   if (isLoading) {
     return <FullscreenLoading />
   }
 
   const isProjectJoinRoute =
-    location.pathname.startsWith('/projects/join/') ||
-    location.pathname.startsWith('/join/project/')
-  const isProjectInviteRoute = location.pathname.startsWith('/projects/invite/')
+    pathname.startsWith('/projects/join/') ||
+    pathname.startsWith('/join/project/')
+  const isProjectInviteRoute = pathname.startsWith('/projects/invite/')
   const isPublicProjectAccessRoute = isProjectJoinRoute || isProjectInviteRoute
 
   if (!isAuthenticated) {
@@ -291,6 +292,7 @@ function AppContent() {
       <DeferredUpdateMenu enabled={!isSettingsWindow} />
       <Outlet />
       <WorkspaceRuntimeHostsGate />
+      <TerminalViewHost />
       <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       <SettingsDrawerHost enabled={!isSettingsWindow} />

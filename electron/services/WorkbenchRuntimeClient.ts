@@ -50,7 +50,7 @@ export class WorkbenchRuntimeClient {
     }
 
     return await new Promise<Result>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject })
+      this.pending.set(requestId, { resolve, reject } as PendingWorkbenchRuntimeRequest<unknown>)
       child.send(message, (error) => {
         if (!error) {
           return

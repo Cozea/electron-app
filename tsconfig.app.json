@@ -38,5 +38,5 @@
     }
   },
   "include": ["src"],
-  "exclude": ["convex", "src/app"]
+  "exclude": ["convex"]
 }

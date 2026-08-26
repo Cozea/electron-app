@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * GitManager - Effect service contract for stacked Git workflows.
  *

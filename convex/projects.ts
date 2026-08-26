@@ -40,6 +40,36 @@ type RepoSourceInput = {
   branch?: string | null
 }
 
+const visualsValidator = v.object({
+  uiLibrary: v.optional(v.string()),
+  vibeDescription: v.optional(v.string()),
+  colorPreset: v.optional(v.string()),
+  primaryColor: v.optional(v.string()),
+  secondaryColor: v.optional(v.string()),
+  accentColor: v.optional(v.string()),
+  logoUrl: v.optional(v.string()),
+})
+
+const generatedPlanValidator = v.object({
+  pages: v.array(
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      route: v.string(),
+      type: v.string(),
+      purpose: v.optional(v.string()),
+      actions: v.optional(v.array(v.string())),
+    }),
+  ),
+  entities: v.array(
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      fields: v.optional(v.array(v.string())),
+    }),
+  ),
+})
+
 async function listCollaboratorProjectsForUser(
   ctx: Pick<QueryCtx | MutationCtx, "db">,
   userId: Id<"users">,
@@ -220,6 +250,74 @@ function buildImportedFrom(repoSource?: RepoSourceInput, gitRepository?: ReturnT
   }
 }
 
+/** The one repo descriptor readers should prefer; legacy trio kept as fallback. */
+function buildCanonicalRepo(args: {
+  provider?: string | null
+  repoUrl?: string | null
+  defaultBranch?: string | null
+  visibility?: string | null
+  workingCopyMode?: "managed" | "attached" | null
+  setupMode?: "personal" | "organization" | null
+  importedFromBranch?: string | null
+}): Doc<"projects">["repo"] | undefined {
+  const provider = args.provider?.trim()
+  const url = args.repoUrl?.trim()
+  if (!provider || !url) {
+    return undefined
+  }
+
+  const metadata = buildGitRepositoryMetadata({
+    provider,
+    repoUrl: url,
+    defaultBranch: args.defaultBranch ?? undefined,
+  })
+
+  return {
+    provider,
+    url,
+    defaultBranch: args.defaultBranch?.trim() || metadata?.defaultBranch || "main",
+    owner: metadata?.owner,
+    name: metadata?.name,
+    visibility: args.visibility ?? undefined,
+    workingCopyMode: args.workingCopyMode ?? undefined,
+    setupMode: args.setupMode ?? undefined,
+    importedFromBranch: args.importedFromBranch ?? undefined,
+  }
+}
+
+async function upsertProjectArtifacts(
+  ctx: Pick<MutationCtx, "db">,
+  projectId: Id<"projects">,
+  patch: Partial<Pick<Doc<"projectArtifacts">, "visuals" | "generatedPlan" | "buildContract" | "stack">>,
+): Promise<void> {
+  // Only the explicitly-provided keys. Convex `patch` REMOVES any field set
+  // to `undefined`, so spreading the raw patch (which always carries every
+  // optional key, most of them undefined) would wipe the artifacts the caller
+  // didn't mean to touch — e.g. updating `visuals` would delete `generatedPlan`.
+  const definedPatch = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  )
+  if (Object.keys(definedPatch).length === 0) {
+    return
+  }
+
+  const existing = await ctx.db
+    .query("projectArtifacts")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .first()
+
+  if (existing) {
+    await ctx.db.patch(existing._id, { ...definedPatch, updatedAt: Date.now() })
+    return
+  }
+
+  await ctx.db.insert("projectArtifacts", {
+    projectId,
+    ...definedPatch,
+    updatedAt: Date.now(),
+  })
+}
+
 export const create = mutation({
   args: {
     userId: v.id("users"),
@@ -268,38 +366,17 @@ export const create = mutation({
         branch: v.optional(v.string()),
       }),
     ),
-    visuals: v.optional(
-      v.object({
-        uiLibrary: v.optional(v.string()),
-        vibeDescription: v.optional(v.string()),
-        colorPreset: v.optional(v.string()),
-        primaryColor: v.optional(v.string()),
-        secondaryColor: v.optional(v.string()),
-        accentColor: v.optional(v.string()),
-        logoUrl: v.optional(v.string()),
-      }),
+    visuals: v.optional(visualsValidator),
+    generatedPlan: v.optional(generatedPlanValidator),
+    // Final status for single-shot creation flows (dialog/import). The wizard
+    // keeps the default "draft"; saga flows create as "provisioning" and
+    // finalize to "active" once local effects succeed.
+    status: v.optional(
+      v.union(v.literal("draft"), v.literal("provisioning"), v.literal("active")),
     ),
-    generatedPlan: v.optional(
-      v.object({
-        pages: v.array(
-          v.object({
-            id: v.string(),
-            name: v.string(),
-            route: v.string(),
-            type: v.string(),
-            purpose: v.optional(v.string()),
-            actions: v.optional(v.array(v.string())),
-          }),
-        ),
-        entities: v.array(
-          v.object({
-            id: v.string(),
-            name: v.string(),
-            fields: v.optional(v.array(v.string())),
-          }),
-        ),
-      }),
-    ),
+    // Idempotency: a retry carrying the same token returns the existing doc
+    // instead of creating a twin.
+    creationToken: v.optional(v.string()),
     team: v.optional(
       v.array(
         v.object({
@@ -329,6 +406,25 @@ export const create = mutation({
       throw new ConvexError("Project name is required")
     }
 
+    if (args.creationToken) {
+      // Idempotent resume: match the LIVE doc for this token, not just the
+      // oldest. A compensated/deleted doc keeps its token, so `.first()`
+      // alone would resurrect a tombstone and shadow the real project,
+      // letting a retry mint a "name-1" twin — the exact failure the token
+      // exists to prevent.
+      const tokenDocs = await ctx.db
+        .query("projects")
+        .withIndex("by_creation_token", (q) => q.eq("creationToken", args.creationToken))
+        .collect()
+      const existing = tokenDocs.find(
+        (doc) =>
+          doc.status !== "deleted" && String(doc.createdBy) === String(args.userId),
+      )
+      if (existing) {
+        return { projectId: existing._id, slug: existing.slug, resumed: true }
+      }
+    }
+
     const slug = await ensureUniqueSlug(ctx, generateSlug(trimmedName) || "project")
     const gitRepository = buildGitRepositoryMetadata({
       provider: args.sourceControl?.provider ?? args.repoSource?.provider,
@@ -345,19 +441,33 @@ export const create = mutation({
       creationPath: args.creationPath,
       template: args.template?.trim() || undefined,
       targetPlatform: args.targetPlatform,
-      buildContract: args.buildContract,
-      stack: args.stack,
       sourceControl: args.sourceControl,
       gitRepository,
-      visuals: args.visuals,
-      generatedPlan: args.generatedPlan,
+      repo: buildCanonicalRepo({
+        provider: args.sourceControl?.provider ?? args.repoSource?.provider,
+        repoUrl: args.sourceControl?.repoUrl ?? args.repoSource?.repoUrl,
+        defaultBranch: args.sourceControl?.defaultBranch ?? args.repoSource?.branch,
+        visibility: args.sourceControl?.visibility,
+        workingCopyMode: args.sourceControl?.workingCopyMode,
+        setupMode: args.sourceControl?.setupMode,
+        importedFromBranch: args.repoSource?.branch,
+      }),
       importedFrom: buildImportedFrom(args.repoSource, gitRepository),
       syncStatus: "local_only",
-      status: "draft",
+      status: args.status ?? "draft",
+      creationToken: args.creationToken,
       sharedFilesVersion: 0,
       createdBy: args.userId,
       createdAt: now,
       updatedAt: now,
+    })
+
+    // Wizard artifacts live in their own table; the doc stays list-sized.
+    await upsertProjectArtifacts(ctx, projectId, {
+      visuals: args.visuals,
+      generatedPlan: args.generatedPlan,
+      buildContract: args.buildContract,
+      stack: args.stack,
     })
 
     await ctx.db.insert("projectMembers", {
@@ -379,6 +489,7 @@ export const create = mutation({
     return {
       projectId,
       slug,
+      resumed: false,
     }
   },
 })
@@ -432,6 +543,34 @@ export const listForCurrentUser = query({
   },
   handler: async (ctx, args) => {
     return listCollaboratorProjectsForUser(ctx, args.userId)
+  },
+})
+
+/**
+ * Sidebar projection: only the fields the project tree renders. The full
+ * docs carry wizard artifacts (generatedPlan, buildContract, visuals) that
+ * the sidebar never reads but would re-sync to every client on any change.
+ */
+export const listSummariesForCurrentUser = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const projects = await listCollaboratorProjectsForUser(ctx, args.userId)
+    return projects.map((project) => ({
+      _id: project._id,
+      name: project.name,
+      slug: project.slug,
+      status: project.status,
+      template: project.template ?? null,
+      updatedAt: project.updatedAt,
+      createdBy: project.createdBy ?? null,
+      localPath: project.localPath ?? null,
+      repo: project.repo ?? null,
+      sourceControl: project.sourceControl ?? null,
+      gitRepository: project.gitRepository ?? null,
+      importedFrom: project.importedFrom ?? null,
+    }))
   },
 })
 
@@ -552,8 +691,8 @@ export const update = mutation({
     audience: v.optional(v.string()),
     targetLaunchDate: v.optional(v.union(v.number(), v.null())),
     template: v.optional(v.union(v.string(), v.null())),
-    visuals: v.optional(v.any()),
-    generatedPlan: v.optional(v.any()),
+    visuals: v.optional(visualsValidator),
+    generatedPlan: v.optional(generatedPlanValidator),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
@@ -575,12 +714,9 @@ export const update = mutation({
       if (!trimmedName) {
         throw new ConvexError("Project name is required")
       }
+      // The slug stays stable on rename: it is an identifier (legacy routes,
+      // local workspace candidate scans, last-route persistence), not a label.
       patch.name = trimmedName
-      patch.slug = await ensureUniqueSlug(
-        ctx,
-        generateSlug(trimmedName) || "project",
-        args.projectId,
-      )
     }
 
     if (args.description !== undefined) {
@@ -595,30 +731,67 @@ export const update = mutation({
     if (args.template !== undefined) {
       patch.template = args.template?.trim() || undefined
     }
-    if (args.visuals !== undefined) {
-      patch.visuals = args.visuals as Doc<"projects">["visuals"]
-    }
-    if (args.generatedPlan !== undefined) {
-      patch.generatedPlan = args.generatedPlan as Doc<"projects">["generatedPlan"]
-    }
-
     await ctx.db.patch(args.projectId, patch)
+
+    // Artifacts route to their own table (legacy inline fields stay frozen).
+    await upsertProjectArtifacts(ctx, args.projectId, {
+      visuals: args.visuals,
+      generatedPlan: args.generatedPlan,
+    })
+
     return { ok: true }
   },
 })
 
-export const updateFrameworkInfo = mutation({
+/**
+ * Wizard/builder artifacts for a project, coalescing the split table with
+ * legacy inline doc fields (older projects predate projectArtifacts).
+ */
+export const getArtifacts = query({
   args: {
     projectId: v.id("projects"),
-    frameworkInfo: v.object({
-      framework: v.string(),
-      displayName: v.optional(v.string()),
-      routeConvention: v.optional(v.string()),
-      devCommand: v.optional(v.string()),
-      devPort: v.optional(v.number()),
-      buildCommand: v.optional(v.string()),
-      startCommand: v.optional(v.string()),
-    }),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const canAccess = await canAccessProject(ctx, args.projectId, args.userId)
+    if (!canAccess) {
+      return null
+    }
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project || project.status === "deleted") {
+      return null
+    }
+
+    const artifacts = await ctx.db
+      .query("projectArtifacts")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first()
+
+    return {
+      visuals: artifacts?.visuals ?? project.visuals ?? null,
+      generatedPlan: artifacts?.generatedPlan ?? project.generatedPlan ?? null,
+      buildContract: artifacts?.buildContract ?? project.buildContract ?? null,
+      stack: artifacts?.stack ?? project.stack ?? null,
+    }
+  },
+})
+
+/**
+ * Records the remote repository a local flow attached to the project (e.g.
+ * "create GitHub repo" during project creation). Builds the canonical
+ * gitRepository metadata from the same URL so the two descriptors agree.
+ */
+export const setSourceControl = mutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    provider: v.string(),
+    repoUrl: v.string(),
+    defaultBranch: v.optional(v.string()),
+    visibility: v.optional(v.string()),
+    workingCopyMode: v.optional(v.union(v.literal("managed"), v.literal("attached"))),
+    setupMode: v.optional(v.union(v.literal("personal"), v.literal("organization"))),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
@@ -626,8 +799,41 @@ export const updateFrameworkInfo = mutation({
       throw new ConvexError("Project not found")
     }
 
+    const canEdit = await canEditProject(ctx, args.projectId, args.userId)
+    if (!canEdit) {
+      throw new ConvexError("You do not have permission to edit this project")
+    }
+
+    const repoUrl = args.repoUrl.trim()
+    if (!repoUrl) {
+      throw new ConvexError("Repository URL is required")
+    }
+
+    const gitRepository = buildGitRepositoryMetadata({
+      provider: args.provider,
+      repoUrl,
+      defaultBranch: args.defaultBranch,
+    })
+
     await ctx.db.patch(args.projectId, {
-      frameworkInfo: args.frameworkInfo,
+      sourceControl: {
+        ...project.sourceControl,
+        provider: args.provider,
+        repoUrl,
+        defaultBranch: args.defaultBranch ?? project.sourceControl?.defaultBranch,
+        visibility: args.visibility ?? project.sourceControl?.visibility,
+        workingCopyMode: args.workingCopyMode ?? project.sourceControl?.workingCopyMode,
+        setupMode: args.setupMode ?? project.sourceControl?.setupMode,
+      },
+      gitRepository,
+      repo: buildCanonicalRepo({
+        provider: args.provider,
+        repoUrl,
+        defaultBranch: args.defaultBranch ?? project.sourceControl?.defaultBranch,
+        visibility: args.visibility ?? project.sourceControl?.visibility,
+        workingCopyMode: args.workingCopyMode ?? project.sourceControl?.workingCopyMode,
+        setupMode: args.setupMode ?? project.sourceControl?.setupMode,
+      }),
       updatedAt: Date.now(),
     })
 
@@ -639,13 +845,16 @@ export const updateStatus = mutation({
   args: {
     projectId: v.id("projects"),
     userId: v.id("users"),
+    // Lifecycle statuses only. "archived"/"deleted" are intentionally excluded:
+    // they must go through archive/deleteProject, which enforce
+    // canArchiveProject and (for delete) name confirmation. Allowing them here
+    // let any editor soft-delete a project, bypassing both guards.
     status: v.union(
       v.literal("draft"),
       v.literal("generating"),
       v.literal("building"),
+      v.literal("provisioning"),
       v.literal("active"),
-      v.literal("archived"),
-      v.literal("deleted"),
     ),
   },
   handler: async (ctx, args) => {
@@ -745,7 +954,8 @@ export const setProjectGitStorageMetricsForServer = mutation({
       lastPushedCommit: v.optional(v.string()),
       lastFetchAt: v.optional(v.number()),
       lastPushAt: v.optional(v.number()),
-      errorMessage: v.optional(v.string()),
+      // null clears a previously recorded error; undefined leaves it as-is.
+      errorMessage: v.optional(v.union(v.string(), v.null())),
     }),
   },
   handler: async (ctx, args) => {
@@ -759,22 +969,42 @@ export const setProjectGitStorageMetricsForServer = mutation({
       throw new ConvexError("Project not found")
     }
 
+    // Machine-written metrics live in their own table: background syncs never
+    // touch the project doc, so list subscriptions stay quiet. Legacy inline
+    // gitSyncState is frozen and used only as a read fallback.
+    const existing = await ctx.db
+      .query("projectSyncState")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first()
+    const previous = existing?.gitSyncState ?? project.gitSyncState
+
     const nextState: GitSyncStateMetadata = {
-      accessState: project.gitSyncState?.accessState ?? "unknown",
-      lastFetchedCommit: args.metrics.lastFetchedCommit ?? project.gitSyncState?.lastFetchedCommit,
-      lastPushedCommit: args.metrics.lastPushedCommit ?? project.gitSyncState?.lastPushedCommit,
-      lastFetchAt: args.metrics.lastFetchAt ?? project.gitSyncState?.lastFetchAt,
-      lastPushAt: args.metrics.lastPushAt ?? project.gitSyncState?.lastPushAt,
-      repoBytes: args.metrics.repoBytes ?? project.gitSyncState?.repoBytes,
-      lastRepoSizeAt: args.metrics.lastRepoSizeAt ?? project.gitSyncState?.lastRepoSizeAt,
-      errorMessage: args.metrics.errorMessage ?? project.gitSyncState?.errorMessage,
-      migratedFromReplicaAt: project.gitSyncState?.migratedFromReplicaAt,
+      accessState: previous?.accessState ?? "unknown",
+      lastFetchedCommit: args.metrics.lastFetchedCommit ?? previous?.lastFetchedCommit,
+      lastPushedCommit: args.metrics.lastPushedCommit ?? previous?.lastPushedCommit,
+      lastFetchAt: args.metrics.lastFetchAt ?? previous?.lastFetchAt,
+      lastPushAt: args.metrics.lastPushAt ?? previous?.lastPushAt,
+      repoBytes: args.metrics.repoBytes ?? previous?.repoBytes,
+      lastRepoSizeAt: args.metrics.lastRepoSizeAt ?? previous?.lastRepoSizeAt,
+      errorMessage:
+        args.metrics.errorMessage === null
+          ? undefined
+          : args.metrics.errorMessage ?? previous?.errorMessage,
+      migratedFromReplicaAt: previous?.migratedFromReplicaAt,
     }
 
-    await ctx.db.patch(args.projectId, {
-      gitSyncState: nextState,
-      updatedAt: Date.now(),
-    })
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        gitSyncState: nextState,
+        updatedAt: Date.now(),
+      })
+    } else {
+      await ctx.db.insert("projectSyncState", {
+        projectId: args.projectId,
+        gitSyncState: nextState,
+        updatedAt: Date.now(),
+      })
+    }
 
     return { ok: true }
   },

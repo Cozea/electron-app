@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   ModelSelection,
   ProviderInteractionMode,
@@ -43,6 +42,7 @@ export interface BuildCodexStartSessionInputOptions {
   readonly runtimeMode: RuntimeMode;
   readonly binaryPath: string;
   readonly homePath?: string;
+  readonly environment?: NodeJS.ProcessEnv;
   readonly modelSelection?: ModelSelection | null | undefined;
 }
 
@@ -60,6 +60,7 @@ export function buildCodexStartSessionInput(
     runtimeMode: input.runtimeMode,
     binaryPath: input.binaryPath,
     ...(input.homePath ? { homePath: input.homePath } : {}),
+    ...(input.environment ? { environment: input.environment } : {}),
     ...(model ? { model } : {}),
     ...(serviceTier ? { serviceTier } : {}),
   };

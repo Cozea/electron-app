@@ -208,6 +208,9 @@ validationLayer("CodexAdapterLive validation", (it) => {
         model: "gpt-5.3-codex",
         serviceTier: "fast",
         runtimeMode: "full-access",
+        // No per-instance override in the test settings, so the forwarded environment is the
+        // inherited process.env (mergeProviderInstanceEnvironment returns the base env unchanged).
+        environment: process.env,
       });
     }),
   );

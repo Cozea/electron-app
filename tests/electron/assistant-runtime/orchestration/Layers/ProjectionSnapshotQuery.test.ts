@@ -237,6 +237,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           workspaceRoot: "/tmp/project-1",
           defaultModelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           scripts: [
@@ -260,6 +261,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           title: "Thread 1",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           interactionMode: "default",

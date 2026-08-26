@@ -397,6 +397,23 @@ export function registerProjectHandlers(
     },
   )
 
+  // Resolves an opaque workspace id to its absolute project root path. The renderer holds only
+  // opaque workspace ids, but a few path-based read APIs (fs:readDir / fs:readFile, used for
+  // package-manager and node_modules detection in projectDetector) need a real filesystem path.
+  // Resolving here keeps the authorization check in the main process.
+  ipcMain.handle(
+    'project:resolveRoot',
+    async (_event, { workspaceId }: { workspaceId: string }): Promise<string | null> => {
+      if (!workspaceId || typeof workspaceId !== 'string') return null
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
+        return access.projectRootPath
+      } catch {
+        return null
+      }
+    },
+  )
+
   ipcMain.handle(
     'project:writeFile',
     async (
@@ -1056,11 +1073,31 @@ export function registerProjectHandlers(
         }
       }
 
-      // Create the GitHub repo and set it as origin
+      // `gh repo create --push` needs at least one commit; fresh projects
+      // have none, which previously left the new remote completely empty.
+      const headCheck = await runGitRuntimeCommand(['rev-parse', '--verify', 'HEAD'], { cwd: localPath })
+      if (!headCheck.success) {
+        const stageResult = await runGitCommand(['add', '-A'], localPath)
+        if (!stageResult.success) {
+          return { success: false, error: stageResult.error ?? 'Failed to stage initial commit.' }
+        }
+        const commitResult = await runGitCommand(
+          ['commit', '--allow-empty', '-m', 'Initial commit'],
+          localPath,
+        )
+        if (!commitResult.success) {
+          return { success: false, error: commitResult.error ?? 'Failed to create the initial commit.' }
+        }
+      }
+
+      const branchResult = await runGitRuntimeCommand(['symbolic-ref', '--short', 'HEAD'], { cwd: localPath })
+      const defaultBranch = branchResult.success ? branchResult.stdout.trim() || 'main' : 'main'
+
+      // Create the GitHub repo, set it as origin, and push the current branch
       const visibilityFlag = visibility === 'public' ? '--public' : '--private'
       const result = await runGhCommand(
-        ['repo', 'create', trimmedName, visibilityFlag, '--source', localPath, '--remote', 'origin'],
-        { cwd: localPath, timeoutMs: 30_000 }
+        ['repo', 'create', trimmedName, visibilityFlag, '--source', localPath, '--remote', 'origin', '--push'],
+        { cwd: localPath, timeoutMs: 60_000 }
       )
 
       if (!result.success) {
@@ -1084,7 +1121,7 @@ export function registerProjectHandlers(
       // Extract the repo URL from stdout (gh repo create prints the URL)
       const repoUrl = result.stdout.trim().split('\n').pop()?.trim() ?? undefined
 
-      return { success: true, repoUrl }
+      return { success: true, repoUrl, defaultBranch }
     }
   )
 }

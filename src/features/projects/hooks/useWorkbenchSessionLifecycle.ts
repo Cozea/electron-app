@@ -10,6 +10,30 @@ interface UseWorkbenchSessionLifecycleArgs {
   enabled?: boolean
 }
 
+/**
+ * Compares everything consumers actually render. The activity timestamps
+ * (openedAt/lastFocusedAt/lastBackgroundedAt) are deliberately excluded: the
+ * session manager bumps them on every ensure/activate/focus broadcast, and
+ * propagating those would re-render the whole dock chrome on every click.
+ */
+function isMeaningfullyEqual(
+  a: WorkbenchSessionSnapshot,
+  b: WorkbenchSessionSnapshot,
+): boolean {
+  return (
+    a.sessionKey === b.sessionKey &&
+    a.projectId === b.projectId &&
+    a.laneId === b.laneId &&
+    a.workspaceId === b.workspaceId &&
+    a.lifecycle === b.lifecycle &&
+    a.pinned === b.pinned &&
+    a.hasBrowserSurface === b.hasBrowserSurface &&
+    a.hasNativePreviewSession === b.hasNativePreviewSession &&
+    JSON.stringify(a.terminalBindings) === JSON.stringify(b.terminalBindings) &&
+    JSON.stringify(a.devServer) === JSON.stringify(b.devServer)
+  )
+}
+
 function matchesSession(
   snapshot: WorkbenchSessionSnapshot,
   sessionKey: string | null,
@@ -52,7 +76,9 @@ export function useWorkbenchSessionLifecycle({
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
       if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, workspaceId)) return
-      setSnapshot(nextSnapshot)
+      setSnapshot((current) =>
+        current && isMeaningfullyEqual(current, nextSnapshot) ? current : nextSnapshot,
+      )
     }
 
     void window.electronAPI.workbenchSession

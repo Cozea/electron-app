@@ -4,18 +4,64 @@ import { createPath, type NavigateFunction, type NavigateOptions, type To, useNa
 import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'
 
-function runWithViewTransition(update: () => void): void {
+interface ViewTransitionHandle {
+  finished: Promise<void>
+  skipTransition?: () => void
+}
+
+// Crossfades longer than this are stuck (suspended route content or a blocked
+// main thread), and a stuck transition paints the old page's screenshot over
+// the live page — every element doubled until it resolves. Jump to the end
+// state instead.
+const VIEW_TRANSITION_WATCHDOG_MS = 400
+
+let activeViewTransition: ViewTransitionHandle | null = null
+
+function runWithViewTransition(update: () => void | Promise<void>): void {
   const documentWithTransition = document as unknown as {
-    startViewTransition?: (updateCallback: () => void | Promise<void>) => { finished: Promise<void> }
+    startViewTransition?: (updateCallback: () => void | Promise<void>) => ViewTransitionHandle
   }
   if (!featureFlags.viewTransitions) {
-    update()
+    void update()
     return
   }
   if (typeof documentWithTransition.startViewTransition !== 'function') {
     throw new Error('View Transition API is unavailable in this runtime.')
   }
-  void documentWithTransition.startViewTransition(update).finished
+  // Never stack crossfades: a second navigation while one is animating mixes
+  // three UI states on screen. Apply the update directly instead.
+  if (activeViewTransition) {
+    activeViewTransition.skipTransition?.()
+    void update()
+    return
+  }
+
+  // Await the router transition plus one macrotask before the new-state
+  // capture, so React has committed the destination route. (Not rAF: frames
+  // are suppressed while a view transition captures, timers are not.)
+  const transition = documentWithTransition.startViewTransition(async () => {
+    await update()
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  })
+  activeViewTransition = transition
+
+  const release = () => {
+    if (activeViewTransition === transition) {
+      activeViewTransition = null
+    }
+  }
+  transition.finished.then(release, release)
+
+  window.setTimeout(() => {
+    if (activeViewTransition === transition) {
+      try {
+        transition.skipTransition?.()
+      } catch {
+        // Already finished or skipped.
+      }
+      release()
+    }
+  }, VIEW_TRANSITION_WATCHDOG_MS)
 }
 
 function isProjectRoutePath(pathname: string | null): boolean {
@@ -61,10 +107,9 @@ export function navigateWithTransition(
 
   runWithViewTransition(() => {
     if (typeof to === 'number') {
-      navigate(to)
-      return
+      return navigate(to)
     }
-    navigate(to, options)
+    return navigate(to, options)
   })
 }
 

@@ -3,10 +3,10 @@
  * TerminalService.registerIpcHandlers() registers to support the new
  * workspaceId-based API.
  *
- * TerminalService registers these handlers internally using `projectPath`.
+ * TerminalService registers these handlers internally using concrete paths.
  * After the workspace catalog was introduced, callers pass `workspaceId` (a
  * UUID) instead of a raw filesystem path.  This file removes the original
- * handlers and re-registers them with workspaceId → projectPath resolution.
+ * handlers and re-registers them with workspaceId → workspace root resolution.
  */
 
 import type { IpcMain } from 'electron'
@@ -14,15 +14,9 @@ import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts
 import type { TerminalService } from '../services/TerminalService'
 import type { CwdSpec } from '../../shared/workspaceTypes.ts'
 
-// registerOutputTarget is private on TerminalService; cast to any to access it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TerminalServiceAny = TerminalService & Record<string, any>
-
-
-
 export function registerTerminalWorkspaceHandlers(
   ipcMain: IpcMain,
-  terminalService: TerminalServiceAny,
+  terminalService: TerminalService,
 ): void {
   // Re-register terminal:create so that workspaceId is resolved to a real path
   // before being passed to the assistant runtime.
@@ -50,7 +44,13 @@ export function registerTerminalWorkspaceHandlers(
     terminalService.registerOutputTarget(event.sender)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await terminalService.createTerminal(options as any)
-    return { success: result.success, terminalId: result.terminalId, error: result.error }
+    return {
+      success: result.success,
+      terminalId: result.terminalId,
+      error: result.error,
+      snapshot: result.snapshot ?? null,
+      info: result.info ?? null,
+    }
   })
 
   // Re-register terminal:list so callers address retained terminals by the

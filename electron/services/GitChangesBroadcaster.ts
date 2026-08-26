@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import type { IpcMain, WebContents } from 'electron'
+import type { WebContents } from 'electron'
 
 import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '../../shared/electronApiTypes'
 import { CheckpointWorkerClient } from './CheckpointWorkerClient'
@@ -62,23 +62,6 @@ export class GitChangesBroadcaster {
       GitChangesBroadcaster.instance = new GitChangesBroadcaster()
     }
     return GitChangesBroadcaster.instance
-  }
-
-  registerIpcHandlers(ipcMain: IpcMain): void {
-    ipcMain.handle(
-      'sync:subscribeGitChanges',
-      async (event, options: { projectPath: string; scope: GitChangesScope }) => {
-        return await this.subscribe(event.sender, options)
-      },
-    )
-
-    ipcMain.handle(
-      'sync:unsubscribeGitChanges',
-      async (event, options: { projectPath: string; scope: GitChangesScope }) => {
-        this.unsubscribe(event.sender, options.projectPath, options.scope)
-        return { success: true }
-      },
-    )
   }
 
   async subscribe(

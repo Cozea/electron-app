@@ -17,7 +17,6 @@ const macUniversalX64ArchFilePackages = [
   "@rollup/rollup-darwin-*",
   "@tailwindcss/oxide-darwin-*",
   "7zip-bin/mac/x64",
-  "better-sqlite3/build/Release",
   "esbuild",
   "lightningcss-darwin-*",
   "msgpackr-extract/build/Release",

@@ -155,8 +155,7 @@ export const cleanupStale = mutation({
 
     const stalePresences = await ctx.db
       .query("projectPresence")
-      .withIndex("by_heartbeat")
-      .filter((q) => q.lt(q.field("lastHeartbeat"), cutoff))
+      .withIndex("by_heartbeat", (q) => q.lt("lastHeartbeat", cutoff))
       .collect()
 
     for (const presence of stalePresences) {

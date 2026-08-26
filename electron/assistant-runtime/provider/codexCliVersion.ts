@@ -1,4 +1,3 @@
-// @ts-nocheck
 const CODEX_VERSION_PATTERN = /\bv?(\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/;
 
 export const MINIMUM_CODEX_CLI_VERSION = "0.37.0";

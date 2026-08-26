@@ -1,12 +1,18 @@
 
-import { useMemo } from "react"
+import { lazy, Suspense, useMemo, useState } from "react"
 
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import {
+  updateLocalProjectDevAppIdentity,
+  useLocalProjectDevAppEntries,
+} from "@/features/devapps/localProjectDevAppStore"
+import { buildProjectDevAppManifest } from "@/features/devapps/projectDevAppManifest"
 import { listStoreApps } from "@/features/devapps/registry"
 import {
   SettingsSectionDescription,
   SettingsSectionTitle,
 } from "@/components/settings/SettingsChrome"
+import { Badge } from "@/components/ui/badge"
 import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel"
 import {
   APP_STORE_FEATURE_CARDS,
@@ -14,17 +20,36 @@ import {
 } from "@/features/projects/lib/appStoreCatalog"
 import { useProjectHeader } from "@/hooks/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
+import { featureFlags } from "@/lib/featureFlags"
 import { useSearchParams } from "@/lib/router"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { CpuChargeIcon as __ChipHugeIcon, FirstBracketCircleIcon as __BoltHugeIcon } from '@hugeicons/core-free-icons'
+import {
+  CpuChargeIcon as __ChipHugeIcon,
+  Edit01Icon as __EditHugeIcon,
+  FirstBracketCircleIcon as __BoltHugeIcon,
+} from '@hugeicons/core-free-icons'
+
+const LazyProjectDevAppLogoDialog = lazy(() =>
+  import("@/features/devapps/components/ProjectDevAppLogoDialog").then((module) => ({
+    default: module.ProjectDevAppLogoDialog,
+  })),
+)
 
 export function AppStorePage() {
   const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const activeCategory = resolveAppStoreCategory(searchParams.get("category"))
   const query = searchParams.get("q") ?? ""
+  const localProjectDevApps = useLocalProjectDevAppEntries()
+  const [identityPublicationId, setIdentityPublicationId] = useState<string | null>(null)
+  const [identityError, setIdentityError] = useState<string | null>(null)
+  const identityEntry = identityPublicationId
+    ? localProjectDevApps.find(
+        (entry) => String(entry.publication._id) === identityPublicationId,
+      ) ?? null
+    : null
 
   const headerCenter = useMemo(
     () => <ProjectShellTitleBarCenterFromLabel label={t('appStore.page.title')} />,
@@ -57,7 +82,37 @@ export function AppStorePage() {
     return activeCategory.id === "discover" ? apps.slice(0, 6) : apps.slice(0, 6)
   }, [activeCategory.id, query])
 
-  const hasResults = visibleFeatureCards.length > 0 || visiblePreviewApps.length > 0
+  const visibleProjectDevApps = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+
+    return (featureFlags.projectDevApps ? [...localProjectDevApps] : [])
+      .sort((left, right) => right.publication.updatedAt - left.publication.updatedAt)
+      .map((entry) => ({
+        entry,
+        app: buildProjectDevAppManifest(entry),
+      }))
+      .filter(({ app }) =>
+        activeCategory.id === "discover" || app.categories.includes(activeCategory.id),
+      )
+      .filter(({ app, entry }) => {
+        if (!normalizedQuery) return true
+
+        return [
+          app.name,
+          app.description,
+          app.store.categoryLabel,
+          entry.sourceProject.name,
+          entry.activeRelease.framework,
+          entry.activeRelease.devCommand,
+          `v${entry.activeRelease.version}`,
+        ].some((value) => value.toLowerCase().includes(normalizedQuery))
+      })
+  }, [localProjectDevApps, activeCategory.id, query])
+
+  const hasResults =
+    visibleFeatureCards.length > 0 ||
+    visibleProjectDevApps.length > 0 ||
+    visiblePreviewApps.length > 0
 
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-8 px-6 pt-5 pb-8">
@@ -125,7 +180,7 @@ export function AppStorePage() {
 
       {hasResults ? (
         <>
-          <section className="space-y-3">
+          {visibleFeatureCards.length > 0 ? <section className="space-y-3">
             <div className="grid gap-4 lg:grid-cols-3">
               {visibleFeatureCards.map((card, i) => {
                 const Icon = card.icon
@@ -162,9 +217,91 @@ export function AppStorePage() {
                 )
               })}
             </div>
-          </section>
+          </section> : null}
 
-          <section className="space-y-4">
+          {visibleProjectDevApps.length > 0 ? (
+            <section className="space-y-4">
+              <div className="flex items-end justify-between gap-4 px-1">
+                <div className="space-y-1">
+                  <h2 className="text-xl font-medium tracking-[-0.03em] text-foreground">
+                    {t("appStore.page.privateDevApps")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("appStore.page.privateDevAppsDesc")}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-amber-500/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-300">
+                  {visibleProjectDevApps.length}{" "}
+                  {visibleProjectDevApps.length === 1
+                    ? t("appStore.page.release")
+                    : t("appStore.page.releases")}
+                </span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {visibleProjectDevApps.map(({ app, entry }) => (
+                  <article
+                    key={app.id}
+                    className="flex min-h-36 flex-col rounded-[22px] bg-background px-4 py-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        aria-label={t("appStore.page.editDevAppFor").replace(
+                          "{name}",
+                          app.name,
+                        )}
+                        className={cn(
+                          "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                          app.store.accentClassName,
+                        )}
+                        style={{ borderRadius: 48 * 0.22265625 }}
+                        onClick={() => {
+                          setIdentityError(null)
+                          setIdentityPublicationId(String(entry.publication._id))
+                        }}
+                      >
+                        <DevAppIcon app={app} />
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                          <HugeiconsIcon icon={__EditHugeIcon} className="size-4" />
+                        </span>
+                      </button>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <h3 className="truncate text-sm font-medium text-foreground">
+                                {app.name}
+                              </h3>
+                              <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                                V{entry.activeRelease.version}
+                              </span>
+                            </div>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {entry.sourceProject.name}
+                            </p>
+                          </div>
+                          <Badge
+                            variant="secondary"
+                            className="h-6 rounded-full bg-amber-500/10 px-2.5 text-[11px] font-normal text-amber-700 dark:text-amber-300"
+                          >
+                            {t("appStore.page.privateBadge")}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                      {app.description}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {visiblePreviewApps.length > 0 ? <section className="space-y-4">
             <div className="flex items-end justify-between gap-4 px-1">
               <div className="space-y-1">
                 <h2 className="text-xl font-medium tracking-[-0.03em] text-foreground">
@@ -203,9 +340,12 @@ export function AppStorePage() {
                           </p>
                           <p className="text-[11px] text-muted-foreground">{(t as any)(`devApp.category.${app.store.categoryLabel}`) ?? app.store.categoryLabel}</p>
                         </div>
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
+                        <Badge
+                          variant="secondary"
+                          className="h-6 rounded-full bg-muted px-2.5 text-[11px] font-normal text-muted-foreground"
+                        >
                           {app.store.badgeLabel === "Built in" ? t('appStore.page.badgeBuiltIn') : app.store.badgeLabel}
-                        </span>
+                        </Badge>
                       </div>
                       <p className="text-sm leading-6 text-muted-foreground">{app.description}</p>
                     </div>
@@ -213,7 +353,7 @@ export function AppStorePage() {
                 )
               })}
             </div>
-          </section>
+          </section> : null}
         </>
       ) : (
         <section className="overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,rgba(120,119,198,0.08),rgba(255,255,255,0.02))]">
@@ -294,6 +434,42 @@ export function AppStorePage() {
           </div>
         </div>
       </section>
+
+      {identityEntry ? (
+        <Suspense fallback={null}>
+          <LazyProjectDevAppLogoDialog
+            open
+            projectName={identityEntry.publication.name}
+            mode="change"
+            initialName={identityEntry.publication.name}
+            initialLogoDataUrl={identityEntry.logoDataUrl}
+            saveErrorMessage={identityError}
+            onOpenChange={(open) => {
+              if (!open) {
+                setIdentityPublicationId(null)
+                setIdentityError(null)
+              }
+            }}
+            onConfirm={(logoDataUrl, name) => {
+              try {
+                updateLocalProjectDevAppIdentity(
+                  identityEntry.publication._id,
+                  name,
+                  logoDataUrl,
+                )
+                setIdentityPublicationId(null)
+                setIdentityError(null)
+              } catch (error) {
+                setIdentityError(
+                  error instanceof Error
+                    ? error.message
+                    : t("projectDevApp.logo.error"),
+                )
+              }
+            }}
+          />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

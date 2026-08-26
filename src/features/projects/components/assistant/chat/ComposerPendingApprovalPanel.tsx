@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { memo } from "react";
 import { type PendingApproval } from "./session-logic";
 

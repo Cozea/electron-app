@@ -3,7 +3,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { DocumentAttachmentIcon as __FileIconHugeIcon, Folder01Icon as __FolderIconHugeIcon } from '@hugeicons/core-free-icons'
 
-// @ts-nocheck
 import { memo, useMemo, useState } from "react";
 import { getVscodeIconUrlForEntry } from "../vscode-icons";
 import { cn } from "@/lib/utils";

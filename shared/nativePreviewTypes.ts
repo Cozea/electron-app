@@ -78,6 +78,8 @@ export interface NativePreviewSessionState extends NativePreviewSessionLocator {
   helperPid: number | null
   status: NativePreviewSessionStatus
   streamUrl: string | null
+  appReady: boolean
+  appKey: string | null
   rotation: NativePreviewRotation
   lastError: string | null
   updatedAt: number

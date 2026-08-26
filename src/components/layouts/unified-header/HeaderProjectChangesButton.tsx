@@ -17,7 +17,7 @@ import { useGitChangesStore } from "@/stores/useGitChangesStore";
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();
-  const location = useLocation();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const convex = useConvex();
   const routeContext = useOptionalProjectRouteContext();
   const workspaceId = routeContext?.activeLane?.workspaceId ?? routeContext?.workspaceId ?? null;
@@ -65,7 +65,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   if (!hasDisplayableDiff) return null;
 
   const workbenchPath = buildProjectPath(String(projectId), "workbench");
-  const isOnWorkbench = location.pathname === workbenchPath;
+  const isOnWorkbench = pathname === workbenchPath;
 
   return (
     <Tooltip>
@@ -73,7 +73,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
         <Button
           type="button"
           variant="ghost"
-          className={`h-6 gap-1 shrink-0 rounded-md border border-border/60 px-3 shadow-none hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
+          className={`h-7 sm:h-7 gap-1 shrink-0 rounded-md border border-border/60 px-3 shadow-none hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
           aria-label={isSidebarOpen ? "Close changes" : "Open changes"}
           onMouseEnter={prewarmChanges}
           onFocus={prewarmChanges}

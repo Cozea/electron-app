@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProjectionSnapshotQuery - Read-model snapshot query service interface.
  *

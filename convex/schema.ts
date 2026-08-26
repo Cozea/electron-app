@@ -74,6 +74,26 @@ export default defineSchema({
       })
     ),
 
+    // Canonical repository descriptor. Written by create/setSourceControl;
+    // readers prefer this and fall back to the legacy trio below.
+    repo: v.optional(
+      v.object({
+        provider: v.string(),
+        url: v.string(),
+        defaultBranch: v.string(),
+        owner: v.optional(v.string()),
+        name: v.optional(v.string()),
+        visibility: v.optional(v.string()),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
+        importedFromBranch: v.optional(v.string()),
+      })
+    ),
+
     // Legacy repository integration metadata.
     // Collaboration should not depend on these fields on the active path.
     sourceControl: v.optional(
@@ -167,12 +187,16 @@ export default defineSchema({
     // Status
     status: v.union(
       v.literal("draft"), // Created but not yet active
+      v.literal("provisioning"), // Doc created; local effects (folder/clone/repo) still running
       v.literal("generating"), // AI generating plan
       v.literal("building"), // AI building files
       v.literal("active"), // Ready to use
       v.literal("archived"),
       v.literal("deleted")
     ),
+    // Client-generated idempotency token: retries of the same creation
+    // attempt resolve to the same doc instead of minting "name-1" twins.
+    creationToken: v.optional(v.string()),
     // Repo import specific
     importedFrom: v.optional(
       v.object({
@@ -225,7 +249,92 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
-    .index("by_created_by", ["createdBy"]),
+    .index("by_created_by", ["createdBy"])
+    .index("by_creation_token", ["creationToken"]),
+
+  // Wizard/builder artifacts split out of the project doc: list queries never
+  // carry them, and artifact churn never invalidates list subscriptions.
+  // Legacy docs may still hold these fields inline; projects.getArtifacts
+  // coalesces both sources.
+  projectArtifacts: defineTable({
+    projectId: v.id("projects"),
+    visuals: v.optional(
+      v.object({
+        uiLibrary: v.optional(v.string()),
+        vibeDescription: v.optional(v.string()),
+        colorPreset: v.optional(v.string()),
+        primaryColor: v.optional(v.string()),
+        secondaryColor: v.optional(v.string()),
+        accentColor: v.optional(v.string()),
+        logoUrl: v.optional(v.string()),
+      })
+    ),
+    generatedPlan: v.optional(
+      v.object({
+        pages: v.array(
+          v.object({
+            id: v.string(),
+            name: v.string(),
+            route: v.string(),
+            type: v.string(),
+            purpose: v.optional(v.string()),
+            actions: v.optional(v.array(v.string())),
+          })
+        ),
+        entities: v.array(
+          v.object({
+            id: v.string(),
+            name: v.string(),
+            fields: v.optional(v.array(v.string())),
+          })
+        ),
+      })
+    ),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
+    stack: v.optional(
+      v.object({
+        backend: v.optional(v.string()),
+        hosting: v.optional(v.string()),
+        aiProvider: v.optional(v.string()),
+      })
+    ),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // Machine-written repository sync metrics, split out so background syncs
+  // never touch (and re-push) the project doc itself.
+  projectSyncState: defineTable({
+    projectId: v.id("projects"),
+    gitSyncState: v.object({
+      accessState: v.union(
+        v.literal("unknown"),
+        v.literal("pending"),
+        v.literal("granted"),
+        v.literal("missing"),
+        v.literal("error")
+      ),
+      lastFetchedCommit: v.optional(v.string()),
+      lastPushedCommit: v.optional(v.string()),
+      lastFetchAt: v.optional(v.number()),
+      lastPushAt: v.optional(v.number()),
+      repoBytes: v.optional(v.number()),
+      lastRepoSizeAt: v.optional(v.number()),
+      errorMessage: v.optional(v.string()),
+      migratedFromReplicaAt: v.optional(v.number()),
+    }),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
 
   // Project members with expanded roles
   projectMembers: defineTable({
@@ -249,6 +358,42 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
+
+  // Private DevApps promoted from projects. There is one logical publication
+  // per source project; each update points it at a new immutable release.
+  devAppPublications: defineTable({
+    projectId: v.id("projects"),
+    activeReleaseId: v.optional(v.id("devAppReleases")),
+    visibility: v.literal("project"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_status", ["status"])
+    .index("by_status_and_updated_at", ["status", "updatedAt"]),
+
+  // Append-only DevApp launch configuration. Published versions remain
+  // available for audit/history even after a newer release becomes active.
+  devAppReleases: defineTable({
+    publicationId: v.id("devAppPublications"),
+    projectId: v.id("projects"),
+    version: v.number(),
+    framework: v.string(),
+    devCommand: v.string(),
+    devPort: v.optional(v.number()),
+    sourceRevision: v.optional(v.string()),
+    sourceFingerprint: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_publication", ["publicationId"])
+    .index("by_publication_and_version", ["publicationId", "version"])
+    .index("by_project", ["projectId"]),
 
   projectTrustedDevices: defineTable({
     projectId: v.id("projects"),

@@ -14,11 +14,26 @@ import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 import { TerminalProvenanceService } from './TerminalProvenanceService'
 import type {
   WorkbenchRuntimeEventMessage,
+  WorkbenchRuntimeTerminalActivityPayload,
   WorkbenchRuntimeTerminalCreateResult,
   WorkbenchRuntimeTerminalExitPayload,
+  WorkbenchRuntimeTerminalOutputPayload,
   WorkbenchRuntimeTerminalProvenancePayload,
 } from '../workbench-runtime/protocol'
 import { WorkbenchRuntimeClient } from './WorkbenchRuntimeClient'
+
+/**
+ * The runtime child always emits a payload that matches its event name, but the
+ * wire type {@link WorkbenchRuntimeEventMessage} declares `payload` as a flat
+ * union with no correlation to `event`, so a `switch (message.event)` cannot
+ * narrow the payload. This correlated view pairs each event with its concrete
+ * payload so the dispatch below is type-safe without per-call casts.
+ */
+type RuntimeEventByName =
+  | { event: 'terminal.output'; payload: WorkbenchRuntimeTerminalOutputPayload }
+  | { event: 'terminal.activity'; payload: WorkbenchRuntimeTerminalActivityPayload }
+  | { event: 'terminal.exit'; payload: WorkbenchRuntimeTerminalExitPayload }
+  | { event: 'terminal.provenance'; payload: WorkbenchRuntimeTerminalProvenancePayload }
 
 interface TerminalObserver {
   onOutput?: (event: TerminalOutputEvent & { workspaceId: string }) => void
@@ -113,7 +128,32 @@ export class TerminalService {
     }
   }
 
-  private registerOutputTarget(sender: WebContents): void {
+  /**
+   * Drop every per-terminal cache for a destroyed terminal. Exited terminals
+   * intentionally retain their snapshot/output for re-attach, so this runs on
+   * explicit kill/teardown — not on plain exit — to bound memory over long
+   * sessions (snapshot + up to MAX_TERMINAL_REPLAY_EVENTS per terminal).
+   */
+  private evictTerminalCaches(terminalId: string): void {
+    const workspaceId = this.getWorkspaceIdForTerminal(terminalId)
+    if (workspaceId) {
+      this.removeWorkspaceTerminal(workspaceId, terminalId)
+    }
+    this.terminalSnapshots.delete(terminalId)
+    this.terminalInfos.delete(terminalId)
+    this.terminalOutputEvents.delete(terminalId)
+    this.terminalWorkspaceIds.delete(terminalId)
+    this.activeTerminalIds.delete(terminalId)
+    this.terminalObservers.delete(terminalId)
+  }
+
+  /**
+   * Register a renderer WebContents as a target for terminal output/exit/
+   * activity broadcasts. Public so the workspaceId-aware IPC overrides in
+   * registerTerminalWorkspaceHandlers can hook the same target the built-in
+   * handlers do, without reaching into private state.
+   */
+  registerOutputTarget(sender: WebContents): void {
     if (sender.isDestroyed()) return
     if (this.outputTargets.has(sender)) return
 
@@ -323,18 +363,21 @@ export class TerminalService {
   }
 
   private handleRuntimeEvent(message: WorkbenchRuntimeEventMessage): void {
-    switch (message.event) {
+    // `event` is the authoritative discriminant; pair it with its concrete
+    // payload so each handler receives a precisely-typed value.
+    const runtimeEvent = message as RuntimeEventByName
+    switch (runtimeEvent.event) {
       case 'terminal.output':
-        this.handleRuntimeOutput(message.payload)
+        this.handleRuntimeOutput(runtimeEvent.payload)
         return
       case 'terminal.activity':
-        this.handleRuntimeActivity(message.payload)
+        this.handleRuntimeActivity(runtimeEvent.payload)
         return
       case 'terminal.exit':
-        this.handleRuntimeTerminalExit(message.payload)
+        this.handleRuntimeTerminalExit(runtimeEvent.payload)
         return
       case 'terminal.provenance':
-        this.handleRuntimeTerminalProvenance(message.payload)
+        this.handleRuntimeTerminalProvenance(runtimeEvent.payload)
         return
       default:
         return
@@ -506,13 +549,14 @@ export class TerminalService {
   }
 
   killTerminal(terminalId: string): boolean {
-    const exists = this.activeTerminalIds.has(terminalId)
-    if (!exists) {
-      return false
+    const wasActive = this.activeTerminalIds.has(terminalId)
+    if (wasActive) {
+      void this.runtimeClient.request<{ success: boolean }>('terminal.kill', { terminalId }).catch(() => {})
     }
-
-    void this.runtimeClient.request<{ success: boolean }>('terminal.kill', { terminalId }).catch(() => {})
-    return true
+    // Free caches whether the terminal was still running or already exited —
+    // killing/closing a tile is the teardown signal that retention is over.
+    this.evictTerminalCaches(terminalId)
+    return wasActive
   }
 
   registerIpcHandlers(): void {
@@ -523,6 +567,8 @@ export class TerminalService {
         success: result.success,
         terminalId: result.terminalId,
         error: result.error,
+        snapshot: result.snapshot ?? null,
+        info: result.info ?? null,
       }
     })
 
@@ -599,8 +645,16 @@ export class TerminalService {
 
   killAll(): void {
     void this.runtimeClient.request<{ success: boolean }>('terminal.killAll', {}).catch(() => {})
+    // Clear every per-terminal cache, not just the two that were cleared
+    // before — snapshots/infos/output buffers/workspace ids/observers all
+    // leaked across a full teardown otherwise.
     this.activeTerminalIds.clear()
     this.workspaceTerminals.clear()
+    this.terminalSnapshots.clear()
+    this.terminalInfos.clear()
+    this.terminalOutputEvents.clear()
+    this.terminalWorkspaceIds.clear()
+    this.terminalObservers.clear()
     this.runtimeClient.dispose()
   }
 }

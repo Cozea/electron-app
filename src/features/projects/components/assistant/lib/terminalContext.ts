@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { type ThreadId } from "@cozea/assistant-contracts";
 
 export interface TerminalContextSelection {

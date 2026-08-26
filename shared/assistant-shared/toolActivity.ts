@@ -397,7 +397,7 @@ export function deriveToolActivityPresentation(
   const title = asTrimmedString(input.title);
   let detail = stripTrailingExitCode(asTrimmedString(input.detail));
 
-  if (detail && /^[\s\[\]\{\}",:]+$/.test(detail)) {
+  if (detail && /^[\s[\]{}",:]+$/.test(detail)) {
     detail = undefined;
   }
 

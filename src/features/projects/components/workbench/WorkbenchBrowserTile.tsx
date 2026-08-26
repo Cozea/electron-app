@@ -25,11 +25,11 @@ import { useWorkbenchBrowserView } from "@/features/projects/components/workbenc
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
+import { dispatchBrowserFocusUrl, normalizeUrlInput } from "@/features/projects/browser/urlInput"
 import {
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreVerticalIcon as __EllipsisVerticalHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, Cancel01Icon as __XHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, ChevronDoubleCloseIcon as __ChevronUpHugeIcon, Globe02Icon as __GlobeHugeIcon, LockIcon as __LockHugeIcon } from '@hugeicons/core-free-icons'
@@ -39,37 +39,9 @@ interface WorkbenchBrowserTileProps {
   laneId: string
   tile: WorkbenchBrowserTileRecord
   workspaceId: string | null
-  workbenchSession: WorkbenchSessionSnapshot | null
+  workbenchSessionKey: string | null
   panelApi: DockviewPanelApi
   containerApi: DockviewApi
-}
-
-export function normalizeUrlInput(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return ""
-
-  // If it's explicitly a URL scheme (e.g., http://, https://, file://)
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
-    return trimmed
-  }
-
-  // If it contains spaces, it's definitely a search query
-  if (trimmed.includes(" ")) {
-    return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
-  }
-
-  // If it's localhost or an IP with a port
-  if (/^localhost(:|\/|$)/i.test(trimmed) || /^[\w.-]+:\d+/.test(trimmed)) {
-    return `http://${trimmed}`
-  }
-
-  // If it looks like a domain name or IP address (has a dot)
-  if (trimmed.includes(".")) {
-    return `https://${trimmed}`
-  }
-
-  // Otherwise, treat it as a search query
-  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
 }
 
 async function showNativeBrowserHeaderMenu<T extends string>(
@@ -94,7 +66,7 @@ export function WorkbenchBrowserTile({
   laneId,
   tile,
   workspaceId,
-  workbenchSession,
+  workbenchSessionKey,
   panelApi,
   containerApi,
 }: WorkbenchBrowserTileProps) {
@@ -117,7 +89,7 @@ export function WorkbenchBrowserTile({
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: tile.url,
-    sessionKey: workbenchSession?.sessionKey ?? null,
+    sessionKey: workbenchSessionKey,
     projectId,
     laneId,
     workspaceId: workspaceId ?? undefined,
@@ -183,13 +155,12 @@ export function WorkbenchBrowserTile({
 
   const focusUrlInput = useCallback(() => {
     panelApi.setActive()
+    // The address bar lives in the dock header (BrowserPanelHeaderControls)
+    // and owns its own input; ask it to focus instead of touching a local ref.
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        urlInputRef.current?.focus()
-        urlInputRef.current?.select()
-      })
+      dispatchBrowserFocusUrl(tile.id)
     })
-  }, [panelApi])
+  }, [panelApi, tile.id])
 
   const openFind = useCallback((nextQuery?: string) => {
     panelApi.setActive()
@@ -391,7 +362,7 @@ export function WorkbenchBrowserTile({
           }}
           placeholder="Search or enter address"
           className={cn(
-            "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none",
+            "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none dark:bg-transparent",
             "placeholder:text-muted-foreground/45 focus-visible:ring-0",
           )}
         />
@@ -418,7 +389,7 @@ export function WorkbenchBrowserTile({
               }
             }}
             placeholder="Find"
-            className="h-7 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+            className="h-7 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           <span className="min-w-[2.5rem] text-right text-[10px] tabular-nums text-muted-foreground">
             {findResultLabel}

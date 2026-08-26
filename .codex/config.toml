@@ -1,0 +1,21 @@
+[mcp_servers.ai-elements]
+command = "npx"
+args = [
+    "-y",
+    "mcp-remote",
+    "https://registry.ai-sdk.dev/api/mcp",
+]
+
+[mcp_servers.electron-devtools]
+command = "bunx"
+args = [
+    "chrome-devtools-mcp@latest",
+    "--browser-url=http://127.0.0.1:9222",
+]
+
+[mcp_servers.filesystem]
+command = "npx"
+args = [
+    "-y",
+    "@anthropic-ai/mcp-server-filesystem",
+]

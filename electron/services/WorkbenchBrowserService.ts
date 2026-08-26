@@ -38,8 +38,11 @@ export class WorkbenchBrowserService {
   private readonly sessions = new Map<string, Electron.Session>()
   private readonly pendingEmits = new Set<string>()
   private emitScheduled = false
+  private readonly options: WorkbenchBrowserServiceOptions
 
-  constructor(private readonly options: WorkbenchBrowserServiceOptions) {}
+  constructor(options: WorkbenchBrowserServiceOptions) {
+    this.options = options
+  }
 
   private getMainWindow(): BrowserWindow | null {
     return this.options.getMainWindow()
@@ -103,6 +106,31 @@ export class WorkbenchBrowserService {
 
   private isPrimaryModifier(input: Electron.Input): boolean {
     return IS_MAC ? Boolean(input.meta) : Boolean(input.control)
+  }
+
+  private async readSelectedText(record: WorkbenchBrowserRecord): Promise<string> {
+    try {
+      const result = await record.view.webContents.executeJavaScript(
+        'String(window.getSelection() ?? "")',
+      )
+      return typeof result === 'string' ? result : ''
+    } catch {
+      return ''
+    }
+  }
+
+  private async emitShowFindWithSelection(
+    tileId: string,
+    record: WorkbenchBrowserRecord,
+  ): Promise<void> {
+    const selectedText = (await this.readSelectedText(record)).trim()
+    // Tile may have been torn down while the selection read was in flight.
+    if (!this.records.has(tileId)) return
+    this.emitCommand({
+      tileId,
+      type: 'show-find',
+      query: selectedText && !/[\r\n]/.test(selectedText) ? selectedText : undefined,
+    })
   }
 
   private triggerFindNavigation(
@@ -345,12 +373,11 @@ export class WorkbenchBrowserService {
 
         if (code === 'KeyF') {
           event.preventDefault()
-          const selectedText = record.view.webContents.getSelectedText().trim()
-          this.emitCommand({
-            tileId,
-            type: 'show-find',
-            query: selectedText && !/[\r\n]/.test(selectedText) ? selectedText : undefined,
-          })
+          // preventDefault must run synchronously within the listener, so read
+          // the selection asynchronously and emit show-find once it resolves.
+          // executeJavaScript may reject (e.g. crashed/destroyed frame); in that
+          // case fall back to opening find with no prefilled query.
+          void this.emitShowFindWithSelection(tileId, record)
           return
         }
 
@@ -508,6 +535,9 @@ export class WorkbenchBrowserService {
       },
     })
     view.setBackgroundColor('#00000000')
+    // Native views ignore DOM clipping; round to nest inside the workbench
+    // tile card (12px --dv-border-radius minus the 1px host inset).
+    view.setBorderRadius(11)
     view.setVisible(false)
 
     const record: WorkbenchBrowserRecord = {
@@ -706,11 +736,12 @@ export class WorkbenchBrowserService {
     const record = this.records.get(tileId)
     if (!record) return ''
 
-    try {
-      return record.view.webContents.getSelectedText()
-    } catch {
-      return ''
-    }
+    // WebContents exposes no synchronous selection accessor; reading the live
+    // DOM selection requires async executeJavaScript (see readSelectedText,
+    // used by the show-find prefill). This IPC entry point is synchronous, so
+    // it returns '' — which matches prior runtime behavior, where the
+    // nonexistent webContents.getSelectedText() always threw into the catch.
+    return ''
   }
 
   async captureScreenshot(tileId: string): Promise<string | null> {
@@ -736,7 +767,10 @@ export class WorkbenchBrowserService {
     }
 
     if (!record.view.webContents.isDestroyed()) {
-      record.view.webContents.destroy()
+      // WebContents has no destroy(); close() tears the page down as if the
+      // content had called window.close(), releasing the renderer. The view is
+      // already detached from contentView above, so it is fully torn down.
+      record.view.webContents.close()
     }
 
     this.records.delete(tileId)

@@ -1,5 +1,6 @@
 import type {
   ProviderInteractionMode,
+  ProviderInstanceId,
   ProviderKind,
   RuntimeMode,
 } from "@cozea/assistant-contracts"
@@ -12,7 +13,7 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 import {
   buildLegacyWorkspaceIdentityKey,
   buildWorkspaceIdentityKey,
-  normalizeWorkspaceProjectPath,
+  normalizeWorkspaceId,
 } from "@/features/projects/workspaces/workspaceIdentity"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
@@ -81,6 +82,8 @@ export type WorkbenchTileType =
   | "tasks"
   | "assistantChat"
 
+export type WorkbenchRuntimePreviewViewMode = "preview" | "code"
+
 export type WorkbenchSelectionTileMode =
   | "emptyState"
   | "edgePreview"
@@ -110,10 +113,31 @@ export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
 
 export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   type: "devServer"
+  viewMode?: WorkbenchRuntimePreviewViewMode
+  /**
+   * URL the user navigated the embedded preview to, when it differs from the
+   * dev server's own URL. Persisted intent: survives remounts, cleared
+   * explicitly ("back to server URL") or by navigating back to the base.
+   */
+  previewOverrideUrl?: string | null
+  /** Private project DevApp identity and immutable release snapshot. */
+  devAppId?: string
+  devAppReleaseId?: string
+  devAppReleaseVersion?: number
+  /** Source runtime retained when this local DevApp is opened from another project. */
+  devAppProjectId?: string
+  devAppWorkspaceId?: string
+  devAppLaneId?: string
+  /** Launch-context overrides captured when the DevApp release was created. */
+  devAppFramework?: string
+  devAppCommand?: string
+  devAppPort?: number
+  autoStart?: boolean
 }
 
 export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
   type: "mobileSimulator"
+  viewMode?: WorkbenchRuntimePreviewViewMode
 }
 
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
@@ -136,11 +160,12 @@ export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
+  providerInstanceId?: ProviderInstanceId
   model?: string | null
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
   agentLabel?: string | null
-  laneBinding?: "sessionProjectPath" | "threadWorktree"
+  laneBinding?: "sessionWorkspace" | "threadWorktree"
 }
 
 export type WorkbenchTile =
@@ -155,7 +180,7 @@ export type WorkbenchTile =
 export interface WorkbenchProjectState {
   projectId: string
   laneId: string
-  projectPath: string | null
+  workspaceId: string | null
   tiles: Record<string, WorkbenchTile>
   order: string[]
   activeTileId: string | null
@@ -176,6 +201,7 @@ export interface WorkbenchSidebarSurfaceTileSummary {
   type: Exclude<WorkbenchTileType, "assistantChat" | "selection" | "tasks">
   title: string
   favicon?: string | null
+  devAppId?: string
 }
 
 export interface WorkbenchLaneSidebarSummary {
@@ -185,10 +211,20 @@ export interface WorkbenchLaneSidebarSummary {
   surfaces: WorkbenchSidebarSurfaceTileSummary[]
 }
 
-interface CreateTileOptions {
+export interface CreateTileOptions {
   title?: string
   url?: string
   storageScope?: BrowserStorageScope
+  devAppId?: string | null
+  devAppReleaseId?: string | null
+  devAppReleaseVersion?: number | null
+  devAppProjectId?: string | null
+  devAppWorkspaceId?: string | null
+  devAppLaneId?: string | null
+  devAppFramework?: string | null
+  devAppCommand?: string | null
+  devAppPort?: number | null
+  autoStart?: boolean
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
   selectionReferenceTileId?: string | null
@@ -199,51 +235,56 @@ interface CreateTileOptions {
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
+  providerInstanceId?: ProviderInstanceId
   model?: string | null
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
   agentLabel?: string | null
-  laneBinding?: "sessionProjectPath" | "threadWorktree"
+  laneBinding?: "sessionWorkspace" | "threadWorktree"
 }
 
 interface PersistedWorkbenchState {
-  workbenches: Record<string, WorkbenchProjectState>
+  workbenches: Record<string, PersistedWorkbenchRecord>
 }
 
 interface LegacyPersistedWorkbenchState {
-  projects?: Record<string, WorkbenchProjectState>
+  projects?: Record<string, PersistedWorkbenchRecord>
+}
+
+type PersistedWorkbenchRecord = WorkbenchProjectState & {
+  projectPath?: string | null
 }
 
 interface ProjectWorkbenchState extends PersistedWorkbenchState {
   actions: {
-    ensureWorkbench: (projectId: string, laneId: string, projectPath?: string | null) => void
-    resetWorkbench: (projectId: string, laneId: string, projectPath?: string | null) => void
-    cloneProjectPathState: (
+    ensureWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
+    resetWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
+    cloneWorkspaceState: (
       projectId: string,
-      fromProjectPath?: string | null,
-      toProjectPath?: string | null,
+      fromWorkspace?: string | null,
+      toWorkspace?: string | null,
     ) => void
     addTile: (
       projectId: string,
       laneId: string,
       type: WorkbenchTileType,
       options?: CreateTileOptions,
-      projectPath?: string | null,
+      workspaceId?: string | null,
     ) => string
     openSingletonTile: (
       projectId: string,
       laneId: string,
       type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator">,
       options?: CreateTileOptions,
-      projectPath?: string | null,
+      workspaceId?: string | null,
     ) => string
-    removeTile: (projectId: string, laneId: string, tileId: string, projectPath?: string | null) => void
-    setActiveTile: (projectId: string, laneId: string, tileId: string | null, projectPath?: string | null) => void
+    removeTile: (projectId: string, laneId: string, tileId: string, workspaceId?: string | null) => void
+    setActiveTile: (projectId: string, laneId: string, tileId: string | null, workspaceId?: string | null) => void
     setLayoutSnapshot: (
       projectId: string,
       laneId: string,
       layout: SerializedDockview | null,
-      projectPath?: string | null,
+      workspaceId?: string | null,
     ) => void
     updateAssistantTile: (
       projectId: string,
@@ -256,6 +297,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
           | "assistantProjectId"
           | "threadId"
           | "provider"
+          | "providerInstanceId"
           | "model"
           | "runtimeMode"
           | "interactionMode"
@@ -263,21 +305,32 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
           | "laneBinding"
         >
       >,
-      projectPath?: string | null,
+      workspaceId?: string | null,
     ) => void
     updateBrowserTile: (
       projectId: string,
       laneId: string,
       tileId: string,
       patch: Partial<Pick<WorkbenchBrowserTile, "url" | "title" | "favicon" | "storageScope">>,
-      projectPath?: string | null,
+      workspaceId?: string | null,
+    ) => void
+    updateRuntimePreviewTile: (
+      projectId: string,
+      laneId: string,
+      tileId: string,
+      patch: Partial<{
+        viewMode: WorkbenchRuntimePreviewViewMode
+        previewOverrideUrl: string | null
+        autoStart: boolean
+      }>,
+      workspaceId?: string | null,
     ) => void
     updateTileTitle: (
       projectId: string,
       laneId: string,
       tileId: string,
       title: string,
-      projectPath?: string | null,
+      workspaceId?: string | null,
     ) => void
   }
 }
@@ -306,26 +359,26 @@ function buildLegacyWorkbenchScopeKey(projectId: string, laneId?: string | null)
 export function buildWorkbenchScopeKey(
   projectId: string,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ): string {
-  const normalizedProjectPath = normalizeWorkspaceProjectPath(projectPath)
-  if (!normalizedProjectPath) {
+  const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
+  if (!normalizedWorkspace) {
     return buildLegacyWorkbenchScopeKey(projectId, laneId)
   }
 
-  return buildWorkspaceIdentityKey(projectId, normalizeLaneId(laneId), normalizedProjectPath)!
+  return buildWorkspaceIdentityKey(projectId, normalizedWorkspace, normalizeLaneId(laneId))!
 }
 
 function resolveWorkbenchScopeKey(
   workbenches: Record<string, WorkbenchProjectState>,
   projectId: string,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ): string {
   const normalizedLaneId = normalizeLaneId(laneId)
-  const normalizedProjectPath = normalizeWorkspaceProjectPath(projectPath)
-  const pathAwareScopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId, normalizedProjectPath)
-  if (normalizedProjectPath && workbenches[pathAwareScopeKey]) {
+  const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
+  const pathAwareScopeKey = buildWorkbenchScopeKey(projectId, normalizedLaneId, normalizedWorkspace)
+  if (normalizedWorkspace && workbenches[pathAwareScopeKey]) {
     return pathAwareScopeKey
   }
 
@@ -334,7 +387,7 @@ function resolveWorkbenchScopeKey(
     return legacyScopeKey
   }
 
-  if (!normalizedProjectPath) {
+  if (!normalizedWorkspace) {
     const matchingScopeKeys = Object.entries(workbenches)
       .filter(([, workbench]) =>
         workbench.projectId === projectId &&
@@ -381,20 +434,20 @@ function promoteLegacyWorkbenchIfNeeded(
   workbenches: Record<string, WorkbenchProjectState>,
   projectId: string,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ): string {
-  const normalizedProjectPath = normalizeWorkspaceProjectPath(projectPath)
-  if (!normalizedProjectPath) {
+  const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
+  if (!normalizedWorkspace) {
     return buildLegacyWorkbenchScopeKey(projectId, laneId)
   }
 
-  const pathAwareScopeKey = buildWorkbenchScopeKey(projectId, laneId, normalizedProjectPath)
+  const pathAwareScopeKey = buildWorkbenchScopeKey(projectId, laneId, normalizedWorkspace)
   if (workbenches[pathAwareScopeKey]) {
     const existing = workbenches[pathAwareScopeKey]
-    if (existing.projectPath !== normalizedProjectPath) {
+    if (existing.workspaceId !== normalizedWorkspace) {
       workbenches[pathAwareScopeKey] = {
         ...existing,
-        projectPath: normalizedProjectPath,
+        workspaceId: normalizedWorkspace,
       }
     }
     return pathAwareScopeKey
@@ -407,7 +460,7 @@ function promoteLegacyWorkbenchIfNeeded(
 
   workbenches[pathAwareScopeKey] = sanitizeWorkbenchState({
     ...workbenches[legacyScopeKey],
-    projectPath: normalizedProjectPath,
+    workspaceId: normalizedWorkspace,
   })
   delete workbenches[legacyScopeKey]
   return pathAwareScopeKey
@@ -417,31 +470,31 @@ function resolveMutableWorkbenchState(
   workbenches: Record<string, WorkbenchProjectState>,
   projectId: string,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceId?: string | null,
   options?: {
     createIfMissing?: boolean
   },
 ): {
   scopeKey: string
   normalizedLaneId: string
-  normalizedProjectPath: string | null
+  normalizedWorkspace: string | null
   workbench: WorkbenchProjectState | null
 } {
   const normalizedLaneId = normalizeLaneId(laneId)
-  const normalizedProjectPath = normalizeWorkspaceProjectPath(projectPath)
-  const scopeKey = normalizedProjectPath
-    ? promoteLegacyWorkbenchIfNeeded(workbenches, projectId, normalizedLaneId, normalizedProjectPath)
+  const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
+  const scopeKey = normalizedWorkspace
+    ? promoteLegacyWorkbenchIfNeeded(workbenches, projectId, normalizedLaneId, normalizedWorkspace)
     : resolveWorkbenchScopeKey(workbenches, projectId, normalizedLaneId, null)
 
   let workbench = workbenches[scopeKey] ?? null
 
   if (!workbench && options?.createIfMissing !== false) {
-    workbench = createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedProjectPath)
+    workbench = createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedWorkspace)
     workbenches[scopeKey] = workbench
     return {
       scopeKey,
       normalizedLaneId,
-      normalizedProjectPath,
+      normalizedWorkspace,
       workbench,
     }
   }
@@ -449,15 +502,15 @@ function resolveMutableWorkbenchState(
   if (workbench) {
     workbench.projectId = projectId
     workbench.laneId = normalizedLaneId
-    if (normalizedProjectPath && workbench.projectPath !== normalizedProjectPath) {
-      workbench.projectPath = normalizedProjectPath
+    if (normalizedWorkspace && workbench.workspaceId !== normalizedWorkspace) {
+      workbench.workspaceId = normalizedWorkspace
     }
   }
 
   return {
     scopeKey,
     normalizedLaneId,
-    normalizedProjectPath,
+    normalizedWorkspace,
     workbench,
   }
 }
@@ -478,6 +531,62 @@ function isSerializedDockview(value: unknown): value is SerializedDockview {
   return "grid" in value && "panels" in value
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizeDevAppReleaseVersion(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : undefined
+}
+
+function normalizeDevAppPort(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65_535
+    ? value
+    : undefined
+}
+
+function applyDevAppMetadata(
+  tile: WorkbenchDevServerTile,
+  options: CreateTileOptions,
+): void {
+  const devAppId = normalizeOptionalString(options.devAppId)
+
+  if (!devAppId) {
+    delete tile.devAppId
+    delete tile.devAppReleaseId
+    delete tile.devAppReleaseVersion
+    delete tile.devAppProjectId
+    delete tile.devAppWorkspaceId
+    delete tile.devAppLaneId
+    delete tile.devAppFramework
+    delete tile.devAppCommand
+    delete tile.devAppPort
+    delete tile.autoStart
+    tile.title = normalizeOptionalString(options.title) ?? TILE_TITLES.devServer
+    return
+  }
+
+  tile.devAppId = devAppId
+  tile.devAppReleaseId = normalizeOptionalString(options.devAppReleaseId)
+  tile.devAppReleaseVersion = normalizeDevAppReleaseVersion(options.devAppReleaseVersion)
+  tile.devAppProjectId = normalizeOptionalString(options.devAppProjectId)
+  tile.devAppWorkspaceId = normalizeOptionalString(options.devAppWorkspaceId)
+  tile.devAppLaneId = normalizeOptionalString(options.devAppLaneId)
+  tile.devAppFramework = normalizeOptionalString(options.devAppFramework)
+  tile.devAppCommand = normalizeOptionalString(options.devAppCommand)
+  tile.devAppPort = normalizeDevAppPort(options.devAppPort)
+  tile.autoStart = typeof options.autoStart === "boolean" ? options.autoStart : undefined
+
+  const title = normalizeOptionalString(options.title)
+  if (title) {
+    tile.title = title
+  }
+}
+
 function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): WorkbenchTile {
   const createdAt = Date.now()
   const id = createTileId(type)
@@ -496,8 +605,11 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
       }
     case "terminal":
       return { id, type, title, createdAt }
-    case "devServer":
-      return { id, type, title, createdAt }
+    case "devServer": {
+      const tile: WorkbenchDevServerTile = { id, type, title, createdAt }
+      applyDevAppMetadata(tile, options)
+      return tile
+    }
     case "mobileSimulator":
       return { id, type, title, createdAt }
     case "selection":
@@ -525,11 +637,12 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         assistantProjectId: options.assistantProjectId ?? null,
         threadId: options.threadId ?? null,
         provider: options.provider,
+        providerInstanceId: options.providerInstanceId,
         model: options.model ?? null,
         runtimeMode: options.runtimeMode ?? "full-access",
         interactionMode: options.interactionMode ?? "default",
         agentLabel: options.agentLabel ?? null,
-        laneBinding: options.laneBinding ?? "sessionProjectPath",
+        laneBinding: options.laneBinding ?? "sessionWorkspace",
       }
     default:
       return { id, type, title, createdAt }
@@ -555,37 +668,37 @@ function buildAssistantTileTitle(
 function createDefaultWorkbenchState(
   projectId: string,
   laneId: string,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ): WorkbenchProjectState {
   const normalizedLaneId = normalizeLaneId(laneId)
-  const selectionTile = createTile("selection", {
-    selectionMode: "emptyState",
-  }) as WorkbenchSelectionTile
 
   return {
     projectId,
     laneId: normalizedLaneId,
-    projectPath: normalizeWorkspaceProjectPath(projectPath),
-    activeTileId: selectionTile.id,
+    workspaceId: normalizeWorkspaceId(workspaceId),
+    activeTileId: null,
     layout: null,
     layoutResetKey: nextLayoutResetKey(),
-    order: [selectionTile.id],
-    tiles: {
-      [selectionTile.id]: selectionTile,
-    },
+    order: [],
+    tiles: {},
   }
 }
 
 function isEmptySelectionWorkbench(workbench: WorkbenchProjectState | null | undefined): boolean {
-  if (!workbench || workbench.order.length !== 1) {
-    return false
-  }
+  if (!workbench) return false
+  if (workbench.order.length === 0) return true
+  if (workbench.order.length !== 1) return false
 
   const onlyTile = workbench.tiles[workbench.order[0]!]
-  return onlyTile?.type === "selection"
+  return onlyTile?.type === "selection" && onlyTile.mode === "emptyState"
 }
 
-function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProjectState {
+function readWorkbenchWorkspaceId(workbench: PersistedWorkbenchRecord): string | null {
+  return normalizeWorkspaceId(workbench.workspaceId ?? workbench.projectPath)
+}
+
+function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchProjectState {
+  const workspaceId = readWorkbenchWorkspaceId(workbench)
   const sanitizedTiles: Record<string, WorkbenchTile> = {}
   let removedObsoleteTile = false
 
@@ -614,17 +727,77 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
       const normalizedLaneBinding =
         tile.laneBinding === "threadWorktree"
           ? "threadWorktree"
-          : "sessionProjectPath"
+          : "sessionWorkspace"
       sanitizedTiles[tileId] = {
         ...tile,
         assistantProjectId: tile.assistantProjectId ?? null,
         threadId: tile.threadId ?? null,
+        providerInstanceId: tile.providerInstanceId,
         model: tile.model ?? null,
         runtimeMode: tile.runtimeMode ?? "full-access",
         interactionMode: tile.interactionMode ?? "default",
         agentLabel: tile.agentLabel ?? null,
         laneBinding: normalizedLaneBinding,
       }
+      continue
+    }
+
+    if (tile.type === "devServer") {
+      const devAppId = normalizeOptionalString(tile.devAppId)
+      const sanitizedTile: WorkbenchDevServerTile = {
+        ...tile,
+        viewMode: tile.viewMode === "code" ? "code" : "preview",
+        previewOverrideUrl:
+          typeof tile.previewOverrideUrl === "string"
+            ? normalizeOptionalString(tile.previewOverrideUrl) ?? null
+            : null,
+        devAppId,
+        devAppReleaseId: devAppId
+          ? normalizeOptionalString(tile.devAppReleaseId)
+          : undefined,
+        devAppReleaseVersion: devAppId
+          ? normalizeDevAppReleaseVersion(tile.devAppReleaseVersion)
+          : undefined,
+        devAppProjectId: devAppId
+          ? normalizeOptionalString(tile.devAppProjectId)
+          : undefined,
+        devAppWorkspaceId: devAppId
+          ? normalizeOptionalString(tile.devAppWorkspaceId)
+          : undefined,
+        devAppLaneId: devAppId
+          ? normalizeOptionalString(tile.devAppLaneId)
+          : undefined,
+        devAppFramework: devAppId
+          ? normalizeOptionalString(tile.devAppFramework)
+          : undefined,
+        devAppCommand: devAppId
+          ? normalizeOptionalString(tile.devAppCommand)
+          : undefined,
+        devAppPort: devAppId ? normalizeDevAppPort(tile.devAppPort) : undefined,
+        autoStart:
+          devAppId && typeof tile.autoStart === "boolean"
+            ? tile.autoStart
+            : undefined,
+      }
+
+      for (const key of [
+        "devAppId",
+        "devAppReleaseId",
+        "devAppReleaseVersion",
+        "devAppProjectId",
+        "devAppWorkspaceId",
+        "devAppLaneId",
+        "devAppFramework",
+        "devAppCommand",
+        "devAppPort",
+        "autoStart",
+      ] as const) {
+        if (sanitizedTile[key] === undefined) {
+          delete sanitizedTile[key]
+        }
+      }
+
+      sanitizedTiles[tileId] = sanitizedTile
       continue
     }
 
@@ -655,34 +828,11 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
     }
     sanitizedOrder = nonSelectionTileIds
   } else if (nonSelectionTileIds.length === 0) {
-    const primarySelectionTileId = selectionTileIds[0]
-    if (!primarySelectionTileId) {
-      return createDefaultWorkbenchState(workbench.projectId, workbench.laneId, workbench.projectPath)
-    }
-
-    for (const tileId of selectionTileIds.slice(1)) {
-      delete sanitizedTiles[tileId]
-    }
-
-    const primaryTile = sanitizedTiles[primarySelectionTileId]
-    if (primaryTile?.type === "selection" && primaryTile.mode !== "emptyState") {
-      sanitizedTiles[primarySelectionTileId] = {
-        ...primaryTile,
-        mode: "emptyState",
-        edge: null,
-        referenceTileId: null,
-        adjacentTileId: null,
-        previewScope: null,
-        previewTargetKind: null,
-        previewTargetId: null,
-      }
-    }
-
-    sanitizedOrder = [primarySelectionTileId]
+    return createDefaultWorkbenchState(workbench.projectId, workbench.laneId, workspaceId)
   }
 
   if (sanitizedOrder.length === 0) {
-    return createDefaultWorkbenchState(workbench.projectId, workbench.laneId, workbench.projectPath)
+    return createDefaultWorkbenchState(workbench.projectId, workbench.laneId, workspaceId)
   }
 
   const sanitizedActiveTileId =
@@ -699,7 +849,7 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
   return {
     projectId: workbench.projectId,
     laneId: normalizeLaneId(workbench.laneId),
-    projectPath: normalizeWorkspaceProjectPath(workbench.projectPath),
+    workspaceId,
     activeTileId: sanitizedActiveTileId,
     layout:
       shouldResetLayout
@@ -718,8 +868,15 @@ function sanitizeWorkbenchState(workbench: WorkbenchProjectState): WorkbenchProj
   }
 }
 
+function workbenchHasRealTiles(workbench: WorkbenchProjectState): boolean {
+  return workbench.order.some((tileId) => {
+    const tile = workbench.tiles[tileId]
+    return Boolean(tile) && tile!.type !== "selection"
+  })
+}
+
 function sanitizePersistedWorkbenches(
-  workbenches: Record<string, WorkbenchProjectState> | undefined,
+  workbenches: Record<string, PersistedWorkbenchRecord> | undefined,
 ): Record<string, WorkbenchProjectState> {
   const sanitizedEntries: Array<[string, WorkbenchProjectState]> = []
 
@@ -733,19 +890,54 @@ function sanitizePersistedWorkbenches(
       buildWorkbenchScopeKey(
         sanitizedWorkbench.projectId,
         sanitizedWorkbench.laneId,
-        sanitizedWorkbench.projectPath,
+        readWorkbenchWorkspaceId(sanitizedWorkbench),
       ),
       sanitizedWorkbench,
     ])
   }
 
-  return Object.fromEntries(sanitizedEntries)
+  // Drop dead legacy (workspace-less) benches: once a workspace-scoped bench
+  // exists for the same project+lane the legacy one is permanently shadowed
+  // (reads prefer the scoped key, the legacy-promotion bridge only fires when
+  // the scoped bench is missing), and empty/selection-only legacy benches are
+  // junk left behind by pre-fix null-scope writes. Tiled, unshadowed legacy
+  // benches stay — promoteLegacyWorkbenchIfNeeded adopts them on first write.
+  const scopedLanes = new Set(
+    sanitizedEntries
+      .filter(([, workbench]) => readWorkbenchWorkspaceId(workbench))
+      .map(([, workbench]) => `${workbench.projectId}::${workbench.laneId}`),
+  )
+  const keptEntries = sanitizedEntries.filter(([, workbench]) => {
+    if (readWorkbenchWorkspaceId(workbench)) return true
+    const laneKey = `${workbench.projectId}::${workbench.laneId}`
+    if (scopedLanes.has(laneKey)) return false
+    return workbenchHasRealTiles(workbench)
+  })
+
+  // Drop ghost lane-siblings: the lane id derives from a branch comparison,
+  // and a mis-resolved branch (collab vs branch:*) used to mint an empty bench
+  // beside the real one for the same project+workspace. A selection-only bench
+  // whose sibling has real tiles is that artifact — keeping it means users can
+  // land on it and see "everything closed". Content benches are never touched
+  // (multiple tiled lanes per workspace is the intended per-branch feature).
+  const contentByProjectWorkspace = new Set(
+    keptEntries
+      .filter(([, workbench]) => readWorkbenchWorkspaceId(workbench) && workbenchHasRealTiles(workbench))
+      .map(([, workbench]) => `${workbench.projectId}::${readWorkbenchWorkspaceId(workbench)}`),
+  )
+  const dedupedEntries = keptEntries.filter(([, workbench]) => {
+    const workspaceId = readWorkbenchWorkspaceId(workbench)
+    if (!workspaceId || workbenchHasRealTiles(workbench)) return true
+    return !contentByProjectWorkspace.has(`${workbench.projectId}::${workspaceId}`)
+  })
+
+  return Object.fromEntries(dedupedEntries)
 }
 
-function cloneWorkbenchState(workbench: WorkbenchProjectState, projectPath: string): WorkbenchProjectState {
+function cloneWorkbenchState(workbench: WorkbenchProjectState, workspaceId: string): WorkbenchProjectState {
   return sanitizeWorkbenchState({
     ...workbench,
-    projectPath,
+    workspaceId,
     order: [...workbench.order],
     tiles: Object.fromEntries(
       Object.entries(workbench.tiles).map(([tileId, tile]) => [tileId, { ...tile }] as const),
@@ -753,7 +945,7 @@ function cloneWorkbenchState(workbench: WorkbenchProjectState, projectPath: stri
   })
 }
 
-function migratePersistedWorkbenchState(
+export function migratePersistedWorkbenchState(
   persistedState: unknown,
 ): PersistedWorkbenchState {
   if (!persistedState || typeof persistedState !== "object") {
@@ -780,7 +972,7 @@ function migratePersistedWorkbenchState(
         buildWorkbenchScopeKey(
           sanitizedWorkbench.projectId,
           sanitizedWorkbench.laneId,
-          sanitizedWorkbench.projectPath,
+          readWorkbenchWorkspaceId(sanitizedWorkbench),
         ),
         sanitizedWorkbench,
       ]]
@@ -795,11 +987,11 @@ function migratePersistedWorkbenchState(
 export function selectProjectWorkbench(
   projectId: string | null | undefined,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ) {
   return (state: ProjectWorkbenchState): WorkbenchProjectState | null => {
     if (!projectId) return null
-    const scopeKey = resolveWorkbenchScopeKey(state.workbenches, projectId, laneId, projectPath)
+    const scopeKey = resolveWorkbenchScopeKey(state.workbenches, projectId, laneId, workspaceId)
     return state.workbenches[scopeKey] ?? null
   }
 }
@@ -853,6 +1045,9 @@ export function buildWorkbenchLaneSidebarSummary(
       type: tile.type,
       title: tile.title,
       favicon: tile.type === "browser" ? (tile.favicon ?? null) : null,
+      ...(tile.type === "devServer" && tile.devAppId
+        ? { devAppId: tile.devAppId }
+        : {}),
     })
   }
 
@@ -867,12 +1062,12 @@ export function buildWorkbenchLaneSidebarSummary(
 export function selectVisibleActiveWorkbenchTileId(
   projectId: string | null | undefined,
   laneId?: string | null,
-  projectPath?: string | null,
+  workspaceId?: string | null,
 ) {
   return (state: ProjectWorkbenchState): string | null => {
     if (!projectId) return null
 
-    const scopeKey = resolveWorkbenchScopeKey(state.workbenches, projectId, laneId, projectPath)
+    const scopeKey = resolveWorkbenchScopeKey(state.workbenches, projectId, laneId, workspaceId)
     const workbench = state.workbenches[scopeKey] ?? null
     if (!workbench?.activeTileId) return null
 
@@ -890,61 +1085,59 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     immer((set) => ({
       workbenches: {},
       actions: {
-        ensureWorkbench: (projectId, laneId, projectPath) => {
+        ensureWorkbench: (projectId, laneId, workspaceId) => {
           if (!projectId) return
 
           set((state) => {
-            const {
-              scopeKey,
-              normalizedLaneId,
-              normalizedProjectPath,
-              workbench,
-            } = resolveMutableWorkbenchState(state.workbenches, projectId, laneId, projectPath)
-            state.workbenches[scopeKey] = workbench
-              ? sanitizeWorkbenchState(workbench)
-              : createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedProjectPath)
+            // resolveMutableWorkbenchState creates the workbench when missing,
+            // promotes legacy scope keys, and fixes identity fields. Existing
+            // workbenches are already sanitized at hydration (see
+            // migratePersistedWorkbenchState), so reassigning a rebuilt object
+            // here would notify every store subscriber on every call — e.g.
+            // each sidebar click re-rendered all workbench tiles.
+            resolveMutableWorkbenchState(state.workbenches, projectId, laneId, workspaceId)
           })
         },
-        resetWorkbench: (projectId, laneId, projectPath) => {
+        resetWorkbench: (projectId, laneId, workspaceId) => {
           if (!projectId) return
           set((state) => {
             const {
               scopeKey,
               normalizedLaneId,
-              normalizedProjectPath,
-            } = resolveMutableWorkbenchState(state.workbenches, projectId, laneId, projectPath)
+              normalizedWorkspace,
+            } = resolveMutableWorkbenchState(state.workbenches, projectId, laneId, workspaceId)
             state.workbenches[scopeKey] = createDefaultWorkbenchState(
               projectId,
               normalizedLaneId,
-              normalizedProjectPath,
+              normalizedWorkspace,
             )
           })
         },
-        cloneProjectPathState: (projectId, fromProjectPath, toProjectPath) => {
-          const normalizedTargetProjectPath = normalizeWorkspaceProjectPath(toProjectPath)
-          if (!projectId || !normalizedTargetProjectPath) {
+        cloneWorkspaceState: (projectId, fromWorkspace, toWorkspace) => {
+          const normalizedTargetWorkspace = normalizeWorkspaceId(toWorkspace)
+          if (!projectId || !normalizedTargetWorkspace) {
             return
           }
 
           set((state) => {
-            const normalizedSourceProjectPath = normalizeWorkspaceProjectPath(fromProjectPath)
+            const normalizedSourceWorkspace = normalizeWorkspaceId(fromWorkspace)
             const matchingWorkbenches = Object.values(state.workbenches).filter((workbench) => {
               if (workbench.projectId !== projectId) {
                 return false
               }
 
-              if (!normalizedSourceProjectPath) {
+              if (!normalizedSourceWorkspace) {
                 return true
               }
 
-              return normalizeWorkspaceProjectPath(workbench.projectPath) === normalizedSourceProjectPath
+              return normalizeWorkspaceId(workbench.workspaceId) === normalizedSourceWorkspace
             })
 
             for (const workbench of matchingWorkbenches) {
               const targetScopeKey = buildWorkbenchScopeKey(
                 projectId,
                 workbench.laneId,
-                normalizedTargetProjectPath,
+                normalizedTargetWorkspace,
               )
 
               if (
@@ -956,12 +1149,12 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
 
               state.workbenches[targetScopeKey] = cloneWorkbenchState(
                 workbench,
-                normalizedTargetProjectPath,
+                normalizedTargetWorkspace,
               )
             }
           })
         },
-        addTile: (projectId, laneId, type, options = {}, projectPath) => {
+        addTile: (projectId, laneId, type, options = {}, workspaceId) => {
           let createdTileId = ""
           const startMark = markCozeaInteractionStart("workbench-add-tile", {
             laneId,
@@ -974,7 +1167,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
             )
             if (!workbench) {
               return
@@ -1001,7 +1194,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           })
           return createdTileId
         },
-        openSingletonTile: (projectId, laneId, type, options = {}, projectPath) => {
+        openSingletonTile: (projectId, laneId, type, options = {}, workspaceId) => {
           let resolvedTileId = ""
           let reusedExistingTile = false
           const startMark = markCozeaInteractionStart("workbench-open-singleton-tile", {
@@ -1015,7 +1208,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
             )
             if (!workbench) {
               return
@@ -1027,6 +1220,9 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             if (existingTile) {
               resolvedTileId = existingTile.id
               reusedExistingTile = true
+              if (existingTile.type === "devServer") {
+                applyDevAppMetadata(existingTile, options)
+              }
               workbench.activeTileId = existingTile.id
               state.workbenches[scopeKey] = workbench
               return
@@ -1049,13 +1245,13 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           })
           return resolvedTileId
         },
-        removeTile: (projectId, laneId, tileId, projectPath) => {
+        removeTile: (projectId, laneId, tileId, workspaceId) => {
           set((state) => {
             const { scopeKey, normalizedLaneId, workbench } = resolveMutableWorkbenchState(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
               { createIfMissing: false },
             )
             if (!workbench || !workbench.tiles[tileId]) return
@@ -1068,7 +1264,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               state.workbenches[scopeKey] = createDefaultWorkbenchState(
                 projectId,
                 normalizedLaneId,
-                workbench.projectPath,
+                workbench.workspaceId,
               )
               return
             }
@@ -1082,7 +1278,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             }
           })
         },
-        setActiveTile: (projectId, laneId, tileId, projectPath) => {
+        setActiveTile: (projectId, laneId, tileId, workspaceId) => {
           const startMark = markCozeaInteractionStart("workbench-focus-tile", {
             laneId,
             projectId,
@@ -1093,7 +1289,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
               { createIfMissing: false },
             )
             if (!workbench || workbench.activeTileId === tileId) return
@@ -1106,26 +1302,26 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             tileId,
           })
         },
-        setLayoutSnapshot: (projectId, laneId, layout, projectPath) => {
+        setLayoutSnapshot: (projectId, laneId, layout, workspaceId) => {
           set((state) => {
             const { workbench } = resolveMutableWorkbenchState(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
               { createIfMissing: false },
             )
             if (!workbench) return
             workbench.layout = layout
           })
         },
-        updateAssistantTile: (projectId, laneId, tileId, patch, projectPath) => {
+        updateAssistantTile: (projectId, laneId, tileId, patch, workspaceId) => {
           set((state) => {
             const { workbench } = resolveMutableWorkbenchState(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
               { createIfMissing: false },
             )
             const tile = workbench?.tiles[tileId]
@@ -1144,13 +1340,13 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             if (!changed) return
           })
         },
-        updateBrowserTile: (projectId, laneId, tileId, patch, projectPath) => {
+        updateBrowserTile: (projectId, laneId, tileId, patch, workspaceId) => {
           set((state) => {
             const { workbench } = resolveMutableWorkbenchState(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
               { createIfMissing: false },
             )
             const tile = workbench?.tiles[tileId]
@@ -1173,13 +1369,51 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             }
           })
         },
-        updateTileTitle: (projectId, laneId, tileId, title, projectPath) => {
+        updateRuntimePreviewTile: (projectId, laneId, tileId, patch, workspaceId) => {
           set((state) => {
             const { workbench } = resolveMutableWorkbenchState(
               state.workbenches,
               projectId,
               laneId,
-              projectPath,
+              workspaceId,
+              { createIfMissing: false },
+            )
+            const tile = workbench?.tiles[tileId]
+            if (!workbench || !tile) return
+            if (tile.type !== "devServer" && tile.type !== "mobileSimulator") return
+
+            if (patch.viewMode !== undefined && patch.viewMode !== tile.viewMode) {
+              tile.viewMode = patch.viewMode
+            }
+
+            if (
+              patch.previewOverrideUrl !== undefined &&
+              tile.type === "devServer" &&
+              patch.previewOverrideUrl !== tile.previewOverrideUrl
+            ) {
+              tile.previewOverrideUrl = patch.previewOverrideUrl
+            }
+
+            if (
+              patch.autoStart !== undefined &&
+              tile.type === "devServer" &&
+              patch.autoStart !== (tile.autoStart ?? false)
+            ) {
+              if (patch.autoStart) {
+                tile.autoStart = true
+              } else {
+                delete tile.autoStart
+              }
+            }
+          })
+        },
+        updateTileTitle: (projectId, laneId, tileId, title, workspaceId) => {
+          set((state) => {
+            const { workbench } = resolveMutableWorkbenchState(
+              state.workbenches,
+              projectId,
+              laneId,
+              workspaceId,
               { createIfMissing: false },
             )
             const tile = workbench?.tiles[tileId]
@@ -1191,7 +1425,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     })),
     {
       name: "cozea:project-workbench",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => workbenchStorage),
       migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
       partialize: (state) => ({
@@ -1204,3 +1438,8 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     },
   ),
 )
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  // Exposed for render-performance diagnostics (store emission counting).
+  ;(window as unknown as Record<string, unknown>).__workbenchStore = useProjectWorkbenchStore
+}

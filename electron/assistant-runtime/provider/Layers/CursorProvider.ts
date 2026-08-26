@@ -7,6 +7,7 @@ import type {
   CursorSettings,
   ModelCapabilities,
   ModelSelection,
+  ProviderInstanceEnvironment,
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
@@ -14,6 +15,7 @@ import type {
   ServerProviderState,
 } from "@cozea/assistant-contracts";
 import { ServerSettingsError } from "../../serverSettings.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import type * as EffectAcpSchema from "@cozea/effect-acp/schema";
 import { Cause, Effect, Equal, Exit, Layer, Option, Result, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -39,6 +41,18 @@ import type { AcpAvailableCommand, AcpParsedSessionEvent } from "../acp/AcpRunti
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import { getCodexModelCapabilities } from "./CodexProvider.ts";
+
+// The per-instance `environment` override is injected into the provider settings
+// object by makeProviderInstanceScopedSettings (ProviderInstanceScopedSettings.ts).
+// It is not declared on the shared CursorSettings schema, so this typed accessor
+// reads it without an untyped `as any` cast and yields a properly-typed value.
+// TODO(provider-kind): declare `environment` on the shared CursorSettings schema
+// so this accessor can be removed.
+function readProviderInstanceEnvironment(
+  settings: CursorSettings,
+): ProviderInstanceEnvironment | undefined {
+  return (settings as { readonly environment?: ProviderInstanceEnvironment }).environment;
+}
 
 const PROVIDER = "cursor" as const;
 const EMPTY_CAPABILITIES: ModelCapabilities = {
@@ -98,7 +112,7 @@ function buildInitialCursorProviderSnapshot(cursorSettings: CursorSettings): Ser
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Cursor is disabled in T3 Code settings.",
+        message: "Cursor is disabled in Cozea settings.",
       },
     });
   }
@@ -1404,11 +1418,12 @@ const spawnCursorCommand = (
   binaryPath: string,
   args: ReadonlyArray<string>,
   timeoutMs: number,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<CursorCommandResult> =>
   new Promise((resolve, reject) => {
     const child = nodeChildProcess.spawn(binaryPath, [...args], {
       shell: process.platform === "win32",
-      env: process.env,
+      env: environment ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -1475,7 +1490,13 @@ const runCursorCommand = (
       Effect.map((settings) => settings.providers.cursor),
     );
     const result = yield* Effect.tryPromise({
-      try: () => spawnCursorCommand(cursorSettings.binaryPath, args, timeoutMs),
+      try: () =>
+        spawnCursorCommand(
+          cursorSettings.binaryPath,
+          args,
+          timeoutMs,
+          mergeProviderInstanceEnvironment(readProviderInstanceEnvironment(cursorSettings), process.env),
+        ),
       catch: (error) =>
         error instanceof Error ? error : new Error(String(error)),
     });
@@ -1548,7 +1569,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Cursor is disabled in T3 Code settings.",
+          message: "Cursor is disabled in Cozea settings.",
         },
       });
     }

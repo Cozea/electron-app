@@ -152,7 +152,8 @@ describe("assistant store normalization", () => {
     ])
 
     expect(selector(next)).toBe(before)
-    expect(next.threads).toBe(state.threads)
+    expect(next.threadIds).toBe(state.threadIds)
+    expect(next.threadShellById).toBe(state.threadShellById)
   })
 
   it("only swaps the message slice when a message event is projected", () => {

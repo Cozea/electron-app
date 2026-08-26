@@ -202,7 +202,8 @@ async function downloadToFile(url: string, destinationPath: string): Promise<voi
     throw new Error(`Catalog download failed (${response.status}) for ${url}`)
   }
   await mkdir(path.dirname(destinationPath), { recursive: true })
-  const body = Readable.fromWeb(response.body)
+  // response.body is a DOM ReadableStream (lib.dom); Readable.fromWeb wants node's web stream type.
+  const body = Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream)
   await pipeline(body, fs.createWriteStream(destinationPath))
 }
 

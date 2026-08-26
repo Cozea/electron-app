@@ -9,8 +9,19 @@ import type {
   NativePreviewStateChangedEvent,
 } from '../../shared/nativePreviewTypes'
 
+// The manager resolves the opaque workspaceId to a real path via the workspace catalog runtime,
+// which isn't booted in this unit test. Stub it to the fixed project path the fake helper expects.
+vi.mock('../../electron/workspaces/authorization.ts', () => ({
+  resolveAuthorizedWorkspaceAccess: vi.fn(async () => ({
+    workspace: null,
+    lane: null,
+    projectRootPath: '/tmp/example-project',
+    gitRootPath: null,
+  })),
+}))
+
 const REQUEST: NativePreviewStartSessionRequest = {
-  projectPath: '/tmp/example-project',
+  workspaceId: 'ws-example',
   deviceId: 'SIM-123',
   platform: 'ios',
 }
@@ -116,13 +127,18 @@ describe('NativePreviewManager', () => {
 
     const result = await manager.startSession(REQUEST)
     expect(result.success).toBe(true)
-    expect(result.state?.status).toBe('starting')
-    expect(result.state?.streamUrl).toBeNull()
+    // startSession resolves on helper `ready`; `stream_ready` may already be
+    // applied by the time the caller observes the returned state on a fast
+    // machine, so assert the transition via the event stream instead.
+    expect(events.some((event) => event.state?.status === 'starting' && event.state.streamUrl === null)).toBe(
+      true,
+    )
 
     await waitForRunning(manager, REQUEST)
 
-    expect(events.some((event) => event.state?.status === 'starting')).toBe(true)
-    expect(events.some((event) => event.state?.status === 'running')).toBe(true)
+    expect(events.some((event) => event.state?.status === 'running' && Boolean(event.state.streamUrl))).toBe(
+      true,
+    )
 
     unsubscribe()
     await manager.stopSession(REQUEST)

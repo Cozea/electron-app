@@ -1,6 +1,6 @@
-// @ts-nocheck
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer, Path } from "effect";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import * as SqlClient from "@effect/sql/SqlClient";
 
 import { CheckpointDiffQueryLive } from "./checkpointing/Layers/CheckpointDiffQuery";
@@ -18,14 +18,15 @@ import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
 import { ProviderUnsupportedError } from "./provider/Errors";
-import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
-import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
-import { makeCursorAdapterLive } from "./provider/Layers/CursorAdapter";
-import { makeOpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
+import { ProviderEventLoggersLive } from "./provider/Layers/ProviderEventLoggers";
+import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/ProviderInstanceRegistryHydration";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
+import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
+import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry";
+import { ProviderSessionDirectory } from "./provider/Services/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger";
 import { ServerSettingsService } from "./serverSettings";
@@ -57,12 +58,12 @@ const makeRuntimePtyAdapterLayer = () =>
   }).pipe(Layer.unwrap);
 
 export function makeServerProviderLayer(): Layer.Layer<
-  ProviderService,
+  ProviderService | ProviderInstanceRegistry,
   ProviderUnsupportedError,
   | SqlClient.SqlClient
   | ServerConfig
   | ServerSettingsService
-  | FileSystem.FileSystem
+  | ChildProcessSpawner.ChildProcessSpawner
   | AnalyticsService
 > {
   return Effect.gen(function* () {
@@ -76,33 +77,41 @@ export function makeServerProviderLayer(): Layer.Layer<
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive),
     );
-    const codexAdapterLayer = makeCodexAdapterLive(
-      nativeEventLogger ? { nativeEventLogger } : undefined,
+    const providerEventLoggersLayer = ProviderEventLoggersLive(
+      nativeEventLogger ? { native: nativeEventLogger } : {},
     );
-    const claudeAdapterLayer = makeClaudeAdapterLive(
-      nativeEventLogger ? { nativeEventLogger } : undefined,
-    );
-    const cursorAdapterLayer = makeCursorAdapterLive(
-      nativeEventLogger ? { nativeEventLogger } : undefined,
-    );
-    const openCodeAdapterLayer = makeOpenCodeAdapterLive(
-      nativeEventLogger ? { nativeEventLogger } : undefined,
+    const providerInstanceRegistryLayer = ProviderInstanceRegistryHydrationLive.pipe(
+      Layer.provide(providerEventLoggersLayer),
     );
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
-      Layer.provide(codexAdapterLayer),
-      Layer.provide(claudeAdapterLayer),
-      Layer.provide(cursorAdapterLayer),
-      Layer.provide(openCodeAdapterLayer),
+      Layer.provide(providerInstanceRegistryLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
-    const providerServiceLayer = makeProviderServiceLive(
+    // `makeProviderServiceLive` lives in a `@ts-nocheck` module whose large
+    // `Effect.gen` body causes tsc to widen the layer's requirements channel to
+    // `unknown`. Its genuine requirements are the four services yielded by
+    // `makeProviderService`, so we restore that precise type here rather than
+    // letting `unknown` poison the rest of this composition.
+    const providerServiceBaseLayer = makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
-    ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
+    ) as Layer.Layer<
+      ProviderService,
+      never,
+      ProviderAdapterRegistry | ProviderSessionDirectory | ServerSettingsService | AnalyticsService
+    >;
+    const providerServiceLayer = providerServiceBaseLayer.pipe(
+      Layer.provide(adapterRegistryLayer),
+      Layer.provide(providerSessionDirectoryLayer),
+    );
     const providerSessionReaperLayer = ProviderSessionReaperLive.pipe(
       Layer.provide(adapterRegistryLayer),
       Layer.provide(providerSessionDirectoryLayer),
     );
-    return Layer.mergeAll(providerServiceLayer, providerSessionReaperLayer);
+    return Layer.mergeAll(
+      providerInstanceRegistryLayer,
+      providerServiceLayer,
+      providerSessionReaperLayer,
+    );
   }).pipe(Layer.unwrap);
 }
 

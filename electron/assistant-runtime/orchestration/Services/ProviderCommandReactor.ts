@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProviderCommandReactor - Provider command reaction service interface.
  *

@@ -58,6 +58,7 @@ const BACKGROUND_WARM_ACTIVE_PREVIEW_IDLE_MS = 10 * 60 * 1000
 const FROZEN_EPHEMERAL_BROWSER_IDLE_MS = 60 * 1000
 const LOW_MEMORY_FREE_THRESHOLD_KB = 1_500_000
 const LOW_MEMORY_FREE_RATIO = 0.12
+const MEMORY_PRESSURE_CHECK_TTL_MS = 2_000
 
 function normalizeWorkspaceId(workspaceId?: string | null): string | null {
   const trimmed = workspaceId?.trim()
@@ -235,6 +236,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
   private readonly sessions = new Map<string, LiveWorkbenchSessionRecord>()
   private readonly policySweepTimer: NodeJS.Timeout
   private policySweepInFlight = false
+  private lastMemoryPressureCheckAt = 0
+  private lastKnownMemoryPressure = false
+  private readonly lastEmittedComparable = new Map<string, string>()
+  private readonly pendingStateEmits = new Map<string, WorkbenchSessionSnapshot>()
+  private stateEmitFlushScheduled = false
 
   private logLifecycleTransition(
     sessionKey: string,
@@ -242,6 +248,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     nextLifecycle: WorkbenchSessionLifecycle,
     reason: string,
   ): void {
+    void sessionKey
     void reason
     if (previousLifecycle === nextLifecycle) {
       return
@@ -458,16 +465,36 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   private isUnderMemoryPressure(): boolean {
+    const now = Date.now()
+    if (now - this.lastMemoryPressureCheckAt < MEMORY_PRESSURE_CHECK_TTL_MS) {
+      return this.lastKnownMemoryPressure
+    }
+
     const electronProcess = process as NodeJS.Process & {
       getSystemMemoryInfo?: () => { free: number; total: number }
     }
 
-    const info = electronProcess.getSystemMemoryInfo?.()
-    if (!info || !Number.isFinite(info.free) || !Number.isFinite(info.total) || info.total <= 0) {
+    const getSystemMemoryInfo = electronProcess.getSystemMemoryInfo
+    if (typeof getSystemMemoryInfo !== 'function') {
+      this.lastMemoryPressureCheckAt = now
+      this.lastKnownMemoryPressure = false
       return false
     }
 
-    return info.free <= LOW_MEMORY_FREE_THRESHOLD_KB || info.free / info.total <= LOW_MEMORY_FREE_RATIO
+    try {
+      const info = getSystemMemoryInfo()
+      if (!info || !Number.isFinite(info.free) || !Number.isFinite(info.total) || info.total <= 0) {
+        this.lastKnownMemoryPressure = false
+      } else {
+        this.lastKnownMemoryPressure =
+          info.free <= LOW_MEMORY_FREE_THRESHOLD_KB || info.free / info.total <= LOW_MEMORY_FREE_RATIO
+      }
+      this.lastMemoryPressureCheckAt = now
+      return this.lastKnownMemoryPressure
+    } catch {
+      this.lastMemoryPressureCheckAt = now
+      return this.lastKnownMemoryPressure
+    }
   }
 
   private async runPolicySweep(): Promise<void> {
@@ -605,9 +632,62 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
   }
 
+  /**
+   * Comparison payload for broadcast dedupe. The activity timestamps are
+   * excluded on purpose: they change on every ensure/activate/focus, and
+   * broadcasting them re-rendered every renderer subscriber per mutation
+   * (16 broadcasts per navigation before this guard). The renderer-side
+   * dedupe in useWorkbenchSessionLifecycle uses the same exclusion list.
+   */
+  private comparableSnapshot(snapshot: WorkbenchSessionSnapshot): string {
+    const { openedAt: _openedAt, lastFocusedAt: _lastFocusedAt, lastBackgroundedAt: _lastBackgroundedAt, ...meaningful } = snapshot
+    return JSON.stringify(meaningful)
+  }
+
   private emitState(sessionKey: string, record: LiveWorkbenchSessionRecord): WorkbenchSessionSnapshot {
     const snapshot = this.buildSnapshot(sessionKey, record)
-    this.emit('stateChanged', snapshot)
+    // Callers rely on the synchronous snapshot (IPC handler responses); only
+    // the broadcast is coalesced. Bursts of mutations within a tick collapse
+    // to at most one emit per session, and content-identical states are
+    // suppressed entirely.
+    //
+    // 'closed' is a terminal transition the renderer must observe to tear down
+    // its tile. buildSessionKey is deterministic, so a close-then-re-ensure of
+    // the same key within one tick would otherwise overwrite the pending
+    // 'closed' snapshot with a fresh 'backgroundWarm' one and silently drop the
+    // close broadcast. Flush the pending close synchronously before it is
+    // replaced by a non-closed snapshot so the transition is never lost.
+    const previousPending = this.pendingStateEmits.get(sessionKey)
+    if (
+      previousPending &&
+      previousPending.lifecycle === 'closed' &&
+      snapshot.lifecycle !== 'closed'
+    ) {
+      this.pendingStateEmits.delete(sessionKey)
+      this.lastEmittedComparable.delete(sessionKey)
+      this.emit('stateChanged', previousPending)
+    }
+    this.pendingStateEmits.set(sessionKey, snapshot)
+    if (!this.stateEmitFlushScheduled) {
+      this.stateEmitFlushScheduled = true
+      setImmediate(() => {
+        this.stateEmitFlushScheduled = false
+        const pending = Array.from(this.pendingStateEmits.values())
+        this.pendingStateEmits.clear()
+        for (const pendingSnapshot of pending) {
+          const comparable = this.comparableSnapshot(pendingSnapshot)
+          if (this.lastEmittedComparable.get(pendingSnapshot.sessionKey) === comparable) {
+            continue
+          }
+          if (pendingSnapshot.lifecycle === 'closed') {
+            this.lastEmittedComparable.delete(pendingSnapshot.sessionKey)
+          } else {
+            this.lastEmittedComparable.set(pendingSnapshot.sessionKey, comparable)
+          }
+          this.emit('stateChanged', pendingSnapshot)
+        }
+      })
+    }
     return snapshot
   }
 
@@ -748,7 +828,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     record.browserBindings = {}
 
     if (record.workspaceId) {
-      await this.devServerService.stop(record.workspaceId).catch(() => ({ success: false }))
+      await this.devServerService.stop(record.workspaceId, record.laneId).catch(() => ({ success: false }))
     }
 
     if (record.nativePreviewLocator) {
@@ -886,11 +966,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
         actualWorkspaceId: snapshot.workspaceId,
       })
       return this.emitState(sessionKey, record)
-    }
-    if (!record.workspaceId && snapshot?.workspaceId) {
-      // workspaceId is no longer dynamically owned via registry.
-      // If we don't have a workspaceId but the terminal does, we don't bind it blindly if we had ownership checks,
-      // but under the new catalog, terminals are bound by workspaceId + laneId directly.
     }
     record.terminalBindings[input.tileId] = input.terminalId
     this.persist()

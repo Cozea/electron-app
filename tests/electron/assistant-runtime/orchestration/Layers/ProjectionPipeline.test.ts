@@ -92,6 +92,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           title: "Thread 1",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -364,6 +365,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
             title: "Thread Clear Attachments",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5-codex",
             },
             runtimeMode: "full-access",
@@ -492,6 +494,7 @@ it.layer(
           title: "Thread Overwrite",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -640,6 +643,7 @@ it.layer(
           title: "Thread Rollback",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -769,6 +773,7 @@ it.layer(
           title: "Thread Revert Files",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -977,6 +982,7 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("cozea-projection-a
             title: "Thread Delete Files",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5-codex",
             },
             runtimeMode: "full-access",
@@ -1140,6 +1146,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           title: "Thread A",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -1267,6 +1274,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           title: "Thread Empty",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -1407,6 +1415,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
             title: "Thread Conflict",
             modelSelection: {
               provider: "codex",
+              instanceId: "codex",
               model: "gpt-5-codex",
             },
             runtimeMode: "full-access",
@@ -1551,6 +1560,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           title: "Thread Revert",
           modelSelection: {
             provider: "codex",
+            instanceId: "codex",
             model: "gpt-5-codex",
           },
           runtimeMode: "full-access",
@@ -1870,6 +1880,7 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         workspaceRoot: "/tmp/project-live",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -1908,6 +1919,7 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         workspaceRoot: "/tmp/project-scripts",
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5-codex",
         },
         createdAt,
@@ -1928,6 +1940,7 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         ],
         defaultModelSelection: {
           provider: "codex",
+          instanceId: "codex",
           model: "gpt-5",
         },
       });
@@ -1946,7 +1959,7 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         {
           scriptsJson:
             '[{"id":"script-1","name":"Build","command":"bun run build","icon":"build","runOnWorktreeCreate":false}]',
-          defaultModelSelection: '{"provider":"codex","model":"gpt-5"}',
+          defaultModelSelection: '{"provider":"codex","instanceId":"codex","model":"gpt-5"}',
         },
       ]);
     }),
