@@ -1,10 +1,11 @@
 import {
   DEFAULT_SUBSTRATE_SHADOW_HOST,
   DEFAULT_SUBSTRATE_SHADOW_PORT,
+  SUBSTRATE_PROVIDERS_FLAG,
   SUBSTRATE_SHADOW_SERVER_FLAG,
 } from "./constants";
 
-function parseBooleanFlag(raw: string | undefined, fallback: boolean): boolean {
+export function parseBooleanFlag(raw: string | undefined, fallback: boolean): boolean {
   if (raw === undefined) {
     return fallback;
   }
@@ -50,5 +51,28 @@ export function readSubstrateShadowServerFlags(
     enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_SHADOW_SERVER, false),
     host: env.COZEA_SUBSTRATE_SHADOW_HOST?.trim() || DEFAULT_SUBSTRATE_SHADOW_HOST,
     port: parsePort(env.COZEA_SUBSTRATE_SHADOW_PORT, DEFAULT_SUBSTRATE_SHADOW_PORT),
+  };
+}
+
+export interface SubstrateProvidersFlags {
+  readonly flagId: typeof SUBSTRATE_PROVIDERS_FLAG;
+  /**
+   * When true, the substrate ProviderDriver registry + managed snapshot
+   * lifecycle is available. Default product chat still uses the in-process
+   * assistant-runtime providers until a later cutover phase.
+   */
+  readonly enabled: boolean;
+}
+
+/**
+ * Phase 3 flag — default **off**.
+ * Enable with `COZEA_SUBSTRATE_PROVIDERS=1`.
+ */
+export function readSubstrateProvidersFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): SubstrateProvidersFlags {
+  return {
+    flagId: SUBSTRATE_PROVIDERS_FLAG,
+    enabled: parseBooleanFlag(env.COZEA_SUBSTRATE_PROVIDERS, false),
   };
 }
