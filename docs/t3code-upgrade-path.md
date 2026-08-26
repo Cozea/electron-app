@@ -5,6 +5,8 @@ Compared: Cozea `main` (`9b38f024`) vs upstream [pingdotgg/t3code](https://githu
 
 This is an architecture and migration brief. Cozea forked an **older** T3-shaped runtime and then grew a collaborative IDE product on top. Upstream T3 rewrote the substrate underneath. The goal is **not** to become T3; it is to **rebase the agent/runtime substrate onto modern T3** while keeping Cozea’s product surface.
 
+**Execution plan (phases, parallel tracks, swarm map, flags, exit criteria):** `docs/t3code-implementation-plan.md`.
+
 Related prior notes in-repo: `docs/t3code-updates.md`, `docs/agent-pipeline-restoration-audit.md`.
 
 ---
