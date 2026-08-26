@@ -37,6 +37,8 @@
     "check:assistant-imports": "bunx vitest run tests/assistant/assistantChatRuntimeImports.test.ts",
     "audit:electron-ipc": "node scripts/audit-electron-ipc.mjs",
     "audit:electron-api-renderer": "node scripts/audit-electron-api-renderer.mjs",
+    "spike:t3-server": "node scripts/spike-t3-server-boot.mjs",
+    "vendor:sync-t3code-pin": "node scripts/vendor/sync-t3code-pin.mjs",
     "test:watch": "bunx vitest",
     "preview": "unset ELECTRON_RUN_AS_NODE && electron-vite preview",
     "fmt": "bunx --bun oxfmt -w .",

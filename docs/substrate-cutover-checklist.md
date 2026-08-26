@@ -86,12 +86,14 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 
 ## Remaining (requires upstream T3 vendor import)
 
-1. Add `vendor/t3code` submodule at `a3a8cbd6`
-2. Replace `@cozea/server` bootstrap body with upstream `apps/server`
-3. Delete `electron/assistant-runtime/` after parity
-4. Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
-5. SSH/WSL DesktopBackendPool
-6. Physical monorepo reshape
+1. [x] Add `vendor/t3code` submodule at `a3a8cbd6` + boot spike (`scripts/spike-t3-server-boot.mjs`)
+2. [ ] Replace `@cozea/server` bootstrap body with upstream `apps/server` (Phase T1 dual-run)
+3. [ ] Delete `electron/assistant-runtime/` after parity
+4. [ ] Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
+5. [ ] SSH/WSL DesktopBackendPool
+6. [ ] Physical monorepo reshape
+
+See `docs/substrate-t3-server-import-plan.md` (swarm map) and `docs/substrate-t3-build.md`.
 
 ---
 
@@ -103,4 +105,5 @@ bun run lint
 bun test tests/substrate
 bun scripts/smoke-substrate-rpc-chat.mjs
 bun test tests/src/features/projects/components/command-palette
+node scripts/spike-t3-server-boot.mjs   # Phase T0 — vendor T3 server boot (Node >= 22.16)
 ```
