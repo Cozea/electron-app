@@ -50,9 +50,13 @@ import {
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
+<<<<<<< HEAD
 import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
+=======
+import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
+>>>>>>> origin/cursor/thread-deletion-cleanup-a002
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
@@ -62,6 +66,7 @@ import {
   selectAssistantProjectByCwd,
   selectAssistantProjectById,
   selectAssistantThreadById,
+  selectAssistantThreads,
   useStore,
 } from "@/stores/assistant-store"
 import type { ChatMessage } from "@/stores/types"
@@ -113,6 +118,7 @@ interface WorkbenchAssistantTileControllerResult {
   showTitleSpinner: boolean
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
+  handleDeleteThread: () => Promise<boolean>
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
 }
 
@@ -1529,6 +1535,65 @@ export function useWorkbenchAssistantTileController(
     setThreadError(thread.id, null)
   }
 
+  const handleDeleteThread = async (): Promise<boolean> => {
+    if (!thread) {
+      return false
+    }
+
+    const api = ensureNativeApi()
+    const confirmed = await api.dialogs.confirm(
+      `Delete thread "${thread.title}"? Provider sessions and terminals for this thread will be cleaned up.`,
+    )
+    if (!confirmed) {
+      return false
+    }
+
+    const assistantState = useStore.getState()
+    const threads = selectAssistantThreads(assistantState).map((entry) => ({
+      id: entry.id,
+      worktreePath: entry.worktreePath,
+    }))
+    const project =
+      selectAssistantProjectById(assistantState, thread.projectId) ??
+      selectAssistantProjectByCwd(assistantState, input.projectRootPath)
+
+    setSendError(null)
+    try {
+      const result = await deleteAssistantThread({
+        threadId: thread.id,
+        threads,
+        project: project ? { workspaceRoot: project.cwd } : null,
+        deps: {
+          confirm: (message) => api.dialogs.confirm(message),
+          dispatchDelete: ({ threadId, commandId }) =>
+            api.orchestration.dispatchCommand({
+              type: "thread.delete",
+              commandId,
+              threadId,
+            }),
+          removeWorktree: (worktreeInput) => api.git.removeWorktree(worktreeInput),
+          newCommandId,
+          closeTerminals: (threadId) =>
+            api.terminal.close({ threadId, deleteHistory: true }),
+        },
+      })
+
+      if (result.status === "deleted_worktree_failed") {
+        const detail =
+          result.error instanceof Error ? result.error.message : "Unknown worktree removal error."
+        setSendError(
+          `Thread deleted, but worktree removal failed (${result.worktreePath}): ${detail}`,
+        )
+        return true
+      }
+
+      return result.status === "deleted"
+    } catch (error) {
+      setSendError(toErrorMessage(error))
+      return false
+    }
+  }
+
   const handleRevertToTurnCount = async (turnCount: number) => {
     if (!thread) {
       return
@@ -1612,6 +1677,7 @@ export function useWorkbenchAssistantTileController(
     closeDiffDialog: () => {
       setDiffDialog(null)
     },
+    handleDeleteThread,
     surfaceProps: {
       dockComposerOnHover: true,
       isRuntimeReady,
