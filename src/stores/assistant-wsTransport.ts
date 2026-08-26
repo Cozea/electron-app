@@ -27,7 +27,7 @@ interface RequestOptions {
   readonly timeoutMs?: number | null;
 }
 
-type TransportState = "connecting" | "open" | "reconnecting" | "closed" | "disposed";
+export type TransportState = "connecting" | "open" | "reconnecting" | "closed" | "disposed";
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
@@ -71,6 +71,7 @@ export class WsTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private state: TransportState = "connecting";
+  private readonly stateListeners = new Set<(state: TransportState) => void>();
   private readonly url: string;
 
   constructor(url?: string) {
@@ -162,10 +163,22 @@ export class WsTransport {
     return this.state;
   }
 
+  subscribeState(listener: (state: TransportState) => void): () => void {
+    this.stateListeners.add(listener);
+    try {
+      listener(this.state);
+    } catch {
+      // Swallow listener errors
+    }
+    return () => {
+      this.stateListeners.delete(listener);
+    };
+  }
+
   dispose() {
     logTransport("ws-transport-disposed", { url: this.url });
     this.disposed = true;
-    this.state = "disposed";
+    this.setState("disposed");
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -180,6 +193,21 @@ export class WsTransport {
     this.outboundQueue.length = 0;
     this.ws?.close();
     this.ws = null;
+    this.stateListeners.clear();
+  }
+
+  private setState(next: TransportState) {
+    if (this.state === next) {
+      return;
+    }
+    this.state = next;
+    for (const listener of this.stateListeners) {
+      try {
+        listener(next);
+      } catch {
+        // Swallow listener errors
+      }
+    }
   }
 
   private connect() {
@@ -187,7 +215,7 @@ export class WsTransport {
       return;
     }
 
-    this.state = this.reconnectAttempt > 0 ? "reconnecting" : "connecting";
+    this.setState(this.reconnectAttempt > 0 ? "reconnecting" : "connecting");
     logTransport("ws-connect-attempt", {
       url: this.url,
       attempt: this.reconnectAttempt + 1,
@@ -197,7 +225,7 @@ export class WsTransport {
 
     ws.addEventListener("open", () => {
       this.ws = ws;
-      this.state = "open";
+      this.setState("open");
       this.reconnectAttempt = 0;
       logTransport("ws-open", { url: this.url });
       this.flushQueue();
@@ -220,10 +248,10 @@ export class WsTransport {
         }
       }
       if (this.disposed) {
-        this.state = "disposed";
+        this.setState("disposed");
         return;
       }
-      this.state = "closed";
+      this.setState("closed");
       logTransport("ws-close", { url: this.url });
       this.scheduleReconnect();
     });
