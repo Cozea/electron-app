@@ -233,6 +233,7 @@ export default defineConfig({
     server: {
       host: 'localhost',
       port: 5183,
+      strictPort: true,
       // Swarm / best-of-n worktrees live under `.worktrees/` and must not
       // invalidate the main checkout's Vite optimizer (stale Lexical/dockview
       // prebundles → "Failed to fetch dynamically imported module").
@@ -240,7 +241,10 @@ export default defineConfig({
         ignored: [
           '**/.worktrees/**',
           '**/.agent/**',
+          '**/.cursor/**',
           '**/node_modules/**',
+          '**/tmp/**',
+          '**/artifacts/**',
         ],
       },
       headers: {

@@ -1,0 +1,11 @@
+{
+  "name": "cozea/electron-app",
+  "install": "command -v bun >/dev/null || curl -fsSL https://bun.sh/install | bash; export PATH=\"$HOME/.bun/bin:$PATH\"; bun install; test -f .env.local || printf 'VITE_CONVEX_URL=https://knowing-finch-546.convex.cloud\\n' > .env.local",
+  "terminals": [
+    {
+      "name": "app-dev",
+      "command": "bash scripts/cloud-agent-dev.sh",
+      "description": "Electron + Vite dev on Cloud Agent display :1. Kills stale electron-vite processes before start to avoid Vite port drift (5183→5184) and 504 dynamic-import failures."
+    }
+  ]
+}
