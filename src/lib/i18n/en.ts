@@ -160,13 +160,16 @@ const en = {
   // ── Projects launch page ────────────────────────────────────────────
   "projects.selectProject": "Select a project",
   "projects.selectProjectDesc":
-    "Choose a project from the sidebar to continue in its workbench.",
+    "Choose a project from the sidebar, or drop another local repository here to import it.",
   "projects.welcomeToCozea": "Welcome to Cozea",
   "projects.createProjectDesc":
-    "Create a new project from the sidebar to get started.",
-  "projects.shortcutOpenChat": "Open Chat",
-  "projects.shortcutShowCommands": "Show All Commands",
-  "projects.shortcutToggleTerminal": "Toggle Terminal",
+    "Drop a local repository folder here to import it — same as Import local folder.",
+  "projects.dropRepoTitle": "Drop a repository folder",
+  "projects.dropRepoActive": "Release to import",
+  "projects.dropRepoHint": "Imports the folder the same way as Import local folder. Click to browse.",
+  "projects.dropRepoBrowse": "Browse folder",
+  "projects.dropRepoImporting": "Importing project…",
+  "projects.dropRepoAriaLabel": "Drop a repository folder to import, or click to browse",
 
   // ── Update menu ─────────────────────────────────────────────────────
   "update.title": "Cozea update",

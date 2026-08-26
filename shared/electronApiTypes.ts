@@ -1261,6 +1261,11 @@ export interface WorkbenchSessionSnapshot {
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
+  /**
+   * Resolve an absolute filesystem path for a Web File from drag-and-drop
+   * or `<input type="file">`. Must be called with File objects from the DOM.
+   */
+  getPathForFile: (file: File) => string
   localAiRuntime: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
   }
