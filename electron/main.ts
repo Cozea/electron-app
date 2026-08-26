@@ -39,7 +39,8 @@ import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
 import { startAssistantRuntime } from './assistant-runtime/boot'
 import { ASSISTANT_RUNTIME_READINESS_PATH } from './assistant-runtime/readiness'
 import { waitForHttpReady } from './backendReadiness'
-import { readSubstrateShadowServerFlags } from './substrate/flags'
+import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags, shouldStartInProcessAssistantRuntime } from './substrate/flags'
+import { listSubstrateRemoteEnvironmentStubs } from './substrate/remoteEnvironments'
 import {
   createShadowServerManager,
   getShadowServerManager,
@@ -695,9 +696,11 @@ async function stopSubstrateShadowServer(): Promise<void> {
 function registerSubstrateShadowBridgeHandlers(): void {
   ipcMain.removeHandler(SUBSTRATE_SHADOW_STATUS_HANDLE)
   ipcMain.handle(SUBSTRATE_SHADOW_STATUS_HANDLE, () => {
+    const featureFlags = readSubstrateFeatureFlags()
     const manager = shadowServerManager ?? getShadowServerManager()
+    const remoteEnvironments = listSubstrateRemoteEnvironmentStubs()
     if (!manager) {
-      const flags = readSubstrateShadowServerFlags()
+      const flags = featureFlags.shadowServer
       return {
         phase: flags.enabled ? 'stopped' : 'stopped',
         enabled: flags.enabled,
@@ -711,13 +714,46 @@ function registerSubstrateShadowBridgeHandlers(): void {
         lastError: null,
         startedAtMs: null,
         readyAtMs: null,
+        features: {
+          rpcChat: featureFlags.rpcChat,
+          providers: featureFlags.providers,
+          vcs: featureFlags.vcs,
+          primary: featureFlags.primary,
+          obsNdjson: featureFlags.obsNdjson,
+          inProcessAssistant: shouldStartInProcessAssistantRuntime(featureFlags),
+        },
+        remoteEnvironments,
       }
     }
-    return manager.getStatus()
+    return {
+      ...manager.getStatus(),
+      features: {
+        rpcChat: featureFlags.rpcChat,
+        providers: featureFlags.providers,
+        vcs: featureFlags.vcs,
+        primary: featureFlags.primary,
+        obsNdjson: featureFlags.obsNdjson,
+        inProcessAssistant: shouldStartInProcessAssistantRuntime(featureFlags),
+      },
+      remoteEnvironments,
+    }
   })
 }
 
 function ensureAssistantRuntimeStarted(): void {
+  const substrateFlags = readSubstrateFeatureFlags()
+  if (!shouldStartInProcessAssistantRuntime(substrateFlags)) {
+    logAssistantBridge('runtime-start-skipped-primary-substrate', {
+      primary: substrateFlags.primary,
+      shadowServer: substrateFlags.shadowServer.enabled,
+    })
+    setAssistantRuntimeStatus({
+      phase: 'idle',
+      lastError: null,
+    })
+    return
+  }
+
   if (assistantRuntimeFiber) {
     logAssistantBridge('runtime-start-reused', {
       generation: assistantRuntimeGeneration,
