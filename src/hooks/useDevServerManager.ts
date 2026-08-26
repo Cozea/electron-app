@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { DevServerLaunchContext } from '@/utils/projectDetector'
 import {
@@ -50,6 +50,7 @@ export function useDevServerManager({
   nativePlatform = null,
 }: UseDevServerManagerOptions) {
   const runKey = workspaceId ? buildDevServerRunKey(workspaceId, laneId) : null
+  const autoStartedRunKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     ensureDevServerEventBridge()
@@ -99,13 +100,31 @@ export function useDevServerManager({
   }, [runKey])
 
   const run = useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined))
+  const registeredTerminalId = useDevServerRunStore((storeState) =>
+    runKey ? storeState.contexts[runKey]?.terminalId ?? null : null,
+  )
+  // Contexts are sticky across tile unmounts, so an older terminal cannot
+  // satisfy auto-start for a newly mounted tile. Wait until this tile's
+  // terminal is the one registered for the run key.
+  const launchTerminalReady = Boolean(terminalId && registeredTerminalId === terminalId)
   const state = run ?? DEFAULT_DEV_SERVER_RUN
 
   useEffect(() => {
-    if (autoStart && runKey && state.status === 'idle') {
+    if (!autoStart || !runKey) {
+      autoStartedRunKeyRef.current = null
+      return
+    }
+    if (!launchTerminalReady) return
+    if (autoStartedRunKeyRef.current === runKey) return
+
+    // Auto-start is one-shot per mounted run context. This covers a DevApp
+    // replacing a previously stopped built-in Dev Server without immediately
+    // undoing a later explicit Stop action from the user.
+    autoStartedRunKeyRef.current = runKey
+    if (state.status === 'idle' || state.status === 'stopped' || state.status === 'error') {
       void startDevServerRun(runKey)
     }
-  }, [autoStart, runKey, state.status])
+  }, [autoStart, launchTerminalReady, runKey, state.status])
 
   const start = useCallback(async () => {
     if (!runKey) return

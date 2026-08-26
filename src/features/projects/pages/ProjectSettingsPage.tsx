@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import * as Y from 'yjs'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
@@ -6,9 +6,16 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCollabSession, invalidateCollabSession } from '@/hooks/useCollabSession'
 import { useTranslation } from '@/lib/i18n'
+import { featureFlags } from '@/lib/featureFlags'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
+import { DevAppIcon } from '@/features/devapps/components/DevAppIcon'
+import {
+  updateLocalProjectDevAppIdentity,
+  useLocalProjectDevAppEntry,
+} from '@/features/devapps/localProjectDevAppStore'
+import { buildProjectDevAppManifest } from '@/features/devapps/projectDevAppManifest'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -34,7 +41,13 @@ import {
 } from '@/lib/collab/cipherEnvelope'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Edit01Icon as __EditHugeIcon } from '@hugeicons/core-free-icons'
+
+const LazyProjectDevAppLogoDialog = lazy(() =>
+  import('@/features/devapps/components/ProjectDevAppLogoDialog').then((module) => ({
+    default: module.ProjectDevAppLogoDialog,
+  })),
+)
 
 export interface ProjectSettingsPageProps {
   presentation?: 'modal' | 'embedded'
@@ -66,6 +79,12 @@ export function ProjectSettingsPage({
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
+  const localProjectDevApp = useLocalProjectDevAppEntry(
+    featureFlags.projectDevApps ? project?._id : null,
+  )
+  const localProjectDevAppManifest = localProjectDevApp
+    ? buildProjectDevAppManifest(localProjectDevApp)
+    : null
   const { t } = useTranslation()
 
   const updateProject = useMutation(api.projects.update)
@@ -111,6 +130,8 @@ export function ProjectSettingsPage({
   const [description, setDescription] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [showDevAppIdentityDialog, setShowDevAppIdentityDialog] = useState(false)
+  const [devAppIdentityError, setDevAppIdentityError] = useState<string | null>(null)
 
   const [showArchiveDialog, setShowArchiveDialog] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -138,6 +159,8 @@ export function ProjectSettingsPage({
     setCollabNotice(null)
     setGeneratedRecoveryCode(null)
     setRecoveryCodeInput('')
+    setShowDevAppIdentityDialog(false)
+    setDevAppIdentityError(null)
   }, [
     project?._id,
     project?.description,
@@ -777,6 +800,63 @@ export function ProjectSettingsPage({
                     </div>
                   </section>
                 </div>
+                {localProjectDevApp && localProjectDevAppManifest ? (
+                  <div className="min-w-0 space-y-6">
+                    <section>
+                      <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
+                        {t('settings.section.localDevApp')}
+                      </h3>
+                      <div className="flex min-h-[68px] items-center gap-3 rounded-[14px] bg-muted px-4 py-3">
+                        <button
+                          type="button"
+                          aria-label={t('appStore.page.editDevAppFor').replace(
+                            '{name}',
+                            localProjectDevApp.publication.name,
+                          )}
+                          className={cn(
+                            'group relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-muted',
+                            localProjectDevAppManifest.store.accentClassName,
+                          )}
+                          style={{ borderRadius: 40 * 0.22265625 }}
+                          onClick={() => {
+                            setDevAppIdentityError(null)
+                            setShowDevAppIdentityDialog(true)
+                          }}
+                        >
+                          <DevAppIcon app={localProjectDevAppManifest} />
+                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                            <HugeiconsIcon icon={__EditHugeIcon} className="size-3.5" />
+                          </span>
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <p className="truncate text-xs font-medium text-foreground">
+                              {localProjectDevApp.publication.name}
+                            </p>
+                            <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                              V{localProjectDevApp.activeRelease.version}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {t('settings.desc.localDevAppIdentity')}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-7 shrink-0 bg-background/50 text-[11px]"
+                          onClick={() => {
+                            setDevAppIdentityError(null)
+                            setShowDevAppIdentityDialog(true)
+                          }}
+                        >
+                          <HugeiconsIcon icon={__EditHugeIcon} className="mr-1.5 h-3.5 w-3.5" />
+                          {t('settings.action.editDevApp')}
+                        </Button>
+                      </div>
+                    </section>
+                  </div>
+                ) : null}
                 <div className="min-w-0 space-y-6">
                   <section>
                     <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
@@ -1110,6 +1190,42 @@ export function ProjectSettingsPage({
         isDeleting={isDeleting}
         errorMessage={deleteError}
       />
+
+      {localProjectDevApp && showDevAppIdentityDialog ? (
+        <Suspense fallback={null}>
+          <LazyProjectDevAppLogoDialog
+            open
+            projectName={localProjectDevApp.publication.name}
+            mode="change"
+            initialName={localProjectDevApp.publication.name}
+            initialLogoDataUrl={localProjectDevApp.logoDataUrl}
+            saveErrorMessage={devAppIdentityError}
+            onOpenChange={(open) => {
+              setShowDevAppIdentityDialog(open)
+              if (!open) {
+                setDevAppIdentityError(null)
+              }
+            }}
+            onConfirm={(logoDataUrl, devAppName) => {
+              try {
+                updateLocalProjectDevAppIdentity(
+                  localProjectDevApp.publication._id,
+                  devAppName,
+                  logoDataUrl,
+                )
+                setShowDevAppIdentityDialog(false)
+                setDevAppIdentityError(null)
+              } catch (error) {
+                setDevAppIdentityError(
+                  error instanceof Error
+                    ? error.message
+                    : t('projectDevApp.logo.error'),
+                )
+              }
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       <AlertDialog open={showCollabResetDialog} onOpenChange={setShowCollabResetDialog}>
         <AlertDialogContent>

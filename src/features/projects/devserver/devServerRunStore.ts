@@ -403,15 +403,17 @@ export async function startDevServerRun(key: string): Promise<void> {
       )
     }
 
+    const packageDirectory = config.packageDirectory
     let bootstrapCommand: string | null = null
-    if (await hasPackageJson(context.workspaceId)) {
-      const packageManager = await detectPackageManager(context.workspaceId)
+    if (await hasPackageJson(context.workspaceId, packageDirectory)) {
+      const packageManager = await detectPackageManager(context.workspaceId, packageDirectory)
       const dependenciesInstalled = await checkDependenciesInstalled(
         context.workspaceId,
         packageManager,
+        packageDirectory,
       )
       if (!dependenciesInstalled) {
-        bootstrapCommand = getInstallCommand(packageManager)
+        bootstrapCommand = getInstallCommand(packageManager, packageDirectory)
       }
     }
 

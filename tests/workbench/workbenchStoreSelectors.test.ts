@@ -129,4 +129,96 @@ describe('workbench store selectors', () => {
       ],
     })
   })
+
+  it('replaces singleton DevApp metadata and clears it when the built-in Dev Server opens', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    const firstTileId = actions.openSingletonTile(
+      'project-1',
+      'collab',
+      'devServer',
+      {
+        title: 'Customer portal',
+        devAppId: 'devapp-1',
+        devAppReleaseId: 'release-1',
+        devAppReleaseVersion: 1,
+        devAppProjectId: 'source-project-1',
+        devAppWorkspaceId: 'source-workspace-1',
+        devAppLaneId: 'source-lane-1',
+        devAppFramework: 'vite-react',
+        devAppCommand: 'bun run dev',
+        devAppPort: 5173,
+        autoStart: true,
+      },
+      'workspace-1',
+    )
+
+    const reusedTileId = actions.openSingletonTile(
+      'project-1',
+      'collab',
+      'devServer',
+      {
+        title: 'Customer portal',
+        devAppId: 'devapp-1',
+        devAppReleaseId: 'release-2',
+        devAppReleaseVersion: 2,
+        devAppProjectId: 'source-project-1',
+        devAppWorkspaceId: 'source-workspace-2',
+        devAppLaneId: 'source-lane-2',
+        devAppFramework: 'nextjs',
+        devAppCommand: 'bun run preview',
+        devAppPort: 4173,
+        autoStart: true,
+      },
+      'workspace-1',
+    )
+
+    expect(reusedTileId).toBe(firstTileId)
+    let workbench = selectProjectWorkbench('project-1', 'collab', 'workspace-1')(
+      useProjectWorkbenchStore.getState(),
+    )
+    expect(workbench?.tiles[firstTileId]).toMatchObject({
+      title: 'Customer portal',
+      devAppId: 'devapp-1',
+      devAppReleaseId: 'release-2',
+      devAppReleaseVersion: 2,
+      devAppProjectId: 'source-project-1',
+      devAppWorkspaceId: 'source-workspace-2',
+      devAppLaneId: 'source-lane-2',
+      devAppFramework: 'nextjs',
+      devAppCommand: 'bun run preview',
+      devAppPort: 4173,
+      autoStart: true,
+    })
+    expect(buildWorkbenchLaneSidebarSummary(workbench!).surfaces).toEqual([
+      expect.objectContaining({
+        id: firstTileId,
+        title: 'Customer portal',
+        devAppId: 'devapp-1',
+      }),
+    ])
+
+    actions.openSingletonTile(
+      'project-1',
+      'collab',
+      'devServer',
+      undefined,
+      'workspace-1',
+    )
+    workbench = selectProjectWorkbench('project-1', 'collab', 'workspace-1')(
+      useProjectWorkbenchStore.getState(),
+    )
+    const builtInTile = workbench?.tiles[firstTileId]
+
+    expect(builtInTile).toMatchObject({ title: 'Dev Server', type: 'devServer' })
+    expect(builtInTile).not.toHaveProperty('devAppId')
+    expect(builtInTile).not.toHaveProperty('devAppReleaseId')
+    expect(builtInTile).not.toHaveProperty('devAppReleaseVersion')
+    expect(builtInTile).not.toHaveProperty('devAppProjectId')
+    expect(builtInTile).not.toHaveProperty('devAppWorkspaceId')
+    expect(builtInTile).not.toHaveProperty('devAppLaneId')
+    expect(builtInTile).not.toHaveProperty('devAppFramework')
+    expect(builtInTile).not.toHaveProperty('devAppCommand')
+    expect(builtInTile).not.toHaveProperty('devAppPort')
+    expect(builtInTile).not.toHaveProperty('autoStart')
+  })
 })

@@ -39,6 +39,12 @@ import {
 } from "@/features/projects/lib/externalBrowserPreference"
 import { type DevServerStatus, useDevServerManager } from "@/hooks/useDevServerManager"
 import { cn } from "@/lib/utils"
+import {
+  buildWorkbenchRuntimeTargetIdentity,
+  resolveProjectDevAppRuntimeTarget,
+  type WorkbenchRuntimeTarget,
+} from "@/features/projects/lib/projectDevAppRuntime"
+import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle"
 import type { PageRoute, ServerStatus } from "@/features/projects/lib/previewRuntimeTypes"
 import {
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
@@ -104,14 +110,74 @@ interface WorkbenchDevServerTileProps {
   surfaceType: "web" | "mobileSimulator"
 }
 
+function useRuntimeWorkbenchSessionKey({
+  target,
+  currentSessionKey,
+}: {
+  target: WorkbenchRuntimeTarget
+  currentSessionKey: string | null
+}): string | null {
+  const targetIdentity = buildWorkbenchRuntimeTargetIdentity(target)
+  const [sourceSession, setSourceSession] = useState<{
+    identity: string
+    sessionKey: string
+  } | null>(null)
+
+  useEffect(() => {
+    if (!target.usesProjectDevAppSource || !target.workspaceId) {
+      setSourceSession(null)
+      return
+    }
+
+    let cancelled = false
+    setSourceSession((current) =>
+      current?.identity === targetIdentity ? current : null,
+    )
+
+    void window.electronAPI.workbenchSession
+      .ensureSession({
+        projectId: target.projectId,
+        laneId: target.laneId,
+        workspaceId: target.workspaceId,
+      })
+      .then((snapshot) => {
+        if (cancelled) return
+        setSourceSession({ identity: targetIdentity, sessionKey: snapshot.sessionKey })
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.warn("[ProjectDevApp] Failed to prepare source session", error)
+        setSourceSession(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    target.laneId,
+    target.projectId,
+    target.usesProjectDevAppSource,
+    target.workspaceId,
+    targetIdentity,
+  ])
+
+  if (!target.usesProjectDevAppSource) {
+    return currentSessionKey
+  }
+
+  return sourceSession?.identity === targetIdentity
+    ? sourceSession.sessionKey
+    : null
+}
+
 function WorkbenchRuntimePreviewTile({
   projectId,
   laneId,
   tile,
   workspaceId,
-  framework: storedFramework,
-  storedDevCommand,
-  storedDevPort,
+  framework: projectFramework,
+  storedDevCommand: projectDevCommand,
+  storedDevPort: projectDevPort,
   workbenchSessionKey,
   panelApi,
   containerApi,
@@ -121,6 +187,49 @@ function WorkbenchRuntimePreviewTile({
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const updateTerminalDisplay = useTerminalStore((state) => state.actions.updateTerminalDisplay)
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
+  const runtimeTarget = useMemo(
+    () =>
+      tile.type === "devServer"
+        ? resolveProjectDevAppRuntimeTarget(tile, { projectId, laneId, workspaceId })
+        : {
+            projectId,
+            laneId,
+            workspaceId,
+            usesProjectDevAppSource: false,
+          },
+    [laneId, projectId, tile, workspaceId],
+  )
+  const runtimeSessionKey = useRuntimeWorkbenchSessionKey({
+    target: runtimeTarget,
+    currentSessionKey: workbenchSessionKey,
+  })
+  const runtimeProjectId = runtimeTarget.projectId
+  const runtimeLaneId = runtimeTarget.laneId
+  const runtimeWorkspaceId = runtimeTarget.workspaceId
+  const runtimeTargetIdentity = buildWorkbenchRuntimeTargetIdentity(runtimeTarget)
+  const runtimeRunKey = runtimeWorkspaceId
+    ? buildDevServerRunKey(runtimeWorkspaceId, runtimeLaneId)
+    : null
+  const previousRuntimeTargetRef = useRef(runtimeTarget)
+
+  useEffect(() => {
+    const previousTarget = previousRuntimeTargetRef.current
+    const previousIdentity = buildWorkbenchRuntimeTargetIdentity(previousTarget)
+    previousRuntimeTargetRef.current = runtimeTarget
+    if (previousIdentity === runtimeTargetIdentity) return
+
+    void releaseProjectDevAppRuntimeTarget(previousTarget, tile.id).catch((error) => {
+      console.warn("[ProjectDevApp] Failed to release the previous source runtime", error)
+    })
+  }, [runtimeTarget, runtimeTargetIdentity, tile.id])
+  const storedFramework =
+    tile.type === "devServer" ? tile.devAppFramework ?? projectFramework : projectFramework
+  const storedDevCommand =
+    tile.type === "devServer" ? tile.devAppCommand ?? projectDevCommand : projectDevCommand
+  const storedDevPort =
+    tile.type === "devServer" ? tile.devAppPort ?? projectDevPort : projectDevPort
+  const autoStart = tile.type === "devServer" ? tile.autoStart ?? false : false
+  const devAppReleaseId = tile.type === "devServer" ? tile.devAppReleaseId ?? null : null
   const [resolvedFramework, setResolvedFramework] = useState<Framework | null>(
     storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
   )
@@ -130,14 +239,14 @@ function WorkbenchRuntimePreviewTile({
       setResolvedFramework(storedFramework as Framework)
       return
     }
-    if (!workspaceId) {
+    if (!runtimeWorkspaceId) {
       setResolvedFramework(null)
       return
     }
 
     let cancelled = false
 
-    void getFrameworkInfo(workspaceId, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
+    void getFrameworkInfo(runtimeWorkspaceId, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
       .then((frameworkInfo) => {
         if (cancelled) return
         setResolvedFramework(frameworkInfo.framework)
@@ -150,7 +259,7 @@ function WorkbenchRuntimePreviewTile({
     return () => {
       cancelled = true
     }
-  }, [workspaceId, storedDevCommand, storedDevPort, storedFramework])
+  }, [runtimeWorkspaceId, storedDevCommand, storedDevPort, storedFramework])
 
   const framework = resolvedFramework ?? (storedFramework as Framework | null) ?? undefined
   const nativePreviewPlatform = useNativeMobilePreviewMode(framework)
@@ -169,10 +278,10 @@ function WorkbenchRuntimePreviewTile({
 
   const [terminalRetryKey, setTerminalRetryKey] = useState(0)
   const { terminalId, error: terminalError } = useWorkbenchSessionTerminal({
-    workspaceId,
-    workbenchSessionKey,
-    projectId,
-    laneId,
+    workspaceId: runtimeWorkspaceId,
+    workbenchSessionKey: runtimeSessionKey,
+    projectId: runtimeProjectId,
+    laneId: runtimeLaneId,
     tileId: tile.id,
     terminalKind: "dev-server",
     title: tile.title,
@@ -181,22 +290,46 @@ function WorkbenchRuntimePreviewTile({
   })
 
   const devServer = useDevServerManager({
-    workspaceId,
-    laneId,
-    sessionKey: workbenchSessionKey,
+    workspaceId: runtimeWorkspaceId,
+    laneId: runtimeLaneId,
+    sessionKey: runtimeSessionKey,
     framework,
     terminalId,
+    autoStart,
     storedDevCommand,
     storedDevPort,
     previewMode: usesNativePreview ? "native" : "web",
     nativePlatform: usesNativePreview ? nativePreviewPlatform : null,
   })
+  const previousDevAppReleaseIdRef = useRef(devAppReleaseId)
+  const previousRuntimeRunKeyRef = useRef(runtimeRunKey)
+  useEffect(() => {
+    const previousReleaseId = previousDevAppReleaseIdRef.current
+    const previousRunKey = previousRuntimeRunKeyRef.current
+    previousDevAppReleaseIdRef.current = devAppReleaseId
+    previousRuntimeRunKeyRef.current = runtimeRunKey
+
+    // Initial hydration does not restart because the ref is seeded with the
+    // mounted release. Replacing a built-in tile or an older DevApp release
+    // does restart after the new launch context is registered so command,
+    // framework, and port changes take effect immediately.
+    const builtInAutoStartWillHandleTransition =
+      !previousReleaseId && (devServer.status === "idle" || devServer.status === "stopped")
+    if (
+      devAppReleaseId &&
+      previousReleaseId !== devAppReleaseId &&
+      previousRunKey === runtimeRunKey &&
+      !builtInAutoStartWillHandleTransition
+    ) {
+      void devServer.restart()
+    }
+  }, [devAppReleaseId, devServer.restart, devServer.status, runtimeRunKey])
   const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
-    scopeKey: workbenchSessionKey ?? NATIVE_PREVIEW_PENDING_SCOPE,
-    enabled: usesNativePreview && Boolean(workbenchSessionKey),
-    workspaceId,
+    scopeKey: runtimeSessionKey ?? NATIVE_PREVIEW_PENDING_SCOPE,
+    enabled: usesNativePreview && Boolean(runtimeSessionKey),
+    workspaceId: runtimeWorkspaceId,
     serverStatus: serverStatusForNative,
     keepAliveOnUnmount: true,
   })
@@ -227,18 +360,20 @@ function WorkbenchRuntimePreviewTile({
   } = useWorkbenchBrowserView({
     tileId: tile.id,
     url: showWebEmbeddedPreview && !suppressPreviewUrl ? displayUrl : "",
-    sessionKey: workbenchSessionKey,
-    projectId,
-    laneId,
+    sessionKey: runtimeSessionKey,
+    projectId: runtimeProjectId,
+    laneId: runtimeLaneId,
     visible: showWebEmbeddedPreview && panelActivity.visible,
     storageScope: "ephemeral",
-    workspaceId: workspaceId ?? undefined,
+    workspaceId: runtimeWorkspaceId ?? undefined,
     persistModel: true,
     onUrlObserved: (nextUrl) => {
       if (tile.type !== "devServer") return
       // In-preview navigation becomes persisted intent; landing back on the
       // server's own URL clears it so the tile follows the server again.
-      const runKey = workspaceId ? buildDevServerRunKey(workspaceId, laneId) : null
+      const runKey = runtimeWorkspaceId
+        ? buildDevServerRunKey(runtimeWorkspaceId, runtimeLaneId)
+        : null
       const run = runKey ? useDevServerRunStore.getState().runs[runKey] : undefined
       const serverUrl = run?.url ?? (run?.port ? `http://localhost:${run.port}` : "")
       const nextOverride = isSameDevServerPreviewUrl(serverUrl, nextUrl) ? null : nextUrl
@@ -296,10 +431,10 @@ function WorkbenchRuntimePreviewTile({
       command: storedDevCommand ?? undefined,
       kind: "dev-server",
       surface: "panel",
-      workspaceId: workspaceId ?? undefined,
+      workspaceId: runtimeWorkspaceId ?? undefined,
       port: devServer.port ?? undefined,
     })
-  }, [devServer.port, workspaceId, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
+  }, [devServer.port, runtimeWorkspaceId, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
 
   useEffect(() => {
     let cancelled = false
@@ -357,9 +492,9 @@ function WorkbenchRuntimePreviewTile({
     }
 
     const locator =
-      usesNativePreview && workspaceId && nativePreview.selectedSimulator
+      usesNativePreview && runtimeWorkspaceId && nativePreview.selectedSimulator
         ? {
-            workspaceId,
+            workspaceId: runtimeWorkspaceId,
             deviceId: nativePreview.selectedSimulator.udid,
             platform: "ios" as const,
           }
@@ -367,9 +502,9 @@ function WorkbenchRuntimePreviewTile({
 
     void window.electronAPI.workbenchSession
       .setNativePreviewSession({
-        sessionKey: workbenchSessionKey,
-        projectId,
-        laneId,
+        sessionKey: runtimeSessionKey,
+        projectId: runtimeProjectId,
+        laneId: runtimeLaneId,
         locator,
       })
       .catch((error) => {
@@ -378,11 +513,11 @@ function WorkbenchRuntimePreviewTile({
   }, [
     isMobileSimulatorSurface,
     usesNativePreview,
-    laneId,
     nativePreview.selectedSimulator,
-    projectId,
-    workspaceId,
-    workbenchSessionKey,
+    runtimeLaneId,
+    runtimeProjectId,
+    runtimeSessionKey,
+    runtimeWorkspaceId,
   ])
 
   const visibleBrowsers = useMemo(() => {
@@ -457,15 +592,15 @@ function WorkbenchRuntimePreviewTile({
 
       rotation?: NativePreviewRotation
     }) => {
-      if (!workspaceId || !nativePreview.selectedSimulator) return
+      if (!runtimeWorkspaceId || !nativePreview.selectedSimulator) return
       await window.electronAPI.nativePreview.sendTouches({
-        workspaceId,
+        workspaceId: runtimeWorkspaceId,
         deviceId: nativePreview.selectedSimulator.udid,
         platform: "ios",
         ...request,
       })
     },
-    [nativePreview.selectedSimulator, workspaceId],
+    [nativePreview.selectedSimulator, runtimeWorkspaceId],
   )
 
   const handleNativeSendWheel = useCallback(
@@ -474,28 +609,28 @@ function WorkbenchRuntimePreviewTile({
       deltaX: number
       deltaY: number
     }) => {
-      if (!workspaceId || !nativePreview.selectedSimulator) return
+      if (!runtimeWorkspaceId || !nativePreview.selectedSimulator) return
       await window.electronAPI.nativePreview.sendWheel({
-        workspaceId,
+        workspaceId: runtimeWorkspaceId,
         deviceId: nativePreview.selectedSimulator.udid,
         platform: "ios",
         ...request,
       })
     },
-    [nativePreview.selectedSimulator, workspaceId],
+    [nativePreview.selectedSimulator, runtimeWorkspaceId],
   )
 
   const handleNativeSendKey = useCallback(
     async (request: { direction: "down" | "up"; keyCode: number }) => {
-      if (!workspaceId || !nativePreview.selectedSimulator) return
+      if (!runtimeWorkspaceId || !nativePreview.selectedSimulator) return
       await window.electronAPI.nativePreview.sendKey({
-        workspaceId,
+        workspaceId: runtimeWorkspaceId,
         deviceId: nativePreview.selectedSimulator.udid,
         platform: "ios",
         ...request,
       })
     },
-    [nativePreview.selectedSimulator, workspaceId],
+    [nativePreview.selectedSimulator, runtimeWorkspaceId],
   )
 
   useEffect(() => {
@@ -534,7 +669,7 @@ function WorkbenchRuntimePreviewTile({
   ) : (
     <KeepAliveTerminalView
       terminalId={terminalId}
-      workspaceId={workspaceId}
+      workspaceId={runtimeWorkspaceId}
       focused={panelActivity.focused}
     />
   )
@@ -577,12 +712,18 @@ function WorkbenchRuntimePreviewTile({
                 <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-7 w-7" />
               </EmptyMedia>
               <EmptyTitle className="text-base font-medium">
-                {devServer.status === "starting" ? "Local preview will attach here." : "No preview yet"}
+                {devServer.status === "starting"
+                  ? "Local preview will attach here."
+                  : devServer.status === "error"
+                    ? "Dev server couldn't start"
+                    : "No preview yet"}
               </EmptyTitle>
               <EmptyDescription>
                 {devServer.status === "starting"
                   ? "The browser shell is ready. As soon as the dev server exposes a URL, the page will appear here."
-                  : "Start the dev server to load the local preview here."}
+                  : devServer.status === "error"
+                    ? devServer.error ?? "Check the server logs, then try again."
+                    : "Start the dev server to load the local preview here."}
               </EmptyDescription>
               {devServer.status === "starting" ? (
                 <div className="flex justify-center pt-2">
@@ -655,9 +796,11 @@ function WorkbenchRuntimePreviewTile({
 
   const cozeaEmbeddedPreviewBody = usesNativePreview ? nativeIosPreviewBody : webEmbeddedPreviewBody
 
-  const body = !workspaceId ? (
+  const body = !runtimeWorkspaceId ? (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-      {isMobileSimulatorSurface
+      {runtimeTarget.usesProjectDevAppSource
+        ? t("workbench.selection.localDevAppUnavailableDescription")
+        : isMobileSimulatorSurface
         ? "Open or relink a local project folder to run a mobile simulator here."
         : "Open or relink a local project folder to manage a dev server here."}
     </div>
@@ -692,6 +835,7 @@ function WorkbenchRuntimePreviewTile({
         containerApi={containerApi}
         hideTitlePill
         tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
+        devAppId={tile.type === "devServer" ? tile.devAppId : undefined}
       >
         <div data-workbench-browser-content="true" className="h-full min-h-0 bg-content-surface">{body}</div>
       </WorkbenchTileChrome>

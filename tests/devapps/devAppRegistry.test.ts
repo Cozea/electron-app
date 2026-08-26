@@ -58,6 +58,23 @@ describe("DevApps registry", () => {
     expect(listStoreApps({ query: "anthropic" }).map((app) => app.id)).toEqual(["claude"])
   })
 
+  it("merges access-filtered project apps into the launcher without mutating builtins", () => {
+    const projectApp = {
+      ...BUILTIN_DEV_APPS[1],
+      id: "project-devapp:publication_1",
+      name: "Inventory Console",
+      launcher: {
+        ...BUILTIN_DEV_APPS[1].launcher,
+        order: 1,
+      },
+    }
+
+    expect(listLauncherApps({ additionalApps: [projectApp] }).map((app) => app.id)).toContain(
+      projectApp.id,
+    )
+    expect(BUILTIN_DEV_APPS.map((app) => app.id)).not.toContain(projectApp.id)
+  })
+
   it("looks up manifests by stable id", () => {
     expect(getDevAppById("terminal")?.name).toBe("Terminal")
     expect(getDevAppById("unknown")).toBeUndefined()

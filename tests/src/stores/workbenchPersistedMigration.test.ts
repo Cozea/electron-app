@@ -76,4 +76,86 @@ describe("persisted workbench migration", () => {
 
     expect(Object.keys(migrated.workbenches)).toHaveLength(2)
   })
+
+  it("sanitizes persisted project DevApp launch metadata", () => {
+    const persisted = bench({
+      projectId: "p6",
+      workspaceId: "lws_devapp",
+      tiles: [{ id: "dev-app", type: "devServer" }],
+    })
+    persisted.tiles["dev-app"] = {
+      ...persisted.tiles["dev-app"],
+      title: "Project preview",
+      devAppId: "  app_123  ",
+      devAppReleaseId: " release_2 ",
+      devAppReleaseVersion: 2,
+      devAppProjectId: " source_project ",
+      devAppWorkspaceId: " source_workspace ",
+      devAppLaneId: " source_lane ",
+      devAppFramework: " vite-react ",
+      devAppCommand: " bun run dev ",
+      devAppPort: 5173,
+      autoStart: true,
+      previewOverrideUrl: "  http://localhost:5173/dashboard  ",
+    }
+
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: { persisted },
+    })
+    const workbench = Object.values(migrated.workbenches)[0]!
+
+    expect(workbench.tiles["dev-app"]).toMatchObject({
+      type: "devServer",
+      devAppId: "app_123",
+      devAppReleaseId: "release_2",
+      devAppReleaseVersion: 2,
+      devAppProjectId: "source_project",
+      devAppWorkspaceId: "source_workspace",
+      devAppLaneId: "source_lane",
+      devAppFramework: "vite-react",
+      devAppCommand: "bun run dev",
+      devAppPort: 5173,
+      autoStart: true,
+      previewOverrideUrl: "http://localhost:5173/dashboard",
+      viewMode: "preview",
+    })
+  })
+
+  it("drops stale DevApp launch metadata when no valid DevApp identity remains", () => {
+    const persisted = bench({
+      projectId: "p7",
+      workspaceId: "lws_builtin",
+      tiles: [{ id: "dev-server", type: "devServer" }],
+    })
+    persisted.tiles["dev-server"] = {
+      ...persisted.tiles["dev-server"],
+      devAppId: " ",
+      devAppReleaseId: "release_3",
+      devAppReleaseVersion: 3,
+      devAppProjectId: "source_project",
+      devAppWorkspaceId: "source_workspace",
+      devAppLaneId: "source_lane",
+      devAppFramework: "nextjs",
+      devAppCommand: "bun run dev",
+      devAppPort: 70_000,
+      autoStart: true,
+    }
+
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: { persisted },
+    })
+    const tile = Object.values(migrated.workbenches)[0]!.tiles["dev-server"]
+
+    expect(tile).toMatchObject({ type: "devServer" })
+    expect(tile).not.toHaveProperty("devAppId")
+    expect(tile).not.toHaveProperty("devAppReleaseId")
+    expect(tile).not.toHaveProperty("devAppReleaseVersion")
+    expect(tile).not.toHaveProperty("devAppProjectId")
+    expect(tile).not.toHaveProperty("devAppWorkspaceId")
+    expect(tile).not.toHaveProperty("devAppLaneId")
+    expect(tile).not.toHaveProperty("devAppFramework")
+    expect(tile).not.toHaveProperty("devAppCommand")
+    expect(tile).not.toHaveProperty("devAppPort")
+    expect(tile).not.toHaveProperty("autoStart")
+  })
 })

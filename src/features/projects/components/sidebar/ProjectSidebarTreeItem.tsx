@@ -5,14 +5,15 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
+import { featureFlags } from "@/lib/featureFlags"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useWorkspaceSnapshotEntry } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
 import {
-
   resolveProjectCollabBranch,
+  resolveSidebarDevAppMenuAction,
   areSidebarProjectItemsEqual,
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_HOVER_CLASS,
@@ -105,12 +106,14 @@ export const ProjectSidebarTreeItem = React.memo(
 
     const handleProjectMenuClick = React.useCallback(
       async (event: React.MouseEvent<HTMLButtonElement>) => {
+        const devAppAction = resolveSidebarDevAppMenuAction(context)
         const items: ContextMenuItem<
           | "open-project"
           | "relink-project"
           | "close-workspace"
           | "open-folder"
           | "settings"
+          | "publish-dev-app"
           | "rename"
           | "archive"
           | "restore"
@@ -125,6 +128,17 @@ export const ProjectSidebarTreeItem = React.memo(
           { id: "relink-project", label: "Relink Local Folder" },
           { id: "open-folder", label: "Open Folder" },
           { id: "settings", label: "Settings" },
+        ]
+
+        if (featureFlags.projectDevApps) {
+          items.push({
+            id: "publish-dev-app",
+            label: devAppAction.label,
+            enabled: devAppAction.enabled,
+          })
+        }
+
+        items.push(
           { id: "divider-primary", label: "", type: "separator" },
           { id: "rename", label: "Rename" },
           {
@@ -132,7 +146,7 @@ export const ProjectSidebarTreeItem = React.memo(
             label: project.status === "archived" ? "Restore" : "Archive",
           },
           { id: "delete", label: "Delete" },
-        ]
+        )
 
         const hasSidebarActions =
           projectIndex > 0 ||
@@ -175,6 +189,11 @@ export const ProjectSidebarTreeItem = React.memo(
           case "settings":
             actions.openProjectSettings(project)
             break
+          case "publish-dev-app":
+            if (devAppAction.enabled) {
+              void actions.publishDevApp(project, workspaceId, devAppAction.mode)
+            }
+            break
           case "rename":
             actions.renameProject(project)
             break
@@ -201,6 +220,9 @@ export const ProjectSidebarTreeItem = React.memo(
       [
         actions,
         context.currentWorkspaceId,
+        context.canPublishDevApp,
+        context.devAppPublicationState,
+        context.devAppPublishingMode,
         context.isCurrentProject,
         context.isSyncingProject,
         workspaceId,
@@ -287,6 +309,9 @@ export const ProjectSidebarTreeItem = React.memo(
       prev.context.isCurrentProject === next.context.isCurrentProject &&
       prev.context.currentWorkspaceId === next.context.currentWorkspaceId &&
       prev.context.isSyncingProject === next.context.isSyncingProject &&
+      prev.context.devAppPublicationState === next.context.devAppPublicationState &&
+      prev.context.devAppPublishingMode === next.context.devAppPublishingMode &&
+      prev.context.canPublishDevApp === next.context.canPublishDevApp &&
       prev.context.prefetchedLaneState === next.context.prefetchedLaneState &&
       prev.context.prefetchedActiveLane === next.context.prefetchedActiveLane &&
       prev.actions === next.actions

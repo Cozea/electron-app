@@ -34,6 +34,65 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
     })
   })
 
+  it("resolves a private project release to an auto-starting Dev Server singleton", () => {
+    expect(
+      resolveWorkbenchSelectionLaunchRequest({
+        appId: "project-devapp:publication_1",
+        projectDevApp: {
+          kind: "projectDevApp",
+          tileType: "devServer",
+          singleton: true,
+          publicationId: "publication_1",
+          releaseId: "release_2",
+          releaseVersion: 2,
+          projectId: "project_1",
+          sourceWorkspaceId: "workspace_1",
+          sourceLaneId: "lane_1",
+          name: "Inventory Console",
+          framework: "vite-react",
+          devCommand: "bun run dev",
+          devPort: 5173,
+        },
+      }),
+    ).toEqual({
+      action: "openSingletonTile",
+      tileType: "devServer",
+      options: {
+        title: "Inventory Console",
+        devAppId: "publication_1",
+        devAppReleaseId: "release_2",
+        devAppReleaseVersion: 2,
+        devAppProjectId: "project_1",
+        devAppWorkspaceId: "workspace_1",
+        devAppLaneId: "lane_1",
+        devAppFramework: "vite-react",
+        devAppCommand: "bun run dev",
+        devAppPort: 5173,
+        autoStart: true,
+      },
+    })
+  })
+
+  it("rejects a project release paired with another publication id", () => {
+    expect(() =>
+      resolveWorkbenchSelectionLaunchRequest({
+        appId: "project-devapp:publication_2",
+        projectDevApp: {
+          kind: "projectDevApp",
+          tileType: "devServer",
+          singleton: true,
+          publicationId: "publication_1",
+          releaseId: "release_1",
+          releaseVersion: 1,
+          projectId: "project_1",
+          name: "Inventory Console",
+          framework: "vite-react",
+          devCommand: "bun run dev",
+        },
+      }),
+    ).toThrow('Invalid project DevApp launch request for "project-devapp:publication_2"')
+  })
+
   it("throws for unknown apps", () => {
     expect(() => resolveWorkbenchSelectionLaunchRequest({ appId: "nope" })).toThrow(
       'Unknown DevApp "nope"',

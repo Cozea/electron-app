@@ -6,6 +6,7 @@
  */
 
 import type { AppSettings, DevCommandSuggestion } from '@shared/electronApiTypes'
+import { parseProjectDevAppCommand } from '@shared/projectDevAppCommand'
 import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 
@@ -106,6 +107,34 @@ function joinAbsolutePath(basePath: string, ...segments: string[]): string {
       : `${normalizedBase}${separator}`
 
   return `${baseWithSeparator}${cleanedSegments.join(separator)}`
+}
+
+function normalizeRelativePackageDirectory(value?: string | null): string | null {
+  const normalized = value?.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  if (!normalized) return null
+
+  const segments = normalized.split('/')
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    return null
+  }
+
+  return segments.join('/')
+}
+
+function joinRelativeProjectPath(directory: string | null, fileName: string): string {
+  return directory ? `${directory}/${fileName}` : fileName
+}
+
+function quoteCommandArgument(value: string): string {
+  if (/^[A-Za-z0-9._/-]+$/.test(value)) {
+    return value
+  }
+
+  if (isWindowsClient()) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+
+  return `'${value.replace(/'/g, `'"'"'`)}'`
 }
 
 function getParentDirectory(pathValue: string): string | null {
@@ -272,7 +301,10 @@ async function readPackageManagerFromAbsolutePackageJson(
   }
 }
 
-async function detectPackageManagerFromRoot(workspaceId: string): Promise<PackageManager> {
+async function detectPackageManagerFromRoot(
+  workspaceId: string,
+  relativeDirectory?: string | null,
+): Promise<PackageManager> {
   // workspaceId is an opaque catalog id, not a path. Resolve it to the absolute project root
   // before walking the filesystem; the path-based fs:* reads below require a real path.
   const rootPath = await resolveWorkspaceRootPath(workspaceId)
@@ -280,6 +312,10 @@ async function detectPackageManagerFromRoot(workspaceId: string): Promise<Packag
     return 'npm'
   }
 
+  const normalizedDirectory = normalizeRelativePackageDirectory(relativeDirectory)
+  const packageRoot = normalizedDirectory
+    ? joinAbsolutePath(rootPath, normalizedDirectory)
+    : rootPath
   let approvedRoots: string[] = []
 
   try {
@@ -288,7 +324,7 @@ async function detectPackageManagerFromRoot(workspaceId: string): Promise<Packag
     approvedRoots = []
   }
 
-  for (const candidateRoot of buildPackageManagerSearchRoots(rootPath, approvedRoots)) {
+  for (const candidateRoot of buildPackageManagerSearchRoots(packageRoot, approvedRoots)) {
     const packageManagerFromPackageJson =
       await readPackageManagerFromAbsolutePackageJson(candidateRoot)
     if (packageManagerFromPackageJson) {
@@ -491,23 +527,17 @@ interface PackageJson {
 }
 
 function extractNpmScriptName(command: string | null | undefined): string | null {
-  const trimmed = command?.trim()
-  if (!trimmed) return null
-
-  const runMatch = trimmed.match(/^(?:npm|pnpm|yarn|bun)\s+run\s+([^\s]+)$/i)
-  if (runMatch) return runMatch[1]
-
-  const simpleMatch = trimmed.match(/^(?:npm|pnpm|yarn|bun)\s+(start|test|dev)$/i)
-  if (simpleMatch) return simpleMatch[1].toLowerCase()
-
-  return null
+  return parseProjectDevAppCommand(command)?.scriptName ?? null
 }
 
-async function readPackageJson(workspaceId: string): Promise<PackageJson | null> {
+async function readPackageJsonAtPath(
+  workspaceId: string,
+  filePath: string,
+): Promise<PackageJson | null> {
   try {
     const result = await projectAnalysisDesktopClient.readFile({
       workspaceId,
-      filePath: 'package.json',
+      filePath,
     })
 
     if (!result.success || !result.content) {
@@ -518,6 +548,10 @@ async function readPackageJson(workspaceId: string): Promise<PackageJson | null>
   } catch {
     return null
   }
+}
+
+async function readPackageJson(workspaceId: string): Promise<PackageJson | null> {
+  return readPackageJsonAtPath(workspaceId, 'package.json')
 }
 
 function hasScript(scripts: Record<string, string>, name: string): boolean {
@@ -541,7 +575,34 @@ function resolveExistingDevScriptName(
   return null
 }
 
-function buildPackageManagerScriptCommand(pm: PackageManager, scriptName: string): string {
+function buildPackageManagerScriptCommand(
+  pm: PackageManager,
+  scriptName: string,
+  relativeDirectory?: string | null,
+): string {
+  const directory = normalizeRelativePackageDirectory(relativeDirectory)
+  if (directory) {
+    const quotedDirectory = quoteCommandArgument(directory)
+    if (pm === 'npm') {
+      return scriptName === 'start'
+        ? `npm --prefix ${quotedDirectory} start`
+        : `npm --prefix ${quotedDirectory} run ${scriptName}`
+    }
+    if (pm === 'pnpm') {
+      return scriptName === 'start'
+        ? `pnpm --dir ${quotedDirectory} start`
+        : `pnpm --dir ${quotedDirectory} run ${scriptName}`
+    }
+    if (pm === 'yarn') {
+      return scriptName === 'start'
+        ? `yarn --cwd ${quotedDirectory} start`
+        : `yarn --cwd ${quotedDirectory} run ${scriptName}`
+    }
+    return scriptName === 'start'
+      ? `bun --cwd ${quotedDirectory} start`
+      : `bun --cwd ${quotedDirectory} run ${scriptName}`
+  }
+
   if (scriptName === 'start') {
     return pm === 'npm' ? 'npm start' : `${pm} start`
   }
@@ -549,9 +610,40 @@ function buildPackageManagerScriptCommand(pm: PackageManager, scriptName: string
 }
 
 function commandExistsInScripts(command: string | null | undefined, scripts: Record<string, string>): boolean {
-  const scriptName = extractNpmScriptName(command)
-  if (!scriptName) return true
-  return Boolean(scripts[scriptName])
+  const invocation = parseProjectDevAppCommand(command)
+  if (!invocation || invocation.packageDirectory) return false
+  return Boolean(scripts[invocation.scriptName]?.trim())
+}
+
+async function resolveStoredPackageScriptCommand(
+  workspaceId: string,
+  command: string,
+): Promise<{
+  command: string
+  packageDirectory: string | null
+  packageScript: string
+} | null> {
+  const invocation = parseProjectDevAppCommand(command)
+  if (!invocation) return null
+
+  const packageJson = await readPackageJsonAtPath(
+    workspaceId,
+    joinRelativeProjectPath(invocation.packageDirectory, 'package.json'),
+  )
+  const packageScript = packageJson?.scripts?.[invocation.scriptName]?.trim()
+  if (!packageScript) return null
+
+  const detectedPackageManager = await detectPackageManagerFromRoot(
+    workspaceId,
+    invocation.packageDirectory,
+  )
+  if (detectedPackageManager !== invocation.packageManager) return null
+
+  return {
+    command: command.trim(),
+    packageDirectory: invocation.packageDirectory,
+    packageScript,
+  }
 }
 
 function resolvePreferredScriptName(
@@ -597,6 +689,84 @@ function resolvePreferredScriptName(
   return null
 }
 
+function detectFrameworkFromPackageJson(pkg: PackageJson): Framework {
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+
+  if (deps['expo']) return 'expo'
+  if (deps['react-native']) return 'react-native'
+  if (deps['next']) return 'nextjs'
+  if (deps['@remix-run/react'] || deps['@remix-run/node']) return 'remix'
+  if (deps['@sveltejs/kit']) return 'sveltekit'
+  if (deps['nuxt'] || deps['nuxt3']) return 'nuxt'
+  if (deps['astro']) return 'astro'
+  if (deps['gatsby']) return 'gatsby'
+  if (deps['@solidjs/start'] || deps['solid-start']) return 'solid-start'
+  if (deps['@builder.io/qwik-city']) return 'qwik'
+  if (deps['@angular/core']) return 'angular'
+  if (deps['react-scripts']) return 'cra'
+  if (deps['vite']) {
+    if (deps['vue'] || deps['@vitejs/plugin-vue']) return 'vite-vue'
+    if (deps['svelte'] || deps['@sveltejs/vite-plugin-svelte']) return 'vite-svelte'
+    if (deps['react'] || deps['@vitejs/plugin-react']) return 'vite-react'
+  }
+
+  return 'unknown'
+}
+
+interface NestedRunnablePackage {
+  directory: string
+  packageJson: PackageJson
+  packageManager: PackageManager
+  framework: Framework
+  scriptName: string
+}
+
+async function findSingleNestedRunnablePackage(
+  workspaceId: string,
+  context?: DevServerLaunchContext,
+): Promise<NestedRunnablePackage | null> {
+  let filePaths: string[] = []
+  try {
+    const result = await projectAnalysisDesktopClient.listFiles({ workspaceId })
+    if (!result.success) return null
+    filePaths = (result.files ?? []).map((file) => file.path.replace(/\\/g, '/'))
+  } catch {
+    return null
+  }
+
+  const packagePaths = filePaths
+    .filter((filePath) => filePath.endsWith('/package.json'))
+    .filter((filePath) => filePath.split('/').length <= 5)
+    .sort((left, right) => {
+      const depthDelta = left.split('/').length - right.split('/').length
+      return depthDelta !== 0 ? depthDelta : left.localeCompare(right)
+    })
+
+  const candidates: NestedRunnablePackage[] = []
+  for (const packagePath of packagePaths) {
+    const directory = normalizeRelativePackageDirectory(
+      packagePath.slice(0, -'/package.json'.length),
+    )
+    if (!directory) continue
+
+    const packageJson = await readPackageJsonAtPath(workspaceId, packagePath)
+    if (!packageJson) continue
+    const framework = detectFrameworkFromPackageJson(packageJson)
+    const scriptName = resolvePreferredScriptName(packageJson.scripts ?? {}, framework, context)
+    if (!scriptName) continue
+
+    candidates.push({
+      directory,
+      packageJson,
+      packageManager: await detectPackageManagerFromRoot(workspaceId, directory),
+      framework,
+      scriptName,
+    })
+  }
+
+  return candidates.length === 1 ? candidates[0] : null
+}
+
 /**
  * Detect framework from package.json dependencies
  */
@@ -606,70 +776,8 @@ export async function detectFramework(workspaceId: string): Promise<FrameworkInf
     if (!pkg) {
       return { framework: 'unknown', ...FRAMEWORK_CONFIGS.unknown }
     }
-    const deps = { ...pkg.dependencies, ...pkg.devDependencies }
     const scripts = pkg.scripts || {}
-
-    // Detection order matters - more specific frameworks first
-    let framework: Framework = 'unknown'
-
-    // Next.js
-    if (deps['expo']) {
-      framework = 'expo'
-    }
-    // React Native
-    else if (deps['react-native']) {
-      framework = 'react-native'
-    }
-    // Next.js
-    else if (deps['next']) {
-      framework = 'nextjs'
-    }
-    // Remix
-    else if (deps['@remix-run/react'] || deps['@remix-run/node']) {
-      framework = 'remix'
-    }
-    // SvelteKit
-    else if (deps['@sveltejs/kit']) {
-      framework = 'sveltekit'
-    }
-    // Nuxt
-    else if (deps['nuxt'] || deps['nuxt3']) {
-      framework = 'nuxt'
-    }
-    // Astro
-    else if (deps['astro']) {
-      framework = 'astro'
-    }
-    // Gatsby
-    else if (deps['gatsby']) {
-      framework = 'gatsby'
-    }
-    // SolidStart
-    else if (deps['@solidjs/start'] || deps['solid-start']) {
-      framework = 'solid-start'
-    }
-    // Qwik
-    else if (deps['@builder.io/qwik-city']) {
-      framework = 'qwik'
-    }
-    // Angular
-    else if (deps['@angular/core']) {
-      framework = 'angular'
-    }
-    // Create React App
-    else if (deps['react-scripts']) {
-      framework = 'cra'
-    }
-    // Vite-based (check after specific frameworks)
-    else if (deps['vite']) {
-      if (deps['vue'] || deps['@vitejs/plugin-vue']) {
-        framework = 'vite-vue'
-      } else if (deps['svelte'] || deps['@sveltejs/vite-plugin-svelte']) {
-        framework = 'vite-svelte'
-      } else if (deps['react'] || deps['@vitejs/plugin-react']) {
-        framework = 'vite-react'
-      }
-    }
+    const framework = detectFrameworkFromPackageJson(pkg)
 
     const config = FRAMEWORK_CONFIGS[framework]
     let devPort = config.devPort
@@ -751,7 +859,7 @@ export async function getProjectPreviewExperience(
  * Get just the dev server config for preview/runtime launch flows.
  */
 function getPersistedDevCommand(workspaceId: string): string | null {
-  if (typeof localStorage === 'undefined') return null
+  if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') return null
   const key = `dev-command:${encodeURIComponent(workspaceId)}`
   const raw = localStorage.getItem(key)
   return raw?.trim() || null
@@ -768,6 +876,8 @@ export async function getDevServerConfig(
   label: string
   suggestions: DevCommandSuggestion[]
   requiresUserSelection: boolean
+  packageDirectory: string | null
+  commandVerified: boolean
 }> {
   let suggestions: DevCommandSuggestion[] = []
   let requiresUserSelection = false
@@ -792,13 +902,21 @@ export async function getDevServerConfig(
   const info = await detectFramework(workspaceId)
   const packageManager = await detectPackageManagerFromRoot(workspaceId)
 
-  if (storedDevCommand && commandExistsInScripts(storedDevCommand, scripts)) {
+  const resolvedStoredCommand = storedDevCommand
+    ? await resolveStoredPackageScriptCommand(workspaceId, storedDevCommand)
+    : null
+  if (resolvedStoredCommand) {
     return {
-      command: storedDevCommand,
-      port: inferPortFromCommand(storedDevCommand, storedDevPort ?? info.devPort),
-      label: inferDevServerLabelFromCommand(storedDevCommand),
+      command: resolvedStoredCommand.command,
+      port: inferPortFromCommand(
+        resolvedStoredCommand.packageScript,
+        storedDevPort ?? info.devPort,
+      ),
+      label: inferDevServerLabelFromCommand(resolvedStoredCommand.packageScript),
       suggestions,
       requiresUserSelection: false,
+      packageDirectory: resolvedStoredCommand.packageDirectory,
+      commandVerified: true,
     }
   }
 
@@ -810,6 +928,8 @@ export async function getDevServerConfig(
       label: inferDevServerLabelFromCommand(persistedCommand),
       suggestions,
       requiresUserSelection: false,
+      packageDirectory: null,
+      commandVerified: true,
     }
   }
 
@@ -822,6 +942,28 @@ export async function getDevServerConfig(
       label: inferDevServerLabelFromCommand(preferredCommand),
       suggestions,
       requiresUserSelection: false,
+      packageDirectory: null,
+      commandVerified: true,
+    }
+  }
+
+  const nestedPackage = await findSingleNestedRunnablePackage(workspaceId, context)
+  if (nestedPackage) {
+    const nestedCommand = buildPackageManagerScriptCommand(
+      nestedPackage.packageManager,
+      nestedPackage.scriptName,
+      nestedPackage.directory,
+    )
+    const nestedScript = nestedPackage.packageJson.scripts?.[nestedPackage.scriptName] ?? ''
+    const nestedFallbackPort = FRAMEWORK_CONFIGS[nestedPackage.framework].devPort
+    return {
+      command: nestedCommand,
+      port: inferPortFromCommand(nestedScript, storedDevPort ?? nestedFallbackPort),
+      label: inferDevServerLabelFromCommand(nestedScript || nestedCommand),
+      suggestions,
+      requiresUserSelection: false,
+      packageDirectory: nestedPackage.directory,
+      commandVerified: true,
     }
   }
 
@@ -834,6 +976,8 @@ export async function getDevServerConfig(
       label: inferDevServerLabelFromCommand(selectedSuggestion.command),
       suggestions,
       requiresUserSelection: false,
+      packageDirectory: null,
+      commandVerified: true,
     }
   }
 
@@ -849,14 +993,19 @@ export async function getDevServerConfig(
     label: info.displayName === 'Unknown' ? 'Dev Server' : `${info.displayName} Dev`,
     suggestions,
     requiresUserSelection,
+    packageDirectory: null,
+    commandVerified: Boolean(firstValidSuggestion),
   }
 }
 
 /**
  * Detect which package manager is used in the project
  */
-export async function detectPackageManager(workspaceId: string): Promise<PackageManager> {
-  return detectPackageManagerFromRoot(workspaceId)
+export async function detectPackageManager(
+  workspaceId: string,
+  relativeDirectory?: string | null,
+): Promise<PackageManager> {
+  return detectPackageManagerFromRoot(workspaceId, relativeDirectory)
 }
 
 function isWindowsClient(): boolean {
@@ -871,7 +1020,10 @@ function isWindowsClient(): boolean {
 /**
  * Get the install command for a package manager
  */
-export function getInstallCommand(pm: PackageManager): string {
+export function getInstallCommand(
+  pm: PackageManager,
+  relativeDirectory?: string | null,
+): string {
   const windows = isWindowsClient()
   const commands: Record<PackageManager, string> = windows
     ? {
@@ -886,7 +1038,16 @@ export function getInstallCommand(pm: PackageManager): string {
       yarn: 'yarn install',
       npm: 'npm install',
     }
-  return commands[pm]
+  const directory = normalizeRelativePackageDirectory(relativeDirectory)
+  if (!directory) {
+    return commands[pm]
+  }
+
+  const quotedDirectory = quoteCommandArgument(directory)
+  const executable = commands[pm].split(/\s+/)[0]
+  if (pm === 'npm') return `${executable} --prefix ${quotedDirectory} install`
+  if (pm === 'pnpm') return `${executable} --dir ${quotedDirectory} install`
+  return `${executable} --cwd ${quotedDirectory} install`
 }
 
 export function getLegacyPeerDepsInstallCommand(pm: PackageManager): string | null {
@@ -908,7 +1069,8 @@ export function getLegacyPeerDepsInstallCommand(pm: PackageManager): string | nu
  */
 export async function checkDependenciesInstalled(
   workspaceId: string,
-  packageManager?: PackageManager
+  packageManager?: PackageManager,
+  relativeDirectory?: string | null,
 ): Promise<boolean> {
   try {
     // workspaceId is an opaque catalog id; resolve to a real path before the path-based readDir.
@@ -916,7 +1078,9 @@ export async function checkDependenciesInstalled(
     if (!rootPath) {
       return false
     }
-    const rootEntries = await projectAnalysisDesktopClient.readDir(rootPath)
+    const directory = normalizeRelativePackageDirectory(relativeDirectory)
+    const packageRoot = directory ? joinAbsolutePath(rootPath, directory) : rootPath
+    const rootEntries = await projectAnalysisDesktopClient.readDir(packageRoot)
     const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )
@@ -943,9 +1107,16 @@ export async function checkDependenciesInstalled(
 /**
  * Check if package.json exists
  */
-export async function hasPackageJson(workspaceId: string): Promise<boolean> {
+export async function hasPackageJson(
+  workspaceId: string,
+  relativeDirectory?: string | null,
+): Promise<boolean> {
   try {
-    const result = await projectAnalysisDesktopClient.readFile({ workspaceId, filePath: 'package.json' })
+    const directory = normalizeRelativePackageDirectory(relativeDirectory)
+    const result = await projectAnalysisDesktopClient.readFile({
+      workspaceId,
+      filePath: joinRelativeProjectPath(directory, 'package.json'),
+    })
     return result.success && !!result.content
   } catch {
     return false

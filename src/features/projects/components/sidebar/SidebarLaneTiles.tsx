@@ -1,6 +1,7 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
 import { useMemo, useEffect, useState } from "react"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -43,11 +44,21 @@ const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 
 function SurfaceTileGlyph(props: {
   favicon?: string | null
+  devAppId?: string | null
+  title: string
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
 }) {
   const className = props.className ?? "size-[18px] shrink-0 text-muted-foreground/75"
   const devApp = getDevAppForSurfaceTileType(props.type)
+
+  if (props.type === "devServer" && props.devAppId) {
+    return (
+      <span className={SIDEBAR_APP_ICON_CLASS}>
+        <ProjectDevAppIcon publicationId={props.devAppId} name={props.title} />
+      </span>
+    )
+  }
 
   switch (props.type) {
     case "browser":
@@ -440,6 +451,8 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
             <SurfaceTileGlyph
               favicon={tile.favicon}
+              devAppId={tile.devAppId}
+              title={tile.title}
               type={tile.type}
               className={cn(
                 "size-[18px] shrink-0 text-muted-foreground/75",

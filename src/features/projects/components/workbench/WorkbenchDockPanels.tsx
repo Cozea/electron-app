@@ -42,6 +42,7 @@ import {
   releaseBrowserTileModel,
 } from "@/features/projects/browser/browserTileModel"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -64,6 +65,7 @@ import {
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
+import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -164,6 +166,14 @@ function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
 }
 
 function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
+  if (tile?.type === "devServer" && tile.devAppId) {
+    return (
+      <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
+        <ProjectDevAppIcon publicationId={tile.devAppId} name={tile.title} />
+      </span>
+    )
+  }
+
   const devApp =
     tile?.type === "assistantChat"
       ? getDevAppForAssistantProvider(tile.provider ?? null)
@@ -431,8 +441,12 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
   const runtime = useWorkbenchDockRuntime()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const tile = useWorkbenchTile(runtime.projectId, runtime.laneId, runtime.workspaceId, tileId)
-  const runKey = runtime.workspaceId
-    ? buildDevServerRunKey(runtime.workspaceId, runtime.laneId)
+  const runtimeTarget =
+    tile?.type === "devServer"
+      ? resolveProjectDevAppRuntimeTarget(tile, runtime)
+      : runtime
+  const runKey = runtimeTarget.workspaceId
+    ? buildDevServerRunKey(runtimeTarget.workspaceId, runtimeTarget.laneId)
     : null
   const run = useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined))
     ?? DEFAULT_DEV_SERVER_RUN
@@ -568,16 +582,21 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   surface: "devServer" | "mobileSimulator"
 }) {
   const runtime = useWorkbenchDockRuntime()
-  const runKey = runtime.workspaceId
-    ? buildDevServerRunKey(runtime.workspaceId, runtime.laneId)
+  const tile = useWorkbenchTile(runtime.projectId, runtime.laneId, runtime.workspaceId, tileId)
+  const runtimeTarget =
+    tile?.type === "devServer"
+      ? resolveProjectDevAppRuntimeTarget(tile, runtime)
+      : runtime
+  const runKey = runtimeTarget.workspaceId
+    ? buildDevServerRunKey(runtimeTarget.workspaceId, runtimeTarget.laneId)
     : null
   const run = useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined))
     ?? DEFAULT_DEV_SERVER_RUN
-  const hasTerminal = useDevServerRunStore((state) =>
+  const hasLaunchTerminal = useDevServerRunStore((state) =>
     Boolean(runKey && state.contexts[runKey]?.terminalId),
   )
 
-  if (!runtime.workspaceId || !runKey) {
+  if (!runtimeTarget.workspaceId || !runKey) {
     return null
   }
 
@@ -625,8 +644,8 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
       variant="ghost"
       size="icon"
       className="h-7 w-7"
-      disabled={!hasTerminal}
-      title={hasTerminal ? undefined : "Waiting for the dev server terminal — check the logs view if this persists"}
+      disabled={!hasLaunchTerminal}
+      title={hasLaunchTerminal ? undefined : "Preparing the dev server"}
       onClick={() => {
         void startDevServerRun(runKey)
       }}
@@ -856,6 +875,7 @@ export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
         <LazyWorkbenchSelectionTile
           tile={WATERMARK_SELECTION_TILE}
           singletonEmptyWorkbench
+          projectId={runtime.projectId}
           projectName={runtime.projectName}
           workspaceId={runtime.workspaceId}
           className="bg-transparent"
@@ -942,6 +962,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
         <LazyWorkbenchSelectionTile
           tile={selectionTile}
           singletonEmptyWorkbench={singletonEmptyWorkbench}
+          projectId={runtime.projectId}
           projectName={runtime.projectName}
           workspaceId={runtime.workspaceId}
           onChoose={(request) => {
