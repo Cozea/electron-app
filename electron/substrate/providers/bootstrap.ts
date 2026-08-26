@@ -1,10 +1,12 @@
 import { readSubstrateProvidersFlags } from "../flags";
 import { createCodexSubstrateDriver, type CodexDriverHooks } from "./drivers/codexDriver";
+import { createClaudeSubstrateDriver } from "./drivers/claudeDriver";
+import { createCursorSubstrateDriver } from "./drivers/cursorDriver";
 import {
   createOpenCodeSubstrateDriver,
   type OpenCodeDriverHooks,
 } from "./drivers/opencodeDriver";
-import { LEGACY_ADAPTER_DRIVERS } from "./drivers/legacyAdapters";
+import { codexLegacyAdapterDriver } from "./drivers/legacyAdapters";
 import { SubstrateProviderDriverRegistry } from "./registry";
 import type { SubstrateProviderDriver } from "./types";
 
@@ -42,8 +44,11 @@ export function bootstrapSubstrateProviderRegistry(
 
   registry.register(createOpenCodeSubstrateDriver(options.openCodeHooks));
   registry.register(createCodexSubstrateDriver(options.codexHooks));
-  for (const driver of LEGACY_ADAPTER_DRIVERS) {
-    registry.register(driver);
+  registry.register(createClaudeSubstrateDriver());
+  registry.register(createCursorSubstrateDriver());
+  // Codex legacy adapter retained only for opt-out / tests — primary path uses full driver.
+  if (options.env?.COZEA_SUBSTRATE_CODEX_LEGACY_ADAPTER === "1") {
+    registry.register(codexLegacyAdapterDriver);
   }
   for (const driver of options.extraDrivers ?? []) {
     registry.register(driver);

@@ -53,6 +53,7 @@ import {
 import { useActiveWorkspaceOrNull } from "@/features/projects/workspaces/ActiveWorkspaceContext";
 import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
+import { WorkbenchCommandPaletteHost } from "@/features/projects/components/command-palette/WorkbenchCommandPaletteHost";
 
 const LazyProjectSettingsPage = lazy(() =>
   import("@/features/projects/pages/ProjectSettingsPage").then((module) => ({
@@ -388,6 +389,12 @@ export function ProjectWorkbenchSurface() {
     replaceSearchParams(nextParams);
   };
 
+  const openSettingsOverlay = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("settings", "1");
+    replaceSearchParams(nextParams);
+  }, [replaceSearchParams, searchParams]);
+
   useLayoutEffect(() => {
     if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
@@ -557,6 +564,15 @@ export function ProjectWorkbenchSurface() {
           </div>
         </div>
       </div>
+
+      <WorkbenchCommandPaletteHost
+        projectId={projectId}
+        laneId={activeLaneId}
+        workspaceId={activeWorkbenchId}
+        openSettings={openSettingsOverlay}
+        closeSettings={closeSettingsOverlay}
+        isSettingsOpen={isSettingsOpen}
+      />
     </WorkbenchDockRuntimeProvider>
   );
 }

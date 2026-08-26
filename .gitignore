@@ -27,8 +27,8 @@ build/runtime/**
 !build/runtime/
 !build/runtime/README.md
 
-# Server (separate repo)
-server/
+# Server (separate repo — root only; apps/server is in-tree)
+/server/
 external/
 packages/pty/target/
 

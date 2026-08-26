@@ -9,6 +9,8 @@ import {
 } from "./chat";
 import { HealthInput, HealthResult } from "./health";
 
+import { ORCHESTRATION_RPC_METHODS } from "./orchestration";
+
 /** Canonical WS path on the shadow server for Phase 2 RPC chat. */
 export const SUBSTRATE_RPC_WS_PATH = "/rpc";
 
@@ -16,6 +18,7 @@ export const SUBSTRATE_RPC_METHODS = {
   health: "health",
   chatSend: "chat.send",
   chatSubscribe: "chat.subscribe",
+  ...ORCHESTRATION_RPC_METHODS,
 } as const;
 
 export type SubstrateRpcMethod =
@@ -24,11 +27,7 @@ export type SubstrateRpcMethod =
 export const SubstrateRpcRequest = Schema.Struct({
   type: Schema.Literal("req"),
   id: TrimmedNonEmptyString,
-  method: Schema.Literals([
-    SUBSTRATE_RPC_METHODS.health,
-    SUBSTRATE_RPC_METHODS.chatSend,
-    SUBSTRATE_RPC_METHODS.chatSubscribe,
-  ]),
+  method: TrimmedNonEmptyString,
   payload: Schema.Unknown,
 });
 export type SubstrateRpcRequest = typeof SubstrateRpcRequest.Type;

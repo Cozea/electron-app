@@ -619,6 +619,8 @@ Tasks:
 - add `shareWithAgent` flow
 - expose selected text / inspect element / screenshot APIs
 
+**Wave 0 Track C (MVP, flagged):** see `docs/browser-agent-automation.md` — navigate / snapshot / click / type behind `cozea.browser.agentAutomation` (default off), limited to already-open tiles and loopback URLs.
+
 ## Phase 5 — Add robust session/storage policy
 
 Goal:

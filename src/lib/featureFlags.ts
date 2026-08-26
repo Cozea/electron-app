@@ -10,6 +10,13 @@ const DEFINITIONS = {
   contentVisibility: { key: 'VITE_FF_CONTENT_VISIBILITY', defaultValue: true },
   localWorkspaceCatalog: { key: 'VITE_FF_LOCAL_WORKSPACE_CATALOG', defaultValue: true },
   projectDevApps: { key: 'VITE_FF_PROJECT_DEVAPPS', defaultValue: true },
+  /**
+   * `cozea.palette.enabled` — workbench command palette + keybindings discovery.
+   * Override with `VITE_FF_COZEA_PALETTE_ENABLED=0` to disable.
+   */
+  paletteEnabled: { key: 'VITE_FF_COZEA_PALETTE_ENABLED', defaultValue: true },
+  /** Mirror of main-process `cozea.browser.agentAutomation` (default off). */
+  browserAgentAutomation: { key: 'VITE_FF_BROWSER_AGENT_AUTOMATION', defaultValue: false },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {
@@ -45,5 +52,14 @@ export const featureFlags = {
   projectDevApps: parseBoolean(
     import.meta.env[DEFINITIONS.projectDevApps.key],
     DEFINITIONS.projectDevApps.defaultValue
+  ),
+  /** Maps to plan flag `cozea.palette.enabled` (default ON). */
+  paletteEnabled: parseBoolean(
+    import.meta.env[DEFINITIONS.paletteEnabled.key],
+    DEFINITIONS.paletteEnabled.defaultValue
+  ),
+  browserAgentAutomation: parseBoolean(
+    import.meta.env[DEFINITIONS.browserAgentAutomation.key],
+    DEFINITIONS.browserAgentAutomation.defaultValue
   ),
 } as const

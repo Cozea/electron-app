@@ -210,6 +210,8 @@ function filterSlashItems<T extends { label: string; description: string }>(
 
 interface CozeaChatSurfaceProps {
   isRuntimeReady: boolean
+  /** When set, gates composer/send/model picker. Defaults to `isRuntimeReady`. */
+  isChatReady?: boolean
   runtimeErrorMessage: string | null
   workspaceId: string | null
   /**
@@ -401,6 +403,7 @@ function SkillGlyph({ className }: { className?: string }) {
 
 export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
   const { t } = useTranslation()
+  const isChatReady = props.isChatReady ?? props.isRuntimeReady
   const resolvedTheme = resolveTimelineTheme()
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
@@ -596,14 +599,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const visibleComposerMenuItems = composerMenuItems.slice(0, composerPathTrigger ? 3 : 6)
   const hiddenComposerMenuItemCount = Math.max(0, composerMenuItems.length - visibleComposerMenuItems.length)
   const composerDisabled =
-    !props.isRuntimeReady ||
+    !isChatReady ||
     props.isBinding ||
     isComposerApprovalState ||
     activePendingIsResponding ||
     (!activePendingProgress && props.isSending)
   const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
   const attachDisabled =
-    !props.isRuntimeReady ||
+    !isChatReady ||
     props.isRunning ||
     isComposerApprovalState ||
     activePendingUserInput !== null
@@ -1464,7 +1467,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
                 compact
-                disabled={!props.isRuntimeReady || props.isRunning}
+                disabled={!isChatReady || props.isRunning}
                 triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
                 onProviderModelChange={props.onProviderModelChange}
                 open={isModelPickerOpen}
@@ -1522,7 +1525,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   aria-label={stopButtonLabel}
                   title={stopButtonLabel}
                   disabled={
-                    !props.isRuntimeReady ||
+                    !isChatReady ||
                     (props.isInterrupting && !props.isForceStopAvailable)
                   }
                 >
@@ -1539,14 +1542,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   type="submit"
                   className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
                   disabled={
-                    !props.isRuntimeReady ||
+                    !isChatReady ||
                     !props.thread ||
                     (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
                     props.isSending ||
                     props.isBinding
                   }
                   aria-label={
-                    !props.isRuntimeReady
+                    !isChatReady
                       ? "Local runtime unavailable"
                       : props.isBinding
                         ? "Binding agent"
@@ -1568,7 +1571,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <div className="flex min-w-0 items-center gap-1">
             <ProviderOptionControls
               descriptors={props.modelOptionDescriptors}
-              disabled={!props.isRuntimeReady || props.isRunning}
+              disabled={!isChatReady || props.isRunning}
               onOptionChange={props.onModelOptionChange}
             />
           </div>
