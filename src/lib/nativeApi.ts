@@ -8,6 +8,13 @@ function readCachedApi(): NativeApi | undefined {
   return (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi;
 }
 
+let t3NativeApiOverlay: NativeApi | null = null;
+
+/** Phase T5 — when T3 cutover is active, route NativeApi calls through T3 Effect RPC. */
+export function registerT3NativeApiOverlay(api: NativeApi | null): void {
+  t3NativeApiOverlay = api;
+}
+
 function writeCachedApi(api: NativeApi): NativeApi {
   if (typeof window !== "undefined") {
     (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi = api;
@@ -33,6 +40,9 @@ export function readNativeApi(): NativeApi | undefined {
 }
 
 export function ensureNativeApi(): NativeApi {
+  if (t3NativeApiOverlay) {
+    return t3NativeApiOverlay;
+  }
   const api = readNativeApi();
   if (!api) {
     throw new Error("Native API not found");

@@ -16,15 +16,9 @@ export interface T3OrchestrationApiHandle {
   close(): Promise<void>;
 }
 
-export function createT3OrchestrationApi(input: {
-  readonly baseUrl: string;
-  readonly wsTicket: string;
-}): T3OrchestrationApiHandle {
-  const client = new T3OrchestrationClient({
-    baseUrl: input.baseUrl,
-    wsTicket: input.wsTicket,
-  });
-
+export function createT3OrchestrationApiFromClient(
+  client: T3OrchestrationClient,
+): T3OrchestrationApiHandle {
   const domainListeners = new Set<(event: OrchestrationEvent) => void>();
   let unsubscribeShell: (() => void) | null = null;
 
@@ -64,4 +58,16 @@ export function createT3OrchestrationApi(input: {
       await client.close();
     },
   };
+}
+
+export function createT3OrchestrationApi(input: {
+  readonly baseUrl: string;
+  readonly wsTicket: string;
+}): T3OrchestrationApiHandle {
+  return createT3OrchestrationApiFromClient(
+    new T3OrchestrationClient({
+      baseUrl: input.baseUrl,
+      wsTicket: input.wsTicket,
+    }),
+  );
 }

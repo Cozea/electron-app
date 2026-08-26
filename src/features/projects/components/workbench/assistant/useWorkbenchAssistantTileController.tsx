@@ -53,8 +53,8 @@ import { useAssistantRuntimeStatus } from "@/features/projects/components/workbe
 import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
 import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync"
-import { useT3OrchestrationCutover } from "@/substrate/useT3OrchestrationCutover"
 import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi"
+import { useT3CutoverActive } from "@/substrate/t3CutoverStore"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
 import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
 import { ensureNativeApi } from "@/lib/nativeApi"
@@ -153,13 +153,10 @@ export function useWorkbenchAssistantTileController(
   // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
-  const t3Cutover = useT3OrchestrationCutover({
-    substrateActive: substrateTransport.active,
-    shadowBaseUrl: substrateTransport.shadowBaseUrl,
-  })
+  const t3CutoverActive = useT3CutoverActive()
   const getOrchestration = useCallback(
-    () => resolveOrchestrationApi(t3Cutover.orchestration),
-    [t3Cutover.orchestration],
+    () => resolveOrchestrationApi(t3CutoverActive ? ensureNativeApi().orchestration : null),
+    [t3CutoverActive],
   )
   useSubstrateOrchestrationSync({
     active: substrateTransport.active,
@@ -1200,7 +1197,7 @@ export function useWorkbenchAssistantTileController(
 
     try {
       const useSubstrateRpcFallback =
-        substrateTransport.active && !isRuntimeReady && !t3Cutover.active
+        substrateTransport.active && !isRuntimeReady && !t3CutoverActive
       if (useSubstrateRpcFallback) {
         if (hasImages) {
           throw new Error("Substrate RPC chat fallback does not support image attachments yet.")

@@ -10,6 +10,7 @@ import { T3EffectRpcClient } from "./effectRpcClient";
 export interface T3ServerConfigClientOptions {
   readonly baseUrl: string;
   readonly wsTicket: string;
+  readonly client?: T3EffectRpcClient;
   readonly WebSocketImpl?: typeof WebSocket;
   readonly requestTimeoutMs?: number;
 }
@@ -17,12 +18,24 @@ export interface T3ServerConfigClientOptions {
 /** Native T3 Effect RPC server-config client (Phase T4). */
 export class T3ServerConfigClient {
   private readonly client: T3EffectRpcClient;
+  private readonly ownsClient: boolean;
   private configUnsubscribe: (() => Promise<void>) | null = null;
   private readonly configListeners = new Set<(config: ServerConfig) => void>();
   private currentConfig: ServerConfig | null = null;
 
   constructor(options: T3ServerConfigClientOptions) {
-    this.client = new T3EffectRpcClient(options);
+    if (options.client) {
+      this.client = options.client;
+      this.ownsClient = false;
+    } else {
+      this.client = new T3EffectRpcClient({
+        baseUrl: options.baseUrl,
+        wsTicket: options.wsTicket,
+        WebSocketImpl: options.WebSocketImpl,
+        requestTimeoutMs: options.requestTimeoutMs,
+      });
+      this.ownsClient = true;
+    }
   }
 
   async close(): Promise<void> {
@@ -32,7 +45,9 @@ export class T3ServerConfigClient {
       await this.configUnsubscribe();
       this.configUnsubscribe = null;
     }
-    await this.client.close();
+    if (this.ownsClient) {
+      await this.client.close();
+    }
   }
 
   async getConfig(): Promise<ServerConfig> {

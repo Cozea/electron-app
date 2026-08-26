@@ -91,11 +91,12 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 3. [x] Phase T2 contracts + client-runtime — sync T3 contract groups, `T3OrchestrationClient`, native shell sync when `t3Server: true`
 4. [x] Phase T3 orchestration cutover — T3 owns commands when flagged; skip legacy `:3773` boot in shadow child
 5. [x] Phase T4 provider config cutover — `T3ServerConfigClient`, workbench model picker via T3 when `t3Server: true`; gate substrate provider registry
-6. [ ] Delete `electron/assistant-runtime/` after parity
-6. [ ] Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
-7. [ ] SQLite userdata migration (`electron/substrate/migrations/t3-orchestration-userdata.ts` — scaffold only)
-8. [ ] SSH/WSL DesktopBackendPool
-9. [ ] Physical monorepo reshape
+6. [x] Phase T5 VCS + terminals cutover — `T3VcsClient`, `T3TerminalClient`, unified `useT3Cutover` NativeApi overlay; `COZEA_T3_SERVER` default **on**
+7. [ ] Delete `electron/assistant-runtime/` after parity
+8. [ ] Delete `assistantWsBridge.ts` (kept for unit tests / migration reference)
+9. [ ] SQLite userdata migration (`electron/substrate/migrations/t3-orchestration-userdata.ts` — scaffold only)
+10. [ ] SSH/WSL DesktopBackendPool
+11. [ ] Physical monorepo reshape
 
 See `docs/substrate-t3-server-import-plan.md` (swarm map) and `docs/substrate-t3-build.md`.
 
@@ -112,6 +113,7 @@ bun test tests/src/features/projects/components/command-palette
 node scripts/spike-t3-server-boot.mjs   # Phase T0 — vendor T3 server boot (Node >= 22.16)
 bun scripts/smoke-t3-server.mjs         # Phase T1 — T3 dual-run orchestration RPC
 bun scripts/smoke-t3-providers.mjs      # Phase T4 — T3 server.getConfig + provider registry gate
+bun scripts/smoke-t3-vcs.mjs            # Phase T5 — T3 vcs.refreshStatus
 bunx vitest run tests/substrate/t3OrchestrationCutover.test.ts  # Phase T3 — command API surface
-bunx vitest run tests/substrate/t3ServerConfigCutover.test.ts   # Phase T4 — config API surface
+bunx vitest run tests/substrate/t3ServerConfigCutover.test.ts   # Phase T4/T5 — config + VCS API surface
 ```
