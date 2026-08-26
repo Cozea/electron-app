@@ -9,6 +9,24 @@ export interface AssistantRuntimeBridgeStatus {
   updatedAt: number
 }
 
+export interface SubstrateShadowFeatureFlags {
+  readonly rpcChat: boolean
+  readonly providers: boolean
+  readonly vcs: boolean
+  readonly primary: boolean
+  readonly obsNdjson: boolean
+  readonly inProcessAssistant: boolean
+}
+
+export interface SubstrateShadowBridgeStatus {
+  readonly phase: "stopped" | "starting" | "ready" | "error" | "stopping"
+  readonly enabled: boolean
+  readonly baseUrl: string
+  readonly readyPath: string
+  readonly lastError: string | null
+  readonly features: SubstrateShadowFeatureFlags
+}
+
 type AssistantRuntimeBridgeListener = (
   status: Partial<AssistantRuntimeBridgeStatus> | null | undefined,
 ) => void
@@ -79,6 +97,18 @@ export async function readAssistantRuntimeBridgeStatus(): Promise<
   }
 
   return bridge.getAssistantRuntimeStatus()
+}
+
+export async function readSubstrateShadowBridgeStatus(): Promise<SubstrateShadowBridgeStatus | null> {
+  const bridge = readDesktopBridge()
+  if (!bridge?.getSubstrateShadowStatus) {
+    return null
+  }
+  try {
+    return await bridge.getSubstrateShadowStatus()
+  } catch {
+    return null
+  }
 }
 
 export function subscribeToAssistantRuntimeBridgeStatus(

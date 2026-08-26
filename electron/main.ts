@@ -43,6 +43,7 @@ import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags, shouldStartI
 import { getSharedSubstrateNdjsonWriter } from './substrate/obs'
 import { listSubstrateRemoteEnvironmentStubs } from './substrate/remoteEnvironments'
 import { bootstrapSubstrateVcs } from './substrate/vcs/bootstrap'
+import { registerSubstrateVcsIpcHandlers } from './substrate/vcs/registerIpcHandlers'
 import {
   createShadowServerManager,
   getShadowServerManager,
@@ -1772,6 +1773,7 @@ app.whenReady().then(() => {
   // Phase 4: VCS facade + status invalidation (idempotent; also called from
   // registerWorkspaceSyncHandlers). Safe no-op registration when flag is off.
   bootstrapSubstrateVcs()
+  registerSubstrateVcsIpcHandlers()
 
   scheduleBootWork('assistant-runtime-started', () => {
     ensureAssistantRuntimeStarted()

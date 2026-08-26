@@ -45,10 +45,11 @@ span file (otherwise a temp default is used).
 
 ## Remaining follow-ons
 
-- Codex **full** substrate driver + session-runtime deep parity (still legacy adapter)
-- Full GitCore deletion / `vcs.*` agent cutover (Phase 4a later)
-- Product chat UI cutover off in-process assistant (primary path still flagged)
-- Track E OTLP export (optional)
+- Codex app-server live session on substrate primary (CLI probe + inventory done; RPC stub for turns)
+- Full GitCore deletion / `vcs.*` agent cutover (flagged `substrate:vcs:*` IPC added)
+- Workbench primary transport via shadow RPC when primary+rpc flags on
+- Default-on product flip (all env flags still off)
+- Track E OTLP export (`COZEA_OTLP_ENDPOINT` with NDJSON)
 - Bun vs pnpm/`vp` monorepo tooling decision
 
 See also: `docs/substrate-spine-status.md`, per-phase docs under `docs/substrate-*.md`.

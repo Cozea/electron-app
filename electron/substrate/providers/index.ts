@@ -34,6 +34,14 @@ export {
 } from "./drivers/opencodeDriver";
 
 export {
+  createCodexSubstrateDriver,
+  defaultCodexDriverHooks,
+  type CodexDriverHooks,
+  type CodexInventoryResult,
+  type CodexProbeResult,
+} from "./drivers/codexDriver";
+
+export {
   LEGACY_ADAPTER_DRIVERS,
   claudeLegacyAdapterDriver,
   codexLegacyAdapterDriver,

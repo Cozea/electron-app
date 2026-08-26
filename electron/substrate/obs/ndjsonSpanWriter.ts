@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { readSubstrateObsNdjsonFlags } from "../flags";
+import { exportSubstrateSpanToOtlp, isOtlpEnabled } from "./otlpExporter";
 
 export interface SubstrateNdjsonSpan {
   readonly name: string;
@@ -117,6 +118,9 @@ export function createSubstrateNdjsonWriter(
         target.write(`${line}\n`);
       } catch {
         // best-effort
+      }
+      if (isOtlpEnabled(env)) {
+        void exportSubstrateSpanToOtlp(span, env);
       }
     },
     flush() {
