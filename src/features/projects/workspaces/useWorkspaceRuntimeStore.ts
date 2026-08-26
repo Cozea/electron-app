@@ -65,6 +65,7 @@ export interface WorkspaceRuntimeRecord {
 
 interface WorkspaceRuntimeState {
   runtimes: Record<string, WorkspaceRuntimeRecord>
+  suppressedProjectIds: Record<string, true>
   actions: {
     ensureRuntime: (config: WorkspaceRuntimeConfig) => string | null
     attachRuntime: (runtimeId: string) => void
@@ -75,6 +76,8 @@ interface WorkspaceRuntimeState {
     bindSessionSnapshot: (runtimeId: string, snapshot: WorkbenchSessionSnapshot | null) => void
     refreshLifecycles: () => void
     closeRuntime: (runtimeId: string) => void
+    /** Hard-stop hosting for a deleted project. Prevents focused-route revive. */
+    suppressProject: (projectId: string) => void
   }
 }
 
@@ -236,10 +239,16 @@ export function resolveWorkspaceRuntimeId(input: {
   )
 }
 
-export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) => ({
+export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set, get) => ({
   runtimes: {},
+  suppressedProjectIds: {},
   actions: {
     ensureRuntime: (config) => {
+      const projectId = config.projectId ? String(config.projectId) : null
+      if (projectId && get().suppressedProjectIds[projectId]) {
+        return null
+      }
+
       const runtimeId = resolveWorkspaceRuntimeId({
         projectId: config.projectId,
         workspaceId: config.workspaceId,
@@ -414,6 +423,37 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
                 lifecycleReason: "closed-explicitly",
               },
             },
+          },
+        }
+      })
+    },
+    suppressProject: (projectId) => {
+      const normalizedProjectId = projectId.trim()
+      if (!normalizedProjectId) return
+
+      set((state) => {
+        const nextRuntimes = { ...state.runtimes }
+        for (const [runtimeId, record] of Object.entries(state.runtimes)) {
+          const runtimeProjectId = record.config.projectId
+            ? String(record.config.projectId)
+            : null
+          if (runtimeProjectId !== normalizedProjectId) continue
+          nextRuntimes[runtimeId] = {
+            ...record,
+            lifecycle: "closed",
+            syncContext: null,
+            yjsContext: record.yjsContext,
+            signals: {
+              ...record.signals,
+              lifecycleReason: "project-suppressed",
+            },
+          }
+        }
+        return {
+          runtimes: nextRuntimes,
+          suppressedProjectIds: {
+            ...state.suppressedProjectIds,
+            [normalizedProjectId]: true,
           },
         }
       })

@@ -9,6 +9,8 @@ import { useTranslation } from '@/lib/i18n'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
+import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDeletedProjectFromUi'
+import type { ProjectDeleteConfirmOptions } from '@/features/projects/components/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { Button } from '@/components/ui/button'
@@ -383,27 +385,33 @@ export function ProjectSettingsPage({
     }
   }, [archiveProject, convexUserId, navigate, project])
 
-  const handleDelete = useCallback(async (confirmName: string) => {
-    if (!project || !convexUserId || confirmName !== project.name) return
+  const handleDelete = useCallback(async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
+    if (!project || !convexUserId) return
 
     setIsDeleting(true)
     setDeleteError(null)
+    const deletedProjectId = String(project._id)
     try {
       await withProjectMutationTimeout(
         removeProject({
           projectId: project._id,
           userId: convexUserId,
-          confirmName,
+          // Server still validates the name; UI no longer requires retyping it.
+          confirmName: project.name,
         }),
         'Deleting this project is taking longer than expected. Check your connection and try again.',
       )
-      await cleanupDeletedProjectLocally(String(project._id), {
+
+      detachDeletedProjectFromUi(deletedProjectId)
+      setShowDeleteDialog(false)
+      navigate('/projects', { replace: true })
+
+      await cleanupDeletedProjectLocally(deletedProjectId, {
         projectName: project.name,
         projectSlug: project.slug,
         managedProjectPaths: [project.localPath],
+        keepLocalFiles,
       })
-      setShowDeleteDialog(false)
-      navigate('/projects')
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
       setDeleteError(
