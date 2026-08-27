@@ -8,7 +8,7 @@ import {
   checkpointRefForGroupId,
   checkpointRefForThreadTurn,
   normalizeCheckpointRef,
-} from "../../../../electron/substrate/vcs/checkpointRefs";
+} from "../../../../apps/desktop/electron/substrate/vcs/checkpointRefs";
 
 describe("checkpointRefs (unified namespace)", () => {
   it("uses refs/cozea/checkpoints for group and turn refs", () => {

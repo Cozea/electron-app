@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createGitVcsDriver,
   type GitCorePort,
-} from "../../../../electron/substrate/vcs/GitVcsDriver";
+} from "../../../../apps/desktop/electron/substrate/vcs/GitVcsDriver";
 import {
   invalidateVcsStatus,
   resetVcsStatusInvalidationForTests,
   subscribeVcsStatusInvalidation,
-} from "../../../../electron/substrate/vcs/statusInvalidation";
-import { readSubstrateVcsFlags } from "../../../../electron/substrate/flags";
-import { SUBSTRATE_VCS_FLAG } from "../../../../electron/substrate/constants";
+} from "../../../../apps/desktop/electron/substrate/vcs/statusInvalidation";
+import { readSubstrateVcsFlags } from "../../../../apps/desktop/electron/substrate/flags";
+import { SUBSTRATE_VCS_FLAG } from "../../../../apps/desktop/electron/substrate/constants";
 
 describe("readSubstrateVcsFlags", () => {
   it("defaults on", () => {

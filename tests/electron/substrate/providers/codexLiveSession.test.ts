@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createCodexLiveSession } from "../../../../electron/substrate/providers/drivers/codexLiveSession";
+import { createCodexLiveSession } from "../../../../apps/desktop/electron/substrate/providers/drivers/codexLiveSession";
 
 describe("createCodexLiveSession", () => {
   it("uses injected sendTurn hook without spawning app-server", async () => {

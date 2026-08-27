@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { DesktopBackendPool } from "../../electron/substrate/backend/DesktopBackendPool";
-import { PRIMARY_BACKEND_INSTANCE_ID } from "../../electron/substrate/backend/types";
-import { discoverSshHostsFromConfig } from "../../electron/substrate/ssh/parseSshConfig";
+import { DesktopBackendPool } from "../../apps/desktop/electron/substrate/backend/DesktopBackendPool";
+import { PRIMARY_BACKEND_INSTANCE_ID } from "../../apps/desktop/electron/substrate/backend/types";
+import { discoverSshHostsFromConfig } from "../../apps/desktop/electron/substrate/ssh/parseSshConfig";
 
 describe("DesktopBackendPool", () => {
   const tempDirs: string[] = [];

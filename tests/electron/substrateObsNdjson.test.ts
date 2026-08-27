@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readSubstrateObsNdjsonFlags } from "../../electron/substrate/flags";
+import { readSubstrateObsNdjsonFlags } from "../../apps/desktop/electron/substrate/flags";
 import {
   createSubstrateNdjsonWriter,
   resetSharedSubstrateNdjsonWriterForTests,
-} from "../../electron/substrate/obs";
+} from "../../apps/desktop/electron/substrate/obs";
 
 describe("substrate NDJSON obs (phase 6)", () => {
   const tempFiles: string[] = [];

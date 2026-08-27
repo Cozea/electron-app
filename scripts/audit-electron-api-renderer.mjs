@@ -19,7 +19,7 @@ import ts from 'typescript'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
-const preloadPath = path.join(root, 'electron', 'preload.ts')
+const preloadPath = path.join(root, 'apps/desktop/electron', 'preload.ts')
 const srcDir = path.join(root, 'src')
 
 /** @param {string} dir @returns {string[]} */

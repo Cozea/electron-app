@@ -4,7 +4,7 @@ import {
   isPathInsideDirectory,
   normalizeStoragePathForComparison,
   pathsReferToSameStorageEntry,
-} from '../../../electron/ipc/storagePathGuard'
+} from '../../../apps/desktop/electron/ipc/storagePathGuard'
 
 describe('storagePathGuard', () => {
   it('treats macOS storage paths as case-insensitive', () => {

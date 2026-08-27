@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyIpcChannel } from "../../electron/substrate/ipcAllowlist";
-import { readSubstrateFeatureFlags } from "../../electron/substrate/flags";
-import { listSubstrateRemoteEnvironmentStubs } from "../../electron/substrate/remoteEnvironments";
+import { classifyIpcChannel } from "../../apps/desktop/electron/substrate/ipcAllowlist";
+import { readSubstrateFeatureFlags } from "../../apps/desktop/electron/substrate/flags";
+import { listSubstrateRemoteEnvironmentStubs } from "../../apps/desktop/electron/substrate/remoteEnvironments";
 
 describe("substrate feature flags (phases 5–6)", () => {
   it("defaults all spine flags on", () => {

@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SUBSTRATE_SHADOW_READY_PATH } from "../../electron/substrate/constants";
-import { createShadowHttpServer } from "../../electron/substrate-shadow-server/createShadowHttpServer";
-import { readSubstrateShadowServerFlags } from "../../electron/substrate/flags";
-import { ShadowServerManager } from "../../electron/substrate/ShadowServerManager";
+import { SUBSTRATE_SHADOW_READY_PATH } from "../../apps/desktop/electron/substrate/constants";
+import { createShadowHttpServer } from "../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer";
+import { readSubstrateShadowServerFlags } from "../../apps/desktop/electron/substrate/flags";
+import { ShadowServerManager } from "../../apps/desktop/electron/substrate/ShadowServerManager";
 
 describe("readSubstrateShadowServerFlags", () => {
   it("defaults to enabled on a dedicated port", () => {

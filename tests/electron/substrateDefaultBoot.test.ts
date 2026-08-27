@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readSubstrateFeatureFlags } from "../../electron/substrate/flags";
+import { readSubstrateFeatureFlags } from "../../apps/desktop/electron/substrate/flags";
 
 describe("default boot (flags on)", () => {
   it("enables all substrate spine flags with empty env", () => {

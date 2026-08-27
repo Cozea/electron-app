@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseSimctlDevices } from '../../electron/services/nativePreview/IosSimulatorDiscoveryService'
+import { parseSimctlDevices } from '../../apps/desktop/electron/services/nativePreview/IosSimulatorDiscoveryService'
 
 describe('IosSimulatorDiscoveryService', () => {
   it('parses and sorts available simulators with booted devices first', () => {

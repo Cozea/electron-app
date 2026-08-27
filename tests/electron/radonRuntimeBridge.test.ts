@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
-import { RadonRuntimeBridgeServer } from '../../electron/services/radon/runtimeBridge'
+import { RadonRuntimeBridgeServer } from '../../apps/desktop/electron/services/radon/runtimeBridge'
 
 function waitForOpen(socket: WebSocket): Promise<void> {
   if (socket.readyState === WebSocket.OPEN) {

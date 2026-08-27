@@ -156,8 +156,8 @@ Replace account login with device identity.
 
 ### Existing foundations we can reuse
 
-- [electron/collabKeys.ts](../electron/collabKeys.ts)
-- [electron/services/CollabEncryptionService.ts](../electron/services/CollabEncryptionService.ts)
+- [electron/collabKeys.ts](apps/desktop/electron/collabKeys.ts)
+- [electron/services/CollabEncryptionService.ts](apps/desktop/electron/services/CollabEncryptionService.ts)
 - [src/hooks/useCollabSession.ts](../src/hooks/useCollabSession.ts)
 - [src/contexts/YjsProjectContext.tsx](../src/contexts/YjsProjectContext.tsx)
 - [convex/yjs.ts](../convex/yjs.ts)
@@ -293,24 +293,24 @@ With:
 
 ### Remove
 
-- [electron/sourceControlOAuthCallback.ts](../electron/sourceControlOAuthCallback.ts)
-- source-control callback handling in [electron/main.ts](../electron/main.ts)
-- billing callback handling in [electron/main.ts](../electron/main.ts)
-- [electron/services/ProjectSourceControlService.ts](../electron/services/ProjectSourceControlService.ts)
+- [electron/sourceControlOAuthCallback.ts](apps/desktop/electron/sourceControlOAuthCallback.ts)
+- source-control callback handling in [electron/main.ts](apps/desktop/electron/main.ts)
+- billing callback handling in [electron/main.ts](apps/desktop/electron/main.ts)
+- [electron/services/ProjectSourceControlService.ts](apps/desktop/electron/services/ProjectSourceControlService.ts)
 
 ### Rewrite
 
-- [electron/preload.ts](../electron/preload.ts)
+- [electron/preload.ts](apps/desktop/electron/preload.ts)
   - remove auth/billing/source-control-account bridges
   - keep collaboration/device identity bridges
-- [electron/main.ts](../electron/main.ts)
+- [electron/main.ts](apps/desktop/electron/main.ts)
   - remove protocol handling for billing and source-control OAuth
   - add device bootstrap if needed
 
 ### Keep
 
-- [electron/collabKeys.ts](../electron/collabKeys.ts)
-- [electron/services/CollabEncryptionService.ts](../electron/services/CollabEncryptionService.ts)
+- [electron/collabKeys.ts](apps/desktop/electron/collabKeys.ts)
+- [electron/services/CollabEncryptionService.ts](apps/desktop/electron/services/CollabEncryptionService.ts)
 
 These become the foundation for device identity and encrypted collaboration.
 

@@ -16,7 +16,7 @@ import {
   normalizeCodexModelSlug,
   readCodexAccountSnapshot,
   resolveCodexModelForAccount,
-} from "../../electron/substrate/providers/codex/codexAppServerManager.ts";
+} from "../../apps/desktop/electron/substrate/providers/codex/codexAppServerManager.ts";
 
 const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
 

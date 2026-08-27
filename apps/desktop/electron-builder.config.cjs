@@ -57,10 +57,10 @@ module.exports = {
   generateUpdatesFilesForAllChannels: true,
   // Pack archive rewriting must happen before app signing/notarization.
   // Running it after notarization invalidates Gatekeeper trust for the final app.
-  afterPack: "scripts/electron-builder-after-sign.cjs",
+  afterPack: "../../scripts/electron-builder-after-sign.cjs",
   directories: {
-    buildResources: "build",
-    output: "dist",
+    buildResources: "../../build",
+    output: "../../dist",
   },
   // Keep the JS SDK (`@anthropic-ai/claude-agent-sdk`) but drop the unused
   // per-platform native CLI binaries (~230 MB on darwin-arm64). Cozea always
@@ -72,7 +72,7 @@ module.exports = {
   ],
   extraResources: [
     {
-      from: "build/runtime",
+      from: "../../build/runtime",
       to: "runtime",
       // Ship lightweight runtime metadata and verification material only.
       // Actual language/toolchain runtimes should come from the system PATH.
@@ -85,10 +85,10 @@ module.exports = {
   ],
   mac: {
     category: "public.app-category.developer-tools",
-    icon: "build/icon.icns",
+    icon: "../../build/icon.icns",
     hardenedRuntime: true,
-    entitlements: "build/entitlements.mac.plist",
-    entitlementsInherit: "build/entitlements.mac.plist",
+    entitlements: "../../build/entitlements.mac.plist",
+    entitlementsInherit: "../../build/entitlements.mac.plist",
     x64ArchFiles: macUniversalX64ArchFiles,
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
@@ -99,11 +99,11 @@ module.exports = {
     size: "4g",
   },
   win: {
-    icon: "build/icon.ico",
+    icon: "../../build/icon.ico",
     target: ["nsis"],
   },
   linux: {
-    icon: "build/icon.png",
+    icon: "../../build/icon.png",
     target: ["dir"],
   },
   publish: resolvePublishConfig(),

@@ -11,7 +11,7 @@ function readRepoFile(relativePath: string): string {
 
 describe('Cozea local chat runtime wiring', () => {
   it('main process boots shadow server and T3-backed runtime monitor only', () => {
-    const mainSource = readRepoFile('electron/main.ts')
+    const mainSource = readRepoFile('apps/desktop/electron/main.ts')
 
     expect(mainSource).not.toContain('startAssistantRuntime')
     expect(mainSource).not.toContain('assistant-runtime/boot')
@@ -20,7 +20,7 @@ describe('Cozea local chat runtime wiring', () => {
   })
 
   it('registers the assistant runtime status bridge before app readiness flow begins', () => {
-    const mainSource = readRepoFile('electron/main.ts')
+    const mainSource = readRepoFile('apps/desktop/electron/main.ts')
 
     const registerIndex = mainSource.indexOf('registerAssistantRuntimeBridgeHandlers()')
     const whenReadyIndex = mainSource.indexOf('app.whenReady().then(() => {')
@@ -32,7 +32,7 @@ describe('Cozea local chat runtime wiring', () => {
   })
 
   it('reports inProcessAssistant false in substrate shadow status', () => {
-    const mainSource = readRepoFile('electron/main.ts')
+    const mainSource = readRepoFile('apps/desktop/electron/main.ts')
 
     expect(mainSource).toContain('inProcessAssistant: false')
     expect(mainSource).not.toContain('shouldStartInProcessAssistantRuntime')

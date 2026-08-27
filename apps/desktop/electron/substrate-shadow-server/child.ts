@@ -1,7 +1,7 @@
 /**
  * Shadow server child — thin entry delegating to `@cozea/server`.
  */
-import { bootstrapCozeaSubstrateServer } from "../../apps/server/src/bootstrap.ts";
+import { bootstrapCozeaSubstrateServer } from "../../../../apps/server/src/bootstrap.ts";
 
 let stopping = false;
 

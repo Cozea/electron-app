@@ -3,7 +3,7 @@ import {
   normalizeRelativePath as normalizeGeneratedRelativePath,
   shouldExcludeGeneratedDirectory,
   shouldExcludeGeneratedFile,
-} from '../../electron/services/generatedArtifactFilters'
+} from '../../apps/desktop/electron/services/generatedArtifactFilters'
 import { normalizeRelativePath as normalizeSyncRelativePath } from '../../src/lib/sync/pathNormalization'
 
 describe('Generated Artifact Filters', () => {

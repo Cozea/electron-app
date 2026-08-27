@@ -37,7 +37,7 @@ const REPO_ROOT = path.resolve(__dirname, '../..')
 describe('Bug Condition Exploration: Dead Code Functions', () => {
   describe('Property 1: Dead Code Functions Should NOT Exist', () => {
     it('should NOT find resolveRegisteredWorkspaceId in WorkbenchSessionManager.ts', () => {
-      const filePath = path.join(REPO_ROOT, 'electron/services/WorkbenchSessionManager.ts')
+      const filePath = path.join(REPO_ROOT, 'apps/desktop/electron/services/WorkbenchSessionManager.ts')
       const content = fs.readFileSync(filePath, 'utf-8')
       
       // Search for the function declaration
@@ -55,7 +55,7 @@ describe('Bug Condition Exploration: Dead Code Functions', () => {
     })
 
     it('should NOT find normalizeRepositoryUrl in registerProjectHandlers.ts', () => {
-      const filePath = path.join(REPO_ROOT, 'electron/ipc/registerProjectHandlers.ts')
+      const filePath = path.join(REPO_ROOT, 'apps/desktop/electron/ipc/registerProjectHandlers.ts')
       const content = fs.readFileSync(filePath, 'utf-8')
       
       // Search for the function declaration
@@ -74,7 +74,7 @@ describe('Bug Condition Exploration: Dead Code Functions', () => {
     })
 
     it('should NOT find resolveAvailableProjectPath in registerProjectHandlers.ts', () => {
-      const filePath = path.join(REPO_ROOT, 'electron/ipc/registerProjectHandlers.ts')
+      const filePath = path.join(REPO_ROOT, 'apps/desktop/electron/ipc/registerProjectHandlers.ts')
       const content = fs.readFileSync(filePath, 'utf-8')
       
       // Search for the function declaration
@@ -96,8 +96,8 @@ describe('Bug Condition Exploration: Dead Code Functions', () => {
       // Note: We expect this to fail on unfixed code (ESLint will report warnings)
       
       const affectedFiles = [
-        'electron/services/WorkbenchSessionManager.ts',
-        'electron/ipc/registerProjectHandlers.ts',
+        'apps/desktop/electron/services/WorkbenchSessionManager.ts',
+        'apps/desktop/electron/ipc/registerProjectHandlers.ts',
       ]
       
       let eslintOutput = ''
@@ -150,19 +150,19 @@ describe('Bug Condition Exploration: Dead Code Functions', () => {
 
   describe('Verification: Removed functions stay removed', () => {
     it('does not contain resolveRegisteredWorkspaceId in WorkbenchSessionManager.ts', () => {
-      const filePath = path.join(REPO_ROOT, 'electron/services/WorkbenchSessionManager.ts')
+      const filePath = path.join(REPO_ROOT, 'apps/desktop/electron/services/WorkbenchSessionManager.ts')
       const content = fs.readFileSync(filePath, 'utf-8')
       expect(content).not.toMatch(/function\s+resolveRegisteredWorkspaceId\s*\(/)
     })
 
     it('does not contain normalizeRepositoryUrl in registerProjectHandlers.ts', () => {
-      const filePath = path.join(REPO_ROOT, 'electron/ipc/registerProjectHandlers.ts')
+      const filePath = path.join(REPO_ROOT, 'apps/desktop/electron/ipc/registerProjectHandlers.ts')
       const content = fs.readFileSync(filePath, 'utf-8')
       expect(content).not.toMatch(/function\s+normalizeRepositoryUrl\s*\(/)
     })
 
     it('does not contain resolveAvailableProjectPath in registerProjectHandlers.ts', () => {
-      const filePath = path.join(REPO_ROOT, 'electron/ipc/registerProjectHandlers.ts')
+      const filePath = path.join(REPO_ROOT, 'apps/desktop/electron/ipc/registerProjectHandlers.ts')
       const content = fs.readFileSync(filePath, 'utf-8')
       expect(content).not.toMatch(/function\s+resolveAvailableProjectPath\s*\(/)
     })
