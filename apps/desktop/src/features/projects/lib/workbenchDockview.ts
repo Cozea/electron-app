@@ -47,6 +47,7 @@ export function resolveTabGroupPreset(component: string): WorkbenchTabGroupPrese
     case "browser":
     case "devServer":
     case "mobileSimulator":
+    case "orgDevApp":
       return { label: "Preview", color: "preview" }
     case "terminal":
       return { label: "Runtime", color: "runtime" }
@@ -65,6 +66,7 @@ function getPanelConstraintsForComponent(
     case "terminal":
     case "devServer":
     case "mobileSimulator":
+    case "orgDevApp":
       return RUNTIME_PANEL_CONSTRAINTS
     case "assistantChat":
       return ASSISTANT_PANEL_CONSTRAINTS
@@ -101,7 +103,7 @@ function placePanelLeftOfChanges(
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" {
+): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" | "orgDevApp" {
   switch (type) {
     case "browser":
     case "selection":
@@ -109,6 +111,7 @@ export function getDockComponentName(
     case "devServer":
     case "mobileSimulator":
     case "assistantChat":
+    case "orgDevApp":
       return type
     default:
       return "assistantChat"
@@ -130,6 +133,7 @@ export function getPanelRendererForTile(
     case "browser":
     case "devServer":
     case "mobileSimulator":
+    case "orgDevApp":
     case "terminal":
       return "always"
     case "assistantChat":
@@ -241,6 +245,7 @@ export function buildAddPanelOptions(
     case "browser":
     case "devServer":
     case "mobileSimulator":
+    case "orgDevApp":
     case "terminal":
       if (referencePanel) {
         return {

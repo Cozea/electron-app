@@ -141,6 +141,8 @@ export class BrowserTileModel {
           initialUrl: options.initialUrl,
           storageScope: options.storageScope,
           workspaceId: options.workspaceId,
+          partitionKey: options.partitionKey,
+          navigationPolicy: options.navigationPolicy,
         })
 
         this.stateValue = toBrowserState(ensuredState)
