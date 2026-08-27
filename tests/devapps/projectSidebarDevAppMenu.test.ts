@@ -6,7 +6,7 @@ import {
 } from "@/features/projects/components/sidebar/projectSidebarShared";
 
 describe("project sidebar DevApp menu action", () => {
-  it("offers launch for an unpublished project", () => {
+  it("offers publish for an unpublished project", () => {
     expect(
       resolveSidebarDevAppMenuAction({
         devAppPublicationState: "unpublished",
@@ -14,8 +14,8 @@ describe("project sidebar DevApp menu action", () => {
         canPublishDevApp: true,
       }),
     ).toEqual({
-      label: "Launch as DevApp",
-      mode: "launch",
+      label: "Publish",
+      mode: "publish",
       enabled: true,
     });
   });
@@ -28,7 +28,7 @@ describe("project sidebar DevApp menu action", () => {
         canPublishDevApp: true,
       }),
     ).toEqual({
-      label: "Update DevApp",
+      label: "Update",
       mode: "update",
       enabled: true,
     });
@@ -42,15 +42,15 @@ describe("project sidebar DevApp menu action", () => {
         canPublishDevApp: false,
       }),
     ).toEqual({
-      label: "Launch as DevApp",
-      mode: "launch",
+      label: "Publish",
+      mode: "publish",
       enabled: false,
     });
   });
 
   it.each([
-    ["launch", "Launching DevApp…"],
-    ["update", "Updating DevApp…"],
+    ["publish", "Publishing…"],
+    ["update", "Updating…"],
   ] as const)("shows disabled %s progress", (mode, label) => {
     expect(
       resolveSidebarDevAppMenuAction({
@@ -69,8 +69,8 @@ describe("project sidebar DevApp menu action", () => {
 describe("project sidebar DevApp logo request", () => {
   const logoDataUrl = "data:image/webp;base64,UklGRjEyMzRXRUJQ";
 
-  it("always requests a logo before the first launch", () => {
-    expect(canReuseProjectDevAppLogo("launch", logoDataUrl)).toBe(false);
+  it("always requests a logo before the first publish", () => {
+    expect(canReuseProjectDevAppLogo("publish", logoDataUrl)).toBe(false);
   });
 
   it("reuses a valid logo on update", () => {

@@ -1,4 +1,5 @@
-export type BrowserStorageScope = 'global' | 'workspace' | 'ephemeral'
+export type BrowserStorageScope = 'global' | 'workspace' | 'ephemeral' | 'orgDevApp'
+export type BrowserNavigationPolicy = 'open' | 'orgDevApp'
 
 export interface BrowserHostBounds {
   x: number
@@ -56,6 +57,8 @@ export interface BrowserCreateOptions {
   initialUrl?: string
   storageScope?: BrowserStorageScope
   workspaceId?: string
+  partitionKey?: string
+  navigationPolicy?: BrowserNavigationPolicy
 }
 
 export interface BrowserNewPageRequest {

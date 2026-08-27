@@ -43,8 +43,9 @@ interface WorkbenchTileChromeProps {
   headerMode?: "native" | "embedded"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator"
+  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator" | "orgDevApp"
   devAppId?: string | null
+  logoDataUrl?: string | null
   assistantProvider?: string | null
   titleContent?: ReactNode
   titlePillClassName?: string
@@ -125,6 +126,8 @@ function resolveTileFallbackIcon(
       return AddCircle
     case "devServer":
       return DevServer
+    case "orgDevApp":
+      return Globe
     case "mobileSimulator":
       return Phone
     default:
@@ -136,6 +139,7 @@ interface WorkbenchTileGlyphProps {
   tileType: WorkbenchTileChromeProps["tileType"]
   assistantProvider?: string | null
   devAppId?: string | null
+  logoDataUrl?: string | null
   title: string
   appWrapperClassName: string
   fallbackClassName: string
@@ -145,10 +149,23 @@ function WorkbenchTileGlyph({
   tileType,
   assistantProvider,
   devAppId,
+  logoDataUrl,
   title,
   appWrapperClassName,
   fallbackClassName,
 }: WorkbenchTileGlyphProps) {
+  if (tileType === "orgDevApp") {
+    return (
+      <span className={appWrapperClassName}>
+        {logoDataUrl ? (
+          <img src={logoDataUrl} alt="" className="size-full object-cover" />
+        ) : (
+          <Globe className={fallbackClassName} />
+        )}
+      </span>
+    )
+  }
+
   if (tileType === "devServer" && devAppId) {
     return (
       <span className={appWrapperClassName}>
@@ -181,6 +198,7 @@ export function WorkbenchTileChrome({
   hideWindowActions = false,
   tileType,
   devAppId,
+  logoDataUrl,
   assistantProvider,
   titleContent,
   titlePillClassName,
@@ -357,6 +375,7 @@ export function WorkbenchTileChrome({
                     tileType={tileType}
                     assistantProvider={assistantProvider}
                     devAppId={devAppId}
+                    logoDataUrl={logoDataUrl}
                     title={title}
                     appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
                     fallbackClassName={tileFallbackIconClassName}
@@ -519,6 +538,7 @@ export function WorkbenchTileChrome({
                 tileType={tileType}
                 assistantProvider={assistantProvider}
                 devAppId={devAppId}
+                logoDataUrl={logoDataUrl}
                 title={title}
                 appWrapperClassName={WORKBENCH_OVERLAY_APP_ICON_CLASS}
                 fallbackClassName="h-6 w-6 shrink-0"

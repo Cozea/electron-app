@@ -65,6 +65,7 @@ export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   localPath: string | null
   sourceControl: Doc<"projects">["sourceControl"]
   gitRepository: Doc<"projects">["gitRepository"]
+  organizationId?: string | null
 }
 
 export type SidebarActiveSelectionLevel = "none" | "project" | "lane" | "tile"
@@ -77,7 +78,7 @@ export interface SidebarProjectTreeItemSelection {
 
 export type SidebarDevAppPublicationState = "unpublished" | "published" | "publishing"
 
-export type SidebarDevAppPublishMode = "launch" | "update"
+export type SidebarDevAppPublishMode = "publish" | "update"
 
 export interface SidebarDevAppMenuState {
   devAppPublicationState: SidebarDevAppPublicationState
@@ -86,7 +87,7 @@ export interface SidebarDevAppMenuState {
 }
 
 export interface SidebarDevAppMenuAction {
-  label: "Launch as DevApp" | "Launching DevApp…" | "Update DevApp" | "Updating DevApp…"
+  label: "Publish" | "Publishing…" | "Update" | "Updating…"
   mode: SidebarDevAppPublishMode
   enabled: boolean
 }
@@ -146,17 +147,17 @@ export function resolveSidebarDevAppMenuAction({
   canPublishDevApp,
 }: SidebarDevAppMenuState): SidebarDevAppMenuAction {
   if (devAppPublicationState === "publishing") {
-    const mode = devAppPublishingMode ?? "launch"
+    const mode = devAppPublishingMode ?? "publish"
     return {
-      label: mode === "update" ? "Updating DevApp…" : "Launching DevApp…",
+      label: mode === "update" ? "Updating…" : "Publishing…",
       mode,
       enabled: false,
     }
   }
 
-  const mode = devAppPublicationState === "published" ? "update" : "launch"
+  const mode = devAppPublicationState === "published" ? "update" : "publish"
   return {
-    label: mode === "update" ? "Update DevApp" : "Launch as DevApp",
+    label: mode === "update" ? "Update" : "Publish",
     mode,
     enabled: canPublishDevApp,
   }
@@ -191,6 +192,7 @@ export function areSidebarProjectItemsEqual(
     left.importedFrom?.repoFullName === right.importedFrom?.repoFullName &&
     left.importedFrom?.branch === right.importedFrom?.branch &&
     left.sourceControl === right.sourceControl &&
-    left.gitRepository === right.gitRepository
+    left.gitRepository === right.gitRepository &&
+    left.organizationId === right.organizationId
   )
 }

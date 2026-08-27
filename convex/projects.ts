@@ -25,6 +25,7 @@ import {
   normalizeProjectsPageSize,
   type ProjectsPageResult,
 } from "./lib/projectPagination"
+import { isOrgMember } from "./lib/orgAccess"
 
 type ProjectTeamSeedMember = {
   email: string
@@ -377,6 +378,7 @@ export const create = mutation({
     // Idempotency: a retry carrying the same token returns the existing doc
     // instead of creating a twin.
     creationToken: v.optional(v.string()),
+    organizationId: v.optional(v.id("organizations")),
     team: v.optional(
       v.array(
         v.object({
@@ -425,6 +427,12 @@ export const create = mutation({
       }
     }
 
+    if (args.organizationId) {
+      if (!(await isOrgMember(ctx, args.organizationId, args.userId))) {
+        throw new ConvexError("You are not a member of this organization")
+      }
+    }
+
     const slug = await ensureUniqueSlug(ctx, generateSlug(trimmedName) || "project")
     const gitRepository = buildGitRepositoryMetadata({
       provider: args.sourceControl?.provider ?? args.repoSource?.provider,
@@ -460,6 +468,7 @@ export const create = mutation({
       createdBy: args.userId,
       createdAt: now,
       updatedAt: now,
+      ...(args.organizationId ? { organizationId: args.organizationId } : {}),
     })
 
     // Wizard artifacts live in their own table; the doc stays list-sized.
@@ -570,6 +579,7 @@ export const listSummariesForCurrentUser = query({
       sourceControl: project.sourceControl ?? null,
       gitRepository: project.gitRepository ?? null,
       importedFrom: project.importedFrom ?? null,
+      organizationId: project.organizationId ?? null,
     }))
   },
 })

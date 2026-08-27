@@ -247,10 +247,12 @@ export default defineSchema({
     createdBy: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.number(),
+    organizationId: v.optional(v.id("organizations")),
   })
     .index("by_slug", ["slug"])
     .index("by_created_by", ["createdBy"])
-    .index("by_creation_token", ["creationToken"]),
+    .index("by_creation_token", ["creationToken"])
+    .index("by_organization", ["organizationId"]),
 
   // Wizard/builder artifacts split out of the project doc: list queries never
   // carry them, and artifact churn never invalidates list subscriptions.
@@ -359,14 +361,52 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
 
-  // Private DevApps promoted from projects. There is one logical publication
-  // per source project; each update points it at a new immutable release.
+  // Cozea-owned organizations. Members are invited like project team, not WorkOS.
+  organizations: defineTable({
+    name: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created_by", ["createdBy"]),
+
+  organizationMembers: defineTable({
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    addedAt: v.number(),
+    addedBy: v.id("users"),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_user", ["userId"])
+    .index("by_organization_and_user", ["organizationId", "userId"]),
+
+  organizationInvites: defineTable({
+    organizationId: v.id("organizations"),
+    email: v.string(),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    invitedBy: v.id("users"),
+    invitedAt: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("expired"),
+    ),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_email", ["email"])
+    .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // Org-private DevApps. One publication per source project; updates point at
+  // a new immutable artifact release. Legacy recipe fields remain optional so
+  // empty historical docs still validate.
   devAppPublications: defineTable({
     projectId: v.id("projects"),
+    organizationId: v.optional(v.id("organizations")),
     activeReleaseId: v.optional(v.id("devAppReleases")),
-    visibility: v.literal("project"),
+    visibility: v.union(v.literal("project"), v.literal("organization")),
     name: v.string(),
     description: v.optional(v.string()),
+    logoDataUrl: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.id("users"),
     updatedBy: v.id("users"),
@@ -374,20 +414,24 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
     .index("by_status", ["status"])
     .index("by_status_and_updated_at", ["status", "updatedAt"]),
 
-  // Append-only DevApp launch configuration. Published versions remain
-  // available for audit/history even after a newer release becomes active.
+  // Append-only DevApp artifact releases. Consumer open path uses storage +
+  // content hash, never a localhost command.
   devAppReleases: defineTable({
     publicationId: v.id("devAppPublications"),
     projectId: v.id("projects"),
     version: v.number(),
     framework: v.string(),
-    devCommand: v.string(),
+    artifactStorageId: v.optional(v.id("_storage")),
+    entryPath: v.optional(v.string()),
+    contentHash: v.optional(v.string()),
+    devCommand: v.optional(v.string()),
     devPort: v.optional(v.number()),
     sourceRevision: v.optional(v.string()),
-    sourceFingerprint: v.string(),
+    sourceFingerprint: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
