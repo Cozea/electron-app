@@ -1,5 +1,4 @@
 import type {
-  ClientOrchestrationCommand,
   ContextMenuItem,
   NativeApi,
   ServerProviderUpdatedPayload,
