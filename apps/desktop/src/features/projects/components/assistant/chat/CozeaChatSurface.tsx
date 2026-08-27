@@ -1543,7 +1543,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
                   disabled={
                     !isChatReady ||
-                    !props.thread ||
                     (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
                     props.isSending ||
                     props.isBinding
