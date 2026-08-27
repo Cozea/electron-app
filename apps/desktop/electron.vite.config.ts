@@ -185,7 +185,7 @@ export default defineConfig({
         },
       },
       rollupOptions: {
-        external: ['electron', '@vscode/ripgrep', 'node-pty', 'electron-updater'],
+        external: ['electron', '@vscode/ripgrep', 'node-pty', 'electron-updater', '@cozea/pty'],
         output: {
           format: 'cjs',
           entryFileNames: '[name].js',
@@ -212,6 +212,7 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    envDir: repoRoot,
     plugins: [
       react({
         babel: reactCompilerEnabled

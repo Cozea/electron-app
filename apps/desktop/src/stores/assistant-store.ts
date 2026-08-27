@@ -909,7 +909,7 @@ function writeThreadCollectionsFromReadModel(
   readModel: OrchestrationReadModel,
   previousReadModel: OrchestrationReadModel,
 ): AppState {
-  const activeThreads = readModel.threads.filter((thread) => thread.deletedAt === null);
+  const activeThreads = readModel.threads.filter((thread) => (thread as unknown as { deletedAt?: string | null; archivedAt?: string | null }).deletedAt == null && (thread as unknown as { archivedAt?: string | null }).archivedAt == null);
   const activeThreadIds = activeThreads.map((thread) => thread.id);
   const activeThreadIdSet = new Set(activeThreadIds);
   const threadIdsByProjectId: Record<ProjectId, ThreadId[]> = {};
@@ -965,7 +965,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
   };
   nextState = writeProjectCollection(
     nextState,
-    readModel.projects.filter((project) => project.deletedAt === null),
+    readModel.projects.filter((project) => (project as unknown as { deletedAt?: string | null }).deletedAt == null),
   );
   nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
   return nextState;
@@ -1033,7 +1033,7 @@ export function applyOrchestrationDomainEventsToState(
   };
   nextState = writeProjectCollection(
     nextState,
-    readModel.projects.filter((project) => project.deletedAt === null),
+    readModel.projects.filter((project) => (project as unknown as { deletedAt?: string | null }).deletedAt == null),
   );
   nextState = writeThreadCollectionsFromReadModel(nextState, readModel, previousReadModel);
   return nextState;

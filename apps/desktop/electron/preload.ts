@@ -19,7 +19,7 @@ import type { ContextMenuItem } from '../../../shared/assistant-contracts/ipc'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
-const DEFAULT_ASSISTANT_WS_URL = 'ws://127.0.0.1:3773'
+const DEFAULT_ASSISTANT_WS_URL: string | null = null
 const ASSISTANT_RUNTIME_STATUS_CHANNEL = 'assistantRuntime:status'
 const ASSISTANT_RUNTIME_STATUS_HANDLE = 'assistantRuntime:getStatus'
 const SUBSTRATE_SHADOW_STATUS_HANDLE = 'substrateShadow:getStatus'

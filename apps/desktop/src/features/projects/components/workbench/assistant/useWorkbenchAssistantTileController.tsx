@@ -47,6 +47,7 @@ import {
   newThreadId,
 } from "@/features/projects/components/assistant/lib/utils"
 import {
+  refreshAssistantRuntimeSnapshot,
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
@@ -578,17 +579,47 @@ export function useWorkbenchAssistantTileController(
                   projectModelSelection: null,
                 }),
             )
-            await getOrchestration().dispatchCommand({
-              type: "project.create",
-              commandId: newCommandId(),
-              projectId,
-              title: basenameFromPath(workspaceRoot),
-              workspaceRoot,
-              defaultModelSelection,
-              createdAt: new Date().toISOString(),
-            })
+            try {
+              await getOrchestration().dispatchCommand({
+                type: "project.create",
+                commandId: newCommandId(),
+                projectId,
+                title: basenameFromPath(workspaceRoot),
+                workspaceRoot,
+                defaultModelSelection,
+                createdAt: new Date().toISOString(),
+              })
+            } catch (createError: unknown) {
+              const errMsg = createError instanceof Error ? `${createError.message} ${createError.stack ?? ""}` : JSON.stringify(createError);
+              const match = errMsg.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/);
+              if (match && match[1]) {
+                const existingId = match[1];
+                const currentReadModel = useStore.getState().orchestrationReadModel;
+                useStore.getState().syncServerReadModel({
+                  snapshotSequence: currentReadModel?.snapshotSequence ?? 0,
+                  projects: [
+                    ...(currentReadModel?.projects ?? []).filter((p) => p.id !== existingId),
+                    {
+                      id: existingId as any,
+                      title: basenameFromPath(workspaceRoot),
+                      workspaceRoot,
+                      defaultModelSelection: null,
+                      scripts: [],
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
+                    } as any,
+                  ],
+                  threads: currentReadModel?.threads ?? [],
+                  updatedAt: new Date().toISOString(),
+                });
+                nextProject = useStore.getState().projectById[existingId as any] ?? null;
+              } else {
+                throw createError;
+              }
+            }
             const nextAssistantState = useStore.getState()
             nextProject =
+              nextProject ??
               selectAssistantProjectById(nextAssistantState, projectId) ??
               selectAssistantProjectByCwd(nextAssistantState, workspaceRoot) ??
               null
@@ -1074,12 +1105,23 @@ export function useWorkbenchAssistantTileController(
         // Resolve the project
         const currentAssistantState = useStore.getState()
         const workspaceRoot = input.projectRootPath
-        const currentProject =
+        let currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
             : null) ??
           selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
           null
+
+        if (!currentProject) {
+          await refreshAssistantRuntimeSnapshot().catch(() => {})
+          const refreshedState = useStore.getState()
+          currentProject =
+            (input.tile.assistantProjectId
+              ? selectAssistantProjectById(refreshedState, input.tile.assistantProjectId)
+              : null) ??
+            selectAssistantProjectByCwd(refreshedState, workspaceRoot) ??
+            null
+        }
 
         if (!currentProject) {
           setSendError("No assistant project found. Please retry.")
