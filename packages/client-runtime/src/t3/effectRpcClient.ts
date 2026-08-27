@@ -1,4 +1,6 @@
-import { randomUUID } from "node:crypto";
+function createRequestId(): string {
+  return globalThis.crypto.randomUUID();
+}
 
 export interface T3EffectRpcClientOptions {
   readonly baseUrl: string;
@@ -154,7 +156,7 @@ export class T3EffectRpcClient {
 
   async callUnary(tag: string, payload: unknown = {}): Promise<unknown> {
     const ws = await this.connect();
-    const requestId = randomUUID();
+    const requestId = createRequestId();
     return await new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.exitWaiters.delete(requestId);
@@ -171,7 +173,7 @@ export class T3EffectRpcClient {
     onValue: (value: unknown) => void,
   ): Promise<() => Promise<void>> {
     const ws = await this.connect();
-    const requestId = randomUUID();
+    const requestId = createRequestId();
     const listeners = new Set<(value: unknown) => void>([onValue]);
     this.chunkListeners.set(requestId, listeners);
     ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));

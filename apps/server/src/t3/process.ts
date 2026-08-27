@@ -63,6 +63,18 @@ async function waitForEnvironment(baseUrl: string, deadlineMs = 45_000): Promise
   throw new Error(`Timed out waiting for T3 environment at ${baseUrl}`);
 }
 
+function resolveT3ServerNodeExecutable(): string {
+  const override = process.env.COZEA_T3_NODE?.trim() || process.env.NPM_NODE_EXECPATH?.trim();
+  if (override) {
+    return override;
+  }
+  // Shadow child processes forked from Electron inherit Electron as execPath.
+  if (process.versions.electron) {
+    return "node";
+  }
+  return process.execPath;
+}
+
 export async function startT3ServerProcess(
   options: StartT3ServerProcessOptions = {},
 ): Promise<T3ServerProcessHandle> {
@@ -96,7 +108,7 @@ export async function startT3ServerProcess(
   };
 
   const child: ChildProcessWithoutNullStreams = spawn(
-    process.execPath,
+    resolveT3ServerNodeExecutable(),
     [VENDOR_T3_SERVER_BIN, "serve", "--port", String(port), "--host", host, "--no-browser", "--base-dir", baseDir],
     {
       cwd: VENDOR_T3_SERVER_PKG,
