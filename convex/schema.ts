@@ -364,7 +364,16 @@ export default defineSchema({
   // Cozea-owned organizations. Members are invited like project team, not WorkOS.
   organizations: defineTable({
     name: v.string(),
-    createdBy: v.id("users"),
+    // Legacy WorkOS-backed organizations predate Cozea membership records.
+    // Keep them readable until the device-identity migration assigns ownership.
+    createdBy: v.optional(v.id("users")),
+    workosId: v.optional(v.string()),
+    slug: v.optional(v.string()),
+    iconColor: v.optional(v.any()),
+    iconKey: v.optional(v.any()),
+    aiSettings: v.optional(v.any()),
+    storageUsage: v.optional(v.any()),
+    subscription: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_created_by", ["createdBy"]),
