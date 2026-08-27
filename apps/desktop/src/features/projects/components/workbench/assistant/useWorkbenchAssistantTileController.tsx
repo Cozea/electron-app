@@ -75,6 +75,7 @@ import type { ChatMessage, Project, Thread } from "@/stores/types"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
+  flushWorkbenchStorage,
 } from "@/stores/useProjectWorkbenchStore"
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
@@ -859,13 +860,16 @@ export function useWorkbenchAssistantTileController(
       modelSelection: nextModelSelection,
     })
 
+    const isDifferentProvider = Boolean(thread && thread.modelSelection.provider !== nextProvider)
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       providerInstanceId: nextModelSelection.instanceId,
       model: nextModelSelection.model,
+      ...(isDifferentProvider ? { threadId: null } : {}),
     }, input.workspaceId)
+    flushWorkbenchStorage()
 
-    if (!thread) {
+    if (!thread || isDifferentProvider) {
       return
     }
 
