@@ -276,6 +276,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       initialUrl?: string
       storageScope?: import("../../../shared/browserHostTypes").BrowserStorageScope
       workspaceId?: string
+      partitionKey?: string
+      navigationPolicy?: import("../../../shared/browserHostTypes").BrowserNavigationPolicy
     }) =>
       ipcRenderer.invoke('workbenchBrowser:ensureTile', options),
     destroyTile: (options: { tileId: string }) =>
@@ -346,6 +348,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('workbenchBrowser:command', handler)
       return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
     },
+  },
+  orgDevApp: {
+    buildAndPack: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('orgDevApp:buildAndPack', options),
+    prepareArtifact: (options: {
+      downloadUrl: string
+      contentHash: string
+      entryPath?: string
+    }) => ipcRenderer.invoke('orgDevApp:prepareArtifact', options),
   },
   /** Agent browser automation MVP (flag `cozea.browser.agentAutomation`, default off). */
   browserAutomation: {

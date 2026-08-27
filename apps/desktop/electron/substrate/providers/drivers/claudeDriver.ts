@@ -3,7 +3,6 @@ import {
   createManagedSnapshotState,
   createPendingSnapshot,
   runManagedSnapshotPipeline,
-  type ManagedSnapshotEnrichers,
   type SnapshotEnrichmentPatch,
 } from "../managedSnapshot";
 import type {
@@ -39,7 +38,7 @@ function createSnapshotHandle(initial: ManagedSnapshotState): SubstrateManagedSn
         message: "Native substrate Claude driver (orchestration RPC).",
         models: DEFAULT_CLAUDE_MODELS,
       }),
-      capabilities: async () => ({ supportsImages: true }),
+      capabilities: async () => ({}),
       skills: async () => ({ skills: [] }),
       slash: async () => ({ slashCommands: [] }),
       accountModels: async () => ({ status: "ready" }),
@@ -105,6 +104,7 @@ export function createClaudeSubstrateDriver(): SubstrateProviderDriver {
               replyText: result.replyText,
             };
           },
+          dispose: async () => undefined,
         },
         dispose: async () => undefined,
       };

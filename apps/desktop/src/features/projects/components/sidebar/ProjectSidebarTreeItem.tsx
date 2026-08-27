@@ -6,6 +6,9 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
 import { featureFlags } from "@/lib/featureFlags"
+import { useAuth } from "@/contexts/AuthContext"
+import { useConvex } from "convex/react"
+import { prefetchProjectSwitch } from "@/features/projects/lib/projectSwitchPrefetch"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useWorkspaceSnapshotEntry } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
@@ -61,6 +64,8 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
+    const { convexUserId } = useAuth()
+    const convex = useConvex()
     // Pushed catalog snapshot: no per-row resolveProject IPC. The layout still
     // does a fresh, candidate-scanning resolution when a project is opened.
     const snapshotEntry = useWorkspaceSnapshotEntry(project.id)
@@ -98,6 +103,26 @@ export const ProjectSidebarTreeItem = React.memo(
       e.stopPropagation();
       void actions.openProject(project, workspaceId);
     }, [actions, project, workspaceId]);
+
+    const handlePrefetchProject = React.useCallback(() => {
+      if (context.isCurrentProject) return
+      prefetchProjectSwitch({
+        projectId: project.id,
+        projectSlug: project.slug,
+        workspaceId,
+        collabBranch,
+        convex,
+        userId: convexUserId ?? null,
+      })
+    }, [
+      collabBranch,
+      context.isCurrentProject,
+      convex,
+      convexUserId,
+      project.id,
+      project.slug,
+      workspaceId,
+    ]);
 
     const handleProjectToggleClick = React.useCallback((e: React.MouseEvent) => {
       e.stopPropagation();
@@ -245,6 +270,8 @@ export const ProjectSidebarTreeItem = React.memo(
               (!selection.isExpanded && context.isCurrentProject)) &&
               SIDEBAR_PILL_ACTIVE_CLASS,
           )}
+          onPointerEnter={handlePrefetchProject}
+          onFocus={handlePrefetchProject}
         >
           <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
             <button

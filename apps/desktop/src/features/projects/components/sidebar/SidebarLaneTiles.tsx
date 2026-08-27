@@ -50,7 +50,12 @@ function SurfaceTileGlyph(props: {
   className?: string
 }) {
   const className = props.className ?? "size-[18px] shrink-0 text-muted-foreground/75"
-  const devApp = getDevAppForSurfaceTileType(props.type)
+  const devApp =
+    props.type === "orgDevApp" ? null : getDevAppForSurfaceTileType(props.type)
+
+  if (props.type === "orgDevApp") {
+    return <HugeiconsIcon icon={__GlobeHugeIcon} className={className} aria-hidden />
+  }
 
   if (props.type === "devServer" && props.devAppId) {
     return (

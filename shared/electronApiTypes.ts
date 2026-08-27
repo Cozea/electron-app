@@ -1432,6 +1432,8 @@ export interface ElectronAPI {
       initialUrl?: string
       storageScope?: import('./browserHostTypes').BrowserStorageScope
       workspaceId?: string
+      partitionKey?: string
+      navigationPolicy?: import('./browserHostTypes').BrowserNavigationPolicy
     }) => Promise<WorkbenchBrowserViewState>
     destroyTile: (options: { tileId: string }) => Promise<boolean>
     setBounds: (options: {
@@ -1464,6 +1466,29 @@ export interface ElectronAPI {
     onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
     onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
+  }
+  orgDevApp: {
+    buildAndPack: (options: {
+      workspaceId: string
+      laneId?: string | null
+    }) => Promise<
+      | {
+          success: true
+          zip: Uint8Array
+          contentHash: string
+          entryPath: string
+          framework: string
+        }
+      | { success: false; error: string }
+    >
+    prepareArtifact: (options: {
+      downloadUrl: string
+      contentHash: string
+      entryPath?: string
+    }) => Promise<
+      | { success: true; originUrl: string; contentHash: string; entryPath: string }
+      | { success: false; error: string }
+    >
   }
   /**
    * Agent browser automation MVP behind `cozea.browser.agentAutomation`

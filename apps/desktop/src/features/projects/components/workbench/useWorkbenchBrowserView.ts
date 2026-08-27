@@ -46,6 +46,8 @@ interface UseWorkbenchBrowserViewOptions {
   storageScope?: BrowserStorageScope
   workspaceId?: string
   persistModel?: boolean
+  partitionKey?: string
+  navigationPolicy?: import("@shared/browserHostTypes").BrowserNavigationPolicy
   onUrlObserved?: (url: string) => void
   onTitleObserved?: (title: string) => void
   onFaviconObserved?: (favicon: string | null) => void
@@ -90,6 +92,8 @@ export function useWorkbenchBrowserView(
     storageScope = "workspace",
     workspaceId,
     persistModel = false,
+    partitionKey,
+    navigationPolicy,
     onUrlObserved,
     onTitleObserved,
     onFaviconObserved,
@@ -295,12 +299,14 @@ export function useWorkbenchBrowserView(
       initialUrl: url,
       storageScope,
       workspaceId,
+      partitionKey,
+      navigationPolicy,
     })
     if (url !== lastRequestedUrlRef.current) {
       lastRequestedUrlRef.current = url
       void model.loadURL(url)
     }
-  }, [storageScope, tileId, url, workspaceId])
+  }, [navigationPolicy, partitionKey, storageScope, tileId, url, workspaceId])
 
   useEffect(() => {
     if (!url) {

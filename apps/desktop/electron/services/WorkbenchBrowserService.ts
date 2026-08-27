@@ -7,12 +7,14 @@ import type {
   BrowserStorageScope,
   BrowserUiCommand,
 } from '../../../../shared/browserHostTypes'
+import { isAllowedOrgDevAppNavigation } from '../../../../shared/orgDevAppProtocol'
 
 interface WorkbenchBrowserRecord {
   view: WebContentsView
   state: WorkbenchBrowserViewState
   storageScope: BrowserStorageScope
   workspaceId: string | null
+  navigationPolicy: 'open' | 'orgDevApp'
   /** Monotonic per-record navigation counter; see loadUrlIntoRecord. */
   navigationId: number
 }
@@ -25,6 +27,8 @@ interface EnsureWorkbenchBrowserTileOptions {
   initialUrl?: string
   storageScope?: BrowserStorageScope
   workspaceId?: string
+  partitionKey?: string
+  navigationPolicy?: 'open' | 'orgDevApp'
 }
 
 const BROWSER_ZOOM_FACTORS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5] as const
@@ -64,6 +68,10 @@ export class WorkbenchBrowserService {
   ): string {
     if (storageScope === 'global') {
       return 'persist:cozea-browser-global'
+    }
+
+    if (storageScope === 'orgDevApp' && workspaceId) {
+      return `persist:cozea-devapp-${this.normalizeSessionSegment(workspaceId)}`
     }
 
     if (storageScope === 'workspace' && workspaceId) {
@@ -262,11 +270,34 @@ export class WorkbenchBrowserService {
 
     mainWindow.contentView.addChildView(view)
     view.webContents.setWindowOpenHandler(({ url }) => {
+      const record = this.records.get(tileId)
+      if (record?.navigationPolicy === 'orgDevApp') {
+        if (isAllowedOrgDevAppNavigation(url)) {
+          void this.loadUrlIntoRecord(tileId, record, url)
+        }
+        return { action: 'deny' }
+      }
       mainWindow.webContents.send('workbenchBrowser:new-page-request', {
         sourceTileId: tileId,
         url,
       })
       return { action: 'deny' }
+    })
+
+    view.webContents.on('will-navigate', (event, url) => {
+      const record = this.records.get(tileId)
+      if (record?.navigationPolicy !== 'orgDevApp') return
+      if (!isAllowedOrgDevAppNavigation(url)) {
+        event.preventDefault()
+      }
+    })
+
+    view.webContents.on('will-redirect', (event, url) => {
+      const record = this.records.get(tileId)
+      if (record?.navigationPolicy !== 'orgDevApp') return
+      if (!isAllowedOrgDevAppNavigation(url)) {
+        event.preventDefault()
+      }
     })
 
     const coalesce = () => {
@@ -471,6 +502,14 @@ export class WorkbenchBrowserService {
     record: WorkbenchBrowserRecord,
     url: string,
   ): Promise<WorkbenchBrowserViewState> {
+    if (record.navigationPolicy === 'orgDevApp' && !isAllowedOrgDevAppNavigation(url)) {
+      record.state = {
+        ...record.state,
+        isLoading: false,
+        loadError: 'This DevApp cannot open localhost or other blocked URLs.',
+      }
+      return this.emitState(tileId) ?? record.state
+    }
     const navigationId = record.navigationId + 1
     record.navigationId = navigationId
     record.state = {
@@ -516,9 +555,11 @@ export class WorkbenchBrowserService {
     tileId: string,
     options: EnsureWorkbenchBrowserTileOptions = {},
   ): Promise<WorkbenchBrowserViewState> {
-    const { initialUrl, storageScope = 'workspace', workspaceId } = options
+    const { initialUrl, storageScope = 'workspace', workspaceId, partitionKey, navigationPolicy = 'open' } = options
+    const sessionKey = partitionKey ?? workspaceId
     const existing = this.records.get(tileId)
     if (existing) {
+      existing.navigationPolicy = navigationPolicy
       if (initialUrl && initialUrl !== existing.state.url) {
         return this.loadUrlIntoRecord(tileId, existing, initialUrl)
       }
@@ -531,7 +572,7 @@ export class WorkbenchBrowserService {
         nodeIntegration: false,
         sandbox: true,
         backgroundThrottling: true,
-        session: this.resolveSession(tileId, storageScope, workspaceId ?? null),
+        session: this.resolveSession(tileId, storageScope, sessionKey ?? null),
       },
     })
     view.setBackgroundColor('#00000000')
@@ -544,7 +585,8 @@ export class WorkbenchBrowserService {
       view,
       state: this.createInitialState(tileId, initialUrl, storageScope),
       storageScope,
-      workspaceId: workspaceId ?? null,
+      workspaceId: sessionKey ?? null,
+      navigationPolicy,
       navigationId: 0,
     }
 

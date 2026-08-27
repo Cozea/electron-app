@@ -3,10 +3,13 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ALL_THEMES, applyThemeClass, THEME_STORAGE_KEY } from '../../src/lib/theme'
+import { ALL_THEMES, applyThemeClass, THEME_STORAGE_KEY } from '../../apps/desktop/src/lib/theme'
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..')
-const scriptSource = fs.readFileSync(path.join(REPO_ROOT, 'public/theme-init.js'), 'utf-8')
+const scriptSource = fs.readFileSync(
+  path.join(REPO_ROOT, 'apps', 'desktop', 'public', 'theme-init.js'),
+  'utf-8',
+)
 
 interface RunOptions {
   stored?: string | null
@@ -61,7 +64,10 @@ function runThemeInit(options: RunOptions): RunResult {
 
 describe('public/theme-init.js', () => {
   it('is loaded by index.html before the app bundle', () => {
-    const indexHtml = fs.readFileSync(path.join(REPO_ROOT, 'index.html'), 'utf-8')
+    const indexHtml = fs.readFileSync(
+      path.join(REPO_ROOT, 'apps', 'desktop', 'index.html'),
+      'utf-8',
+    )
     const initScriptAt = indexHtml.indexOf('src="/theme-init.js"')
     const appBundleAt = indexHtml.indexOf('src="/src/main.tsx"')
 

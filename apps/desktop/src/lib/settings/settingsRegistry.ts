@@ -13,20 +13,24 @@ import {
   CommandLineIcon as __CommandLineIconHugeIcon,
   PaintBoardIcon as __PaintBoardIconHugeIcon,
   UserCircleIcon as __UserCircleIconHugeIcon,
+  UserGroupIcon as __UserGroupIconHugeIcon,
 } from "@hugeicons/core-free-icons"
 
 const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
 const PaintBoardIcon = asHugeIcon(__PaintBoardIconHugeIcon)
 const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
+const UserGroupIcon = asHugeIcon(__UserGroupIconHugeIcon)
 
 const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
   account: 0,
   appearance: 1,
-  tooling: 2,
+  organizations: 2,
+  tooling: 3,
 }
 
 const preloadAccountPage = () => import("@/pages/settings/Account")
 const preloadAppearancePage = () => import("@/pages/settings/Appearance")
+const preloadOrganizationsPage = () => import("@/pages/settings/Organizations")
 
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
@@ -37,6 +41,7 @@ const preloadToolingPage = async () => {
 const SURFACE_LABEL_KEYS: Record<SettingsSurfaceId, TranslationKey> = {
   account: "settings.nav.account",
   appearance: "settings.nav.appearance",
+  organizations: "settings.nav.organizations",
   tooling: "settings.nav.localEnvironment",
 }
 
@@ -68,6 +73,17 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
+  },
+  {
+    id: "organizations",
+    label: "Organizations",
+    icon: UserGroupIcon,
+    routes: { personal: "/settings/organizations" },
+    storageMode: { personal: "cloud" },
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
+    preload: preloadOrganizationsPage,
+    commandKeywords: ["organization", "org", "team", "invite", "devapp"],
   },
   {
     id: "tooling",

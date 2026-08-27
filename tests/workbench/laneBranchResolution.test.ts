@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { resolveLaneBranchKnowledge } from '../../src/features/projects/lib/projectBranchSessionStore'
+import { resolveLaneBranchKnowledge } from '../../apps/desktop/src/features/projects/lib/projectBranchSessionStore'
 import {
   buildWorkbenchScopeKey,
   migratePersistedWorkbenchState,
   useProjectWorkbenchStore,
-} from '../../src/stores/useProjectWorkbenchStore'
+} from '../../apps/desktop/src/stores/useProjectWorkbenchStore'
 
 describe('resolveLaneBranchKnowledge', () => {
   it('uses a fresh git branch and asks to persist it', () => {

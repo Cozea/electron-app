@@ -1,8 +1,9 @@
-import { useCallback } from 'react'
+import { startTransition, useCallback } from 'react'
 import { createPath, type NavigateFunction, type NavigateOptions, type To, useNavigate } from '@/lib/router'
 
 import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'
+import { beginProjectSwitch } from '@/lib/performance/projectSwitchMarks'
 
 interface ViewTransitionHandle {
   finished: Promise<void>
@@ -91,33 +92,54 @@ function shouldSkipViewTransition(to: To | number): boolean {
   )
 }
 
+function projectRouteIdentity(pathname: string | null): string | null {
+  if (!pathname) return null
+  const route = parseProjectRoute(pathname)
+  return route.projectId || route.slug || null
+}
+
+function maybeBeginProjectSwitch(to: To | number): void {
+  if (typeof window === 'undefined') return
+  const fromId = projectRouteIdentity(window.location.pathname)
+  const toId = projectRouteIdentity(resolveNavigationPathname(to))
+  if (!toId || fromId === toId) return
+  beginProjectSwitch({ from: fromId, to: toId })
+}
+
+function performNavigation(
+  navigate: NavigateFunction,
+  to: To | number,
+  options?: NavigateOptions
+): void | Promise<void> {
+  if (typeof to === 'number') {
+    return navigate(to)
+  }
+  return navigate(to, options)
+}
+
 export function navigateWithTransition(
   navigate: NavigateFunction,
   to: To | number,
   options?: NavigateOptions
-): void {
+): void | Promise<void> {
+  maybeBeginProjectSwitch(to)
+
   if (shouldSkipViewTransition(to)) {
-    if (typeof to === 'number') {
-      navigate(to)
-      return
-    }
-      navigate(to, options)
-    return
+    return performNavigation(navigate, to, options)
   }
 
-  runWithViewTransition(() => {
-    if (typeof to === 'number') {
-      return navigate(to)
-    }
-    return navigate(to, options)
-  })
+  runWithViewTransition(() => performNavigation(navigate, to, options))
 }
 
 export function useViewTransitionNavigate(): NavigateFunction {
   const navigate = useNavigate()
   return useCallback(
     (to: To | number, options?: NavigateOptions) => {
-      navigateWithTransition(navigate, to, options)
+      let result: void | Promise<void> = undefined
+      startTransition(() => {
+        result = navigateWithTransition(navigate, to, options)
+      })
+      return result
     },
     [navigate]
   )

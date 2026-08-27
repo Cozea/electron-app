@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { useQuery } from "convex/react"
 
+import { api } from "../../../../../../../convex/_generated/api"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
-import { useLocalProjectDevAppEntries } from "@/features/devapps/localProjectDevAppStore"
-import { buildProjectDevAppManifest } from "@/features/devapps/projectDevAppManifest"
+import { buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
 import { listLauncherApps } from "@/features/devapps/registry"
 import { featureFlags } from "@/lib/featureFlags"
-import type { DevAppManifest, ProjectDevAppLaunchSpec } from "@/features/devapps/registry/types"
+import { useAuth } from "@/contexts/AuthContext"
+import type { DevAppManifest, PublishedDevAppLaunchSpec } from "@/features/devapps/registry/types"
 import type {
   WorkbenchSelectionTile,
 } from "@/stores/useProjectWorkbenchStore"
@@ -20,8 +22,6 @@ import {
   type WorkbenchSelectionLauncherLayout,
 } from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
 import { useTranslation } from "@/lib/i18n"
-import { appToast } from "@/lib/appToast"
-import { useWorkspaceCatalogSnapshot } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
 import {
   filterWorkbenchSelectionApps,
   getWorkbenchSelectionCategories,
@@ -357,7 +357,7 @@ function SelectionListButton({
 export function WorkbenchSelectionTile({
   tile: _tile,
   singletonEmptyWorkbench = false,
-  projectId,
+  projectId: _projectId,
   projectName,
   workspaceId,
   onChoose,
@@ -373,35 +373,24 @@ export function WorkbenchSelectionTile({
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const localProjectDevApps = useLocalProjectDevAppEntries()
-  const workspaceCatalog = useWorkspaceCatalogSnapshot()
-
-  const projectDevAppOptions = useMemo(
-    () =>
-      (featureFlags.projectDevApps ? localProjectDevApps : [])
-        .map((entry) => {
-          const sourceProjectId = String(entry.sourceProject._id)
-          const sourceRuntime = workspaceCatalog?.entries[sourceProjectId]
-          const runtimeLocation =
-            sourceRuntime?.status === "ready" && sourceRuntime.lane
-              ? {
-                  workspaceId: sourceRuntime.workspace.workspaceId,
-                  laneId: sourceRuntime.lane.laneId,
-                }
-              : null
-
-          return buildProjectDevAppManifest(entry, runtimeLocation)
-        }),
-    [localProjectDevApps, workspaceCatalog],
+  const { convexUserId } = useAuth()
+  const orgDevApps = useQuery(
+    api.devApps.listMine,
+    featureFlags.projectDevApps && convexUserId ? { userId: convexUserId } : "skip",
   )
-  const hasLocalDevApps = projectDevAppOptions.length > 0
+
+  const orgDevAppOptions = useMemo(
+    () => (orgDevApps ?? []).map((entry) => buildPublishedDevAppManifest(entry)),
+    [orgDevApps],
+  )
+  const hasOrgDevApps = orgDevAppOptions.length > 0
   const categories = useMemo(
-    () => getWorkbenchSelectionCategories(hasLocalDevApps),
-    [hasLocalDevApps],
+    () => getWorkbenchSelectionCategories(hasOrgDevApps),
+    [hasOrgDevApps],
   )
   const resolvedActiveCategory = resolveWorkbenchSelectionCategory(
     activeCategory,
-    hasLocalDevApps,
+    hasOrgDevApps,
   )
 
   useEffect(() => {
@@ -422,21 +411,21 @@ export function WorkbenchSelectionTile({
   const allOptions = useMemo(
     () =>
       listLauncherApps({
-        additionalApps: projectDevAppOptions,
+        additionalApps: orgDevAppOptions,
         enabledAssistantProviders,
       }),
-    [enabledAssistantProviders, projectDevAppOptions],
+    [enabledAssistantProviders, orgDevAppOptions],
   )
   const searchedOptions = useMemo(
     () =>
       searchQuery.trim()
         ? listLauncherApps({
-            additionalApps: projectDevAppOptions,
+            additionalApps: orgDevAppOptions,
             enabledAssistantProviders,
             query: searchQuery,
           })
         : allOptions,
-    [allOptions, enabledAssistantProviders, projectDevAppOptions, searchQuery],
+    [allOptions, enabledAssistantProviders, orgDevAppOptions, searchQuery],
   )
   const filteredOptions = useMemo(
     () => filterWorkbenchSelectionApps(searchedOptions, resolvedActiveCategory),
@@ -534,51 +523,14 @@ export function WorkbenchSelectionTile({
   )
   const handleChooseOption = useCallback(
     (option: DevAppManifest) => {
-      void (async () => {
-        let projectDevApp: ProjectDevAppLaunchSpec | undefined
-
-        if (option.launch.kind === "projectDevApp") {
-          projectDevApp = option.launch
-          const isCrossProject = projectDevApp.projectId !== projectId
-
-          if (isCrossProject && (!projectDevApp.sourceWorkspaceId || !projectDevApp.sourceLaneId)) {
-            const workspaceApi = window.electronAPI.workspace
-            if (!workspaceApi) {
-              throw new Error(t("workbench.selection.localDevAppUnavailableDescription"))
-            }
-
-            const resolution = await workspaceApi.resolveProject({
-              projectId: projectDevApp.projectId,
-              allowCandidateScan: false,
-            })
-
-            if (resolution.status !== "ready") {
-              throw new Error(t("workbench.selection.localDevAppUnavailableDescription"))
-            }
-
-            projectDevApp = {
-              ...projectDevApp,
-              sourceWorkspaceId: resolution.workspace.workspaceId,
-              sourceLaneId: resolution.lane.laneId,
-            }
-          }
-        }
-
-        onChoose({
-          appId: option.id,
-          ...(projectDevApp ? { projectDevApp } : {}),
-        })
-      })().catch((error) => {
-        appToast.error({
-          title: t("workbench.selection.localDevAppUnavailable"),
-          description:
-            error instanceof Error
-              ? error.message
-              : t("workbench.selection.localDevAppUnavailableDescription"),
-        })
+      const publishedDevApp: PublishedDevAppLaunchSpec | undefined =
+        option.launch.kind === "publishedDevApp" ? option.launch : undefined
+      onChoose({
+        appId: option.id,
+        ...(publishedDevApp ? { publishedDevApp } : {}),
       })
     },
-    [onChoose, projectId, t],
+    [onChoose],
   )
   const sharedFilterBar = (
     <SelectionFilterBar

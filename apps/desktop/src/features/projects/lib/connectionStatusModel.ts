@@ -10,6 +10,16 @@ export type AssistantTransportUiStatus = "disconnected" | "reconnecting" | "conn
 export type DataSyncUiStatus = "idle" | "syncing" | "error"
 export type GitRemoteUiStatus = "unknown" | "idle" | "diverged" | "error"
 
+export type CollabSessionStatusInput = "idle" | "loading" | "ready" | "error"
+export type CollabEncryptionStatusInput =
+  | "room_not_initialized"
+  | "ready"
+  | "missing_for_device"
+  | "device_revoked"
+
+/** Stop spinning "Collab Reconnecting" when Yjs never connects (local-only / no gateway). */
+export const COLLAB_RECONNECT_CAP_MS = 15_000
+
 export type RawAssistantTransportState =
   | "connecting"
   | "open"
@@ -34,6 +44,11 @@ export interface ConnectionStatusModelInput {
   collaborationMode: "shared" | "local" | null | undefined
   sharedBranch: string | null | undefined
   gitRemote: GitRemoteSnapshot | null | undefined
+  collabSessionStatus?: CollabSessionStatusInput | null
+  collabSessionError?: string | null
+  collabEncryptionStatus?: CollabEncryptionStatusInput | null
+  /** True after COLLAB_RECONNECT_CAP_MS while still disconnected. */
+  collabReconnectTimedOut?: boolean
 }
 
 export interface ConnectionStatusLayerLine {
@@ -71,10 +86,24 @@ export function mapDataSyncStatus(input: {
   isOnline: boolean
   collaborationMode: "shared" | "local" | null | undefined
   hasSyncContext: boolean
+  collabSessionStatus?: CollabSessionStatusInput | null
+  collabEncryptionStatus?: CollabEncryptionStatusInput | null
+  collabReconnectTimedOut?: boolean
 }): DataSyncUiStatus {
   if (!input.hasSyncContext) return "idle"
 
   if (input.syncProgressStatus === "error") return "error"
+  if (input.collabSessionStatus === "error") return "error"
+  if (input.collabEncryptionStatus === "device_revoked") return "error"
+  if (input.collabEncryptionStatus === "missing_for_device") return "idle"
+
+  if (
+    input.collabReconnectTimedOut &&
+    input.collaborationMode === "shared" &&
+    !input.collabConnected
+  ) {
+    return "error"
+  }
 
   if (
     input.syncProgressStatus === "checking" ||
@@ -85,10 +114,13 @@ export function mapDataSyncStatus(input: {
   }
 
   // Collab link recovery is a data-sync concern, not assistant transport.
+  // Bounded by collabReconnectTimedOut — never treat a missing Yjs link as
+  // unbounded syncing (local-only projects, no collab gateway, etc.).
   if (
     input.collaborationMode === "shared" &&
     input.isOnline &&
-    !input.collabConnected
+    !input.collabConnected &&
+    !input.collabReconnectTimedOut
   ) {
     return "syncing"
   }
@@ -184,6 +216,9 @@ export function resolveConnectionStatusPresentation(
     isOnline: input.isOnline,
     collaborationMode: input.collaborationMode,
     hasSyncContext,
+    collabSessionStatus: input.collabSessionStatus,
+    collabEncryptionStatus: input.collabEncryptionStatus,
+    collabReconnectTimedOut: input.collabReconnectTimedOut,
   })
   const gitRemote = mapGitRemoteStatus(input.gitRemote)
 
@@ -203,6 +238,22 @@ export function resolveConnectionStatusPresentation(
       : "Live collaboration is paused on this branch"
   } else if (!input.isOnline) {
     dataSyncDetail = "Waiting to reconnect live collaboration"
+  } else if (input.collabEncryptionStatus === "missing_for_device") {
+    dataSyncDetail = "Approve this device to unlock encrypted collaboration"
+  } else if (input.collabEncryptionStatus === "device_revoked") {
+    dataSyncDetail = "This device was revoked from encrypted collaboration"
+  } else if (input.collabSessionStatus === "error") {
+    dataSyncDetail = input.collabSessionError || "Failed to start live collaboration"
+  } else if (
+    input.collabReconnectTimedOut &&
+    !input.collabConnected
+  ) {
+    dataSyncDetail = "Could not restore the live collaboration connection"
+  } else if (
+    input.collabSessionStatus === "idle" ||
+    input.collabSessionStatus === "loading"
+  ) {
+    dataSyncDetail = "Connecting to the collaboration gateway"
   } else if (syncStatus === "error") {
     dataSyncDetail = syncMessage || "Failed to refresh live collaboration."
   } else if (syncStatus === "checking") {
@@ -276,6 +327,71 @@ export function resolveConnectionStatusPresentation(
       primaryLabel: "Offline",
       primaryDetail: dataSyncDetail,
       severity: "transport",
+    }
+  }
+
+  if (input.collabEncryptionStatus === "missing_for_device") {
+    return {
+      transport,
+      dataSync,
+      gitRemote,
+      layers,
+      primaryLabel: "Awaiting device approval",
+      primaryDetail: dataSyncDetail,
+      motion: "pulse",
+      severity: "unavailable",
+    }
+  }
+
+  if (input.collabEncryptionStatus === "device_revoked") {
+    return {
+      transport,
+      dataSync,
+      gitRemote,
+      layers,
+      primaryLabel: "Collab unavailable",
+      primaryDetail: dataSyncDetail,
+      severity: "error",
+    }
+  }
+
+  if (input.collabSessionStatus === "error") {
+    return {
+      transport,
+      dataSync,
+      gitRemote,
+      layers,
+      primaryLabel: "Collab unavailable",
+      primaryDetail: dataSyncDetail,
+      severity: "error",
+    }
+  }
+
+  if (input.collabReconnectTimedOut && !input.collabConnected) {
+    return {
+      transport,
+      dataSync,
+      gitRemote,
+      layers,
+      primaryLabel: "Collaboration unavailable",
+      primaryDetail: dataSyncDetail,
+      severity: "error",
+    }
+  }
+
+  if (
+    input.collabSessionStatus === "idle" ||
+    input.collabSessionStatus === "loading"
+  ) {
+    return {
+      transport,
+      dataSync,
+      gitRemote,
+      layers,
+      primaryLabel: "Starting collaboration",
+      primaryDetail: dataSyncDetail,
+      motion: "spin",
+      severity: "busy",
     }
   }
 

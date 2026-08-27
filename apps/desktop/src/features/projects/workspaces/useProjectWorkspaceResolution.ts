@@ -3,16 +3,67 @@ import type {
   RepoIdentity,
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
-} from "../../../../../../shared/workspaceTypes"
+} from "@shared/workspaceTypes"
 
 // Stale-while-revalidate cache. Without it, every navigation into a project
 // re-resolved the workspace over IPC with `result === null` in the meantime —
 // the content area showed a spinner on each project revisit even when the
 // answer could not have changed.
 const resolutionCache = new Map<string, ResolveProjectWorkspaceResult>()
+const resolutionInflight = new Map<string, Promise<ResolveProjectWorkspaceResult>>()
 
 function resolutionCacheKey(projectId: string, preferredWorkspaceId: string | null): string {
   return `${projectId}::${preferredWorkspaceId ?? ""}`
+}
+
+function rememberResolution(
+  cacheKey: string,
+  res: ResolveProjectWorkspaceResult,
+): ResolveProjectWorkspaceResult {
+  const prev = resolutionCache.get(cacheKey)
+  const next = prev && JSON.stringify(prev) === JSON.stringify(res) ? prev : res
+  resolutionCache.set(cacheKey, next)
+  return next
+}
+
+export async function prefetchProjectWorkspaceResolution(input: {
+  projectId: string
+  projectSlug?: string | null
+  preferredWorkspaceId?: string | null
+  allowCandidateScan?: boolean
+}): Promise<ResolveProjectWorkspaceResult | null> {
+  const workspaceApi = typeof window === "undefined" ? undefined : window.electronAPI?.workspace
+  if (!workspaceApi) {
+    return null
+  }
+
+  const cacheKey = resolutionCacheKey(input.projectId, input.preferredWorkspaceId ?? null)
+  const cached = resolutionCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  const pending = resolutionInflight.get(cacheKey)
+  if (pending) {
+    return pending
+  }
+
+  const request: ResolveProjectWorkspaceRequest = {
+    projectId: input.projectId,
+    projectSlug: input.projectSlug ?? null,
+    expectedRepo: null,
+    preferredWorkspaceId: input.preferredWorkspaceId ?? null,
+    allowCandidateScan: input.allowCandidateScan ?? true,
+  }
+
+  const promise = workspaceApi
+    .resolveProject(request)
+    .then((res) => rememberResolution(cacheKey, res))
+    .finally(() => {
+      resolutionInflight.delete(cacheKey)
+    })
+  resolutionInflight.set(cacheKey, promise)
+  return promise
 }
 
 /** Drops cached resolutions for a project after relink/close/repair actions. */
@@ -88,9 +139,7 @@ export function useProjectWorkspaceResolution(
     window.electronAPI.workspace.resolveProject(req).then((res) => {
       // Preserve identity when revalidation returns the same content, so the
       // providers downstream don't see a "new" resolution on every revisit.
-      const prev = resolutionCache.get(cacheKey)
-      const next = prev && JSON.stringify(prev) === JSON.stringify(res) ? prev : res
-      resolutionCache.set(cacheKey, next)
+      const next = rememberResolution(cacheKey, res)
       if (!cancelled) setResult(next)
     }).catch((err) => {
       console.error("[useProjectWorkspaceResolution] IPC error:", err)

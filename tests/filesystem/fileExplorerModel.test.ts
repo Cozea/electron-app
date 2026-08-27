@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ExplorerItem } from '../../src/lib/fileExplorer/explorerModel'
+import { ExplorerItem } from '../../apps/desktop/src/lib/fileExplorer/explorerModel'
 
 describe('ExplorerItem', () => {
   it('caches sorted children until tree structure changes', () => {
