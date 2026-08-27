@@ -30,7 +30,6 @@ import { ProjectShellTitleBarLeft } from "@/features/projects/components/Project
 import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
 import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
 import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
-import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import {
   markWorkbenchIntentApplied,
   readWorkbenchIntentFromState,
@@ -286,26 +285,6 @@ export function ProjectWorkbenchSurface() {
       if (liveWorkbench?.tiles[workbenchIntent.focusTileId]) {
         focusWorkbenchTile(workbenchIntent.focusTileId);
       }
-      return;
-    }
-    if (workbenchIntent.projectDevApp) {
-      if (workbenchIntent.projectDevApp.projectId !== projectId) {
-        return;
-      }
-      const launch = resolveWorkbenchSelectionLaunchRequest({
-        appId: `project-devapp:${workbenchIntent.projectDevApp.publicationId}`,
-        projectDevApp: workbenchIntent.projectDevApp,
-      });
-      if (launch.action !== "openSingletonTile" || launch.tileType !== "devServer") {
-        return;
-      }
-      workbenchActions.openSingletonTile(
-        projectId,
-        activeLaneId,
-        launch.tileType,
-        launch.options,
-        activeWorkbenchId,
-      );
       return;
     }
     if (workbenchIntent.openTile) {
