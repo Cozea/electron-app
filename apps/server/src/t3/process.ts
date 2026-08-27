@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +12,7 @@ import {
   assertNodeVersionForT3Server,
   vendorT3ServerBinExists,
 } from "./paths.ts";
-import { extractPairingToken, authenticateT3Server } from "@cozea/client-runtime";
+import { extractPairingToken } from "@cozea/client-runtime";
 
 export interface StartT3ServerProcessOptions {
   readonly host?: string;
@@ -109,7 +110,7 @@ export async function startT3ServerProcess(
     }
   };
 
-  const child: ChildProcessWithoutNullStreams = spawn(
+  const child: ChildProcessByStdio<null, Readable, Readable> = spawn(
     resolveT3ServerNodeExecutable(),
     [VENDOR_T3_SERVER_BIN, "serve", "--port", String(port), "--host", host, "--no-browser", "--base-dir", baseDir],
     {

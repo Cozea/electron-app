@@ -190,7 +190,7 @@ export function dissolveOrphanPresetTabGroups(api: DockviewApi): void {
       group.api.locked = false
     }
 
-    for (const tabGroup of [...api.getTabGroups({ groupId: group.id })]) {
+    for (const tabGroup of api.getTabGroups({ groupId: group.id })) {
       if (
         tabGroup.panelIds.length <= 1 &&
         AUTO_PRESET_TAB_GROUP_LABELS.has(tabGroup.label)

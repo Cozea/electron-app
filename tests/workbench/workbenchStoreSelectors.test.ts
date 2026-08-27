@@ -7,7 +7,7 @@ import {
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
-} from '../../src/stores/useProjectWorkbenchStore'
+} from '../../apps/desktop/src/stores/useProjectWorkbenchStore'
 
 describe('workbench store selectors', () => {
   beforeEach(() => {

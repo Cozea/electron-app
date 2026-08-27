@@ -4,7 +4,7 @@ import {
   shouldExcludeGeneratedDirectory,
   shouldExcludeGeneratedFile,
 } from '../../apps/desktop/electron/services/generatedArtifactFilters'
-import { normalizeRelativePath as normalizeSyncRelativePath } from '../../src/lib/sync/pathNormalization'
+import { normalizeRelativePath as normalizeSyncRelativePath } from '../../apps/desktop/src/lib/sync/pathNormalization'
 
 describe('Generated Artifact Filters', () => {
   it('excludes known generated directories', () => {
@@ -34,4 +34,3 @@ describe('Sync Path Normalization', () => {
     expect(normalizeSyncRelativePath('src/../src/main.tsx')).toBe('src/main.tsx')
   })
 })
-
