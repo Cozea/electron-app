@@ -70,15 +70,15 @@ export function providerInstanceIdForSnapshot(snapshot: ServerProvider): Provide
 }
 
 export function providerDriverKindForSnapshot(snapshot: ServerProvider): ProviderDriverKind {
-  return snapshot.driver ?? (snapshot.provider as ProviderDriverKind)
+  return snapshot.driver ?? ((snapshot as unknown as { provider?: string }).provider as ProviderDriverKind)
 }
 
 export function deriveProviderInstanceEntries(
   providers: ReadonlyArray<ServerProvider>,
 ): ReadonlyArray<ProviderInstanceEntry> {
   return providers.map((snapshot) => {
-    const provider = snapshot.provider
     const driverKind = providerDriverKindForSnapshot(snapshot)
+    const provider = ((snapshot as unknown as { provider?: string }).provider as ProviderKind) ?? driverKind
     const instanceId = providerInstanceIdForSnapshot(snapshot)
     const defaultId = defaultInstanceIdForDriver(driverKind)
     const isDefault = instanceId === defaultId

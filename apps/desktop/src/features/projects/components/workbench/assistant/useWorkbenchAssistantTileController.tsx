@@ -47,6 +47,7 @@ import {
   newThreadId,
 } from "@/features/projects/components/assistant/lib/utils"
 import {
+  refreshAssistantRuntimeSnapshot,
   useAssistantRuntimeSync,
 } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
 import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
@@ -57,6 +58,7 @@ import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi"
 import { useT3CutoverActive } from "@/substrate/t3CutoverStore"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
 import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
+import { useTileThreadStream } from "@/substrate/useTileThreadStream"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
@@ -69,10 +71,11 @@ import {
   selectAssistantThreads,
   useStore,
 } from "@/stores/assistant-store"
-import type { ChatMessage } from "@/stores/types"
+import type { ChatMessage, Project, Thread } from "@/stores/types"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
+  flushWorkbenchStorage,
 } from "@/stores/useProjectWorkbenchStore"
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
@@ -179,7 +182,7 @@ export function useWorkbenchAssistantTileController(
   if (substrateRpcChat.enabled && substrateRpcChat.lastError) {
     console.warn("[substrate.rpcChat]", substrateRpcChat.lastError)
   }
-  const isRuntimeReady = assistantRuntime.phase === "ready"
+  const isRuntimeReady = assistantRuntime.phase === "ready" || (substrateTransport.active && t3CutoverActive)
   const isChatReady = isRuntimeReady || substrateTransport.active
   const runtimeErrorMessage =
     assistantRuntime.phase === "error"
@@ -229,6 +232,7 @@ export function useWorkbenchAssistantTileController(
   )
   const assistantProject = useStore(assistantProjectSelector)
   const thread = useStore(threadSelector)
+  const threadStream = useTileThreadStream(input.tile.threadId)
   const draftTargetKey = thread?.id ?? input.tile.id
   const composerDraft = useAssistantComposerDraftStore(
     useCallback(
@@ -309,23 +313,6 @@ export function useWorkbenchAssistantTileController(
     })
   }, [optimisticUserMessages, thread])
 
-  const visibleThread = useMemo(() => {
-    if (!thread || optimisticUserMessages.length === 0) {
-      return thread
-    }
-    const serverMessageIds = new Set(thread.messages.map((message) => message.id))
-    const pendingMessages = optimisticUserMessages.filter(
-      (message) => !serverMessageIds.has(message.id),
-    )
-    if (pendingMessages.length === 0) {
-      return thread
-    }
-    return {
-      ...thread,
-      messages: [...thread.messages, ...pendingMessages],
-    }
-  }, [optimisticUserMessages, thread])
-
   const fallbackModelSelection = useMemo(
     () =>
       resolvePreferredModelSelection({
@@ -358,6 +345,71 @@ export function useWorkbenchAssistantTileController(
     }),
     [config],
   )
+
+  const mergedThread = useMemo(() => {
+    if (!thread && !input.tile.threadId) {
+      return null
+    }
+
+    const base = thread ?? {
+      id: input.tile.threadId as any,
+      projectId: input.tile.assistantProjectId as any,
+      title: input.tile.agentLabel?.trim() || input.tile.title.trim() || "AI Agent",
+      modelSelection: selectedDispatchModelSelection,
+      runtimeMode: selectedRuntimeMode,
+      interactionMode: selectedInteractionMode,
+      session: null,
+      messages: [],
+      proposedPlans: [],
+      error: null,
+      createdAt: new Date().toISOString(),
+      latestTurn: null,
+      branch: null,
+      worktreePath: null,
+      turnDiffSummaries: [],
+      activities: [],
+    }
+
+    const streamMessages = threadStream.messages.length > 0 ? threadStream.messages : base.messages
+    const streamActivities = threadStream.activities.length > 0 ? threadStream.activities : base.activities
+    const streamPlans = threadStream.proposedPlans.length > 0 ? threadStream.proposedPlans : base.proposedPlans
+    const streamDiffs = threadStream.turnDiffSummaries.length > 0 ? threadStream.turnDiffSummaries : base.turnDiffSummaries
+
+    return {
+      ...base,
+      messages: streamMessages,
+      activities: streamActivities,
+      proposedPlans: streamPlans,
+      turnDiffSummaries: streamDiffs,
+    } as unknown as Thread
+  }, [
+    input.tile.assistantProjectId,
+    input.tile.threadId,
+    input.tile.title,
+    input.tile.agentLabel,
+    selectedDispatchModelSelection,
+    selectedInteractionMode,
+    selectedRuntimeMode,
+    thread,
+    threadStream,
+  ])
+
+  const visibleThread = useMemo(() => {
+    if (!mergedThread || optimisticUserMessages.length === 0) {
+      return mergedThread
+    }
+    const serverMessageIds = new Set(mergedThread.messages.map((message) => message.id))
+    const pendingMessages = optimisticUserMessages.filter(
+      (message) => !serverMessageIds.has(message.id),
+    )
+    if (pendingMessages.length === 0) {
+      return mergedThread
+    }
+    return {
+      ...mergedThread,
+      messages: [...mergedThread.messages, ...pendingMessages],
+    }
+  }, [mergedThread, optimisticUserMessages])
   const providerModelOptions = useMemo(() => {
     const options = getProviderModelOptions(config, selectedProvider, selectedProviderInstanceId)
     if (options.some((option) => option.slug === selectedModelSelection.model)) {
@@ -433,7 +485,7 @@ export function useWorkbenchAssistantTileController(
     selectedInteractionMode === "plan" &&
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan)
-  const hasBoundThread = Boolean(input.tile.threadId && thread)
+  const hasBoundThread = Boolean(input.tile.threadId && (thread || mergedThread))
   const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
   const chatTitle =
     thread?.title?.trim() ||
@@ -509,6 +561,7 @@ export function useWorkbenchAssistantTileController(
     if (!isRuntimeReady || !input.workspaceId || !input.projectRootPath) {
       return
     }
+    setBindingError(null)
     const workspaceRoot = input.projectRootPath
     if (bindingInFlightRef.current) {
       return
@@ -578,17 +631,47 @@ export function useWorkbenchAssistantTileController(
                   projectModelSelection: null,
                 }),
             )
-            await getOrchestration().dispatchCommand({
-              type: "project.create",
-              commandId: newCommandId(),
-              projectId,
-              title: basenameFromPath(workspaceRoot),
-              workspaceRoot,
-              defaultModelSelection,
-              createdAt: new Date().toISOString(),
-            })
+            try {
+              await getOrchestration().dispatchCommand({
+                type: "project.create",
+                commandId: newCommandId(),
+                projectId,
+                title: basenameFromPath(workspaceRoot),
+                workspaceRoot,
+                defaultModelSelection,
+                createdAt: new Date().toISOString(),
+              })
+            } catch (createError: unknown) {
+              const errMsg = createError instanceof Error ? `${createError.message} ${createError.stack ?? ""}` : JSON.stringify(createError);
+              const match = errMsg.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/);
+              if (match && match[1]) {
+                const existingId = match[1];
+                const currentReadModel = useStore.getState().orchestrationReadModel;
+                useStore.getState().syncServerReadModel({
+                  snapshotSequence: currentReadModel?.snapshotSequence ?? 0,
+                  projects: [
+                    ...(currentReadModel?.projects ?? []).filter((p) => p.id !== existingId),
+                    {
+                      id: existingId as any,
+                      title: basenameFromPath(workspaceRoot),
+                      workspaceRoot,
+                      defaultModelSelection: null,
+                      scripts: [],
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
+                    } as any,
+                  ],
+                  threads: currentReadModel?.threads ?? [],
+                  updatedAt: new Date().toISOString(),
+                });
+                nextProject = useStore.getState().projectById[existingId as any] ?? null;
+              } else {
+                throw createError;
+              }
+            }
             const nextAssistantState = useStore.getState()
             nextProject =
+              nextProject ??
               selectAssistantProjectById(nextAssistantState, projectId) ??
               selectAssistantProjectByCwd(nextAssistantState, workspaceRoot) ??
               null
@@ -777,13 +860,16 @@ export function useWorkbenchAssistantTileController(
       modelSelection: nextModelSelection,
     })
 
+    const isDifferentProvider = Boolean(thread && thread.modelSelection.provider !== nextProvider)
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
       provider: nextModelSelection.provider,
       providerInstanceId: nextModelSelection.instanceId,
       model: nextModelSelection.model,
+      ...(isDifferentProvider ? { threadId: null } : {}),
     }, input.workspaceId)
+    flushWorkbenchStorage()
 
-    if (!thread) {
+    if (!thread || isDifferentProvider) {
       return
     }
 
@@ -1074,7 +1160,7 @@ export function useWorkbenchAssistantTileController(
         // Resolve the project
         const currentAssistantState = useStore.getState()
         const workspaceRoot = input.projectRootPath
-        const currentProject =
+        let currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
             : null) ??
@@ -1082,7 +1168,59 @@ export function useWorkbenchAssistantTileController(
           null
 
         if (!currentProject) {
-          setSendError("No assistant project found. Please retry.")
+          await refreshAssistantRuntimeSnapshot().catch(() => {})
+          const refreshedState = useStore.getState()
+          currentProject =
+            (input.tile.assistantProjectId
+              ? selectAssistantProjectById(refreshedState, input.tile.assistantProjectId)
+              : null) ??
+            selectAssistantProjectByCwd(refreshedState, workspaceRoot) ??
+            null
+        }
+
+        if (!currentProject) {
+          const newId = newProjectId()
+          try {
+            await getOrchestration().dispatchCommand({
+              type: "project.create",
+              commandId: newCommandId(),
+              projectId: newId,
+              title: basenameFromPath(workspaceRoot),
+              workspaceRoot,
+              defaultModelSelection: null,
+              createdAt: new Date().toISOString(),
+            })
+            currentProject = {
+              id: newId,
+              name: basenameFromPath(workspaceRoot),
+              cwd: workspaceRoot,
+              defaultModelSelection: null,
+              expanded: true,
+              scripts: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            } satisfies Project as any
+          } catch (createErr: unknown) {
+            const errMsg = createErr instanceof Error ? `${createErr.message} ${createErr.stack ?? ""}` : JSON.stringify(createErr);
+            const match = errMsg.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/);
+            if (match && match[1]) {
+              const existingId = match[1];
+              currentProject = {
+                id: existingId as any,
+                name: basenameFromPath(workspaceRoot),
+                cwd: workspaceRoot,
+                defaultModelSelection: null,
+                expanded: true,
+                scripts: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              } satisfies Project as any
+            }
+          }
+        }
+
+        if (!currentProject) {
+          setSendError("Unable to initialize project. Please retry.")
           return
         }
 

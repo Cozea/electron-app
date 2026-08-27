@@ -19,10 +19,26 @@ import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/perfor
 
 const PERSIST_DEBOUNCE_MS = 500
 
-function createDebouncedStorage(backing: Storage): StateStorage {
+function createDebouncedStorage(backing: Storage): StateStorage & { flush: () => void } {
   let pending: string | null = null
   let pendingKey: string | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
+
+  const flush = () => {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    if (pending !== null && pendingKey !== null) {
+      backing.setItem(pendingKey, pending)
+      pending = null
+      pendingKey = null
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", flush)
+  }
 
   return {
     getItem(name) {
@@ -33,23 +49,25 @@ function createDebouncedStorage(backing: Storage): StateStorage {
       pending = value
       if (timer !== null) clearTimeout(timer)
       timer = setTimeout(() => {
-        timer = null
-        if (pending !== null && pendingKey !== null) {
-          backing.setItem(pendingKey, pending)
-          pending = null
-          pendingKey = null
-        }
+        flush()
       }, PERSIST_DEBOUNCE_MS)
     },
     removeItem(name) {
       if (timer !== null) {
         clearTimeout(timer)
         timer = null
-        pending = null
-        pendingKey = null
       }
+      pending = null
+      pendingKey = null
       backing.removeItem(name)
     },
+    flush,
+  }
+}
+
+export function flushWorkbenchStorage(): void {
+  if (typeof workbenchStorage === "object" && "flush" in workbenchStorage) {
+    (workbenchStorage as { flush: () => void }).flush()
   }
 }
 

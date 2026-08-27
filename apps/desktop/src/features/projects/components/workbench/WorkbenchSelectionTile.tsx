@@ -413,7 +413,8 @@ export function WorkbenchSelectionTile({
     const providers =
       config?.providers
         .filter((provider) => provider.enabled)
-        .map((provider) => provider.provider) ?? []
+        .map((provider) => ((provider as unknown as { provider?: string }).provider ?? provider.driver ?? provider.instanceId) as "cursor" | "codex" | "claudeAgent" | "opencode")
+        .filter((p): p is "cursor" | "codex" | "claudeAgent" | "opencode" => Boolean(p)) ?? []
 
     return providers.length > 0 ? providers : null
   }, [config])
