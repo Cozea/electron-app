@@ -93,6 +93,16 @@ export function createShadowHttpServer(
       `${new Date().toISOString()} ${method} ${requestUrl.pathname} from ${request.socket.remoteAddress ?? "unknown"}`,
     );
 
+    // Renderer runs on localhost:5183, shadow on 127.0.0.1:4783 — allow cross-origin fetches.
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    response.setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (method === "OPTIONS") {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+
     if (method === "GET" || method === "HEAD") {
       if (isReadyPath(requestUrl.pathname)) {
         const body = JSON.stringify(readyPayload);
