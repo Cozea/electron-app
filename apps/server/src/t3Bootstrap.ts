@@ -6,6 +6,10 @@ import {
 import path from "node:path";
 import type { OrchestrationBackendProxy } from "./t3/orchestrationProxy.ts";
 import { T3OrchestrationRpcProxy } from "./t3/orchestrationProxy.ts";
+import {
+  migrateCozeaAssistantUserdataToT3,
+  resolveLegacyAssistantSqlitePath,
+} from "../../../apps/desktop/electron/substrate/migrations/t3-orchestration-userdata.ts";
 import { resolveDefaultT3BaseDir, startT3ServerProcess, type T3ServerProcessHandle } from "./t3/process.ts";
 
 export interface BootstrapT3ServerOptions {
@@ -30,24 +34,24 @@ export async function bootstrapT3Server(
     process.env.COZEA_T3_SERVER_BASE_DIR?.trim() ||
     resolveDefaultT3BaseDir();
 
+  const migration = await migrateCozeaAssistantUserdataToT3({
+    legacySqlitePath: resolveLegacyAssistantSqlitePath(),
+    t3BaseDir: baseDir,
+  });
+  options.onLog?.(
+    migration.migrated
+      ? migration.eventCount && migration.eventCount > 0
+        ? `userdata migration: copied legacy sqlite (${migration.eventCount} events) and reset projections → ${baseDir}`
+        : `userdata migration: copied legacy sqlite → ${baseDir}`
+      : `userdata migration skipped: ${migration.reason}`,
+  );
+
   const processHandle = await startT3ServerProcess({ ...options, baseDir });
-  options.onLog?.(`[t3Bootstrap] process ready at ${processHandle.baseUrl}, token ${processHandle.pairingToken.slice(0, 4)}...`);
-  let accessToken: string;
-  let wsTicket: string;
-  try {
-    options.onLog?.("[t3Bootstrap] exchangeBootstrapAccessToken starting");
-    accessToken = await exchangeBootstrapAccessToken(
-      processHandle.baseUrl,
-      processHandle.pairingToken,
-    );
-    options.onLog?.("[t3Bootstrap] exchange done");
-    wsTicket = await issueWebSocketTicket(processHandle.baseUrl, accessToken);
-    options.onLog?.("[t3Bootstrap] ticket done");
-  } catch (error) {
-    options.onLog?.(`[t3Bootstrap] auth failed: ${error instanceof Error ? error.message : String(error)}`);
-    await processHandle.stop().catch(() => {});
-    throw error;
-  }
+  const accessToken = await exchangeBootstrapAccessToken(
+    processHandle.baseUrl,
+    processHandle.pairingToken,
+  );
+  const wsTicket = await issueWebSocketTicket(processHandle.baseUrl, accessToken);
   const proxy = new T3OrchestrationRpcProxy(new T3EffectRpcClient({ baseUrl: processHandle.baseUrl, wsTicket }), {
     userdataSqlitePath: path.join(baseDir, "userdata", "state.sqlite"),
   });

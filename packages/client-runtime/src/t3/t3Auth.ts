@@ -27,7 +27,6 @@ export async function exchangeBootstrapAccessToken(
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
-    signal: AbortSignal.timeout(10_000),
   });
   const json = (await response.json()) as { access_token?: string };
   if (!response.ok || !json.access_token) {
@@ -40,7 +39,6 @@ export async function issueWebSocketTicket(baseUrl: string, accessToken: string)
   const response = await fetch(`${baseUrl}/api/auth/websocket-ticket`, {
     method: "POST",
     headers: { authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(10_000),
   });
   const json = (await response.json()) as { ticket?: string };
   if (!response.ok || !json.ticket) {

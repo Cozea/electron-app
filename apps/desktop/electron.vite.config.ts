@@ -212,8 +212,6 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
-    // Env files live at the repo root (.env.local); electron-vite runs with this package as cwd.
-    envDir: repoRoot,
     plugins: [
       react({
         babel: reactCompilerEnabled
