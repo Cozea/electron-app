@@ -385,7 +385,7 @@ function mapThreadShell(
 }
 
 function buildMessageSlice(thread: OrchestrationReadModel["threads"][number]) {
-  const messages = thread.messages.map(mapMessage);
+  const messages = (thread.messages ?? []).map(mapMessage);
   return {
     ids: messages.map((message) => message.id),
     byId: Object.fromEntries(messages.map((message) => [message.id, message] as const)),
@@ -393,14 +393,15 @@ function buildMessageSlice(thread: OrchestrationReadModel["threads"][number]) {
 }
 
 function buildActivitySlice(thread: OrchestrationReadModel["threads"][number]) {
+  const activities = thread.activities ?? [];
   return {
-    ids: thread.activities.map((activity) => activity.id),
-    byId: Object.fromEntries(thread.activities.map((activity) => [activity.id, { ...activity }] as const)),
+    ids: activities.map((activity) => activity.id),
+    byId: Object.fromEntries(activities.map((activity) => [activity.id, { ...activity }] as const)),
   };
 }
 
 function buildProposedPlanSlice(thread: OrchestrationReadModel["threads"][number]) {
-  const proposedPlans = thread.proposedPlans.map(mapProposedPlan);
+  const proposedPlans = (thread.proposedPlans ?? []).map(mapProposedPlan);
   return {
     ids: proposedPlans.map((plan) => plan.id),
     byId: Object.fromEntries(proposedPlans.map((plan) => [plan.id, plan] as const)),
@@ -408,7 +409,8 @@ function buildProposedPlanSlice(thread: OrchestrationReadModel["threads"][number
 }
 
 function buildTurnDiffSlice(thread: OrchestrationReadModel["threads"][number]) {
-  const turnDiffSummaries = thread.checkpoints.map(mapTurnDiffSummary);
+  const checkpoints = thread.checkpoints ?? [];
+  const turnDiffSummaries = checkpoints.map(mapTurnDiffSummary);
   return {
     ids: turnDiffSummaries.map((summary) => summary.turnId),
     byId: Object.fromEntries(turnDiffSummaries.map((summary) => [summary.turnId, summary] as const)),
@@ -755,6 +757,7 @@ function writeThreadFromReadModel(
     };
   }
 
+  const rawMessages = thread.messages ?? [];
   if (previousRawThread?.messages !== thread.messages || !nextState.messageIdsByThreadId[thread.id]) {
     // Snapshot resyncs deserialize fresh objects, so raw identity always
     // differs even when nothing changed — and rebuilding every thread's
@@ -769,8 +772,8 @@ function writeThreadFromReadModel(
     const sliceLooksCurrent =
       existingIds !== undefined &&
       existingById !== undefined &&
-      existingIds.length === thread.messages.length &&
-      thread.messages.every((raw, index) => {
+      existingIds.length === rawMessages.length &&
+      rawMessages.every((raw, index) => {
         if (existingIds[index] !== raw.id) return false;
         const existing = existingById[raw.id];
         return (
@@ -795,12 +798,13 @@ function writeThreadFromReadModel(
     }
   }
 
+  const rawActivities = thread.activities ?? [];
   if (previousRawThread?.activities !== thread.activities || !nextState.activityIdsByThreadId[thread.id]) {
     const existingActivityIds = nextState.activityIdsByThreadId[thread.id];
     const activitySliceLooksCurrent =
       existingActivityIds !== undefined &&
-      existingActivityIds.length === thread.activities.length &&
-      existingActivityIds.at(-1) === thread.activities.at(-1)?.id;
+      existingActivityIds.length === rawActivities.length &&
+      existingActivityIds.at(-1) === rawActivities.at(-1)?.id;
     if (!activitySliceLooksCurrent) {
       const activitySlice = buildActivitySlice(thread);
       nextState = {
@@ -817,6 +821,7 @@ function writeThreadFromReadModel(
     }
   }
 
+  const rawPlans = thread.proposedPlans ?? [];
   if (
     previousRawThread?.proposedPlans !== thread.proposedPlans ||
     !nextState.proposedPlanIdsByThreadId[thread.id]
@@ -828,8 +833,8 @@ function writeThreadFromReadModel(
     const planSliceLooksCurrent =
       existingPlanIds !== undefined &&
       existingPlanById !== undefined &&
-      existingPlanIds.length === thread.proposedPlans.length &&
-      thread.proposedPlans.every((raw) => {
+      existingPlanIds.length === rawPlans.length &&
+      rawPlans.every((raw) => {
         const existing = existingPlanById[raw.id];
         return existing !== undefined && existing.updatedAt === raw.updatedAt;
       });
@@ -849,6 +854,7 @@ function writeThreadFromReadModel(
     }
   }
 
+  const rawCheckpoints = thread.checkpoints ?? [];
   if (
     previousRawThread?.checkpoints !== thread.checkpoints ||
     !nextState.turnDiffIdsByThreadId[thread.id]
@@ -861,28 +867,14 @@ function writeThreadFromReadModel(
     const diffSliceLooksCurrent =
       existingDiffIds !== undefined &&
       existingDiffById !== undefined &&
-      existingDiffIds.length === thread.checkpoints.length &&
-      thread.checkpoints.every((raw) => {
+      existingDiffIds.length === rawCheckpoints.length &&
+      rawCheckpoints.every((raw) => {
         const existing = existingDiffById[raw.turnId];
         return (
           existing !== undefined &&
-          existing.completedAt === raw.completedAt &&
           existing.status === raw.status &&
-          existing.checkpointTurnCount === raw.checkpointTurnCount &&
-          existing.checkpointRef === raw.checkpointRef &&
-          (existing.assistantMessageId ?? undefined) ===
-            (raw.assistantMessageId ?? undefined) &&
-          existing.files.length === raw.files.length &&
-          existing.files.every((existingFile, index) => {
-            const rawFile = raw.files[index];
-            return (
-              rawFile !== undefined &&
-              existingFile.path === rawFile.path &&
-              existingFile.kind === rawFile.kind &&
-              existingFile.additions === rawFile.additions &&
-              existingFile.deletions === rawFile.deletions
-            );
-          })
+          existing.completedAt === raw.completedAt &&
+          existing.checkpointRef === raw.checkpointRef
         );
       });
     if (!diffSliceLooksCurrent) {
@@ -1216,6 +1208,7 @@ useStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
 
 // Flush pending writes synchronously before page unload to prevent data loss.
 if (typeof window !== "undefined") {
+  (window as any).__cozeaAssistantStore = useStore;
   window.addEventListener("beforeunload", () => {
     debouncedPersistState.flush();
   });

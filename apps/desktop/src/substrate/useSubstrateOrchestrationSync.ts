@@ -73,7 +73,13 @@ export function useSubstrateOrchestrationSync(input: SubstrateOrchestrationSyncI
             baseUrl: session.baseUrl,
             wsTicket: session.wsTicket,
           });
-          closeClient = () => client.close();
+          const threadUnsubs: Array<() => Promise<void>> = [];
+          closeClient = async () => {
+            for (const unsub of threadUnsubs) {
+              await unsub().catch(() => {});
+            }
+            await client.close();
+          };
 
           const snapshot = await client.getArchivedShellSnapshot();
           if (!cancelled && snapshot && typeof snapshot === "object") {
@@ -83,7 +89,30 @@ export function useSubstrateOrchestrationSync(input: SubstrateOrchestrationSyncI
             }
           }
 
-          await client.subscribeShellEvents(onDomainEvent);
+          await client.subscribeShellEvents((event) => {
+            onDomainEvent(event);
+            if (event.type === "thread.created" && (event as unknown as { payload: { threadId: string } }).payload?.threadId) {
+              const thId = (event as unknown as { payload: { threadId: string } }).payload.threadId;
+              void client.subscribeThread(thId, (item) => {
+                const row = item as Record<string, unknown>;
+                if (row?.kind === "event" && row.event) {
+                  onDomainEvent(row.event as OrchestrationEvent);
+                }
+              }).then((unsub) => threadUnsubs.push(unsub));
+            }
+          });
+
+          const initialThreads = ((snapshot as Record<string, unknown>)?.threads ?? []) as Array<{ id: string }>;
+          for (const th of initialThreads) {
+            const unsub = await client.subscribeThread(th.id, (item) => {
+              const row = item as Record<string, unknown>;
+              if (row?.kind === "event" && row.event) {
+                onDomainEvent(row.event as OrchestrationEvent);
+              }
+            });
+            threadUnsubs.push(unsub);
+          }
+
           while (!cancelled) {
             await new Promise((resolve) => setTimeout(resolve, 500));
           }

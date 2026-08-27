@@ -35,6 +35,7 @@ export class T3OrchestrationClient {
   private readonly ownsClient: boolean;
   private shellUnsubscribe: (() => Promise<void>) | null = null;
   private readonly shellListeners = new Set<(event: OrchestrationEvent) => void>();
+  private readonly snapshotListeners = new Set<(snapshot: unknown) => void>();
 
   constructor(options: T3OrchestrationClientOptions) {
     if (options.client) {
@@ -53,6 +54,7 @@ export class T3OrchestrationClient {
 
   async close(): Promise<void> {
     this.shellListeners.clear();
+    this.snapshotListeners.clear();
     if (this.shellUnsubscribe) {
       await this.shellUnsubscribe();
       this.shellUnsubscribe = null;
@@ -99,7 +101,13 @@ export class T3OrchestrationClient {
       { requestCompletionMarker: true },
       (item) => {
         const row = asRecord(item);
-        if (!row || row.kind === "snapshot" || row.kind === "synchronized") {
+        if (!row || row.kind === "synchronized") {
+          return;
+        }
+        if (row.kind === "snapshot" && row.snapshot) {
+          for (const listener of this.snapshotListeners) {
+            listener(row.snapshot);
+          }
           return;
         }
         const mapped = shellEventToDomainEvent(row);
@@ -119,5 +127,24 @@ export class T3OrchestrationClient {
     return () => {
       this.shellListeners.delete(listener);
     };
+  }
+
+  async onSnapshot(listener: (snapshot: unknown) => void): Promise<() => void> {
+    this.snapshotListeners.add(listener);
+    await this.ensureShellSubscription();
+    return () => {
+      this.snapshotListeners.delete(listener);
+    };
+  }
+
+  async subscribeThread(
+    threadId: string,
+    listener: (item: unknown) => void,
+  ): Promise<() => Promise<void>> {
+    return this.client.openStream(
+      ORCHESTRATION_WS_METHODS.subscribeThread,
+      { threadId, requestCompletionMarker: true },
+      listener,
+    );
   }
 }

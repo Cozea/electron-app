@@ -73,6 +73,7 @@ export function useAssistantTileBinding({
     if (!isRuntimeReady || !workspaceId || !projectRootPath) {
       return
     }
+    setBindingError(null)
     if (bindingInFlightRef.current) {
       return
     }
