@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { NativePreviewManager } from '../../electron/services/nativePreview/NativePreviewManager'
+import { NativePreviewManager } from '../../apps/desktop/electron/services/nativePreview/NativePreviewManager'
 import type {
   NativePreviewSessionLocator,
   NativePreviewStartSessionRequest,
@@ -11,7 +11,7 @@ import type {
 
 // The manager resolves the opaque workspaceId to a real path via the workspace catalog runtime,
 // which isn't booted in this unit test. Stub it to the fixed project path the fake helper expects.
-vi.mock('../../electron/workspaces/authorization.ts', () => ({
+vi.mock('../../apps/desktop/electron/workspaces/authorization.ts', () => ({
   resolveAuthorizedWorkspaceAccess: vi.fn(async () => ({
     workspace: null,
     lane: null,

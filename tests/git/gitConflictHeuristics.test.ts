@@ -4,7 +4,7 @@ import {
   classifyConflictPath,
   hasBinarySignature,
   tryMergeJsonConflict,
-} from '../../electron/services/gitConflictHeuristics'
+} from '../../apps/desktop/electron/services/gitConflictHeuristics'
 
 describe('git conflict heuristics', () => {
   it('classifies deterministic conflict path types', () => {

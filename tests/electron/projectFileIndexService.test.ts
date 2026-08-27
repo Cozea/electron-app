@@ -9,7 +9,7 @@ import {
   applyProjectFileMetaChangeToIndex,
   clearProjectFileIndexesForTests,
   listProjectFilesFromIndex,
-} from '../../electron/services/ProjectFileIndexService'
+} from '../../apps/desktop/electron/services/ProjectFileIndexService'
 
 const tempRoots: string[] = []
 

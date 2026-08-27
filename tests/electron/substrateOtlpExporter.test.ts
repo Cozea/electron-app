@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_OTLP_LOGS_ENDPOINT } from "../../electron/substrate/constants";
+import { DEFAULT_OTLP_LOGS_ENDPOINT } from "../../apps/desktop/electron/substrate/constants";
 import {
   exportSubstrateSpanToOtlp,
   isOtlpEnabled,
   resolveOtlpEndpoint,
-} from "../../electron/substrate/obs/otlpExporter";
+} from "../../apps/desktop/electron/substrate/obs/otlpExporter";
 
 describe("substrate OTLP exporter", () => {
   afterEach(() => {

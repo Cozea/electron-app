@@ -30,7 +30,6 @@ export default defineConfig({
     environment: "node",
     include: [
       "tests/shared/assistant-contracts/*.test.ts",
-      "tests/electron/assistant-runtime/keybindings.test.ts",
     ],
   },
 });

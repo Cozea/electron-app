@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pushWithSafety } from "../../../../electron/substrate/vcs/collabPush";
+import { pushWithSafety } from "../../../../apps/desktop/electron/substrate/vcs/collabPush";
 
 describe("pushWithSafety (collab overlay)", () => {
   it("refuses mismatched feature→upstream pushes", async () => {

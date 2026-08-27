@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { executeInProcessCheckpointOp } from "../../../../electron/substrate/vcs/inProcessCheckpointOps";
+import { executeInProcessCheckpointOp } from "../../../../apps/desktop/electron/substrate/vcs/inProcessCheckpointOps";
 
 describe("inProcessCheckpointOps (phase 4b)", () => {
   it("rejects unknown methods", async () => {

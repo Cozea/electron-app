@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCodexSubstrateDriver,
   defaultCodexDriverHooks,
-} from "../../electron/substrate/providers/drivers/codexDriver";
+} from "../../apps/desktop/electron/substrate/providers/drivers/codexDriver";
 
 describe("createCodexSubstrateDriver", () => {
   it("runs the full managed snapshot pipeline with injected hooks", async () => {

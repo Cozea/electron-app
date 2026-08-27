@@ -6,7 +6,7 @@ import {
   isPathInsideRoot,
   isReadPathAllowed,
   rememberApprovedExternalReadRoot,
-} from '../../electron/fsAccess'
+} from '../../apps/desktop/electron/fsAccess'
 
 const baseSettings: AppSettings = {
   projectsDirectory: '/Users/test/Developer/Cozea',

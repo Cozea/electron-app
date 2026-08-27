@@ -10,24 +10,17 @@ function readRepoFile(relativePath: string): string {
 }
 
 describe('Cozea local chat runtime wiring', () => {
-  it('desktop boot provides the startup service layer required by the runtime program', () => {
-    const bootSource = readRepoFile('electron/assistant-runtime/boot.ts')
+  it('main process boots shadow server and T3-backed runtime monitor only', () => {
+    const mainSource = readRepoFile('apps/desktop/electron/main.ts')
 
-    expect(bootSource).toContain('Layer.provideMerge(CliConfig.layer)')
-    // makeServerProgram is the wrapper that scopes makeServerRuntimeProgram.
-    expect(bootSource).toContain('makeServerProgram(input)')
-    expect(bootSource).toContain('Effect.provide(RuntimeLayer)')
-  })
-
-  it('uses the installed Effect reactivity entrypoint that exists in this repo version', () => {
-    const sqliteClientSource = readRepoFile('electron/assistant-runtime/persistence/NodeSqliteClient.ts')
-
-    expect(sqliteClientSource).toContain('effect/unstable/reactivity/Reactivity')
-    expect(sqliteClientSource).not.toContain('effect/Reactivity')
+    expect(mainSource).not.toContain('startAssistantRuntime')
+    expect(mainSource).not.toContain('assistant-runtime/boot')
+    expect(mainSource).toContain('beginShadowHostedRuntimeMonitor')
+    expect(mainSource).toContain('ensureSubstrateShadowServerStarted')
   })
 
   it('registers the assistant runtime status bridge before app readiness flow begins', () => {
-    const mainSource = readRepoFile('electron/main.ts')
+    const mainSource = readRepoFile('apps/desktop/electron/main.ts')
 
     const registerIndex = mainSource.indexOf('registerAssistantRuntimeBridgeHandlers()')
     const whenReadyIndex = mainSource.indexOf('app.whenReady().then(() => {')
@@ -38,11 +31,10 @@ describe('Cozea local chat runtime wiring', () => {
     expect(mainSource).toContain('ipcMain.handle(ASSISTANT_RUNTIME_STATUS_HANDLE')
   })
 
-  it('drops the cached runtime fiber only when the exiting fiber is still the active one', () => {
-    const mainSource = readRepoFile('electron/main.ts')
+  it('reports inProcessAssistant false in substrate shadow status', () => {
+    const mainSource = readRepoFile('apps/desktop/electron/main.ts')
 
-    expect(mainSource).toContain('if (assistantRuntimeFiber === fiber)')
-    expect(mainSource).toContain('assistantRuntimeFiber = null')
-    expect(mainSource).toContain('scheduleAssistantRuntimeRestart()')
+    expect(mainSource).toContain('inProcessAssistant: false')
+    expect(mainSource).not.toContain('shouldStartInProcessAssistantRuntime')
   })
 })

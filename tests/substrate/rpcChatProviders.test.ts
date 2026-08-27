@@ -6,16 +6,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { SubstrateChatClient } from "@cozea/client-runtime";
-import { createShadowHttpServer } from "../../electron/substrate-shadow-server/createShadowHttpServer";
-import { attachRpcChat } from "../../electron/substrate-shadow-server/rpcChat";
+import { createShadowHttpServer } from "../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer";
+import { attachRpcChat } from "../../apps/desktop/electron/substrate-shadow-server/rpcChat";
 import {
   getSharedSubstrateNdjsonWriter,
   resetSharedSubstrateNdjsonWriterForTests,
-} from "../../electron/substrate/obs";
+} from "../../apps/desktop/electron/substrate/obs";
 import {
   bootstrapSubstrateProviderRegistry,
   SubstrateProviderDriverRegistry,
-} from "../../electron/substrate/providers";
+} from "../../apps/desktop/electron/substrate/providers";
 
 describe("rpc chat provider-backed mode (phase 2+3)", () => {
   const cleanup: Array<() => Promise<void>> = [];

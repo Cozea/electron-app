@@ -12,7 +12,7 @@
       "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
       "@cozea/effect-acp": ["./packages/effect-acp/src/client.ts"],
       "@cozea/effect-acp/*": ["./packages/effect-acp/src/*"],
-      "@/*": ["./src/*"],
+      "@/*": ["./apps/desktop/src/*"],
       "@shared/*": ["./shared/*"]
     }
   }

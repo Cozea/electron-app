@@ -1,20 +1,32 @@
-# Desktop shell (`apps/desktop`)
+# Desktop shell (`@cozea/desktop`)
 
-The Cozea Electron desktop application is the **`apps/desktop` monorepo target** for
-Phase 7 substrate work. Source for the shell lives at the repository root today:
+The Cozea Electron desktop application lives in this workspace package.
 
 | Concern | Location |
 | --- | --- |
 | Electron main / preload | `electron/` |
 | Renderer (React workbench) | `src/` |
-| Substrate server package | `apps/server/` (`@cozea/server`) |
+| Static assets | `public/` |
+| Substrate server package | `../server/` (`@cozea/server`) |
 | Shadow child entry | `electron/substrate-shadow-server/child.ts` → `@cozea/server` |
-| Build entry | `electron.vite.config.ts`, `package.json` `"main": "out/main/index.js"` |
+| Build | `electron.vite.config.ts`, `"main": "out/main/index.js"` |
+
+## Package manager
+
+Cozea uses **Bun** for the monorepo (`bun install`, `bun run dev`). The vendored upstream tree under `vendor/t3code/` keeps its own **pnpm** / `vp` toolchain and is not merged into the Bun workspace.
 
 ## Running locally
 
+From the repository root:
+
 ```bash
 bun install
+bun run dev
+```
+
+Or from this package:
+
+```bash
 bun run dev
 ```
 
@@ -22,12 +34,10 @@ bun run dev
 
 See `docs/substrate-cutover-checklist.md`. Opt out with `COZEA_SUBSTRATE_*=0`.
 
-When primary mode is on, `@cozea/server` starts the assistant runtime on
-`ws://127.0.0.1:3773` inside the shadow child; main probes readiness and exposes
-orchestration over shadow RPC at `ws://127.0.0.1:4783/rpc`.
+When primary mode is on, the shadow child hosts vendored T3 `@cozea/server` on loopback; main probes readiness and exposes orchestration over shadow RPC at `ws://127.0.0.1:4783/rpc`.
 
-## Packages
+## Related packages
 
-- `@cozea/server` — substrate server bootstrap (shadow HTTP + RPC + runtime)
+- `@cozea/server` — substrate server bootstrap (shadow HTTP + RPC)
 - `@cozea/substrate-contracts` → `@cozea/contracts`
-- `@cozea/substrate-client-runtime` → `@cozea/client-runtime` (+ orchestration client)
+- `@cozea/substrate-client-runtime` → `@cozea/client-runtime`

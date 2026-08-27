@@ -9,11 +9,11 @@ import {
   getProjectContextOptionsFromAnalysis,
   markProjectAnalysisStaleForFile,
   scanProjectRoutesFromAnalysis,
-} from '../../electron/services/ProjectAnalysisService'
+} from '../../apps/desktop/electron/services/ProjectAnalysisService'
 import {
   applyProjectFileMetaChangeToIndex,
   clearProjectFileIndexesForTests,
-} from '../../electron/services/ProjectFileIndexService'
+} from '../../apps/desktop/electron/services/ProjectFileIndexService'
 
 const tempRoots: string[] = []
 

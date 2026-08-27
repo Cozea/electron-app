@@ -7,7 +7,7 @@ import {
   registerLegacyChangesCheckpointBackend,
   resetCheckpointFacadeForTests,
   type ChangesCheckpointBackend,
-} from "../../../../electron/substrate/vcs/checkpointsFacade";
+} from "../../../../apps/desktop/electron/substrate/vcs/checkpointsFacade";
 
 function makeBackend(): ChangesCheckpointBackend {
   return {

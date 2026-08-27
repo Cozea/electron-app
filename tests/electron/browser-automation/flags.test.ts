@@ -4,7 +4,7 @@ import {
   COZEA_BROWSER_AGENT_AUTOMATION_FLAG,
   isBrowserAgentAutomationEnabled,
   readBrowserAutomationFlags,
-} from "../../../electron/browser-automation/flags"
+} from "../../../apps/desktop/electron/browser-automation/flags"
 
 describe("browser automation flags", () => {
   it("defaults to off", () => {
