@@ -2,8 +2,8 @@ import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
-import { isProjectDevAppCommand } from "../../../shared/projectDevAppCommand";
-import type { Id } from "../../../convex/_generated/dataModel";
+import { isProjectDevAppCommand } from "../../../../../shared/projectDevAppCommand";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { isProjectDevAppLogoDataUrl } from "./projectDevAppLogo";
 import type {
   AccessibleProjectDevApp,

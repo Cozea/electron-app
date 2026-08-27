@@ -9,7 +9,7 @@ import type {
   NativePreviewLaunchKind,
   NativePreviewResolveLaunchConfigRequest,
   NativePreviewResolveLaunchConfigResult,
-} from '../../../shared/nativePreviewTypes'
+} from '../../../../../shared/nativePreviewTypes'
 import { resolveAuthorizedWorkspaceAccess } from '../../workspaces/authorization.ts'
 import { NativePreviewRuntimeBridgeService } from './NativePreviewRuntimeBridgeService'
 

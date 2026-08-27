@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { Doc, Id } from "../../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../../../../convex/_generated/dataModel";
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes";
 
 export interface ProjectRouteSlugResolutionCandidate {

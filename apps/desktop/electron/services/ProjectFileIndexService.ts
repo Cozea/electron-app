@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { ListFilesResult } from '../../shared/electronApiTypes'
+import type { ListFilesResult } from '../../../../shared/electronApiTypes'
 import {
   EXCLUDED_GENERATED_DIRECTORIES,
   shouldExcludeGeneratedDirectory,

@@ -1,7 +1,7 @@
 import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import { YjsOfflineQueue } from './OfflineQueue'
 import { extractAttributionOrigin, isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
 

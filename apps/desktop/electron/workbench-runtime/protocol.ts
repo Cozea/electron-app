@@ -7,7 +7,7 @@ import type {
   TerminalOutputEvent,
   TerminalProfile,
   TerminalSnapshot,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 
 export type WorkbenchRuntimeMethod =
   | 'terminal.create'

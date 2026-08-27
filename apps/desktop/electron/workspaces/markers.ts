@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { WorkspaceMarker } from "../../shared/workspaceTypes.ts"
+import type { WorkspaceMarker } from "../../../../shared/workspaceTypes.ts"
 
 const GIT_MARKER_RELATIVE = path.join(".git", "cozea", "workspace.json")
 const PLAIN_MARKER_RELATIVE = path.join(".cozea", "workspace.json")

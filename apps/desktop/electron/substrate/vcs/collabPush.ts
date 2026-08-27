@@ -2,7 +2,7 @@
  * Phase 4d — collab overlay push through GitVcsDriver push-safety.
  */
 
-import type { GitSyncPushResult } from "../../../shared/electronApiTypes";
+import type { GitSyncPushResult } from "../../../../../shared/electronApiTypes";
 import { evaluatePushSafety } from "./pushSafety";
 
 export interface CollabPushGitRunner {

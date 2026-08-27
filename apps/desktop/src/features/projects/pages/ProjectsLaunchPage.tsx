@@ -4,8 +4,8 @@ import { useQuery } from "convex/react"
 import { FolderLibraryIcon as __FolderLibraryHugeIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { api } from "../../../../convex/_generated/api"
-import type { Id } from "../../../../convex/_generated/dataModel"
+import { api } from "../../../../../../convex/_generated/api"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import {

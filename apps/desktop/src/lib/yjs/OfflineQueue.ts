@@ -1,6 +1,6 @@
 import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 /**
  * Queued Yjs update waiting to be sent to Convex.

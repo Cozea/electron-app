@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 
-import type { PreviewCaptureScreenshotResult } from '../../shared/electronApiTypes'
+import type { PreviewCaptureScreenshotResult } from '../../../../shared/electronApiTypes'
 
 interface PreviewSnapshotRequest {
   height: number

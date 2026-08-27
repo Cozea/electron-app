@@ -17,7 +17,7 @@ import type {
   GitResolveConflictResult,
   GitSyncRestoreResult,
   GitSyncStatusResult,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from './gitAuth'
 import {
   commitAndPush as runCommitAndPushWorkflow,

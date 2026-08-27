@@ -1,4 +1,4 @@
-import type { ResolveProjectWorkspaceResult, WorkspaceResolutionAction } from "../../../../shared/workspaceTypes"
+import type { ResolveProjectWorkspaceResult, WorkspaceResolutionAction } from "../../../../../../shared/workspaceTypes"
 
 interface ProjectLike {
   _id: string

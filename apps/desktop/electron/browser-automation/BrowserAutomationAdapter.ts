@@ -7,7 +7,7 @@ import type {
   BrowserAutomationStatus,
   BrowserAutomationTileInput,
   BrowserAutomationTypeInput,
-} from "../../shared/browserAutomationTypes"
+} from "../../../../shared/browserAutomationTypes"
 import {
   COZEA_BROWSER_AGENT_AUTOMATION_FLAG,
   isBrowserAgentAutomationEnabled,

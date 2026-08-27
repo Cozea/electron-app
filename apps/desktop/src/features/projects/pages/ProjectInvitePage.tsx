@@ -2,8 +2,8 @@ import { useCallback, useMemo, useState } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { useParams } from "@/lib/router"
 
-import { api } from "../../../../convex/_generated/api"
-import type { Id } from "../../../../convex/_generated/dataModel"
+import { api } from "../../../../../../convex/_generated/api"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from "@/lib/navigation"

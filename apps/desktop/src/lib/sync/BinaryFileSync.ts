@@ -1,5 +1,5 @@
 import type { ConvexReactClient } from 'convex/react'
-import type { Id } from '../../../convex/_generated/dataModel'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 /**
  * Binary file extensions that should be synced via LFS-like blob storage

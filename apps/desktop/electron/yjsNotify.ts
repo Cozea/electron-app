@@ -15,7 +15,7 @@ export interface ExternalFileChangePayload {
   projectRootPath?: string
   relativePath?: string
   content: string
-  origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+  origin?: string | import("../../../shared/electronApiTypes").FileChangeAttribution
 }
 
 export interface ExternalFileMetaChangePayload {
@@ -23,7 +23,7 @@ export interface ExternalFileMetaChangePayload {
   workspaceId?: string
   projectRootPath?: string
   relativePath?: string
-  origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+  origin?: string | import("../../../shared/electronApiTypes").FileChangeAttribution
   isBinary: boolean
   isDirectory?: boolean
   sizeBytes: number
@@ -35,7 +35,7 @@ export interface ExternalFileDeletePayload {
   workspaceId?: string
   projectRootPath?: string
   relativePath?: string
-  origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+  origin?: string | import("../../../shared/electronApiTypes").FileChangeAttribution
 }
 
 /** Normalized absolute roots per renderer webContents id (set via yjs:setInterestRoots). */
@@ -135,7 +135,7 @@ export function notifyFileChanged(
   filePath: string,
   content: string,
   options?: {
-    origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+    origin?: string | import("../../../shared/electronApiTypes").FileChangeAttribution
     workspaceId?: string
     projectRootPath?: string
     relativePath?: string
@@ -167,7 +167,7 @@ export function notifyFileMetaChanged(payload: ExternalFileMetaChangePayload): v
 export function notifyFileDeleted(
   filePath: string,
   options?: {
-    origin?: string | import("../shared/electronApiTypes").FileChangeAttribution
+    origin?: string | import("../../../shared/electronApiTypes").FileChangeAttribution
     workspaceId?: string
     projectRootPath?: string
     relativePath?: string

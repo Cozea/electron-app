@@ -1,6 +1,6 @@
 import { BrowserWindow, clipboard, Menu, shell, type IpcMain } from 'electron'
 import path from 'node:path'
-import type { ContextMenuItem } from '../../shared/assistant-contracts/ipc'
+import type { ContextMenuItem } from '../../../../shared/assistant-contracts/ipc'
 
 interface RegisterContextMenuHandlersDeps {
   getMainWindow: () => BrowserWindow | null

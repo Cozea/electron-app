@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import type { Id } from '../../../../convex/_generated/dataModel'
+import type { Id } from '../../../../../../convex/_generated/dataModel'
 
-import { api } from '../../../../convex/_generated/api'
+import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { openProjectFileInExternalEditor } from '@/features/projects/lib/externalEditorPreference'

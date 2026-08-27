@@ -1,12 +1,12 @@
 import { BrowserWindow, WebContentsView, session, shell, type Rectangle } from 'electron'
 
-import type { WorkbenchBrowserViewState } from '../../shared/electronApiTypes'
+import type { WorkbenchBrowserViewState } from '../../../../shared/electronApiTypes'
 import type {
   BrowserFindInPageOptions,
   BrowserFindState,
   BrowserStorageScope,
   BrowserUiCommand,
-} from '../../shared/browserHostTypes'
+} from '../../../../shared/browserHostTypes'
 
 interface WorkbenchBrowserRecord {
   view: WebContentsView

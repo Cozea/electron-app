@@ -8,7 +8,7 @@ import { performance } from 'node:perf_hooks'
 
 import { autoUpdater } from 'electron-updater'
 import { Effect } from 'effect'
-import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
+import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../../../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
 

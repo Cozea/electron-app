@@ -1,7 +1,7 @@
 import type { BrowserWindow, IpcMain } from 'electron'
 
-import type { WorkbenchSessionSnapshot } from '../../shared/electronApiTypes'
-import type { NativePreviewSessionLocator } from '../../shared/nativePreviewTypes'
+import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
+import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { WorkbenchBrowserService } from '../services/WorkbenchBrowserService'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'

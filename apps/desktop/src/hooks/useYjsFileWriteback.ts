@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as Y from 'yjs'
-import type { Id } from '../../convex/_generated/dataModel'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc, RenameEntry } from '@/lib/yjs/YjsProjectDoc'
 import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'

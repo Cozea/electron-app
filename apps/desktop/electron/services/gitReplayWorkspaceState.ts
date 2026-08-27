@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import type { GitCommandResult } from '../gitRuntime'
 import { mergeTextWithGit } from '../gitRuntime'
-import type { GitSyncStatusResult } from '../../shared/electronApiTypes'
+import type { GitSyncStatusResult } from '../../../../shared/electronApiTypes'
 import { classifyConflictPath, tryMergeJsonConflict } from './gitConflictHeuristics'
 import type { RepoMetadata } from './gitSyncShared'
 

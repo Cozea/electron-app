@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react"
 
-import type { Id } from "../../../../convex/_generated/dataModel"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
 import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"

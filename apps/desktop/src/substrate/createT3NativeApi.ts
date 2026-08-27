@@ -1,5 +1,4 @@
 import type {
-  ClientOrchestrationCommand,
   ContextMenuItem,
   NativeApi,
   ServerProviderUpdatedPayload,
@@ -80,7 +79,7 @@ export function createT3NativeApi(session: T3RpcSessionHandle): NativeApi {
       resize: (input) => session.terminal.resize(input),
       clear: (input) => session.terminal.clear(input),
       restart: (input) => session.terminal.restart(input),
-      close: (input) => session.terminal.close(input),
+      close: (input) => session.terminal.closeSession(input),
       onEvent: (callback) => {
         terminalListeners.add(callback);
         return () => {

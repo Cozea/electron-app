@@ -11,7 +11,7 @@ import type {
   TerminalOutputEvent,
   TerminalProfile,
   TerminalSnapshot,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'

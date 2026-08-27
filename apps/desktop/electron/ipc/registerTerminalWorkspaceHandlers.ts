@@ -12,7 +12,7 @@
 import type { IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import type { TerminalService } from '../services/TerminalService'
-import type { CwdSpec } from '../../shared/workspaceTypes.ts'
+import type { CwdSpec } from '../../../../shared/workspaceTypes.ts'
 
 export function registerTerminalWorkspaceHandlers(
   ipcMain: IpcMain,

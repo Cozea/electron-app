@@ -6,8 +6,8 @@ import path from 'node:path'
 import type {
   WorkbenchSessionLifecycle,
   WorkbenchSessionSnapshot,
-} from '../../shared/electronApiTypes'
-import type { NativePreviewSessionLocator } from '../../shared/nativePreviewTypes'
+} from '../../../../shared/electronApiTypes'
+import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { DevServerService } from './DevServerService'
 import { TerminalService } from './TerminalService'
 import { WorkbenchBrowserService } from './WorkbenchBrowserService'

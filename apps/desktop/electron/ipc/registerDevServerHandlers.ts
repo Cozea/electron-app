@@ -2,7 +2,7 @@ import type { BrowserWindow, IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
-import type { DevServerStartOptions as SharedDevServerStartOptions, DevServerStartResult } from '../../shared/electronApiTypes'
+import type { DevServerStartOptions as SharedDevServerStartOptions, DevServerStartResult } from '../../../../shared/electronApiTypes'
 import { DevServerService } from '../services/DevServerService'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 

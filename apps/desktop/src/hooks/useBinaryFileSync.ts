@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useConvex } from 'convex/react'
-import type { Id } from '../../convex/_generated/dataModel'
-import type { FileChangeAttribution } from '../../shared/electronApiTypes'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import type { FileChangeAttribution } from '../../../../shared/electronApiTypes'
 import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
 
 function relativePathFromExternalEvent(data: {

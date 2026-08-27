@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react"
 import type {
   WorkspaceCatalogSnapshot,
   WorkspaceCatalogSnapshotEntry,
-} from "../../../../shared/workspaceTypes"
+} from "../../../../../../shared/workspaceTypes"
 
 /**
  * Renderer mirror of the pushed catalog snapshot: one IPC fetch at first use,
