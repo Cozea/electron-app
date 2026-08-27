@@ -34,49 +34,47 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
     })
   })
 
-  it("resolves a private project release to an auto-starting Dev Server singleton", () => {
+  it("resolves a published org DevApp to an isolated addTile, never Dev Server", () => {
     expect(
       resolveWorkbenchSelectionLaunchRequest({
-        appId: "project-devapp:publication_1",
-        projectDevApp: {
-          kind: "projectDevApp",
-          tileType: "devServer",
-          singleton: true,
+        appId: "org-devapp:publication_1",
+        publishedDevApp: {
+          kind: "publishedDevApp",
+          tileType: "orgDevApp",
           publicationId: "publication_1",
+          organizationId: "org_1",
+          organizationName: "Acme",
           releaseId: "release_2",
           releaseVersion: 2,
-          projectId: "project_1",
-          sourceWorkspaceId: "workspace_1",
-          sourceLaneId: "lane_1",
           name: "Inventory Console",
           framework: "vite-react",
-          devCommand: "bun run dev",
-          devPort: 5173,
+          contentHash: "a".repeat(64),
+          entryPath: "index.html",
         },
       }),
     ).toEqual({
-      action: "openSingletonTile",
-      tileType: "devServer",
+      action: "addTile",
+      tileType: "orgDevApp",
       options: {
         title: "Inventory Console",
+        url: "",
+        storageScope: "orgDevApp",
         devAppId: "publication_1",
         devAppReleaseId: "release_2",
         devAppReleaseVersion: 2,
-        devAppProjectId: "project_1",
-        devAppWorkspaceId: "workspace_1",
-        devAppLaneId: "lane_1",
-        devAppFramework: "vite-react",
-        devAppCommand: "bun run dev",
-        devAppPort: 5173,
-        autoStart: true,
+        orgDevAppPublicationId: "publication_1",
+        orgDevAppOrganizationId: "org_1",
+        orgDevAppContentHash: "a".repeat(64),
+        orgDevAppEntryPath: "index.html",
+        orgDevAppLogoDataUrl: null,
       },
     })
   })
 
-  it("rejects a project release paired with another publication id", () => {
+  it("rejects leftover localhost project DevApp launch requests", () => {
     expect(() =>
       resolveWorkbenchSelectionLaunchRequest({
-        appId: "project-devapp:publication_2",
+        appId: "project-devapp:publication_1",
         projectDevApp: {
           kind: "projectDevApp",
           tileType: "devServer",
@@ -90,7 +88,7 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
           devCommand: "bun run dev",
         },
       }),
-    ).toThrow('Invalid project DevApp launch request for "project-devapp:publication_2"')
+    ).toThrow("Localhost project DevApps are no longer a consumer launch path")
   })
 
   it("throws for unknown apps", () => {
