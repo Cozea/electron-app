@@ -51,7 +51,9 @@ async function waitForEnvironment(baseUrl: string, deadlineMs = 45_000): Promise
   const started = Date.now();
   while (Date.now() - started < deadlineMs) {
     try {
-      const response = await fetch(`${baseUrl}/.well-known/t3/environment`);
+      const response = await fetch(`${baseUrl}/.well-known/t3/environment`, {
+        signal: AbortSignal.timeout(2_000),
+      });
       if (response.ok) {
         return;
       }

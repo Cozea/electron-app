@@ -73,6 +73,7 @@ export function useAssistantTileBinding({
     if (!isRuntimeReady || !workspaceId || !projectRootPath) {
       return
     }
+    setBindingError(null)
     if (bindingInFlightRef.current) {
       return
     }
@@ -125,15 +126,45 @@ export function useAssistantTileBinding({
               tile: currentTile,
               projectModelSelection: null,
             })
-            await api.orchestration.dispatchCommand({
-              type: "project.create",
-              commandId: newCommandId(),
-              projectId: assistantProjectId,
-              title: basenameFromPath(workspaceRoot),
-              workspaceRoot,
-              defaultModelSelection,
-              createdAt: new Date().toISOString(),
-            })
+            try {
+              await api.orchestration.dispatchCommand({
+                type: "project.create",
+                commandId: newCommandId(),
+                projectId: assistantProjectId,
+                title: basenameFromPath(workspaceRoot),
+                workspaceRoot,
+                defaultModelSelection,
+                createdAt: new Date().toISOString(),
+              })
+            } catch (createError: unknown) {
+              const errMsg = createError instanceof Error ? `${createError.message} ${createError.stack ?? ""}` : JSON.stringify(createError);
+              const match = errMsg.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/);
+              if (match && match[1]) {
+                const existingId = match[1];
+                nextProjectId = existingId;
+                const currentReadModel = useStore.getState().orchestrationReadModel;
+                useStore.getState().syncServerReadModel({
+                  snapshotSequence: currentReadModel?.snapshotSequence ?? 0,
+                  projects: [
+                    ...(currentReadModel?.projects ?? []).filter((p) => p.id !== existingId),
+                    {
+                      id: existingId as any,
+                      title: basenameFromPath(workspaceRoot),
+                      workspaceRoot,
+                      defaultModelSelection: null,
+                      scripts: [],
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
+                    } as any,
+                  ],
+                  threads: currentReadModel?.threads ?? [],
+                  updatedAt: new Date().toISOString(),
+                });
+                nextProject = useStore.getState().projectById[existingId as any] ?? null;
+              } else {
+                throw createError;
+              }
+            }
           } else {
             nextProjectId = nextProject.id
           }
