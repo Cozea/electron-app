@@ -70,7 +70,7 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 - [x] `apps/server` workspace package added
 - [x] `apps/desktop/README.md` — desktop app lives at repo root today; physical move deferred
 - [x] SSH/WSL **backend pool** — `DesktopBackendPool`, WSL reconcile IPC, SSH config discovery (Phase T7)
-- [ ] Physical split `electron/` → `apps/desktop`, full Bun vs pnpm/`vp` decision
+- [x] Physical split `electron/` + `src/` → `apps/desktop` (`@cozea/desktop` workspace); Bun for Cozea, vendor/t3code keeps pnpm/vp
 
 ---
 
@@ -97,7 +97,7 @@ Companion: `docs/t3code-implementation-plan.md`, `docs/substrate-phases-complete
 9. [x] Delete `assistantWsBridge.ts` / `orchestrationRpcProxy.ts` (legacy `:3773` bridges)
 10. [x] Phase T6c event-level userdata migration — reset projection tables after legacy sqlite copy; sqlite-backed `replayEvents` on T3 proxy
 11. [x] SSH/WSL DesktopBackendPool — `DesktopBackendPool`, WSL settings IPC, SSH host discovery
-12. [ ] Physical monorepo reshape
+12. [x] Physical monorepo reshape — `apps/desktop` workspace with `electron/`, `src/`, build configs; Bun vs pnpm documented
 
 See `docs/substrate-t3-server-import-plan.md` (swarm map) and `docs/substrate-t3-build.md`.
 

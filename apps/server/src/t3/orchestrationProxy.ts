@@ -6,7 +6,7 @@ import { ORCHESTRATION_WS_METHODS } from "@cozea/contracts";
 import {
   mapSqliteRowToOrchestrationEvent,
   readOrchestrationEventsFromSqlite,
-} from "../../../../electron/substrate/migrations/t3-orchestration-projection-replay.ts";
+} from "../../../../apps/desktop/electron/substrate/migrations/t3-orchestration-projection-replay.ts";
 
 /** Minimal orchestration proxy surface shared by legacy WS and T3 RPC backends. */
 export interface OrchestrationBackendProxy {

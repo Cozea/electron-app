@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BackendReadinessAbortedError } from "../../electron/backendReadiness";
-import { waitForBackendStartupReady } from "../../electron/backendStartupReadiness";
+import { BackendReadinessAbortedError } from "../../apps/desktop/electron/backendReadiness";
+import { waitForBackendStartupReady } from "../../apps/desktop/electron/backendStartupReadiness";
 
 describe("waitForBackendStartupReady", () => {
   it("falls back to the HTTP probe when no listening signal exists", async () => {

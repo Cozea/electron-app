@@ -8,7 +8,7 @@ import * as ManagedRuntime from 'effect/ManagedRuntime'
 
 // gitRuntime imports `electron`; the catalog only touches it in
 // createForProject/cloneForProject which these tests do not exercise.
-vi.mock('../../electron/gitRuntime.ts', () => ({
+vi.mock('../../apps/desktop/electron/gitRuntime.ts', () => ({
   runGitCommand: vi.fn(async () => ({
     success: true,
     exitCode: 0,
@@ -22,8 +22,8 @@ vi.mock('../../electron/gitRuntime.ts', () => ({
 import {
   WorkspaceCatalog,
   type WorkspaceCatalogInterface,
-} from '../../electron/workspaces/WorkspaceCatalog.ts'
-import { WorkspaceCatalogMemoryLayer } from '../../electron/workspaces/WorkspaceCatalogLayer.ts'
+} from '../../apps/desktop/electron/workspaces/WorkspaceCatalog.ts'
+import { WorkspaceCatalogMemoryLayer } from '../../apps/desktop/electron/workspaces/WorkspaceCatalogLayer.ts'
 
 type CatalogRuntime = ManagedRuntime.ManagedRuntime<WorkspaceCatalog, unknown>
 

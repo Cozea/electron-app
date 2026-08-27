@@ -9,7 +9,7 @@ import { T3OrchestrationRpcProxy } from "./t3/orchestrationProxy.ts";
 import {
   migrateCozeaAssistantUserdataToT3,
   resolveLegacyAssistantSqlitePath,
-} from "../../../electron/substrate/migrations/t3-orchestration-userdata.ts";
+} from "../../../apps/desktop/electron/substrate/migrations/t3-orchestration-userdata.ts";
 import { resolveDefaultT3BaseDir, startT3ServerProcess, type T3ServerProcessHandle } from "./t3/process.ts";
 
 export interface BootstrapT3ServerOptions {

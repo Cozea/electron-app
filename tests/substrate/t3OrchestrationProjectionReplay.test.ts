@@ -8,8 +8,8 @@ import {
   mapSqliteRowToOrchestrationEvent,
   readOrchestrationEventsFromSqlite,
   resetOrchestrationProjectionsForEventReplay,
-} from "../../electron/substrate/migrations/t3-orchestration-projection-replay";
-import { migrateCozeaAssistantUserdataToT3 } from "../../electron/substrate/migrations/t3-orchestration-userdata";
+} from "../../apps/desktop/electron/substrate/migrations/t3-orchestration-projection-replay";
+import { migrateCozeaAssistantUserdataToT3 } from "../../apps/desktop/electron/substrate/migrations/t3-orchestration-userdata";
 
 function createLegacyDatabase(dbPath: string): void {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });

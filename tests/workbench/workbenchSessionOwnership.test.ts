@@ -15,7 +15,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { __workbenchSessionTestUtils } from '../../electron/services/WorkbenchSessionManager'
+import { __workbenchSessionTestUtils } from '../../apps/desktop/electron/services/WorkbenchSessionManager'
 
 describe('workbench session ownership', () => {
   it('builds session keys from opaque workspace ids without path hashing', () => {

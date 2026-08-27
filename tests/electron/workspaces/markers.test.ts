@@ -7,7 +7,7 @@ import {
   deleteWorkspaceMarker,
   readWorkspaceMarker,
   writeWorkspaceMarker,
-} from "../../../electron/workspaces/markers"
+} from "../../../apps/desktop/electron/workspaces/markers"
 
 const tempRoots: string[] = []
 

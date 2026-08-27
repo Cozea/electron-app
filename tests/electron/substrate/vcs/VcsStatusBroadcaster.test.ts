@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resetCheckpointFacadeForTests } from "../../../../electron/substrate/vcs/checkpointsFacade";
+import { resetCheckpointFacadeForTests } from "../../../../apps/desktop/electron/substrate/vcs/checkpointsFacade";
 import {
   resetVcsStatusBroadcasterForTests,
   VcsStatusBroadcaster,
-} from "../../../../electron/substrate/vcs/VcsStatusBroadcaster";
+} from "../../../../apps/desktop/electron/substrate/vcs/VcsStatusBroadcaster";
 
 describe("VcsStatusBroadcaster (phase 4c)", () => {
   afterEach(() => {
@@ -33,7 +33,7 @@ describe("VcsStatusBroadcaster (phase 4c)", () => {
     }));
 
     const { registerLegacyChangesCheckpointBackend } = await import(
-      "../../../../electron/substrate/vcs/checkpointsFacade"
+      "../../../../apps/desktop/electron/substrate/vcs/checkpointsFacade"
     );
     registerLegacyChangesCheckpointBackend({
       readChanges,

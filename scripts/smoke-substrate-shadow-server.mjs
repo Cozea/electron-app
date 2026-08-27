@@ -15,8 +15,8 @@ const port = Number.parseInt(process.env.COZEA_SUBSTRATE_SHADOW_PORT || "4783", 
 const readyPath = "/.well-known/cozea/substrate/ready";
 const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-substrate-shadow-smoke-"));
 
-const builtEntry = path.join(root, "out/main/substrate-shadow-server.js");
-const sourceEntry = path.join(root, "electron/substrate-shadow-server/child.ts");
+const builtEntry = path.join(root, "apps/desktop/out/main/substrate-shadow-server.js");
+const sourceEntry = path.join(root, "apps/desktop/electron/substrate-shadow-server/child.ts");
 const entry = fs.existsSync(builtEntry) ? builtEntry : sourceEntry;
 const runner = entry.endsWith(".ts") ? "bun" : process.execPath;
 const args = entry.endsWith(".ts") ? [entry] : [entry];

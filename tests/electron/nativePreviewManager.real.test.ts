@@ -3,7 +3,7 @@ import fs from 'node:fs'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { NativePreviewManager } from '../../electron/services/nativePreview/NativePreviewManager'
+import { NativePreviewManager } from '../../apps/desktop/electron/services/nativePreview/NativePreviewManager'
 import type {
   NativePreviewIosSimulatorDevice,
   NativePreviewStartSessionRequest,

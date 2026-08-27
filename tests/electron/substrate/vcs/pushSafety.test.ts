@@ -4,7 +4,7 @@ import {
   evaluatePushSafety,
   isAliasOfUpstreamHead,
   legacyUnsafeUpstreamRefspec,
-} from "../../../../electron/substrate/vcs/pushSafety";
+} from "../../../../apps/desktop/electron/substrate/vcs/pushSafety";
 
 describe("evaluatePushSafety (Phase 4e)", () => {
   it("allows push when local branch matches upstream head name", () => {

@@ -4,8 +4,8 @@ import WebSocket from "ws";
 
 import { ORCHESTRATION_RPC_METHODS } from "@cozea/contracts";
 
-import { attachRpcChat } from "../../electron/substrate-shadow-server/rpcChat";
-import type { OrchestrationRpcBackend } from "../../electron/substrate-shadow-server/rpcOrchestrationHandlers";
+import { attachRpcChat } from "../../apps/desktop/electron/substrate-shadow-server/rpcChat";
+import type { OrchestrationRpcBackend } from "../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers";
 
 describe("orchestration RPC handlers", () => {
   const cleanup: Array<() => Promise<void>> = [];

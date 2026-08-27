@@ -68,8 +68,8 @@ const t3SessionPath = "/.well-known/cozea/substrate/t3-rpc-session";
 const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-t3-vcs-smoke-"));
 const t3Port = pickEphemeralPort(13_773, "COZEA_T3_SERVER_PORT");
 
-const builtEntry = path.join(root, "out/main/substrate-shadow-server.js");
-const sourceEntry = path.join(root, "electron/substrate-shadow-server/child.ts");
+const builtEntry = path.join(root, "apps/desktop/out/main/substrate-shadow-server.js");
+const sourceEntry = path.join(root, "apps/desktop/electron/substrate-shadow-server/child.ts");
 const entry =
   process.env.COZEA_T3_SMOKE_USE_BUILT === "1" && fs.existsSync(builtEntry)
     ? builtEntry

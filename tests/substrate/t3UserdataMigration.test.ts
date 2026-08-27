@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   migrateCozeaAssistantUserdataToT3,
   resolveLegacyAssistantSqlitePath,
-} from "../../electron/substrate/migrations/t3-orchestration-userdata";
+} from "../../apps/desktop/electron/substrate/migrations/t3-orchestration-userdata";
 
 describe("T3 orchestration userdata migration", () => {
   const tempDirs: string[] = [];

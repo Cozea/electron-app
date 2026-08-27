@@ -6,11 +6,11 @@ import {
   DEFAULT_SUBSTRATE_SHADOW_PORT,
   SUBSTRATE_SHADOW_READY_PATH,
   SUBSTRATE_T3_PIN_SHA,
-} from "../../../electron/substrate/constants";
-import { readSubstrateFeatureFlags } from "../../../electron/substrate/flags";
-import { getSharedSubstrateNdjsonWriter } from "../../../electron/substrate/obs";
-import { createShadowHttpServer } from "../../../electron/substrate-shadow-server/createShadowHttpServer";
-import type { OrchestrationRpcBackend } from "../../../electron/substrate-shadow-server/rpcOrchestrationHandlers";
+} from "../../../apps/desktop/electron/substrate/constants";
+import { readSubstrateFeatureFlags } from "../../../apps/desktop/electron/substrate/flags";
+import { getSharedSubstrateNdjsonWriter } from "../../../apps/desktop/electron/substrate/obs";
+import { createShadowHttpServer } from "../../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer";
+import type { OrchestrationRpcBackend } from "../../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers";
 import { bootstrapT3Server, type T3ServerBootstrapHandle } from "./t3Bootstrap.ts";
 
 export interface BootstrapCozeaSubstrateServerOptions {

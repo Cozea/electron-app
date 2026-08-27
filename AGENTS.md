@@ -11,7 +11,7 @@ This is an Electron desktop application with a React frontend and Convex backend
 - **Routing**: TanStack Router
 - **Desktop**: Electron 40 + electron-vite
 - **Backend**: Convex (real-time serverless database)
-- **AI Runtime**: Vendored T3 server (`apps/server/` + `vendor/t3code`) spawned by shadow child; local Effect-TS substrate in `electron/substrate/`
+- **AI Runtime**: Vendored T3 server (`apps/server/` + `vendor/t3code`) spawned by shadow child; local Effect-TS substrate in `apps/desktop/electron/substrate/`
 - **Auth**: WorkOS (SSO, organizations)
 - **Collab**: Yjs CRDTs with E2E encryption
 - **Package manager**: Bun (always use `bun` instead of npm/yarn/pnpm)
@@ -186,32 +186,17 @@ GH_TOKEN="$(gh auth token)" bun run release
 ## Project Structure
 
 ```
-├── src/                        # React frontend
-│   ├── features/
-│   │   ├── projects/           # Core project feature
-│   │   │   ├── components/     # Project UI (creation dialog, workbench tiles, assistant chat)
-│   │   │   ├── pages/          # Workbench, Tasks, Team, Conflicts pages
-│   │   │   ├── contexts/       # Sync + Yjs context providers
-│   │   │   ├── hooks/          # Session lifecycle, git state, project access
-│   │   │   └── workspaces/     # Workspace runtime store and hosting
-│   │   └── devapps/            # Dev app registry and launchers
-│   ├── components/
-│   │   └── ui/                 # shadcn components
-│   ├── pages/                  # Top-level pages (Login, NewProject)
-│   ├── stores/                 # Zustand stores
-│   └── router/                 # TanStack Router route definitions
-├── electron/                   # Electron main process
-│   ├── substrate/              # Shadow server helpers, providers, VCS, migrations
-│   ├── ipc/                    # IPC handler registration (sync, project, session, runtime)
-│   ├── workbench-runtime/      # Terminal + dev server child process
-│   ├── runtime/                # Runtime manifest, installer, resolver
-│   └── services/               # Electron services (sync journal, encryption, etc.)
+├── apps/
+│   ├── desktop/                # Electron shell (@cozea/desktop)
+│   │   ├── electron/           # Main process, IPC, substrate, workbench-runtime
+│   │   └── src/                # React frontend (features, components, pages, router)
+│   └── server/                 # @cozea/server substrate bootstrap
 ├── convex/                     # Convex backend functions
 │   ├── schema.ts               # Database schema
 │   └── lib/                    # Shared utilities
 ├── server/                     # Fastify API gateway
 │   └── src/routes/             # AI model catalog, provider helpers, collab gateway
-├── packages/                   # Internal packages (effect-acp, effect-sql, pty)
+├── packages/                   # Internal packages (effect-acp, effect-sql, pty, contracts)
 └── shared/                     # Shared types (collab protocol, assistant contracts)
 ```
 
@@ -220,7 +205,7 @@ GH_TOKEN="$(gh auth token)" bun run release
 Project creation is a simple form — there is no conversational wizard or AI involvement at this stage.
 
 **Entry**: `/projects/new?mode=empty` or `mode=local`
-**Component**: `src/pages/NewProject.tsx` → `src/features/projects/components/CreateProjectDialog.tsx`
+**Component**: `apps/desktop/src/pages/NewProject.tsx` → `apps/desktop/src/features/projects/components/CreateProjectDialog.tsx`
 
 ### Fresh project (`mode=empty`)
 1. User fills in: project name, local folder location, optional GitHub repo toggle

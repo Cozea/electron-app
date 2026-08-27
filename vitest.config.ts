@@ -1,26 +1,29 @@
 import { defineConfig } from 'vitest/config'
 import path from 'node:path'
 
+const repoRoot = __dirname
+const desktopRoot = path.join(repoRoot, 'apps/desktop')
+
 export default defineConfig({
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@shared': path.resolve(__dirname, './shared'),
+      '@': path.resolve(desktopRoot, './src'),
+      '@shared': path.resolve(repoRoot, './shared'),
       '@cozea/assistant-contracts': path.resolve(
-        __dirname,
+        repoRoot,
         './shared/assistant-contracts/index.ts',
       ),
-      '@cozea/assistant-shared': path.resolve(__dirname, './shared/assistant-shared'),
-      '@cozea/contracts': path.resolve(__dirname, './packages/contracts/src/index.ts'),
-      '@cozea/contracts/t3/rpc': path.resolve(__dirname, './packages/contracts/src/t3/rpc.ts'),
-      '@cozea/contracts/collab': path.resolve(__dirname, './packages/contracts/src/collab.ts'),
-      '@cozea/client-runtime': path.resolve(__dirname, './packages/client-runtime/src/index.ts'),
+      '@cozea/assistant-shared': path.resolve(repoRoot, './shared/assistant-shared'),
+      '@cozea/contracts': path.resolve(repoRoot, './packages/contracts/src/index.ts'),
+      '@cozea/contracts/t3/rpc': path.resolve(repoRoot, './packages/contracts/src/t3/rpc.ts'),
+      '@cozea/contracts/collab': path.resolve(repoRoot, './packages/contracts/src/collab.ts'),
+      '@cozea/client-runtime': path.resolve(repoRoot, './packages/client-runtime/src/index.ts'),
       '@cozea/substrate-contracts': path.resolve(
-        __dirname,
+        repoRoot,
         './packages/substrate-contracts/src/index.ts',
       ),
       '@cozea/substrate-client-runtime': path.resolve(
-        __dirname,
+        repoRoot,
         './packages/substrate-client-runtime/src/index.ts',
       ),
     },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { SUBSTRATE_PROVIDERS_FLAG } from "../../electron/substrate/constants";
-import { readSubstrateProvidersFlags } from "../../electron/substrate/flags";
+import { SUBSTRATE_PROVIDERS_FLAG } from "../../apps/desktop/electron/substrate/constants";
+import { readSubstrateProvidersFlags } from "../../apps/desktop/electron/substrate/flags";
 import {
   assertManagedSnapshotTransition,
   beginManagedSnapshotRefresh,
@@ -16,7 +16,7 @@ import {
   SubstrateProviderRegistryError,
   transitionManagedSnapshot,
   type OpenCodeDriverHooks,
-} from "../../electron/substrate/providers";
+} from "../../apps/desktop/electron/substrate/providers";
 
 describe("readSubstrateProvidersFlags", () => {
   it("defaults to enabled", () => {

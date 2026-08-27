@@ -45,9 +45,10 @@ function resolveAiProxyTarget(): string {
 const aiProxyTarget = resolveAiProxyTarget()
 const reactCompilerEnabled = readBooleanFlag('VITE_FF_REACT_COMPILER', true)
 const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
+const repoRoot = path.resolve(__dirname, '../..')
 const sharedAliases: Alias[] = [
   { find: '@', replacement: path.resolve(__dirname, './src') },
-  { find: '@shared', replacement: path.resolve(__dirname, './shared') },
+  { find: '@shared', replacement: path.resolve(repoRoot, './shared') },
   {
     find: /^@effect\/sql\/(.*)$/,
     replacement: 'effect/unstable/sql/$1',
@@ -58,43 +59,43 @@ const sharedAliases: Alias[] = [
   },
   {
     find: /^@cozea\/assistant-contracts\/(.*)$/,
-    replacement: `${path.resolve(__dirname, './shared/assistant-contracts')}/$1`,
+    replacement: `${path.resolve(repoRoot, './shared/assistant-contracts')}/$1`,
   },
   {
     find: '@cozea/assistant-contracts',
-    replacement: path.resolve(__dirname, './shared/assistant-contracts'),
+    replacement: path.resolve(repoRoot, './shared/assistant-contracts'),
   },
   {
     find: /^@cozea\/assistant-shared\/(.*)$/,
-    replacement: `${path.resolve(__dirname, './shared/assistant-shared')}/$1`,
+    replacement: `${path.resolve(repoRoot, './shared/assistant-shared')}/$1`,
   },
   {
     find: '@cozea/assistant-shared',
-    replacement: path.resolve(__dirname, './shared/assistant-shared'),
+    replacement: path.resolve(repoRoot, './shared/assistant-shared'),
   },
   {
     find: /^@cozea\/effect-acp\/(.*)$/,
-    replacement: `${path.resolve(__dirname, './packages/effect-acp/src')}/$1`,
+    replacement: `${path.resolve(repoRoot, './packages/effect-acp/src')}/$1`,
   },
   {
     find: '@cozea/effect-acp',
-    replacement: path.resolve(__dirname, './packages/effect-acp/src/client.ts'),
+    replacement: path.resolve(repoRoot, './packages/effect-acp/src/client.ts'),
   },
   {
     find: /^@cozea\/contracts\/(.*)$/,
-    replacement: `${path.resolve(__dirname, './packages/contracts/src')}/$1`,
+    replacement: `${path.resolve(repoRoot, './packages/contracts/src')}/$1`,
   },
   {
     find: '@cozea/contracts',
-    replacement: path.resolve(__dirname, './packages/contracts/src/index.ts'),
+    replacement: path.resolve(repoRoot, './packages/contracts/src/index.ts'),
   },
   {
     find: /^@cozea\/client-runtime\/(.*)$/,
-    replacement: `${path.resolve(__dirname, './packages/client-runtime/src')}/$1`,
+    replacement: `${path.resolve(repoRoot, './packages/client-runtime/src')}/$1`,
   },
   {
     find: '@cozea/client-runtime',
-    replacement: path.resolve(__dirname, './packages/client-runtime/src/index.ts'),
+    replacement: path.resolve(repoRoot, './packages/client-runtime/src/index.ts'),
   },
 ]
 

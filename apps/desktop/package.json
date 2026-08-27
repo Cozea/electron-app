@@ -1,0 +1,16 @@
+{
+  "name": "@cozea/desktop",
+  "version": "0.2.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "unset ELECTRON_RUN_AS_NODE && electron-vite dev",
+    "dev:chrome-devtools": "unset ELECTRON_RUN_AS_NODE && ELECTRON_REMOTE_DEBUGGING_PORT=9222 electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "unset ELECTRON_RUN_AS_NODE && electron-vite preview",
+    "typecheck": "tsc --project tsconfig.app.json",
+    "typecheck:electron": "tsc --project tsconfig.electron.json",
+    "dist": "electron-vite build && electron-builder --config electron-builder.config.cjs",
+    "dist:local": "CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist -- --publish never"
+  }
+}
