@@ -1,69 +1,68 @@
-# Project DevApps
+# Org DevApps
 
-Project DevApps promote a Cozea project into a reusable DevApp entry on the current Mac. They appear in the DevApps Store and every project's workbench launcher, and open inside the existing Dev Server tile.
+Org DevApps publish a **built static artifact** to a Cozea-owned organization. Every org member can open every published DevApp in that org. Consumers never receive the source project, a local path, or a localhost recipe.
 
-## Current local scope
+`VITE_FF_PROJECT_DEVAPPS` defaults to `true` and hides publish / Store / launcher / settings DevApp UI when set to `false`.
 
-The shipping implementation is machine-local while WorkOS and authenticated Convex access are pending:
+## Product rules
 
-- publications and immutable release snapshots are persisted in the Electron renderer's local storage;
-- the catalog never calls the undeployed `convex/devApps.ts` functions;
-- Store cards are labeled **This Mac** so local availability is explicit;
-- records are available only to this Cozea app profile on this device and are removed with its local app data;
-- this is convenience scoping, not organization authorization or a cloud security boundary.
+- Identity is a **Cozea organization** (create + email invite, same pattern as project team). This is not WorkOS.
+- Left-nav **Publish** / **Update** only builds, packs, and uploads. It does not start a preview, navigate into Dev Server, or call `startDevServerRun`.
+- Open path is an isolated in-Cozea tile (`addTile` + `orgDevApp`), never the Dev Server singleton and never `http://localhost:*`.
+- Consumer payloads contain publication metadata + artifact identity only. They must not include `projectId`, `localPath`, git URL, `workspaceId`, `devCommand`, or `devPort`.
+- Store cards are labeled with the **organization name**. Do not describe this catalog as This Mac / Local DevApps.
 
-`VITE_FF_PROJECT_DEVAPPS` defaults to `true` and can disable all local Project DevApp UI when set to `false`.
+## Organizations
 
-## Launch lifecycle
+Convex tables:
 
-1. The project menu shows **Launch as DevApp** when no local publication exists.
-2. Cozea asks the user to choose a PNG, JPEG, or WebP logo. The renderer validates and center-crops it into a bounded square WebP before it is saved.
-3. Cozea resolves the project's local workspace and inspects its runnable web configuration, including a single runnable nested package when applicable.
-4. It verifies or prepares the command runtime, inventories project files, records the current Git revision when available, and fingerprints modified source.
-5. The local catalog creates a stable project publication and immutable release `v1` without a network write.
-6. Cozea navigates to the source project's workbench, opens the Dev Server singleton with the release's command/framework/port, prepares missing dependencies through the existing dev-server bootstrap, and auto-starts the preview.
-7. The release and its logo appear under **Local DevApps** in the Store, the conditional **Local** launcher shelf, and open tile chrome.
+- `organizations` — name, creator, timestamps
+- `organizationMembers` — `admin` | `member`
+- `organizationInvites` — email invite, pending/accepted/expired
+- `projects.organizationId` — required before a project can publish
 
-If the project has no linked local folder, no runnable command, or an ambiguous command selection, publication stops with an actionable error instead of creating an unusable release.
+Settings → **Organizations** lists every org you belong to, its members and pending invites, and every DevApp published there. Org admins invite or remove members and can archive a DevApp. Accepting an invite uses the same email match as project team.
 
-## Update lifecycle
+Every authenticated Convex function that lists or mutates an org checks membership with `requireOrgMember` / `requireOrgAdmin`. Do not trust a client-supplied “list this org” without that check.
 
-After publication, the menu action becomes **Update DevApp**. Updating repeats inspection and appends the next immutable local release while retaining the publication's chosen display name and logo. A legacy local entry that predates logo support asks for one on its next update. The stable publication points to that new active release. If its workbench tile is already mounted, Cozea replaces the stored launch metadata and restarts the local server so command, framework, port, and source changes take effect.
+## Publish lifecycle
 
-Each Local DevApp card shows its active version beside the DevApp name. The card does not expose a separate launch button or command/framework footer; DevApps are opened from Cozea's DevApp launcher. Clicking the DevApp artwork in the Store opens its local identity settings, where the user can change both its display name and artwork. The same editor is available under **Local DevApp** in the source project's settings.
+1. The project overflow menu shows **Publish** when the project has no active artifact release.
+2. If the project is not attached to an org, Cozea prompts to create one or attach an existing org you belong to.
+3. First publish always asks for a PNG, JPEG, or WebP logo. Later **Update** reuses the publication logo unless it is missing.
+4. Electron main detects a **build** script (not `dev`), runs it, and requires static `index.html` in `dist/`, `build/`, `out/`, or similar. Projects without a static UI fail with a clear error — this product does not ship `npm run dev` to the org.
+5. Main packs the output as a zip, hashes it (SHA-256), uploads it to Convex `_storage`, and inserts an immutable `devAppReleases` row. The publication points at that release.
+6. Name and logo live on the publication. Editing them in Project Settings or the identity dialog does not append a release.
 
-Display-name and artwork changes appear immediately in the Store, launcher, and Project Settings. Artwork also refreshes in sidebar and mounted-workbench glyphs through the shared publication ID. These are local metadata edits: they do not rename the source project, inspect its files, append a release, restart the Dev Server, or affect built-in DevApps.
+If the project has no linked local folder, no `build` script, or no static `index.html` after build, publish stops without writing a release.
 
-Opening the built-in Dev Server later clears Project DevApp metadata and restores the normal built-in tile identity.
+## Open lifecycle
 
-## Local data model
+1. Store **Your org** and the workbench launcher load `devApps.listMine` / `listForOrganization`.
+2. Choosing an org DevApp resolves to `addTile` + `tileType: "orgDevApp"` (`publishedDevApp` launch kind).
+3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), caches the zip under app data keyed by content hash, and navigates to `cozea-devapp://release/<hash>/index.html`.
+4. `WorkbenchBrowserService` uses a per-publication session partition (`persist:cozea-devapp-<publicationId>`) and `navigationPolicy: "orgDevApp"`. Localhost, `file:`, and `http:` are rejected. `https:` is allowed for the app’s own hosted API.
+5. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
-The persisted local catalog keeps one record per source project:
+If a mini app needs a backend, that backend is hosted. The tile is only the built UI.
 
-- a stable publication identity and active release pointer;
-- one editable display name and optimized raster logo data URL for the publication, stored only in the local catalog;
-- source project name, slug, status, and update time for Store navigation;
-- append-only releases with monotonically increasing version, detected framework, command, port, optional Git revision, source fingerprint, publisher, and creation time.
+## Settings
 
-A Project DevApp is a launch recipe, not a hosted build artifact. It continues to use the source project's linked local checkout and local Dev Server runtime.
+The Organizations settings surface is the control plane for “which orgs we are part of”:
 
-Local publications are a machine-wide launcher shelf: once at least one exists, every project shows a **Local** category alongside All, Development, and Assistant. Opening a DevApp from another project keeps the tile and layout in the destination workbench, while framework detection, terminal ownership, Dev Server state, and preview execution stay bound to the source project's opaque workspace and lane. Cozea creates an auxiliary source session with `ensureSession` only; it does not activate that session or background the destination project. If the source folder is missing or broken, launch stops and asks the user to relink it rather than falling back to the destination project's files.
+- list of orgs you belong to, with role
+- members and pending invites
+- DevApps published in the selected org (name, version, Open, Archive for admins)
 
-## Runtime safety
+Every org member sees the same DevApp list. Opening from Settings uses the same isolated tile path as the launcher.
 
-Published commands are restricted to one recognized preview `package.json` script (`dev`, `start`, `develop`, `web`, or `serve`). On open, Cozea parses the command again, verifies that the referenced script exists in the local root or nested package, and uses that package directory for dependency preparation. Other script names, mixed-case aliases, shell operators, substitutions, redirections, extra arguments, and paths outside the project are rejected.
+## Data model
 
-## Future WorkOS and Convex phase
+- `devAppPublications`: org-scoped, `visibility: "organization"`, editable name/logo, active release pointer, `projectId` is publisher-only
+- `devAppReleases`: append-only version, `artifactStorageId`, `entryPath`, `contentHash`, framework. Legacy recipe fields (`devCommand` / `devPort`) remain optional on empty historical docs and are unused by the client
 
-The `devAppPublications` / `devAppReleases` schema and `convex/devApps.ts` remain a backend scaffold only. Its functions are internal so a normal Convex deployment cannot expose caller-supplied user IDs as a privacy boundary.
+The machine-local `localProjectDevAppStore` is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must not read it.
 
-Before switching the renderer to the remote catalog:
+## Convex deploy
 
-1. configure verified WorkOS identity for the Convex client and functions;
-2. derive the user and organization server-side instead of accepting identity from the client;
-3. add organization/project authorization tests;
-4. change the internal functions to authenticated public functions;
-5. migrate or explicitly discard machine-local releases;
-6. run the production Convex dry-run and obtain approval before `bunx convex deploy`.
-
-Never use `convex dev` for this repository.
+Promote schema and functions with `bunx convex deploy`. **Never** use `convex dev` for this repository.

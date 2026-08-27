@@ -26,12 +26,16 @@ export function registerWorkbenchBrowserHandlers(
         initialUrl?: string
         storageScope?: BrowserStorageScope
         workspaceId?: string
+        partitionKey?: string
+        navigationPolicy?: 'open' | 'orgDevApp'
       },
     ): Promise<WorkbenchBrowserViewState> => {
       return service.ensureTile(options.tileId, {
         initialUrl: options.initialUrl,
         storageScope: options.storageScope,
         workspaceId: options.workspaceId,
+        partitionKey: options.partitionKey,
+        navigationPolicy: options.navigationPolicy,
       })
     },
   )

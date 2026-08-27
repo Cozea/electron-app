@@ -14,7 +14,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { useAssistantTransportState } from "@/hooks/useAssistantTransportState"
 import { useGitRemoteStatus } from "@/hooks/useGitRemoteStatus"
-import { resolveConnectionStatusPresentation } from "@/features/projects/lib/connectionStatusModel"
+import {
+  COLLAB_RECONNECT_CAP_MS,
+  resolveConnectionStatusPresentation,
+} from "@/features/projects/lib/connectionStatusModel"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
 type ProjectSyncIndicatorVariant = "sidebar" | "compact"
@@ -92,6 +95,32 @@ export function ProjectSyncIndicator({
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   )
+  const [reconnectTimedOut, setReconnectTimedOut] = useState(false)
+
+  const collabSessionStatus = syncContext?.collabSessionStatus
+  const collabEncryptionStatus = syncContext?.collabEncryptionStatus ?? null
+  const waitingOnCollab =
+    syncContext?.collaborationMode === "shared" &&
+    isOnline &&
+    !isConnected &&
+    collabSessionStatus !== "error" &&
+    collabEncryptionStatus !== "missing_for_device" &&
+    collabEncryptionStatus !== "device_revoked"
+
+  useEffect(() => {
+    if (!waitingOnCollab) {
+      setReconnectTimedOut(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setReconnectTimedOut(true)
+    }, COLLAB_RECONNECT_CAP_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [waitingOnCollab])
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -118,12 +147,20 @@ export function ProjectSyncIndicator({
         collaborationMode: syncContext?.collaborationMode,
         sharedBranch: syncContext?.sharedBranch,
         gitRemote,
+        collabSessionStatus,
+        collabSessionError: syncContext?.collabSessionError ?? null,
+        collabEncryptionStatus,
+        collabReconnectTimedOut: reconnectTimedOut,
       }),
     [
       assistantTransport,
+      collabEncryptionStatus,
+      collabSessionStatus,
       gitRemote,
       isConnected,
       isOnline,
+      reconnectTimedOut,
+      syncContext?.collabSessionError,
       syncContext?.collaborationMode,
       syncContext?.sharedBranch,
       syncContext?.syncProgress,
@@ -203,7 +240,7 @@ export function ProjectSyncIndicator({
   )
 
   if (variant === "compact") {
-    const showCompactSpinner = displayState.motion === "spin" || displayState.motion === "pulse"
+    const showCompactSpinner = displayState.motion === "spin"
     return (
       <Tooltip>
         <TooltipTrigger asChild>
