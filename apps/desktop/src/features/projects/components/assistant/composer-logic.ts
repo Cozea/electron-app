@@ -2,7 +2,7 @@ import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "slash-model" | "skill";
-export type ComposerSlashCommand = "model" | "plan" | "default";
+export type ComposerSlashCommand = "model" | "plan" | "default" | "clear" | "help";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -295,4 +295,17 @@ export function replaceTextRange(
   const safeEnd = Math.max(safeStart, Math.min(text.length, rangeEnd));
   const nextText = `${text.slice(0, safeStart)}${replacement}${text.slice(safeEnd)}`;
   return { text: nextText, cursor: safeStart + replacement.length };
+}
+
+export function filterSlashItems<T extends { label: string; description: string }>(
+  items: T[],
+  query: string,
+): T[] {
+  const normalized = query.trim().toLowerCase().replace(/^\//, "");
+  if (!normalized) return items;
+  return items.filter(
+    (item) =>
+      item.label.toLowerCase().replace(/^\//, "").includes(normalized) ||
+      item.description.toLowerCase().includes(normalized),
+  );
 }

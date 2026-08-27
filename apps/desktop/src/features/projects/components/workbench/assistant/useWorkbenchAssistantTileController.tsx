@@ -438,20 +438,20 @@ export function useWorkbenchAssistantTileController(
   )
   const latestTurnId = thread?.latestTurn?.turnId
   const pendingApprovals = useMemo(
-    () => derivePendingApprovals(thread?.activities ?? []),
-    [thread?.activities],
+    () => derivePendingApprovals(visibleThread?.activities ?? []),
+    [visibleThread?.activities],
   )
   const pendingUserInputs = useMemo(
-    () => derivePendingUserInputs(thread?.activities ?? []),
-    [thread?.activities],
+    () => derivePendingUserInputs(visibleThread?.activities ?? []),
+    [visibleThread?.activities],
   )
   const activeContextWindow = useMemo(
-    () => deriveLatestContextWindowSnapshot(thread?.activities ?? []),
-    [thread?.activities],
+    () => deriveLatestContextWindowSnapshot(visibleThread?.activities ?? []),
+    [visibleThread?.activities],
   )
   const turnCountByTurnId = useMemo(
-    () => inferCheckpointTurnCountByTurnId(thread?.turnDiffSummaries ?? []),
-    [thread?.turnDiffSummaries],
+    () => inferCheckpointTurnCountByTurnId(visibleThread?.turnDiffSummaries ?? []),
+    [visibleThread?.turnDiffSummaries],
   )
   const isRunning =
     thread?.session?.orchestrationStatus === "running" ||
