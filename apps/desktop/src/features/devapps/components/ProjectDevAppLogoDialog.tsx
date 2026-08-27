@@ -24,7 +24,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export type ProjectDevAppLogoDialogMode = "launch" | "update" | "change";
+export type ProjectDevAppLogoDialogMode = "launch" | "update" | "change" | "publish";
 
 const PROJECT_DEVAPP_NAME_MAX_LENGTH = 80;
 

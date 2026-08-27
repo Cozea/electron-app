@@ -15,14 +15,14 @@ function collectAllStrings(sets: Array<Set<string>>): Set<string> {
 
 describe('IPC Event Coverage', () => {
   it('every ipcRenderer.on event in preload is emitted via webContents.send somewhere in electron/', () => {
-    const preloadPath = path.join(REPO_ROOT, 'electron', 'preload.ts')
+    const preloadPath = path.join(REPO_ROOT, 'apps', 'desktop', 'electron', 'preload.ts')
     const subscribed = extractStringArgCalls({
       filePath: preloadPath,
       rootObjectNames: ['ipcRenderer'],
       methodNames: ['on'],
     })
 
-    const electronRoot = path.join(REPO_ROOT, 'electron')
+    const electronRoot = path.join(REPO_ROOT, 'apps', 'desktop', 'electron')
     const electronFiles = collectSourceFiles({ rootDir: electronRoot, extensions: ['.ts'] })
 
     const emittedBySend = collectAllStrings(

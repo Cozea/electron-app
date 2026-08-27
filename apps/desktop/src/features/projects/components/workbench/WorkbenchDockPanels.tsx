@@ -55,6 +55,7 @@ import {
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
+  type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
   selectProjectWorkbench,
@@ -105,6 +106,10 @@ const loadWorkbenchMobileSimulatorTile = () =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchMobileSimulatorTile,
   }))
+const loadWorkbenchOrgDevAppTile = () =>
+  import("@/features/projects/components/workbench/WorkbenchOrgDevAppTile").then((m) => ({
+    default: m.WorkbenchOrgDevAppTile,
+  }))
 const loadWorkbenchSelectionTile = () =>
   import("@/features/projects/components/workbench/WorkbenchSelectionTile").then((m) => ({
     default: m.WorkbenchSelectionTile,
@@ -118,6 +123,7 @@ const LazyWorkbenchAssistantChatTile = lazy(loadWorkbenchAssistantChatTile)
 const LazyWorkbenchBrowserTile = lazy(loadWorkbenchBrowserTile)
 const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
+const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
 const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
 const LazyChangesPage = lazy(() =>
@@ -158,6 +164,8 @@ function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
       return "Dev Server"
     case "mobileSimulator":
       return "Simulator"
+    case "orgDevApp":
+      return "DevApp"
     case "selection":
       return "Add"
     default:
@@ -170,6 +178,18 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
         <ProjectDevAppIcon publicationId={tile.devAppId} name={tile.title} />
+      </span>
+    )
+  }
+
+  if (tile?.type === "orgDevApp") {
+    return (
+      <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
+        {tile.logoDataUrl ? (
+          <img src={tile.logoDataUrl} alt="" className="size-4 object-cover" />
+        ) : (
+          <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4" />
+        )}
       </span>
     )
   }
@@ -1012,6 +1032,46 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
   )
 })
 
+const OrgDevAppPanel = memo(function OrgDevAppPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "orgDevApp") {
+    return (
+      <WorkbenchTileChrome
+        title="DevApp"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="orgDevApp"
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <Suspense fallback={changesSuspenseFallback}>
+      <LazyWorkbenchOrgDevAppTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchOrgDevAppTileRecord}
+        workspaceId={runtime.workspaceId}
+        workbenchSessionKey={runtime.workbenchSessionKey}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      />
+    </Suspense>
+  )
+})
+
 const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
@@ -1219,6 +1279,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   terminal: TerminalPanel,
   devServer: DevServerPanel,
   mobileSimulator: MobileSimulatorPanel,
+  orgDevApp: OrgDevAppPanel,
   assistantChat: AssistantChatPanel,
   changes: ChangesPanel,
 }

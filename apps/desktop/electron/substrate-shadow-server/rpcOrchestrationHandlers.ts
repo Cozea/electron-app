@@ -1,4 +1,3 @@
-import type { IncomingMessage } from "node:http";
 import type { WebSocket } from "ws";
 
 import { ORCHESTRATION_RPC_METHODS } from "@cozea/contracts";

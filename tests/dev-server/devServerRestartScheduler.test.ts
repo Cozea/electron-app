@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createDevServerRestartScheduler } from '../../src/hooks/devServerRestartScheduler'
+import { createDevServerRestartScheduler } from '../../apps/desktop/src/hooks/devServerRestartScheduler'
 
 describe('devServerRestartScheduler', () => {
   it('cancels the previous restart before scheduling a new one', () => {

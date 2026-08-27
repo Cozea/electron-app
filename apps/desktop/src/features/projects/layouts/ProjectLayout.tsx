@@ -23,7 +23,7 @@ import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRou
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution";
 import { WorkspaceRepairScreen } from "@/features/projects/workspaces/WorkspaceRepairScreen";
-import { ActiveWorkspaceProvider } from "@/features/projects/workspaces/ActiveWorkspaceContext";
+import { ActiveWorkspaceContext } from "@/features/projects/workspaces/ActiveWorkspaceContext";
 import {
   buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
@@ -37,11 +37,15 @@ import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
 } from "@/features/projects/contexts/ProjectRouteContext";
+import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
 import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
-import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
+import {
+  ensureProjectSwitchStarted,
+  markProjectSwitchPhase,
+} from "@/lib/performance/projectSwitchMarks";
 import { formatActorDisplayName } from "@/lib/userDisplay";
-import type { WorkspaceResolutionAction } from "../../../../../../shared/workspaceTypes";
+import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/projects/components/SettingsSidebar").then((module) => ({
@@ -298,7 +302,10 @@ export function ProjectLayout({
     : freshProjectBySlug?.status === "ok"
       ? freshProjectBySlug.project
       : null;
-  const project = useCachedQuery(`layout-project-${routeProjectId ?? routeSlug}`, freshProject);
+  const project = useCachedQuery(
+    layoutProjectQueryCacheKey(routeProjectId, routeSlug),
+    freshProject,
+  );
   const projectSlug = project?.slug ?? routeSlug ?? null;
   const trustedNavigationState = useMemo(
     () =>
@@ -404,23 +411,37 @@ export function ProjectLayout({
   }, [activeLane, collabBranch, routeProjectIdentity]);
 
   useEffect(() => {
-    const switchStartMark = markCozeaInteractionStart("project-switch", {
+    ensureProjectSwitchStarted({
       projectId: routeProjectId ?? null,
       projectSlug: routeSlug ?? null,
       hasWorkspace: Boolean(runtimeWorkspaceId),
     });
-    const frameId = window.requestAnimationFrame(() => {
-      markCozeaInteractionEnd("project-switch", switchStartMark, {
-        projectId: routeProjectId ?? null,
-        projectSlug: routeSlug ?? null,
-        hasWorkspace: Boolean(runtimeWorkspaceId),
-      });
+    markProjectSwitchPhase("navigate", {
+      projectId: routeProjectId ?? null,
+      projectSlug: routeSlug ?? null,
     });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
   }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
+
+  useEffect(() => {
+    if (!project?._id) return
+    markProjectSwitchPhase("project-query", {
+      projectId: String(project._id),
+    });
+  }, [project?._id]);
+
+  useEffect(() => {
+    if (workspaceResolution?.status !== "ready") return
+    markProjectSwitchPhase("workspace-resolve", {
+      workspaceId: runtimeWorkspaceId,
+    });
+  }, [runtimeWorkspaceId, workspaceResolution?.status]);
+
+  useEffect(() => {
+    if (!laneState) return
+    markProjectSwitchPhase("lane-settle", {
+      laneId: laneState.activeLaneId,
+    });
+  }, [laneState]);
 
   const displayUserName = user
     ? formatActorDisplayName(user.firstName || user.email, "User")
@@ -704,7 +725,25 @@ export function ProjectLayout({
     ],
   );
 
-  const canProvideActiveWorkspace = Boolean(project?._id && workspaceResolution?.status === "ready");
+  // Nullable on purpose: the provider must stay mounted at a stable tree
+  // position even while a cold project switch has no resolved workspace yet.
+  // Branching between "with provider" and "without provider" here changed the
+  // element type at this slot, which remounted the entire shell (sidebar,
+  // header, workbench keep-alive host) on every cold switch.
+  const activeWorkspaceValue = useMemo(() => {
+    if (!project?._id || workspaceResolution?.status !== "ready") {
+      return null;
+    }
+    return {
+      projectId: String(project._id),
+      projectSlug: project.slug,
+      projectName: effectiveProjectName,
+      workspace: workspaceResolution.workspace,
+      lane: workspaceResolution.lane,
+      runtime: workspaceResolution.runtimeIdentity,
+      collaborationScopeId: workspaceResolution.collaborationScopeId,
+    };
+  }, [effectiveProjectName, project?._id, project?.slug, workspaceResolution]);
 
   // Only block on project loading when we're actually on a project-specific
   // route. Routes like /projects/ (launch page) have no routeProjectId or
@@ -728,14 +767,6 @@ export function ProjectLayout({
     return null;
   }
 
-  if (!project && isProjectRoute) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading project...
-      </div>
-    );
-  }
-
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
       {project?._id && convexUserId ? (
@@ -748,44 +779,16 @@ export function ProjectLayout({
           routeProjectId={routeProjectId ?? null}
         />
       ) : null}
-      {canProvideActiveWorkspace && workspaceResolution?.status === "ready" && project?._id ? (
-        <ActiveWorkspaceProvider value={{
-          projectId: String(project._id),
-          projectSlug: project.slug,
-          projectName: effectiveProjectName,
-          workspace: workspaceResolution.workspace,
-          lane: workspaceResolution.lane,
-          runtime: workspaceResolution.runtimeIdentity,
-          collaborationScopeId: workspaceResolution.collaborationScopeId,
-        }}>
-          <ProjectSyncProvider
-            workspaceId={activeWorkspaceId}
-            workspaceRevision={workspaceResolution.workspace.workspaceRevision}
-            projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-            userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-            userName={displayUserName ?? "User"}
-            laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
-            projectSlug={projectSlug}
-            gitCwd={activeGitRootPath}
-            lastSyncAt={project?.lastSyncAt}
-            collaborationEnabled={collaborationEnabled}
-            activeBranch={activeBranch}
-            sharedBranch={collabBranch}
-            documentScopeId={documentScopeId}
-          >
-            {layoutContent}
-          </ProjectSyncProvider>
-        </ActiveWorkspaceProvider>
-      ) : (
+      <ActiveWorkspaceContext.Provider value={activeWorkspaceValue}>
         <ProjectSyncProvider
-          workspaceId={null}
-          workspaceRevision={1}
+          workspaceId={activeWorkspaceValue ? activeWorkspaceId : null}
+          workspaceRevision={activeWorkspaceValue?.workspace.workspaceRevision ?? 1}
           projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
           userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
           userName={displayUserName ?? "User"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
           projectSlug={projectSlug}
-          gitCwd={null}
+          gitCwd={activeWorkspaceValue ? activeGitRootPath : null}
           lastSyncAt={project?.lastSyncAt}
           collaborationEnabled={collaborationEnabled}
           activeBranch={activeBranch}
@@ -794,8 +797,7 @@ export function ProjectLayout({
         >
           {layoutContent}
         </ProjectSyncProvider>
-      )}
-
+      </ActiveWorkspaceContext.Provider>
     </ProjectRouteContext.Provider>
   );
 }

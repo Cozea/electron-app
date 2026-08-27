@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
+import { app, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -29,10 +29,26 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
 import { registerBrowserAutomationHandlers } from './ipc/registerBrowserAutomationHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
+import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
+import { ORG_DEVAPP_SCHEME } from '../../../shared/orgDevAppProtocol'
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: ORG_DEVAPP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+])
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
 import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime, waitForWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
@@ -55,7 +71,6 @@ import {
   type ShadowHostedRuntimeMonitorController,
 } from './substrate/shadowHostedRuntimeMonitor'
 import {
-  createShadowServerManager,
   getShadowServerManager,
   resolveShadowServerEntryPath,
   type ShadowServerManager,
@@ -781,7 +796,7 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
     onLog: (event, details) => logAssistantBridge(event, details),
     shouldApply: (activeGeneration) =>
       !appIsQuitting && activeGeneration === assistantRuntimeGeneration,
-    httpOrigin: ASSISTANT_RUNTIME_HTTP_URL,
+    httpOrigin: ASSISTANT_RUNTIME_HTTP_URL ?? undefined,
     shadowBaseUrl,
     preferT3Server: featureFlags.t3Server,
   })
@@ -1046,6 +1061,9 @@ let canCreateMainWindow = false
 const workbenchBrowserService = new WorkbenchBrowserService({
   getMainWindow: () => win,
 })
+const orgDevAppArtifactService = new OrgDevAppArtifactService(
+  () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
+)
 
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
@@ -1053,6 +1071,7 @@ const SETTINGS_ROUTES = new Set([
   '/settings/appearance',
   '/settings/storage',
   '/settings/tooling',
+  '/settings/organizations',
 ])
 
 function normalizeSettingsRoute(route?: string): string {
@@ -1665,6 +1684,10 @@ registerWorkbenchBrowserHandlers(ipcMain, {
   service: workbenchBrowserService,
 })
 
+registerOrgDevAppHandlers(ipcMain, {
+  service: orgDevAppArtifactService,
+})
+
 registerBrowserAutomationHandlers(ipcMain, {
   service: workbenchBrowserService,
 })
@@ -1722,6 +1745,7 @@ app.on('gpu-info-update', refreshGpuDiagnostics)
 
 app.whenReady().then(() => {
   logBootTiming('app-ready')
+  orgDevAppArtifactService.registerProtocol()
   refreshGpuDiagnostics()
   loadSyncState()
   logBootTiming('sync-state-loaded')

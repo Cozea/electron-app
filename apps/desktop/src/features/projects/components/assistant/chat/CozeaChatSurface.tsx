@@ -98,7 +98,7 @@ type ComposerSlashMenuItem =
   | {
       id: string
       type: "slash-command"
-      command: "model" | "plan" | "default"
+      command: "model" | "plan" | "default" | "clear" | "help"
       label: string
       description: string
     }
@@ -544,6 +544,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         command: "default",
         label: "/default",
         description: "Switch this thread back to chat mode",
+      },
+      {
+        id: "slash:clear",
+        type: "slash-command",
+        command: "clear",
+        label: "/clear",
+        description: "Clear composer input",
+      },
+      {
+        id: "slash:help",
+        type: "slash-command",
+        command: "help",
+        label: "/help",
+        description: "Show available commands and provider skills",
       },
     ]
     const providerItems: ComposerSlashMenuItem[] = (props.providerSnapshot?.slashCommands ?? []).map(
@@ -1015,6 +1029,25 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           composerSlashTrigger.rangeStart,
           composerSlashTrigger.rangeEnd,
           "/model ",
+        )
+        const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
+        props.onComposerChange(next.text, collapsedCursor)
+        setComposerHighlightedItemId(null)
+        return
+      }
+
+      if (item.command === "clear") {
+        props.onComposerChange("", 0)
+        setComposerHighlightedItemId(null)
+        return
+      }
+
+      if (item.command === "help") {
+        const next = replaceTextRange(
+          composerValue,
+          composerSlashTrigger.rangeStart,
+          composerSlashTrigger.rangeEnd,
+          "What commands and skills are available?",
         )
         const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
         props.onComposerChange(next.text, collapsedCursor)

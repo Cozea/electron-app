@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { DockviewPanelApi } from "dockview-react"
+
+import { useOptionalWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 
 export interface WorkbenchPanelActivityState {
   mode: "visible" | "hidden"
   visible: boolean
   focused: boolean
+}
+
+const HIDDEN_ACTIVITY_STATE: WorkbenchPanelActivityState = {
+  mode: "hidden",
+  visible: false,
+  focused: false,
 }
 
 function readPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
@@ -37,6 +45,12 @@ function subscribePanelActivity(
 export function useWorkbenchPanelActivityMode(
   panelApi: DockviewPanelApi,
 ): WorkbenchPanelActivityState {
+  // Dockview only knows about visibility inside its own layout. When the
+  // whole workbench is kept alive but CSS-hidden behind another project,
+  // panels still report visible, so native surfaces (browser views, embedded
+  // previews) would keep painting over the active project. Gate on the
+  // surface flag from the dock runtime.
+  const surfaceVisible = useOptionalWorkbenchDockRuntime()?.surfaceVisible ?? true
   const [state, setState] = useState<WorkbenchPanelActivityState>(() =>
     readPanelActivityState(panelApi),
   )
@@ -60,5 +74,10 @@ export function useWorkbenchPanelActivityMode(
     return subscribePanelActivity(panelApi, sync)
   }, [panelApi])
 
-  return state
+  return useMemo(() => {
+    if (!surfaceVisible) {
+      return HIDDEN_ACTIVITY_STATE
+    }
+    return state
+  }, [state, surfaceVisible])
 }

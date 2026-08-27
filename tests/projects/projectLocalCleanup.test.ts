@@ -74,7 +74,7 @@ describe("cleanupDeletedProjectLocally", () => {
 
   it("keeps local folders when keepLocalFiles is true", async () => {
     const { cleanupDeletedProjectLocally } = await import(
-      "../../src/features/projects/lib/projectLocalCleanup"
+      "../../apps/desktop/src/features/projects/lib/projectLocalCleanup"
     )
 
     await cleanupDeletedProjectLocally("project_1", {
@@ -90,7 +90,7 @@ describe("cleanupDeletedProjectLocally", () => {
 
   it("trashes local folders when keepLocalFiles is false", async () => {
     const { cleanupDeletedProjectLocally } = await import(
-      "../../src/features/projects/lib/projectLocalCleanup"
+      "../../apps/desktop/src/features/projects/lib/projectLocalCleanup"
     )
 
     await cleanupDeletedProjectLocally("project_1", {

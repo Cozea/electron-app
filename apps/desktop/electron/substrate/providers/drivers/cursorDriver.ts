@@ -103,6 +103,7 @@ export function createCursorSubstrateDriver(): SubstrateProviderDriver {
               replyText: result.replyText,
             };
           },
+          dispose: async () => undefined,
         },
         dispose: async () => undefined,
       };

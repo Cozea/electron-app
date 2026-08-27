@@ -46,9 +46,12 @@ describe('workbench layout persistence', () => {
       }),
     )
 
-    ;(globalThis as { window?: unknown }).window = { localStorage }
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+    }
 
-    const persistence = await import('../../src/features/projects/lib/workbenchLayoutPersistence')
+    const persistence = await import('../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence')
     persistence.ensureWorkbenchLayoutPersistenceReady()
 
     expect(
@@ -58,9 +61,12 @@ describe('workbench layout persistence', () => {
 
   it('returns null when the stored layout reset key does not match', async () => {
     const localStorage = new MemoryStorage()
-    ;(globalThis as { window?: unknown }).window = { localStorage }
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+    }
 
-    const persistence = await import('../../src/features/projects/lib/workbenchLayoutPersistence')
+    const persistence = await import('../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence')
     persistence.writePersistedWorkbenchLayout('project-1::collab', 7, {
       grid: { root: 'root-grid' },
       panels: {},

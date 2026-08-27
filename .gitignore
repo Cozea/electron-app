@@ -55,6 +55,7 @@ __pycache__/
 *.tsbuildinfo
 
 # Local scratch output
+.artifacts/
 scratch/config-snapshots/cozea@0.0.0
 scratch/config-snapshots/electron-vite
 scratch/config-snapshots/electron.vite.config.*.mjs

@@ -59,17 +59,12 @@ describe("createCodexSubstrateDriver", () => {
         deepProbe: async () => ({
           skills: [{ name: "review", path: "/skills/review.md", enabled: true }],
         }),
-        loadInventory: async (config) => {
-          const discovery = await defaultCodexDriverHooks.deepProbe?.(config);
-          const base = {
+        loadInventory: async () => {
+          return {
             models: [{ slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" }],
             skills: [] as Array<{ name: string; path: string; enabled?: boolean }>,
             slashCommands: [],
           };
-          if (discovery?.skills.length) {
-            return { ...base, skills: discovery.skills };
-          }
-          return base;
         },
       });
 

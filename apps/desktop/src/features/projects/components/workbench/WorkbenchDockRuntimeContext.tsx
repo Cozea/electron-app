@@ -35,6 +35,13 @@ export interface WorkbenchDockRuntimeValue {
    * key; read content through the getter when an effect/handler needs it.
    */
   workbenchSessionKey: string | null
+  /**
+   * False while this workbench is kept alive but CSS-hidden behind another
+   * project. Dockview panel visibility cannot see that hiding, so tiles that
+   * drive native Electron surfaces (browser views, embedded previews) must
+   * AND this into their visibility.
+   */
+  surfaceVisible: boolean
   getWorkbenchSession: () => WorkbenchSessionSnapshot | null
   getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -55,6 +62,10 @@ export function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
   return value
 }
 
+export function useOptionalWorkbenchDockRuntime(): WorkbenchDockRuntimeValue | null {
+  return useContext(WorkbenchDockRuntimeContext)
+}
+
 export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & {
   children: ReactNode
 }) {
@@ -70,6 +81,7 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       storedDevCommand: props.storedDevCommand,
       storedDevPort: props.storedDevPort,
       workbenchSessionKey: props.workbenchSessionKey,
+      surfaceVisible: props.surfaceVisible,
       getWorkbenchSession: props.getWorkbenchSession,
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
@@ -87,6 +99,7 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       props.storedDevCommand,
       props.storedDevPort,
       props.workbenchSessionKey,
+      props.surfaceVisible,
       props.getWorkbenchSession,
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,

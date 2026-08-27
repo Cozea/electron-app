@@ -168,7 +168,7 @@ These are product differentiators, not legacy:
 | Convex collab + E2E Yjs | Multiplayer editing / room keys / tombstones — T3 has no equivalent |
 | WorkOS org/auth product shape | SaaS team model |
 | Local workspace catalog (SQLite) | Multi-root identity, repair, import/copy semantics |
-| Project DevApps (This Mac) | Machine-local launch recipes on Dev Server tiles |
+| Org DevApps (artifact runtime) | Org-private built artifacts in isolated tiles, not T3 localhost recipes |
 | Dockview / multi-pane workbench | IDE shell T3 deliberately is not |
 | In-app browser / native preview / DevApps store | Cozea workbench surfaces |
 | Sync journal / durable local writes | Collab write pipeline |

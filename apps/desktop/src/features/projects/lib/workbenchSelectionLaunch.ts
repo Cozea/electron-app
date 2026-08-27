@@ -8,21 +8,22 @@ export type WorkbenchSelectionLaunchRequest = DevAppLaunchRequest
 export interface WorkbenchSelectionCreateOptions {
   title?: string
   provider?: ProviderKind
+  url?: string
+  storageScope?: import("@shared/browserHostTypes").BrowserStorageScope
   devAppId?: string | null
   devAppReleaseId?: string | null
   devAppReleaseVersion?: number | null
-  devAppProjectId?: string | null
-  devAppWorkspaceId?: string | null
-  devAppLaneId?: string | null
-  devAppFramework?: string | null
-  devAppCommand?: string | null
-  devAppPort?: number | null
+  orgDevAppPublicationId?: string | null
+  orgDevAppOrganizationId?: string | null
+  orgDevAppContentHash?: string | null
+  orgDevAppEntryPath?: string | null
+  orgDevAppLogoDataUrl?: string | null
   autoStart?: boolean
 }
 
 export interface ResolvedWorkbenchSelectionAddTileAction {
   action: "addTile"
-  tileType: "assistantChat" | "browser" | "terminal"
+  tileType: "assistantChat" | "browser" | "terminal" | "orgDevApp"
   options?: WorkbenchSelectionCreateOptions
 }
 
@@ -39,29 +40,33 @@ export type ResolvedWorkbenchSelectionLaunchAction =
 export function resolveWorkbenchSelectionLaunchRequest(
   request: WorkbenchSelectionLaunchRequest,
 ): ResolvedWorkbenchSelectionLaunchAction {
-  if (request.projectDevApp) {
-    const devApp = request.projectDevApp
-    if (request.appId !== `project-devapp:${devApp.publicationId}`) {
-      throw new Error(`Invalid project DevApp launch request for "${request.appId}"`)
+  if (request.publishedDevApp) {
+    const devApp = request.publishedDevApp
+    if (request.appId !== `org-devapp:${devApp.publicationId}`) {
+      throw new Error(`Invalid org DevApp launch request for "${request.appId}"`)
     }
 
     return {
-      action: "openSingletonTile",
-      tileType: "devServer",
+      action: "addTile",
+      tileType: "orgDevApp",
       options: {
         title: devApp.name,
+        url: "",
+        storageScope: "orgDevApp",
         devAppId: devApp.publicationId,
         devAppReleaseId: devApp.releaseId,
         devAppReleaseVersion: devApp.releaseVersion,
-        devAppProjectId: devApp.projectId,
-        devAppWorkspaceId: devApp.sourceWorkspaceId ?? null,
-        devAppLaneId: devApp.sourceLaneId ?? null,
-        devAppFramework: devApp.framework,
-        devAppCommand: devApp.devCommand,
-        devAppPort: devApp.devPort ?? null,
-        autoStart: true,
+        orgDevAppPublicationId: devApp.publicationId,
+        orgDevAppOrganizationId: devApp.organizationId,
+        orgDevAppContentHash: devApp.contentHash,
+        orgDevAppEntryPath: devApp.entryPath,
+        orgDevAppLogoDataUrl: devApp.logoDataUrl ?? null,
       },
     }
+  }
+
+  if (request.projectDevApp) {
+    throw new Error("Localhost project DevApps are no longer a consumer launch path")
   }
 
   const manifest = getDevAppById(request.appId)
@@ -107,6 +112,9 @@ export function resolveWorkbenchSelectionLaunchRequest(
         tileType: "mobileSimulator",
         options: commonOptions,
       }
+    case "publishedDevApp":
+    case "projectDevApp":
+      throw new Error(`Unsupported DevApp launch request for "${manifest.id}"`)
   }
 
   throw new Error(`Unsupported DevApp launch request for "${manifest.id}"`)
