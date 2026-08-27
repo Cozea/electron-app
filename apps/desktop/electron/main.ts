@@ -94,10 +94,13 @@ const LEGACY_PROTOCOL = 'cozea'
 const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const ASSISTANT_RUNTIME_WS_URL =
-  process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || 'ws://127.0.0.1:3773'
-const ASSISTANT_RUNTIME_WS_URL_ARG = `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
+  process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || null
+const ASSISTANT_RUNTIME_WS_URL_ARG = ASSISTANT_RUNTIME_WS_URL
+  ? `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
+  : null
 const ELECTRON_REMOTE_DEBUGGING_PORT = process.env.ELECTRON_REMOTE_DEBUGGING_PORT?.trim() || null
 const ASSISTANT_RUNTIME_HTTP_URL = (() => {
+  if (!ASSISTANT_RUNTIME_WS_URL) return null
   try {
     const parsed = new URL(ASSISTANT_RUNTIME_WS_URL)
     const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:'
@@ -493,7 +496,7 @@ type AssistantRuntimePhase = 'idle' | 'starting' | 'ready' | 'error'
 
 interface AssistantRuntimeStatus {
   phase: AssistantRuntimePhase
-  wsUrl: string
+  wsUrl: string | null
   lastError: string | null
   updatedAt: number
 }
@@ -1398,7 +1401,10 @@ function createWindow() {
       contextIsolation: true,
       backgroundThrottling: true,
       devTools: !isReleaseBuild,
-      additionalArguments: ['--cozea-window=main', ASSISTANT_RUNTIME_WS_URL_ARG],
+      additionalArguments: [
+        '--cozea-window=main',
+        ...(ASSISTANT_RUNTIME_WS_URL_ARG ? [ASSISTANT_RUNTIME_WS_URL_ARG] : []),
+      ],
     },
     // Native material effects:
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.

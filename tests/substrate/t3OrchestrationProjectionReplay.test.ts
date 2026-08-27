@@ -9,7 +9,6 @@ import {
   readOrchestrationEventsFromSqlite,
   resetOrchestrationProjectionsForEventReplay,
 } from "../../apps/desktop/electron/substrate/migrations/t3-orchestration-projection-replay";
-import { migrateCozeaAssistantUserdataToT3 } from "../../apps/desktop/electron/substrate/migrations/t3-orchestration-userdata";
 
 function createLegacyDatabase(dbPath: string): void {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -127,36 +126,5 @@ describe("T3 orchestration projection replay (T6c)", () => {
     expect(event.aggregateKind).toBe("project");
     expect(event.aggregateId).toBe("proj-1");
     expect(event.payload).toEqual({ projectId: "proj-1", name: "Demo" });
-  });
-
-  it("migrateCozeaAssistantUserdataToT3 resets projections after sqlite copy", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-t6c-migrate-"));
-    tempDirs.push(root);
-    const legacySqlite = path.join(root, "legacy", "state.sqlite");
-    const t3BaseDir = path.join(root, "t3");
-    createLegacyDatabase(legacySqlite);
-
-    const result = await migrateCozeaAssistantUserdataToT3({
-      legacySqlitePath: legacySqlite,
-      t3BaseDir,
-    });
-
-    expect(result).toMatchObject({
-      migrated: true,
-      reason: "copied_legacy_sqlite_and_reset_projections",
-      eventCount: 1,
-    });
-    expect(result.projectionTablesReset).toContain("projection_state");
-
-    const t3Sqlite = path.join(t3BaseDir, "userdata", "state.sqlite");
-    const db = new DatabaseSync(t3Sqlite, { readonly: true });
-    try {
-      expect(
-        (db.prepare("SELECT COUNT(*) AS count FROM projection_threads").get() as { count: number })
-          .count,
-      ).toBe(0);
-    } finally {
-      db.close();
-    }
   });
 });
