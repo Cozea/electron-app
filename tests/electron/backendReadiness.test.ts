@@ -4,7 +4,7 @@ import {
   BackendReadinessAbortedError,
   isBackendReadinessAborted,
   waitForHttpReady,
-} from "../../electron/backendReadiness";
+} from "../../apps/desktop/electron/backendReadiness";
 
 describe("waitForHttpReady", () => {
   it("returns once the backend serves the requested readiness path", async () => {

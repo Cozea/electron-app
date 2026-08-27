@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { forwardIntegrationOAuthCallback } from '../../electron/integrationOAuthCallback'
+import { forwardIntegrationOAuthCallback } from '../../apps/desktop/electron/integrationOAuthCallback'
 
 describe('integration OAuth callback forwarding', () => {
   afterEach(() => {

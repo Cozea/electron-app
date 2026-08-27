@@ -4,7 +4,7 @@ import {
   evaluateAutomationNavigateUrl,
   isLoopbackHostname,
   normalizeAutomationUrlInput,
-} from "../../../electron/browser-automation/urlPolicy"
+} from "../../../apps/desktop/electron/browser-automation/urlPolicy"
 
 describe("browser automation url policy", () => {
   it("accepts loopback http(s) URLs", () => {

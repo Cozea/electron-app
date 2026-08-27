@@ -1,0 +1,5 @@
+[alias]
+"@cozea/client-runtime" = "./packages/client-runtime/src/index.ts"
+"@cozea/client-runtime/*" = "./packages/client-runtime/src/*"
+"@cozea/contracts" = "./packages/contracts/src/index.ts"
+"@cozea/contracts/*" = "./packages/contracts/src/*"

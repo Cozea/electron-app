@@ -4,7 +4,7 @@ import {
   resolveTerminalResize,
   sanitizeTerminalHistoryChunk,
   shouldSuppressResizeHistoryChunk,
-} from '../../electron/workbench-runtime/terminalHost'
+} from '../../apps/desktop/electron/workbench-runtime/terminalHost'
 
 describe('workbench runtime terminal history', () => {
   it('preserves ANSI styling while stripping terminal query responses from replay history', () => {

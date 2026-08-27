@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyIpcChannel } from "../../electron/substrate/ipcAllowlist";
-import {
-  readSubstrateFeatureFlags,
-  shouldStartInProcessAssistantRuntime,
-} from "../../electron/substrate/flags";
-import { listSubstrateRemoteEnvironmentStubs } from "../../electron/substrate/remoteEnvironments";
+import { classifyIpcChannel } from "../../apps/desktop/electron/substrate/ipcAllowlist";
+import { readSubstrateFeatureFlags } from "../../apps/desktop/electron/substrate/flags";
+import { listSubstrateRemoteEnvironmentStubs } from "../../apps/desktop/electron/substrate/remoteEnvironments";
 
 describe("substrate feature flags (phases 5–6)", () => {
   it("defaults all spine flags on", () => {
@@ -16,20 +13,10 @@ describe("substrate feature flags (phases 5–6)", () => {
     expect(flags.vcs).toBe(true);
     expect(flags.primary).toBe(true);
     expect(flags.obsNdjson).toBe(true);
-    expect(shouldStartInProcessAssistantRuntime(flags)).toBe(false);
+    expect(flags.t3Server).toBe(true);
   });
 
-  it("skips in-process runtime when primary + shadow are enabled", () => {
-    const flags = readSubstrateFeatureFlags({
-      COZEA_SUBSTRATE_SHADOW_SERVER: "1",
-      COZEA_SUBSTRATE_PRIMARY: "1",
-    });
-    expect(flags.primary).toBe(true);
-    expect(flags.shadowServer.enabled).toBe(true);
-    expect(shouldStartInProcessAssistantRuntime(flags)).toBe(false);
-  });
-
-  it("status features report inProcessAssistant false under primary+shadow", () => {
+  it("status features always report inProcessAssistant false (legacy runtime removed)", () => {
     const flags = readSubstrateFeatureFlags({
       COZEA_SUBSTRATE_SHADOW_SERVER: "1",
       COZEA_SUBSTRATE_PRIMARY: "1",
@@ -43,20 +30,12 @@ describe("substrate feature flags (phases 5–6)", () => {
       vcs: flags.vcs,
       primary: flags.primary,
       obsNdjson: flags.obsNdjson,
-      inProcessAssistant: shouldStartInProcessAssistantRuntime(flags),
+      inProcessAssistant: false,
     };
     expect(features.inProcessAssistant).toBe(false);
     expect(features.primary).toBe(true);
     expect(features.obsNdjson).toBe(true);
     expect(flags.shadowServer.enabled).toBe(true);
-  });
-
-  it("keeps in-process runtime if primary is on but shadow is off", () => {
-    const flags = readSubstrateFeatureFlags({
-      COZEA_SUBSTRATE_PRIMARY: "1",
-      COZEA_SUBSTRATE_SHADOW_SERVER: "0",
-    });
-    expect(shouldStartInProcessAssistantRuntime(flags)).toBe(true);
   });
 });
 
@@ -75,9 +54,10 @@ describe("phase 5 ipc allowlist", () => {
 });
 
 describe("phase 6 remote environment stubs", () => {
-  it("lists local as ready and remotes as placeholders", () => {
+  it("lists local primary and non-ready SSH/WSL catalog entries", () => {
     const envs = listSubstrateRemoteEnvironmentStubs();
-    expect(envs.some((env) => env.kind === "local" && env.ready)).toBe(true);
+    expect(envs.some((env) => env.kind === "local")).toBe(true);
     expect(envs.some((env) => env.kind === "ssh" && !env.ready)).toBe(true);
+    expect(envs.some((env) => env.kind === "wsl")).toBe(true);
   });
 });

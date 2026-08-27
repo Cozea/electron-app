@@ -4,8 +4,8 @@ import {
   BrowserAutomationAdapter,
   type BrowserAutomationHost,
   type BrowserAutomationHostTileState,
-} from "../../../electron/browser-automation/BrowserAutomationAdapter"
-import { buildSnapshotScript } from "../../../electron/browser-automation/pageScripts"
+} from "../../../apps/desktop/electron/browser-automation/BrowserAutomationAdapter"
+import { buildSnapshotScript } from "../../../apps/desktop/electron/browser-automation/pageScripts"
 
 function makeHost(
   initial: BrowserAutomationHostTileState[],

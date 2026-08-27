@@ -52,7 +52,7 @@ Upstream pin: `docs/substrate-t3-pin.md` (`a3a8cbd6…`).
 ## Usage (flagged)
 
 ```ts
-import { bootstrapSubstrateProviderRegistry } from "../electron/substrate/providers";
+import { bootstrapSubstrateProviderRegistry } from "../apps/desktop/electron/substrate/providers";
 
 const registry = bootstrapSubstrateProviderRegistry({
   env: process.env, // requires COZEA_SUBSTRATE_PROVIDERS=1

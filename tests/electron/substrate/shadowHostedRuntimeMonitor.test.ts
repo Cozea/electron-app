@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { waitForShadowHostedAssistantRuntimeReady } from "../../../electron/substrate/shadowHostedRuntimeMonitor";
+import { waitForShadowHostedAssistantRuntimeReady } from "../../../apps/desktop/electron/substrate/shadowHostedRuntimeMonitor";
 
 describe("shadowHostedRuntimeMonitor", () => {
   it("resolves when readiness endpoint returns ok", async () => {

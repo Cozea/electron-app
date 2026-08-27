@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
-const electronDir = path.join(root, 'electron')
+const electronDir = path.join(root, 'apps/desktop/electron')
 const preloadPath = path.join(electronDir, 'preload.ts')
 const mainPath = path.join(electronDir, 'main.ts')
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseRepoIdentity,
   repoIdentitiesMatch,
-} from '../../electron/workspaces/repoIdentity.ts'
+} from '../../apps/desktop/electron/workspaces/repoIdentity.ts'
 
 describe('parseRepoIdentity', () => {
   it('parses https github remotes', () => {

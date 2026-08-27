@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { SubstrateChatClient, readSubstrateRpcChatFlags } from "@cozea/client-runtime";
-import { createShadowHttpServer } from "../../electron/substrate-shadow-server/createShadowHttpServer";
+import { createShadowHttpServer } from "../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer";
 
 describe("readSubstrateRpcChatFlags", () => {
   it("defaults on", () => {

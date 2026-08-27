@@ -4,7 +4,7 @@ import {
   buildOrphanWorktreePromptMessage,
   createDetectionOnlyWorktreeOrphanHooks,
   getOrphanedWorktreePathForThread,
-} from "../../../../electron/substrate/vcs/worktreeOrphanCleanup";
+} from "../../../../apps/desktop/electron/substrate/vcs/worktreeOrphanCleanup";
 
 describe("worktree orphan cleanup (Phase 4e / Track B alignment)", () => {
   it("returns orphan path when only the deleted thread owns it", () => {

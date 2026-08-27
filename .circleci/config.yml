@@ -33,6 +33,24 @@ commands:
             source "$BASH_ENV"
             bun install --frozen-lockfile
 
+  checkout_with_t3_submodule:
+    steps:
+      - checkout:
+          submodules: true
+      - run:
+          name: Sync vendor/t3code pin
+          command: node scripts/vendor/sync-t3code-pin.mjs
+
+  install_pnpm_unix:
+    steps:
+      - run:
+          name: Enable pnpm (corepack)
+          command: |
+            set -euo pipefail
+            corepack enable
+            corepack prepare pnpm@10.28.2 --activate
+            pnpm --version
+
 jobs:
   verify:
     executor: linux-node
@@ -86,11 +104,6 @@ jobs:
             source "$BASH_ENV"
             bun run typecheck
       - run:
-          name: Typecheck assistant runtime
-          command: |
-            source "$BASH_ENV"
-            bun run typecheck:assistant-runtime
-      - run:
           name: Typecheck electron
           command: |
             source "$BASH_ENV"
@@ -105,6 +118,22 @@ jobs:
           command: |
             source "$BASH_ENV"
             bun run test
+
+  t3_vendor_spike:
+    docker:
+      - image: cimg/node:22.16
+    resource_class: large
+    environment:
+      CI: "true"
+    steps:
+      - checkout_with_t3_submodule
+      - install_pnpm_unix
+      - run:
+          name: T3 server boot spike
+          command: |
+            set -euo pipefail
+            node --version
+            node scripts/spike-t3-server-boot.mjs
 
   build_macos_universal:
     macos:
@@ -245,12 +274,20 @@ workflows:
           filters:
             branches:
               ignore: main
+      - t3_vendor_spike:
+          filters:
+            branches:
+              ignore: main
 
   main-release:
     jobs:
       - verify:
           context:
             - cozea-release
+          filters:
+            branches:
+              only: main
+      - t3_vendor_spike:
           filters:
             branches:
               only: main

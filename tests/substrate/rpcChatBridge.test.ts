@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { SubstrateChatClient } from "@cozea/client-runtime";
-import * as orchestrationChat from "../../electron/substrate-shadow-server/rpcOrchestrationChat";
-import { attachRpcChat } from "../../electron/substrate-shadow-server/rpcChat";
+import * as orchestrationChat from "../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationChat";
+import { attachRpcChat } from "../../apps/desktop/electron/substrate-shadow-server/rpcChat";
 
 describe("rpc chat assistant WS bridge (primary mode)", () => {
   const cleanup: Array<() => Promise<void>> = [];
