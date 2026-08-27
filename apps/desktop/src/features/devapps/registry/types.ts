@@ -16,6 +16,7 @@ export type DevAppWorkbenchTileTarget =
   | "browser"
   | "devServer"
   | "mobileSimulator"
+  | "orgDevApp"
   | "terminal"
 
 export interface DevAppIconDefinition {
@@ -75,6 +76,22 @@ export interface ProjectDevAppLaunchSpec extends DevAppLaunchBase {
   devPort?: number
 }
 
+export interface PublishedDevAppLaunchSpec extends DevAppLaunchBase {
+  kind: "publishedDevApp"
+  tileType: "orgDevApp"
+  singleton?: false
+  publicationId: string
+  organizationId: string
+  organizationName: string
+  releaseId: string
+  releaseVersion: number
+  name: string
+  framework: string
+  contentHash: string
+  entryPath: string
+  logoDataUrl?: string | null
+}
+
 export interface DevAppMobileSimulatorLaunchSpec extends DevAppLaunchBase {
   kind: "mobileSimulator"
   tileType: "mobileSimulator"
@@ -92,6 +109,7 @@ export type DevAppLaunchSpec =
   | DevAppBrowserLaunchSpec
   | DevAppDevServerLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
+  | PublishedDevAppLaunchSpec
   | ProjectDevAppLaunchSpec
   | DevAppTerminalLaunchSpec
 
@@ -108,5 +126,6 @@ export interface DevAppManifest {
 
 export interface DevAppLaunchRequest {
   appId: string
+  publishedDevApp?: PublishedDevAppLaunchSpec
   projectDevApp?: ProjectDevAppLaunchSpec
 }

@@ -15,11 +15,6 @@ import type { ProjectDeleteConfirmOptions } from '@/features/projects/components
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { DevAppIcon } from '@/features/devapps/components/DevAppIcon'
-import {
-  updateLocalProjectDevAppIdentity,
-  useLocalProjectDevAppEntry,
-} from '@/features/devapps/localProjectDevAppStore'
-import { buildProjectDevAppManifest } from '@/features/devapps/projectDevAppManifest'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -83,12 +78,13 @@ export function ProjectSettingsPage({
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const { project } = useAccessibleProject()
-  const localProjectDevApp = useLocalProjectDevAppEntry(
-    featureFlags.projectDevApps ? project?._id : null,
+  const orgDevApp = useQuery(
+    api.devApps.getForProject,
+    featureFlags.projectDevApps && project?._id && convexUserId
+      ? { userId: convexUserId, projectId: project._id }
+      : 'skip',
   )
-  const localProjectDevAppManifest = localProjectDevApp
-    ? buildProjectDevAppManifest(localProjectDevApp)
-    : null
+  const updateDevAppIdentity = useMutation(api.devApps.updateIdentity)
   const { t } = useTranslation()
 
   const updateProject = useMutation(api.projects.update)
@@ -818,7 +814,7 @@ export function ProjectSettingsPage({
                     </div>
                   </section>
                 </div>
-                {localProjectDevApp && localProjectDevAppManifest ? (
+                {orgDevApp?.hasArtifact ? (
                   <div className="min-w-0 space-y-6">
                     <section>
                       <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
@@ -829,19 +825,23 @@ export function ProjectSettingsPage({
                           type="button"
                           aria-label={t('appStore.page.editDevAppFor').replace(
                             '{name}',
-                            localProjectDevApp.publication.name,
+                            orgDevApp.name,
                           )}
-                          className={cn(
-                            'group relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-muted',
-                            localProjectDevAppManifest.store.accentClassName,
-                          )}
+                          className="group relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-500/18 via-violet-500/8 to-transparent outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-muted"
                           style={{ borderRadius: 40 * 0.22265625 }}
                           onClick={() => {
                             setDevAppIdentityError(null)
                             setShowDevAppIdentityDialog(true)
                           }}
                         >
-                          <DevAppIcon app={localProjectDevAppManifest} />
+                          <DevAppIcon
+                            app={{
+                              name: orgDevApp.name,
+                              icon: orgDevApp.logoDataUrl
+                                ? { src: orgDevApp.logoDataUrl, alt: `${orgDevApp.name} DevApp` }
+                                : { src: '', alt: `${orgDevApp.name} DevApp` },
+                            }}
+                          />
                           <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                             <HugeiconsIcon icon={__EditHugeIcon} className="size-3.5" />
                           </span>
@@ -849,11 +849,13 @@ export function ProjectSettingsPage({
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-1.5">
                             <p className="truncate text-xs font-medium text-foreground">
-                              {localProjectDevApp.publication.name}
+                              {orgDevApp.name}
                             </p>
-                            <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-                              V{localProjectDevApp.activeRelease.version}
-                            </span>
+                            {orgDevApp.version != null ? (
+                              <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                                V{orgDevApp.version}
+                              </span>
+                            ) : null}
                           </div>
                           <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                             {t('settings.desc.localDevAppIdentity')}
@@ -1209,14 +1211,14 @@ export function ProjectSettingsPage({
         errorMessage={deleteError}
       />
 
-      {localProjectDevApp && showDevAppIdentityDialog ? (
+      {orgDevApp && showDevAppIdentityDialog ? (
         <Suspense fallback={null}>
           <LazyProjectDevAppLogoDialog
             open
-            projectName={localProjectDevApp.publication.name}
+            projectName={orgDevApp.name}
             mode="change"
-            initialName={localProjectDevApp.publication.name}
-            initialLogoDataUrl={localProjectDevApp.logoDataUrl}
+            initialName={orgDevApp.name}
+            initialLogoDataUrl={orgDevApp.logoDataUrl ?? undefined}
             saveErrorMessage={devAppIdentityError}
             onOpenChange={(open) => {
               setShowDevAppIdentityDialog(open)
@@ -1225,21 +1227,25 @@ export function ProjectSettingsPage({
               }
             }}
             onConfirm={(logoDataUrl, devAppName) => {
-              try {
-                updateLocalProjectDevAppIdentity(
-                  localProjectDevApp.publication._id,
-                  devAppName,
-                  logoDataUrl,
-                )
-                setShowDevAppIdentityDialog(false)
-                setDevAppIdentityError(null)
-              } catch (error) {
-                setDevAppIdentityError(
-                  error instanceof Error
-                    ? error.message
-                    : t('projectDevApp.logo.error'),
-                )
-              }
+              void (async () => {
+                if (!convexUserId) return
+                try {
+                  await updateDevAppIdentity({
+                    userId: convexUserId,
+                    publicationId: orgDevApp.publicationId,
+                    name: devAppName,
+                    logoDataUrl,
+                  })
+                  setShowDevAppIdentityDialog(false)
+                  setDevAppIdentityError(null)
+                } catch (error) {
+                  setDevAppIdentityError(
+                    error instanceof Error
+                      ? error.message
+                      : t('projectDevApp.logo.error'),
+                  )
+                }
+              })()
             }}
           />
         </Suspense>

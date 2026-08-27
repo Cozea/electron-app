@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
+import { app, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -29,6 +29,7 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
+import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
 import { registerBrowserAutomationHandlers } from './ipc/registerBrowserAutomationHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
@@ -64,6 +65,8 @@ import {
 import { DevServerService } from './services/DevServerService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
 import { WorkbenchBrowserService } from './services/WorkbenchBrowserService'
+import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
+import { ORG_DEVAPP_SCHEME } from '../../../shared/orgDevAppProtocol'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
 import { listAvailableEditors, openFileInExternalEditor } from './lib/externalEditor'
 
@@ -78,6 +81,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // In dev/build, main bundle lives in `<repo>/out/main`, renderer in `<repo>/out/renderer`.
 // So APP_ROOT must point to the repo root (dev) or `app.asar` root (prod), not the `out/` folder.
 process.env.APP_ROOT = path.join(__dirname, '..', '..')
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: ORG_DEVAPP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+])
 
 // Dev server URL from electron-vite (ELECTRON_RENDERER_URL) or legacy var
 export const VITE_DEV_SERVER_URL =
@@ -1046,6 +1062,9 @@ let canCreateMainWindow = false
 const workbenchBrowserService = new WorkbenchBrowserService({
   getMainWindow: () => win,
 })
+const orgDevAppArtifactService = new OrgDevAppArtifactService(
+  () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
+)
 
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
@@ -1053,6 +1072,7 @@ const SETTINGS_ROUTES = new Set([
   '/settings/appearance',
   '/settings/storage',
   '/settings/tooling',
+  '/settings/organizations',
 ])
 
 function normalizeSettingsRoute(route?: string): string {
@@ -1665,6 +1685,10 @@ registerWorkbenchBrowserHandlers(ipcMain, {
   service: workbenchBrowserService,
 })
 
+registerOrgDevAppHandlers(ipcMain, {
+  service: orgDevAppArtifactService,
+})
+
 registerBrowserAutomationHandlers(ipcMain, {
   service: workbenchBrowserService,
 })
@@ -1722,6 +1746,7 @@ app.on('gpu-info-update', refreshGpuDiagnostics)
 
 app.whenReady().then(() => {
   logBootTiming('app-ready')
+  orgDevAppArtifactService.registerProtocol()
   refreshGpuDiagnostics()
   loadSyncState()
   logBootTiming('sync-state-loaded')

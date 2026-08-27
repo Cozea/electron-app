@@ -96,6 +96,7 @@ export type WorkbenchTileType =
   | "terminal"
   | "devServer"
   | "mobileSimulator"
+  | "orgDevApp"
   | "selection"
   | "tasks"
   | "assistantChat"
@@ -153,6 +154,17 @@ export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   autoStart?: boolean
 }
 
+export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
+  type: "orgDevApp"
+  url: string
+  publicationId: string
+  organizationId?: string
+  contentHash: string
+  entryPath: string
+  logoDataUrl?: string | null
+  storageScope?: BrowserStorageScope
+}
+
 export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
   type: "mobileSimulator"
   viewMode?: WorkbenchRuntimePreviewViewMode
@@ -191,6 +203,7 @@ export type WorkbenchTile =
   | WorkbenchTerminalTile
   | WorkbenchDevServerTile
   | WorkbenchMobileSimulatorTile
+  | WorkbenchOrgDevAppTile
   | WorkbenchSelectionTile
   | WorkbenchTasksTile
   | WorkbenchAssistantChatTile
@@ -242,6 +255,11 @@ export interface CreateTileOptions {
   devAppFramework?: string | null
   devAppCommand?: string | null
   devAppPort?: number | null
+  orgDevAppPublicationId?: string | null
+  orgDevAppOrganizationId?: string | null
+  orgDevAppContentHash?: string | null
+  orgDevAppEntryPath?: string | null
+  orgDevAppLogoDataUrl?: string | null
   autoStart?: boolean
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
@@ -360,6 +378,7 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   terminal: "Terminal",
   devServer: "Dev Server",
   mobileSimulator: "Mobile Simulator",
+  orgDevApp: "DevApp",
   selection: "Add DevApp",
   tasks: "Tasks",
   assistantChat: "AI Agent",
@@ -630,6 +649,23 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     }
     case "mobileSimulator":
       return { id, type, title, createdAt }
+    case "orgDevApp":
+      return {
+        id,
+        type,
+        title,
+        createdAt,
+        url: options.url?.trim() || "",
+        publicationId:
+          normalizeOptionalString(options.orgDevAppPublicationId) ||
+          normalizeOptionalString(options.devAppId) ||
+          "",
+        organizationId: normalizeOptionalString(options.orgDevAppOrganizationId),
+        contentHash: normalizeOptionalString(options.orgDevAppContentHash) || "",
+        entryPath: normalizeOptionalString(options.orgDevAppEntryPath) || "index.html",
+        logoDataUrl: options.orgDevAppLogoDataUrl ?? null,
+        storageScope: options.storageScope ?? "orgDevApp",
+      }
     case "selection":
       return {
         id,
@@ -1065,7 +1101,9 @@ export function buildWorkbenchLaneSidebarSummary(
       favicon: tile.type === "browser" ? (tile.favicon ?? null) : null,
       ...(tile.type === "devServer" && tile.devAppId
         ? { devAppId: tile.devAppId }
-        : {}),
+        : tile.type === "orgDevApp" && tile.publicationId
+          ? { devAppId: tile.publicationId }
+          : {}),
     })
   }
 

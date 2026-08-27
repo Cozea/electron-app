@@ -2,7 +2,7 @@ import type { DevAppLauncherGroup, DevAppManifest } from "@/features/devapps/reg
 
 export type WorkbenchSelectionCategory =
   | "All"
-  | "Local"
+  | "Your org"
   | DevAppLauncherGroup
   | "Explore DevApps Store";
 
@@ -14,28 +14,28 @@ const BASE_CATEGORIES: WorkbenchSelectionCategory[] = [
 ];
 
 export function getWorkbenchSelectionCategories(
-  hasLocalDevApps: boolean,
+  hasOrgDevApps: boolean,
 ): WorkbenchSelectionCategory[] {
-  if (!hasLocalDevApps) {
+  if (!hasOrgDevApps) {
     return BASE_CATEGORIES;
   }
 
-  return ["All", "Local", ...BASE_CATEGORIES.slice(1)];
+  return ["All", "Your org", ...BASE_CATEGORIES.slice(1)];
 }
 
 export function resolveWorkbenchSelectionCategory(
   category: WorkbenchSelectionCategory,
-  hasLocalDevApps: boolean,
+  hasOrgDevApps: boolean,
 ): WorkbenchSelectionCategory {
-  return category === "Local" && !hasLocalDevApps ? "All" : category;
+  return category === "Your org" && !hasOrgDevApps ? "All" : category;
 }
 
 export function filterWorkbenchSelectionApps(
   apps: DevAppManifest[],
   category: WorkbenchSelectionCategory,
 ): DevAppManifest[] {
-  if (category === "Local") {
-    return apps.filter((app) => app.launch.kind === "projectDevApp");
+  if (category === "Your org") {
+    return apps.filter((app) => app.launch.kind === "publishedDevApp");
   }
 
   if (category === "Development" || category === "Assistant") {

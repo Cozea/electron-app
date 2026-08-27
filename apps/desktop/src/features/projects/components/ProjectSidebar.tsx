@@ -5,7 +5,7 @@ import { ArrowLeft01Icon as __ArrowLeftHugeIcon, FolderAddIcon as __FolderAddHug
 
 
 import * as React from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../../convex/_generated/api";
 
@@ -13,10 +13,7 @@ import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import type { AccessibleProjectDevApp } from "@/features/devapps/projectDevAppApi";
-import { useLocalProjectDevAppEntries, publishLocalProjectDevApp } from "@/features/devapps/localProjectDevAppStore";
-import { buildProjectDevAppLaunchSpec } from "@/features/devapps/projectDevAppManifest";
-import { prepareProjectDevApp } from "@/features/devapps/projectDevAppPublishing";
+import { publishOrgDevAppFromWorkspace } from "@/features/devapps/orgDevAppPublishing";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
@@ -87,6 +84,11 @@ const LazyProjectDevAppLogoDialog = React.lazy(() =>
     default: module.ProjectDevAppLogoDialog,
   })),
 );
+const LazyOrgAttachDialog = React.lazy(() =>
+  import("@/features/projects/components/OrgAttachDialog").then((module) => ({
+    default: module.OrgAttachDialog,
+  })),
+);
 
 /** Content-only: renders inside the persistent AppSidebarShell. */
 interface ProjectSidebarProps {
@@ -107,6 +109,12 @@ interface PendingProjectDevAppLogo {
   mode: SidebarDevAppPublishMode;
 }
 
+interface PendingProjectOrgAttach {
+  project: SidebarProjectItem;
+  workspaceId: string;
+  mode: SidebarDevAppPublishMode;
+}
+
 export function ProjectSidebar({
   user,
   projectId: providedProjectId,
@@ -118,6 +126,7 @@ export function ProjectSidebar({
   const pathname = useLocation({ select: (location) => location.pathname });
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { convexUserId } = useAuth();
+  const convex = useConvex();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project: currentProject, projectIdParam } = useAccessibleProject();
   const projectSyncContext = useOptionalProjectSyncContext();
@@ -154,11 +163,14 @@ export function ProjectSidebar({
   const devAppPublishingRef = React.useRef(false);
   const [projectPendingDevAppLogo, setProjectPendingDevAppLogo] =
     React.useState<PendingProjectDevAppLogo | null>(null);
+  const [projectPendingOrgAttach, setProjectPendingOrgAttach] =
+    React.useState<PendingProjectOrgAttach | null>(null);
   const updateProject = useMutation(api.projects.update);
   const archiveProject = useMutation(api.projects.archive);
   const restoreProject = useMutation(api.projects.restore);
   const deleteProject = useMutation(api.projects.deleteProject);
-  const localProjectDevApps = useLocalProjectDevAppEntries();
+  const attachProjectToOrg = useMutation(api.organizations.attachProject);
+  const createAndAttachProjectOrg = useMutation(api.organizations.createAndAttachProject);
   const {
     relinkProjectWorkspace,
     closeProjectWorkspace,
@@ -174,12 +186,16 @@ export function ProjectSidebar({
         }
       : "skip",
   );
+  const publisherStatus = useQuery(
+    api.devApps.listPublisherStatus,
+    featureFlags.projectDevApps && convexUserId ? { userId: convexUserId } : "skip",
+  );
   const projectDevAppStateByProjectId = React.useMemo(
     () =>
       new Map(
-        localProjectDevApps.map((entry) => [String(entry.publication.projectId), entry] as const),
+        (publisherStatus ?? []).map((entry) => [String(entry.projectId), entry] as const),
       ),
-    [localProjectDevApps],
+    [publisherStatus],
   );
 
   const projectItems = React.useMemo<SidebarProjectItem[]>(() => {
@@ -206,6 +222,7 @@ export function ProjectSidebar({
           sourceControl: project.sourceControl ?? undefined,
           gitRepository: project.gitRepository ?? undefined,
           importedFrom: project.importedFrom ?? null,
+          organizationId: project.organizationId ?? null,
         };
 
         const previousProjectItem = stableProjectItemsRef.current.get(nextProjectItem.id);
@@ -558,60 +575,36 @@ export function ProjectSidebar({
     ) => {
       if (!featureFlags.projectDevApps || !convexUserId || devAppPublishingRef.current) return;
 
+      if (!project.organizationId) {
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
+          message: t("orgDevApp.publish.failed"),
+          detail: t("orgDevApp.publish.needsOrg"),
+        });
+        return;
+      }
+
       devAppPublishingRef.current = true;
       setDevAppPublishing({ projectId: project.id, mode });
       try {
-        const prepared = await prepareProjectDevApp(workspaceId);
-        const sourceProject: AccessibleProjectDevApp["sourceProject"] = {
-          _id: project._id,
-          name: project.name,
-          slug: project.slug,
-          description: null,
-          previewImageId: null,
-          status: project.status,
-          updatedAt: project.updatedAt,
-        };
-        const result = publishLocalProjectDevApp({
-          projectId: project._id,
+        await publishOrgDevAppFromWorkspace({
+          convex,
           userId: convexUserId,
+          projectId: project._id,
+          organizationId: project.organizationId as Id<"organizations">,
+          workspaceId,
           name: project.name,
-          framework: prepared.framework,
-          devCommand: prepared.devCommand,
-          devPort: prepared.devPort,
-          ...(prepared.sourceRevision ? { sourceRevision: prepared.sourceRevision } : {}),
-          sourceFingerprint: prepared.sourceFingerprint,
-          sourceProject,
           logoDataUrl,
-        });
-        const entry: AccessibleProjectDevApp = {
-          publication: result.publication,
-          activeRelease: result.release,
-          sourceProject,
-          logoDataUrl,
-        };
-
-        navigate(buildProjectPath(project.id, "workbench"), {
-          state: {
-            ...buildProjectRouteNavigationState({
-              projectId: project.id,
-              projectSlug: project.slug,
-              projectName: project.name,
-              preferredWorkspaceId: workspaceId,
-            }),
-            ...buildWorkbenchIntentState({
-              projectDevApp: buildProjectDevAppLaunchSpec(entry),
-            }),
-          },
         });
       } catch (error) {
-        const fallback =
-          mode === "update" ? "Failed to update the DevApp." : "Failed to launch the DevApp.";
+        const fallback = t("orgDevApp.publish.failed");
         const detail = (error instanceof Error ? error.message : fallback)
           .replace(/^\[CONVEX.*?\]\s*/, "")
           .replace(/\s*Called by client$/, "");
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Launch Failed",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
           message: fallback,
           detail,
         });
@@ -620,7 +613,19 @@ export function ProjectSidebar({
         setDevAppPublishing(null);
       }
     },
-    [convexUserId, navigate],
+    [convex, convexUserId, t],
+  );
+
+  const continuePublishAfterOrg = React.useCallback(
+    async (project: SidebarProjectItem, workspaceId: string, mode: SidebarDevAppPublishMode) => {
+      const existingLogo = projectDevAppStateByProjectId.get(project.id)?.logoDataUrl;
+      if (!canReuseProjectDevAppLogo(mode, existingLogo)) {
+        setProjectPendingDevAppLogo({ project, workspaceId, mode });
+        return;
+      }
+      await handlePublishDevApp(project, workspaceId, mode, existingLogo);
+    },
+    [handlePublishDevApp, projectDevAppStateByProjectId],
   );
 
   const handleRequestPublishDevApp = React.useCallback(
@@ -634,22 +639,21 @@ export function ProjectSidebar({
       if (!workspaceId) {
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Launch Failed",
-          message: mode === "update" ? "Failed to update the DevApp." : "Failed to launch the DevApp.",
-          detail: "Relink this project's local folder before launching it as a DevApp on this device.",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
+          message: t("orgDevApp.publish.failed"),
+          detail: t("orgDevApp.publish.noFolder"),
         });
         return;
       }
 
-      const existingLogo = projectDevAppStateByProjectId.get(project.id)?.logoDataUrl;
-      if (!canReuseProjectDevAppLogo(mode, existingLogo)) {
-        setProjectPendingDevAppLogo({ project, workspaceId, mode });
+      if (!project.organizationId) {
+        setProjectPendingOrgAttach({ project, workspaceId, mode });
         return;
       }
 
-      await handlePublishDevApp(project, workspaceId, mode, existingLogo);
+      await continuePublishAfterOrg(project, workspaceId, mode);
     },
-    [convexUserId, handlePublishDevApp, projectDevAppStateByProjectId],
+    [continuePublishAfterOrg, convexUserId, t],
   );
 
   const handleConfirmProjectDevAppLogo = React.useCallback(
@@ -944,7 +948,7 @@ export function ProjectSidebar({
                       isSyncingProject: project.id === currentProjectId && isSyncingProject,
                       devAppPublicationState: isPublishingDevApp
                         ? "publishing"
-                        : devAppState?.publication && devAppState.activeRelease
+                        : devAppState?.hasArtifact
                           ? "published"
                           : "unpublished",
                       devAppPublishingMode: isPublishingDevApp ? devAppPublishing.mode : null,
@@ -1047,6 +1051,49 @@ export function ProjectSidebar({
               }
             }}
             onConfirm={handleConfirmProjectDevAppLogo}
+          />
+        </React.Suspense>
+      ) : null}
+      {projectPendingOrgAttach ? (
+        <React.Suspense fallback={null}>
+          <LazyOrgAttachDialog
+            open
+            projectName={projectPendingOrgAttach.project.name}
+            onOpenChange={(open) => {
+              if (!open) {
+                setProjectPendingOrgAttach(null);
+              }
+            }}
+            onAttach={async (organizationId) => {
+              if (!convexUserId || !projectPendingOrgAttach) return;
+              const pending = projectPendingOrgAttach;
+              await attachProjectToOrg({
+                userId: convexUserId,
+                organizationId,
+                projectId: pending.project._id,
+              });
+              setProjectPendingOrgAttach(null);
+              await continuePublishAfterOrg(
+                { ...pending.project, organizationId },
+                pending.workspaceId,
+                pending.mode,
+              );
+            }}
+            onCreate={async (name) => {
+              if (!convexUserId || !projectPendingOrgAttach) return;
+              const pending = projectPendingOrgAttach;
+              const created = await createAndAttachProjectOrg({
+                userId: convexUserId,
+                projectId: pending.project._id,
+                name,
+              });
+              setProjectPendingOrgAttach(null);
+              await continuePublishAfterOrg(
+                { ...pending.project, organizationId: created.organizationId },
+                pending.workspaceId,
+                pending.mode,
+              );
+            }}
           />
         </React.Suspense>
       ) : null}
