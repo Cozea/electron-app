@@ -177,7 +177,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
             const existing = current.messages[existingIndex]!;
             const updated: ChatMessage = {
               ...existing,
-              text: isStreaming ? existing.text + chunkText : chunkText.length > 0 ? chunkText : existing.text,
+              text: existing.text + chunkText,
               streaming: isStreaming,
               completedAt: isStreaming ? undefined : typeof payload.updatedAt === "string" ? payload.updatedAt : existing.completedAt,
             };
