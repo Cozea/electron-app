@@ -13,7 +13,7 @@ import type {
   BrowserAutomationStatus,
   BrowserAutomationTileInput,
   BrowserAutomationTypeInput,
-} from '../../shared/browserAutomationTypes'
+} from '../../../../shared/browserAutomationTypes'
 import type { BrowserAutomationHostTileState } from '../browser-automation'
 
 interface RegisterBrowserAutomationHandlersDeps {

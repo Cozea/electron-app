@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import type { AppSettings } from '../shared/electronApiTypes'
+import type { AppSettings } from '../../../shared/electronApiTypes'
 
 const MAX_APPROVED_EXTERNAL_READ_ROOTS = 128
 

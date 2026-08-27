@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import type { GitDirtyStateSnapshot } from '../../shared/electronApiTypes'
+import type { GitDirtyStateSnapshot } from '../../../../shared/electronApiTypes'
 
 export function useGitDirtySnapshot(
   workspaceId: string | null,

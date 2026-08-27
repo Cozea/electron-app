@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 
-import type { AvailableExternalEditor, ExternalEditorId } from '../../shared/electronApiTypes'
+import type { AvailableExternalEditor, ExternalEditorId } from '../../../../shared/electronApiTypes'
 
 interface EditorSpec {
   id: Exclude<ExternalEditorId, 'cozea'>

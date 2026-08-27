@@ -1,6 +1,6 @@
 import type { ConvexReactClient } from "convex/react";
 
-import type { Id } from "../../../../convex/_generated/dataModel";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 export interface GitRepositoryMetadataLike {
   provider?: string;

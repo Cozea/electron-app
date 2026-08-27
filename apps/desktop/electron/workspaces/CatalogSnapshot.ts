@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect"
 import type {
   WorkspaceCatalogSnapshot,
   WorkspaceCatalogSnapshotEntry,
-} from "../../shared/workspaceTypes.ts"
+} from "../../../../shared/workspaceTypes.ts"
 import { WorkspaceCatalog, type WorkspaceCatalogInterface } from "./WorkspaceCatalog.ts"
 import { waitForWorkspaceCatalogRuntime } from "./WorkspaceCatalogRuntime.ts"
 

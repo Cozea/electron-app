@@ -1,7 +1,7 @@
 import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import type { Id } from "../../../../convex/_generated/dataModel";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
 import { resolveSettingsSurfaceFromRoute } from "@/lib/settings/settingsRegistry";

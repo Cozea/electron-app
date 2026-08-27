@@ -2,8 +2,8 @@ import type { ConvexReactClient } from 'convex/react'
 import { applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness'
 import type { Awareness } from 'y-protocols/awareness'
 import type * as Y from 'yjs'
-import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 export interface ConvexAwarenessEntry {
   clientId: string

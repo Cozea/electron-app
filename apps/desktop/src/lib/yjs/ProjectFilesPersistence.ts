@@ -1,7 +1,7 @@
 import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
-import type { Id } from '../../../convex/_generated/dataModel'
-import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
+import { api } from '../../../../../convex/_generated/api'
 import { clearActiveCheckpointGroup, ensureActiveCheckpointGroup } from './checkpointGroups'
 import { extractAttributionOrigin, isRemoteYjsOrigin, resolveYjsOriginKind } from './origins'
 

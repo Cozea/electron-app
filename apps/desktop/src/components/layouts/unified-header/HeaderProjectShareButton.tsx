@@ -1,8 +1,8 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
 
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useAuth } from "@/contexts/AuthContext";
 import { scheduleTask } from "@/lib/scheduler";
 import { buildProjectJoinUrl } from "@shared/projectShare";
