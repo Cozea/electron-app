@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 import type {
   NativePreviewIosSimulatorDevice,
   NativePreviewListIosSimulatorsResult,
-} from '../../../shared/nativePreviewTypes'
+} from '../../../../../shared/nativePreviewTypes'
 
 const execFileAsync = promisify(execFile)
 

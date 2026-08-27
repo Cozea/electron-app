@@ -6,6 +6,7 @@ import { waitForHttpReady } from "../backendReadiness";
 import {
   SUBSTRATE_SHADOW_READY_PATH,
   SUBSTRATE_T3_PIN_SHA,
+  DEFAULT_SUBSTRATE_SHADOW_READINESS_TIMEOUT_MS,
 } from "./constants";
 import {
   readSubstrateShadowServerFlags,
@@ -84,7 +85,7 @@ export class ShadowServerManager {
     this.flags = options.flags ?? readSubstrateShadowServerFlags();
     this.instanceId = options.instanceId?.trim() || "primary";
     this.t3BaseDir = options.t3BaseDir?.trim() || null;
-    this.readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000;
+    this.readinessTimeoutMs = options.readinessTimeoutMs ?? DEFAULT_SUBSTRATE_SHADOW_READINESS_TIMEOUT_MS;
     this.stopGraceMs = options.stopGraceMs ?? 5_000;
     this.forkImpl = options.forkImpl ?? fork;
     this.waitForReady = options.waitForReady ?? waitForHttpReady;

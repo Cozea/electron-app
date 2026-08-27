@@ -49,7 +49,7 @@ export class T3TerminalClient {
     )) as TerminalSessionSnapshot;
   }
 
-  async close(input: TerminalCloseInput): Promise<void> {
+  async closeSession(input: TerminalCloseInput): Promise<void> {
     await this.client.callUnary(WS_METHODS.terminalClose, input);
   }
 

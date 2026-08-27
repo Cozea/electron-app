@@ -4,7 +4,7 @@ import {
   Suspense,
 } from "react";
 
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { LayoutToggles, SidebarInsetToggle } from "@/components/layouts/LayoutToggles";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";

@@ -6,8 +6,8 @@ import { ArrowLeft01Icon as __ArrowLeftHugeIcon, FolderAddIcon as __FolderAddHug
 
 import * as React from "react";
 import { useMutation, useQuery } from "convex/react";
-import type { Id } from "../../../../convex/_generated/dataModel";
-import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { api } from "../../../../../../convex/_generated/api";
 
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";

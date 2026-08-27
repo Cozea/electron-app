@@ -22,7 +22,7 @@ import { GitChangesBroadcaster } from '../services/GitChangesBroadcaster'
 import { GitSyncService } from '../services/gitSyncService'
 import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
-import type { GitChangesScope } from '../../shared/electronApiTypes'
+import type { GitChangesScope } from '../../../../shared/electronApiTypes'
 import { bootstrapSubstrateVcs } from '../substrate/vcs/bootstrap'
 import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
 

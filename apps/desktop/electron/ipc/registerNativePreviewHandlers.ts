@@ -17,7 +17,7 @@ import type {
   NativePreviewStartSessionResult,
   NativePreviewStopSessionRequest,
   NativePreviewStopSessionResult,
-} from '../../shared/nativePreviewTypes'
+} from '../../../../shared/nativePreviewTypes'
 import { NativePreviewLaunchConfigService } from '../services/nativePreview/NativePreviewLaunchConfigService'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
 import { IosSimulatorDiscoveryService } from '../services/nativePreview/IosSimulatorDiscoveryService'

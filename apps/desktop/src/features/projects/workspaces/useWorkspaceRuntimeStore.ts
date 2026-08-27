@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-import type { Id } from "../../../../convex/_generated/dataModel"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
 import {
   EMPTY_YJS_PROJECT_CONTEXT_VALUE,
   type YjsProjectContextValue,

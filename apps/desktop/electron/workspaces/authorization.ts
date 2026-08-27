@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect"
 import { WorkspaceCatalog } from "./WorkspaceCatalog.ts"
 import { waitForWorkspaceCatalogRuntime } from "./WorkspaceCatalogRuntime.ts"
 import { resolvePathWithinDirectory } from "../pathUtils.ts"
-import type { LocalWorkspaceDTO, WorkspaceLaneDTO, CwdSpec } from "../../shared/workspaceTypes.ts"
+import type { LocalWorkspaceDTO, WorkspaceLaneDTO, CwdSpec } from "../../../../shared/workspaceTypes.ts"
 
 export type WorkspaceOperation =
   | "read-file"

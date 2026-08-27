@@ -11,7 +11,7 @@ import * as integrationCrypto from './integrationCrypto'
 import { createRuntimeEnv } from './runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from './runtime/runtimeResolver'
 import { resolveAuthorizedWorkspaceAccess } from './workspaces/authorization.ts'
-import type { CwdSpec } from '../shared/workspaceTypes.ts'
+import type { CwdSpec } from '../../../shared/workspaceTypes.ts'
 
 // ============================================
 // Types

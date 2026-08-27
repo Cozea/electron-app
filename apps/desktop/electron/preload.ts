@@ -12,10 +12,10 @@ import type {
   TerminalCreateOptions,
   TerminalOutputEvent,
   UpdateState,
-} from '../shared/electronApiTypes'
-import type { WorkspaceCatalogSnapshot } from '../shared/workspaceTypes'
+} from '../../../shared/electronApiTypes'
+import type { WorkspaceCatalogSnapshot } from '../../../shared/workspaceTypes'
 import type { MessageBoxOptions } from 'electron'
-import type { ContextMenuItem } from '../shared/assistant-contracts/ipc'
+import type { ContextMenuItem } from '../../../shared/assistant-contracts/ipc'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
@@ -209,7 +209,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
     listAvailableBrowsers: () => ipcRenderer.invoke('shell:listAvailableBrowsers'),
-    openInBrowser: (options: { url: string; browserId?: import('../shared/electronApiTypes').ExternalBrowserId }) =>
+    openInBrowser: (options: { url: string; browserId?: import('../../../shared/electronApiTypes').ExternalBrowserId }) =>
       ipcRenderer.invoke('shell:openInBrowser', options),
   },
   editor: {
@@ -274,7 +274,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ensureTile: (options: {
       tileId: string
       initialUrl?: string
-      storageScope?: import("../shared/browserHostTypes").BrowserStorageScope
+      storageScope?: import("../../../shared/browserHostTypes").BrowserStorageScope
       workspaceId?: string
     }) =>
       ipcRenderer.invoke('workbenchBrowser:ensureTile', options),
@@ -322,26 +322,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workbenchBrowser:getSelectedText', options),
     captureScreenshot: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:captureScreenshot', options),
-    onStateChange: (callback: (state: import('../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
+    onStateChange: (callback: (state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        state: import('../shared/electronApiTypes').WorkbenchBrowserViewState,
+        state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState,
       ) => callback(state)
       ipcRenderer.on('workbenchBrowser:state', handler)
       return () => ipcRenderer.removeListener('workbenchBrowser:state', handler)
     },
-    onNewPageRequest: (callback: (request: import('../shared/browserHostTypes').BrowserNewPageRequest) => void) => {
+    onNewPageRequest: (callback: (request: import('../../../shared/browserHostTypes').BrowserNewPageRequest) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        request: import('../shared/browserHostTypes').BrowserNewPageRequest,
+        request: import('../../../shared/browserHostTypes').BrowserNewPageRequest,
       ) => callback(request)
       ipcRenderer.on('workbenchBrowser:new-page-request', handler)
       return () => ipcRenderer.removeListener('workbenchBrowser:new-page-request', handler)
     },
-    onCommand: (callback: (command: import('../shared/browserHostTypes').BrowserUiCommand) => void) => {
+    onCommand: (callback: (command: import('../../../shared/browserHostTypes').BrowserUiCommand) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        command: import('../shared/browserHostTypes').BrowserUiCommand,
+        command: import('../../../shared/browserHostTypes').BrowserUiCommand,
       ) => callback(command)
       ipcRenderer.on('workbenchBrowser:command', handler)
       return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
@@ -350,13 +350,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Agent browser automation MVP (flag `cozea.browser.agentAutomation`, default off). */
   browserAutomation: {
     status: () => ipcRenderer.invoke('browserAutomation:status'),
-    navigate: (options: import('../shared/browserAutomationTypes').BrowserAutomationNavigateInput) =>
+    navigate: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationNavigateInput) =>
       ipcRenderer.invoke('browserAutomation:navigate', options),
-    snapshot: (options: import('../shared/browserAutomationTypes').BrowserAutomationTileInput) =>
+    snapshot: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationTileInput) =>
       ipcRenderer.invoke('browserAutomation:snapshot', options),
-    click: (options: import('../shared/browserAutomationTypes').BrowserAutomationClickInput) =>
+    click: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationClickInput) =>
       ipcRenderer.invoke('browserAutomation:click', options),
-    type: (options: import('../shared/browserAutomationTypes').BrowserAutomationTypeInput) =>
+    type: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationTypeInput) =>
       ipcRenderer.invoke('browserAutomation:type', options),
   },
   workbenchSession: {
@@ -415,13 +415,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       sessionKey?: string | null
       projectId: string
       laneId: string
-      locator: import('../shared/nativePreviewTypes').NativePreviewSessionLocator | null
+      locator: import('../../../shared/nativePreviewTypes').NativePreviewSessionLocator | null
       stopPrevious?: boolean
     }) => ipcRenderer.invoke('workbenchSession:setNativePreviewSession', options),
-    onStateChanged: (callback: (session: import('../shared/electronApiTypes').WorkbenchSessionSnapshot) => void) => {
+    onStateChanged: (callback: (session: import('../../../shared/electronApiTypes').WorkbenchSessionSnapshot) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        session: import('../shared/electronApiTypes').WorkbenchSessionSnapshot,
+        session: import('../../../shared/electronApiTypes').WorkbenchSessionSnapshot,
       ) => callback(session)
       ipcRenderer.on(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
       return () => ipcRenderer.removeListener(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
@@ -461,30 +461,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   nativePreview: {
     listIosSimulators: () => ipcRenderer.invoke('nativePreview:listIosSimulators'),
-    resolveLaunchConfig: (options: import('../shared/nativePreviewTypes').NativePreviewResolveLaunchConfigRequest) =>
+    resolveLaunchConfig: (options: import('../../../shared/nativePreviewTypes').NativePreviewResolveLaunchConfigRequest) =>
       ipcRenderer.invoke('nativePreview:resolveLaunchConfig', options),
-    startSession: (options: import('../shared/nativePreviewTypes').NativePreviewStartSessionRequest) =>
+    startSession: (options: import('../../../shared/nativePreviewTypes').NativePreviewStartSessionRequest) =>
       ipcRenderer.invoke('nativePreview:startSession', options),
-    stopSession: (options: import('../shared/nativePreviewTypes').NativePreviewStopSessionRequest) =>
+    stopSession: (options: import('../../../shared/nativePreviewTypes').NativePreviewStopSessionRequest) =>
       ipcRenderer.invoke('nativePreview:stopSession', options),
-    getSessionState: (options: import('../shared/nativePreviewTypes').NativePreviewSessionLocator) =>
+    getSessionState: (options: import('../../../shared/nativePreviewTypes').NativePreviewSessionLocator) =>
       ipcRenderer.invoke('nativePreview:getSessionState', options),
-    sendTouches: (options: import('../shared/nativePreviewTypes').NativePreviewSendTouchesRequest) =>
+    sendTouches: (options: import('../../../shared/nativePreviewTypes').NativePreviewSendTouchesRequest) =>
       ipcRenderer.invoke('nativePreview:sendTouches', options),
-    sendWheel: (options: import('../shared/nativePreviewTypes').NativePreviewSendWheelRequest) =>
+    sendWheel: (options: import('../../../shared/nativePreviewTypes').NativePreviewSendWheelRequest) =>
       ipcRenderer.invoke('nativePreview:sendWheel', options),
-    sendKey: (options: import('../shared/nativePreviewTypes').NativePreviewSendKeyRequest) =>
+    sendKey: (options: import('../../../shared/nativePreviewTypes').NativePreviewSendKeyRequest) =>
       ipcRenderer.invoke('nativePreview:sendKey', options),
-    sendButton: (options: import('../shared/nativePreviewTypes').NativePreviewSendButtonRequest) =>
+    sendButton: (options: import('../../../shared/nativePreviewTypes').NativePreviewSendButtonRequest) =>
       ipcRenderer.invoke('nativePreview:sendButton', options),
-    rotate: (options: import('../shared/nativePreviewTypes').NativePreviewRotateRequest) =>
+    rotate: (options: import('../../../shared/nativePreviewTypes').NativePreviewRotateRequest) =>
       ipcRenderer.invoke('nativePreview:rotate', options),
-    captureScreenshot: (options: import('../shared/nativePreviewTypes').NativePreviewCaptureScreenshotRequest) =>
+    captureScreenshot: (options: import('../../../shared/nativePreviewTypes').NativePreviewCaptureScreenshotRequest) =>
       ipcRenderer.invoke('nativePreview:captureScreenshot', options),
-    copyLastScreenshot: (options: import('../shared/nativePreviewTypes').NativePreviewCaptureScreenshotRequest) =>
+    copyLastScreenshot: (options: import('../../../shared/nativePreviewTypes').NativePreviewCaptureScreenshotRequest) =>
       ipcRenderer.invoke('nativePreview:copyLastScreenshot', options),
-    onStateChanged: (callback: (event: import('../shared/nativePreviewTypes').NativePreviewStateChangedEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: import('../shared/nativePreviewTypes').NativePreviewStateChangedEvent) => {
+    onStateChanged: (callback: (event: import('../../../shared/nativePreviewTypes').NativePreviewStateChangedEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: import('../../../shared/nativePreviewTypes').NativePreviewStateChangedEvent) => {
         callback(payload)
       }
       ipcRenderer.on('nativePreview:stateChanged', handler)
@@ -518,7 +518,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
-      origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
+      origin?: 'agent' | 'remote' | 'sync' | import('../../../shared/electronApiTypes').FileChangeAttribution
     }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { workspaceId: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { workspaceId: string; filePath: string }) =>
@@ -526,19 +526,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listFiles: (options: { workspaceId: string }) => ipcRenderer.invoke('project:listFiles', options),
     getContextOptions: (options: {
       workspaceId: string
-      frameworkInfo?: import('../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
+      frameworkInfo?: import('../../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
     }) => ipcRenderer.invoke('project:getContextOptions', options),
     renameFile: (options: {
       workspaceId: string
       oldPath: string
       newPath: string
-      origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
+      origin?: 'agent' | 'remote' | 'sync' | import('../../../shared/electronApiTypes').FileChangeAttribution
     }) =>
       ipcRenderer.invoke('project:renameFile', options),
     deletePath: (options: {
       workspaceId: string
       targetPath: string
-      origin?: 'agent' | 'remote' | 'sync' | import('../shared/electronApiTypes').FileChangeAttribution
+      origin?: 'agent' | 'remote' | 'sync' | import('../../../shared/electronApiTypes').FileChangeAttribution
     }) =>
       ipcRenderer.invoke('project:deletePath', options),
     copyPath: (options: { workspaceId: string; sourcePath: string; destinationPath: string }) =>
@@ -796,11 +796,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       scope: 'current' | 'branch'
     }) => ipcRenderer.invoke('workspaceSync:unsubscribeGitChanges', options),
     onGitChangesUpdated: (
-      callback: (snapshot: import('../shared/electronApiTypes').GitChangesSnapshot) => void,
+      callback: (snapshot: import('../../../shared/electronApiTypes').GitChangesSnapshot) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        snapshot: import('../shared/electronApiTypes').GitChangesSnapshot,
+        snapshot: import('../../../shared/electronApiTypes').GitChangesSnapshot,
       ) => callback(snapshot)
       ipcRenderer.on('workspaceSync:gitChangesUpdated', handler)
       return () => ipcRenderer.removeListener('workspaceSync:gitChangesUpdated', handler)
@@ -813,11 +813,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       workspaceId: string
     }) => ipcRenderer.invoke('workspaceSync:unsubscribeGitDirtyState', options),
     onGitDirtyStateChange: (
-      callback: (snapshot: import('../shared/electronApiTypes').GitDirtyStateSnapshot) => void,
+      callback: (snapshot: import('../../../shared/electronApiTypes').GitDirtyStateSnapshot) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        snapshot: import('../shared/electronApiTypes').GitDirtyStateSnapshot,
+        snapshot: import('../../../shared/electronApiTypes').GitDirtyStateSnapshot,
       ) => callback(snapshot)
       ipcRenderer.on('workspaceSync:gitDirtyStateChanged', handler)
       return () => ipcRenderer.removeListener('workspaceSync:gitDirtyStateChanged', handler)
@@ -852,7 +852,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectRootPath?: string
       relativePath?: string
       content: string
-      origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+      origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
     }) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -862,7 +862,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           projectRootPath?: string
           relativePath?: string
           content: string
-          origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+          origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
         }
       ) => callback(data)
       ipcRenderer.on('yjs:external-file-change', handler)
@@ -873,7 +873,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       workspaceId?: string
       projectRootPath?: string
       relativePath?: string
-      origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+      origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
       isBinary: boolean
       isDirectory?: boolean
       sizeBytes: number
@@ -884,7 +884,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         workspaceId?: string
         projectRootPath?: string
         relativePath?: string
-        origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+        origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
         isBinary: boolean
         isDirectory?: boolean
         sizeBytes: number
@@ -898,14 +898,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       workspaceId?: string
       projectRootPath?: string
       relativePath?: string
-      origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+      origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         filePath: string
         workspaceId?: string
         projectRootPath?: string
         relativePath?: string
-        origin?: string | import('../shared/electronApiTypes').FileChangeAttribution
+        origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
       }) =>
         callback(data)
       ipcRenderer.on('yjs:external-file-delete', handler)
@@ -987,22 +987,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   agentTools: {
-    getStatus: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+    getStatus: (options: { toolId: import('../../../shared/electronApiTypes').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:getStatus', options),
-    prepare: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+    prepare: (options: { toolId: import('../../../shared/electronApiTypes').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:prepare', options),
-    loginStart: (options: { toolId: import('../shared/electronApiTypes').AgentToolId }) =>
+    loginStart: (options: { toolId: import('../../../shared/electronApiTypes').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:loginStart', options),
     loginInput: (options: { sessionId: string; value: string }) =>
       ipcRenderer.invoke('agentTools:loginInput', options),
     loginCancel: (options: { sessionId: string }) =>
       ipcRenderer.invoke('agentTools:loginCancel', options),
     onLoginEvent: (
-      callback: (event: import('../shared/electronApiTypes').AgentToolLoginEvent) => void,
+      callback: (event: import('../../../shared/electronApiTypes').AgentToolLoginEvent) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        payload: import('../shared/electronApiTypes').AgentToolLoginEvent,
+        payload: import('../../../shared/electronApiTypes').AgentToolLoginEvent,
       ) => callback(payload)
       ipcRenderer.on('agentTools:login-event', handler)
       return () => ipcRenderer.removeListener('agentTools:login-event', handler)
@@ -1025,8 +1025,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showOpenInEditorPicker: (options: {
       x: number
       y: number
-      editors: ReadonlyArray<{ id: import('../shared/electronApiTypes').ExternalEditorId; name: string }>
-      selectedEditorId: import('../shared/electronApiTypes').ExternalEditorId | null
+      editors: ReadonlyArray<{ id: import('../../../shared/electronApiTypes').ExternalEditorId; name: string }>
+      selectedEditorId: import('../../../shared/electronApiTypes').ExternalEditorId | null
     }) => ipcRenderer.invoke('contextMenu:showOpenInEditorPicker', options),
   },
   updates: {

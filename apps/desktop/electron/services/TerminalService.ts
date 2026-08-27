@@ -9,7 +9,7 @@ import type {
   TerminalInfo,
   TerminalOutputEvent,
   TerminalSnapshot,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 import { TerminalProvenanceService } from './TerminalProvenanceService'
 import type {

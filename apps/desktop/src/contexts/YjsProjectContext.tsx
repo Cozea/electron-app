@@ -9,8 +9,8 @@ import {
 import * as Y from "yjs"
 import { useConvex } from "convex/react"
 
-import { api } from "../../convex/_generated/api"
-import type { Id } from "../../convex/_generated/dataModel"
+import { api } from "../../../../convex/_generated/api"
+import type { Id } from "../../../../convex/_generated/dataModel"
 import { useReconnectionSync } from "@/hooks/useReconnectionSync"
 import { CollabWsProvider, type CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
 import { YjsIndexedDBProvider } from "@/lib/yjs/IndexedDBPersistence"

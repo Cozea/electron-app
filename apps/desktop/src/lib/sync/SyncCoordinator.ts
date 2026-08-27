@@ -1,4 +1,4 @@
-import type { Id } from "../../../convex/_generated/dataModel"
+import type { Id } from "../../../../../convex/_generated/dataModel"
 import { normalizeProjectFilePath } from "./pathNormalization"
 import type {
   SyncActorType,

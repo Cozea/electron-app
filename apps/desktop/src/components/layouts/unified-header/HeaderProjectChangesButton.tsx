@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from "react";
 import { useConvex } from "convex/react";
 
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { scheduleTask } from "@/lib/scheduler";
 import { useLocation } from "@/lib/router";

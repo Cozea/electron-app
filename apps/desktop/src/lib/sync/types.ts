@@ -1,4 +1,4 @@
-import type { Id } from "../../../convex/_generated/dataModel"
+import type { Id } from "../../../../../convex/_generated/dataModel"
 
 export type SyncOpSource = "editor" | "agent" | "watcher" | "remote"
 export type SyncActorType = "user" | "agent" | "system"

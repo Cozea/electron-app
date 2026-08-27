@@ -788,7 +788,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     await runMetaSync(async () => {
-      const api = ensureNativeApi()
+      ensureNativeApi()
       await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
@@ -821,7 +821,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     await runMetaSync(async () => {
-      const api = ensureNativeApi()
+      ensureNativeApi()
       await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
@@ -849,7 +849,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     await runMetaSync(async () => {
-      const api = ensureNativeApi()
+      ensureNativeApi()
       await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
@@ -873,7 +873,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     await runMetaSync(async () => {
-      const api = ensureNativeApi()
+      ensureNativeApi()
       await getOrchestration().dispatchCommand({
         type: "thread.runtime-mode.set",
         commandId: newCommandId(),
@@ -898,7 +898,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     await runMetaSync(async () => {
-      const api = ensureNativeApi()
+      ensureNativeApi()
       await getOrchestration().dispatchCommand({
         type: "thread.interaction-mode.set",
         commandId: newCommandId(),
@@ -914,7 +914,7 @@ export function useWorkbenchAssistantTileController(
   // immediately before dispatching thread.turn.start, eliminating race
   // conditions if the user changes model and instantly sends.
   const persistThreadSettingsForNextTurn = async (threadForSync: NonNullable<typeof thread>) => {
-    const api = ensureNativeApi()
+    ensureNativeApi()
 
     // Model selection drift
     if (
@@ -983,7 +983,7 @@ export function useWorkbenchAssistantTileController(
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
 
     try {
-      const api = ensureNativeApi()
+      ensureNativeApi()
 
       // Sync settings before turn
       await persistThreadSettingsForNextTurn(thread)
@@ -1069,7 +1069,7 @@ export function useWorkbenchAssistantTileController(
         const threadTitle = input.tile.agentLabel?.trim() || input.tile.title.trim() || "AI Agent"
         const threadId = newThreadId()
         const threadDraft = getAssistantComposerDraft(input.tile.id)
-        const api = ensureNativeApi()
+        ensureNativeApi()
 
         // Resolve the project
         const currentAssistantState = useStore.getState()
@@ -1224,7 +1224,7 @@ export function useWorkbenchAssistantTileController(
         return
       }
 
-      const api = ensureNativeApi()
+      ensureNativeApi()
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
           title: nextThreadTitle,
@@ -1308,7 +1308,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(
       async () => {
-        const api = ensureNativeApi()
+        ensureNativeApi()
         await getOrchestration().dispatchCommand({
           type: "thread.approval.respond",
           commandId: newCommandId(),
@@ -1362,7 +1362,7 @@ export function useWorkbenchAssistantTileController(
 
     await runMetaSync(
       async () => {
-        const api = ensureNativeApi()
+        ensureNativeApi()
         await getOrchestration().dispatchCommand({
           type: "thread.user-input.respond",
           commandId: newCommandId(),
@@ -1528,7 +1528,7 @@ export function useWorkbenchAssistantTileController(
     await openDiffDialog({
       title: filePath ? `${chatTitle} turn ${turnNumber} · ${filePath}` : `${chatTitle} turn ${turnNumber}`,
       request: async () => {
-        const api = ensureNativeApi()
+        ensureNativeApi()
         return getOrchestration().getTurnDiff({
           threadId,
           fromTurnCount: checkpointTurnCount,

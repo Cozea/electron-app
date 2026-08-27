@@ -6,7 +6,7 @@
 
 import path from "node:path";
 
-import type { GitChangesScope, GitChangesSnapshot } from "../../../shared/electronApiTypes";
+import type { GitChangesScope, GitChangesSnapshot } from "../../../../../shared/electronApiTypes";
 import { getChangesCheckpointReads } from "./checkpointsFacade";
 
 const INVALIDATION_DEBOUNCE_MS = 250;

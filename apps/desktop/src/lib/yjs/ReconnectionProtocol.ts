@@ -1,7 +1,7 @@
 import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 /**
  * A delete-vs-edit conflict detected during reconnection.

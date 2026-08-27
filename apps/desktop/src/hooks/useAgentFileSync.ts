@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import type { Id } from '../../convex/_generated/dataModel'
-import type { FileChangeAttribution } from '../../shared/electronApiTypes'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import type { FileChangeAttribution } from '../../../../shared/electronApiTypes'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 

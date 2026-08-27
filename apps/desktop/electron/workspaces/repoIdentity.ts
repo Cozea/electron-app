@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { RepoIdentity } from "../../shared/workspaceTypes.ts"
+import type { RepoIdentity } from "../../../../shared/workspaceTypes.ts"
 
 // Re-export so callers inside electron/workspaces/ can use this module
 // instead of reaching back to projectPathResolution.ts.

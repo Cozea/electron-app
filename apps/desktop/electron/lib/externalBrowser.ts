@@ -8,7 +8,7 @@ import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
   ExternalBrowserId,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 
 interface BrowserSpec {
   id: Exclude<ExternalBrowserId, 'system'>

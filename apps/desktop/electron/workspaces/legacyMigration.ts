@@ -3,7 +3,7 @@ import path from "node:path"
 import * as Effect from "effect/Effect"
 import * as ManagedRuntime from "effect/ManagedRuntime"
 
-import type { WorkspaceSource } from "../../shared/workspaceTypes.ts"
+import type { WorkspaceSource } from "../../../../shared/workspaceTypes.ts"
 import { WorkspaceCatalog } from "./WorkspaceCatalog.ts"
 
 type LegacyRegistrySource = "manual" | "cloud-hint" | "attached-import" | "slug-resolution"
