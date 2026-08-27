@@ -76,11 +76,9 @@ export async function bootstrapCozeaSubstrateServer(
   let orchestrationBackend: OrchestrationRpcBackend | undefined;
 
   if (substrateFlags.t3Server) {
-    appendLog("[bootstrap] T3 bootstrap starting");
     t3Handle = await bootstrapT3Server({
       onLog: (line) => appendLog(`[t3] ${line}`),
     });
-    appendLog(`[bootstrap] T3 bootstrap done at ${t3Handle.process.baseUrl}`);
     orchestrationBackend = t3Handle.proxy;
     appendLog(`T3 server ready at ${t3Handle.process.baseUrl}`);
   } else {
@@ -89,7 +87,6 @@ export async function bootstrapCozeaSubstrateServer(
     );
   }
 
-  appendLog("[bootstrap] createShadowHttpServer starting");
   const handle = createShadowHttpServer({
     rpcChatEnabled: substrateFlags.rpcChat,
     providersEnabled: substrateFlags.providers && orchestrationBackend === undefined,
