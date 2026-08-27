@@ -28,7 +28,7 @@ import type {
   WorkspaceLaneRecord,
   WorkspaceResolutionAction,
   WorkspaceVerificationStatus,
-} from "../../shared/workspaceTypes.ts"
+} from "../../../../shared/workspaceTypes.ts"
 import { deleteWorkspaceMarker, readWorkspaceMarker, writeWorkspaceMarker } from "./markers.ts"
 import { parseRepoIdentity, readGitRepoIdentity, repoIdentitiesMatch } from "./repoIdentity.ts"
 import { verifyWorkspacePath } from "./verification.ts"

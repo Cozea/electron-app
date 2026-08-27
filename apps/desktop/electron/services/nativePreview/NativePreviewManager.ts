@@ -20,8 +20,8 @@ import type {
   NativePreviewStateChangedEvent,
   NativePreviewStopSessionRequest,
   NativePreviewStopSessionResult,
-} from '../../../shared/nativePreviewTypes'
-import { buildNativePreviewSessionKey } from '../../../shared/nativePreviewTypes'
+} from '../../../../../shared/nativePreviewTypes'
+import { buildNativePreviewSessionKey } from '../../../../../shared/nativePreviewTypes'
 import { resolveAuthorizedWorkspaceAccess } from '../../workspaces/authorization.ts'
 import { NativePreviewRuntimeBridgeService } from './NativePreviewRuntimeBridgeService'
 

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react"
 import { useParams } from "@/lib/router"
 import { useMutation, useQuery } from "convex/react"
 
-import { api } from "../../../../convex/_generated/api"
+import { api } from "../../../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"

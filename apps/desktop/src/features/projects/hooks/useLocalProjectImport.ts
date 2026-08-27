@@ -1,8 +1,8 @@
 import { useCallback } from "react"
 import { useMutation } from "convex/react"
 
-import { api } from "../../../../convex/_generated/api"
-import type { Id } from "../../../../convex/_generated/dataModel"
+import { api } from "../../../../../../convex/_generated/api"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"

@@ -18,7 +18,7 @@ import type {
   ReadFileResult,
   WatchProjectResult,
   WriteFileResult,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
 import { resolvePathWithinDirectory } from '../pathUtils'
@@ -574,7 +574,7 @@ export function registerProjectHandlers(
         frameworkInfo,
       }: {
         workspaceId: string
-        frameworkInfo?: import('../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
+        frameworkInfo?: import('../../../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
       },
     ) => {
       try {

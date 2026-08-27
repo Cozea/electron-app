@@ -4,8 +4,8 @@ import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/stores/useQueryCache";
 import { ProjectSidebar } from "../components/ProjectSidebar";
 import { AppSidebarShell } from "../components/sidebar/AppSidebarShell";
@@ -41,7 +41,7 @@ import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchS
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks";
 import { formatActorDisplayName } from "@/lib/userDisplay";
-import type { WorkspaceResolutionAction } from "../../../../shared/workspaceTypes";
+import type { WorkspaceResolutionAction } from "../../../../../../shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/projects/components/SettingsSidebar").then((module) => ({

@@ -1,4 +1,4 @@
-import type { FileChangeAttribution } from '../../../shared/electronApiTypes'
+import type { FileChangeAttribution } from '../../../../../shared/electronApiTypes'
 
 export type YjsOriginKind =
   | 'agent'

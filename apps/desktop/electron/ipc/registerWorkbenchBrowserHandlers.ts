@@ -1,11 +1,11 @@
 import type { IpcMain, Rectangle } from 'electron'
 
 import { WorkbenchBrowserService } from '../services/WorkbenchBrowserService'
-import type { WorkbenchBrowserViewState } from '../../shared/electronApiTypes'
+import type { WorkbenchBrowserViewState } from '../../../../shared/electronApiTypes'
 import type {
   BrowserFindInPageOptions,
   BrowserStorageScope,
-} from '../../shared/browserHostTypes'
+} from '../../../../shared/browserHostTypes'
 
 interface RegisterWorkbenchBrowserHandlersDeps {
   service: WorkbenchBrowserService

@@ -1,4 +1,4 @@
-import type { Id } from "../../../../convex/_generated/dataModel";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 export type ProjectInviteRole = "project_manager" | "developer" | "designer" | "viewer";
 

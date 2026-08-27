@@ -4,7 +4,7 @@ import type {
   LocalWorkspaceRecord,
   RepoIdentity,
   WorkspaceVerificationStatus,
-} from "../../shared/workspaceTypes.ts"
+} from "../../../../shared/workspaceTypes.ts"
 import { readWorkspaceMarker } from "./markers.ts"
 import { readGitRepoIdentity, repoIdentitiesMatch } from "./repoIdentity.ts"
 

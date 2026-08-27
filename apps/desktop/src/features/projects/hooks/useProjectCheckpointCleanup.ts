@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useMutation } from "convex/react";
 
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { getProjectChangesActivityCacheKey } from "@/features/projects/lib/changesQueryCache";
 import { useQueryCache } from "@/stores/useQueryCache";
 

@@ -12,7 +12,7 @@ import type {
   StorageProjectsPage,
   StorageSnapshot,
   StorageUsage,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 import { rememberApprovedExternalReadRoot } from '../fsAccess'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
 import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'

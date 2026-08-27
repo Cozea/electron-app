@@ -8,7 +8,7 @@ import type {
   GitSyncPullResult,
   GitSyncPushResult,
   GitSyncRestoreResult,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 import type { GitCommandResult } from '../gitRuntime'
 import {
   isMissingRemoteBranchError,

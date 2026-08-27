@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useConvex } from 'convex/react'
-import type { Id } from '../../convex/_generated/dataModel'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 import { ReconnectionProtocol, type DeleteConflict } from '@/lib/yjs/ReconnectionProtocol'
 

@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
-import type { AgentToolId, AgentToolLoginEvent, AgentToolLoginStartResult, AgentToolPrepareResult, AgentToolSource, AgentToolStatus } from '../../shared/electronApiTypes'
+import type { AgentToolId, AgentToolLoginEvent, AgentToolLoginStartResult, AgentToolPrepareResult, AgentToolSource, AgentToolStatus } from '../../../../shared/electronApiTypes'
 
 interface AgentToolDefinition {
   id: AgentToolId

@@ -10,7 +10,7 @@ import type {
   CreateWorkspaceForProjectRequest,
   ImportExistingFolderRequest,
   ResolveProjectWorkspaceRequest,
-} from "../../shared/workspaceTypes.ts"
+} from "../../../../shared/workspaceTypes.ts"
 import { WorkspaceCatalog } from "../workspaces/WorkspaceCatalog.ts"
 import { waitForWorkspaceCatalogRuntime } from "../workspaces/WorkspaceCatalogRuntime.ts"
 import {

@@ -3,7 +3,7 @@ import type {
   RepoIdentity,
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
-} from "../../../../shared/workspaceTypes"
+} from "../../../../../../shared/workspaceTypes"
 
 // Stale-while-revalidate cache. Without it, every navigation into a project
 // re-resolved the workspace over IPC with `result === null` in the meantime —

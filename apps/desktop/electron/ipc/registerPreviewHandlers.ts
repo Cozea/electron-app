@@ -1,8 +1,8 @@
 import { BrowserWindow, type IpcMain, type WebContents, type WebFrameMain } from 'electron'
 import net from 'node:net'
 
-import { BRIDGE_SCRIPT } from '../../shared/previewBridgeScript'
-import { normalizeComputedStyles } from '../../shared/styleProperties'
+import { BRIDGE_SCRIPT } from '../../../../shared/previewBridgeScript'
+import { normalizeComputedStyles } from '../../../../shared/styleProperties'
 import { PreviewSnapshotService } from '../services/PreviewSnapshotService'
 import type {
   PreviewCaptureScreenshotResult,
@@ -17,7 +17,7 @@ import type {
   PreviewInjectBridgeResult,
   PreviewProbePortResult,
   PreviewProbeUrlResult,
-} from '../../shared/electronApiTypes'
+} from '../../../../shared/electronApiTypes'
 
 interface RegisterPreviewHandlersDeps {
   getMainWindow: () => BrowserWindow | null
