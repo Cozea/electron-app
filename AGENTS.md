@@ -230,16 +230,14 @@ The AI chat runs **after** project creation, inside the workbench.
 - The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
 - Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
 
-## How Project DevApps Work
+## How Org DevApps Work
 
-- Project DevApps currently use a machine-local persisted catalog; `VITE_FF_PROJECT_DEVAPPS` defaults on and no DevApp publication call is made to Convex.
-- A user can use the project overflow menu to **Launch as DevApp**; after the first local release, the action becomes **Update DevApp**.
-- First launch requires a PNG, JPEG, or WebP logo. Cozea optimizes it locally and uses it in the Store, launcher, and workbench tile chrome; later release updates retain the publication's independently editable name and logo.
-- Local DevApp artwork in the Store opens a shared local identity editor for its display name and logo; the editor is also available in Project Settings and never creates a release. Built-in DevApps never expose this control.
-- The local catalog keeps one stable publication per project and append-only releases containing the inspected framework, command, port, revision, and source fingerprint.
-- Store entries must say **This Mac** / **Local DevApps**; do not describe the local catalog as organization-private.
-- Opening a project DevApp reuses the workbench Dev Server singleton, applies its release configuration, prepares missing runtime/dependencies, and auto-starts the local preview.
-- The Convex schema/functions are an internal-only future scaffold. Do not make them client-callable until verified WorkOS identity derives user and organization server-side.
+- Cozea-owned organizations (create + email invite, same pattern as project team). Settings lists the orgs you belong to and every DevApp published in those orgs.
+- Left-nav **Publish** / **Update** builds a static artifact on the publisher machine, packs `dist/` (or equivalent), uploads it to Convex storage, and points an org publication at that release. It must not start a preview or Dev Server.
+- Every org member can open every published DevApp in that org. Consumers never get source, `localPath`, git URL, `devCommand` / `devPort`, or a workspace id.
+- Open path is an isolated workbench tile (`addTile` + `orgDevApp`) serving a cached zip over `cozea-devapp:`. Reject localhost. Do not use `openSingletonTile` / `devServer` / `startDevServerRun` for org apps.
+- Store section is **Your org** (Convex `listMine` / `listForOrganization`), not This Mac / `localProjectDevAppStore`.
+- `VITE_FF_PROJECT_DEVAPPS` defaults on and can hide the feature.
 
 See `docs/project-devapps.md` for the full lifecycle and operational notes.
 

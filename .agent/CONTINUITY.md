@@ -1,6 +1,7 @@
 # CONTINUITY
 
 ## [PLANS]
+- 2026-08-26T23:51Z [USER] Ship Org DevApps as one product: Cozea orgs + artifact catalog + left-nav Publish + isolated cozea-devapp tile + org Store/settings. No localhost consumer path.
 - 2026-08-27T21:50Z [USER] Apply all project-switch redraw levers: hover prefetch, startTransition navigation, workbench keep-alive, xterm pooling, phase marks.
 - 2026-08-26T17:36Z [USER] Implement free dockview OSS policies except Changes edge groups (#1) and header-slot migration (#4): group locks, size constraints, thin activity mode, tab-group polish, basic tab overflow.
 - 2026-08-26T17:03Z [USER] Dependency upgrade swarm after #70: phased dockview + parallel safe bumps.
@@ -9,6 +10,7 @@
   - Hold: Vite 8 (electron-vite peers), TypeScript 7, dockview-enterprise features (auto-hide, compass, layout history, pinned tabs)
 
 ## [DECISIONS]
+- 2026-08-26T23:51Z [USER] Org DevApps are built artifacts in Cozea orgs, not localhost recipes. Left-nav Publish only. Consumers never get source. Open via addTile + cozea-devapp protocol. Store is Your org from Convex. Settings lists orgs + DevApps.
 - 2026-08-26T22:58Z [USER] Tile rearrange DnD still broken; predates keep-alive. [CODE] Dockview default `dndStrategy:"auto"` uses HTML5 mouse drag; Electron webview often never fires `dragstart` (same finding as cloud VM smoke). Set `dndStrategy:"pointer"` on `DockviewReact`. Drag handle is the tab chip, not the tile body; native BrowserViews still eat drops over preview content.
 - 2026-08-26T21:55Z [CODE] Keep last 3 workbench sessions mounted (current + 2). Matches warm runtime host budget.
 - 2026-08-26T17:03Z [USER]+[CODE] Stay on dockview OSS MIT path through v7/v8 free APIs; enterprise only after license decision.
@@ -16,6 +18,7 @@
 - 2026-08-26T17:25Z [USER] Exclude unused Claude SDK platform native binaries from the electron-builder app bundle on #76.
 
 ## [PROGRESS]
+- 2026-08-27T00:18Z [CODE] Org DevApps implemented on this branch: Convex orgs/invites/artifact catalog; Electron build+pack+protocol; sidebar Publish; isolated orgDevApp tile; Store/launcher/settings from Convex. bun run typecheck green. oxlint 0 errors. 67 related vitest tests green. bunx convex deploy blocked (no Convex access token in this environment).
 - 2026-08-26T23:10Z [USER] Infinite loader next to branch selector returned after #99. [CODE] Restored bounded collab reconnect in `connectionStatusModel` + compact indicator: 15s cap, session idle/error/encryption states, compact `.loader` only for `spin` (not pulse). typecheck + 13 model tests green.
 - 2026-08-26T21:55Z [CODE] Project-switch path: hover prefetch (Convex + workspace IPC + lane), `startTransition` navigation, keep project shell mounted (no full-tree "Loading project..."), workbench keep-alive host, phase marks (`navigate` → `first-tile-paint`). typecheck + oxlint + 9 new unit tests green. Electron UI not smoked in this turn.
 - 2026-08-26T17:03Z [TOOL] Swarm Wave 1 launched (4 agents).
@@ -75,6 +78,7 @@
 - 2026-08-27T21:15Z [TOOL] Swarm item (2/4) shipped: [PR #95](https://github.com/Cozea/electron-app/pull/95) `fix/collab-sync-indicator-states` @ bef81fc8 (worktree `.worktrees/collab-sync-indicator`). Surfaces collab session/encryption on sync context; bounded reconnect indicator + branch menu copy. typecheck + oxlint green.
 
 ## [OUTCOMES]
+- 2026-08-27T00:18Z [CODE] Org DevApps product cutover complete in source. Remaining operator step: `bunx convex deploy` from a credentialed machine (never `convex dev`). Generated `convex/_generated/api.d.ts` updated to include `organizations` / `organizationInvites` because local codegen requires Convex auth.
 - 2026-08-26T23:02Z [USER] Pulled origin/main (fast-forward 34871a0f → a4246f19, PR #99 substrate cutover). Stash-pop conflicts in `useProjectLaneState.ts` and `ProjectWorkbenchSurface.tsx` resolved: kept lane prefetch + git remote publish; kept keep-alive host + command palette.
 - 2026-08-27T22:10Z [CODE] Implementation review found + fixed 2 bugs in the keep-alive work: (a) hidden workbenches left native Electron surfaces painting — browser/dev-server tiles derive `visible` from dockview `panelApi.isVisible`, which can't see CSS hiding; fixed by `surfaceVisible` on `WorkbenchDockRuntimeContext` (set from keep-alive `isActive`), gated centrally in `useWorkbenchPanelActivityMode`. (b) `ProjectLayout` swapped element types between `ActiveWorkspaceProvider`-wrapped and bare `ProjectSyncProvider` branches, remounting the whole shell (and killing all kept-alive sessions) on every cold switch; fixed by always rendering `ActiveWorkspaceContext.Provider` with a nullable memoized value (context default was already null; `useActiveWorkspaceOrNull` exists). typecheck + oxlint + 9 unit tests green.
 - 2026-08-27T21:20Z [TOOL] Swarm item 1 shipped: [PR #94](https://github.com/Cozea/electron-app/pull/94) `fix/workbench-branch-git-honesty` @ 52f9764e (worktree `.worktrees/branch-git-honesty`). Branch pill honesty: no-git label, ahead/behind (no remote), unverified `?` on stale git status. typecheck + oxlint green.
