@@ -71,7 +71,6 @@ import {
   type ShadowHostedRuntimeMonitorController,
 } from './substrate/shadowHostedRuntimeMonitor'
 import {
-  createShadowServerManager,
   getShadowServerManager,
   resolveShadowServerEntryPath,
   type ShadowServerManager,
@@ -797,7 +796,7 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
     onLog: (event, details) => logAssistantBridge(event, details),
     shouldApply: (activeGeneration) =>
       !appIsQuitting && activeGeneration === assistantRuntimeGeneration,
-    httpOrigin: ASSISTANT_RUNTIME_HTTP_URL,
+    httpOrigin: ASSISTANT_RUNTIME_HTTP_URL ?? undefined,
     shadowBaseUrl,
     preferT3Server: featureFlags.t3Server,
   })

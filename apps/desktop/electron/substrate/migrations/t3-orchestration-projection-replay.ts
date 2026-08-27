@@ -29,7 +29,7 @@ function tableExists(db: DatabaseSync, tableName: string): boolean {
 export function countOrchestrationEvents(dbPath: string): number {
   let db: DatabaseSync;
   try {
-    db = new DatabaseSync(dbPath, { readonly: true });
+    db = new DatabaseSync(dbPath, { readOnly: true });
   } catch {
     return 0;
   }
@@ -135,7 +135,7 @@ export function readOrchestrationEventsFromSqlite(
 ): ReadonlyArray<SqliteOrchestrationEventRow> {
   let db: DatabaseSync;
   try {
-    db = new DatabaseSync(dbPath, { readonly: true });
+    db = new DatabaseSync(dbPath, { readOnly: true });
   } catch {
     return [];
   }
@@ -161,7 +161,7 @@ export function readOrchestrationEventsFromSqlite(
         WHERE sequence > ?
         ORDER BY sequence ASC`,
       )
-      .all(fromSequenceExclusive) as SqliteOrchestrationEventRow[];
+      .all(fromSequenceExclusive) as unknown as SqliteOrchestrationEventRow[];
   } finally {
     db.close();
   }

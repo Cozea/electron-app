@@ -15,14 +15,14 @@ function collectAllStrings(sets: Array<Set<string>>): Set<string> {
 
 describe('IPC Invoke Coverage', () => {
   it('every ipcRenderer.invoke channel in preload has a corresponding ipcMain.handle', () => {
-    const preloadPath = path.join(REPO_ROOT, 'electron', 'preload.ts')
+    const preloadPath = path.join(REPO_ROOT, 'apps', 'desktop', 'electron', 'preload.ts')
     const invoked = extractStringArgCalls({
       filePath: preloadPath,
       rootObjectNames: ['ipcRenderer'],
       methodNames: ['invoke'],
     })
 
-    const electronRoot = path.join(REPO_ROOT, 'electron')
+    const electronRoot = path.join(REPO_ROOT, 'apps', 'desktop', 'electron')
     const electronFiles = collectSourceFiles({ rootDir: electronRoot, extensions: ['.ts'] })
     const handled = collectAllStrings(
       electronFiles.map((filePath) =>
@@ -41,4 +41,3 @@ describe('IPC Invoke Coverage', () => {
     ).toEqual([])
   })
 })
-

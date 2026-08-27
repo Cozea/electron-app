@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.assistant-runtime.json",
+  "extends": "../../apps/desktop/tsconfig.electron.json",
   "compilerOptions": {
     "plugins": [
       {

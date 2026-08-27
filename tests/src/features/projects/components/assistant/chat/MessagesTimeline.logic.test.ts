@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, it } from "vitest";
-import { computeMessageDurationStart, normalizeCompactToolLabel } from "../../../../../../../src/features/projects/components/assistant/chat/MessagesTimeline.logic";
+import { computeMessageDurationStart, normalizeCompactToolLabel } from "../../../../../../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic";
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {
