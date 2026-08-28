@@ -37,121 +37,18 @@ export function buildFilesystemSlug(name: string): string {
   return slug || "project"
 }
 
-function parseGitRemoteUrl(configText: string): string | null {
-  let inOriginSection = false
-
-  for (const rawLine of configText.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) continue
-
-    if (/^\[remote\s+"origin"\]$/i.test(line)) {
-      inOriginSection = true
-      continue
-    }
-
-    if (/^\[.+\]$/.test(line)) {
-      inOriginSection = false
-      continue
-    }
-
-    if (!inOriginSection) continue
-
-    const match = line.match(/^url\s*=\s*(.+)$/i)
-    if (match?.[1]) {
-      return match[1].trim()
-    }
-  }
-
-  return null
-}
-
-function joinFsPath(basePath: string, ...segments: string[]): string {
-  const separator = basePath.includes("\\") ? "\\" : "/"
-  return [basePath.replace(/[\\/]+$/, ""), ...segments.map((segment) => segment.replace(/^[/\\]+|[/\\]+$/g, ""))]
-    .filter(Boolean)
-    .join(separator)
-}
-
-function resolveRelativeFsPath(basePath: string, targetPath: string): string {
-  if (/^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(targetPath)) {
-    return targetPath
-  }
-
-  const hasDrivePrefix = /^[A-Za-z]:/.test(basePath)
-  const rootPrefix = hasDrivePrefix ? `${basePath.slice(0, 2)}/` : basePath.startsWith("/") ? "/" : ""
-  const baseSegments = basePath
-    .replace(/\\/g, "/")
-    .replace(/^[A-Za-z]:/, "")
-    .split("/")
-    .filter(Boolean)
-  const targetSegments = targetPath.replace(/\\/g, "/").split("/").filter(Boolean)
-
-  for (const segment of targetSegments) {
-    if (segment === ".") continue
-    if (segment === "..") {
-      baseSegments.pop()
-      continue
-    }
-    baseSegments.push(segment)
-  }
-
-  return `${rootPrefix}${baseSegments.join("/")}`
-}
-
-function parseGitHeadBranch(headText: string): string | null {
-  const match = headText.match(/ref:\s*refs\/heads\/(.+?)\s*$/i)
-  return match?.[1]?.trim() || null
-}
-
 /**
- * When HEAD is detached (a raw SHA, not `ref: refs/heads/...`), parseGitHeadBranch
- * yields nothing. Resolve the repo's default branch from
- * `refs/remotes/origin/HEAD`, which is a symbolic ref of the form
- * `ref: refs/remotes/origin/<branch>`. Falls back to packed-refs, where the same
- * ref is stored as a one-line target without the `ref:` prefix. Returns null when
- * no default branch can be determined (e.g. no origin remote).
- */
-async function resolveDefaultBranchForDetachedHead(gitDir: string): Promise<string | null> {
-  const headRef = await window.electronAPI.fs.readFile(
-    joinFsPath(gitDir, "refs", "remotes", "origin", "HEAD"),
-  )
-  const looseMatch = headRef?.match(/ref:\s*refs\/remotes\/origin\/(.+?)\s*$/i)
-  if (looseMatch?.[1]) {
-    return looseMatch[1].trim()
-  }
-
-  const packedRefs = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "packed-refs"))
-  const packedMatch = packedRefs?.match(/^refs\/remotes\/origin\/HEAD\b.*?refs\/remotes\/origin\/(.+?)\s*$/im)
-  return packedMatch?.[1]?.trim() || null
-}
-
-/** Resolve the real .git directory for a folder, following a `gitdir:` link
- * file (worktrees / submodules). Returns null when the folder isn't a repo. */
-async function resolveGitDir(folderPath: string): Promise<string | null> {
-  const directHead = await window.electronAPI.fs.readFile(joinFsPath(folderPath, ".git", "HEAD"))
-  if (directHead !== null) {
-    return joinFsPath(folderPath, ".git")
-  }
-
-  const gitEntry = await window.electronAPI.fs.readFile(joinFsPath(folderPath, ".git"))
-  const gitDirMatch = gitEntry?.match(/gitdir:\s*(.+)\s*$/i)
-  if (!gitDirMatch?.[1]) {
-    return null
-  }
-  return resolveRelativeFsPath(folderPath, gitDirMatch[1].trim())
-}
-
-/**
- * Inspect a local folder's git state by reading `.git` directly (HEAD +
- * config). Path-pure on purpose: this runs during import BEFORE the folder is
- * bound into the workspace catalog, so the catalog-backed `project:*` git IPC
- * (which resolves a workspaceId) would always fail here and silently report
- * "not a repo". Takes a filesystem path, not a workspaceId.
+ * Inspect a picker-selected folder in Electron. Keeping the pre-bind read in
+ * one workspace-specific IPC avoids granting the renderer durable, general
+ * filesystem access to every folder it has opened in the past.
  */
 export async function inspectLocalGitState(folderPath: string): Promise<LocalGitState> {
   try {
-    const gitDir = await resolveGitDir(folderPath)
-    if (!gitDir) {
+    const result = await window.electronAPI.workspace!.preflightExistingFolder({ folderPath })
+    if (!result.success) {
+      throw new Error(result.error || "Failed to inspect local folder.")
+    }
+    if (!result.isRepo) {
       return {
         isLoading: false,
         isRepo: false,
@@ -162,20 +59,13 @@ export async function inspectLocalGitState(folderPath: string): Promise<LocalGit
       }
     }
 
-    const headText = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "HEAD"))
-    const headBranch = headText ? parseGitHeadBranch(headText) : null
-    // Detached HEAD (raw SHA, no `ref: refs/heads/...`): resolve the repo's real
-    // default branch instead of collapsing to "main" and losing it.
-    const branch =
-      headBranch ?? (await resolveDefaultBranchForDetachedHead(gitDir)) ?? "main"
-    const configText = await window.electronAPI.fs.readFile(joinFsPath(gitDir, "config"))
-    const remoteUrl = configText ? parseGitRemoteUrl(configText) : null
+    const remoteUrl = result.repoIdentity?.url ?? null
 
     return {
       isLoading: false,
       isRepo: true,
       hasOriginRemote: Boolean(remoteUrl),
-      branch,
+      branch: result.branch || "main",
       remoteUrl,
       error: null,
     }

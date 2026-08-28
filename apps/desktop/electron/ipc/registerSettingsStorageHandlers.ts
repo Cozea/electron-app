@@ -16,11 +16,7 @@ import type {
 import { rememberApprovedExternalReadRoot } from '../fsAccess'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
 import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
-import {
-  isPathInsideDirectory,
-  pathsReferToSameStorageEntry,
-  resolvePathForStorageGuard,
-} from './storagePathGuard'
+import { notifyWorkspaceCatalogChanged } from '../workspaces/CatalogSnapshot'
 
 interface RegisterSettingsStorageHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -362,18 +358,7 @@ async function scanProjectDirectory(entryPath: string): Promise<{
   }
 }
 
-async function scanStorageEntry(
-  projectsDir: string,
-  entry: fs.Dirent
-): Promise<ScannedStorageEntry> {
-  const entryPath = path.join(projectsDir, entry.name)
-
-  if (!entry.isDirectory() || entry.name.startsWith('.')) {
-    return {
-      totalSize: await getPathSize(entryPath),
-    }
-  }
-
+async function scanManagedProjectPath(entryPath: string): Promise<ScannedStorageEntry> {
   const { totalSize, dependencies, buildCache } = await scanProjectDirectory(entryPath)
 
   let lastModified = Date.now()
@@ -388,7 +373,7 @@ async function scanStorageEntry(
     dependencies,
     buildCache,
     project: {
-      name: entry.name,
+      name: path.basename(entryPath),
       path: entryPath,
       size: totalSize,
       lastModified,
@@ -406,12 +391,6 @@ async function removePath(
   return size
 }
 
-async function movePathToTrash(targetPath: string): Promise<boolean> {
-  if (!fs.existsSync(targetPath)) return false
-  await shell.trashItem(targetPath)
-  return true
-}
-
 async function clearDirectoryContents(
   dirPath: string,
   options?: { measureSize?: boolean }
@@ -426,19 +405,24 @@ async function clearDirectoryContents(
   return sizes.reduce((total, size) => total + size, 0)
 }
 
-function getProjectDirectories(projectsDir: string): string[] {
-  if (!fs.existsSync(projectsDir)) return []
-  try {
-    return fs
-      .readdirSync(projectsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-      .map((entry) => path.join(projectsDir, entry.name))
-  } catch {
-    return []
-  }
+async function listManagedStoragePaths(): Promise<string[]> {
+  const runtime = await waitForWorkspaceCatalogRuntime()
+  const targets = await runtime.runPromise(
+    Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+      catalog.listManagedDeletionTargets(),
+    ) as Effect.Effect<
+      Array<{ projectRootPath: string }>,
+      never,
+      WorkspaceCatalog
+    >,
+  )
+  return [...new Set(targets.map((target) => target.projectRootPath))]
 }
 
-async function collectStorageSnapshot(projectsDir: string): Promise<StorageSnapshotCacheEntry> {
+async function collectStorageSnapshot(
+  projectsDir: string,
+  managedProjectPaths: string[],
+): Promise<StorageSnapshotCacheEntry> {
   const userDataDir = app.getPath('userData')
   const logsDir = app.getPath('logs')
   const appCachePath = path.join(userDataDir, 'Cache')
@@ -448,26 +432,23 @@ async function collectStorageSnapshot(projectsDir: string): Promise<StorageSnaps
   let buildCacheSize = 0
   const projects: LocalProject[] = []
 
-  if (fs.existsSync(projectsDir)) {
-    try {
-      const entries = fs.readdirSync(projectsDir, { withFileTypes: true })
-      const scannedEntries = await mapWithConcurrency(
-        entries,
-        STORAGE_PROJECT_SCAN_CONCURRENCY,
-        async (entry) => scanStorageEntry(projectsDir, entry)
-      )
+  try {
+    const scannedEntries = await mapWithConcurrency(
+      managedProjectPaths,
+      STORAGE_PROJECT_SCAN_CONCURRENCY,
+      async (projectPath) => scanManagedProjectPath(projectPath),
+    )
 
-      for (const scannedEntry of scannedEntries) {
-        projectsTotalSize += scannedEntry.totalSize ?? 0
-        if (scannedEntry.project) {
-          projects.push(scannedEntry.project)
-          dependenciesSize += scannedEntry.dependencies ?? 0
-          buildCacheSize += scannedEntry.buildCache ?? 0
-        }
+    for (const scannedEntry of scannedEntries) {
+      projectsTotalSize += scannedEntry.totalSize ?? 0
+      if (scannedEntry.project) {
+        projects.push(scannedEntry.project)
+        dependenciesSize += scannedEntry.dependencies ?? 0
+        buildCacheSize += scannedEntry.buildCache ?? 0
       }
-    } catch (error) {
-      console.error('Failed to scan project directories:', error)
     }
+  } catch (error) {
+    console.error('Failed to scan managed project directories:', error)
   }
 
   const [logsSize, appCache, diskSpace] = await Promise.all([
@@ -509,7 +490,7 @@ async function getStorageSnapshotCacheEntry(
     return { snapshot: storageSnapshotCache, fromCache: true }
   }
 
-  const snapshot = await collectStorageSnapshot(projectsDir)
+  const snapshot = await collectStorageSnapshot(projectsDir, await listManagedStoragePaths())
   storageSnapshotCache = snapshot
   return { snapshot, fromCache: false }
 }
@@ -645,7 +626,7 @@ export function registerSettingsStorageHandlers(
     const projectsDir = settings.projectsDirectory
     const userDataDir = app.getPath('userData')
     const appCachePath = path.join(userDataDir, 'Cache')
-    const projectDirectories = getProjectDirectories(projectsDir)
+    const projectDirectories = await listManagedStoragePaths()
     const cachedSnapshot = getStorageSnapshotCacheForDirectory(projectsDir)
 
     try {
@@ -698,49 +679,6 @@ export function registerSettingsStorageHandlers(
     }
   })
 
-  ipcMain.handle(
-    'storage:deleteProject',
-    async (_event, options: { projectPath: string }): Promise<StorageActionResult> => {
-      const settings = deps.loadSettings()
-      const projectsDir = settings.projectsDirectory
-      const projectPath = options?.projectPath
-
-      if (!projectPath) {
-        return { success: false, error: 'Project path is required.' }
-      }
-
-      const [projectsDirForGuard, projectPathForGuard] = await Promise.all([
-        resolvePathForStorageGuard(projectsDir),
-        resolvePathForStorageGuard(projectPath),
-      ])
-
-      if (!isPathInsideDirectory(projectsDirForGuard, projectPathForGuard)) {
-        return { success: false, error: 'Project path is outside the configured projects directory.' }
-      }
-
-      try {
-        const cachedSnapshot = getStorageSnapshotCacheForDirectory(projectsDir)
-        const cachedProject = cachedSnapshot?.projects.find((project) =>
-          pathsReferToSameStorageEntry(project.path, projectPath) ||
-          pathsReferToSameStorageEntry(project.path, projectPathForGuard)
-        )
-        const movedToTrash = await movePathToTrash(projectPathForGuard)
-        invalidateStorageSnapshotCache()
-
-        return {
-          success: true,
-          ...(typeof cachedProject?.size === 'number' ? { clearedBytes: cachedProject.size } : {}),
-          deletedCount: movedToTrash ? 1 : 0,
-        }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to delete project.',
-        }
-      }
-    }
-  )
-
   ipcMain.handle('storage:clearAll', async (): Promise<StorageActionResult> => {
     const settings = deps.loadSettings()
     const currentProjectsDir = settings.projectsDirectory
@@ -748,15 +686,52 @@ export function registerSettingsStorageHandlers(
     const logsDir = app.getPath('logs')
     const appCachePath = path.join(userDataDir, 'Cache')
     const defaultSettings = getDefaultSettings()
-    const deletedProjectCount = getProjectDirectories(currentProjectsDir).length
     const cachedSnapshot = getStorageSnapshotCacheForDirectory(currentProjectsDir)
 
     try {
+      const runtime = await waitForWorkspaceCatalogRuntime()
+      const managedTargets = await runtime.runPromise(
+        Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+          catalog.listManagedDeletionTargets(),
+        ) as Effect.Effect<
+          Array<{
+            workspaceId: string
+            projectRootPath: string
+            managedRootPath: string
+          }>,
+          never,
+          WorkspaceCatalog
+        >,
+      )
+      const movedWorkspaceIds: string[] = []
+      for (const target of managedTargets) {
+        const [managedRootPath, projectRootPath] = await Promise.all([
+          fs.promises.realpath(target.managedRootPath),
+          fs.promises.realpath(target.projectRootPath),
+        ])
+        const relative = path.relative(managedRootPath, projectRootPath)
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+          continue
+        }
+        await shell.trashItem(projectRootPath)
+        movedWorkspaceIds.push(target.workspaceId)
+      }
+
       await Promise.all([
-        clearDirectoryContents(currentProjectsDir, { measureSize: false }),
         clearDirectoryContents(appCachePath, { measureSize: false }),
         clearDirectoryContents(logsDir, { measureSize: false }),
       ])
+
+      for (const workspaceId of movedWorkspaceIds) {
+        await runtime.runPromise(
+          Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+            catalog.forget(workspaceId),
+          ) as Effect.Effect<void, never, WorkspaceCatalog>,
+        )
+      }
+      if (movedWorkspaceIds.length > 0) {
+        notifyWorkspaceCatalogChanged()
+      }
 
       await Promise.all([
         fs.promises.mkdir(defaultSettings.projectsDirectory, { recursive: true }),
@@ -765,6 +740,11 @@ export function registerSettingsStorageHandlers(
       ])
 
       deps.saveSettings(defaultSettings)
+      await runtime.runPromise(
+        Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+          catalog.setSetting('projectsDirectory', defaultSettings.projectsDirectory),
+        ) as Effect.Effect<void, never, WorkspaceCatalog>,
+      )
       invalidateStorageSnapshotCache()
 
       return {
@@ -772,7 +752,7 @@ export function registerSettingsStorageHandlers(
         ...(typeof cachedSnapshot?.usage.total === 'number'
           ? { clearedBytes: cachedSnapshot.usage.total }
           : {}),
-        deletedCount: deletedProjectCount,
+        deletedCount: movedWorkspaceIds.length,
       }
     } catch (error) {
       return {

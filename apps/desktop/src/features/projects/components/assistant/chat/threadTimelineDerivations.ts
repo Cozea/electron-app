@@ -137,43 +137,66 @@ export function deriveCompletionSummariesByMessageId({
 }): Map<MessageId, string> {
   const byMessageId = new Map<MessageId, string>()
 
-  for (const message of messages) {
-    if (message.role !== "assistant" || message.streaming || !message.turnId) {
+  const orderedMessages = [...messages].toSorted((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  )
+  const turns = new Map<
+    string,
+    { startedAt: string; assistantMessages: Array<Thread["messages"][number]> }
+  >()
+  let precedingUserCreatedAt: string | null = null
+
+  for (const message of orderedMessages) {
+    if (message.role === "user") {
+      precedingUserCreatedAt = message.createdAt
       continue
     }
-    if (!hasToolActivityForTurn(activities, message.turnId)) {
+    if (message.role !== "assistant" || !message.turnId) continue
+    const key = String(message.turnId)
+    const existing = turns.get(key)
+    if (existing) {
+      existing.assistantMessages.push(message)
+    } else {
+      turns.set(key, {
+        startedAt: precedingUserCreatedAt ?? message.createdAt,
+        assistantMessages: [message],
+      })
+    }
+  }
+
+  const newestTurnKey = [...turns.keys()].at(-1)
+  for (const [turnKey, turn] of turns) {
+    const terminalMessage = turn.assistantMessages
+      .filter((message) => !message.streaming)
+      .at(-1)
+    if (!terminalMessage?.turnId || !hasToolActivityForTurn(activities, terminalMessage.turnId)) {
       continue
     }
 
-    const isActiveTurnMessage = activeTurn?.turnId === message.turnId
-    if (isActiveTurnMessage && !latestTurnSettled) {
-      continue
-    }
+    const isActiveTurn = activeTurn?.turnId === terminalMessage.turnId
+    if ((isActiveTurn || turnKey === newestTurnKey) && !latestTurnSettled) continue
 
-    const startedAt = isActiveTurnMessage
-      ? (activeTurn?.startedAt ?? message.createdAt)
-      : message.createdAt
-    const completedAt = isActiveTurnMessage
-      ? (activeTurn?.completedAt ?? message.completedAt)
-      : message.completedAt
-    if (!completedAt) {
-      continue
-    }
-
+    const startedAt = isActiveTurn ? (activeTurn?.startedAt ?? turn.startedAt) : turn.startedAt
+    const completedCandidates = [
+      ...(isActiveTurn && activeTurn?.completedAt ? [activeTurn.completedAt] : []),
+      ...turn.assistantMessages.flatMap((message) =>
+        message.completedAt ? [message.completedAt] : [message.createdAt],
+      ),
+      ...activities
+        .filter((activity) => String(activity.turnId ?? "") === turnKey)
+        .map((activity) => activity.createdAt),
+    ].toSorted()
+    const completedAt = completedCandidates.at(-1)
     const elapsed = formatElapsed(startedAt, completedAt)
-    if (!elapsed) {
-      continue
-    }
+    if (!elapsed) continue
 
-    if (isActiveTurnMessage && activeTurn?.state === "interrupted") {
-      byMessageId.set(message.id, `Stopped after ${elapsed}`)
-      continue
+    if (isActiveTurn && activeTurn?.state === "interrupted") {
+      byMessageId.set(terminalMessage.id, `Stopped after ${elapsed}`)
+    } else if (isActiveTurn && activeTurn?.state === "error") {
+      byMessageId.set(terminalMessage.id, `Failed after ${elapsed}`)
+    } else {
+      byMessageId.set(terminalMessage.id, `Worked for ${elapsed}`)
     }
-    if (isActiveTurnMessage && activeTurn?.state === "error") {
-      byMessageId.set(message.id, `Failed after ${elapsed}`)
-      continue
-    }
-    byMessageId.set(message.id, `Worked for ${elapsed}`)
   }
 
   return byMessageId

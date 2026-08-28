@@ -4,10 +4,12 @@ import * as Effect from "effect/Effect";
 
 import Migration0001 from "./Migrations/001_InitialSchema.ts";
 import Migration0002 from "./Migrations/002_ActiveUniqueIndexes.ts";
+import Migration0003 from "./Migrations/003_WorkspaceStorageOwnership.ts";
 
 export const migrationEntries = [
   [1, "InitialSchema", Migration0001],
   [2, "ActiveUniqueIndexes", Migration0002],
+  [3, "WorkspaceStorageOwnership", Migration0003],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

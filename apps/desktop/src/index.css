@@ -347,6 +347,63 @@ body {
   }
 }
 
+@keyframes cozea-live-shimmer-focus {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes cozea-live-shimmer-counter {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.cozea-live-shimmer {
+  --cozea-live-shimmer-width: 4.5rem;
+}
+
+.cozea-live-shimmer-focus {
+  right: auto;
+  left: calc(-1 * var(--cozea-live-shimmer-width));
+  width: calc(100% + 2 * var(--cozea-live-shimmer-width));
+  mask-image: linear-gradient(to right, transparent 0, rgb(0 0 0 / 55%) 1.575rem, black 2.25rem, rgb(0 0 0 / 55%) 2.925rem, transparent var(--cozea-live-shimmer-width), transparent 100%);
+  mask-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, rgb(0 0 0 / 55%) 1.575rem, black 2.25rem, rgb(0 0 0 / 55%) 2.925rem, transparent var(--cozea-live-shimmer-width), transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  animation: cozea-live-shimmer-focus 2.2s linear infinite;
+  will-change: transform;
+}
+
+.cozea-live-shimmer-counter {
+  width: 100%;
+  animation: cozea-live-shimmer-counter 2.2s linear infinite;
+  will-change: transform;
+}
+
+.cozea-live-shimmer-aligned {
+  width: calc(100% - 2 * var(--cozea-live-shimmer-width));
+  margin-left: var(--cozea-live-shimmer-width);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cozea-live-shimmer-focus {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+  .cozea-live-shimmer-counter {
+    animation: none;
+    will-change: auto;
+  }
+}
+
 @keyframes cozea-diff-badge-enter {
   0% {
     opacity: 0;

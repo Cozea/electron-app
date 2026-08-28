@@ -57,12 +57,10 @@ export function useProjectWorkspaceActions() {
         return null
       }
 
-      const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+      const bindResult = await window.electronAPI.workspace!.attachExistingFolder({
         projectId: project.id,
         folderPath,
-        writeMarker: true,
         setActive: true,
-        source: "locate",
       })
       if (!bindResult.success || !bindResult.workspace) {
         // Conflicts used to die in a console.warn: the user picked a folder

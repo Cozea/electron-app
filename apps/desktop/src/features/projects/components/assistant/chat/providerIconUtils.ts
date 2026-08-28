@@ -8,6 +8,8 @@ export type ModelEsque = {
   name: string;
   shortName?: string;
   subProvider?: string;
+  isDefault?: boolean;
+  isLegacy?: boolean;
 };
 
 export const PROVIDER_ICON_BY_PROVIDER: Record<ProviderKind | "favorites" | "gemini-coming-soon" | "github-copilot-coming-soon", Icon> = {

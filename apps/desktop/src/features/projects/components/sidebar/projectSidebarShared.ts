@@ -62,7 +62,6 @@ export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   template?: string | null
   slug: string
   updatedAt: number
-  localPath: string | null
   sourceControl: Doc<"projects">["sourceControl"]
   gitRepository: Doc<"projects">["gitRepository"]
   organizationId?: string | null
@@ -125,7 +124,7 @@ export interface SidebarProjectTreeItemActions {
     project: SidebarProjectItem,
     laneId: string,
     options?: {
-      openTile?: "assistantChat" | "terminal"
+      openTile?: "assistantChat" | "devServer" | "terminal"
       focusTileId?: string
       workspaceId?: string | null
     },
@@ -187,7 +186,6 @@ export function areSidebarProjectItemsEqual(
     left.slug === right.slug &&
     left.updatedAt === right.updatedAt &&
     left.createdBy === right.createdBy &&
-    left.localPath === right.localPath &&
     left.importedFrom?.provider === right.importedFrom?.provider &&
     left.importedFrom?.repoFullName === right.importedFrom?.repoFullName &&
     left.importedFrom?.branch === right.importedFrom?.branch &&

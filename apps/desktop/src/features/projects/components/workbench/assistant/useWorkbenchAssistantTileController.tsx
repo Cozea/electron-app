@@ -39,6 +39,14 @@ import {
   useAssistantComposerDraftStore,
 } from "@/features/projects/components/assistant/chat/composerDraftStore"
 import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
+import {
+  deriveThreadImageArtifacts,
+  type ThreadImageArtifact,
+} from "@/features/projects/components/assistant/artifacts/threadArtifacts"
+import {
+  useThreadArtifactMedia,
+  type ThreadArtifactMediaState,
+} from "@/features/projects/components/assistant/artifacts/useThreadArtifactMedia"
 import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   newCommandId,
@@ -91,6 +99,7 @@ import {
   type DiffDialogState,
   basenameFromPath,
   cloneComposerImageForRetry,
+  deriveAssistantTurnRunning,
   deriveTitleSeed,
   getLiveAssistantTile,
   getProviderModelOptions,
@@ -122,6 +131,8 @@ interface WorkbenchAssistantTileControllerResult {
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
   handleDeleteThread: () => Promise<boolean>
+  artifacts: ReadonlyArray<ThreadImageArtifact>
+  artifactMedia: ThreadArtifactMediaState
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
 }
 
@@ -410,6 +421,14 @@ export function useWorkbenchAssistantTileController(
       messages: [...mergedThread.messages, ...pendingMessages],
     }
   }, [mergedThread, optimisticUserMessages])
+  const artifacts = useMemo(
+    () => deriveThreadImageArtifacts(visibleThread?.id, visibleThread?.activities ?? []),
+    [visibleThread?.activities, visibleThread?.id],
+  )
+  const artifactMedia = useThreadArtifactMedia(visibleThread?.id, artifacts, {
+    active: substrateTransport.active,
+    shadowBaseUrl: substrateTransport.shadowBaseUrl,
+  })
   const providerModelOptions = useMemo(() => {
     const options = getProviderModelOptions(config, selectedProvider, selectedProviderInstanceId)
     if (options.some((option) => option.slug === selectedModelSelection.model)) {
@@ -436,7 +455,7 @@ export function useWorkbenchAssistantTileController(
     () => getModelSelectionOptionDescriptors(selectedModelSelection, selectedModelCapabilities),
     [selectedModelCapabilities, selectedModelSelection],
   )
-  const latestTurnId = thread?.latestTurn?.turnId
+  const latestTurnId = visibleThread?.latestTurn?.turnId
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(visibleThread?.activities ?? []),
     [visibleThread?.activities],
@@ -453,9 +472,10 @@ export function useWorkbenchAssistantTileController(
     () => inferCheckpointTurnCountByTurnId(visibleThread?.turnDiffSummaries ?? []),
     [visibleThread?.turnDiffSummaries],
   )
-  const isRunning =
-    thread?.session?.orchestrationStatus === "running" ||
-    thread?.session?.orchestrationStatus === "starting"
+  const isRunning = deriveAssistantTurnRunning({
+    orchestrationStatus: thread?.session?.orchestrationStatus,
+    streamIsStreaming: threadStream.isStreaming,
+  })
   const {
     isInterrupting,
     isForceStopAvailable,
@@ -465,7 +485,7 @@ export function useWorkbenchAssistantTileController(
     notePendingTurnStart,
     handleInterrupt,
   } = useAssistantTurnLifecycle({
-    thread,
+    thread: visibleThread,
     isRuntimeReady,
     runtimeErrorMessage,
     isRunning,
@@ -476,8 +496,12 @@ export function useWorkbenchAssistantTileController(
   // in plan mode, so that handleSend can intercept and route to the plan
   // follow-up submission flow instead of a normal turn.
   const activeProposedPlan = useMemo(
-    () => findLatestProposedPlan(thread?.proposedPlans ?? [], thread?.latestTurn?.turnId ?? null),
-    [thread?.latestTurn?.turnId, thread?.proposedPlans],
+    () =>
+      findLatestProposedPlan(
+        visibleThread?.proposedPlans ?? [],
+        visibleThread?.latestTurn?.turnId ?? null,
+      ),
+    [visibleThread?.latestTurn?.turnId, visibleThread?.proposedPlans],
   )
   const latestTurnSettled = !isRunning && !isTurnStartPending && !isInterrupting
   const showPlanFollowUpPrompt =
@@ -488,7 +512,7 @@ export function useWorkbenchAssistantTileController(
   const hasBoundThread = Boolean(input.tile.threadId && (thread || mergedThread))
   const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
   const chatTitle =
-    thread?.title?.trim() ||
+    visibleThread?.title?.trim() ||
     input.tile.agentLabel?.trim() ||
     input.tile.title.trim() ||
     "AI Agent"
@@ -552,7 +576,7 @@ export function useWorkbenchAssistantTileController(
     timeline.scrollTop = timeline.scrollHeight
   }, [
     latestTurnId,
-    thread?.messages.length,
+    visibleThread?.messages.length,
     pendingApprovals.length,
     pendingUserInputs.length,
   ])
@@ -611,6 +635,14 @@ export function useWorkbenchAssistantTileController(
           const liveTile = () =>
             getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ?? input.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
+
+          // The runtime can report ready before the renderer has applied its
+          // first orchestration snapshot. Resolve the authoritative project
+          // collection before deciding that this workspace needs a new T3
+          // project; otherwise project.create is rejected as a duplicate and
+          // the tile can remain stuck in its binding state.
+          const currentSnapshot = await getOrchestration().getSnapshot()
+          useStore.getState().syncServerReadModel(currentSnapshot)
 
           const currentTile = liveTile()
           const currentAssistantState = useStore.getState()
@@ -1146,7 +1178,10 @@ export function useWorkbenchAssistantTileController(
     }
 
     // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
-    let resolvedThread = thread
+    // A T3 detail snapshot can hydrate the bound tile before the shell store
+    // has materialized its Thread object. Reuse the merged bound thread so a
+    // follow-up stays on the same subscription instead of creating a new one.
+    let resolvedThread = thread ?? mergedThread
     if (!resolvedThread) {
       if (!input.workspaceId || !input.projectRootPath) {
         return
@@ -1826,6 +1861,8 @@ export function useWorkbenchAssistantTileController(
       setDiffDialog(null)
     },
     handleDeleteThread,
+    artifacts,
+    artifactMedia,
     surfaceProps: {
       dockComposerOnHover: true,
       isRuntimeReady,

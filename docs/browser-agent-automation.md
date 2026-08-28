@@ -1,5 +1,7 @@
 # Agent browser automation MVP (Track C)
 
+> This document describes the older, flag-gated automation path for user-opened Browser tiles. T3 agent preview of a project's running mini app now uses the separate Dev Server host documented in [`docs/dev-server-agent-automation.md`](./dev-server-agent-automation.md). It does not enable this flag, create a Browser tile, or take over an existing Browser tile.
+
 Wave 0 Track C from `docs/t3code-implementation-plan.md`.
 
 ## Flag (default OFF)

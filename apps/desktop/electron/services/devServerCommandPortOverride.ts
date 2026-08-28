@@ -37,11 +37,18 @@ function buildPortOverrideArg(flag: string, port: number): string {
 function applyScriptPortOverride(command: string, portArg: string): string {
   const base = stripTrailingForwardedPortArgs(command)
 
-  if (/^npm\s+run\s+/i.test(base) || /^pnpm\s+run\s+/i.test(base) || /^bun\s+run\s+/i.test(base)) {
+  // npm needs `--` to stop parsing flags itself. pnpm, Bun, and Yarn pass
+  // arguments after the script name directly; forwarding a literal separator
+  // makes frameworks such as Next treat `--port` as an application path.
+  if (/^npm\s+run\s+/i.test(base)) {
     return `${base} -- ${portArg}`.trim()
   }
 
-  if (/^yarn(?:\s+run)?\s+/i.test(base)) {
+  if (
+    /^pnpm\s+run\s+/i.test(base) ||
+    /^bun\s+run\s+/i.test(base) ||
+    /^yarn(?:\s+run)?\s+/i.test(base)
+  ) {
     return `${base} ${portArg}`.trim()
   }
 
@@ -68,4 +75,8 @@ export function applyDevServerPortOverride(input: {
   }
 
   return applyScriptPortOverride(normalizedCommand, buildPortOverrideArg(flag, input.port))
+}
+
+export function applyDevServerPortPlaceholder(command: string, port: number): string {
+  return command.replace(/\{port\}/gi, String(port))
 }

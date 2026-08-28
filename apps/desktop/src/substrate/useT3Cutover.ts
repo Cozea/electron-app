@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createT3RpcSession } from "@cozea/client-runtime";
 import type { NativeApi } from "@cozea/assistant-contracts";
@@ -13,6 +13,10 @@ import { createT3NativeApi } from "./createT3NativeApi";
 import { createT3OrchestrationApiFromClient } from "./createT3OrchestrationApi";
 import { fetchT3RpcSession } from "./fetchT3RpcSession";
 import { setT3CutoverActive } from "./t3CutoverStore";
+import {
+  registerT3PreviewAutomationHost,
+  T3_PREVIEW_AUTOMATION_HOST_REVISION,
+} from "./t3PreviewAutomationHost";
 
 const SHADOW_READY_PATH = "/.well-known/cozea/substrate/ready";
 
@@ -44,6 +48,8 @@ export function useT3Cutover(input: {
   readonly substrateActive: boolean;
   readonly shadowBaseUrl: string | null;
 }): T3CutoverState {
+  const ownerRef = useRef(Symbol("t3-cutover-owner"));
+  const owner = ownerRef.current;
   const [state, setState] = useState<T3CutoverState>({
     active: false,
     loading: false,
@@ -55,9 +61,9 @@ export function useT3Cutover(input: {
 
   useEffect(() => {
     if (!input.substrateActive || !input.shadowBaseUrl) {
-      disconnectT3ServerConfigBridge();
-      registerT3NativeApiOverlay(null);
-      setT3CutoverActive(false);
+      disconnectT3ServerConfigBridge(owner);
+      registerT3NativeApiOverlay(owner, null);
+      setT3CutoverActive(owner, false);
       setState({
         active: false,
         loading: false,
@@ -71,6 +77,7 @@ export function useT3Cutover(input: {
 
     let cancelled = false;
     let sessionClose: (() => Promise<void>) | null = null;
+    let disconnectPreviewHost: (() => void) | null = null;
 
     setState((current) => ({ ...current, loading: true, error: null }));
 
@@ -79,9 +86,9 @@ export function useT3Cutover(input: {
         const t3Enabled = await readShadowReadyT3Enabled(input.shadowBaseUrl!);
         if (cancelled || !t3Enabled) {
           if (!cancelled) {
-            disconnectT3ServerConfigBridge();
-            registerT3NativeApiOverlay(null);
-            setT3CutoverActive(false);
+            disconnectT3ServerConfigBridge(owner);
+            registerT3NativeApiOverlay(owner, null);
+            setT3CutoverActive(owner, false);
             setState({
               active: false,
               loading: false,
@@ -102,11 +109,15 @@ export function useT3Cutover(input: {
           wsTicket: rpcSessionPayload.wsTicket,
         });
         sessionClose = () => session.close();
+        disconnectPreviewHost = registerT3PreviewAutomationHost(owner, {
+          session,
+          baseUrl: rpcSessionPayload.baseUrl,
+        });
 
         const nativeApi = createT3NativeApi(session);
         const orchestrationHandle = createT3OrchestrationApiFromClient(session.orchestration);
 
-        connectT3ServerConfigBridge({
+        connectT3ServerConfigBridge(owner, {
           getConfig: () => session.serverConfig.getConfig(),
           subscribe: (listener) => {
             let active = true;
@@ -124,15 +135,18 @@ export function useT3Cutover(input: {
             };
           },
           refreshProviders: () => session.serverConfig.refreshProviders(),
+          updateProvider: (provider, instanceId) =>
+            session.serverConfig.updateProvider(provider, instanceId),
         });
 
-        registerT3NativeApiOverlay(nativeApi);
-        setT3CutoverActive(true);
+        registerT3NativeApiOverlay(owner, nativeApi);
+        setT3CutoverActive(owner, true);
 
         if (cancelled) {
-          disconnectT3ServerConfigBridge();
-          registerT3NativeApiOverlay(null);
-          setT3CutoverActive(false);
+          disconnectT3ServerConfigBridge(owner);
+          registerT3NativeApiOverlay(owner, null);
+          setT3CutoverActive(owner, false);
+          disconnectPreviewHost?.();
           await session.close();
           return;
         }
@@ -146,9 +160,10 @@ export function useT3Cutover(input: {
           refreshProviders: () => session.serverConfig.refreshProviders(),
         });
       } catch (error) {
-        disconnectT3ServerConfigBridge();
-        registerT3NativeApiOverlay(null);
-        setT3CutoverActive(false);
+        disconnectPreviewHost?.();
+        disconnectT3ServerConfigBridge(owner);
+        registerT3NativeApiOverlay(owner, null);
+        setT3CutoverActive(owner, false);
         if (!cancelled) {
           setState({
             active: false,
@@ -164,12 +179,18 @@ export function useT3Cutover(input: {
 
     return () => {
       cancelled = true;
-      disconnectT3ServerConfigBridge();
-      registerT3NativeApiOverlay(null);
-      setT3CutoverActive(false);
+      disconnectT3ServerConfigBridge(owner);
+      registerT3NativeApiOverlay(owner, null);
+      setT3CutoverActive(owner, false);
+      disconnectPreviewHost?.();
       void sessionClose?.();
     };
-  }, [input.substrateActive, input.shadowBaseUrl]);
+  }, [
+    input.substrateActive,
+    input.shadowBaseUrl,
+    owner,
+    T3_PREVIEW_AUTOMATION_HOST_REVISION,
+  ]);
 
   return state;
 }

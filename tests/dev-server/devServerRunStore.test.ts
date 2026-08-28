@@ -20,6 +20,7 @@ import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
   ensureDevServerEventBridge,
+  ensureDevServerRun,
   reconcileDevServerRun,
   registerDevServerRunContext,
   restartDevServerRun,
@@ -27,6 +28,28 @@ import {
   useDevServerRunStore,
   type DevServerRunContext,
 } from '@/features/projects/devserver/devServerRunStore'
+import {
+  buildLocalDevServerUrl,
+  isSameDevServerPreviewUrl,
+} from '@/features/projects/devserver/devServerTileCommands'
+
+describe('dev server preview URLs', () => {
+  it('uses IPv4 loopback for the managed preview URL', () => {
+    expect(buildLocalDevServerUrl(4173)).toBe('http://127.0.0.1:4173')
+  })
+
+  it('treats persisted localhost overrides as the managed loopback URL', () => {
+    expect(
+      isSameDevServerPreviewUrl('http://localhost:4173/', 'http://127.0.0.1:4173'),
+    ).toBe(true)
+    expect(
+      isSameDevServerPreviewUrl('http://localhost:5173/', 'http://127.0.0.1:4173'),
+    ).toBe(false)
+    expect(
+      isSameDevServerPreviewUrl('http://[::1]:4173/', 'http://127.0.0.1:4173'),
+    ).toBe(true)
+  })
+})
 
 type OutputHandler = (event: {
   workspaceId: string
@@ -41,12 +64,31 @@ type ExitHandler = (event: {
   code: number | null
   runId?: string
 }) => void
+type StateHandler = (event: {
+  workspaceId: string
+  laneId?: string | null
+  running: boolean
+  ready: boolean
+  port: number | null
+  runId: string | null
+  phase: 'bootstrapping' | 'launching' | 'running' | null
+  headless: boolean
+}) => void
 
 let outputHandler: OutputHandler
 let exitHandler: ExitHandler
+let stateHandler: StateHandler
 const startMock = vi.fn()
+const ensureMock = vi.fn()
 const stopMock = vi.fn(async () => ({ success: true }))
-const getStateMock = vi.fn(async () => ({ running: false, ready: false, port: null, runId: null }))
+const getStateMock = vi.fn(async () => ({
+  running: false,
+  ready: false,
+  port: null,
+  runId: null,
+  phase: null,
+  headless: false,
+}))
 
 function makeContext(workspaceId: string, overrides: Partial<DevServerRunContext> = {}): DevServerRunContext {
   return {
@@ -68,8 +110,13 @@ beforeAll(() => {
     electronAPI: {
       devServer: {
         start: startMock,
+        ensure: ensureMock,
         stop: stopMock,
         getState: getStateMock,
+        onStateChange: (callback: StateHandler) => {
+          stateHandler = callback
+          return () => {}
+        },
         onOutput: (callback: OutputHandler) => {
           outputHandler = callback
           return () => {}
@@ -86,8 +133,17 @@ beforeAll(() => {
 
 beforeEach(() => {
   startMock.mockReset()
+  ensureMock.mockReset()
   stopMock.mockClear()
   getStateMock.mockReset()
+  getStateMock.mockResolvedValue({
+    running: false,
+    ready: false,
+    port: null,
+    runId: null,
+    phase: null,
+    headless: false,
+  })
 })
 
 let keyCounter = 0
@@ -120,7 +176,7 @@ describe('startDevServerRun', () => {
 
     const run = useDevServerRunStore.getState().runs[key]
     expect(run.status).toBe('ready')
-    expect(run.url).toBe('http://localhost:5174')
+    expect(run.url).toBe('http://127.0.0.1:5174')
     expect(run.port).toBe(5174)
     expect(run.reachable).toBe(true)
     expect(run.runId).toBeTruthy()
@@ -196,6 +252,55 @@ describe('startDevServerRun', () => {
     expect(run.status).toBe('error')
     expect(run.error).toContain('no reachable port')
     expect(run.failureReason).toBe('server_unreachable')
+  })
+})
+
+describe('ensureDevServerRun', () => {
+  it('uses the idempotent ensure IPC path and projects an existing run as ready', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    ensureMock.mockImplementation(async (options: { runId?: string }) => ({
+      success: true,
+      existing: true,
+      port: 5310,
+      runId: options.runId,
+    }))
+
+    await ensureDevServerRun(key)
+
+    expect(ensureMock).toHaveBeenCalledTimes(1)
+    expect(startMock).not.toHaveBeenCalled()
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'ready',
+      port: 5310,
+      url: 'http://127.0.0.1:5310',
+    })
+  })
+
+  it('uses an explicit agent command and preferred port when detection is ambiguous', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    ensureMock.mockImplementation(async (options: { runId?: string }) => ({
+      success: true,
+      port: 4173,
+      runId: options.runId,
+    }))
+
+    await ensureDevServerRun(key, {
+      command: 'python3 -m http.server {port}',
+      port: 4173,
+    })
+
+    expect(ensureMock).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'python3 -m http.server {port}',
+      port: 4173,
+    }))
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'ready',
+      port: 4173,
+    })
   })
 })
 
@@ -283,6 +388,69 @@ describe('event bridge', () => {
     expect(run.status).toBe('ready')
   })
 
+  it('adopts a ready main-process state while a renderer start promise is pending', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    let resolveStart: (value: { success: boolean; port: number; runId: string }) => void
+    startMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStart = resolve
+        }),
+    )
+
+    const start = startDevServerRun(key)
+    await vi.waitFor(() => expect(startMock).toHaveBeenCalled())
+    const requestedRunId = useDevServerRunStore.getState().runs[key].runId!
+
+    stateHandler({
+      workspaceId,
+      laneId: null,
+      running: true,
+      ready: true,
+      port: 4173,
+      runId: requestedRunId,
+      phase: 'running',
+      headless: false,
+    })
+
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'ready',
+      runId: requestedRunId,
+      port: 4173,
+      url: 'http://127.0.0.1:4173',
+      reachable: true,
+    })
+
+    resolveStart!({ success: true, port: 4173, runId: requestedRunId })
+    await start
+  })
+
+  it('clears a ready mirror when main reports the singleton stopped', async () => {
+    const workspaceId = freshWorkspace()
+    const key = await readyRun(workspaceId)
+
+    stateHandler({
+      workspaceId,
+      laneId: null,
+      running: false,
+      ready: false,
+      port: null,
+      runId: null,
+      phase: null,
+      headless: false,
+    })
+
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'stopped',
+      runId: null,
+      url: null,
+      port: null,
+      reachable: false,
+    })
+  })
+
   it('drops events from stale runs', async () => {
     const workspaceId = freshWorkspace()
     const key = await readyRun(workspaceId)
@@ -331,13 +499,20 @@ describe('reconcileDevServerRun', () => {
     const workspaceId = freshWorkspace()
     const key = buildDevServerRunKey(workspaceId)
     registerDevServerRunContext(key, makeContext(workspaceId))
-    getStateMock.mockResolvedValue({ running: true, ready: true, port: 4321, runId: 'main-run' })
+    getStateMock.mockResolvedValue({
+      running: true,
+      ready: true,
+      port: 4321,
+      runId: 'main-run',
+      phase: 'running',
+      headless: false,
+    })
 
     await reconcileDevServerRun(key)
 
     const run = useDevServerRunStore.getState().runs[key]
     expect(run.status).toBe('ready')
-    expect(run.url).toBe('http://localhost:4321')
+    expect(run.url).toBe('http://127.0.0.1:4321')
     expect(run.runId).toBe('main-run')
   })
 
@@ -353,7 +528,14 @@ describe('reconcileDevServerRun', () => {
     await startDevServerRun(key)
     expect(useDevServerRunStore.getState().runs[key].status).toBe('ready')
 
-    getStateMock.mockResolvedValue({ running: false, ready: false, port: null, runId: null })
+    getStateMock.mockResolvedValue({
+      running: false,
+      ready: false,
+      port: null,
+      runId: null,
+      phase: null,
+      headless: false,
+    })
     await reconcileDevServerRun(key)
 
     const run = useDevServerRunStore.getState().runs[key]
@@ -365,7 +547,14 @@ describe('reconcileDevServerRun', () => {
     const workspaceId = freshWorkspace()
     const key = buildDevServerRunKey(workspaceId)
     registerDevServerRunContext(key, makeContext(workspaceId))
-    getStateMock.mockResolvedValue({ running: false, ready: false, port: null, runId: null })
+    getStateMock.mockResolvedValue({
+      running: false,
+      ready: false,
+      port: null,
+      runId: null,
+      phase: null,
+      headless: false,
+    })
 
     await reconcileDevServerRun(key)
 

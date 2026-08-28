@@ -371,8 +371,9 @@ interface SidebarLaneTilesProps {
   activeLaneSummary: WorkbenchLaneSidebarSummary | null
   activeSelectionLevel: SidebarActiveSelectionLevel
   activeTileId: string | null
+  hasHeadlessDevServer: boolean
   onOpenLaneWorkbench: (options?: {
-    openTile?: "assistantChat" | "terminal"
+    openTile?: "assistantChat" | "devServer" | "terminal"
     focusTileId?: string
   }) => void
 }
@@ -382,6 +383,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
     activeLaneSummary,
     activeSelectionLevel,
     activeTileId,
+    hasHeadlessDevServer,
     onOpenLaneWorkbench,
   } = props
   const agents = activeLaneSummary?.agents ?? []
@@ -391,7 +393,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
     font: SIDEBAR_LANE_LABEL_FONT,
   })
 
-  if (agents.length === 0 && surfaces.length === 0) {
+  if (agents.length === 0 && surfaces.length === 0 && !hasHeadlessDevServer) {
     return null
   }
 
@@ -470,6 +472,26 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           </div>
         </button>
       ))}
+      {hasHeadlessDevServer ? (
+        <button
+          type="button"
+          data-sidebar-tile-type="devServer"
+          data-sidebar-headless-dev-server
+          className={cn("w-full", SIDEBAR_PILL_NESTED_ROW_CLASS)}
+          onClick={() => onOpenLaneWorkbench({ openTile: "devServer" })}
+          aria-label="Open running Dev Server"
+        >
+          <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
+            <SurfaceTileGlyph
+              title="Dev Server"
+              type="devServer"
+              className="size-[18px] shrink-0 text-muted-foreground/75"
+            />
+            <span className="min-w-0 flex-1 truncate">Dev Server</span>
+            <span className="shrink-0 text-[10px] text-muted-foreground/55">Running</span>
+          </div>
+        </button>
+      ) : null}
     </div>
   )
 }

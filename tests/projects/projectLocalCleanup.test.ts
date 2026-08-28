@@ -30,7 +30,7 @@ vi.mock("@/features/projects/lib/projectBranchSessionStore", () => ({
 }))
 
 describe("cleanupDeletedProjectLocally", () => {
-  const deleteProject = vi.fn()
+  const trashManagedWorkspace = vi.fn()
   const forget = vi.fn()
   const listForProject = vi.fn()
   const listSessions = vi.fn()
@@ -39,7 +39,7 @@ describe("cleanupDeletedProjectLocally", () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    deleteProject.mockResolvedValue({ success: true })
+    trashManagedWorkspace.mockResolvedValue({ success: true, movedToTrash: true })
     forget.mockResolvedValue(undefined)
     listSessions.mockResolvedValue([])
     closeSession.mockResolvedValue(undefined)
@@ -47,25 +47,21 @@ describe("cleanupDeletedProjectLocally", () => {
       {
         workspaceId: "workspace_1",
         projectRootPath: "/tmp/cozea-projects/demo",
+        storageOwnership: "managed",
       },
     ])
 
     Object.assign(globalThis, {
       window: {
         electronAPI: {
-          settings: {
-            get: vi.fn().mockResolvedValue({ projectsDirectory: "/tmp/cozea-projects" }),
-          },
           workbenchSession: {
             listSessions,
             closeSession,
           },
-          storage: {
-            deleteProject,
-          },
           workspace: {
             listForProject,
             forget,
+            trashManagedWorkspace,
           },
         },
       },
@@ -78,13 +74,10 @@ describe("cleanupDeletedProjectLocally", () => {
     )
 
     await cleanupDeletedProjectLocally("project_1", {
-      projectName: "Demo",
-      projectSlug: "demo",
-      managedProjectPaths: ["/tmp/cozea-projects/demo"],
       keepLocalFiles: true,
     })
 
-    expect(deleteProject).not.toHaveBeenCalled()
+    expect(trashManagedWorkspace).not.toHaveBeenCalled()
     expect(forget).toHaveBeenCalledWith("workspace_1")
   })
 
@@ -94,15 +87,28 @@ describe("cleanupDeletedProjectLocally", () => {
     )
 
     await cleanupDeletedProjectLocally("project_1", {
-      projectName: "Demo",
-      projectSlug: "demo",
-      managedProjectPaths: ["/tmp/cozea-projects/demo"],
       keepLocalFiles: false,
     })
 
-    expect(deleteProject).toHaveBeenCalledWith({
-      projectPath: "/tmp/cozea-projects/demo",
-    })
+    expect(trashManagedWorkspace).toHaveBeenCalledWith("workspace_1")
     expect(forget).toHaveBeenCalledWith("workspace_1")
+  })
+
+  it("never trashes an attached folder", async () => {
+    listForProject.mockResolvedValueOnce([
+      {
+        workspaceId: "workspace_attached",
+        projectRootPath: "/tmp/cozea-projects/user-owned",
+        storageOwnership: "attached",
+      },
+    ])
+    const { cleanupDeletedProjectLocally } = await import(
+      "../../apps/desktop/src/features/projects/lib/projectLocalCleanup"
+    )
+
+    await cleanupDeletedProjectLocally("project_1", { keepLocalFiles: false })
+
+    expect(trashManagedWorkspace).not.toHaveBeenCalled()
+    expect(forget).toHaveBeenCalledWith("workspace_attached")
   })
 })

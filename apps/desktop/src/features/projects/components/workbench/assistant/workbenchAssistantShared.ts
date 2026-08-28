@@ -65,6 +65,17 @@ export function toErrorMessage(error: unknown): string {
   return "Something went wrong while talking to the local assistant runtime."
 }
 
+export function deriveAssistantTurnRunning(input: {
+  orchestrationStatus: string | null | undefined
+  streamIsStreaming: boolean
+}): boolean {
+  return (
+    input.streamIsStreaming ||
+    input.orchestrationStatus === "running" ||
+    input.orchestrationStatus === "starting"
+  )
+}
+
 export function truncateTitle(text: string, maxLength = 50): string {
   const trimmed = text.trim()
   if (trimmed.length <= maxLength) {
@@ -90,13 +101,22 @@ export function getProviderModelOptions(
   config: ServerConfig | null,
   provider: ProviderKind,
   instanceId?: ProviderInstanceId,
-): ReadonlyArray<{ slug: string; name: string; shortName?: string; subProvider?: string }> {
+): ReadonlyArray<{
+  slug: string;
+  name: string;
+  shortName?: string;
+  subProvider?: string;
+  isDefault?: boolean;
+  isLegacy?: boolean;
+}> {
   return (
     getProviderSnapshot(config, provider, instanceId)?.models.map((model) => ({
       slug: model.slug,
       name: model.name,
       ...(model.shortName ? { shortName: model.shortName } : {}),
       ...(model.subProvider ? { subProvider: model.subProvider } : {}),
+      ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}),
+      ...(model.isLegacy !== undefined ? { isLegacy: model.isLegacy } : {}),
     })) ?? []
   )
 }
@@ -198,6 +218,8 @@ export function resolvePreferredModelSelection(input: {
       : null)
   const resolvedModel =
     resolveSelectableModel(provider, candidateModel, providerModelOptions) ??
+    providerModelOptions.find((model) => model.isDefault && !model.isLegacy)?.slug ??
+    providerModelOptions.find((model) => !model.isLegacy)?.slug ??
     providerModelOptions[0]?.slug ??
     resolveModelSlugForProvider(provider, candidateModel) ??
     DEFAULT_MODEL_BY_PROVIDER[provider]

@@ -144,6 +144,8 @@ export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
 export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
   type: "devServer"
   viewMode?: WorkbenchRuntimePreviewViewMode
+  /** Surface created for agent preview automation; the runtime remains workspace/lane-scoped. */
+  agentManaged?: boolean
   /**
    * URL the user navigated the embedded preview to, when it differs from the
    * dev server's own URL. Persisted intent: survives remounts, cleared
@@ -187,6 +189,7 @@ export interface WorkbenchTasksTile extends WorkbenchBaseTile {
 
 export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   type: "assistantChat"
+  viewMode?: "chat" | "artifacts"
   assistantProjectId?: string | null
   threadId?: string | null
   provider?: ProviderKind
@@ -261,6 +264,9 @@ export interface CreateTileOptions {
   orgDevAppEntryPath?: string | null
   orgDevAppLogoDataUrl?: string | null
   autoStart?: boolean
+  /** Add the surface without changing the user's active Dockview tab. */
+  activate?: boolean
+  agentManaged?: boolean
   selectionMode?: WorkbenchSelectionTileMode
   selectionEdge?: WorkbenchSelectionTileEdge | null
   selectionReferenceTileId?: string | null
@@ -277,6 +283,7 @@ export interface CreateTileOptions {
   interactionMode?: ProviderInteractionMode
   agentLabel?: string | null
   laneBinding?: "sessionWorkspace" | "threadWorktree"
+  assistantViewMode?: "chat" | "artifacts"
 }
 
 interface PersistedWorkbenchState {
@@ -330,6 +337,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
         Pick<
           WorkbenchAssistantChatTile,
           | "title"
+          | "viewMode"
           | "assistantProjectId"
           | "threadId"
           | "provider"
@@ -643,7 +651,13 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     case "terminal":
       return { id, type, title, createdAt }
     case "devServer": {
-      const tile: WorkbenchDevServerTile = { id, type, title, createdAt }
+      const tile: WorkbenchDevServerTile = {
+        id,
+        type,
+        title,
+        createdAt,
+        agentManaged: options.agentManaged === true ? true : undefined,
+      }
       applyDevAppMetadata(tile, options)
       return tile
     }
@@ -697,6 +711,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         interactionMode: options.interactionMode ?? "default",
         agentLabel: options.agentLabel ?? null,
         laneBinding: options.laneBinding ?? "sessionWorkspace",
+        viewMode: options.assistantViewMode ?? "chat",
       }
     default:
       return { id, type, title, createdAt }
@@ -792,6 +807,7 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
         interactionMode: tile.interactionMode ?? "default",
         agentLabel: tile.agentLabel ?? null,
         laneBinding: normalizedLaneBinding,
+        viewMode: tile.viewMode === "artifacts" ? "artifacts" : "chat",
       }
       continue
     }
@@ -800,6 +816,7 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
       const devAppId = normalizeOptionalString(tile.devAppId)
       const sanitizedTile: WorkbenchDevServerTile = {
         ...tile,
+        agentManaged: tile.agentManaged === true ? true : undefined,
         viewMode: tile.viewMode === "code" ? "code" : "preview",
         previewOverrideUrl:
           typeof tile.previewOverrideUrl === "string"
@@ -1236,7 +1253,9 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
                   : options.title,
             })
             createdTileId = tile.id
-            workbench.activeTileId = tile.id
+            if (options.activate !== false) {
+              workbench.activeTileId = tile.id
+            }
             workbench.order.push(tile.id)
             workbench.tiles[tile.id] = tile
             state.workbenches[scopeKey] = workbench
@@ -1385,8 +1404,8 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
 
             let changed = false
             for (const key of [
-              "title", "assistantProjectId", "threadId", "provider",
-              "model", "runtimeMode", "interactionMode", "agentLabel", "laneBinding",
+              "title", "viewMode", "assistantProjectId", "threadId", "provider",
+              "providerInstanceId", "model", "runtimeMode", "interactionMode", "agentLabel", "laneBinding",
             ] as const) {
               if (patch[key] !== undefined && patch[key] !== tile[key]) {
                 ;(tile as unknown as Record<string, unknown>)[key] = patch[key]

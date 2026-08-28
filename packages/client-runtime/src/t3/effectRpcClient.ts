@@ -46,6 +46,7 @@ export class T3EffectRpcClient {
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
   >();
   private readonly chunkListeners = new Map<string, Set<(value: unknown) => void>>();
+  private readonly streamDisconnectListeners = new Map<string, () => void>();
 
   constructor(options: T3EffectRpcClientOptions) {
     const url = new URL("/ws", options.baseUrl);
@@ -71,7 +72,7 @@ export class T3EffectRpcClient {
   }
 
   private async connect(): Promise<WebSocket> {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws && this.ws.readyState === this.WebSocketImpl.OPEN) {
       return this.ws;
     }
     if (this.connectPromise) {
@@ -100,6 +101,12 @@ export class T3EffectRpcClient {
       ws.addEventListener("close", () => {
         this.ws = null;
         this.connectPromise = null;
+        const disconnectListeners = [...this.streamDisconnectListeners.values()];
+        this.streamDisconnectListeners.clear();
+        this.chunkListeners.clear();
+        for (const listener of disconnectListeners) {
+          listener();
+        }
       });
     });
 
@@ -128,6 +135,10 @@ export class T3EffectRpcClient {
       const requestId = String(message.requestId);
       const waiter = this.exitWaiters.get(requestId);
       if (!waiter) {
+        this.chunkListeners.delete(requestId);
+        const onDisconnect = this.streamDisconnectListeners.get(requestId);
+        this.streamDisconnectListeners.delete(requestId);
+        onDisconnect?.();
         return;
       }
       clearTimeout(waiter.timer);
@@ -142,13 +153,24 @@ export class T3EffectRpcClient {
 
     if (record._tag === "Chunk") {
       const message = parsed as RpcChunk;
-      const listeners = this.chunkListeners.get(String(message.requestId));
+      const requestId = String(message.requestId);
+      const listeners = this.chunkListeners.get(requestId);
       if (!listeners) {
         return;
       }
-      for (const value of message.values) {
-        for (const listener of listeners) {
-          listener(value);
+
+      try {
+        for (const value of message.values) {
+          for (const listener of listeners) {
+            listener(value);
+          }
+        }
+      } finally {
+        // Effect RPC applies backpressure to streams until the client confirms
+        // that it consumed the preceding chunk. Without this frame a stream
+        // delivers its initial snapshot and then stalls indefinitely.
+        if (this.ws?.readyState === this.WebSocketImpl.OPEN) {
+          this.ws.send(JSON.stringify({ _tag: "Ack", requestId }));
         }
       }
     }
@@ -171,17 +193,22 @@ export class T3EffectRpcClient {
     tag: string,
     payload: unknown,
     onValue: (value: unknown) => void,
+    onDisconnect?: () => void,
   ): Promise<() => Promise<void>> {
     const ws = await this.connect();
     const requestId = createRequestId();
     const listeners = new Set<(value: unknown) => void>([onValue]);
     this.chunkListeners.set(requestId, listeners);
+    if (onDisconnect) {
+      this.streamDisconnectListeners.set(requestId, onDisconnect);
+    }
     ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
 
     return async () => {
       this.chunkListeners.delete(requestId);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ _tag: "Interrupt", id: requestId }));
+      this.streamDisconnectListeners.delete(requestId);
+      if (ws.readyState === this.WebSocketImpl.OPEN) {
+        ws.send(JSON.stringify({ _tag: "Interrupt", requestId }));
       }
     };
   }

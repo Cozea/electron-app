@@ -29,6 +29,82 @@ export interface T3ServerProcessHandle {
   readonly stop: () => Promise<void>;
 }
 
+type T3OutputSource = "stdout" | "stderr";
+
+interface T3StartupOutputTracker {
+  readonly append: (source: T3OutputSource, chunk: Buffer | string) => void;
+  readonly pairingToken: Promise<string>;
+}
+
+const T3_CREDENTIAL_LINE = /^(?:Token|Pairing URL):\s*/;
+const T3_PAIRING_QR_LINE = /^[ █▀▄]+$/;
+
+export function createT3StartupOutputTracker(
+  onLog?: (line: string) => void,
+): T3StartupOutputTracker {
+  const output = new Map<T3OutputSource, string>([
+    ["stdout", ""],
+    ["stderr", ""],
+  ]);
+  const pendingLines = new Map<T3OutputSource, string>([
+    ["stdout", ""],
+    ["stderr", ""],
+  ]);
+  let resolvePairingToken: (token: string) => void = () => undefined;
+  let tokenResolved = false;
+  const pairingToken = new Promise<string>((resolve) => {
+    resolvePairingToken = resolve;
+  });
+
+  return {
+    pairingToken,
+    append: (source, chunk) => {
+      const text = chunk.toString();
+
+      if (!tokenResolved) {
+        const sourceOutput = `${output.get(source) ?? ""}${text}`;
+        output.set(source, sourceOutput);
+        try {
+          const token = extractPairingToken(sourceOutput);
+          tokenResolved = true;
+          output.clear();
+          resolvePairingToken(token);
+        } catch {
+          // The startup credential can be emitted after HTTP readiness or across chunks.
+        }
+      }
+
+      const buffered = `${pendingLines.get(source) ?? ""}${text}`;
+      const lines = buffered.split(/\r?\n/);
+      pendingLines.set(source, lines.pop() ?? "");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (
+          trimmed &&
+          !T3_CREDENTIAL_LINE.test(trimmed) &&
+          !T3_PAIRING_QR_LINE.test(line)
+        ) {
+          onLog?.(line);
+        }
+      }
+    },
+  };
+}
+
+async function withTimeout<T>(promise: Promise<T>, deadlineMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), deadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function readPort(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
   const value = Number.parseInt(raw.trim(), 10);
@@ -99,16 +175,7 @@ export async function startT3ServerProcess(
   fs.mkdirSync(baseDir, { recursive: true });
   const baseUrl = `http://${host}:${port}`;
 
-  let log = "";
-  const append = (chunk: Buffer | string) => {
-    const text = chunk.toString();
-    log += text;
-    for (const line of text.split(/\r?\n/)) {
-      if (line.trim()) {
-        options.onLog?.(line);
-      }
-    }
-  };
+  const startupOutput = createT3StartupOutputTracker(options.onLog);
 
   const child: ChildProcessByStdio<null, Readable, Readable> = spawn(
     resolveT3ServerNodeExecutable(),
@@ -120,8 +187,8 @@ export async function startT3ServerProcess(
     },
   );
 
-  child.stdout.on("data", append);
-  child.stderr.on("data", append);
+  child.stdout.on("data", (chunk: Buffer) => startupOutput.append("stdout", chunk));
+  child.stderr.on("data", (chunk: Buffer) => startupOutput.append("stderr", chunk));
 
   const exited = new Promise<never>((_, reject) => {
     child.once("exit", (code, signal) => {
@@ -130,13 +197,21 @@ export async function startT3ServerProcess(
   });
 
   try {
-    await Promise.race([waitForEnvironment(baseUrl), exited]);
+    const ready = Promise.all([
+      waitForEnvironment(baseUrl),
+      withTimeout(
+        startupOutput.pairingToken,
+        45_000,
+        "Timed out waiting for T3 pairing token",
+      ),
+    ]);
+    await Promise.race([ready, exited]);
   } catch (error) {
     child.kill("SIGTERM");
     throw error;
   }
 
-  const pairingToken = extractPairingToken(log);
+  const pairingToken = await startupOutput.pairingToken;
 
   return {
     baseUrl,

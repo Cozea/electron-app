@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { T3ServerConfigClient } from "@cozea/client-runtime";
 import type { ServerConfig } from "@cozea/assistant-contracts";
@@ -37,6 +37,8 @@ export function useT3ServerConfigCutover(input: {
   readonly substrateActive: boolean;
   readonly shadowBaseUrl: string | null;
 }): T3ServerConfigCutoverState {
+  const ownerRef = useRef(Symbol("t3-server-config-cutover-owner"));
+  const owner = ownerRef.current;
   const [state, setState] = useState<T3ServerConfigCutoverState>({
     active: false,
     loading: false,
@@ -46,7 +48,7 @@ export function useT3ServerConfigCutover(input: {
 
   useEffect(() => {
     if (!input.substrateActive || !input.shadowBaseUrl) {
-      disconnectT3ServerConfigBridge();
+      disconnectT3ServerConfigBridge(owner);
       setState({ active: false, loading: false, error: null, refreshProviders: null });
       return;
     }
@@ -62,7 +64,7 @@ export function useT3ServerConfigCutover(input: {
         const t3Enabled = await readShadowReadyT3Enabled(input.shadowBaseUrl!);
         if (cancelled || !t3Enabled) {
           if (!cancelled) {
-            disconnectT3ServerConfigBridge();
+            disconnectT3ServerConfigBridge(owner);
             setState({ active: false, loading: false, error: null, refreshProviders: null });
           }
           return;
@@ -76,7 +78,7 @@ export function useT3ServerConfigCutover(input: {
           wsTicket: session.wsTicket,
         });
 
-        connectT3ServerConfigBridge({
+        connectT3ServerConfigBridge(owner, {
           getConfig: () => client!.getConfig(),
           subscribe: (listener: (config: ServerConfig) => void) => {
             let active = true;
@@ -98,10 +100,11 @@ export function useT3ServerConfigCutover(input: {
             };
           },
           refreshProviders: () => client!.refreshProviders(),
+          updateProvider: (provider, instanceId) => client!.updateProvider(provider, instanceId),
         });
 
         if (cancelled) {
-          disconnectT3ServerConfigBridge();
+          disconnectT3ServerConfigBridge(owner);
           await client.close();
           return;
         }
@@ -113,7 +116,7 @@ export function useT3ServerConfigCutover(input: {
           refreshProviders: () => client!.refreshProviders(),
         });
       } catch (error) {
-        disconnectT3ServerConfigBridge();
+        disconnectT3ServerConfigBridge(owner);
         if (!cancelled) {
           setState({
             active: false,
@@ -129,10 +132,10 @@ export function useT3ServerConfigCutover(input: {
       cancelled = true;
       unsubscribeConfig?.();
       unsubscribeConfig = null;
-      disconnectT3ServerConfigBridge();
+      disconnectT3ServerConfigBridge(owner);
       void client?.close();
     };
-  }, [input.substrateActive, input.shadowBaseUrl]);
+  }, [input.substrateActive, input.shadowBaseUrl, owner]);
 
   return state;
 }

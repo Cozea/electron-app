@@ -1,6 +1,10 @@
 // @ts-nocheck
 import { describe, expect, it } from "vitest";
-import { computeMessageDurationStart, normalizeCompactToolLabel } from "../../../../../../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic";
+import {
+  computeMessageDurationStart,
+  deriveGenerationStatusPhase,
+  normalizeCompactToolLabel,
+} from "../../../../../../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic";
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {
@@ -142,5 +146,69 @@ describe("normalizeCompactToolLabel", () => {
 
   it("removes trailing completion wording from other labels", () => {
     expect(normalizeCompactToolLabel("Read file completed")).toBe("Read file");
+  });
+});
+
+describe("deriveGenerationStatusPhase", () => {
+  const marker = (kind, sequence, turnId = "turn-1") => ({
+    id: `${kind}:${sequence}`,
+    kind,
+    tone: "info",
+    summary: kind,
+    payload: {},
+    turnId,
+    sequence,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  it("shows Working when the provider has not emitted a reasoning signal", () => {
+    expect(deriveGenerationStatusPhase([], "turn-1")).toBe("working");
+    expect(deriveGenerationStatusPhase([marker("reasoning.started", 1, "turn-2")], "turn-1")).toBe(
+      "working",
+    );
+  });
+
+  it("shows Working after explicit reasoning completes", () => {
+    expect(
+      deriveGenerationStatusPhase(
+        [marker("reasoning.started", 1), marker("reasoning.completed", 2)],
+        "turn-1",
+      ),
+    ).toBe("working");
+  });
+
+  it("orders persisted markers by sequence instead of snapshot array order", () => {
+    expect(
+      deriveGenerationStatusPhase(
+        [marker("reasoning.completed", 2), marker("reasoning.started", 1)],
+        "turn-1",
+      ),
+    ).toBe("working");
+  });
+
+  it("treats completion as later when markers share a timestamp without sequences", () => {
+    const started = { ...marker("reasoning.started", undefined), sequence: undefined };
+    const completed = { ...marker("reasoning.completed", undefined), sequence: undefined };
+    expect(deriveGenerationStatusPhase([completed, started], "turn-1")).toBe("working");
+  });
+
+  it("shows Thinking while an explicit provider reasoning marker is unmatched", () => {
+    expect(deriveGenerationStatusPhase([marker("reasoning.started", 1)], "turn-1")).toBe(
+      "thinking",
+    );
+    expect(
+      deriveGenerationStatusPhase(
+        [
+          marker("reasoning.started", 1),
+          marker("reasoning.completed", 2),
+          marker("reasoning.started", 3),
+        ],
+        "turn-1",
+      ),
+    ).toBe("thinking");
+  });
+
+  it("defaults to Working before the active turn projection is available", () => {
+    expect(deriveGenerationStatusPhase([marker("reasoning.started", 1)], null)).toBe("working");
   });
 });

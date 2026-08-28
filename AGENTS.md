@@ -212,13 +212,19 @@ Project creation is a simple form — there is no conversational wizard or AI in
 2. On submit:
    - IPC creates the folder on disk, runs `git init`, writes `.gitignore`
    - If GitHub repo requested: runs `gh repo create` via IPC
-   - Convex `projects.create()` mutation creates the DB record (`status: "draft"`, `syncStatus: "local_only"`)
+   - Convex `projects.create()` mutation creates the shared DB record (`syncStatus: "local_only"`)
    - `updateStatus()` mutation moves it to `"active"`
-   - Local path written to `project-path-registry.json` (app data dir) and to `projectMembers.localPath` in Convex
+   - The device-local workspace catalog records the created folder as `managed`, including its concrete managed-root ID; no absolute path is written as cloud authority
 3. Navigates to `/projects/p/{projectId}/workbench`
 
-### Import existing folder (`mode=local`)
-Same flow but skips folder creation. Inspects existing git state (remote URL, branch, provider) and stores it in `sourceControl` / `repoSource` on the project record with `creationPath: "repo"`.
+### Open existing folder (`mode=local`)
+1. Electron preflights the selected directory and existing Git metadata.
+2. If the canonical path already belongs to a local project, Cozea opens that project instead of creating a duplicate.
+3. Otherwise Convex creates an idempotent `provisioning` project, then the workspace catalog attaches the exact selected path as `attached`.
+4. Cozea never copies, renames, relocates, or assumes deletion ownership of an existing folder. Attached non-Git folders receive no source marker; attached Git folders may use the private `.git/cozea` marker.
+5. Once attachment succeeds, the project becomes `active` and the workbench opens at the returned workspace ID.
+
+Project deletion and **Clear all** may move only catalog-proven `managed` workspaces to Trash. Attached folders always remain on disk, including when they happen to live inside the configured managed-projects directory.
 
 ## How the AI / Workbench Works
 
@@ -228,6 +234,7 @@ The AI chat runs **after** project creation, inside the workbench.
 - The workbench chat tile (`WorkbenchAssistantChatTile`) connects via T3 RPC session (`useT3Cutover`)
 - Four provider kinds are supported: `claudeAgent`, `codex`, `opencode`, `cursor`
 - The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
+- Generated images are thread-scoped artifacts. Each assistant tile has persistent `Chat` / `Artifacts` views; hiding chat must not unmount its controller or stream. See `docs/assistant-artifacts.md`.
 - Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
 
 ## How Project DevApps Work
@@ -242,6 +249,18 @@ The AI chat runs **after** project creation, inside the workbench.
 - The Convex schema/functions are an internal-only future scaffold. Do not make them client-callable until verified WorkOS identity derives user and organization server-side.
 
 See `docs/project-devapps.md` for the full lifecycle and operational notes.
+
+## How Agent Dev Server Preview Works
+
+- Agent preview automation uses the built-in workbench **Dev Server** surface, never an ordinary Browser tile or an Org/Project DevApp surface.
+- There is one dev-server process per `(workspaceId, laneId)`. `dev_server_ensure` is idempotent: it reuses a ready process and joins a launch already in progress. Only an explicit user restart/stop replaces or stops it.
+- Normal `dev_server_ensure` calls omit `command`. Cozea builds a bounded candidate set from project evidence and ranks it with a tiny macOS Core ML helper, falling back deterministically; the model never generates shell text. A successful ready command is cached by evidence fingerprint. Agents may pass a command only when the user explicitly supplied or confirmed it, with a brokered `{port}` placeholder where needed. If an agent already started a server itself, it attaches and navigates to that port instead of ensuring another process.
+- A process may have zero or more Dev Server surfaces. Closing its last surface leaves the process headless; the sidebar then shows `Dev Server — Running` so the user can reattach it.
+- Agent-created surfaces are inactive tabs in the requesting assistant's Dockview group. The user can select that tab or drag it into another grid cell without interrupting the server or the assistant.
+- Preview control is leased per assistant thread. Direct user interaction interrupts the lease; a competing agent gets another surface attached to the same process rather than taking control or starting a duplicate process.
+- The Cozea host advertises status/open/navigate/snapshot/click/type/press/scroll/wait operations only. Arbitrary evaluation, recording, appearance, and viewport resize are intentionally unavailable.
+
+See `docs/dev-server-agent-automation.md` for the lifecycle, tool semantics, and QA matrix.
 
 ## How Collaborative Editing Works
 

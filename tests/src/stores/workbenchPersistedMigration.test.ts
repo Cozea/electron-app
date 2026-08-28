@@ -77,6 +77,37 @@ describe("persisted workbench migration", () => {
     expect(Object.keys(migrated.workbenches)).toHaveLength(2)
   })
 
+  it("defaults legacy assistant tiles to chat and preserves a valid artifacts view", () => {
+    const legacy = bench({
+      projectId: "p-assistant-legacy",
+      workspaceId: "lws_assistant_legacy",
+      tiles: [{ id: "assistant", type: "assistantChat" }],
+    })
+    const artifacts = bench({
+      projectId: "p-assistant-artifacts",
+      workspaceId: "lws_assistant_artifacts",
+      tiles: [{ id: "assistant", type: "assistantChat" }],
+    })
+    artifacts.tiles.assistant = {
+      ...artifacts.tiles.assistant,
+      viewMode: "artifacts",
+    }
+
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: { legacy, artifacts },
+    })
+    const byProject = Object.values(migrated.workbenches).reduce<Record<string, unknown>>(
+      (result, workbench) => {
+        result[workbench.projectId] = workbench.tiles.assistant
+        return result
+      },
+      {},
+    )
+
+    expect(byProject["p-assistant-legacy"]).toMatchObject({ viewMode: "chat" })
+    expect(byProject["p-assistant-artifacts"]).toMatchObject({ viewMode: "artifacts" })
+  })
+
   it("sanitizes persisted project DevApp launch metadata", () => {
     const persisted = bench({
       projectId: "p6",
