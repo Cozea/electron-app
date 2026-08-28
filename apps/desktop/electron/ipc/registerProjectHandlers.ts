@@ -13,6 +13,7 @@ import type {
   ImportSourcePreflightIssue,
   ImportSourcePreflightResult,
   ListFilesResult,
+  ListProjectDirectoryResult,
   ProjectPathNativeIconResult,
   ReadFileBase64Result,
   ReadFileResult,
@@ -34,6 +35,7 @@ import {
 } from '../services/generatedArtifactFilters'
 import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
 import { getProjectContextOptionsFromAnalysis } from '../services/ProjectAnalysisService'
+import { listProjectDirectoryEntries } from '../services/projectDirectoryInspection'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
@@ -334,10 +336,9 @@ export function registerProjectHandlers(
     },
   )
 
-  // Resolves an opaque workspace id to its absolute project root path. The renderer holds only
-  // opaque workspace ids, but a few path-based read APIs (fs:readDir / fs:readFile, used for
-  // package-manager and node_modules detection in projectDetector) need a real filesystem path.
-  // Resolving here keeps the authorization check in the main process.
+  // Resolves an opaque workspace id for presentation-only consumers such as
+  // workspace-relative labels. Filesystem operations must still use the
+  // workspace-scoped project APIs instead of treating this path as authority.
   ipcMain.handle(
     'project:resolveRoot',
     async (_event, { workspaceId }: { workspaceId: string }): Promise<string | null> => {
@@ -484,6 +485,40 @@ export function registerProjectHandlers(
         }
       }
     }
+  )
+
+  ipcMain.handle(
+    'project:listDirectory',
+    async (
+      _event,
+      {
+        workspaceId,
+        directory,
+      }: {
+        workspaceId: string
+        directory?: string | null
+      },
+    ): Promise<ListProjectDirectoryResult> => {
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({
+          workspaceId,
+          operation: 'list-files',
+        })
+        const entries = await listProjectDirectoryEntries(
+          access.projectRootPath,
+          directory,
+        )
+        return {
+          success: true,
+          entries,
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        }
+      }
+    },
   )
 
   ipcMain.handle(
