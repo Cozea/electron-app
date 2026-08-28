@@ -543,6 +543,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFile: (options: { workspaceId: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { workspaceId: string; filePath: string }) =>
       ipcRenderer.invoke('project:readFileBase64', options),
+    listDirectory: (options: { workspaceId: string; directory?: string | null }) =>
+      ipcRenderer.invoke('project:listDirectory', options),
     listFiles: (options: { workspaceId: string }) => ipcRenderer.invoke('project:listFiles', options),
     getContextOptions: (options: {
       workspaceId: string

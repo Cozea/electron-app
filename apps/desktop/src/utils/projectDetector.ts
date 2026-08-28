@@ -5,10 +5,9 @@
  * Used as fallback when metadata isn't stored in Convex.
  */
 
-import type { AppSettings, DevCommandSuggestion } from '@shared/electronApiTypes'
+import type { DevCommandSuggestion } from '@shared/electronApiTypes'
 import { parseProjectDevAppCommand } from '@shared/projectDevAppCommand'
 import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
-import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 
 export type Framework =
   | 'expo'
@@ -103,37 +102,6 @@ function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager)
   return command
 }
 
-function trimTrailingSeparators(pathValue: string): string {
-  if (/^[A-Za-z]:[\\/]*$/.test(pathValue)) {
-    return pathValue.endsWith('\\') || pathValue.endsWith('/') ? pathValue : `${pathValue}\\`
-  }
-
-  return pathValue.replace(/[\\/]+$/, '') || pathValue
-}
-
-function inferPathSeparator(pathValue: string): '/' | '\\' {
-  return pathValue.includes('\\') ? '\\' : '/'
-}
-
-function joinAbsolutePath(basePath: string, ...segments: string[]): string {
-  const separator = inferPathSeparator(basePath)
-  const normalizedBase = trimTrailingSeparators(basePath)
-  const cleanedSegments = segments
-    .map((segment) => segment.replace(/^[/\\]+|[/\\]+$/g, ''))
-    .filter(Boolean)
-
-  if (cleanedSegments.length === 0) {
-    return normalizedBase
-  }
-
-  const baseWithSeparator =
-    normalizedBase.endsWith('/') || normalizedBase.endsWith('\\')
-      ? normalizedBase
-      : `${normalizedBase}${separator}`
-
-  return `${baseWithSeparator}${cleanedSegments.join(separator)}`
-}
-
 function normalizeRelativePackageDirectory(value?: string | null): string | null {
   const normalized = value?.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   if (!normalized) return null
@@ -162,122 +130,21 @@ function quoteCommandArgument(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`
 }
 
-function getParentDirectory(pathValue: string): string | null {
-  const normalized = trimTrailingSeparators(pathValue)
-  const lastSlashIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+function buildPackageManagerSearchDirectories(
+  relativeDirectory?: string | null,
+): Array<string | null> {
+  const directories: Array<string | null> = []
+  let current = normalizeRelativePackageDirectory(relativeDirectory)
 
-  if (lastSlashIndex < 0) {
-    return null
+  for (let depth = 0; depth <= MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH; depth += 1) {
+    directories.push(current)
+    if (current === null) break
+
+    const separatorIndex = current.lastIndexOf('/')
+    current = separatorIndex >= 0 ? current.slice(0, separatorIndex) || null : null
   }
 
-  if (lastSlashIndex === 0) {
-    return normalized[0]
-  }
-
-  if (lastSlashIndex === 2 && /^[A-Za-z]:/.test(normalized.slice(0, 2))) {
-    return normalized.slice(0, 3)
-  }
-
-  const parent = normalized.slice(0, lastSlashIndex)
-  return parent.length > 0 ? parent : null
-}
-
-function normalizeComparableAbsolutePath(pathValue: string): string {
-  const trimmed = trimTrailingSeparators(pathValue).replace(/\\/g, '/')
-
-  if (trimmed === '/') {
-    return trimmed
-  }
-
-  if (/^[A-Za-z]:\/$/.test(trimmed)) {
-    return trimmed.toLowerCase()
-  }
-
-  return trimmed.toLowerCase()
-}
-
-function isPathInsideRoot(candidatePath: string, rootPath: string): boolean {
-  const normalizedCandidate = normalizeComparableAbsolutePath(candidatePath)
-  const normalizedRoot = normalizeComparableAbsolutePath(rootPath)
-
-  if (normalizedCandidate === normalizedRoot) {
-    return true
-  }
-
-  return normalizedCandidate.startsWith(`${normalizedRoot}/`)
-}
-
-function getApprovedReadRoots(settings: AppSettings): string[] {
-  const roots = new Set<string>()
-  const projectsDirectory = settings.projectsDirectory?.trim()
-  if (projectsDirectory) {
-    roots.add(trimTrailingSeparators(projectsDirectory))
-  }
-
-  for (const approvedRoot of settings.approvedExternalReadRoots ?? []) {
-    if (typeof approvedRoot !== 'string' || approvedRoot.trim().length === 0) {
-      continue
-    }
-    roots.add(trimTrailingSeparators(approvedRoot))
-  }
-
-  return Array.from(roots)
-}
-
-function isPathInsideApprovedRoots(candidatePath: string, approvedRoots: readonly string[]): boolean {
-  return approvedRoots.some((rootPath) => isPathInsideRoot(candidatePath, rootPath))
-}
-
-/**
- * Resolves an opaque workspace id to its absolute project root path via the main process.
- * Returns null when the id is empty, unauthorized, or unknown.
- */
-async function resolveWorkspaceRootPath(workspaceId: string): Promise<string | null> {
-  const trimmed = workspaceId.trim()
-  if (!trimmed) {
-    return null
-  }
-  try {
-    const rootPath = await projectAnalysisDesktopClient.resolveRoot(trimmed)
-    if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
-      return null
-    }
-    return rootPath
-  } catch {
-    return null
-  }
-}
-
-function buildPackageManagerSearchRoots(
-  rootPath: string,
-  approvedRoots: readonly string[],
-): string[] {
-  const roots: string[] = []
-  const initialRoot = trimTrailingSeparators(rootPath.trim())
-  let current: string | null = initialRoot
-
-  if (initialRoot) {
-    roots.push(initialRoot)
-  }
-
-  for (let depth = 1; depth <= MAX_PACKAGE_MANAGER_ANCESTOR_DEPTH && current; depth += 1) {
-    const normalized = trimTrailingSeparators(current)
-    const parent = getParentDirectory(normalized)
-    if (!parent || parent === normalized) {
-      break
-    }
-
-    if (!isPathInsideApprovedRoots(parent, approvedRoots)) {
-      break
-    }
-
-    if (!roots.includes(parent)) {
-      roots.push(parent)
-    }
-    current = parent
-  }
-
-  return roots
+  return directories
 }
 
 function parsePackageManagerField(
@@ -308,18 +175,20 @@ function detectPackageManagerFromEntryNames(entryNames: Set<string>): PackageMan
   return null
 }
 
-async function readPackageManagerFromAbsolutePackageJson(
-  absoluteDirectoryPath: string,
+async function readPackageManagerFromPackageJson(
+  workspaceId: string,
+  relativeDirectory: string | null,
 ): Promise<PackageManager | null> {
   try {
-    const raw = await projectAnalysisDesktopClient.readAbsoluteFile(
-      joinAbsolutePath(absoluteDirectoryPath, 'package.json'),
-    )
-    if (!raw) {
+    const result = await projectAnalysisDesktopClient.readFile({
+      workspaceId,
+      filePath: joinRelativeProjectPath(relativeDirectory, 'package.json'),
+    })
+    if (!result.success || !result.content) {
       return null
     }
 
-    const parsed = JSON.parse(raw) as { packageManager?: unknown }
+    const parsed = JSON.parse(result.content) as { packageManager?: unknown }
     return parsePackageManagerField(parsed.packageManager)
   } catch {
     return null
@@ -330,35 +199,25 @@ async function detectPackageManagerFromRoot(
   workspaceId: string,
   relativeDirectory?: string | null,
 ): Promise<PackageManager> {
-  // workspaceId is an opaque catalog id, not a path. Resolve it to the absolute project root
-  // before walking the filesystem; the path-based fs:* reads below require a real path.
-  const rootPath = await resolveWorkspaceRootPath(workspaceId)
-  if (!rootPath) {
+  if (!workspaceId.trim()) {
     return 'npm'
   }
 
-  const normalizedDirectory = normalizeRelativePackageDirectory(relativeDirectory)
-  const packageRoot = normalizedDirectory
-    ? joinAbsolutePath(rootPath, normalizedDirectory)
-    : rootPath
-  let approvedRoots: string[] = []
-
-  try {
-    approvedRoots = getApprovedReadRoots(await settingsDesktopClient.get())
-  } catch {
-    approvedRoots = []
-  }
-
-  for (const candidateRoot of buildPackageManagerSearchRoots(packageRoot, approvedRoots)) {
+  for (const candidateDirectory of buildPackageManagerSearchDirectories(relativeDirectory)) {
     const packageManagerFromPackageJson =
-      await readPackageManagerFromAbsolutePackageJson(candidateRoot)
+      await readPackageManagerFromPackageJson(workspaceId, candidateDirectory)
     if (packageManagerFromPackageJson) {
       return packageManagerFromPackageJson
     }
 
     try {
-      const entries = await projectAnalysisDesktopClient.readDir(candidateRoot)
-      const entryNames = new Set(entries.map((entry) => entry.name))
+      const result = await projectAnalysisDesktopClient.listDirectory({
+        workspaceId,
+        directory: candidateDirectory,
+      })
+      if (!result.success) continue
+
+      const entryNames = new Set((result.entries ?? []).map((entry) => entry.name))
       const packageManagerFromLockfile = detectPackageManagerFromEntryNames(entryNames)
       if (packageManagerFromLockfile) {
         return packageManagerFromLockfile
@@ -1143,14 +1002,14 @@ export async function checkDependenciesInstalled(
   relativeDirectory?: string | null,
 ): Promise<boolean> {
   try {
-    // workspaceId is an opaque catalog id; resolve to a real path before the path-based readDir.
-    const rootPath = await resolveWorkspaceRootPath(workspaceId)
-    if (!rootPath) {
-      return false
-    }
     const directory = normalizeRelativePackageDirectory(relativeDirectory)
-    const packageRoot = directory ? joinAbsolutePath(rootPath, directory) : rootPath
-    const rootEntries = await projectAnalysisDesktopClient.readDir(packageRoot)
+    const result = await projectAnalysisDesktopClient.listDirectory({
+      workspaceId,
+      directory,
+    })
+    if (!result.success) return false
+
+    const rootEntries = result.entries ?? []
     const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )

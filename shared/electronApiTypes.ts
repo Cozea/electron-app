@@ -392,6 +392,17 @@ export interface ListFilesResult {
   error?: string
 }
 
+export interface ProjectDirectoryEntry {
+  name: string
+  type: 'file' | 'directory'
+}
+
+export interface ListProjectDirectoryResult {
+  success: boolean
+  entries?: ProjectDirectoryEntry[]
+  error?: string
+}
+
 export type ProjectFrameworkId =
   | 'expo'
   | 'react-native'
@@ -1686,6 +1697,10 @@ export interface ElectronAPI {
     }) => Promise<WriteFileResult>
     readFile: (options: { workspaceId: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { workspaceId: string; filePath: string }) => Promise<ReadFileBase64Result>
+    listDirectory: (options: {
+      workspaceId: string
+      directory?: string | null
+    }) => Promise<ListProjectDirectoryResult>
     listFiles: (options: { workspaceId: string }) => Promise<ListFilesResult>
     getContextOptions: (options: {
       workspaceId: string

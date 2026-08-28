@@ -19,7 +19,7 @@ export function resolvePathWithinDirectory(baseDir: string, inputPath: string): 
   const relative = path.relative(baseDir, resolved)
 
   // `path.relative` may return an absolute path on Windows if on different drives.
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error('Path is outside of the project directory')
   }
 
