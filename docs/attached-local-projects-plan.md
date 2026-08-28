@@ -20,6 +20,9 @@ The core ownership and exact-path attachment design is now implemented:
   integrations continue to resolve verified workspace/lane IDs in Electron.
 - Directory-picker read grants are dropped once the workspace is attached, and Git worktrees use
   their private Git directory for markers and common repository configuration for identity.
+- Package-manager, lockfile, and dependency inspection now uses catalog-authorized workspace
+  directory reads. Attached roots no longer need a persistent global read grant for Dev Server
+  launch or Project DevApp command publication.
 - Package-manager-specific dev-server port forwarding is covered for npm, pnpm, Bun, and Yarn.
 
 Verification completed on 2026-08-29: 835 tests passed with 4 intentional skips, renderer and
@@ -274,7 +277,9 @@ function. Local mode no longer asks for or validates a destination parent direct
 - Move preflight Git/framework inspection into workspace/picker-scoped Electron IPC rather than
   giving the renderer durable broad access to every previously selected external root.
 - Once bound, use catalog-authorized workspace APIs for all reads and writes. Refactor project
-  detection away from `resolveRoot` followed by general `fs:*` calls where it still uses them.
+  detection away from `resolveRoot` followed by general `fs:*` calls. Package-manager and
+  dependency detection now satisfy this invariant through `project:listDirectory`; keep future
+  project inspection on the same scoped API family.
 - Garbage-collect obsolete `approvedExternalReadRoots`, or reduce them to short-lived picker grants.
 - Do not log full external paths in analytics or cloud events.
 - The current notarized macOS build is not App Sandbox-enabled, so direct paths persist across app
